@@ -56,15 +56,19 @@ Status: Canonical Contract. This document owns Gallery behavior in the canvas ed
 
 ## Selected-Gallery Sidebar Behavior
 
-**Current:** When exactly one Gallery object is selected, the Gallery sidebar shows the selected Gallery's photo usages derived from that Gallery object's `cells[]`.
+**Current:** The normal Gallery sidebar resolves one active Gallery editing target from normal `objetos[]` Gallery objects. A single selected canvas Gallery remains the primary target. If no Gallery is selected and the draft has exactly one Gallery, the sidebar uses that Gallery automatically. If no Gallery is selected and the draft has multiple Galleries, the sidebar shows a simple Gallery block selector and uses the chosen Gallery as the active target.
 
-**Current:** The sidebar shows available/uploaded invitation images separately from selected-Gallery usages.
+**Current:** The sidebar shows available/uploaded invitation images separately from the active Gallery target's local usages.
 
-**Current:** Selected-Gallery operations mutate only the selected Gallery object.
+**Current:** When a canvas Gallery is selected, selected-Gallery operations mutate only that selected Gallery object.
+
+**Current:** When the sidebar is using the one-Gallery fallback or an explicit sidebar Gallery choice, photo and layout operations mutate only that active Gallery target.
 
 **Current:** Removing a photo removes only that Gallery usage and never deletes the uploaded asset from the image library.
 
-**Current:** If no Gallery is selected, selected-Gallery photo management controls are disabled/hidden while upload/library browsing remains available.
+**Current:** If there is no Gallery object in the draft, Gallery photo management controls are hidden while upload/library browsing remains available.
+
+**Current:** If multiple Gallery objects exist and no Gallery is selected or chosen in the sidebar, Gallery photo management controls wait for the sidebar block choice instead of requiring canvas selection.
 
 **Current:** The implemented selected-Gallery photo UI is a thumbnail grid with explicit move-up/move-down, replace, and remove controls. Reorder and replace already route through `src/domain/gallery/galleryMutations.js`.
 
@@ -78,9 +82,9 @@ Supported selected-Gallery operations:
 
 ### Selected-Gallery Layout Selector
 
-**Current:** When exactly one Gallery object is selected, the Gallery sidebar owns a visual layout selector near the top of the Gallery panel, above the selected-Gallery photo list.
+**Current:** When the sidebar has an active Gallery target, the Gallery sidebar owns a visual layout selector near the top of the Gallery panel, above the active Gallery photo list.
 
-**Current:** The selector displays only layouts allowed by the selected Gallery/template configuration. It shows a clear selected state for the active resolved layout and commits layout changes through `switchGalleryLayout(gallery, layoutId)` in `src/domain/gallery/galleryMutations.js`.
+**Current:** The selector displays only layouts allowed by the active Gallery/template configuration. It shows a clear selected state for the active resolved layout and commits layout changes through `switchGalleryLayout(gallery, layoutId)` in `src/domain/gallery/galleryMutations.js`.
 
 **Current:** Draft/legacy Galleries that do not yet carry `allowedLayouts` still show the primary safe selector options in the normal Gallery tab. This is an editor-only fallback for visibility and switching; it must not change preview/publish rendering until the user selects a layout. On first selection, the Gallery mutation boundary materializes additive `allowedLayouts`, `defaultLayout`, and `currentLayout` fields on that selected Gallery so the existing renderer can update the canvas immediately.
 
@@ -88,7 +92,7 @@ Supported selected-Gallery operations:
 
 **Current:** Layout previews are lightweight static CSS/SVG/icon previews. They are not live mini-rendered Galleries and do not create a second Gallery render path.
 
-**Current:** Selecting a layout changes only the selected Gallery object's layout fields, preserves all `cells[]` photo usages, and leaves other Galleries untouched. Hidden/unrendered photos remain stored and manageable in the selected-Gallery photo list.
+**Current:** Selecting a layout changes only the active Gallery target's layout fields, preserves all `cells[]` photo usages, and leaves other Galleries untouched. Hidden/unrendered photos remain stored and manageable in the active Gallery photo list.
 
 ## Future Selected-Gallery Photo List UX
 
@@ -285,6 +289,8 @@ Required operations:
 ## Editor Testing Anchors
 
 - Selected Gallery sidebar displays only the selected Gallery's populated photo usages.
+- With exactly one Gallery in the draft and no selected canvas Gallery, the normal Gallery sidebar auto-targets that Gallery and displays its local photo usages.
+- With multiple Galleries and no selected canvas Gallery, the normal Gallery sidebar shows a Gallery block selector; choosing one displays and mutates only that Gallery.
 - Future selected-Gallery photo list renders as a vertical ordered list derived from `cells[]`.
 - Future drag reorder starts only from a dedicated handle and commits through `reorderGalleryPhotos`.
 - Future thumbnail replacement preserves row/cell position and commits through `replaceGalleryPhoto`.
@@ -292,6 +298,7 @@ Required operations:
 - Fixed Gallery empty slots are not draggable photo rows.
 - Available image library remains separate from selected-Gallery usages.
 - Add/remove/replace/reorder mutate only the selected Gallery object.
+- Add/remove/replace/reorder through an unselected sidebar fallback mutate only the active sidebar Gallery target.
 - Removing a Gallery usage does not delete the uploaded asset.
 - Layout switching respects `allowedLayouts`.
 - Visual layout selector appears above the selected-Gallery photo list and displays `Collage` for the `squares` id.

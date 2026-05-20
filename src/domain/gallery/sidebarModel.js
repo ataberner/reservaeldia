@@ -9,6 +9,10 @@ function normalizeLowerText(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function isGalleryObject(object) {
+  return object?.tipo === "galeria" && Boolean(normalizeText(object?.id));
+}
+
 export function isTemplateGalleryAuthoringSession({
   editorSession = null,
   templateSessionMeta = null,
@@ -29,6 +33,64 @@ export function canAccessGalleryBuilder({
     editorReadOnly !== true &&
     isTemplateGalleryAuthoringSession({ editorSession, templateSessionMeta })
   );
+}
+
+export function getGallerySidebarCandidates(objects = []) {
+  return (Array.isArray(objects) ? objects : []).filter(isGalleryObject);
+}
+
+export function resolveGallerySidebarEditingTarget({
+  objects = [],
+  selectedIds = [],
+  sidebarGalleryId = "",
+} = {}) {
+  const candidates = getGallerySidebarCandidates(objects);
+  const safeSelectedIds = Array.isArray(selectedIds)
+    ? selectedIds.map(normalizeText).filter(Boolean)
+    : [];
+  const selectedGallery =
+    safeSelectedIds.length === 1
+      ? candidates.find((gallery) => gallery.id === safeSelectedIds[0]) || null
+      : null;
+
+  if (selectedGallery) {
+    return {
+      gallery: selectedGallery,
+      candidates,
+      source: "canvas-selection",
+      needsSidebarChoice: false,
+    };
+  }
+
+  if (candidates.length === 1) {
+    return {
+      gallery: candidates[0],
+      candidates,
+      source: "single-gallery",
+      needsSidebarChoice: false,
+    };
+  }
+
+  const safeSidebarGalleryId = normalizeText(sidebarGalleryId);
+  const sidebarGallery = safeSidebarGalleryId
+    ? candidates.find((gallery) => gallery.id === safeSidebarGalleryId) || null
+    : null;
+
+  if (sidebarGallery) {
+    return {
+      gallery: sidebarGallery,
+      candidates,
+      source: "sidebar-choice",
+      needsSidebarChoice: false,
+    };
+  }
+
+  return {
+    gallery: null,
+    candidates,
+    source: candidates.length > 1 ? "multiple-galleries" : "no-gallery",
+    needsSidebarChoice: candidates.length > 1,
+  };
 }
 
 export function getSelectedGalleryPhotoUsages(gallery) {

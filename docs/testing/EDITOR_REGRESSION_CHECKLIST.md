@@ -316,14 +316,21 @@ Resultado esperado:
 
 1. En una sesion normal, seleccionar una galeria existente.
 2. Verificar que el panel muestra fotos de la galeria seleccionada separadas de imagenes disponibles.
-3. Agregar, reemplazar, quitar y reordenar una foto.
-4. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
-5. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
+3. Confirmar que el panel tiene un solo scroll vertical continuo: fotos de la galeria, boton de subida e `Imagenes disponibles` avanzan juntos.
+4. Confirmar que la seccion `Imagenes disponibles` sigue mostrando miniaturas subidas debajo de los controles de galeria.
+5. Limpiar seleccion de canvas en un borrador que tenga exactamente una galeria y confirmar que el panel sigue mostrando sus fotos sin pedir seleccionarla.
+6. En un borrador con dos o mas galerias sin seleccion de canvas, elegir una desde el selector/listado del panel.
+7. Agregar, reemplazar, quitar y reordenar una foto.
+8. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
+9. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
 
 Resultado esperado:
 
 - usuarios normales no ven el Gallery Builder ni herramientas de estructura
-- las operaciones afectan solo la galeria seleccionada
+- con una sola galeria, el panel la usa automaticamente aunque no este seleccionada en canvas
+- con varias galerias, el panel permite elegir cual editar sin seleccionar en canvas
+- las miniaturas subidas permanecen visibles debajo de la galeria y se desplazan con el scroll unico del panel
+- las operaciones afectan solo la galeria seleccionada en canvas o la galeria elegida en el panel
 - el selector visual aparece arriba de la lista local de fotos y muestra `Collage` para el id interno `squares`
 - quitar una foto no elimina el asset subido
 - cambiar layout preserva todas las fotos, aunque algunas queden ocultas

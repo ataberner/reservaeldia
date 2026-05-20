@@ -4,13 +4,14 @@ import { GripVertical, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import GalleryLayoutSelector from "@/components/gallery/GalleryLayoutSelector";
 import {
-  readEditorObjectById,
+  readEditorObjects,
   readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
   getGalleryAllowedLayoutState,
   getSelectedGalleryPhotoUsages,
+  resolveGallerySidebarEditingTarget,
 } from "@/domain/gallery/sidebarModel";
 import {
   addGalleryPhotos,
@@ -157,6 +158,8 @@ export default function MiniToolbarTabImagen({
   const [galleryDragState, setGalleryDragState] = useState(null);
   const [optimisticGalleryOrder, setOptimisticGalleryOrder] = useState(null);
   const [selectionRefreshToken, setSelectionRefreshToken] = useState(0);
+  const [editorSnapshotToken, setEditorSnapshotToken] = useState(0);
+  const [sidebarGalleryId, setSidebarGalleryId] = useState("");
   const galleryPhotoListRef = useRef(null);
   const galleryPhotoRowNodesRef = useRef(new Map());
   const galleryPhotoRowRectsBeforeUpdateRef = useRef(null);
@@ -215,6 +218,7 @@ export default function MiniToolbarTabImagen({
         selectedIds,
         galleryCell: galleryCell || null,
       });
+      setEditorSnapshotToken((value) => value + 1);
     };
 
     syncSelection();
@@ -228,15 +232,36 @@ export default function MiniToolbarTabImagen({
     };
   }, []);
 
-  const galeriaSeleccionada = useMemo(() => {
-    if (!Array.isArray(editorSelection.selectedIds) || editorSelection.selectedIds.length !== 1) {
-      return null;
-    }
+  const editorObjects = useMemo(
+    () => readEditorObjects(),
+    [editorSnapshotToken, selectionRefreshToken]
+  );
 
-    const selectedId = editorSelection.selectedIds[0];
-    const obj = readEditorObjectById(selectedId);
-    return obj?.tipo === "galeria" ? obj : null;
-  }, [editorSelection.selectedIds, selectionRefreshToken]);
+  const galleryTargetState = useMemo(
+    () =>
+      resolveGallerySidebarEditingTarget({
+        objects: editorObjects,
+        selectedIds: editorSelection.selectedIds,
+        sidebarGalleryId,
+      }),
+    [editorObjects, editorSelection.selectedIds, sidebarGalleryId]
+  );
+
+  const galleryCandidates = galleryTargetState.candidates;
+  const galeriaSeleccionada = galleryTargetState.gallery;
+  const showGalleryBlockSelector =
+    galleryCandidates.length > 1 && galleryTargetState.source !== "canvas-selection";
+
+  useEffect(() => {
+    if (!sidebarGalleryId) return;
+    if (galleryCandidates.some((gallery) => gallery?.id === sidebarGalleryId)) return;
+    setSidebarGalleryId("");
+  }, [galleryCandidates, sidebarGalleryId]);
+
+  useEffect(() => {
+    if (galleryTargetState.source !== "canvas-selection" || !galeriaSeleccionada?.id) return;
+    setSidebarGalleryId(galeriaSeleccionada.id);
+  }, [galeriaSeleccionada?.id, galleryTargetState.source]);
 
   const selectedGalleryPhotos = useMemo(
     () => getSelectedGalleryPhotoUsages(galeriaSeleccionada),
@@ -438,12 +463,8 @@ export default function MiniToolbarTabImagen({
       return `Celda ${celdaActiva.index + 1} de ${totalCeldasGaleria} lista. Toca una miniatura o usa "Subir y asignar".`;
     }
 
-    if (galeriaSeleccionada) {
-      return "Selecciona una celda en el lienzo para decidir donde se carga la proxima imagen.";
-    }
-
-    return "Selecciona un bloque de galeria para activar el modo de carga por celdas.";
-  }, [celdaActiva, galeriaSeleccionada, totalCeldasGaleria]);
+    return "";
+  }, [celdaActiva, totalCeldasGaleria]);
 
   const limpiarCeldaActiva = () => {
     if (!celdaActiva || typeof window.asignarImagenACelda !== "function") return;
@@ -493,7 +514,7 @@ export default function MiniToolbarTabImagen({
 
     const committed = commitGalleryMutation(
       replaceGalleryPhoto(galeriaSeleccionada, target, uploadedUrl),
-      "Foto reemplazada en la galeria seleccionada."
+      "Foto reemplazada en esta galeria."
     );
     if (committed) {
       setSelectedPhotoTarget(target);
@@ -735,7 +756,7 @@ export default function MiniToolbarTabImagen({
 
     const committed = commitGalleryMutation(
       removeGalleryPhoto(galeriaSeleccionada, selectedPhotoTarget),
-      "Foto quitada de la galeria seleccionada."
+      "Foto quitada de esta galeria."
     );
     if (committed) {
       setSelectedPhotoTarget(null);
@@ -805,7 +826,7 @@ export default function MiniToolbarTabImagen({
       if (galleryEditMode === "replace" && selectedPhotoTarget) {
         const committed = commitGalleryMutation(
           replaceGalleryPhoto(galeriaSeleccionada, selectedPhotoTarget, photo),
-          "Foto reemplazada en la galeria seleccionada."
+          "Foto reemplazada en esta galeria."
         );
         if (committed) {
           setGalleryEditMode("add");
@@ -815,8 +836,13 @@ export default function MiniToolbarTabImagen({
 
       commitGalleryMutation(
         addGalleryPhotos(galeriaSeleccionada, photo),
-        "Foto agregada a la galeria seleccionada."
+        "Foto agregada a esta galeria."
       );
+      return;
+    }
+
+    if (galleryTargetState.needsSidebarChoice) {
+      setPanelNotice("Elige una galeria del listado para agregar esta imagen.");
       return;
     }
 
@@ -838,6 +864,7 @@ export default function MiniToolbarTabImagen({
     celdaActiva,
     commitGalleryMutation,
     galeriaSeleccionada,
+    galleryTargetState.needsSidebarChoice,
     galleryEditMode,
     seccionActivaId,
     selectedPhotoTarget,
@@ -867,42 +894,78 @@ export default function MiniToolbarTabImagen({
 
   return (
     <div className={`flex flex-col flex-1 min-h-0 ${isMobileViewport ? "gap-2" : "gap-3"}`}>
-      <section
-        className={`border border-zinc-200 bg-white ${
-          isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
-        }`}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
-              Galeria seleccionada
+      {galleryCandidates.length > 0 && (
+        <section
+          className={`shrink-0 border border-zinc-200 bg-white ${
+            isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
+          }`}
+        >
+          {showGalleryBlockSelector && (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
+                Galerias del borrador
+              </div>
+              <div className="grid gap-1.5">
+                {galleryCandidates.map((gallery, index) => {
+                  const isActiveGallery = galeriaSeleccionada?.id === gallery.id;
+                  const photoCount = getSelectedGalleryPhotoUsages(gallery).length;
+                  return (
+                    <button
+                      key={gallery.id}
+                      type="button"
+                      onClick={() => setSidebarGalleryId(gallery.id)}
+                      className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left transition ${
+                        isActiveGallery
+                          ? "border-purple-300 bg-purple-50 text-purple-800"
+                          : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium">
+                          Galeria {index + 1}
+                        </span>
+                        <span className="block max-w-[220px] truncate text-[10px] text-zinc-400">
+                          {gallery.id}
+                        </span>
+                      </span>
+                      <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
+                        {photoCount} foto{photoCount === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <p className={`${isMobileViewport ? "mt-0.5 text-[11px]" : "mt-1 text-xs"} text-zinc-700`}>
-              {galeriaSeleccionada
-                ? `${selectedGalleryPhotos.length} foto${selectedGalleryPhotos.length === 1 ? "" : "s"} en esta galeria.`
-                : "Selecciona una galeria del lienzo para editar sus fotos."}
-            </p>
-          </div>
-          {galeriaSeleccionada?.id && (
-            <span className="max-w-[120px] truncate rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
-              {galeriaSeleccionada.id}
-            </span>
           )}
-        </div>
 
-        {galeriaSeleccionada && (
-          <>
-            <div className="mt-2">
-              <GalleryLayoutSelector
-                title="Layout permitido"
-                options={layoutState.allowedLayoutOptions}
-                activeLayoutId={layoutState.selectedLayout}
-                onSelect={handleSwitchLayout}
-                compact={isMobileViewport}
-                emptyMessage="Esta galeria usa el layout actual sin presets configurados."
-              />
-              
+          {galeriaSeleccionada && (
+            <div className={`${showGalleryBlockSelector ? "mt-2" : ""} flex items-start justify-between gap-2`}>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
+                  Galeria
+                </div>
+                <p className={`${isMobileViewport ? "mt-0.5 text-[11px]" : "mt-1 text-xs"} text-zinc-700`}>
+                  {selectedGalleryPhotos.length} foto{selectedGalleryPhotos.length === 1 ? "" : "s"} en este bloque.
+                </p>
+              </div>
+              <span className="max-w-[120px] truncate rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
+                {galeriaSeleccionada.id}
+              </span>
             </div>
+          )}
+
+          {galeriaSeleccionada && (
+            <>
+              <div className="mt-2">
+                <GalleryLayoutSelector
+                  title="Layout permitido"
+                  options={layoutState.allowedLayoutOptions}
+                  activeLayoutId={layoutState.selectedLayout}
+                  onSelect={handleSwitchLayout}
+                  compact={isMobileViewport}
+                  emptyMessage="Esta galeria usa el layout actual sin presets configurados."
+                />
+              </div>
 
             {selectedGalleryPhotos.length > 0 ? (
               <div
@@ -1095,28 +1158,25 @@ export default function MiniToolbarTabImagen({
               </button>
             </div>
 
-          </>
-        )}
-      </section>
+            </>
+          )}
+        </section>
+      )}
 
-      <div
-        className={`border ${
-          isMobileViewport ? "rounded-lg px-2.5 py-1.5" : "rounded-xl px-3 py-2"
-        } ${
-          celdaActiva
-            ? "border-emerald-200 bg-emerald-50"
-            : "border-zinc-200 bg-zinc-50"
-        }`}
-      >
-        {isMobileViewport && (
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
-            Modo galeria
-          </div>
-        )}
-        <p className={`${isMobileViewport ? "mt-0.5 text-[11px]" : "mt-1 text-xs"} text-zinc-700`}>
-          {textoAyudaGaleria}
-        </p>
-        {celdaActiva && (
+      {celdaActiva && (
+        <div
+          className={`border border-emerald-200 bg-emerald-50 ${
+            isMobileViewport ? "rounded-lg px-2.5 py-1.5" : "rounded-xl px-3 py-2"
+          }`}
+        >
+          {isMobileViewport && (
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
+              Modo galeria
+            </div>
+          )}
+          <p className={`${isMobileViewport ? "mt-0.5 text-[11px]" : "mt-1 text-xs"} text-zinc-700`}>
+            {textoAyudaGaleria}
+          </p>
           <button
             type="button"
             onClick={limpiarCeldaActiva}
@@ -1126,8 +1186,8 @@ export default function MiniToolbarTabImagen({
           >
             Quitar imagen de la celda activa
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {panelNotice && (
         <p className="rounded border border-sky-100 bg-sky-50 px-2 py-1.5 text-xs text-sky-800">
@@ -1135,20 +1195,7 @@ export default function MiniToolbarTabImagen({
         </p>
       )}
 
-      <button
-        onClick={handleUploadButtonClick}
-        className={`flex items-center gap-2 w-full font-medium shadow-sm transition-all ${
-          isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
-        } ${
-          celdaActiva
-            ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
-            : "bg-purple-100 hover:bg-purple-200 text-purple-800"
-        }`}
-      >
-        <span>{celdaActiva ? "Subir y asignar" : "Subir imagen"}</span>
-      </button>
-
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="shrink-0">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
@@ -1158,11 +1205,23 @@ export default function MiniToolbarTabImagen({
               {galeriaSeleccionada
                 ? galleryEditMode === "replace"
                   ? "Elige una imagen para reemplazar la foto seleccionada, o sube una nueva."
-                  : "Elige una imagen para agregarla a la galeria seleccionada."
-                : "Biblioteca subida; no es la lista local de la galeria seleccionada."}
+                  : "Elige una imagen para agregarla a esta galeria."
+                : "Biblioteca subida disponible para el lienzo."}
             </p>
           </div>
         </div>
+        <button
+          onClick={handleUploadButtonClick}
+          className={`mb-2 flex w-full shrink-0 items-center gap-2 font-medium shadow-sm transition-all ${
+            isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
+          } ${
+            celdaActiva
+              ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+              : "bg-purple-100 hover:bg-purple-200 text-purple-800"
+          }`}
+        >
+          <span>{celdaActiva ? "Subir y asignar" : "Subir imagen"}</span>
+        </button>
         <GaleriaDeImagenes
           imagenes={imagenes || []}
           imagenesEnProceso={imagenesEnProceso || []}

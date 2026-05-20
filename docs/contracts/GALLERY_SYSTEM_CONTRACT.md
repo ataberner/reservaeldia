@@ -106,8 +106,8 @@ The Gallery implementation is considered contract-ready only when all of these a
 - Existing Gallery cells using `mediaUrl`, `url`, or `src` remain readable through normalization.
 - Admin/superadmin Gallery Builder is role-restricted and template-authoring only.
 - Normal users can manage photos only inside existing template Galleries and can switch only among allowed layouts.
-- Selected-Gallery sidebar shows selected-Gallery photos separately from available/uploaded images.
-- Add/remove/replace/reorder/switch-layout mutate only the selected Gallery object.
+- The normal Gallery sidebar shows the active Gallery target's photos separately from available/uploaded images. The active target is the selected canvas Gallery, the only draft Gallery, or an explicit sidebar choice when multiple Galleries exist.
+- Add/remove/replace/reorder/switch-layout mutate only the active Gallery target object.
 - Removing a Gallery photo does not delete the uploaded image asset.
 - Current selection and transform behavior for Gallery objects still works.
 - Current side-channel APIs still work as compatibility bridges or have documented replacements.
@@ -139,7 +139,7 @@ Required coverage:
 - Duplicate photo de-duplication.
 - Clicked duplicate maps to the canonical first retained item.
 - Mobile preview/publish parity for global Gallery viewer order and de-duplication.
-- Selected-Gallery sidebar add/remove/replace/reorder.
+- Gallery sidebar add/remove/replace/reorder for a selected canvas Gallery and for unselected sidebar fallback targets.
 - Layout switching and allowed-layout restrictions.
 - Legacy Gallery cells using only `url` or `src`.
 - Unresolved Gallery media still blocks publish with `gallery-media-unresolved`.

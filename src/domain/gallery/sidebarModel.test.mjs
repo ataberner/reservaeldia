@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   canAccessGalleryBuilder,
   getGalleryAllowedLayoutState,
+  getGallerySidebarCandidates,
   getSelectedGalleryPhotoUsages,
   isTemplateGalleryAuthoringSession,
+  resolveGallerySidebarEditingTarget,
 } from "./sidebarModel.js";
 
 test("template authoring session is detected from editor session or template metadata", () => {
@@ -178,4 +180,68 @@ test("gallery layout sidebar state shows fallback buttons for draft galleries wi
   assert.equal(state.selectedLayout, "");
   assert.equal(state.hasPresetContract, false);
   assert.equal(state.reason, "editor-fallback-available");
+});
+
+const galleryA = { id: "gal-a", tipo: "galeria", cells: [] };
+const galleryB = { id: "gal-b", tipo: "galeria", cells: [] };
+const textObject = { id: "txt-1", tipo: "texto" };
+
+test("gallery sidebar candidates include only normal Gallery objects", () => {
+  assert.deepEqual(
+    getGallerySidebarCandidates([
+      galleryA,
+      textObject,
+      { id: "", tipo: "galeria" },
+      { id: "img-1", tipo: "imagen" },
+      galleryB,
+    ]),
+    [galleryA, galleryB]
+  );
+});
+
+test("gallery sidebar target keeps selected Gallery as the primary target", () => {
+  const result = resolveGallerySidebarEditingTarget({
+    objects: [galleryA, galleryB],
+    selectedIds: ["gal-b"],
+    sidebarGalleryId: "gal-a",
+  });
+
+  assert.equal(result.gallery, galleryB);
+  assert.equal(result.source, "canvas-selection");
+  assert.equal(result.needsSidebarChoice, false);
+});
+
+test("gallery sidebar target auto-targets the only draft Gallery", () => {
+  const result = resolveGallerySidebarEditingTarget({
+    objects: [textObject, galleryA],
+    selectedIds: ["txt-1"],
+  });
+
+  assert.equal(result.gallery, galleryA);
+  assert.equal(result.source, "single-gallery");
+  assert.equal(result.needsSidebarChoice, false);
+});
+
+test("gallery sidebar target uses sidebar choice when multiple Galleries exist", () => {
+  const result = resolveGallerySidebarEditingTarget({
+    objects: [galleryA, textObject, galleryB],
+    selectedIds: [],
+    sidebarGalleryId: "gal-b",
+  });
+
+  assert.equal(result.gallery, galleryB);
+  assert.equal(result.source, "sidebar-choice");
+  assert.equal(result.needsSidebarChoice, false);
+});
+
+test("gallery sidebar target asks for sidebar choice with multiple unselected Galleries", () => {
+  const result = resolveGallerySidebarEditingTarget({
+    objects: [galleryA, galleryB],
+    selectedIds: [],
+  });
+
+  assert.equal(result.gallery, null);
+  assert.equal(result.source, "multiple-galleries");
+  assert.equal(result.needsSidebarChoice, true);
+  assert.deepEqual(result.candidates, [galleryA, galleryB]);
 });

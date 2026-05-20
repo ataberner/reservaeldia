@@ -16,7 +16,7 @@ export default function GaleriaDeImagenes({
   const [seleccionadas, setSeleccionadas] = useState([]);
   const [mostrarModalBorrado, setMostrarModalBorrado] = useState(false);
   const [borrandoSeleccionadas, setBorrandoSeleccionadas] = useState(false);
-  const galeriaRef = useRef(null);
+  const loadMoreRef = useRef(null);
 
   useEffect(() => {
     if (typeof onSeleccionadasChange === "function") {
@@ -25,21 +25,23 @@ export default function GaleriaDeImagenes({
   }, [seleccionadas, onSeleccionadasChange]);
 
   useEffect(() => {
-    const galeria = galeriaRef.current;
-    if (!galeria) return undefined;
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || !hayMas || typeof cargarImagenes !== "function") return undefined;
+    if (typeof IntersectionObserver === "undefined") return undefined;
 
-    const onScroll = () => {
-      if (
-        galeria.scrollTop + galeria.clientHeight >= galeria.scrollHeight - 50 &&
-        !cargando &&
-        hayMas
-      ) {
+    let didRequest = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting || didRequest || cargando || !hayMas) return;
+        didRequest = true;
         cargarImagenes(false);
-      }
-    };
+      },
+      { root: null, rootMargin: "180px 0px", threshold: 0 }
+    );
 
-    galeria.addEventListener("scroll", onScroll);
-    return () => galeria.removeEventListener("scroll", onScroll);
+    observer.observe(sentinel);
+    return () => observer.disconnect();
   }, [cargando, hayMas, cargarImagenes]);
 
   useEffect(() => {
@@ -77,10 +79,7 @@ export default function GaleriaDeImagenes({
 
   return (
     <div className="relative w-full">
-      <div
-        ref={galeriaRef}
-        className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto flex-1 min-h-0 p-2 w-full"
-      >
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 w-full">
         {imagenesEnProceso.map((nombre) => (
           <div
             key={nombre}
@@ -138,6 +137,7 @@ export default function GaleriaDeImagenes({
           );
         })}
       </div>
+      <div ref={loadMoreRef} aria-hidden="true" className="h-1 w-full" />
 
       {seleccionadas.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white text-purple-800 rounded shadow-md p-3 flex gap-4 z-50">

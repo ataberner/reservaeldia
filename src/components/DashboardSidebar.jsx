@@ -120,6 +120,7 @@ export default function DashboardSidebar({
         editorSession,
         templateSessionMeta,
     });
+    const canUseCountdown = canManageSite === true;
 
     // --------------------------
     // Reset de paneles al cerrar sidebar
@@ -236,6 +237,12 @@ export default function DashboardSidebar({
         if (canUseGalleryBuilder) return;
         closeSidebarPanel();
     }, [botonActivo, canUseGalleryBuilder, closeSidebarPanel]);
+
+    useEffect(() => {
+        if (botonActivo !== "contador") return;
+        if (canUseCountdown) return;
+        closeSidebarPanel();
+    }, [botonActivo, canUseCountdown, closeSidebarPanel]);
 
     useEffect(() => {
         return () => {
@@ -660,11 +667,11 @@ export default function DashboardSidebar({
                         onMouseLeave={handleDesktopToolMouseLeave}
                         onClick={() => alternarSidebarConBoton("imagen")}
                         className={getDesktopToolButtonClass("imagen")}
-                        title="Galería"
+                        title="Fotos"
                     >
                         <FaRegImage className={desktopToolIconClass} aria-hidden="true" />
                         <span className={desktopToolTextClass}>
-                            Galería
+                            Fotos
                         </span>
                     </button>
 
@@ -684,19 +691,21 @@ export default function DashboardSidebar({
                         </button>
                     )}
 
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("contador")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("contador")}
-                        className={getDesktopToolButtonClass("contador")}
-                        title="Contador"
-                    >
-                        <FaRegClock className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Contador
-                        </span>
-                    </button>
+                    {canUseCountdown && (
+                        <button
+                            type="button"
+                            onMouseEnter={() => openPanel("contador")}
+                            onMouseLeave={handleDesktopToolMouseLeave}
+                            onClick={() => alternarSidebarConBoton("contador")}
+                            className={getDesktopToolButtonClass("contador")}
+                            title="Contador"
+                        >
+                            <FaRegClock className={desktopToolIconClass} aria-hidden="true" />
+                            <span className={desktopToolTextClass}>
+                                Contador
+                            </span>
+                        </button>
+                    )}
 
                     <button
                         type="button"
@@ -818,11 +827,11 @@ export default function DashboardSidebar({
                                 <button type="button"
                                     onClick={() => alternarSidebarConBoton("imagen")}
                                     className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
-                                    title="Galería"
+                                    title="Fotos"
                                 >
-                                    <img src="/icons/imagen.png" alt="Galería" className="h-5 w-5" />
+                                    <img src="/icons/imagen.png" alt="Fotos" className="h-5 w-5" />
                                 </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Galería</span>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Fotos</span>
                             </div>
 
                             {canUseGalleryBuilder && (
@@ -838,16 +847,18 @@ export default function DashboardSidebar({
                                 </div>
                             )}
 
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => alternarSidebarConBoton("contador")}
-                                    className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
-                                    title="Contador"
-                                >
-                                    <FaRegClock className="text-lg" />
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Contador</span>
-                            </div>
+                            {canUseCountdown && (
+                                <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
+                                    <button type="button"
+                                        onClick={() => alternarSidebarConBoton("contador")}
+                                        className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
+                                        title="Contador"
+                                    >
+                                        <FaRegClock className="text-lg" />
+                                    </button>
+                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Contador</span>
+                                </div>
+                            )}
 
                             <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
                                 <button type="button"

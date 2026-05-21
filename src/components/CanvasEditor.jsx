@@ -1538,7 +1538,7 @@ export default function CanvasEditor({
         style={{
           width: "100%",
           maxWidth: "1200px",
-          backgroundColor: "#f5f5f5",
+          backgroundColor: "#ffffff",
           display: "flex",
           justifyContent: "center",
           paddingTop: "20px", // ? MENOS PADDING INTERNO

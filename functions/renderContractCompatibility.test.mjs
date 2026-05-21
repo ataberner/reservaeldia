@@ -638,6 +638,7 @@ test("renders google map iframe only when visible and place id is available", ()
           seccionId: "section-1",
           googlePlaceId: "place-123",
           googleDisplayName: "Salon Las Acacias",
+          mostrarMapa: true,
           width: 320,
           height: 220,
         },
@@ -671,6 +672,19 @@ test("renders google map iframe only when visible and place id is available", ()
       ],
       FIXED_SECTION
     );
+    const defaultHiddenHtml = generarHTMLDesdeObjetos(
+      [
+        {
+          id: "map-default-hidden",
+          tipo: "mapa-google",
+          seccionId: "section-1",
+          googlePlaceId: "place-123",
+          width: 320,
+          height: 220,
+        },
+      ],
+      FIXED_SECTION
+    );
 
     assert.match(visibleHtml, /class="objeto mapa-google"/);
     assert.match(visibleHtml, /maps\/embed\/v1\/place/);
@@ -678,6 +692,7 @@ test("renders google map iframe only when visible and place id is available", ()
     assert.match(visibleHtml, /loading="lazy"/);
     assert.equal(hiddenHtml.trim(), "");
     assert.equal(missingPlaceHtml.trim(), "");
+    assert.equal(defaultHiddenHtml.trim(), "");
   } finally {
     if (typeof previousPublicKey === "undefined") {
       delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;

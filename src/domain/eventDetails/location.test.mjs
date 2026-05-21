@@ -5,6 +5,7 @@ import {
   ADDRESS_TEXT_FORMAT_PRESETS,
   EVENT_LOCATION_ROLES,
   buildEventGoogleMapClearPatch,
+  buildEventGoogleMapInsertObject,
   buildEventGoogleMapObjectPatch,
   buildEventLocationDefaults,
   ensureEventLocationFields,
@@ -116,6 +117,26 @@ test("resolveEventLocationFromAuthoring combines defaults and google map metadat
   assert.equal(location.addressTextFormatPreset, "event_address_full_google");
 });
 
+test("resolveEventLocationFromAuthoring keeps map hidden by default", () => {
+  const { fieldsSchema } = ensureEventLocationFields({ fieldsSchema: [] });
+  const location = resolveEventLocationFromAuthoring({
+    fieldsSchema,
+    defaults: {},
+    objetos: [
+      {
+        id: "map-1",
+        tipo: "mapa-google",
+        googlePlaceId: "place-123",
+        googleDisplayName: "Salon Las Acacias",
+        googleFormattedAddress: "Av. Corrientes 1234, CABA",
+      },
+    ],
+  });
+
+  assert.equal(location.hasGooglePlace, true);
+  assert.equal(location.showMap, false);
+});
+
 test("address text presets format Google addresses for linked texts", () => {
   const formattedAddress = "Av. Corrientes 1234, C1043 CABA, Argentina";
 
@@ -208,8 +229,8 @@ test("buildEventLocationDefaults writes formatted address default from selected 
   assert.equal(defaults.event_venue_address, "Avenida Corrientes 1234, CABA");
 });
 
-test("google place patch is visible only with place id and explicit show", () => {
-  const patch = buildEventGoogleMapObjectPatch({
+test("google place patch stays hidden unless show map is explicit", () => {
+  const hiddenPatch = buildEventGoogleMapObjectPatch({
     venueName: "Salon",
     address: "Direccion",
     googlePlaceId: "place-123",
@@ -218,19 +239,40 @@ test("google place patch is visible only with place id and explicit show", () =>
     googleAddressComponents: GOOGLE_ADDRESS_COMPONENTS,
   });
 
-  assert.equal(patch.tipo, "mapa-google");
-  assert.equal(patch.googlePlaceId, "place-123");
-  assert.equal(patch.mostrarMapa, true);
-  assert.equal(isEventGoogleMapVisible(patch), true);
+  assert.equal(hiddenPatch.tipo, "mapa-google");
+  assert.equal(hiddenPatch.googlePlaceId, "place-123");
+  assert.equal(hiddenPatch.mostrarMapa, false);
+  assert.equal(isEventGoogleMapVisible(hiddenPatch), false);
+
+  const visiblePatch = buildEventGoogleMapObjectPatch(
+    {
+      venueName: "Salon",
+      address: "Direccion",
+      googlePlaceId: "place-123",
+      googleDisplayName: "Salon",
+      googleFormattedAddress: "Direccion",
+      googleAddressComponents: GOOGLE_ADDRESS_COMPONENTS,
+    },
+    { showMap: true }
+  );
+
+  assert.equal(visiblePatch.mostrarMapa, true);
+  assert.equal(isEventGoogleMapVisible(visiblePatch), true);
 
   assert.equal(
-    isEventGoogleMapVisible({ ...patch, mostrarMapa: false }),
+    isEventGoogleMapVisible({ ...visiblePatch, mostrarMapa: false }),
     false
   );
   assert.equal(
-    isEventGoogleMapVisible({ ...patch, googlePlaceId: "" }),
+    isEventGoogleMapVisible({ ...visiblePatch, googlePlaceId: "" }),
     false
   );
+
+  const inserted = buildEventGoogleMapInsertObject({
+    googlePlaceId: "place-123",
+  });
+
+  assert.equal(inserted.mostrarMapa, false);
 });
 
 test("manual address clear patch removes google metadata and hides map", () => {

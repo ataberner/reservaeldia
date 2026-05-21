@@ -44,6 +44,8 @@ const EVENT_DETAILS_ROLES = new Set([
   "couple_names",
   "venue_name",
   "venue_address",
+  "event_start_time",
+  "event_end_time",
 ]);
 const EVENT_DETAILS_FORMATS = new Set(["and", "ampersand", "linebreak"]);
 const APPLY_TARGET_SCOPES = new Set(["objeto", "seccion", "rsvp"]);

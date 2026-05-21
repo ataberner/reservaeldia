@@ -20,6 +20,7 @@ import {
 } from "@/domain/motionEffects";
 import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
+import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
   buildDynamicGalleryObjectPatch,
   buildFixedGalleryObjectPatch,
@@ -361,7 +362,12 @@ export default function useEditorEvents({
 
       const selectedId =
         existingCountdownId || existingRsvpId || existingGiftId || nuevoConSeccion.id;
-      setElementosSeleccionados([selectedId]);
+      const shouldSelectInsertedElement =
+        nuevoConSeccion?.tipo !== "mapa-google" ||
+        isEventGoogleMapVisible(nuevoConSeccion);
+      if (shouldSelectInsertedElement) {
+        setElementosSeleccionados([selectedId]);
+      }
 
       if (nuevoConSeccion?.tipo === "rsvp-boton" && !existingRsvpId && typeof setRsvpConfig === "function") {
         const hasConfig = isRsvpConfigV2(rsvpConfig);
@@ -470,7 +476,10 @@ export default function useEditorEvents({
         return next;
       });
 
-      if (cambios.mostrarCuentaRegresiva === false) {
+      if (
+        cambios.mostrarCuentaRegresiva === false ||
+        cambios.mostrarMapa === false
+      ) {
         setElementosSeleccionados((prev) =>
           Array.isArray(prev)
             ? prev.filter((selectedId) => selectedId !== targetId)

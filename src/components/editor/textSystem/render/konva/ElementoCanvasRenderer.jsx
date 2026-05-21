@@ -24,6 +24,7 @@ import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
+import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
   getCurrentInlineEditingId,
   getWindowElementRefs,
@@ -4231,6 +4232,10 @@ export default function ElementoCanvas({
   }
 
   if (obj.tipo === "mapa-google") {
+    if (!isEventGoogleMapVisible(obj)) {
+      return null;
+    }
+
     const width = Math.max(200, Number(obj.width) || 361);
     const height = Math.max(200, Number(obj.height) || 220);
     const hasPlace = String(obj.googlePlaceId || "").trim().length > 0;

@@ -429,7 +429,7 @@ export function isEventGoogleMapVisible(objeto) {
   return Boolean(
     isGoogleMapObject(safeObject) &&
       normalizeText(safeObject.googlePlaceId) &&
-      safeObject.mostrarMapa !== false
+      safeObject.mostrarMapa === true
   );
 }
 
@@ -476,7 +476,7 @@ export function resolveEventLocationFromAuthoring({
     googleAddressComponents,
     googleLat: normalizeNullableCoordinate(mapObject?.googleLat),
     googleLng: normalizeNullableCoordinate(mapObject?.googleLng),
-    showMap: Boolean(mapObject?.googlePlaceId) && mapObject?.mostrarMapa !== false,
+    showMap: Boolean(mapObject?.googlePlaceId) && mapObject?.mostrarMapa === true,
     hasGooglePlace,
     mapObjectId: normalizeText(mapObject?.id),
     addressTextFormatPreset,
@@ -532,8 +532,8 @@ export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
   const showMap =
     hasGooglePlace &&
     (Object.prototype.hasOwnProperty.call(options, "showMap")
-      ? options.showMap !== false
-      : safeLocation.showMap !== false);
+      ? options.showMap === true
+      : safeLocation.showMap === true);
 
   return {
     tipo: MAP_OBJECT_TYPE,
@@ -551,7 +551,7 @@ export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
 
 export function buildEventGoogleMapInsertObject(location = {}, overrides = {}) {
   return {
-    ...buildEventGoogleMapObjectPatch(location, { showMap: location?.showMap !== false }),
+    ...buildEventGoogleMapObjectPatch(location, { showMap: location?.showMap === true }),
     id:
       normalizeText(overrides.id) ||
       `mapa-google-${Date.now().toString(36)}`,

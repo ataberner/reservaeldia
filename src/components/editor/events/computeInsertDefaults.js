@@ -456,7 +456,7 @@ export default function computeInsertDefaults({
       y,
       width,
       height,
-      mostrarMapa: payload.mostrarMapa !== false,
+      mostrarMapa: payload.mostrarMapa === true,
       googlePlaceId: payload.googlePlaceId ?? "",
       googleDisplayName: payload.googleDisplayName ?? "",
       googleFormattedAddress: payload.googleFormattedAddress ?? "",

@@ -122,6 +122,7 @@ import {
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
 import { isCountdownVisible } from "@/domain/eventDetails/countdownEventDetails";
+import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
   updateBackgroundDecorationTransform,
   updateSectionEdgeDecorationOffset,
@@ -10465,6 +10466,9 @@ export default function CanvasStageContent({
 
   const renderCanvasObject = (obj) => {
     if (obj?.tipo === "countdown" && !isCountdownVisible(obj)) {
+      return null;
+    }
+    if (obj?.tipo === "mapa-google" && !isEventGoogleMapVisible(obj)) {
       return null;
     }
 

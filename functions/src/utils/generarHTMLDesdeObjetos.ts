@@ -57,7 +57,7 @@ function isGoogleMapObjectVisible(obj: any): boolean {
   return Boolean(
     String(obj?.tipo || "").trim().toLowerCase() === "mapa-google" &&
       String(obj?.googlePlaceId || "").trim() &&
-      obj?.mostrarMapa !== false
+      obj?.mostrarMapa === true
   );
 }
 

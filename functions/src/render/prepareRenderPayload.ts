@@ -116,7 +116,7 @@ function getGoogleMapsEmbedApiKey(): string {
 function isGoogleMapPublishEnabled(object: UnknownRecord): boolean {
   return Boolean(
     normalizeText(object.tipo) === "mapa-google" &&
-      object.mostrarMapa !== false
+      object.mostrarMapa === true
   );
 }
 

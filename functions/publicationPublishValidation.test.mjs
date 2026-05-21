@@ -269,11 +269,17 @@ test("validates google map visibility without publishing broken embeds", () => {
       mostrarMapa: false,
       googlePlaceId: "",
     };
+    const defaultHiddenMap = {
+      ...visibleMap,
+      id: "map-default-hidden",
+      googlePlaceId: "place-456",
+    };
+    delete defaultHiddenMap.mostrarMapa;
 
     const blocked = validatePreparedPublicationRenderState({
-      rawObjetos: [visibleMap, missingPlaceMap, hiddenMap],
+      rawObjetos: [visibleMap, missingPlaceMap, hiddenMap, defaultHiddenMap],
       rawSecciones: FIXED_SECTION,
-      objetosFinales: [visibleMap, missingPlaceMap, hiddenMap],
+      objetosFinales: [visibleMap, missingPlaceMap, hiddenMap, defaultHiddenMap],
       seccionesFinales: FIXED_SECTION,
     });
     assert.equal(blocked.canPublish, false);

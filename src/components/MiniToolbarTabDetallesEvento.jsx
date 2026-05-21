@@ -940,7 +940,7 @@ export default function MiniToolbarTabDetallesEvento() {
         height: mapObject?.height,
       },
       {
-        showMap: nextLocation.showMap !== false,
+        showMap: nextLocation.showMap === true,
       }
     );
     if (mapObject?.id) {
@@ -964,11 +964,6 @@ export default function MiniToolbarTabDetallesEvento() {
         throw new Error("La ubicacion seleccionada no tiene Place ID.");
       }
       googleAutocompleteSessionTokenRef.current = null;
-      const existingMapObject = findEventGoogleMapObject(readEditorObjects(window));
-      const nextShowMap = existingMapObject
-        ? existingMapObject.mostrarMapa !== false
-        : true;
-
       const nextLocation = {
         ...eventLocationRef.current,
         venueName: googlePlace.displayName || eventLocationRef.current.venueName,
@@ -980,7 +975,7 @@ export default function MiniToolbarTabDetallesEvento() {
         googleLat: googlePlace.lat,
         googleLng: googlePlace.lng,
         hasGooglePlace: true,
-        showMap: nextShowMap,
+        showMap: false,
       };
       nextLocation.address = formatEventAddressText({
         address: eventLocationRef.current.address,

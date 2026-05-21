@@ -203,6 +203,59 @@ test("authoring target patches update countdown and linked text for a new event 
   );
 });
 
+test("authoring target patches resolve targets nested in preserved groups", () => {
+  const field = {
+    key: "event_names",
+    type: "text",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "grouped-couple-title",
+        path: "texto",
+        mode: "set",
+      },
+    ],
+  };
+  const objetos = [
+    {
+      id: "group-hero",
+      tipo: "grupo",
+      seccionId: "hero",
+      x: 80,
+      y: 100,
+      width: 320,
+      height: 180,
+      children: [
+        {
+          id: "grouped-couple-title",
+          tipo: "texto",
+          texto: "Sofia y Mateo",
+          x: 20,
+          y: 24,
+          width: 220,
+          __autoWidth: false,
+          fontSize: 32,
+        },
+      ],
+    },
+  ];
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field,
+    value: "Mara y Nico",
+    objetos,
+  });
+
+  assert.deepEqual(patches, [
+    {
+      objectId: "grouped-couple-title",
+      patch: {
+        texto: "Mara y Nico",
+      },
+    },
+  ]);
+});
+
 test("date text format update changes textual targets without changing countdown target", () => {
   const fieldsSchema = [
     {

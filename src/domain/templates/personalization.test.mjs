@@ -62,3 +62,62 @@ test("post-copy personalization patch keeps shared field mappings and preview te
   );
   assert.equal(patch.rsvp.title, "Avisanos si venis");
 });
+
+test("post-copy personalization patch applies explicit targets inside preserved groups", () => {
+  const template = {
+    fieldsSchema: [
+      {
+        key: "event_primary_person_name",
+        label: "Primera persona",
+        type: "text",
+        group: "Datos principales",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "grouped-primary-name",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      },
+    ],
+    defaults: {
+      event_primary_person_name: "Sofia",
+    },
+  };
+  const draftData = {
+    objetos: [
+      {
+        id: "group-hero",
+        tipo: "grupo",
+        seccionId: "hero",
+        x: 80,
+        y: 120,
+        width: 280,
+        height: 120,
+        children: [
+          {
+            id: "grouped-primary-name",
+            tipo: "texto",
+            texto: "Sofia",
+            width: 160,
+            __autoWidth: false,
+          },
+        ],
+      },
+    ],
+    secciones: [{ id: "hero", orden: 0, altura: 500 }],
+  };
+
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template,
+    draftData,
+    resolvedValues: {
+      event_primary_person_name: "Mara",
+    },
+  });
+
+  assert.equal(patch.applyReport.targetsApplied, 1);
+  assert.equal(patch.objetos[0].id, "group-hero");
+  assert.equal(patch.objetos[0].children[0].texto, "Mara");
+});

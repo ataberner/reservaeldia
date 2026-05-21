@@ -4,18 +4,22 @@ import {
   normalizeDateTextFormatPreset,
   normalizeTemplateTargetTransform,
   resolveFieldDateTextFormatPreset,
-} from "@/domain/templates/fieldValueResolver.js";
+} from "../fieldValueResolver.js";
 import {
   isEventPersonNameField,
-} from "@/domain/eventDetails/personNames.js";
+} from "../../eventDetails/personNames.js";
 import {
   isEventLocationField,
-} from "@/domain/eventDetails/location.js";
+} from "../../eventDetails/location.js";
+import {
+  isEventTimeField,
+} from "../../eventDetails/time.js";
 import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
 } from "../../../../shared/renderAssetContract.js";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
+import { collectRenderObjectIds } from "../../editor/renderObjectTree.js";
 
 const FIELD_TYPES = new Set([
   "text",
@@ -815,11 +819,7 @@ export function sanitizeAuthoringSchema({
 } = {}) {
   const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
   const safeDefaults = { ...asObject(defaults) };
-  const objectIds = new Set(
-    (Array.isArray(objetos) ? objetos : [])
-      .map((objeto) => normalizeText(objeto?.id))
-      .filter(Boolean)
-  );
+  const objectIds = collectRenderObjectIds(objetos);
 
   const removedFieldKeys = [];
   const removedTargets = [];
@@ -855,6 +855,7 @@ export function sanitizeAuthoringSchema({
       if (!dropOrphans) return true;
       if (isEventPersonNameField(field)) return true;
       if (isEventLocationField(field)) return true;
+      if (isEventTimeField(field)) return true;
       if (Array.isArray(field.applyTargets) && field.applyTargets.length > 0) {
         return true;
       }

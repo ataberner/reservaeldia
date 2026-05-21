@@ -12,6 +12,9 @@ import {
 import {
   resolveCountdownTargetValue,
 } from "../../eventDetails/countdownEventDetails.js";
+import {
+  findRenderObjectById,
+} from "../../editor/renderObjectTree.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -32,13 +35,7 @@ function areValuesEqual(left, right) {
 }
 
 function findObjectById(objetos, id) {
-  const safeId = normalizeText(id);
-  if (!safeId) return null;
-  return (
-    (Array.isArray(objetos) ? objetos : []).find(
-      (objeto) => normalizeText(objeto?.id) === safeId
-    ) || null
-  );
+  return findRenderObjectById(objetos, id);
 }
 
 function isCountdownFechaObjetivoTarget(field, target, objetos) {

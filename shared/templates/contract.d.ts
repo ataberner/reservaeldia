@@ -47,7 +47,9 @@ export type TemplateEventDetailsRole =
   | "secondary_person_name"
   | "couple_names"
   | "venue_name"
-  | "venue_address";
+  | "venue_address"
+  | "event_start_time"
+  | "event_end_time";
 
 export type TemplateEventDetailsFormat =
   | "and"

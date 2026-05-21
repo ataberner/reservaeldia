@@ -1001,6 +1001,7 @@ export default function MenuOpcionesElemento({
                     onLinkField={authoringConfig?.onLinkField}
                     onLinkEventPersonName={authoringConfig?.onLinkEventPersonName}
                     onLinkEventLocation={authoringConfig?.onLinkEventLocation}
+                    onLinkEventTime={authoringConfig?.onLinkEventTime}
                     onEditField={authoringConfig?.onEditField}
                     onUnlinkField={authoringConfig?.onUnlinkField}
                     onDeleteField={authoringConfig?.onDeleteField}

@@ -11,6 +11,10 @@ import {
   resolveGalleryCellMediaUrl,
 } from "../../../shared/renderAssetContract.js";
 import { buildTemplatePersonalizationPlan } from "./personalizationContract.js";
+import {
+  findRenderObjectById,
+  forEachRenderObject,
+} from "../editor/renderObjectTree.js";
 
 const DEFAULT_TEXT_CONTAINER_WIDTH_PX = 800;
 
@@ -372,10 +376,7 @@ function applyGalleryCells(targetObject, urls) {
 }
 
 function findObjetoById(objetos, id) {
-  if (!Array.isArray(objetos)) return null;
-  const safeId = normalizeText(id);
-  if (!safeId) return null;
-  return objetos.find((objeto) => normalizeText(objeto?.id) === safeId) || null;
+  return findRenderObjectById(objetos, id);
 }
 
 function findSeccionById(secciones, id) {
@@ -441,7 +442,7 @@ function applyFallbackTextReplace({
   if (!Array.isArray(objetos)) return 0;
 
   let replacements = 0;
-  objetos.forEach((objeto) => {
+  forEachRenderObject(objetos, (objeto) => {
     if (!objeto || typeof objeto !== "object") return;
     if (normalizeText(objeto.tipo).toLowerCase() !== "texto") return;
     const currentText = String(objeto.texto ?? "");
@@ -457,11 +458,16 @@ function applyFallbackGalleryReplace({ objetos, urls }) {
   if (!Array.isArray(objetos)) return 0;
   const safeUrls = sanitizeImageUrls(urls);
 
-  const galeria = objetos.find(
-    (objeto) =>
+  let galeria = null;
+  forEachRenderObject(objetos, (objeto) => {
+    if (galeria) return;
+    if (
       normalizeText(objeto?.tipo).toLowerCase() === "galeria" &&
       Array.isArray(objeto?.cells)
-  );
+    ) {
+      galeria = objeto;
+    }
+  });
   if (!galeria) return 0;
   if (!safeUrls.length && !isDynamicGalleryObject(galeria)) return 0;
 
@@ -659,7 +665,7 @@ export function applyPreviewTextPositionOverrides(objetos, previewTextPositions)
       : null;
   if (!safePreviewTextPositions) return;
 
-  objetos.forEach((objeto) => {
+  forEachRenderObject(objetos, (objeto) => {
     if (!shouldPreserveTextCenterPosition(objeto)) return;
 
     const safeId = normalizeText(objeto?.id);

@@ -1,6 +1,7 @@
 import { resolveTemplateFieldByKey } from "./formModel.js";
 import { buildPreviewDynamicGalleryLayout } from "./galleryDynamicMedia.js";
 import { resolveTemplatePersonalizationFieldPlan } from "./personalizationContract.js";
+import { findRenderObjectById } from "../editor/renderObjectTree.js";
 
 const PREVIEW_SCROLL_SCOPES = new Set(["objeto", "seccion"]);
 const PREVIEW_PATCHABLE_SCOPES = new Set(["objeto", "seccion"]);
@@ -43,10 +44,7 @@ function dedupePreviewScrollTargets(targets) {
 }
 
 function findTemplateObjectById(template, objectId) {
-  const safeObjectId = normalizeText(objectId);
-  if (!safeObjectId) return null;
-  const objects = Array.isArray(template?.objetos) ? template.objetos : [];
-  return objects.find((object) => normalizeText(object?.id) === safeObjectId) || null;
+  return findRenderObjectById(template?.objetos, objectId);
 }
 
 function shouldDispatchFieldForPhase(field, phase) {

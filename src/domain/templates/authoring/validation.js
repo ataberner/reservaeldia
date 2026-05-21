@@ -3,9 +3,11 @@ import {
   isImageTemplateTargetPath,
   isTextualTemplateTargetPath,
   normalizeTemplateTargetTransform,
-} from "@/domain/templates/fieldValueResolver.js";
-import { isEventPersonNameField } from "@/domain/eventDetails/personNames.js";
-import { isEventLocationField } from "@/domain/eventDetails/location.js";
+} from "../fieldValueResolver.js";
+import { isEventPersonNameField } from "../../eventDetails/personNames.js";
+import { isEventLocationField } from "../../eventDetails/location.js";
+import { isEventTimeField } from "../../eventDetails/time.js";
+import { collectRenderObjectIds } from "../../editor/renderObjectTree.js";
 
 const ALLOWED_FIELD_TYPES = new Set([
   "text",
@@ -32,12 +34,7 @@ function hasOwn(obj, key) {
 }
 
 function collectObjectIds(objetos) {
-  if (!Array.isArray(objetos)) return new Set();
-  return new Set(
-    objetos
-      .map((objeto) => normalizeText(objeto?.id))
-      .filter(Boolean)
-  );
+  return collectRenderObjectIds(objetos);
 }
 
 function normalizeIssueList(issues) {
@@ -107,7 +104,8 @@ export function validateAuthoringState({
     if (
       !applyTargets.length &&
       !isEventPersonNameField(safeField) &&
-      !isEventLocationField(safeField)
+      !isEventLocationField(safeField) &&
+      !isEventTimeField(safeField)
     ) {
       issues.push(`Campo '${key}': sin applyTargets.`);
       return;

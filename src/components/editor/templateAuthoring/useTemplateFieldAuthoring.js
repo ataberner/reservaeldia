@@ -32,6 +32,16 @@ import {
   resolveEventLocationFromAuthoring,
   updateEventAddressTextFormatInSchema,
 } from "@/domain/eventDetails/location.js";
+import {
+  EVENT_TIME_ROLES,
+  buildEventTimeDefaults,
+  collectEventTimeFields,
+  ensureEventTimeFields,
+  getEventTimeFieldKey,
+  normalizeEventTimeRole,
+  normalizeEventTimeValue,
+  resolveEventTimesFromAuthoring,
+} from "@/domain/eventDetails/time.js";
 import { validateAuthoringState } from "@/domain/templates/authoring/validation.js";
 import {
   AUTHORING_DRAFT_VERSION,
@@ -515,6 +525,20 @@ export default function useTemplateFieldAuthoring({
     [applyFieldTargetsToObjects]
   );
 
+  const applyEventTimeTargetsToObjects = useCallback(
+    (nextFieldsSchema, nextDefaults) => {
+      let targetsApplied = false;
+      collectEventTimeFields(nextFieldsSchema).forEach((field) => {
+        const fieldKey = normalizeText(field?.key);
+        if (!fieldKey) return;
+        const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
+        targetsApplied = targetsApplied || applied;
+      });
+      return targetsApplied;
+    },
+    [applyFieldTargetsToObjects]
+  );
+
   const updateEventPersonNames = useCallback(
     async (patch = {}) => {
       if (!canConfigure) {
@@ -849,6 +873,148 @@ export default function useTemplateFieldAuthoring({
       defaults,
       fieldsSchema,
       safeObjetos,
+      selectedElement,
+      selectedElementId,
+      selectedElementFieldPath,
+      selectedElementType,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const updateEventTimes = useCallback(
+    async (patch = {}) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const currentTimes = resolveEventTimesFromAuthoring({
+        fieldsSchema,
+        defaults,
+      });
+      const safePatch = asObject(patch);
+      const nextTimes = {
+        startTime: Object.prototype.hasOwnProperty.call(safePatch, "startTime")
+          ? normalizeEventTimeValue(safePatch.startTime)
+          : currentTimes.startTime,
+        endTime: Object.prototype.hasOwnProperty.call(safePatch, "endTime")
+          ? normalizeEventTimeValue(safePatch.endTime)
+          : currentTimes.endTime,
+      };
+      const ensureResult = ensureEventTimeFields({ fieldsSchema });
+      const nextFieldsSchema = ensureResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        buildEventTimeDefaults({
+          fieldsSchema: nextFieldsSchema,
+          defaults,
+          times: nextTimes,
+        })
+      );
+      const targetsApplied = applyEventTimeTargetsToObjects(
+        nextFieldsSchema,
+        nextDefaults
+      );
+
+      if (
+        !ensureResult.changed &&
+        areValuesMapsEqual(nextDefaults, defaults)
+      ) {
+        return targetsApplied;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+      return true;
+    },
+    [
+      applyEventTimeTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const linkSelectionToEventTime = useCallback(
+    async (role) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+      if (selectedElementType !== "texto" || !selectedElementId) {
+        throw new Error("Selecciona un texto para vincular horas del evento.");
+      }
+
+      const safeRole = normalizeEventTimeRole(role);
+      if (!safeRole) {
+        throw new Error("Campo de hora invalido.");
+      }
+
+      const selectedText = normalizeText(selectedElement?.texto);
+      const currentTimes = resolveEventTimesFromAuthoring({
+        fieldsSchema,
+        defaults,
+      });
+      const nextTimes = { ...currentTimes };
+      if (
+        safeRole === EVENT_TIME_ROLES.START_TIME &&
+        !nextTimes.startTime &&
+        selectedText
+      ) {
+        nextTimes.startTime = normalizeEventTimeValue(selectedText);
+      }
+      if (
+        safeRole === EVENT_TIME_ROLES.END_TIME &&
+        !nextTimes.endTime &&
+        selectedText
+      ) {
+        nextTimes.endTime = normalizeEventTimeValue(selectedText);
+      }
+
+      const targetFieldKey = getEventTimeFieldKey(safeRole);
+      const ensureResult = ensureEventTimeFields({ fieldsSchema });
+      const linkResult = linkElementToField({
+        fieldsSchema: ensureResult.fieldsSchema,
+        fieldKey: targetFieldKey,
+        elementId: selectedElementId,
+        path: selectedElementFieldPath || "texto",
+      });
+      const nextFieldsSchema = linkResult.fieldsSchema;
+      const nextDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        buildEventTimeDefaults({
+          fieldsSchema: nextFieldsSchema,
+          defaults,
+          times: nextTimes,
+        })
+      );
+
+      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextDefaults, defaults)) {
+        return false;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      applyEventTimeTargetsToObjects(nextFieldsSchema, nextDefaults);
+      return true;
+    },
+    [
+      applyEventTimeTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
       selectedElement,
       selectedElementId,
       selectedElementFieldPath,
@@ -1341,6 +1507,8 @@ export default function useTemplateFieldAuthoring({
     linkSelectionToEventPersonName,
     updateEventLocation,
     linkSelectionToEventLocation,
+    updateEventTimes,
+    linkSelectionToEventTime,
     getFieldUsage,
     repairSnapshot,
     reloadAvailableFields,

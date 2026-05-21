@@ -673,13 +673,7 @@ export default function CanvasEditor({
     onPatchObject: (objectId, patch) => {
       const safeObjectId = String(objectId || "").trim();
       if (!safeObjectId || !patch || typeof patch !== "object") return;
-      setObjetos((prev) =>
-        prev.map((objeto) =>
-          objeto?.id === safeObjectId
-            ? { ...objeto, ...patch }
-            : objeto
-        )
-      );
+      setObjetos((prev) => applyObjectUpdateById(prev, safeObjectId, patch));
     },
   });
   const canRenderTemplateAuthoringMenu =
@@ -1407,6 +1401,7 @@ export default function CanvasEditor({
     updateTemplateAuthoringDateTextFormat: templateAuthoring.updateFieldDateTextFormat,
     updateTemplateAuthoringEventPersonNames: templateAuthoring.updateEventPersonNames,
     updateTemplateAuthoringEventLocation: templateAuthoring.updateEventLocation,
+    updateTemplateAuthoringEventTimes: templateAuthoring.updateEventTimes,
     repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow: flushEditorPersistence,

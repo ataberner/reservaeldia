@@ -6,6 +6,9 @@ import {
   EVENT_LOCATION_ROLES,
 } from "@/domain/eventDetails/location.js";
 import {
+  EVENT_TIME_ROLES,
+} from "@/domain/eventDetails/time.js";
+import {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } from "../../../../shared/renderContractPolicy.js";
@@ -71,6 +74,7 @@ export default function TemplateDynamicFieldMenuSection({
   onLinkField,
   onLinkEventPersonName,
   onLinkEventLocation,
+  onLinkEventTime,
   onEditField,
   onUnlinkField,
   onDeleteField,
@@ -184,6 +188,8 @@ export default function TemplateDynamicFieldMenuSection({
     selectedElementType === "texto" && typeof onLinkEventPersonName === "function";
   const canUseEventLocationLinks =
     selectedElementType === "texto" && typeof onLinkEventLocation === "function";
+  const canUseEventTimeLinks =
+    selectedElementType === "texto" && typeof onLinkEventTime === "function";
 
   const sectionButtonBase =
     "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] transition";
@@ -322,6 +328,22 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
+  const handleLinkEventTime = async (role) => {
+    if (typeof onLinkEventTime !== "function") return;
+    setSubmitError("");
+
+    try {
+      await onLinkEventTime(role);
+      setMode("");
+    } catch (linkError) {
+      setSubmitError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo vincular el texto a las horas del evento."
+      );
+    }
+  };
+
   const refreshAvailableFields = async () => {
     if (typeof onRefreshFields !== "function") return;
     setSubmitError("");
@@ -411,7 +433,7 @@ export default function TemplateDynamicFieldMenuSection({
         </div>
       ) : null}
 
-      {canUseEventPersonNameLinks || canUseEventLocationLinks ? (
+      {canUseEventPersonNameLinks || canUseEventLocationLinks || canUseEventTimeLinks ? (
         <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
           <p className="mb-1 text-[11px] font-semibold text-violet-700">
             Detalles del evento
@@ -462,6 +484,26 @@ export default function TemplateDynamicFieldMenuSection({
                   onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_ADDRESS)}
                 >
                   Vincular a direccion
+                </button>
+              </>
+            ) : null}
+            {canUseEventTimeLinks ? (
+              <>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.START_TIME)}
+                >
+                  Vincular a Hora inicio
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.END_TIME)}
+                >
+                  Vincular a Hora fin
                 </button>
               </>
             ) : null}

@@ -22,6 +22,10 @@ import {
   resolveEventLocationFromAuthoring,
 } from "@/domain/eventDetails/location";
 import {
+  normalizeEventTimeValue,
+  resolveEventTimesFromAuthoring,
+} from "@/domain/eventDetails/time";
+import {
   DASHBOARD_DOCUMENT_NAME_EVENTS,
   readDashboardDocumentNameState,
   requestDashboardDocumentNameUpdate,
@@ -46,6 +50,7 @@ const disabledControlClass =
   "disabled:cursor-not-allowed disabled:bg-[#f6f6f6] disabled:text-[#777777]";
 const EVENT_PERSON_NAMES_SAVE_DELAY_MS = 350;
 const EVENT_LOCATION_SAVE_DELAY_MS = 350;
+const EVENT_TIMES_SAVE_DELAY_MS = 350;
 const GOOGLE_MAPS_SCRIPT_ID = "reservaeldia-google-maps-js";
 
 function readInitialDocumentNameState() {
@@ -102,6 +107,16 @@ function readEventLocationState(targetWindow) {
   });
 }
 
+function readEventTimesState(targetWindow) {
+  const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
+  const countdownDetails = readCountdownDetailsState(targetWindow);
+  return resolveEventTimesFromAuthoring({
+    fieldsSchema: authoringSnapshot?.fieldsSchema,
+    defaults: authoringSnapshot?.defaults,
+    fallbackStartTime: countdownDetails?.time,
+  });
+}
+
 function buildCountdownUiState(details = buildDynamicCountdownEventDetails()) {
   return {
     details,
@@ -129,6 +144,11 @@ function readInitialEventLocationState() {
   return readEventLocationState(window);
 }
 
+function readInitialEventTimesState() {
+  if (typeof window === "undefined") return readEventTimesState();
+  return readEventTimesState(window);
+}
+
 function buildEventPersonNamesSignature(names) {
   return JSON.stringify({
     primaryName: String(names?.primaryName || ""),
@@ -144,6 +164,23 @@ function buildEventLocationSignature(location) {
     showMap: location?.showMap === true,
     addressTextFormatPreset: String(location?.addressTextFormatPreset || ""),
   });
+}
+
+function buildEventTimesSignature(times) {
+  return JSON.stringify({
+    startTime: String(times?.startTime || ""),
+    endTime: String(times?.endTime || ""),
+  });
+}
+
+function resolveTimeInputValue(value) {
+  const normalized = normalizeEventTimeValue(value);
+  const match = normalized.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "";
+  return normalized;
 }
 
 function dispatchCountdownPatch(countdownId, cambios) {
@@ -225,6 +262,19 @@ function updateLinkedEventLocation(location) {
     .then(() => true)
     .catch((error) => {
       console.error("No se pudo actualizar la ubicacion del evento.", error);
+      return false;
+    });
+}
+
+function updateLinkedEventTimes(times) {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  const updateTimes = readCanvasEditorMethod("updateTemplateAuthoringEventTimes");
+  if (typeof updateTimes !== "function") return Promise.resolve(false);
+
+  return Promise.resolve(updateTimes(times))
+    .then(() => true)
+    .catch((error) => {
+      console.error("No se pudieron actualizar las horas del evento.", error);
       return false;
     });
 }
@@ -350,6 +400,7 @@ export default function MiniToolbarTabDetallesEvento() {
   const [eventLocation, setEventLocation] = useState(
     readInitialEventLocationState
   );
+  const [eventTimes, setEventTimes] = useState(readInitialEventTimesState);
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [locationSuggestionsOpen, setLocationSuggestionsOpen] = useState(false);
   const [locationSuggestionsLoading, setLocationSuggestionsLoading] = useState(false);
@@ -357,13 +408,17 @@ export default function MiniToolbarTabDetallesEvento() {
   const editingNameRef = useRef(false);
   const editingEventPersonNamesRef = useRef(false);
   const editingEventLocationRef = useRef(false);
+  const editingEventTimesRef = useRef(false);
   const activeLocationSearchFieldRef = useRef("");
   const eventPersonNamesRef = useRef(eventPersonNames);
   const eventLocationRef = useRef(eventLocation);
+  const eventTimesRef = useRef(eventTimes);
   const eventPersonNamesSaveTimerRef = useRef(null);
   const eventLocationSaveTimerRef = useRef(null);
+  const eventTimesSaveTimerRef = useRef(null);
   const pendingEventPersonNamesSignatureRef = useRef("");
   const pendingEventLocationSignatureRef = useRef("");
+  const pendingEventTimesSignatureRef = useRef("");
   const googleAutocompleteSessionTokenRef = useRef(null);
   const locationSuggestionTimerRef = useRef(null);
   const countdownDetails = countdownUi.details;
@@ -408,6 +463,22 @@ export default function MiniToolbarTabDetallesEvento() {
     setEventLocation(nextLocation);
   }, []);
 
+  const syncEventTimesState = useCallback(() => {
+    const nextTimes = readEventTimesState(window);
+    const nextSignature = buildEventTimesSignature(nextTimes);
+    if (editingEventTimesRef.current) return;
+    if (
+      pendingEventTimesSignatureRef.current &&
+      pendingEventTimesSignatureRef.current !== nextSignature
+    ) {
+      return;
+    }
+    if (pendingEventTimesSignatureRef.current === nextSignature) {
+      pendingEventTimesSignatureRef.current = "";
+    }
+    setEventTimes(nextTimes);
+  }, []);
+
   useEffect(() => {
     eventPersonNamesRef.current = eventPersonNames;
   }, [eventPersonNames]);
@@ -417,12 +488,19 @@ export default function MiniToolbarTabDetallesEvento() {
   }, [eventLocation]);
 
   useEffect(() => {
+    eventTimesRef.current = eventTimes;
+  }, [eventTimes]);
+
+  useEffect(() => {
     return () => {
       if (eventPersonNamesSaveTimerRef.current) {
         clearTimeout(eventPersonNamesSaveTimerRef.current);
       }
       if (eventLocationSaveTimerRef.current) {
         clearTimeout(eventLocationSaveTimerRef.current);
+      }
+      if (eventTimesSaveTimerRef.current) {
+        clearTimeout(eventTimesSaveTimerRef.current);
       }
       if (locationSuggestionTimerRef.current) {
         clearTimeout(locationSuggestionTimerRef.current);
@@ -467,6 +545,7 @@ export default function MiniToolbarTabDetallesEvento() {
     syncCountdownUiState();
     syncEventPersonNamesState();
     syncEventLocationState();
+    syncEventTimesState();
 
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -483,6 +562,10 @@ export default function MiniToolbarTabDetallesEvento() {
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
       syncEventLocationState
+    );
+    window.addEventListener(
+      EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+      syncEventTimesState
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -507,11 +590,20 @@ export default function MiniToolbarTabDetallesEvento() {
         syncEventLocationState
       );
       window.removeEventListener(
+        EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+        syncEventTimesState
+      );
+      window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
         syncEventLocationState
       );
     };
-  }, [syncCountdownUiState, syncEventPersonNamesState, syncEventLocationState]);
+  }, [
+    syncCountdownUiState,
+    syncEventPersonNamesState,
+    syncEventLocationState,
+    syncEventTimesState,
+  ]);
 
   const canEditEventName = documentNameState.editable;
 
@@ -599,6 +691,74 @@ export default function MiniToolbarTabDetallesEvento() {
 
   const handleSecondaryPersonNameChange = (event) => {
     applyEventPersonNames({ secondaryName: event.target.value });
+  };
+
+  const persistEventTimes = useCallback((nextTimes) => {
+    if (eventTimesSaveTimerRef.current) {
+      clearTimeout(eventTimesSaveTimerRef.current);
+      eventTimesSaveTimerRef.current = null;
+    }
+    const signature = buildEventTimesSignature(nextTimes);
+    pendingEventTimesSignatureRef.current = signature;
+    void updateLinkedEventTimes(nextTimes).then((ok) => {
+      if (!ok) return;
+      if (pendingEventTimesSignatureRef.current === signature) {
+        pendingEventTimesSignatureRef.current = "";
+      }
+    });
+  }, []);
+
+  const scheduleEventTimesPersist = useCallback(
+    (nextTimes) => {
+      if (eventTimesSaveTimerRef.current) {
+        clearTimeout(eventTimesSaveTimerRef.current);
+      }
+      pendingEventTimesSignatureRef.current = buildEventTimesSignature(nextTimes);
+      eventTimesSaveTimerRef.current = setTimeout(() => {
+        persistEventTimes(nextTimes);
+      }, EVENT_TIMES_SAVE_DELAY_MS);
+    },
+    [persistEventTimes]
+  );
+
+  const flushEventTimes = useCallback(() => {
+    persistEventTimes(eventTimesRef.current);
+  }, [persistEventTimes]);
+
+  const applyEventTimes = (patch) => {
+    setEventTimes((current) => {
+      const nextTimes = {
+        ...current,
+      };
+      if (Object.prototype.hasOwnProperty.call(patch, "startTime")) {
+        nextTimes.startTime = normalizeEventTimeValue(patch.startTime);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "endTime")) {
+        nextTimes.endTime = normalizeEventTimeValue(patch.endTime);
+      }
+      eventTimesRef.current = nextTimes;
+      scheduleEventTimesPersist(nextTimes);
+      return nextTimes;
+    });
+  };
+
+  const handleEventTimeFocus = () => {
+    editingEventTimesRef.current = true;
+  };
+
+  const handleEventTimeBlur = () => {
+    editingEventTimesRef.current = false;
+    flushEventTimes();
+  };
+
+  const handleEventTimeKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.currentTarget.blur();
+    }
+  };
+
+  const handleEventEndTimeChange = (event) => {
+    applyEventTimes({ endTime: event.target.value });
   };
 
   const persistEventLocation = useCallback((nextLocation) => {
@@ -894,7 +1054,9 @@ export default function MiniToolbarTabDetallesEvento() {
   };
 
   const handleEventStartTimeChange = (event) => {
-    applyCountdownDateTime(countdownUi.date, event.target.value);
+    const nextTime = normalizeEventTimeValue(event.target.value);
+    applyCountdownDateTime(countdownUi.date, nextTime);
+    applyEventTimes({ startTime: nextTime });
   };
 
   const handleShowCountdownChange = (event) => {
@@ -947,6 +1109,11 @@ export default function MiniToolbarTabDetallesEvento() {
       </div>
     );
   };
+
+  const eventStartTimeValue =
+    resolveTimeInputValue(eventTimes.startTime) ||
+    resolveTimeInputValue(countdownUi.time);
+  const eventEndTimeValue = resolveTimeInputValue(eventTimes.endTime);
 
   return (
     <div className="flex flex-1 min-h-0 w-full flex-col items-center gap-0 overflow-y-auto px-0 pb-4 pr-0 text-left">
@@ -1037,10 +1204,12 @@ export default function MiniToolbarTabDetallesEvento() {
             <input
               id="event-start-time"
               type="time"
-              value={countdownUi.time}
+              value={eventStartTimeValue}
+              onFocus={handleEventTimeFocus}
               onChange={handleEventStartTimeChange}
-              disabled={countdownControlsDisabled}
-              className={`${inputClass} ${disabledControlClass}`}
+              onBlur={handleEventTimeBlur}
+              onKeyDown={handleEventTimeKeyDown}
+              className={inputClass}
             />
           </div>
 
@@ -1050,7 +1219,12 @@ export default function MiniToolbarTabDetallesEvento() {
             </label>
             <input
               id="event-end-time"
-              type="text"
+              type="time"
+              value={eventEndTimeValue}
+              onFocus={handleEventTimeFocus}
+              onChange={handleEventEndTimeChange}
+              onBlur={handleEventTimeBlur}
+              onKeyDown={handleEventTimeKeyDown}
               placeholder="Opcional"
               className={inputClass}
             />

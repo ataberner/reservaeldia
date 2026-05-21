@@ -1,10 +1,11 @@
 import {
   resolveGalleryLayoutForObject,
   scaleDynamicGalleryBlueprintToVisibleWidth,
-} from "@/domain/templates/galleryDynamicMedia";
+} from "../../../domain/templates/galleryDynamicMedia.js";
 import {
   applyGalleryLayoutPresetToRenderObject,
-} from "@/domain/gallery/galleryLayoutPresets";
+} from "../../../domain/gallery/galleryLayoutPresets.js";
+import { updateRenderObjectById } from "../../../domain/editor/renderObjectTree.js";
 
 export function mergeObjectForUpdate(currentObject, nuevo = {}) {
   if (!currentObject) return currentObject;
@@ -32,9 +33,10 @@ export function applyObjectUpdateAtIndex(prevObjects, index, nuevo = {}) {
 
 export function applyObjectUpdateById(prevObjects, id, cambios = {}) {
   if (!Array.isArray(prevObjects) || !id) return prevObjects;
-  const index = prevObjects.findIndex((o) => o.id === id);
-  if (index === -1) return prevObjects;
-  return applyObjectUpdateAtIndex(prevObjects, index, cambios);
+  const result = updateRenderObjectById(prevObjects, id, (currentObject) =>
+    mergeObjectForUpdate(currentObject, cambios)
+  );
+  return result.changed ? result.objetos : prevObjects;
 }
 
 export function normalizarMedidasGaleria(galeria, widthCandidate, xCandidate) {

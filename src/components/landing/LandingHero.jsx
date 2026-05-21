@@ -78,9 +78,7 @@ export default function LandingHero({
         </h1>
 
         <p className={styles.heroSubtitle}>
-          Tu invitaci&oacute;n y la gesti&oacute;n de tus invitados en un solo link.
-          <br />
-          Creala y enviala por whatsapp o email en minutos.
+          Tu invitaci&oacute;n y la gesti&oacute;n de tus invitados en un solo link. Creala y enviala por whatsapp o email en minutos.
         </p>
 
         <a

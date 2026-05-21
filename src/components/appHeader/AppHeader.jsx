@@ -11,6 +11,36 @@ function joinClassNames(...values) {
   return values.filter(Boolean).join(" ");
 }
 
+function getMobileNavLabel(item) {
+  if (item?.key === "templates") return "Plantillas";
+  return item?.label || "";
+}
+
+function getMobileMyInvitationsAction(actions) {
+  return actions.find((action) => {
+    const key = String(action?.key || "").toLowerCase();
+    const variant = String(action?.variant || "").toLowerCase();
+    const label = String(action?.label || "").toLowerCase();
+    return (
+      variant === "myinvitations" ||
+      key.includes("my-invitation") ||
+      label.includes("mis invitaciones")
+    );
+  });
+}
+
+function getMobileAuthAction(actions, variantName) {
+  return actions.find((action) => action?.variant === variantName);
+}
+
+function getMobileLogoutItem(userMenu) {
+  return (userMenu?.items || []).find((item) => {
+    const key = String(item?.key || "").toLowerCase();
+    const label = String(item?.label || "").toLowerCase();
+    return item?.tone === "danger" || key === "logout" || label.includes("cerrar");
+  });
+}
+
 function getActionClassName(action) {
   const tone = action?.tone;
   const actionClassName =
@@ -72,6 +102,122 @@ function AppHeaderAction({ action, onAfterClick }) {
   );
 }
 
+function AppHeaderMobileAuthActions({ actions, onAfterClick }) {
+  const loginAction = getMobileAuthAction(actions, "landingLogin");
+  const createAccountAction = getMobileAuthAction(
+    actions,
+    "landingCreateInvitation"
+  );
+
+  if (!loginAction && !createAccountAction) return null;
+
+  const handleActionClick = (action) => (event) => {
+    if (action?.disabled) return;
+    action?.onClick?.(event);
+    onAfterClick?.();
+  };
+
+  return (
+    <div className={styles.mobileAuthPanel}>
+      <div className={styles.mobileDivider} aria-hidden="true" />
+
+      {loginAction ? (
+        <button
+          type="button"
+          className={styles.mobileAuthSecondaryAction}
+          onClick={handleActionClick(loginAction)}
+          disabled={loginAction.disabled}
+        >
+          Iniciar sesion
+        </button>
+      ) : null}
+
+      {createAccountAction ? (
+        <button
+          type="button"
+          className={styles.mobileAuthPrimaryAction}
+          onClick={handleActionClick(createAccountAction)}
+          disabled={createAccountAction.disabled}
+        >
+          Crear cuenta
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AppHeaderMobileAccount({ actions, userMenu, onAfterClick }) {
+  if (!userMenu) return null;
+
+  const myInvitationsAction = getMobileMyInvitationsAction(actions);
+  const logoutItem = getMobileLogoutItem(userMenu);
+
+  const handleMyInvitationsClick = (event) => {
+    if (myInvitationsAction?.disabled) return;
+    if (typeof myInvitationsAction?.onClick === "function") {
+      myInvitationsAction.onClick(event);
+    }
+    onAfterClick?.();
+  };
+
+  const handleLogoutClick = () => {
+    logoutItem?.onClick?.();
+    onAfterClick?.();
+  };
+
+  return (
+    <div className={styles.mobileAccountPanel}>
+      <div className={styles.mobileDivider} aria-hidden="true" />
+
+      <div className={styles.mobileAccountIdentity}>
+        <p className={styles.mobileAccountEmail} title={userMenu.email}>
+          {userMenu.email || "Sin email"}
+        </p>
+        {userMenu.avatarUrl ? (
+          <img
+            src={userMenu.avatarUrl}
+            alt="Foto de perfil"
+            className={styles.mobileAvatarImage}
+          />
+        ) : (
+          <span className={styles.mobileAvatarFallback}>
+            {userMenu.initials || "U"}
+          </span>
+        )}
+      </div>
+
+      {myInvitationsAction ? (
+        <button
+          type="button"
+          className={styles.mobileAccountPrimaryAction}
+          onClick={handleMyInvitationsClick}
+          disabled={myInvitationsAction.disabled}
+        >
+          {myInvitationsAction.label || "Mis invitaciones"}
+        </button>
+      ) : (
+        <Link
+          href="/dashboard"
+          className={styles.mobileAccountPrimaryAction}
+          onClick={onAfterClick}
+        >
+          Mis invitaciones
+        </Link>
+      )}
+
+      {logoutItem ? (
+        <button
+          type="button"
+          className={styles.mobileLogoutAction}
+          onClick={handleLogoutClick}
+        >
+          {logoutItem.label || "Cerrar sesion"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AppHeader({
   variant = "landing",
   placement = "embedded",
@@ -84,6 +230,8 @@ export default function AppHeader({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountRef = useRef(null);
+  const mobilePanelRef = useRef(null);
+  const mobileToggleRef = useRef(null);
   const isLanding = variant === "landing";
   const resolvedIsAuthenticated = isAuthenticated ?? Boolean(userMenu);
   const centerNavItems =
@@ -91,7 +239,8 @@ export default function AppHeader({
       ? navItems
       : getDefaultCenterNavItems(resolvedIsAuthenticated);
   const hasMobileDrawer =
-    isLanding && (centerNavItems.length > 0 || actions.length > 0);
+    (isLanding || Boolean(userMenu)) &&
+    (centerNavItems.length > 0 || Boolean(userMenu));
   const brandHref = logo?.href || "/";
   const brandLabel = "Reserva el Día";
 
@@ -108,12 +257,40 @@ export default function AppHeader({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [accountMenuOpen]);
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (
+        mobilePanelRef.current?.contains(target) ||
+        mobileToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setMobileMenuOpen(false);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
+
   const closeTransientMenus = () => {
     setMobileMenuOpen(false);
     setAccountMenuOpen(false);
   };
 
-  const renderCenterNavItems = (className) => (
+  const renderCenterNavItems = (className, { mobile = false } = {}) => (
     <nav className={className} aria-label="Navegacion principal">
       {centerNavItems.map((item) => (
         <a
@@ -122,7 +299,7 @@ export default function AppHeader({
           className={styles.centerNavButton}
           onClick={closeTransientMenus}
         >
-          {item.label}
+          {mobile ? getMobileNavLabel(item) : item.label}
         </a>
       ))}
     </nav>
@@ -250,6 +427,7 @@ export default function AppHeader({
 
           {hasMobileDrawer ? (
             <button
+              ref={mobileToggleRef}
               type="button"
               className={styles.mobileToggle}
               onClick={() => setMobileMenuOpen((previous) => !previous)}
@@ -263,9 +441,23 @@ export default function AppHeader({
       </div>
 
       {hasMobileDrawer && mobileMenuOpen ? (
-        <div className={styles.mobilePanel}>
-          {renderCenterNavItems(styles.mobileCenterNav)}
-          {renderActions(styles.mobileActions)}
+        <div
+          ref={mobilePanelRef}
+          className={styles.mobilePanel}
+          aria-label="Menu mobile"
+        >
+          {renderCenterNavItems(styles.mobileCenterNav, { mobile: true })}
+          <AppHeaderMobileAccount
+            actions={actions}
+            userMenu={userMenu}
+            onAfterClick={closeTransientMenus}
+          />
+          {!userMenu ? (
+            <AppHeaderMobileAuthActions
+              actions={actions}
+              onAfterClick={closeTransientMenus}
+            />
+          ) : null}
         </div>
       ) : null}
     </header>

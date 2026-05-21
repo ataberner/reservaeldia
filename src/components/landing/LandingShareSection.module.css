@@ -79,8 +79,12 @@
   font-weight: 400;
   letter-spacing: 0;
   line-height: 24px;
-  text-align: center;
+  text-align: left;
   text-shadow: none;
+}
+
+.shareDescription .shareHighlight {
+  color: #262626;
 }
 
 .shareDescriptionHighlight {
@@ -158,11 +162,11 @@
   .shareContent {
     min-height: auto;
     justify-self: center;
-    align-items: center;
+    align-items: flex-start;
   }
 
   .shareTitle {
-    text-align: center;
+    text-align: left;
   }
 }
 

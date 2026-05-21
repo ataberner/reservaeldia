@@ -175,7 +175,7 @@ export function applyPreviewFrameScale(
   event,
   scale,
   previewViewport = "",
-  { layoutMode = "" } = {}
+  { layoutMode = "", dispatchMobileScrollEvent = true } = {}
 ) {
   const safeScale = Number(scale);
   const frameDocument = event?.target?.contentDocument;
@@ -219,7 +219,9 @@ export function applyPreviewFrameScale(
       frameWindow.__previewScale = safeScale;
       frameWindow.__previewViewportKind = viewportValue;
       frameWindow.__previewLayoutMode = resolvedLayoutMode;
-      frameWindow.dispatchEvent(new frameWindow.Event("preview:mobile-scroll:enable"));
+      if (dispatchMobileScrollEvent !== false) {
+        frameWindow.dispatchEvent(new frameWindow.Event("preview:mobile-scroll:enable"));
+      }
     }
   } catch (_error) {
     // noop

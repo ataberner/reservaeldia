@@ -17,7 +17,7 @@ export default function LandingShareSection({
         <div className={styles.shareMedia}>
           <img
             src={SHARE_INVITATION_MOCKUP_SRC}
-            alt="Mockup de invitación digital compartida en celular, tablet y tarjeta"
+            alt="Mockup de invitaci&oacute;n digital compartida en celular, tablet y tarjeta"
             className={styles.shareImage}
             loading="lazy"
             decoding="async"
@@ -27,18 +27,14 @@ export default function LandingShareSection({
         <div className={styles.shareContent}>
           <h2 id={titleId} className={styles.shareTitle}>
             <span className={styles.shareHighlight}>
-              Olvidate de repartir sobres.
-            </span>{" "}
-            Mandá una invitación que además te organiza la fiesta.
+              Mand&aacute; tu invitaci&oacute;n por WhatsApp</span> y organiz&aacute; tu fiesta sin vueltas.
           </h2>
 
           <p className={styles.shareDescription}>
-            Compartí un link único por{" "}
-            <span className={styles.shareDescriptionHighlight}>
-              WhatsApp, mail o redes sociales.
-            </span>{" "}
-            Tus invitados reciben la invitación al instante y vos empezás a
-            recibir confirmaciones en tiempo real.
+            <span className={styles.shareHighlight}>
+              Compart&iacute; un link &uacute;nico por WhatsApp
+            </span>, mail o redes sociales. Tus invitados reciben la invitaci&oacute;n
+            al instante y vos control&aacute;s todas las confirmaciones en tiempo real.
           </p>
 
           <a
@@ -46,7 +42,7 @@ export default function LandingShareSection({
             href={ctaHref}
             onClick={onCtaClick}
           >
-            Elegir diseño
+            Elegir dise&ntilde;o
           </a>
         </div>
       </div>

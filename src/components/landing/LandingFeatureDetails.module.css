@@ -132,7 +132,7 @@
 @media (max-width: 680px) {
   .featureDetails {
     --feature-details-share-split-y: 270px;
-    padding-top: 48px;
+    padding-top: 40px;
     padding-bottom: 72px;
   }
 
@@ -143,9 +143,12 @@
   .featureDetailsTitle {
     min-height: auto;
     margin-bottom: 40px;
-    font-size: 32px;
-    letter-spacing: 0;
-    line-height: 36px;
+    font-family: "DM Sans", sans-serif;
+    font-size: 40px;
+    font-style: normal;
+    font-weight: 500;
+    letter-spacing: -1px;
+    line-height: 44px;
   }
 
   .featureDetailsGrid {

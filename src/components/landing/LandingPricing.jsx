@@ -21,9 +21,9 @@ export default function LandingPricing({ id = "precios", compactBottom = false }
       <article className={styles.pricingCard}>
         <div className={styles.pricingTop}>
           <h2 id={titleId} className={styles.pricingHeading}>
-            <span className={styles.pricingAmount}>$29.000</span>{" "}
+            <span className={styles.pricingAmount}>$49.000</span>{" "}
             <span className={styles.pricingTitle}>
-              Precio único por invitación. Sin vueltas.
+              por evento. Invitados ilimitados.
             </span>
           </h2>
 

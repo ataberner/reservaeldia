@@ -1,4 +1,9 @@
 .hero {
+  --landing-hero-bg-size: 125% auto;
+  --landing-hero-center-y: 50%;
+  --landing-hero-bg-position-y: 50%;
+  --landing-hero-mobile-height: 100vh;
+  --landing-hero-mobile-bg-height: 180dvh;
   position: relative;
   display: flex;
   height: 100vh;
@@ -7,17 +12,18 @@
   justify-content: center;
   overflow: hidden;
   background-image: url("/assets/img/Imagen Hero.jpg");
-  background-position: center center;
+  background-position: center var(--landing-hero-bg-position-y);
   background-repeat: no-repeat;
-  background-size: 125% auto;
+  background-size: var(--landing-hero-bg-size);
   color: #fff;
   text-align: center;
 }
 
-.heroContent {
+.hero .heroContent {
   position: absolute;
-  top: 50%;
+  top: var(--landing-hero-center-y);
   left: 50%;
+  z-index: 1;
   display: flex;
   width: 642px;
   max-width: calc(100% - 32px);
@@ -158,6 +164,56 @@
     0 10px 20px rgba(105, 43, 154, 0.22),
     0 4px 12px rgba(243, 159, 95, 0.16);
   transform: translateY(0);
+}
+
+@media (max-width: 620px) {
+  .hero {
+    --landing-hero-mobile-height: clamp(560px, 68dvh, 620px);
+    /* Mobile shared vertical center: this single value moves the white
+       text box and the background image center together. */
+    --landing-hero-center-y: clamp(336px, 40.8dvh, 372px);
+    /* Mobile image crop control: raise this value to zoom/crop more,
+       lower it to show more of the image. */
+    --landing-hero-mobile-bg-height: 78dvh;
+    --landing-hero-mobile-bg-half-height: 39dvh;
+    background-image: none;
+    height: max(
+      var(--landing-hero-mobile-height),
+      calc(var(--landing-hero-center-y) + var(--landing-hero-mobile-bg-half-height))
+    );
+  }
+
+  .hero.hero::before {
+    content: "";
+    position: absolute;
+    top: var(--landing-hero-center-y);
+    left: 50%;
+    z-index: 0;
+    width: calc(var(--landing-hero-mobile-bg-height) * 3.25424);
+    height: var(--landing-hero-mobile-bg-height);
+    background-image: url("/assets/img/Imagen Hero.jpg");
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+  }
+
+  .hero .heroContent {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .hero .heroContent .heroSubtitle {
+    color: #262626;
+    font-family: "Source Sans 3", sans-serif;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: 0px;
+    line-height: 24px;
+    text-align: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

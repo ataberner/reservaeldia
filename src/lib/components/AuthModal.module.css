@@ -331,13 +331,58 @@
 }
 
 @media (max-width: 620px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .modal,
+  .registerModal {
+    width: min(724px, calc(100vw - 24px));
+    height: auto;
+    max-height: calc(100dvh - 24px);
+  }
+
   .content {
-    width: min(508px, calc(100% - 28px));
-    padding: 40px 0 24px;
+    width: min(508px, calc(100% - 24px));
+    padding: 32px 0 24px;
   }
 
   .title {
-    margin-bottom: 24px;
+    margin-bottom: 22px;
+    font-size: 28px;
+    line-height: 30px;
+  }
+
+  .googleButton {
+    height: 50px;
+    padding: 13px 18px;
+  }
+
+  .separator {
+    gap: 10px;
+    margin: 18px 0 14px;
+  }
+
+  .form,
+  .registerForm {
+    gap: 10px;
+  }
+
+  .inputGroup {
+    gap: 5px;
+  }
+
+  .inputGroup input {
+    height: 40px;
+  }
+
+  .primaryButton {
+    height: 42px;
+    margin-top: 14px;
+  }
+
+  .registerLink {
+    margin-top: 14px;
   }
 
   .loginOptions {
@@ -370,7 +415,7 @@
   }
 
   .content {
-    padding-top: 40px;
+    padding-top: 32px;
   }
 }
 

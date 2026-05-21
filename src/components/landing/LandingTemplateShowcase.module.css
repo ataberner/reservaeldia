@@ -21,7 +21,7 @@
   max-width: 1440px;
   margin: 0 auto;
   margin: 0 auto;
-  gap: 92px;
+  gap: 72px;
 }
 
 .railSection {
@@ -222,7 +222,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .cardActionItem {
@@ -409,7 +409,15 @@
   }
 
   .inner {
-    gap: 92px;
+    gap: 64px;
+  }
+
+  .railSection {
+    padding-left: 0;
+  }
+
+  .railViewport {
+    width: calc(100vw - 20px);
   }
 
   .railTrack {

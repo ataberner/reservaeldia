@@ -62,7 +62,6 @@ import {
 
 const INVITATIONS_PAGE_SIZE = 6;
 const RESPONSES_PAGE_SIZE = 5;
-const DESKTOP_QUERY = "(min-width: 1024px)";
 
 const INVITATION_FILTERS = [
   { id: "all", label: "Todas" },
@@ -251,17 +250,6 @@ export default function PublicadasGrid({
   const [responseSearch, setResponseSearch] = useState("");
   const [responseFilter, setResponseFilter] = useState("all");
   const [responsePage, setResponsePage] = useState(1);
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return undefined;
-    const mediaQuery = window.matchMedia(DESKTOP_QUERY);
-    const update = () => setIsDesktop(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener?.("change", update);
-    return () => mediaQuery.removeEventListener?.("change", update);
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -445,10 +433,10 @@ export default function PublicadasGrid({
       (fila) => fila.id === publicacionIdSeleccionada
     );
 
-    if (isDesktop && !stillVisible) {
+    if (!stillVisible) {
       setPublicacionIdSeleccionada(filteredInvitationRows[0].id);
     }
-  }, [filteredInvitationRows, isDesktop, publicacionIdSeleccionada]);
+  }, [filteredInvitationRows, publicacionIdSeleccionada]);
 
   useEffect(() => {
     const safeFocusPublicSlug = String(focusPublicSlug || "").trim();
@@ -463,7 +451,6 @@ export default function PublicadasGrid({
 
     consumedFocusPublicSlugRef.current = safeFocusPublicSlug;
     setPublicacionIdSeleccionada(focusedRow.id);
-    setMobileDetailOpen(true);
   }, [filas, focusPublicSlug]);
 
   useEffect(() => {
@@ -664,7 +651,6 @@ export default function PublicadasGrid({
 
   const selectInvitation = (fila) => {
     setPublicacionIdSeleccionada(fila.id);
-    setMobileDetailOpen(true);
   };
 
   const handleCreateInvitation = () => {
@@ -705,7 +691,7 @@ export default function PublicadasGrid({
       <button
         type="button"
         onClick={handleCreateInvitation}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#692B9A] px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(105,43,154,0.24)] transition hover:-translate-y-0.5 hover:bg-[#5c2389] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2"
+        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#692B9A] px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(105,43,154,0.24)] transition hover:-translate-y-0.5 hover:bg-[#5c2389] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2 sm:w-auto"
       >
         <PlusCircle className="h-4 w-4" />
         Crear invitacion
@@ -772,13 +758,9 @@ export default function PublicadasGrid({
     );
   }
 
-  const showMobileDetail = !isDesktop && mobileDetailOpen && publicacionSeleccionada;
-
   return (
-    <div className="mx-auto w-full max-w-[1480px] py-5 text-left [font-family:'DM_Sans',sans-serif] [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
-      <div className={showMobileDetail ? "hidden lg:block" : ""}>
-        {renderPageHeader()}
-      </div>
+    <div className="mx-auto w-full max-w-[1480px] py-4 text-left [font-family:'DM_Sans',sans-serif] sm:py-5 [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
+      {renderPageHeader()}
 
       {actionError ? (
         <div className="mt-4 rounded-xl border border-[#FFDADA] bg-[#fff7f7] px-4 py-3 text-sm text-[#B3261E]">
@@ -803,8 +785,8 @@ export default function PublicadasGrid({
           </button>
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
-          <aside className={showMobileDetail ? "hidden lg:block" : ""}>
+        <div className="mt-5 grid min-w-0 gap-4 sm:mt-6 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
+          <aside className="min-w-0">
             <InvitationListPanel
               rows={invitationPagination.items}
               totalRows={filteredInvitationRows.length}
@@ -821,7 +803,7 @@ export default function PublicadasGrid({
             />
           </aside>
 
-          <main className={showMobileDetail ? "block lg:block" : "hidden lg:block"}>
+          <main className="min-w-0">
             <InvitationDetailPanel
               publicacion={publicacionSeleccionada}
               metrics={selectedMetrics}
@@ -840,8 +822,8 @@ export default function PublicadasGrid({
               errorRsvps={errorRsvps}
               pendingStateActionKey={pendingStateActionKey}
               deletingPublicSlug={deletingPublicSlug}
-              onBackMobile={() => setMobileDetailOpen(false)}
-              showBackMobile={showMobileDetail}
+              onBackMobile={undefined}
+              showBackMobile={false}
               onCopy={copiar}
               onExport={handleExportResponses}
               onRunTransition={runStateTransition}
@@ -934,7 +916,7 @@ function InvitationListPanel({
   onSelect,
 }) {
   return (
-    <div className="rounded-[18px] border border-[#EFDBFF] bg-white p-3 shadow-[0_16px_40px_rgba(38,38,38,0.06)]">
+    <div className="max-h-[min(58vh,560px)] overflow-y-auto overscroll-contain rounded-[18px] border border-[#EFDBFF] bg-white p-3 shadow-[0_16px_40px_rgba(38,38,38,0.06)] lg:max-h-none lg:overflow-visible">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#262626]/40" />
         <input
@@ -1004,13 +986,13 @@ function InvitationListItem({ fila, selected, onSelect }) {
       <button
         type="button"
         onClick={onSelect}
-        className={`grid w-full grid-cols-[112px_minmax(0,1fr)_46px] gap-3 rounded-2xl border p-2 text-left transition ${
+        className={`grid w-full grid-cols-[88px_minmax(0,1fr)_42px] gap-2 rounded-2xl border p-2 text-left transition sm:grid-cols-[112px_minmax(0,1fr)_46px] sm:gap-3 ${
           selected
             ? "border-[#692B9A] bg-[#FAF5FF] shadow-[0_10px_24px_rgba(105,43,154,0.16)]"
             : "border-transparent bg-white hover:border-[#EFDBFF] hover:bg-[#FBF7F9]"
         }`}
       >
-        <div className="h-20 overflow-hidden rounded-xl bg-[#FBF7F9]">
+        <div className="h-16 overflow-hidden rounded-xl bg-[#FBF7F9] sm:h-20">
           <ResolvedPreviewImage
             primarySrc={fila.portada || ""}
             previewCandidates={fila.previewCandidates || []}
@@ -1021,7 +1003,7 @@ function InvitationListItem({ fila, selected, onSelect }) {
             fallbackIconClassName="h-5 w-5"
           />
         </div>
-        <div className="min-w-0 py-1">
+        <div className="min-w-0 py-0.5 sm:py-1">
           <h3 className="truncate text-sm font-semibold text-[#262626]" title={fila.nombre}>
             {fila.nombre}
           </h3>

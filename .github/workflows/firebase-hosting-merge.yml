@@ -11,7 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm ci && npm run build
+      - run: |
+          if [ -z "$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY" ]; then
+            echo "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY GitHub secret is required for the static export build."
+            exit 1
+          fi
+          npm ci
+          npm run build
+        env:
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

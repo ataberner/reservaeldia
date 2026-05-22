@@ -26,6 +26,10 @@ import {
 } from "@/domain/functionalCtaButtons";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
+  buildGoogleMapsStaticImageSrc,
+  getGoogleMapsStaticApiKey,
+} from "@/domain/eventDetails/googleMapsStatic";
+import {
   getCurrentInlineEditingId,
   getWindowElementRefs,
   getWindowObjectResolver,
@@ -494,6 +498,22 @@ export default function ElementoCanvas({
       : null;
   const [img] = useSharedImage(imageAssetUrl, "anonymous");
   const [rasterIconImg] = useSharedImage(rasterIconAssetUrl, "anonymous");
+  const googleStaticMapApiKey =
+    obj.tipo === "mapa-google" ? getGoogleMapsStaticApiKey() : "";
+  const googleStaticMapSrc = useMemo(() => {
+    if (obj.tipo !== "mapa-google" || !isEventGoogleMapVisible(obj)) {
+      return null;
+    }
+    return (
+      buildGoogleMapsStaticImageSrc(obj, {
+        apiKey: googleStaticMapApiKey,
+      }) || null
+    );
+  }, [googleStaticMapApiKey, obj]);
+  const [googleStaticMapImage] = useSharedImage(
+    googleStaticMapSrc,
+    "anonymous"
+  );
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
   const [debugTextClientRect, setDebugTextClientRect] = useState(null);
 
@@ -4244,6 +4264,22 @@ export default function ElementoCanvas({
         obj.googleFormattedAddress ||
         (hasPlace ? "Mapa de Google" : "Mapa sin ubicacion")
     );
+    const hasStaticMapImage = Boolean(googleStaticMapImage);
+    const mapCornerRadius = 10;
+    const mapClipFunc = (ctx) => {
+      const radius = Math.min(mapCornerRadius, width / 2, height / 2);
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(width - radius, 0);
+      ctx.quadraticCurveTo(width, 0, width, radius);
+      ctx.lineTo(width, height - radius);
+      ctx.quadraticCurveTo(width, height, width - radius, height);
+      ctx.lineTo(radius, height);
+      ctx.quadraticCurveTo(0, height, 0, height - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+    };
 
     return (
       <Group
@@ -4269,54 +4305,85 @@ export default function ElementoCanvas({
           onDblClick={handleDoubleClick}
           onDblTap={handleDoubleClick}
         />
-        <Rect
-          x={0}
-          y={0}
-          width={width}
-          height={height}
-          fill="#f8fafc"
-          stroke={isSelected || preSeleccionado ? "#773dbe" : "#d8dbe2"}
-          strokeWidth={isSelected || preSeleccionado ? 2 : 1}
-          cornerRadius={10}
-          shadowColor="rgba(15,23,42,0.12)"
-          shadowBlur={8}
-          shadowOffset={{ x: 0, y: 3 }}
-          listening={false}
-        />
-        <Rect
-          x={12}
-          y={12}
-          width={width - 24}
-          height={Math.max(1, height - 24)}
-          fill="#eef2f7"
-          stroke="#d8dbe2"
-          strokeWidth={1}
-          cornerRadius={8}
-          listening={false}
-        />
-        <Text
-          x={24}
-          y={Math.max(22, height / 2 - 28)}
-          width={width - 48}
-          text={title}
-          align="center"
-          fontSize={16}
-          fontFamily="Source Sans Pro, sans-serif"
-          fontStyle="bold"
-          fill="#262626"
-          listening={false}
-        />
-        <Text
-          x={24}
-          y={Math.max(48, height / 2 + 2)}
-          width={width - 48}
-          text={hasPlace ? "Mapa embebido en vista previa y publicacion" : "Selecciona una ubicacion de Google Maps"}
-          align="center"
-          fontSize={12}
-          fontFamily="Source Sans Pro, sans-serif"
-          fill="#64748b"
-          listening={false}
-        />
+        {hasStaticMapImage ? (
+          <>
+            <Group clipFunc={mapClipFunc} listening={false}>
+              <KonvaImage
+                x={0}
+                y={0}
+                width={width}
+                height={height}
+                image={googleStaticMapImage}
+                listening={false}
+              />
+            </Group>
+            <Rect
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="transparent"
+              stroke={isSelected || preSeleccionado ? "#773dbe" : "#d8dbe2"}
+              strokeWidth={isSelected || preSeleccionado ? 2 : 1}
+              cornerRadius={mapCornerRadius}
+              shadowColor="rgba(15,23,42,0.12)"
+              shadowBlur={8}
+              shadowOffset={{ x: 0, y: 3 }}
+              listening={false}
+            />
+          </>
+        ) : (
+          <>
+            <Rect
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="#f8fafc"
+              stroke={isSelected || preSeleccionado ? "#773dbe" : "#d8dbe2"}
+              strokeWidth={isSelected || preSeleccionado ? 2 : 1}
+              cornerRadius={mapCornerRadius}
+              shadowColor="rgba(15,23,42,0.12)"
+              shadowBlur={8}
+              shadowOffset={{ x: 0, y: 3 }}
+              listening={false}
+            />
+            <Rect
+              x={12}
+              y={12}
+              width={width - 24}
+              height={Math.max(1, height - 24)}
+              fill="#eef2f7"
+              stroke="#d8dbe2"
+              strokeWidth={1}
+              cornerRadius={8}
+              listening={false}
+            />
+            <Text
+              x={24}
+              y={Math.max(22, height / 2 - 28)}
+              width={width - 48}
+              text={title}
+              align="center"
+              fontSize={16}
+              fontFamily="Source Sans Pro, sans-serif"
+              fontStyle="bold"
+              fill="#262626"
+              listening={false}
+            />
+            <Text
+              x={24}
+              y={Math.max(48, height / 2 + 2)}
+              width={width - 48}
+              text={hasPlace ? "Mapa embebido en vista previa y publicacion" : "Selecciona una ubicacion de Google Maps"}
+              align="center"
+              fontSize={12}
+              fontFamily="Source Sans Pro, sans-serif"
+              fill="#64748b"
+              listening={false}
+            />
+          </>
+        )}
       </Group>
     );
   }

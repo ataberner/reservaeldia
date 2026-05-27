@@ -323,6 +323,7 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `enlace` | Optional | If present, HTML wraps the object in an anchor. Accepts a string or `{ href, target, rel }`. |
 | `role` / `rol` | Optional | Semantic role override used by motion/runtime data attributes. |
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
+| `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
 
 ### `grupo`
 Groups are preserved composition objects. The group root lives in `objetos` with

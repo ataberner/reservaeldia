@@ -14,6 +14,7 @@ import {
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
 import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
+import { isFunctionalCtaHidden } from "@/domain/functionalCtaButtons";
 import {
   moveQuestion,
   setCustomQuestionType,
@@ -23,6 +24,7 @@ import {
   setQuestionRequired,
   toggleQuestionActive,
 } from "@/domain/rsvp/editorOps";
+import styles from "./MiniToolbarTabRsvp.module.css";
 
 function normalizeConfig(input) {
   if (!input || typeof input !== "object") {
@@ -31,8 +33,8 @@ function normalizeConfig(input) {
   return normalizeRsvpConfig(input, { forceEnabled: false });
 }
 
-function findRsvpButtonId() {
-  return readEditorObjectByType("rsvp-boton")?.id || null;
+function findRsvpButton() {
+  return readEditorObjectByType("rsvp-boton");
 }
 
 function emitRsvpConfigUpdate(nextConfig) {
@@ -46,6 +48,33 @@ function emitRsvpConfigUpdate(nextConfig) {
 
 function inputClassName() {
   return "w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs text-zinc-800 focus:border-violet-500 focus:outline-none";
+}
+
+function buildDefaultRsvpButtonPayload() {
+  const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
+
+  return {
+    id: `rsvp-${Date.now()}`,
+    tipo: "rsvp-boton",
+    texto: "Confirmar asistencia",
+    x: 300,
+    y: 100,
+    ancho: 220,
+    alto: 50,
+    fontSize: 18,
+    fontFamily: "sans-serif",
+    align: "center",
+    ...defaultButtonStyle,
+  };
+}
+
+function insertDefaultRsvpButton() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("insertar-elemento", {
+      detail: buildDefaultRsvpButtonPayload(),
+    })
+  );
 }
 
 function Field({ label, children }) {
@@ -525,7 +554,7 @@ export default function MiniToolbarTabRsvp({
   onPresetSelectionComplete,
 }) {
   const [config, setConfig] = useState(() => createDefaultRsvpConfig("minimal"));
-  const [rsvpButtonId, setRsvpButtonId] = useState(null);
+  const [rsvpButton, setRsvpButton] = useState(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -541,6 +570,8 @@ export default function MiniToolbarTabRsvp({
   const maxCustomQuestions = normalizedConfig.limits?.maxCustomQuestions || 2;
 
   const canAddMoreQuestions = activeCount < maxQuestions;
+  const rsvpButtonId = rsvpButton?.id || null;
+  const isRsvpActive = Boolean(rsvpButton && !isFunctionalCtaHidden(rsvpButton));
 
   const updateConfig = (nextConfig) => {
     const normalized = normalizeConfig(nextConfig);
@@ -548,31 +579,69 @@ export default function MiniToolbarTabRsvp({
     emitRsvpConfigUpdate(normalized);
   };
 
-  const handlePrimaryAction = () => {
+  const handleActivationToggle = () => {
+    const nextEnabled = !isRsvpActive;
     if (rsvpButtonId) {
+      window.dispatchEvent(
+        new CustomEvent("actualizar-elemento", {
+          detail: {
+            id: rsvpButtonId,
+            cambios: {
+              hidden: !nextEnabled,
+            },
+          },
+        })
+      );
+      if (nextEnabled) {
+        updateConfig({
+          ...normalizedConfig,
+          enabled: true,
+        });
+      }
+      return;
+    }
+
+    updateConfig({
+      ...normalizedConfig,
+      enabled: nextEnabled,
+    });
+
+    if (nextEnabled) {
+      insertDefaultRsvpButton();
+    }
+  };
+
+  const handlePrimaryAction = () => {
+    if (rsvpButtonId && !isFunctionalCtaHidden(rsvpButton)) {
+      if (normalizedConfig.enabled !== true) {
+        updateConfig({
+          ...normalizedConfig,
+          enabled: true,
+        });
+      }
       setPreviewOpen(true);
       return;
     }
 
-    const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
+    updateConfig({
+      ...normalizedConfig,
+      enabled: true,
+    });
+    if (rsvpButtonId) {
+      window.dispatchEvent(
+        new CustomEvent("actualizar-elemento", {
+          detail: {
+            id: rsvpButtonId,
+            cambios: {
+              hidden: false,
+            },
+          },
+        })
+      );
+      return;
+    }
 
-    window.dispatchEvent(
-      new CustomEvent("insertar-elemento", {
-        detail: {
-          id: `rsvp-${Date.now()}`,
-          tipo: "rsvp-boton",
-          texto: "Confirmar asistencia",
-          x: 300,
-          y: 100,
-          ancho: 220,
-          alto: 50,
-          fontSize: 18,
-          fontFamily: "sans-serif",
-          align: "center",
-          ...defaultButtonStyle,
-        },
-      })
-    );
+    insertDefaultRsvpButton();
   };
 
   useEffect(() => {
@@ -594,7 +663,7 @@ export default function MiniToolbarTabRsvp({
     };
 
     const syncButton = () => {
-      setRsvpButtonId(findRsvpButtonId());
+      setRsvpButton(findRsvpButton());
     };
 
     syncConfigFromWindow();
@@ -612,6 +681,31 @@ export default function MiniToolbarTabRsvp({
   return (
     <>
       <div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+        <section className={styles.activationPanel}>
+          <div className={styles.activationHeader}>
+            <h3 className={styles.activationTitle}>Pedir confirmación de asistencia</h3>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isRsvpActive}
+              aria-label={
+                isRsvpActive
+                  ? "Desactivar confirmación de asistencia"
+                  : "Activar confirmación de asistencia"
+              }
+              onClick={handleActivationToggle}
+              className={`${styles.activationSwitch} ${
+                isRsvpActive ? styles.activationSwitchOn : ""
+              }`}
+            >
+              <span className={styles.activationSwitchThumb} aria-hidden="true" />
+            </button>
+          </div>
+          <p className={styles.activationCopy}>
+            Activa el formulario para que tus invitados puedan confirmar si asisten.
+          </p>
+        </section>
+
         <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-fuchsia-50 to-pink-50 p-3">
           <h3 className="text-[13px] font-semibold text-slate-900">Confirmar asistencia</h3>
 
@@ -622,7 +716,11 @@ export default function MiniToolbarTabRsvp({
               className="inline-flex items-center justify-center gap-1 rounded-md border border-violet-300 bg-white px-2 py-1.5 text-xs font-semibold text-violet-800 transition hover:bg-violet-100"
             >
               <Eye className="h-3.5 w-3.5" />
-              {rsvpButtonId ? "Vista previa" : "Agregar boton"}
+              {rsvpButtonId
+                ? isFunctionalCtaHidden(rsvpButton)
+                  ? "Mostrar boton"
+                  : "Vista previa"
+                : "Agregar boton"}
             </button>
             <button
               type="button"

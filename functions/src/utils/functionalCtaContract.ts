@@ -39,13 +39,17 @@ function normalizeType(value: unknown): string {
   return String(value || "").trim().toLowerCase();
 }
 
+function isHiddenFunctionalCta(entry: Record<string, unknown>): boolean {
+  return entry.hidden === true;
+}
+
 function hasButtonOfTypeInEntry(
   entry: unknown,
   targetType: FunctionalCtaObjectType
 ): boolean {
   if (!isRecord(entry)) return false;
 
-  if (normalizeType(entry.tipo) === targetType) {
+  if (normalizeType(entry.tipo) === targetType && !isHiddenFunctionalCta(entry)) {
     return true;
   }
 

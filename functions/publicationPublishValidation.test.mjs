@@ -560,12 +560,10 @@ test("separates representative blockers from warnings when publish finalization 
     "countdown-frame-unresolved|count-modern|section-hero|frameSvgUrl",
     "gallery-media-unresolved|gallery-main|section-gallery|cells[0].mediaUrl",
     "gallery-media-unresolved|gallery-main|section-gallery|cells[1].mediaUrl",
-    "gift-disabled-with-button|gift-cta|section-details|gifts.enabled",
     "icon-asset-unresolved|icon-raster|section-details|src",
     "image-asset-unresolved|hero-image|section-hero|src",
     "image-crop-not-materialized|hero-image|section-hero|crop",
     "missing-section-reference|orphan-text|section-missing|seccionId",
-    "rsvp-disabled-with-button|rsvp-cta|section-details|rsvp.enabled",
     "section-background-unresolved|-|section-hero|fondoImagen",
     "section-decoration-unresolved|-|section-hero|decoracionesFondo.items[0].src",
     "section-decoration-unresolved|-|section-hero|decoracionesFondo.items[1].src",
@@ -577,7 +575,7 @@ test("separates representative blockers from warnings when publish finalization 
     "legacy-icono-svg-frozen|icon-legacy|section-details|tipo",
     "pantalla-ynorm-drift|hero-image|section-hero|yNorm",
   ]);
-  assert.equal(result.summary.blockerCount, 12);
+  assert.equal(result.summary.blockerCount, 10);
   assert.equal(result.summary.warningCount, 5);
   assert.match(result.summary.blockingMessage, /^No se puede publicar todavia:/);
   assert.match(result.summary.warningMessage, /advertencias de compatibilidad/);

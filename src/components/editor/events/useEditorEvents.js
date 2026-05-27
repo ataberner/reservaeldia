@@ -19,7 +19,13 @@ import {
   sanitizeMotionEffect,
 } from "@/domain/motionEffects";
 import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
-import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
+import {
+  findFunctionalCtaButtonByType,
+  isFunctionalCtaButton,
+} from "@/domain/functionalCtaButtons";
+import {
+  applyObjectUpdateById,
+} from "@/components/editor/canvasEditor/objectUpdateUtils";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
   buildDynamicGalleryObjectPatch,
@@ -308,10 +314,9 @@ export default function useEditorEvents({
       setObjetos((prev) => {
         if (nuevoConSeccion?.tipo !== "countdown") {
           if (isFunctionalCtaButton(nuevoConSeccion)) {
-            const existingIndex = prev.findIndex(
-              (obj) => obj?.tipo === nuevoConSeccion?.tipo
-            );
-            if (existingIndex >= 0) return prev;
+            if (findFunctionalCtaButtonByType(prev, nuevoConSeccion?.tipo)) {
+              return prev;
+            }
           }
           return [...prev, nuevoConSeccion];
         }
@@ -430,7 +435,7 @@ export default function useEditorEvents({
 
       setObjetos((prev) => {
         const i = prev.findIndex((o) => o.id === targetId);
-        if (i === -1) return prev;
+        if (i === -1) return applyObjectUpdateById(prev, targetId, cambios);
 
         const next = [...prev];
         const currentObject = next[i];
@@ -478,7 +483,8 @@ export default function useEditorEvents({
 
       if (
         cambios.mostrarCuentaRegresiva === false ||
-        cambios.mostrarMapa === false
+        cambios.mostrarMapa === false ||
+        cambios.hidden === true
       ) {
         setElementosSeleccionados((prev) =>
           Array.isArray(prev)

@@ -120,6 +120,7 @@ import {
 import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
+  isFunctionalCtaHidden,
 } from "@/domain/functionalCtaButtons";
 import { isCountdownVisible } from "@/domain/eventDetails/countdownEventDetails";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
@@ -10465,6 +10466,9 @@ export default function CanvasStageContent({
   ]);
 
   const renderCanvasObject = (obj) => {
+    if (isFunctionalCtaHidden(obj)) {
+      return null;
+    }
     if (obj?.tipo === "countdown" && !isCountdownVisible(obj)) {
       return null;
     }

@@ -9,6 +9,7 @@ import {
 import {
   EDITOR_RUNTIME_COMPATIBILITY_CONTRACT,
 } from "./editorBridgeContracts.js";
+import { forEachRenderObject } from "../domain/editor/renderObjectTree.js";
 export { EDITOR_RUNTIME_COMPATIBILITY_CONTRACT } from "./editorBridgeContracts.js";
 
 function resolveTargetWindow(targetWindow) {
@@ -79,7 +80,14 @@ export function readEditorSections(targetWindow) {
 export function readEditorObjectByType(tipo, targetWindow) {
   const safeTipo = normalizeText(tipo);
   if (!safeTipo) return null;
-  return readEditorObjects(targetWindow).find((item) => item?.tipo === safeTipo) || null;
+  let match = null;
+  forEachRenderObject(readEditorObjects(targetWindow), (item) => {
+    if (match) return;
+    if (item?.tipo === safeTipo) {
+      match = item;
+    }
+  });
+  return match;
 }
 
 export function readEditorObjectById(id, targetWindow) {

@@ -78,8 +78,8 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `countdown` schema v1 | `si` | `soportado` | `soportado` | `soportado` | `parcial` | warning `legacy-countdown-schema-v1-frozen` | congelar contrato |
 | `countdown` schema v2 | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `countdown-frame-unresolved` | usar con restricciones |
 | `mapa-google` | `si` | placeholder | `soportado` | omitido | `alta` en preview/publish, no participa en share image | puede bloquear si falta `placeId` o API key para publish | el iframe real se excluye de `share.jpg` |
-| `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial | warning `rsvp-missing-root-config`, blocker `rsvp-disabled-with-button`, warning `functional-cta-link-ignored` | validar contrato completo |
-| `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial | warning `gift-missing-root-config`, warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, blocker `gift-disabled-with-button`, warning `functional-cta-link-ignored` | validar contrato completo |
+| `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `hidden === true` lo omite sin borrar geometria | warning `rsvp-missing-root-config`, warning `functional-cta-link-ignored` | validar contrato completo |
+| `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `hidden === true` lo omite sin borrar geometria | warning `gift-missing-root-config`, warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, warning `functional-cta-link-ignored` | validar contrato completo |
 | fondo de seccion por color | `si` | `soportado` | `soportado` | `soportado` | `alta` | sin warning especifico | usar con checklist |
 | fondo base de seccion por imagen | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-background-unresolved` | usar con restricciones |
 | decoraciones de fondo | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-decoration-unresolved` | usar con restricciones |
@@ -103,7 +103,7 @@ Bloqueadores de publish hoy:
 
 - assets sin resolver para `imagen`, `icono` raster, `galeria`, `countdown` v2, fondos de seccion, decoraciones de fondo y decoraciones de borde
 - crop de imagen no materializable
-- CTA funcional con config raiz deshabilitada
+- CTA funcional visible sin config raiz completa o sin metodos utilizables queda como advertencia/no disponible; un CTA con `hidden === true` no se renderiza ni bloquea por su config raiz
 - `figura` fuera del set soportado de publish
 - referencia de seccion faltante
 

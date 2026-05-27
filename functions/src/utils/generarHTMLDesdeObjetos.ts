@@ -2196,6 +2196,9 @@ background: ${cell.bg};
 
       // ---------------- RSVP BOTÓN ----------------
       if (tipo === "rsvp-boton" || tipo === "regalo-boton") {
+        if (obj?.hidden === true) {
+          return "";
+        }
         const isGiftButton = tipo === "regalo-boton";
         const ctaContract = getFunctionalCtaContractForObjectType(
           tipo,

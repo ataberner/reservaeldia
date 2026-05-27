@@ -1293,12 +1293,86 @@ test("keeps CTA button output stable for ready, unavailable, and direct object r
       giftListUrl: "",
     },
   });
+  const disabledRsvpContract = resolveFunctionalCtaContract({
+    objetos: ctaObjects,
+    rsvpConfig: { enabled: false },
+    giftsConfig: {
+      enabled: true,
+      bank: {
+        holder: "",
+        bank: "",
+        alias: "pareja.regalo",
+        cbu: "0001234500001234500012",
+        cuit: "",
+      },
+      visibility: {
+        holder: false,
+        bank: false,
+        alias: true,
+        cbu: true,
+        cuit: false,
+        giftListLink: false,
+      },
+      giftListUrl: "",
+    },
+  });
+  const disabledGiftContract = resolveFunctionalCtaContract({
+    objetos: ctaObjects,
+    rsvpConfig: { enabled: true, presetId: "minimal" },
+    giftsConfig: {
+      enabled: false,
+      bank: {
+        holder: "",
+        bank: "",
+        alias: "pareja.regalo",
+        cbu: "0001234500001234500012",
+        cuit: "",
+      },
+      visibility: {
+        holder: false,
+        bank: false,
+        alias: true,
+        cbu: true,
+        cuit: false,
+        giftListLink: false,
+      },
+      giftListUrl: "",
+    },
+  });
+  const hiddenRsvpObjects = ctaObjects.map((item) =>
+    item.tipo === "rsvp-boton" ? { ...item, hidden: true } : item
+  );
+  const hiddenGiftObjects = ctaObjects.map((item) =>
+    item.tipo === "regalo-boton" ? { ...item, hidden: true } : item
+  );
+  const hiddenRsvpContract = resolveFunctionalCtaContract({
+    objetos: hiddenRsvpObjects,
+    rsvpConfig: { enabled: true, presetId: "minimal" },
+    giftsConfig: readyContract.gifts.config,
+  });
+  const hiddenGiftContract = resolveFunctionalCtaContract({
+    objetos: hiddenGiftObjects,
+    rsvpConfig: { enabled: true, presetId: "minimal" },
+    giftsConfig: readyContract.gifts.config,
+  });
 
   const readyHtml = generarHTMLDesdeObjetos(ctaObjects, CTA_SECTION, {
     functionalCtaContract: readyContract,
   });
   const unavailableHtml = generarHTMLDesdeObjetos(ctaObjects, CTA_SECTION, {
     functionalCtaContract: unavailableContract,
+  });
+  const disabledRsvpHtml = generarHTMLDesdeObjetos(ctaObjects, CTA_SECTION, {
+    functionalCtaContract: disabledRsvpContract,
+  });
+  const disabledGiftHtml = generarHTMLDesdeObjetos(ctaObjects, CTA_SECTION, {
+    functionalCtaContract: disabledGiftContract,
+  });
+  const hiddenRsvpHtml = generarHTMLDesdeObjetos(hiddenRsvpObjects, CTA_SECTION, {
+    functionalCtaContract: hiddenRsvpContract,
+  });
+  const hiddenGiftHtml = generarHTMLDesdeObjetos(hiddenGiftObjects, CTA_SECTION, {
+    functionalCtaContract: hiddenGiftContract,
   });
   const defaultHtml = generarHTMLDesdeObjetos([ctaObjects[0]], CTA_SECTION);
 
@@ -1310,6 +1384,20 @@ test("keeps CTA button output stable for ready, unavailable, and direct object r
   assert.match(unavailableHtml, /data-cta-reason="missing-root"/);
   assert.match(unavailableHtml, /data-cta-reason="no-usable-methods"/);
   assert.match(unavailableHtml, /title="No disponible"/);
+  assert.match(disabledRsvpHtml, /data-cta-reason="disabled"/);
+  assert.match(disabledRsvpHtml, /rsvp-boton/);
+  assert.match(disabledRsvpHtml, /data-gift-open/);
+  assert.match(disabledGiftHtml, /data-rsvp-open/);
+  assert.match(disabledGiftHtml, /data-cta-reason="disabled"/);
+  assert.match(disabledGiftHtml, /regalo-boton/);
+  assert.equal(hiddenRsvpContract.rsvp.reason, "no-button");
+  assert.equal(hiddenGiftContract.gifts.reason, "no-button");
+  assert.doesNotMatch(hiddenRsvpHtml, /data-rsvp-open/);
+  assert.doesNotMatch(hiddenRsvpHtml, /rsvp-boton/);
+  assert.match(hiddenRsvpHtml, /data-gift-open/);
+  assert.match(hiddenGiftHtml, /data-rsvp-open/);
+  assert.doesNotMatch(hiddenGiftHtml, /data-gift-open/);
+  assert.doesNotMatch(hiddenGiftHtml, /regalo-boton/);
   assert.match(defaultHtml, /data-cta-state="ready"/);
   assert.match(defaultHtml, /data-rsvp-open/);
 });

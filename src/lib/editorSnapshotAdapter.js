@@ -1,3 +1,5 @@
+import { findRenderObjectById } from "../domain/editor/renderObjectTree.js";
+
 export const EDITOR_SNAPSHOT_ADAPTER_VERSION = 1;
 
 const EDITOR_SNAPSHOT_WINDOW_KEY = "editorSnapshot";
@@ -92,7 +94,7 @@ function readLegacyObjectSnapshotFromWindow(targetWindow, id) {
   const objetos = Array.isArray(targetWindow._objetosActuales)
     ? targetWindow._objetosActuales
     : [];
-  const objectMatch = objetos.find((item) => item?.id === safeId) || null;
+  const objectMatch = findRenderObjectById(objetos, safeId);
   return objectMatch ? cloneSnapshotValue(objectMatch) : null;
 }
 
@@ -153,7 +155,7 @@ function createEditorSnapshotController() {
         typeof state.resolvers.getObjectById === "function"
           ? state.resolvers.getObjectById(safeId)
           : Array.isArray(state.renderState.objetos)
-            ? state.renderState.objetos.find((item) => item?.id === safeId) || null
+            ? findRenderObjectById(state.renderState.objetos, safeId)
             : null;
       return objectMatch ? cloneSnapshotValue(objectMatch) : null;
     },

@@ -23,6 +23,7 @@ import { resolveKonvaFontStyle } from "@/components/editor/textSystem/metricsLay
 import {
   getFunctionalCtaDefaultText,
   isFunctionalCtaButton,
+  isFunctionalCtaHidden,
 } from "@/domain/functionalCtaButtons";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
@@ -3913,6 +3914,10 @@ export default function ElementoCanvas({
         <Group listening={false}>
           {children.map((child, childIndex) => {
             const childKey = `${obj.id}:${child?.id || childIndex}`;
+
+            if (isFunctionalCtaHidden(child)) {
+              return null;
+            }
 
             if (child?.tipo === "countdown") {
               return (

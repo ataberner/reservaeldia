@@ -405,7 +405,6 @@ export function validatePreparedPublicationRenderState(params: {
       rsvpConfig: params.rawRsvp,
       giftsConfig: params.rawGifts,
     });
-  const rsvp = functionalCtaContract.rsvp.config;
   const gifts = functionalCtaContract.gifts.config;
   const incompleteGiftModalFields = functionalCtaContract.gifts.ready
     ? getIncompleteGiftModalFields(gifts)
@@ -537,6 +536,12 @@ export function validatePreparedPublicationRenderState(params: {
     if (
       objectType === "mapa-google" &&
       (!isGoogleMapPublishEnabled(rawObject) || !isGoogleMapPublishEnabled(finalObject))
+    ) {
+      return;
+    }
+    if (
+      (objectType === "rsvp-boton" || objectType === "regalo-boton") &&
+      rawObject.hidden === true
     ) {
       return;
     }
@@ -894,19 +899,6 @@ export function validatePreparedPublicationRenderState(params: {
       );
     }
 
-    if (objectType === "regalo-boton" && functionalCtaContract.gifts.enabled === false) {
-      pushIssue(
-        createIssue({
-          severity: "blocking",
-          code: "gift-disabled-with-button",
-          message: `${objectLabel} requiere gifts habilitado en raiz para que el HTML publicado tenga un CTA funcional.`,
-          objectId,
-          sectionId,
-          fieldPath: "gifts.enabled",
-        })
-      );
-    }
-
     if (
       objectType === "regalo-boton" &&
       functionalCtaContract.gifts.rootPresent &&
@@ -949,19 +941,6 @@ export function validatePreparedPublicationRenderState(params: {
           objectId,
           sectionId,
           fieldPath: "rsvp",
-        })
-      );
-    }
-
-    if (objectType === "rsvp-boton" && rsvp?.enabled === false) {
-      pushIssue(
-        createIssue({
-          severity: "blocking",
-          code: "rsvp-disabled-with-button",
-          message: `${objectLabel} requiere RSVP habilitado en raiz para que el HTML publicado tenga un modal funcional.`,
-          objectId,
-          sectionId,
-          fieldPath: "rsvp.enabled",
         })
       );
     }

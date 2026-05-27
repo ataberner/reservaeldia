@@ -2,12 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Copy, Eye, ExternalLink, Gift, Plus, Settings2, X } from "lucide-react";
 import { createDefaultGiftConfig, hasVisibleGiftMethods, normalizeGiftConfig } from "@/domain/gifts/config";
-import { getFunctionalCtaDefaultText } from "@/domain/functionalCtaButtons";
+import {
+  getFunctionalCtaDefaultText,
+  isFunctionalCtaHidden,
+} from "@/domain/functionalCtaButtons";
 import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
 import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
+import styles from "./MiniToolbarTabRegalos.module.css";
 
 const DEFAULT_GIFT_BUTTON_TEXT = getFunctionalCtaDefaultText("regalo-boton") || "Ver regalos";
 
@@ -91,8 +95,31 @@ function findGiftButton() {
   return readEditorObjectByType("regalo-boton");
 }
 
-function findGiftButtonId() {
-  return findGiftButton()?.id || null;
+function buildDefaultGiftButtonPayload(buttonText) {
+  const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
+
+  return {
+    id: `gift-${Date.now()}`,
+    tipo: "regalo-boton",
+    texto: String(buttonText || "").trim() || DEFAULT_GIFT_BUTTON_TEXT,
+    x: 300,
+    y: 100,
+    ancho: 220,
+    alto: 50,
+    fontSize: 18,
+    fontFamily: "sans-serif",
+    align: "center",
+    ...defaultButtonStyle,
+  };
+}
+
+function insertDefaultGiftButton(buttonText) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("insertar-elemento", {
+      detail: buildDefaultGiftButtonPayload(buttonText),
+    })
+  );
 }
 
 function updateGiftButtonText(buttonId, text) {
@@ -584,7 +611,7 @@ function GiftPreviewModal({ open, config, onClose }) {
 
 export default function MiniToolbarTabRegalos() {
   const [config, setConfig] = useState(() => createDefaultGiftConfig());
-  const [giftButtonId, setGiftButtonId] = useState(null);
+  const [giftButton, setGiftButton] = useState(null);
   const [buttonText, setButtonText] = useState(DEFAULT_GIFT_BUTTON_TEXT);
   const [giftListDraft, setGiftListDraft] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -596,10 +623,12 @@ export default function MiniToolbarTabRegalos() {
   const methodItems = useMemo(() => buildGiftMethodItems(normalizedConfig), [normalizedConfig]);
   const activeItems = methodItems.filter((item) => item.active);
   const inactiveItems = methodItems.filter((item) => !item.active);
+  const giftButtonId = giftButton?.id || null;
+  const isGiftActive = Boolean(giftButton && !isFunctionalCtaHidden(giftButton));
 
   const syncButtonState = () => {
     const giftButton = findGiftButton();
-    setGiftButtonId(giftButton?.id || null);
+    setGiftButton(giftButton || null);
     if (giftButton && typeof giftButton.texto === "string") {
       setButtonText(giftButton.texto || DEFAULT_GIFT_BUTTON_TEXT);
     }
@@ -642,30 +671,68 @@ export default function MiniToolbarTabRegalos() {
   };
 
   const handlePrimaryAction = () => {
-    if (giftButtonId) {
+    if (giftButtonId && !isFunctionalCtaHidden(giftButton)) {
+      if (normalizedConfig.enabled !== true) {
+        updateConfig({
+          ...normalizedConfig,
+          enabled: true,
+        });
+      }
       setPreviewOpen(true);
       return;
     }
 
-    const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
+    updateConfig({
+      ...normalizedConfig,
+      enabled: true,
+    });
+    if (giftButtonId) {
+      window.dispatchEvent(
+        new CustomEvent("actualizar-elemento", {
+          detail: {
+            id: giftButtonId,
+            cambios: {
+              hidden: false,
+            },
+          },
+        })
+      );
+      return;
+    }
 
-    window.dispatchEvent(
-      new CustomEvent("insertar-elemento", {
-        detail: {
-          id: `gift-${Date.now()}`,
-          tipo: "regalo-boton",
-          texto: String(buttonText || "").trim() || DEFAULT_GIFT_BUTTON_TEXT,
-          x: 300,
-          y: 100,
-          ancho: 220,
-          alto: 50,
-          fontSize: 18,
-          fontFamily: "sans-serif",
-          align: "center",
-          ...defaultButtonStyle,
-        },
-      })
-    );
+    insertDefaultGiftButton(buttonText);
+  };
+
+  const handleActivationToggle = () => {
+    const nextEnabled = !isGiftActive;
+    if (giftButtonId) {
+      window.dispatchEvent(
+        new CustomEvent("actualizar-elemento", {
+          detail: {
+            id: giftButtonId,
+            cambios: {
+              hidden: !nextEnabled,
+            },
+          },
+        })
+      );
+      if (nextEnabled) {
+        updateConfig({
+          ...normalizedConfig,
+          enabled: true,
+        });
+      }
+      return;
+    }
+
+    updateConfig({
+      ...normalizedConfig,
+      enabled: nextEnabled,
+    });
+
+    if (nextEnabled) {
+      insertDefaultGiftButton(buttonText);
+    }
   };
 
   const handleButtonTextChange = (nextText) => {
@@ -724,6 +791,31 @@ export default function MiniToolbarTabRegalos() {
   return (
     <>
       <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+        <section className={styles.activationPanel}>
+          <div className={styles.activationHeader}>
+            <h3 className={styles.activationTitle}>Mostrar opciones de regalos</h3>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isGiftActive}
+              aria-label={
+                isGiftActive
+                  ? "Desactivar boton de regalos"
+                  : "Activar boton de regalos"
+              }
+              onClick={handleActivationToggle}
+              className={`${styles.activationSwitch} ${
+                isGiftActive ? styles.activationSwitchOn : ""
+              }`}
+            >
+              <span className={styles.activationSwitchThumb} aria-hidden="true" />
+            </button>
+          </div>
+          <p className={styles.activationCopy}>
+            Activa el boton para que tus invitados puedan ver los datos o la lista de regalos.
+          </p>
+        </section>
+
         <section className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50 via-amber-50 to-white p-3 shadow-sm">
           <h3 className="text-center text-[13px] font-semibold text-slate-900">Regalos</h3>
 
@@ -734,7 +826,11 @@ export default function MiniToolbarTabRegalos() {
               className="inline-flex items-center justify-center gap-1 rounded-md border border-rose-300 bg-white px-2 py-1.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-100"
             >
               <Eye className="h-3.5 w-3.5" />
-              {giftButtonId ? "Vista previa" : "Agregar boton"}
+              {giftButtonId
+                ? isFunctionalCtaHidden(giftButton)
+                  ? "Mostrar boton"
+                  : "Vista previa"
+                : "Agregar boton"}
             </button>
             <button
               type="button"

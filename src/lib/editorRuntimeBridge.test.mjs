@@ -77,7 +77,11 @@ test("editor runtime bridge reads object snapshots through the canonical snapsho
     {
       objetos: [
         { id: "countdown-1", tipo: "countdown", nested: { label: "Countdown" } },
-        { id: "rsvp-1", tipo: "rsvp-boton" },
+        {
+          id: "group-1",
+          tipo: "grupo",
+          children: [{ id: "rsvp-1", tipo: "rsvp-boton" }],
+        },
       ],
       secciones: [{ id: "section-a", orden: 1, altura: 240 }],
     },
@@ -86,6 +90,7 @@ test("editor runtime bridge reads object snapshots through the canonical snapsho
 
   const countdown = readEditorObjectByType("countdown", fakeWindow);
   const rsvp = readEditorObjectById("rsvp-1", fakeWindow);
+  const rsvpByType = readEditorObjectByType("rsvp-boton", fakeWindow);
 
   assert.deepEqual(countdown, {
     id: "countdown-1",
@@ -93,6 +98,10 @@ test("editor runtime bridge reads object snapshots through the canonical snapsho
     nested: { label: "Countdown" },
   });
   assert.deepEqual(rsvp, {
+    id: "rsvp-1",
+    tipo: "rsvp-boton",
+  });
+  assert.deepEqual(rsvpByType, {
     id: "rsvp-1",
     tipo: "rsvp-boton",
   });

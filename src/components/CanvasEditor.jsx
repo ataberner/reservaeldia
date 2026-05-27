@@ -82,7 +82,13 @@ import { getCurrentInlineEditingId } from "@/components/editor/textSystem/bridge
 import {
   ensureInlineSessionSettledBeforeCriticalAction,
 } from "@/components/editor/canvasEditor/inlineCriticalBoundary";
-import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
+import {
+  findVisibleFunctionalCtaButtonByType,
+  isFunctionalCtaButton,
+  isFunctionalCtaHidden,
+} from "@/domain/functionalCtaButtons";
+import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
+import { createDefaultGiftConfig, normalizeGiftConfig } from "@/domain/gifts/config";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
 import {
@@ -145,6 +151,22 @@ function isTypographyEditableCanvasObject(obj) {
         )
       )
   );
+}
+
+function collectFunctionalCtaButtonIdsDeep(items = [], shouldCollect, ids = new Set()) {
+  if (!Array.isArray(items)) return ids;
+
+  items.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    if (shouldCollect(item) && item.id) {
+      ids.add(item.id);
+    }
+    if (Array.isArray(item.children)) {
+      collectFunctionalCtaButtonIdsDeep(item.children, shouldCollect, ids);
+    }
+  });
+
+  return ids;
 }
 
 export default function CanvasEditor({
@@ -1437,6 +1459,65 @@ export default function CanvasEditor({
     hoverId,
     setHoverId,
   });
+
+  const visibleRsvpButton = (() => {
+    return findVisibleFunctionalCtaButtonByType(objetos, "rsvp-boton");
+  })();
+  const visibleGiftButton = (() => {
+    return findVisibleFunctionalCtaButtonByType(objetos, "regalo-boton");
+  })();
+
+  useEffect(() => {
+    if (visibleRsvpButton && rsvpConfig?.enabled !== true) {
+      setRsvpConfig((prev) => ({
+        ...(prev
+          ? normalizeRsvpConfig(prev, { forceEnabled: false })
+          : createDefaultRsvpConfig("minimal")),
+        enabled: true,
+      }));
+    }
+
+    if (visibleGiftButton && giftsConfig?.enabled !== true) {
+      setGiftsConfig((prev) => ({
+        ...(prev
+          ? normalizeGiftConfig(prev, { forceEnabled: false })
+          : createDefaultGiftConfig()),
+        enabled: true,
+      }));
+    }
+  }, [
+    giftsConfig?.enabled,
+    rsvpConfig?.enabled,
+    setGiftsConfig,
+    setRsvpConfig,
+    visibleGiftButton?.id,
+    visibleRsvpButton?.id,
+  ]);
+
+  useEffect(() => {
+    const hiddenFunctionalCtaButtonIds = collectFunctionalCtaButtonIdsDeep(
+      objetos,
+      (item) => isFunctionalCtaButton(item) && isFunctionalCtaHidden(item)
+    );
+    if (hiddenFunctionalCtaButtonIds.size === 0) return;
+
+    if (elementosSeleccionados.some((id) => hiddenFunctionalCtaButtonIds.has(id))) {
+      clearCanvasSelectionUi();
+    }
+
+    if (hiddenFunctionalCtaButtonIds.has(hoverId)) {
+      setHoverId(null, {
+        source: "functional-cta-toggle",
+        reason: "target-hidden",
+      });
+    }
+  }, [
+    clearCanvasSelectionUi,
+    elementosSeleccionados,
+    hoverId,
+    objetos,
+    setHoverId,
+  ]);
 
 
 

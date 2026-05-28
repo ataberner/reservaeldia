@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   buildCheckoutModalContextKey,
+  buildPublishFailureUserMessage,
   isProcessingCheckoutStatus,
   isPublishedCheckoutStatus,
   isRecoverableCheckoutStatus,
+  isRetryablePublishFailureStatusPayload,
   isTerminalCheckoutFailureStatus,
+  resolvePublishingProgressState,
   resolveCheckoutStatusFlowState,
   resolveCheckoutModalInitialization,
   resolveTerminalPublicationResult,
@@ -152,6 +155,7 @@ test("publishing stays in progress and published still needs a final backend URL
     isRecoverable: false,
     isTerminalSuccess: false,
     isTerminalFailure: false,
+    isRetryablePublishFailure: false,
     shouldContinuePolling: true,
     shouldClearPolling: false,
   });
@@ -178,6 +182,7 @@ test("terminal and recoverable checkout flow states stop polling without reporti
     isRecoverable: false,
     isTerminalSuccess: false,
     isTerminalFailure: true,
+    isRetryablePublishFailure: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
   });
@@ -188,6 +193,7 @@ test("terminal and recoverable checkout flow states stop polling without reporti
     isRecoverable: false,
     isTerminalSuccess: false,
     isTerminalFailure: true,
+    isRetryablePublishFailure: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
   });
@@ -198,7 +204,93 @@ test("terminal and recoverable checkout flow states stop polling without reporti
     isRecoverable: true,
     isTerminalSuccess: false,
     isTerminalFailure: false,
+    isRetryablePublishFailure: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
+  });
+});
+
+test("retryable publish failures stop polling and keep backend as authority", () => {
+  const payload = {
+    sessionStatus: "payment_approved",
+    errorMessage: "renderer-timeout",
+    publishingStage: {
+      key: "generating_share_image",
+      label: "Generando imagen para compartir",
+      order: 4,
+      status: "failed",
+      errorCode: "renderer-timeout",
+      substage: {
+        key: "waiting_images",
+        label: "Cargando imagenes",
+        status: "failed",
+        errorCode: "renderer-timeout",
+      },
+    },
+  };
+
+  assert.equal(isRetryablePublishFailureStatusPayload(payload), true);
+  assert.deepEqual(resolveCheckoutStatusFlowState(payload), {
+    status: "payment_approved",
+    isProcessing: false,
+    isRecoverable: false,
+    isTerminalSuccess: false,
+    isTerminalFailure: false,
+    isRetryablePublishFailure: true,
+    shouldContinuePolling: false,
+    shouldClearPolling: true,
+  });
+  assert.match(
+    buildPublishFailureUserMessage(payload),
+    /Fallo en: Generando imagen para compartir/
+  );
+  assert.match(buildPublishFailureUserMessage(payload), /Cargando imagenes/);
+});
+
+test("publishing progress maps a real backend stage to ordered UI steps", () => {
+  const progress = resolvePublishingProgressState({
+    publishingStage: {
+      key: "generating_share_image",
+      status: "running",
+    },
+  });
+
+  assert.equal(progress.hasProgress, true);
+  assert.equal(progress.currentStage.key, "generating_share_image");
+  assert.equal(progress.currentStage.substage, null);
+  assert.deepEqual(
+    progress.steps.map((step) => [step.key, step.status]),
+    [
+      ["preparing_invitation", "completed"],
+      ["validating_content", "completed"],
+      ["generating_public_html", "completed"],
+      ["generating_share_image", "running"],
+      ["saving_publication", "pending"],
+      ["finalizing_publication", "pending"],
+    ]
+  );
+});
+
+test("publishing progress exposes backend share-image substage diagnostics", () => {
+  const progress = resolvePublishingProgressState({
+    publishingStage: {
+      key: "generating_share_image",
+      status: "running",
+    },
+    publishingShareImageSubstage: {
+      key: "waiting_fonts",
+      label: "Cargando fuentes",
+      status: "running",
+    },
+  });
+
+  assert.equal(progress.hasProgress, true);
+  assert.equal(progress.currentStage.key, "generating_share_image");
+  assert.deepEqual(progress.currentStage.substage, {
+    key: "waiting_fonts",
+    label: "Cargando fuentes",
+    status: "running",
+    errorCode: "",
+    durationMs: null,
   });
 });

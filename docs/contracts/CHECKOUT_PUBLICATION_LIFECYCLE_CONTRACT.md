@@ -67,7 +67,8 @@ document is the source of truth for whether publication is still processing,
 retryable, conflicted, expired, rejected, or published. Key fields include
 `uid`, `draftSlug`, `operation`, `publicSlug`, `status`, `expiresAt`,
 `mpPaymentId`, `mpStatus`, `mpStatusDetail`, `publicUrl`, `receipt`,
-`lastError`, `createdAt`, and `updatedAt`.
+`lastError`, `publishingStage`, `publishingStageDurationsMs`, `createdAt`, and
+`updatedAt`.
 
 `public_slug_reservations`
 : Reservation record keyed by requested public slug. Current statuses are
@@ -111,6 +112,94 @@ or `publication_planned`. Mercado Pago `cancelled` maps to
 `payment_rejected`. `awaiting_retry` is a return shape from
 `retryPaidPublicationWithNewSlug`, not a stored checkout session status.
 
+## Publication Progress Fields
+
+Publication progress is additive metadata on
+`publication_checkout_sessions/{sessionId}`. It must not replace or compete with
+`status`.
+
+`publishingStage`
+: Current or last publish execution stage. Shape:
+
+```ts
+{
+  key:
+    | "preparing_invitation"
+    | "validating_content"
+    | "generating_public_html"
+    | "generating_share_image"
+    | "saving_publication"
+    | "finalizing_publication",
+  label: string,
+  order: number,
+  status: "running" | "completed" | "failed",
+  startedAt?: Timestamp,
+  completedAt?: Timestamp,
+  failedAt?: Timestamp,
+  updatedAt: Timestamp,
+  durationMs?: number,
+  errorCode?: string,
+}
+```
+
+`publishingStageDurationsMs`
+: Optional diagnostic map keyed by stage key. Values are elapsed milliseconds
+measured by the backend process. These values are for diagnostics and UI
+context, not billing, lifecycle authority, or retry decisions.
+
+`publishingShareImageSubstage`
+: Optional diagnostic field used only while `publishingStage.key` is
+`generating_share_image`. Shape:
+
+```ts
+{
+  key: string,
+  label: string,
+  status: "running" | "completed" | "failed",
+  startedAt?: Timestamp,
+  completedAt?: Timestamp,
+  failedAt?: Timestamp,
+  updatedAt: Timestamp,
+  durationMs?: number,
+  errorCode?: string,
+}
+```
+
+Known current substage keys include `preparing_renderer_html`,
+`preparing_renderer`, `resolving_chromium`, `launching_browser`,
+`loading_html`, `waiting_document`, `waiting_fonts`,
+`isolating_first_section`, `waiting_images`, `settling_layout`,
+`capturing_screenshot`, `optimizing_image`, `saving_image`, and
+`confirming_image`. These keys are diagnostic only and may expand as the same
+renderer pipeline becomes more observable.
+
+`publishingShareImageDiagnostics`
+: Optional technical diagnostic map for the latest share-image substage. It may
+include counters such as `htmlBytes`, `imageCount`, `lazyImageCount`,
+`firstSectionImageCount`, `outsideFirstSectionImageCount`,
+`ignoredImageCount`, `pendingFirstSectionImageHostsSample`,
+`pendingFirstSectionImageUrlSample`, `failedImageHostsSample`,
+`captureClipWidth`, `captureClipHeight`, `sectionRectWidth`,
+`sectionRectHeight`, `documentScrollWidth`, `documentScrollHeight`,
+`firstSectionNodeCount`, `fontStylesheetCount`, `externalHostCount`, memory
+snapshots, `renderTimeoutMs`, `storagePath`, and `errorCode`. It must remain
+small, Firestore-safe, and free of raw HTML or large URL lists.
+
+Rules:
+
+- Only the backend writes these fields.
+- The frontend may display these fields but must not infer successful publish
+  from them.
+- `published` plus backend `publicUrl`/`receipt.publicUrl` remains the only
+  success signal.
+- `payment_approved` plus `lastError` is a retryable publish failure, not an
+  indefinite processing state.
+- Stage progress must come from real backend stage transitions, not client-side
+  timers or fake percentage bars.
+- Share-image substage and diagnostic fields are additive debugging metadata.
+  They must not replace `status`, `lastError`, or the generated share-image
+  fail-closed contract.
+
 ## Lifecycle State Machine
 
 1. Draft created
@@ -146,6 +235,9 @@ or `publication_planned`. Mercado Pago `cancelled` maps to
 6. Publication executing
    - `publicationApprovedSessionFlow.ts` attempts to claim the approved session.
    - The persisted execution marker is `status: "publishing"`.
+   - While `status: "publishing"`, the backend may persist
+     `publishingStage` as an additive progress/debug field. This field is
+     descriptive only; it does not create a second lifecycle state machine.
    - `publicationOperationPlanning.ts` shapes in-memory plans for session,
      reservation, publication, draft, history, and artifact effects. There is no
      separate persisted "planned" checkout status.
@@ -158,8 +250,16 @@ or `publication_planned`. Mercado Pago `cancelled` maps to
      Storage artifacts and generated share metadata are ready.
 
 8. Retryable publication failure
-   - A non-conflict publish execution failure keeps the paid session retryable
-     by writing `status: "payment_approved"` with `lastError`.
+- A non-conflict publish execution failure keeps the paid session retryable
+  by writing `status: "payment_approved"` with `lastError`.
+- If the failure happened after a reported publish stage started, the backend
+  should leave `publishingStage.status: "failed"` on the stage that failed so
+  the UI can explain where the retryable failure occurred.
+- If the failure happened inside generated share-image work, the backend should
+  leave `publishingShareImageSubstage` and `publishingShareImageDiagnostics`
+  with the latest known substep so support can tell whether the failure was
+  Chromium startup, HTML load, font readiness, image readiness, screenshot,
+  Sharp normalization, Storage upload, or confirmation.
    - A slug conflict writes `status: "approved_slug_conflict"` and releases the
      reservation for the conflicted slug.
 
@@ -302,6 +402,10 @@ Idempotency expectations:
   validated slug.
 - `payment_processing` or `payment_approved`: processing state. The modal may
   poll `getPublicationCheckoutStatus`.
+- `payment_approved` with `lastError`: paid but publish failed in a retryable
+  way. The modal must not keep showing indefinite processing; it should show the
+  failed `publishingStage` when present and avoid exposing raw renderer/debug
+  codes as primary user copy.
 - `publishing`: backend execution has claimed the paid session. The modal must
   continue treating the attempt as processing and must not show success until
   backend status becomes `published` with a final URL.

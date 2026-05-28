@@ -252,6 +252,57 @@ test("buildCheckoutStatusResponseFromSession preserves session fields and fallba
   });
 });
 
+test("buildCheckoutStatusResponseFromSession includes publishing stage diagnostics when present", () => {
+  const response = buildCheckoutStatusResponseFromSession({
+    status: "publishing",
+    publishingStage: {
+      key: "generating_share_image",
+      label: "Generando imagen para compartir",
+      order: 4,
+      status: "running",
+    },
+    publishingStageDurationsMs: {
+      preparing_invitation: 120,
+    },
+    publishingShareImageSubstage: {
+      key: "waiting_images",
+      label: "Cargando imagenes",
+      status: "running",
+    },
+    publishingShareImageDiagnostics: {
+      substage: "waiting_images",
+      imageCount: 6,
+      pendingImageCount: 4,
+    },
+  });
+
+  assert.deepEqual(response, {
+    sessionStatus: "publishing",
+    publicUrl: undefined,
+    receipt: undefined,
+    errorMessage: undefined,
+    publishingStage: {
+      key: "generating_share_image",
+      label: "Generando imagen para compartir",
+      order: 4,
+      status: "running",
+    },
+    publishingStageDurationsMs: {
+      preparing_invitation: 120,
+    },
+    publishingShareImageSubstage: {
+      key: "waiting_images",
+      label: "Cargando imagenes",
+      status: "running",
+    },
+    publishingShareImageDiagnostics: {
+      substage: "waiting_images",
+      imageCount: 6,
+      pendingImageCount: 4,
+    },
+  });
+});
+
 test("autoApproveZeroAmountCheckoutSessionFlow writes the current synthetic approval fields and fallback payment id", async () => {
   const runtime = createSessionRef(createSessionData({ mpPaymentId: "" }));
 

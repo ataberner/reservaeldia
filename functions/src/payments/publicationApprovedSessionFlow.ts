@@ -24,6 +24,10 @@ export type CheckoutPaymentResult = {
   publicUrl?: string;
   receipt?: Record<string, unknown>;
   errorMessage?: string;
+  publishingStage?: Record<string, unknown>;
+  publishingStageDurationsMs?: Record<string, unknown>;
+  publishingShareImageSubstage?: Record<string, unknown>;
+  publishingShareImageDiagnostics?: Record<string, unknown>;
   paymentId: string;
   message?: string;
 };
@@ -62,6 +66,11 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
 function toAmount(value: unknown, fallback: number): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -84,13 +93,37 @@ export function buildPaymentResultFromSession(
   data: Record<string, unknown>,
   paymentId = ""
 ): CheckoutPaymentResult {
-  return {
+  const result: CheckoutPaymentResult = {
     sessionStatus: (getString(data.status) as CheckoutSessionStatus) || "payment_processing",
     paymentId,
     publicUrl: getString(data.publicUrl) || undefined,
     receipt: (data.receipt as Record<string, unknown> | undefined) || undefined,
     errorMessage: getString(data.lastError) || undefined,
   };
+
+  const publishingStage = asRecord(data.publishingStage);
+  if (Object.keys(publishingStage).length > 0) {
+    result.publishingStage = publishingStage;
+  }
+
+  const publishingStageDurationsMs = asRecord(data.publishingStageDurationsMs);
+  if (Object.keys(publishingStageDurationsMs).length > 0) {
+    result.publishingStageDurationsMs = publishingStageDurationsMs;
+  }
+
+  const publishingShareImageSubstage = asRecord(data.publishingShareImageSubstage);
+  if (Object.keys(publishingShareImageSubstage).length > 0) {
+    result.publishingShareImageSubstage = publishingShareImageSubstage;
+  }
+
+  const publishingShareImageDiagnostics = asRecord(
+    data.publishingShareImageDiagnostics
+  );
+  if (Object.keys(publishingShareImageDiagnostics).length > 0) {
+    result.publishingShareImageDiagnostics = publishingShareImageDiagnostics;
+  }
+
+  return result;
 }
 
 export function buildApprovedSessionReceipt(params: {

@@ -95,6 +95,11 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML | no tiene warning especifico actual | validar en HTML |
 | published share image | `publicadas.share` + `publicadas/{slug}/share.jpg` | no | no | artefacto derivado de publish HTML | deriva de la primera `.inv > .sec`; no agrega mapeo editor/render | bloquea publish si no se genera y confirma como JPEG `1200x630` | usar [PUBLISHED_SHARE_IMAGE_CONTRACT.md](PUBLISHED_SHARE_IMAGE_CONTRACT.md) |
 
+For published share image readiness, the renderer uses the generated publish
+HTML, isolates the first `.inv > .sec` inside the browser context, and waits
+only for images inside that captured section. Images in later sections are
+diagnostic input, not blockers for `share.jpg`.
+
 Gallery-specific behavior is summarized in [`GALLERY_SYSTEM_CONTRACT.md`](GALLERY_SYSTEM_CONTRACT.md). Global Gallery viewer behavior is owned by [`GALLERY_VIEWER_RENDER_CONTRACT.md`](GALLERY_VIEWER_RENDER_CONTRACT.md). The matrix rows above describe current render support and current publish blockers. Global viewer behavior is generated-HTML based and is covered by render compatibility, publication validation, preview/publish parity, and mobile geometry parity tests for multi-Gallery collection, duplicate handling, and clicked-photo index mapping.
 
 ## Bloqueadores y advertencias por tipo de riesgo
@@ -120,8 +125,8 @@ Advertencias de publish hoy:
 - No tratar una figura como "editor-only" si existe rama real en `generarHTMLDesdeObjetos.ts` y en `publicationPublishValidation.ts`.
 - No tratar una rama como "soportada" solo porque existe HTML. Si depende de assets resueltos o config raiz, queda `parcial`.
 - Para preview vs publish, la fuente de verdad actual es la combinacion de `previewPublishParity`, `prepareRenderPayload`, y `validatePreparedRenderPayload`, no inspeccion manual aislada del canvas.
-- Para imagen social publicada, usar solo el HTML de publish generado como fuente visual. El renderer debe esperar `document.readyState === "complete"`, `document.fonts.ready`, carga/error de imagenes, al menos dos animation frames, y el asentamiento acotado de animaciones/transiciones finitas de entrada en la primera seccion; luego debe capturar el primer `.inv > .sec` en `1200x630`. Los loops infinitos/decorativos no deben bloquear la captura.
-- La imagen social publicada es un artefacto obligatorio de publish. Si el renderer excede 5-8 segundos, encuentra error, o el `share.jpg` no se confirma como JPEG `1200x630`, el publish falla de forma controlada y no debe persistir una publicacion exitosa con fallback generico. El HTML final nunca debe publicar un `og:image` faltante.
+- Para imagen social publicada, usar solo el HTML de publish generado como fuente visual. El renderer debe esperar `document.readyState === "complete"`, `document.fonts.ready`, carga/error de imagenes de la primera seccion, al menos dos animation frames, y el asentamiento acotado de animaciones/transiciones finitas de entrada en la primera seccion; luego debe validar un clip finito y capturar el primer `.inv > .sec` en `1200x630`. Los loops infinitos/decorativos y las secciones no capturadas no deben bloquear la captura.
+- La imagen social publicada es un artefacto obligatorio de publish. Si el renderer excede su presupuesto backend, encuentra error, o el `share.jpg` no se confirma como JPEG `1200x630`, el publish falla de forma controlada y no debe persistir una publicacion exitosa con fallback generico. El presupuesto actual incluye cold start de Chromium y reserva tiempo final para screenshot. El HTML final nunca debe publicar un `og:image` faltante.
 - Para cambios de roles de imagen, usar tambien [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). Ese contrato define la semantica normativa de conversion: una imagen normal convertida en visual propio de seccion debe eliminar el objeto original.
 - Para cambios mobile/reflow, usar `shared/previewPublishMobileGeometryParity.test.mjs`. La captura browser completa es opt-in con `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; los tests deterministas cubren fixtures, tolerancias y diff shape.
 - Si un cambio toca `imagen`, galerias, CTA funcionales, `pantalla/yNorm` o `fullbleed`, ejecutar tambien [EDITOR_REGRESSION_CHECKLIST.md](../testing/EDITOR_REGRESSION_CHECKLIST.md).

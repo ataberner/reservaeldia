@@ -7,6 +7,7 @@ import {
 import { normalizeInvitationType } from "../utils/invitationType";
 import { generateHtmlFromPreparedRenderPayload } from "../render/prepareRenderPayload";
 import { planPublicationPublishOperations } from "./publicationOperationPlanning";
+import { type PublishingProgressReporter } from "./publicationPublishingProgress";
 import { type PreparedPublicationRenderState } from "./publicationPublishValidation";
 import {
   buildPublicationOgDescription,
@@ -87,6 +88,7 @@ export type ExecutePublicationPublishParams = {
   renderTimeoutMs?: number;
   jpegQuality?: number;
   defaultShareImageUrl?: string;
+  progress?: PublishingProgressReporter;
   applyIconUsageDelta(params: {
     objetos: unknown[];
     oldUsageMap: unknown;
@@ -236,11 +238,23 @@ export async function executePublicationPublish(
     warn,
     logError,
   } = params;
+  const progress = params.progress;
   const now = params.now || new Date();
   const nowGeneratedAtValue = createGeneratedAtValue(now);
 
+  await progress?.start("generating_public_html", {
+    draftSlug,
+    publicSlug,
+    operation,
+  });
   const baseHtml = generateHtmlFromPreparedRenderPayload(artifacts, {
     slug: publicSlug,
+  });
+  await progress?.complete("generating_public_html", {
+    draftSlug,
+    publicSlug,
+    operation,
+    htmlBytes: Buffer.byteLength(baseHtml, "utf8"),
   });
 
   const draftContentMeta = {
@@ -310,6 +324,13 @@ export async function executePublicationPublish(
   }
 
   try {
+    await progress?.start("generating_share_image", {
+      draftSlug,
+      publicSlug,
+      operation,
+      renderTimeoutMs: params.renderTimeoutMs || null,
+      htmlBytes: Buffer.byteLength(baseHtml, "utf8"),
+    });
     share = await resolveRequiredGeneratedPublishedShareImageMetadata({
       publicSlug,
       publicUrl: plannedPublish.publicUrl,
@@ -322,6 +343,7 @@ export async function executePublicationPublish(
       renderTimeoutMs: params.renderTimeoutMs,
       jpegQuality: params.jpegQuality,
       generatedSource: "renderer",
+      shareImageDiagnostics: progress,
       generateShareImage,
       saveGeneratedShareImage: async (input) => {
         shareWriteAttempted = true;
@@ -330,7 +352,21 @@ export async function executePublicationPublish(
       confirmGeneratedShareImage: confirmPublicShareImage,
       warn,
     });
+    await progress?.complete("generating_share_image", {
+      draftSlug,
+      publicSlug,
+      operation,
+      storagePath: share.storagePath,
+      imageUrl: share.imageUrl,
+    });
 
+    await progress?.start("saving_publication", {
+      draftSlug,
+      publicSlug,
+      operation,
+      htmlPath,
+      sharePath,
+    });
     const finalHtml = injectOpenGraphMetadata(baseHtml, {
       title: publicationTitle,
       description: buildPublicationOgDescription(),
@@ -344,6 +380,13 @@ export async function executePublicationPublish(
     await savePublicHtml({
       filePath: htmlPath,
       html: finalHtml,
+    });
+    await progress?.complete("saving_publication", {
+      draftSlug,
+      publicSlug,
+      operation,
+      htmlPath,
+      htmlBytes: Buffer.byteLength(finalHtml, "utf8"),
     });
 
     const publicationWrite: Record<string, unknown> = {
@@ -370,9 +413,19 @@ export async function executePublicationPublish(
       publicationWrite.slugOriginal = draftSlug;
     }
 
+    await progress?.start("finalizing_publication", {
+      draftSlug,
+      publicSlug,
+      operation,
+    });
     await executePublicationWrites({
       publicationWrite,
       draftWrite: plannedPublish.linkedDraftWrite,
+    });
+    await progress?.complete("finalizing_publication", {
+      draftSlug,
+      publicSlug,
+      operation,
     });
   } catch (publishError) {
     const rollbackContext = {

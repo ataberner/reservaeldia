@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, Loader2, RefreshCw, X } from "lucide-react";
 import { functions as cloudFunctions } from "@/firebase";
 import PublicationSuccessState from "@/components/payments/PublicationSuccessState";
 import {
+  buildPublishFailureUserMessage,
   buildCheckoutModalContextKey,
   isProcessingCheckoutStatus,
   isPublishedCheckoutStatus,
+  isRetryablePublishFailureStatusPayload,
   resolveCheckoutModalInitialization,
+  resolvePublishingProgressState,
   resolveTerminalPublicationResult,
 } from "@/domain/payments/publicationCheckoutState";
 import {
@@ -72,6 +75,9 @@ function parseErrorMessage(error, fallback) {
   if (message === "No payment type was selected") {
     return "Selecciona un medio de pago para continuar.";
   }
+  if (message === "renderer-timeout" || /renderer-timeout/i.test(message)) {
+    return "No pudimos generar la imagen para compartir en este intento. Tu pago quedo aprobado y la publicacion no se marco como publicada.";
+  }
   return message || fallback;
 }
 
@@ -102,6 +108,107 @@ function isCheckoutDebugEnabled() {
   } catch {
     return false;
   }
+}
+
+function PublicationProgressList({ progress }) {
+  if (!progress?.hasProgress) return null;
+
+  return (
+    <div className="rounded-lg border border-[#d8ccea] bg-white p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+        Publicacion en curso
+      </p>
+      <div className="mt-3 space-y-2">
+        {progress.steps.map((step) => {
+          const isRunning = step.status === "running";
+          const isCompleted = step.status === "completed";
+          const isFailed = step.status === "failed";
+          const Icon = isFailed
+            ? AlertCircle
+            : isCompleted
+              ? CheckCircle2
+              : isRunning
+                ? Loader2
+                : Circle;
+          const colorClass = isFailed
+            ? "text-red-600"
+            : isCompleted
+              ? "text-emerald-700"
+              : isRunning
+                ? "text-[#6f3bc0]"
+                : "text-slate-400";
+
+          return (
+            <div key={step.key} className={`flex items-center gap-2 text-xs ${colorClass}`}>
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${isRunning ? "animate-spin" : ""}`} />
+              <span className="min-w-0">
+                {step.label}
+                {progress.currentStage?.key === step.key && progress.currentStage?.substage?.label ? (
+                  <span className="block text-[11px] text-slate-500">
+                    {progress.currentStage.substage.label}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PublicationDebugDetails({ sessionId, progress, diagnostics }) {
+  const currentStage = progress?.currentStage || null;
+  const substage = currentStage?.substage || null;
+  const hasDetails =
+    Boolean(sessionId) ||
+    Boolean(currentStage?.key) ||
+    Boolean(substage?.key) ||
+    Boolean(diagnostics && Object.keys(diagnostics).length);
+
+  if (!hasDetails) return null;
+
+  return (
+    <details className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+      <summary className="cursor-pointer font-semibold text-slate-800">Detalles tecnicos</summary>
+      <dl className="mt-2 grid gap-1">
+        {sessionId ? (
+          <div>
+            <dt className="font-semibold">sessionId</dt>
+            <dd className="break-all">{sessionId}</dd>
+          </div>
+        ) : null}
+        {currentStage?.key ? (
+          <div>
+            <dt className="font-semibold">stage</dt>
+            <dd>{currentStage.key}</dd>
+          </div>
+        ) : null}
+        {substage?.key ? (
+          <div>
+            <dt className="font-semibold">substage</dt>
+            <dd>{substage.key}</dd>
+          </div>
+        ) : null}
+        {substage?.errorCode || currentStage?.errorCode ? (
+          <div>
+            <dt className="font-semibold">errorCode</dt>
+            <dd>{substage?.errorCode || currentStage?.errorCode}</dd>
+          </div>
+        ) : null}
+        {diagnostics && Object.keys(diagnostics).length ? (
+          <div>
+            <dt className="font-semibold">diagnostics</dt>
+            <dd>
+              <pre className="mt-1 max-h-44 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-[11px]">
+                {JSON.stringify(diagnostics, null, 2)}
+              </pre>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </details>
+  );
 }
 
 export default function PublicationCheckoutModal({
@@ -141,6 +248,10 @@ export default function PublicationCheckoutModal({
     checking: false,
   });
   const [retryingConflict, setRetryingConflict] = useState(false);
+  const [publishingProgress, setPublishingProgress] = useState(null);
+  const [publishingDiagnostics, setPublishingDiagnostics] = useState(null);
+  const [hasRetryablePublishFailure, setHasRetryablePublishFailure] = useState(false);
+  const [retryingPublish, setRetryingPublish] = useState(false);
 
   const checkoutDebugEnabled = useMemo(() => isCheckoutDebugEnabled(), [visible]);
   const logCheckoutDebug = (event, payload = {}) => {
@@ -222,6 +333,10 @@ export default function PublicationCheckoutModal({
     () => httpsCallable(cloudFunctions, "retryPaidPublicationWithNewSlug"),
     []
   );
+  const publishApprovedSessionCallable = useMemo(
+    () => httpsCallable(cloudFunctions, "publicarInvitacion"),
+    []
+  );
 
   const clearPolling = () => {
     if (pollTimerRef.current) {
@@ -257,6 +372,10 @@ export default function PublicationCheckoutModal({
     setCopiedPublicUrl(false);
     setConflictSlugInput("");
     setRetryingConflict(false);
+    setPublishingProgress(null);
+    setPublishingDiagnostics(null);
+    setHasRetryablePublishFailure(false);
+    setRetryingPublish(false);
     notifiedPublishRef.current = false;
     setSlugValidation({ normalizedSlug: "", isValid: false, isAvailable: false, reason: "", checking: false });
     setConflictValidation({ normalizedSlug: "", isValid: false, isAvailable: false, reason: "", checking: false });
@@ -327,10 +446,14 @@ export default function PublicationCheckoutModal({
     }
 
     setHasApprovedSlugConflict(false);
+    setHasRetryablePublishFailure(false);
     setPublishedUrl(terminalResult.publicUrl);
     setReceipt(terminalResult.receipt);
     setCheckoutInfo("Pago aprobado y publicacion completada.");
     setCheckoutError("");
+    setPublishingProgress(null);
+    setPublishingDiagnostics(null);
+    clearPolling();
     logCheckoutDebug("checkout:published", {
       sessionId: sessionData?.sessionId || null,
       publicUrl: terminalResult.publicUrl,
@@ -358,7 +481,24 @@ export default function PublicationCheckoutModal({
       paymentId: statusPayload?.receipt?.paymentId || null,
       publicUrl: statusPayload?.publicUrl || null,
       errorMessage: statusPayload?.errorMessage || null,
+      publishingStage: statusPayload?.publishingStage?.key || null,
+      publishingSubstage:
+        statusPayload?.publishingStage?.substage?.key ||
+        statusPayload?.publishingShareImageSubstage?.key ||
+        null,
     });
+
+    const progress = resolvePublishingProgressState(statusPayload);
+    setPublishingProgress(progress.hasProgress ? progress : null);
+    setPublishingDiagnostics(statusPayload?.publishingShareImageDiagnostics || null);
+
+    if (isRetryablePublishFailureStatusPayload(statusPayload)) {
+      setHasRetryablePublishFailure(true);
+      setCheckoutError(buildPublishFailureUserMessage(statusPayload));
+      setCheckoutInfo("");
+      clearPolling();
+      return;
+    }
 
     if (isPublishedCheckoutStatus(status)) {
       applyTerminalPublishResult({
@@ -370,6 +510,7 @@ export default function PublicationCheckoutModal({
     }
 
     if (status === "approved_slug_conflict") {
+      setHasRetryablePublishFailure(false);
       setHasApprovedSlugConflict(true);
       setCheckoutError("");
       setCheckoutInfo("El pago fue aprobado, pero el enlace elegido entro en conflicto. Elegi uno nuevo para finalizar.");
@@ -378,6 +519,7 @@ export default function PublicationCheckoutModal({
     }
 
     if (status === "payment_rejected") {
+      setHasRetryablePublishFailure(false);
       setCheckoutError(statusPayload?.errorMessage || "El pago fue rechazado. Intenta con otro medio.");
       setCheckoutInfo("");
       clearPolling();
@@ -385,6 +527,7 @@ export default function PublicationCheckoutModal({
     }
 
     if (status === "expired") {
+      setHasRetryablePublishFailure(false);
       setCheckoutError(statusPayload?.errorMessage || "La sesion de pago expiro. Inicia una nueva.");
       setCheckoutInfo("");
       clearPolling();
@@ -392,8 +535,28 @@ export default function PublicationCheckoutModal({
     }
 
     if (isProcessingCheckoutStatus(status)) {
-      setCheckoutInfo("Estamos confirmando tu pago. Esto puede tardar unos segundos.");
+      setHasRetryablePublishFailure(false);
+      setCheckoutInfo(
+        progress.currentStage?.label ||
+          "Estamos confirmando tu pago. Esto puede tardar unos segundos."
+      );
       setCheckoutError("");
+    }
+  };
+
+  const refreshCheckoutStatus = async (sessionId) => {
+    if (!sessionId) return null;
+    try {
+      const result = await getStatusCallable({ sessionId });
+      const payload = result?.data || {};
+      applyCheckoutStatus(payload);
+      return payload;
+    } catch (error) {
+      logCheckoutDebug("status:refresh:error", {
+        sessionId,
+        message: parseErrorMessage(error, "No se pudo verificar el estado del pago."),
+      });
+      return null;
     }
   };
 
@@ -420,7 +583,7 @@ export default function PublicationCheckoutModal({
           message,
         });
       }
-    }, 3500);
+    }, 1800);
   };
 
   const checkSlugAvailability = async ({ value, setState }) => {
@@ -474,6 +637,10 @@ export default function PublicationCheckoutModal({
     unmountBrick();
     setSessionData(null);
     setHasApprovedSlugConflict(false);
+    setPublishingProgress(null);
+    setPublishingDiagnostics(null);
+    setHasRetryablePublishFailure(false);
+    setRetryingPublish(false);
     setCheckoutInfo("");
     setCheckoutError("");
   };
@@ -523,7 +690,12 @@ export default function PublicationCheckoutModal({
         setCheckoutInfo("Descuento total aplicado. Confirmando publicacion...");
         setPaying(true);
         try {
-          const autoResult = await createPaymentCallable({ sessionId: data.sessionId, brickData: {} });
+          const autoPaymentPromise = createPaymentCallable({
+            sessionId: data.sessionId,
+            brickData: {},
+          });
+          startPollingStatus(data.sessionId);
+          const autoResult = await autoPaymentPromise;
           const payload = autoResult?.data || {};
           logCheckoutDebug("createPayment:autoDiscount", {
             sessionId: data?.sessionId || null,
@@ -552,6 +724,16 @@ export default function PublicationCheckoutModal({
             setCheckoutInfo("Estamos confirmando la publicacion.");
             startPollingStatus(data.sessionId);
           }
+        } catch (error) {
+          const message = parseErrorMessage(error, "No se pudo completar la publicacion.");
+          const statusPayload = await refreshCheckoutStatus(data.sessionId);
+          if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+            setCheckoutError(message);
+          }
+          logCheckoutDebug("createPayment:autoDiscount:error", {
+            sessionId: data?.sessionId || null,
+            message,
+          });
         } finally {
           setPaying(false);
         }
@@ -606,10 +788,12 @@ export default function PublicationCheckoutModal({
         payment_method_id: paymentMethodId,
       };
 
-      const result = await createPaymentCallable({
+      const paymentPromise = createPaymentCallable({
         sessionId: sessionData.sessionId,
         brickData: normalizedBrickData,
       });
+      startPollingStatus(sessionData.sessionId);
+      const result = await paymentPromise;
       const payload = result?.data || {};
       logCheckoutDebug("createPayment:result", {
         sessionId: sessionData?.sessionId || null,
@@ -640,7 +824,10 @@ export default function PublicationCheckoutModal({
       }
     } catch (error) {
       const message = parseErrorMessage(error, "No se pudo procesar el pago.");
-      setCheckoutError(message);
+      const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
+      if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+        setCheckoutError(message);
+      }
       logCheckoutDebug("createPayment:error", {
         sessionId: sessionData?.sessionId || null,
         message,
@@ -661,10 +848,12 @@ export default function PublicationCheckoutModal({
         sessionId: sessionData?.sessionId || null,
         requestedSlug: conflictValidation.normalizedSlug || null,
       });
-      const result = await retryConflictCallable({
+      const retryPromise = retryConflictCallable({
         sessionId: sessionData.sessionId,
         newPublicSlug: conflictValidation.normalizedSlug,
       });
+      startPollingStatus(sessionData.sessionId);
+      const result = await retryPromise;
       const data = result?.data || {};
       logCheckoutDebug("retryConflict:result", {
         sessionId: sessionData?.sessionId || null,
@@ -695,13 +884,69 @@ export default function PublicationCheckoutModal({
       }
     } catch (error) {
       const message = parseErrorMessage(error, "No se pudo completar la publicacion.");
-      setCheckoutError(message);
+      const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
+      if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+        setCheckoutError(message);
+      }
       logCheckoutDebug("retryConflict:error", {
         sessionId: sessionData?.sessionId || null,
         message,
       });
     } finally {
       setRetryingConflict(false);
+    }
+  };
+
+  const handleRetryPublish = async () => {
+    if (!sessionData?.sessionId || retryingPublish || receipt) return;
+
+    setRetryingPublish(true);
+    setHasRetryablePublishFailure(false);
+    setPublishingDiagnostics(null);
+    setCheckoutError("");
+    setCheckoutInfo("Reintentando publicacion...");
+
+    try {
+      logCheckoutDebug("retryPublish:start", {
+        sessionId: sessionData?.sessionId || null,
+        draftSlug,
+        publicSlug: sessionData?.publicSlug || effectiveCurrentSlug || null,
+      });
+      const retryPromise = publishApprovedSessionCallable({
+        slug: draftSlug,
+        slugPublico: sessionData?.publicSlug || effectiveCurrentSlug || undefined,
+        paymentSessionId: sessionData.sessionId,
+      });
+      startPollingStatus(sessionData.sessionId);
+      const result = await retryPromise;
+      const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
+      if (isPublishedCheckoutStatus(statusPayload?.sessionStatus)) {
+        return;
+      }
+
+      const data = result?.data || {};
+      if (data?.success && data?.url) {
+        applyTerminalPublishResult({
+          url: String(data.url || ""),
+          receiptData: statusPayload?.receipt || receipt || null,
+          slug: sessionData?.publicSlug || effectiveCurrentSlug,
+        });
+        return;
+      }
+
+      setCheckoutInfo("No se pudo completar la publicacion en este intento.");
+    } catch (error) {
+      const message = parseErrorMessage(error, "No se pudo reintentar la publicacion.");
+      const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
+      if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+        setCheckoutError(message);
+      }
+      logCheckoutDebug("retryPublish:error", {
+        sessionId: sessionData?.sessionId || null,
+        message,
+      });
+    } finally {
+      setRetryingPublish(false);
     }
   };
 
@@ -728,6 +973,10 @@ export default function PublicationCheckoutModal({
     setReceipt(null);
     setSessionData(null);
     setPublishedUrl("");
+    setPublishingProgress(null);
+    setPublishingDiagnostics(null);
+    setHasRetryablePublishFailure(false);
+    setRetryingPublish(false);
     notifiedPublishRef.current = false;
 
     return () => {
@@ -1032,6 +1281,10 @@ export default function PublicationCheckoutModal({
                 />
               ) : null}
 
+              {!receipt && publishingProgress?.hasProgress ? (
+                <PublicationProgressList progress={publishingProgress} />
+              ) : null}
+
               {!receipt && showConflictFlow ? (
                 <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50/80 p-4">
                   <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
@@ -1100,17 +1353,45 @@ export default function PublicationCheckoutModal({
                 </p>
               ) : null}
 
-              {showPreSuccessFlow && pollingStatus ? (
+              {showPreSuccessFlow && checkoutDebugEnabled && hasRetryablePublishFailure ? (
+                <PublicationDebugDetails
+                  sessionId={sessionData?.sessionId || ""}
+                  progress={publishingProgress}
+                  diagnostics={publishingDiagnostics}
+                />
+              ) : null}
+
+              {showPreSuccessFlow && hasRetryablePublishFailure && sessionData?.sessionId ? (
+                <button
+                  type="button"
+                  onClick={handleRetryPublish}
+                  disabled={retryingPublish}
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white transition ${
+                    retryingPublish
+                      ? "cursor-not-allowed bg-[#baa4df]"
+                      : "bg-[#6f3bc0] hover:bg-[#6232ad]"
+                  }`}
+                >
+                  {retryingPublish ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Reintentar publicacion
+                </button>
+              ) : null}
+
+              {showPreSuccessFlow && pollingStatus && !hasRetryablePublishFailure ? (
                 <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Confirmando estado del pago...
+                  {publishingProgress?.currentStage?.label || "Confirmando estado del pago..."}
                 </p>
               ) : null}
 
-              {showPreSuccessFlow && paying ? (
+              {showPreSuccessFlow && paying && !hasRetryablePublishFailure ? (
                 <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Enviando pago...
+                  {publishingProgress?.currentStage?.label || "Enviando pago..."}
                 </p>
               ) : null}
             </div>

@@ -728,6 +728,20 @@ Observed fields include:
 - `amountBaseArs`, `amountArs`, `discountAmountArs`, `discountCode`, `discountDescription`, `currency`
 - `pricingSnapshot` with `pricingVersion`, `operationType`, `appliedPrice`, `currency`
 - `status`, `expiresAt`, `lastError`
+- `publishingStage` with current/last backend publish stage, status, timestamp,
+  optional duration, and optional error code
+- `publishingStageDurationsMs` diagnostic map keyed by publish stage
+- `publishingShareImageSubstage` with the current/last internal substep when
+  `publishingStage.key === "generating_share_image"`; observed substeps include
+  renderer preparation, Chromium resolution, browser launch, HTML load, font
+  readiness, first-section isolation, image readiness, layout settling,
+  screenshot, image optimization, Storage save, and Storage confirmation
+- `publishingShareImageDiagnostics` with bounded technical counters for the
+  latest share-image substep, such as HTML byte size, image/font counts,
+  first-section image counts, ignored image counts, pending/failed image
+  host samples, capture clip and section bounding-box metrics, document scroll
+  dimensions, external host count, render timeout, memory snapshots, storage
+  path, and error code
 - `mpPreferenceId`, `mpPaymentId`, `mpStatus`, `mpStatusDetail`
 - `publicUrl`
 - `receipt` with `operation`, `amountBaseArs`, `amountArs`, `discountAmountArs`, `discountCode`, `discountDescription`, `currency`, `approvedAt`, `paymentId`, `publicSlug`, `publicUrl`

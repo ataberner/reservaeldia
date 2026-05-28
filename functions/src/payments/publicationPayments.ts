@@ -62,6 +62,10 @@ import {
 } from "../render/prepareRenderPayload";
 import { executePublicationPublish } from "./publicationPublishExecution";
 import {
+  createPublishingProgressReporter,
+  type PublishingProgressReporter,
+} from "./publicationPublishingProgress";
+import {
   isCompliantPublishedShareImageBuffer,
   isPublishedShareImageEnabled,
 } from "./publishedShareImage";
@@ -202,6 +206,7 @@ type PublishDraftParams = {
   uid: string;
   operation: CheckoutOperation;
   paymentSessionId: string;
+  progress?: PublishingProgressReporter;
 };
 
 type PublishDraftResult = {
@@ -214,6 +219,10 @@ type CheckoutStatusResponse = {
   publicUrl?: string;
   receipt?: Record<string, unknown>;
   errorMessage?: string;
+  publishingStage?: Record<string, unknown>;
+  publishingStageDurationsMs?: Record<string, unknown>;
+  publishingShareImageSubstage?: Record<string, unknown>;
+  publishingShareImageDiagnostics?: Record<string, unknown>;
 };
 
 type DiscountDoc = {
@@ -1166,7 +1175,11 @@ function cloneFirestoreSafe<T>(value: T): T {
 }
 
 async function buildPublicationRenderArtifacts(
-  draftData: Record<string, unknown>
+  draftData: Record<string, unknown>,
+  options: {
+    progress?: PublishingProgressReporter;
+    assertCanPublish?: boolean;
+  } = {}
 ): Promise<{
   draftRenderState: ReturnType<typeof normalizeDraftRenderState>;
   objetosFinales: Record<string, unknown>[];
@@ -1176,8 +1189,29 @@ async function buildPublicationRenderArtifacts(
   functionalCtaContract: PreparedRenderPayload["functionalCtaContract"];
   validation: ReturnType<typeof validatePreparedRenderPayload>;
 }> {
+  const { progress, assertCanPublish = false } = options;
+  await progress?.start("preparing_invitation", {
+    objectCount: Array.isArray(draftData.objetos) ? draftData.objetos.length : null,
+    sectionCount: Array.isArray(draftData.secciones) ? draftData.secciones.length : null,
+  });
   const prepared = await prepareRenderPayload(draftData);
+  await progress?.complete("preparing_invitation", {
+    objectCount: prepared.draftRenderState.objetos.length,
+    sectionCount: prepared.draftRenderState.secciones.length,
+  });
+
+  await progress?.start("validating_content", {
+    objectCount: prepared.objetosFinales.length,
+    sectionCount: prepared.seccionesFinales.length,
+  });
   const validation = validatePreparedRenderPayload(prepared);
+  if (assertCanPublish) {
+    assertPublicationValidationCanPublish(validation);
+  }
+  await progress?.complete("validating_content", {
+    blockerCount: validation.blockers.length,
+    warningCount: validation.warnings.length,
+  });
 
   return {
     draftRenderState: prepared.draftRenderState,
@@ -1211,7 +1245,7 @@ function createSlugConflictError(message: string): HttpsError {
 }
 
 export async function publishDraftToPublic(params: PublishDraftParams): Promise<PublishDraftResult> {
-  const { draftSlug, publicSlug, uid, operation, paymentSessionId } = params;
+  const { draftSlug, publicSlug, uid, operation, paymentSessionId, progress } = params;
 
   const draft = await ensureDraftOwnership(uid, draftSlug);
   const draftData = draft.data;
@@ -1286,9 +1320,12 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
     }
   }
   const artifacts = await buildPublicationRenderArtifacts(
-    draftData as Record<string, unknown>
+    draftData as Record<string, unknown>,
+    {
+      progress,
+      assertCanPublish: true,
+    }
   );
-  assertPublicationValidationCanPublish(artifacts.validation);
 
   return executePublicationPublish({
     draftSlug,
@@ -1366,6 +1403,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
       }
     },
     shareImageEnabled: isPublishedShareImageEnabled(),
+    progress,
     applyIconUsageDelta: (input) => applyPublicationIconUsageDelta(input),
     executePublicationWrites: async ({ publicationWrite, draftWrite }) =>
       executePlannedPublicationWrites({
@@ -1388,6 +1426,16 @@ async function finalizeApprovedSession(params: {
 }): Promise<CheckoutPaymentResult> {
   const { sessionId, fallbackPaymentId, approvedAt } = params;
   const sessionRef = getSessionRef(sessionId);
+  const progress = createPublishingProgressReporter({
+    sessionRef,
+    createUpdatedAtValue: () => serverTimestamp(),
+    logInfo: (message, context) => logger.info(message, context),
+    logError: (message, context) => logger.error(message, context),
+    baseContext: {
+      sessionId,
+      fallbackPaymentId,
+    },
+  });
 
   return finalizeApprovedSessionFlow({
     sessionId,
@@ -1396,7 +1444,21 @@ async function finalizeApprovedSession(params: {
     sessionRef,
     runTransaction: (updateFn) => db.runTransaction((tx) => updateFn(tx as any)),
     createUpdatedAtValue: () => serverTimestamp(),
-    publishDraftToPublic: (input) => publishDraftToPublic(input),
+    publishDraftToPublic: async (input) => {
+      try {
+        return await publishDraftToPublic({
+          ...input,
+          progress,
+        });
+      } catch (error) {
+        await progress.fail(error, {
+          draftSlug: input.draftSlug,
+          publicSlug: input.publicSlug,
+          operation: input.operation,
+        });
+        throw error;
+      }
+    },
     updateReservationStatus: (update) => markReservationStatus(update),
     recordDiscountUsageIfNeeded,
     approvedPaymentAnalytics: {

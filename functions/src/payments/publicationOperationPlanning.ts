@@ -391,6 +391,11 @@ export function planApprovedSessionPublishingClaim(params: {
     shouldPublish: true,
     sessionWrite: {
       status: "publishing",
+      lastError: null,
+      publishingStage: null,
+      publishingStageDurationsMs: null,
+      publishingShareImageSubstage: null,
+      publishingShareImageDiagnostics: null,
       updatedAt: updatedAtValue,
     },
   };

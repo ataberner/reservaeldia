@@ -4,17 +4,41 @@ import sharp from "sharp";
 import {
   captureFirstSectionShareImage,
   type CaptureFirstSectionShareImageParams,
+  type ShareImageRenderDiagnostics,
+  type ShareImageRenderSubstage,
 } from "./publishedShareImageRenderer";
 
 export const PUBLISHED_SHARE_IMAGE_WIDTH = 1200;
 export const PUBLISHED_SHARE_IMAGE_HEIGHT = 630;
 export const PUBLISHED_SHARE_IMAGE_QUALITY = 85;
-export const PUBLISHED_SHARE_IMAGE_TIMEOUT_MS = 7000;
+export const PUBLISHED_SHARE_IMAGE_TIMEOUT_MS = 15000;
 export const PUBLISHED_SHARE_IMAGE_RENDER_DELAY_MS = 15000;
 export const PUBLISHED_SHARE_IMAGE_MIME_TYPE = "image/jpeg";
 const MAX_PUBLIC_SHARE_IMAGE_VALIDATION_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_STATIC_SHARE_IMAGE_URL =
   "https://reservaeldia.com.ar/assets/img/default-share.jpg";
+const SHARE_IMAGE_PIPELINE_SUBSTAGES = Object.freeze({
+  PREPARING_RENDERER_HTML: {
+    key: "preparing_renderer_html",
+    label: "Preparando HTML para imagen",
+  },
+  CAPTURING_IMAGE: {
+    key: "capturing_image",
+    label: "Capturando imagen",
+  },
+  OPTIMIZING_IMAGE: {
+    key: "optimizing_image",
+    label: "Optimizando imagen",
+  },
+  SAVING_IMAGE: {
+    key: "saving_image",
+    label: "Guardando imagen",
+  },
+  CONFIRMING_IMAGE: {
+    key: "confirming_image",
+    label: "Confirmando imagen",
+  },
+});
 
 type PublishedShareStatus = "generated" | "fallback";
 type PublishedShareSource =
@@ -75,6 +99,7 @@ export type ResolvePublishedShareImageParams = {
   renderDelayMs?: number;
   jpegQuality?: number;
   generatedSource?: "published-html-first-section" | "renderer";
+  shareImageDiagnostics?: ShareImageRenderDiagnostics;
   generateShareImage?(
     params: CaptureFirstSectionShareImageParams
   ): Promise<Buffer | GeneratedShareImageResult>;
@@ -103,6 +128,7 @@ export type ResolveGeneratedPublishedShareImageParams = {
   renderDelayMs?: number;
   jpegQuality?: number;
   generatedSource?: "published-html-first-section" | "renderer";
+  shareImageDiagnostics?: ShareImageRenderDiagnostics;
   generateShareImage?(
     params: CaptureFirstSectionShareImageParams
   ): Promise<Buffer | GeneratedShareImageResult>;
@@ -208,6 +234,119 @@ function withTimeout<T>(
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timeout) clearTimeout(timeout);
   });
+}
+
+function callShareImageDiagnostic(
+  diagnostics: ShareImageRenderDiagnostics | undefined,
+  method: keyof ShareImageRenderDiagnostics,
+  ...args: unknown[]
+): void {
+  const handler = diagnostics?.[method] as
+    | ((...input: unknown[]) => Promise<void> | void)
+    | undefined;
+  if (typeof handler !== "function") return;
+
+  try {
+    Promise.resolve(handler(...args)).catch(() => undefined);
+  } catch {
+    // Diagnostics must not affect the publish contract.
+  }
+}
+
+async function runShareImagePipelineSubstage<T>(
+  diagnostics: ShareImageRenderDiagnostics | undefined,
+  substage: ShareImageRenderSubstage,
+  context: Record<string, unknown>,
+  operation: () => Promise<T> | T,
+  getCompleteContext?: (result: T) => Record<string, unknown>
+): Promise<T> {
+  callShareImageDiagnostic(diagnostics, "startSubstage", substage, context);
+  try {
+    const result = await operation();
+    callShareImageDiagnostic(diagnostics, "completeSubstage", substage, {
+      ...context,
+      ...(getCompleteContext ? getCompleteContext(result) : {}),
+    });
+    return result;
+  } catch (error) {
+    callShareImageDiagnostic(diagnostics, "failSubstage", error, {
+      substage: substage.key,
+      substageLabel: substage.label,
+      ...context,
+    });
+    throw error;
+  }
+}
+
+function extractHost(value: string): string {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function collectShareImageHtmlDiagnostics(html: string): Record<string, unknown> {
+  const htmlBytes = Buffer.byteLength(String(html || ""), "utf8");
+  try {
+    const dom = new JSDOM(String(html || ""));
+    const { document } = dom.window;
+    const images = Array.from(document.querySelectorAll("img"));
+    const firstSection = document.querySelector(".inv > .sec:first-child");
+    const firstSectionImages = firstSection
+      ? Array.from(firstSection.querySelectorAll("img"))
+      : [];
+    const links = Array.from(document.querySelectorAll("link[href]"));
+    const externalHosts = new Set<string>();
+
+    images.forEach((image) => {
+      const src = getString(image.getAttribute("src"));
+      const host = src ? extractHost(src) : "";
+      if (host) externalHosts.add(host);
+    });
+    links.forEach((link) => {
+      const href = getString(link.getAttribute("href"));
+      const host = href ? extractHost(href) : "";
+      if (host) externalHosts.add(host);
+    });
+
+    const fontStylesheetLinks = links.filter((link) => {
+      const href = getString(link.getAttribute("href")).toLowerCase();
+      const rel = getString(link.getAttribute("rel")).toLowerCase();
+      return (
+        rel.includes("stylesheet") &&
+        (href.includes("fonts.googleapis.com") ||
+          href.includes("fonts.gstatic.com") ||
+          href.includes("font"))
+      );
+    });
+
+    return {
+      htmlBytes,
+      imageCount: images.length,
+      firstSectionImageCount: firstSectionImages.length,
+      outsideFirstSectionImageCount: Math.max(
+        0,
+        images.length - firstSectionImages.length
+      ),
+      lazyImageCount: images.filter(
+        (image) => getString(image.getAttribute("loading")).toLowerCase() === "lazy"
+      ).length,
+      stylesheetCount: links.filter((link) =>
+        getString(link.getAttribute("rel")).toLowerCase().includes("stylesheet")
+      ).length,
+      fontStylesheetCount: fontStylesheetLinks.length,
+      cssFontFaceCount: (String(html || "").match(/@font-face/gi) || []).length,
+      externalHostCount: externalHosts.size,
+      externalHostsSample: Array.from(externalHosts).slice(0, 10),
+      hasFirstSection: Boolean(firstSection),
+    };
+  } catch {
+    return {
+      htmlBytes,
+      htmlDiagnosticsError: true,
+    };
+  }
 }
 
 function appendVersionParam(rawUrl: string, version: string): string {
@@ -482,7 +621,25 @@ async function resolveGeneratedShareMetadata(
   const renderDelayMs = Math.max(0, Math.floor(params.renderDelayMs || 0));
   const jpegQuality = params.jpegQuality || PUBLISHED_SHARE_IMAGE_QUALITY;
   const generatedSource = params.generatedSource || "renderer";
-  const rendererHtml = preparePublishedShareImageHtml(params.baseHtml);
+  const diagnostics = params.shareImageDiagnostics;
+  const rendererHtml = await runShareImagePipelineSubstage(
+    diagnostics,
+    SHARE_IMAGE_PIPELINE_SUBSTAGES.PREPARING_RENDERER_HTML,
+    {
+      publicSlug: params.publicSlug,
+      renderTimeoutMs,
+      baseHtmlBytes: Buffer.byteLength(String(params.baseHtml || ""), "utf8"),
+    },
+    () => preparePublishedShareImageHtml(params.baseHtml),
+    (html) => collectShareImageHtmlDiagnostics(html)
+  );
+  callShareImageDiagnostic(diagnostics, "recordDiagnostics", {
+    publicSlug: params.publicSlug,
+    renderTimeoutMs,
+    renderDelayMs,
+    jpegQuality,
+    ...collectShareImageHtmlDiagnostics(rendererHtml),
+  });
   const renderParams = {
     html: rendererHtml,
     width: PUBLISHED_SHARE_IMAGE_WIDTH,
@@ -490,17 +647,42 @@ async function resolveGeneratedShareMetadata(
     quality: jpegQuality,
     timeoutMs: renderTimeoutMs,
     delayMs: renderDelayMs,
+    diagnostics,
   };
   const generatedInput = params.generateShareImage
-    ? await withTimeout(
-        params.generateShareImage(renderParams),
-        renderTimeoutMs,
-        "renderer-timeout"
+    ? await runShareImagePipelineSubstage(
+        diagnostics,
+        SHARE_IMAGE_PIPELINE_SUBSTAGES.CAPTURING_IMAGE,
+        {
+          publicSlug: params.publicSlug,
+          renderTimeoutMs,
+          injectedShareRenderer: true,
+        },
+        () =>
+          withTimeout(
+            params.generateShareImage!(renderParams),
+            renderTimeoutMs,
+            "renderer-timeout"
+          )
       )
     : await captureFirstSectionShareImage(renderParams);
-  const generated = await normalizeGeneratedShareImageBuffer(
-    generatedInput,
-    jpegQuality
+  const generated = await runShareImagePipelineSubstage(
+    diagnostics,
+    SHARE_IMAGE_PIPELINE_SUBSTAGES.OPTIMIZING_IMAGE,
+    {
+      publicSlug: params.publicSlug,
+      jpegQuality,
+      rawBytes: Buffer.isBuffer(generatedInput)
+        ? generatedInput.length
+        : generatedInput.buffer?.length || null,
+    },
+    () => normalizeGeneratedShareImageBuffer(generatedInput, jpegQuality),
+    (normalized) => ({
+      normalizedBytes: normalized.buffer.length,
+      width: normalized.width || null,
+      height: normalized.height || null,
+      mimeType: normalized.mimeType || null,
+    })
   );
 
   if (generated.buffer.length > 300 * 1024) {
@@ -512,26 +694,61 @@ async function resolveGeneratedShareMetadata(
   }
 
   const storagePath = buildGeneratedShareStoragePath(params.publicSlug);
-  await params.saveGeneratedShareImage({
-    storagePath,
-    image: generated.buffer,
-    contentType: PUBLISHED_SHARE_IMAGE_MIME_TYPE,
-    cacheControl: "public,max-age=31536000,immutable",
-  });
-
-  const confirmed = await params.confirmGeneratedShareImage({ storagePath }).catch(
-    (error) => {
-      params.warn?.("No se pudo confirmar imagen share generada", {
-        publicSlug: params.publicSlug,
-        storagePath,
-        error: error instanceof Error ? error.message : String(error || ""),
-      });
-      return false;
+  await runShareImagePipelineSubstage(
+    diagnostics,
+    SHARE_IMAGE_PIPELINE_SUBSTAGES.SAVING_IMAGE,
+    {
+      publicSlug: params.publicSlug,
+      storagePath,
+      byteLength: generated.buffer.length,
+      contentType: PUBLISHED_SHARE_IMAGE_MIME_TYPE,
+    },
+    async () => {
+      try {
+        await params.saveGeneratedShareImage({
+          storagePath,
+          image: generated.buffer,
+          contentType: PUBLISHED_SHARE_IMAGE_MIME_TYPE,
+          cacheControl: "public,max-age=31536000,immutable",
+        });
+      } catch (error) {
+        params.warn?.("No se pudo guardar imagen share generada", {
+          publicSlug: params.publicSlug,
+          storagePath,
+          error: error instanceof Error ? error.message : String(error || ""),
+        });
+        throw new Error("share-upload-failed");
+      }
     }
   );
-  if (!confirmed) {
-    throw new Error("share-upload-failed");
-  }
+
+  await runShareImagePipelineSubstage(
+    diagnostics,
+    SHARE_IMAGE_PIPELINE_SUBSTAGES.CONFIRMING_IMAGE,
+    {
+      publicSlug: params.publicSlug,
+      storagePath,
+    },
+    async () => {
+      const confirmed = await params.confirmGeneratedShareImage({ storagePath }).catch(
+        (error) => {
+          params.warn?.("No se pudo confirmar imagen share generada", {
+            publicSlug: params.publicSlug,
+            storagePath,
+            error: error instanceof Error ? error.message : String(error || ""),
+          });
+          return false;
+        }
+      );
+      if (!confirmed) {
+        throw new Error("share-upload-failed");
+      }
+      return confirmed;
+    },
+    (confirmed) => ({
+      confirmed,
+    })
+  );
 
   const imageDigest = createVersion(generated.buffer);
   const version = createShareVersion([
@@ -563,10 +780,17 @@ export async function resolveRequiredGeneratedPublishedShareImageMetadata(
   } catch (error) {
     const fallbackReason = getFallbackReasonFromError(error);
     const errorCode = getErrorCode(error);
+    callShareImageDiagnostic(params.shareImageDiagnostics, "recordDiagnostics", {
+      publicSlug: params.publicSlug,
+      fallbackReason,
+      errorCode,
+      renderTimeoutMs: params.renderTimeoutMs || PUBLISHED_SHARE_IMAGE_TIMEOUT_MS,
+    });
     params.warn?.("No se pudo generar imagen share publicada; se bloquea publish", {
       publicSlug: params.publicSlug,
       fallbackReason,
       errorCode,
+      renderTimeoutMs: params.renderTimeoutMs || PUBLISHED_SHARE_IMAGE_TIMEOUT_MS,
     });
     throw new Error(errorCode);
   }

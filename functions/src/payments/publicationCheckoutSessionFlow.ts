@@ -138,13 +138,50 @@ export function buildCheckoutStatusResponseFromSession(data: UnknownRecord): {
   publicUrl?: string;
   receipt?: Record<string, unknown>;
   errorMessage?: string;
+  publishingStage?: Record<string, unknown>;
+  publishingStageDurationsMs?: Record<string, unknown>;
+  publishingShareImageSubstage?: Record<string, unknown>;
+  publishingShareImageDiagnostics?: Record<string, unknown>;
 } {
-  return {
+  const response: {
+    sessionStatus: CheckoutSessionStatus;
+    publicUrl?: string;
+    receipt?: Record<string, unknown>;
+    errorMessage?: string;
+    publishingStage?: Record<string, unknown>;
+    publishingStageDurationsMs?: Record<string, unknown>;
+    publishingShareImageSubstage?: Record<string, unknown>;
+    publishingShareImageDiagnostics?: Record<string, unknown>;
+  } = {
     sessionStatus: (getString(data.status) as CheckoutSessionStatus) || "awaiting_payment",
     publicUrl: getString(data.publicUrl) || undefined,
     receipt: (data.receipt as Record<string, unknown> | undefined) || undefined,
     errorMessage: getString(data.lastError) || undefined,
   };
+
+  const publishingStage = asRecord(data.publishingStage);
+  if (Object.keys(publishingStage).length > 0) {
+    response.publishingStage = publishingStage;
+  }
+
+  const publishingStageDurationsMs = asRecord(data.publishingStageDurationsMs);
+  if (Object.keys(publishingStageDurationsMs).length > 0) {
+    response.publishingStageDurationsMs = publishingStageDurationsMs;
+  }
+
+  const publishingShareImageSubstage = asRecord(data.publishingShareImageSubstage);
+  if (Object.keys(publishingShareImageSubstage).length > 0) {
+    response.publishingShareImageSubstage = publishingShareImageSubstage;
+  }
+
+  const publishingShareImageDiagnostics = asRecord(
+    data.publishingShareImageDiagnostics
+  );
+  if (Object.keys(publishingShareImageDiagnostics).length > 0) {
+    response.publishingShareImageDiagnostics = publishingShareImageDiagnostics;
+  }
+
+  return response;
 }
 
 export async function autoApproveZeroAmountCheckoutSessionFlow<SessionRef extends SessionRefLike>(

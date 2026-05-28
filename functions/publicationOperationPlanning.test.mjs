@@ -256,6 +256,11 @@ test("approved-session publishing claim only transitions compatible statuses to 
     shouldPublish: true,
     sessionWrite: {
       status: "publishing",
+      lastError: null,
+      publishingStage: null,
+      publishingStageDurationsMs: null,
+      publishingShareImageSubstage: null,
+      publishingShareImageDiagnostics: null,
       updatedAt: updatedAtValue,
     },
   });

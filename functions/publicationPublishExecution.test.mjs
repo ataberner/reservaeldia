@@ -1541,8 +1541,19 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
     },
     async evaluate(fn) {
       calls.evaluate += 1;
-      calls.evaluateSources.push(String(fn));
-      return calls.evaluate === 2
+      const source = String(fn);
+      calls.evaluateSources.push(source);
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 0,
+          firstSectionImageCount: 0,
+          captureRelevantImageCount: 0,
+          ignoredImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      return source.includes("clipX") && source.includes("targetWidth")
         ? { x: 0, y: 0, width: 1200, height: 630 }
         : undefined;
     },
@@ -1590,17 +1601,18 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
     args: ["--serverless-arg"],
     headless: "shell",
     defaultViewport: { width: 1200, height: 630, deviceScaleFactor: 1 },
-    timeout: 7000,
+    timeout: 15000,
   });
   assert.deepEqual(calls.viewport, { width: 1200, height: 630, deviceScaleFactor: 1 });
   assert.match(calls.content, /class="inv"/);
   assert.equal(calls.waitForFunction, 1);
-  assert.equal(calls.evaluate, 4);
+  assert.equal(calls.evaluate, 9);
   assert.ok(
     calls.evaluateSources.some((source) =>
       source.includes('querySelector(".inv > .sec:first-child")')
     )
   );
+  assert.ok(calls.evaluateSources.some((source) => source.includes("ignoredImageCount")));
   assert.ok(calls.evaluateSources.some((source) => source.includes("window.scrollTo(0, 0)")));
   assert.ok(calls.evaluateSources.some((source) => source.includes("getAnimations")));
   assert.ok(
@@ -1632,7 +1644,17 @@ test("captureFirstSectionShareImage awaits first-section settle phase before scr
     async evaluate(fn) {
       calls.evaluate += 1;
       const source = String(fn);
-      if (calls.evaluate === 2) {
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 0,
+          firstSectionImageCount: 0,
+          captureRelevantImageCount: 0,
+          ignoredImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("clipX") && source.includes("targetWidth")) {
         return { x: 0, y: 0, width: 1200, height: 630 };
       }
       if (source.includes("waitForFirstSectionVisualSettled")) {
@@ -1679,6 +1701,497 @@ test("captureFirstSectionShareImage awaits first-section settle phase before scr
 
   assert.equal(output.toString(), "settled-jpeg");
   assert.deepEqual(calls.order, ["settle-start", "settle-end", "screenshot"]);
+});
+
+test("captureFirstSectionShareImage waits only first-section images after isolating share DOM", async () => {
+  const events = [];
+  const calls = {
+    evaluateSources: [],
+    screenshot: null,
+  };
+  const fakePage = {
+    setDefaultTimeout() {},
+    setDefaultNavigationTimeout() {},
+    async setViewport() {},
+    async setContent() {},
+    async waitForFunction() {},
+    async evaluate(fn) {
+      const source = String(fn);
+      calls.evaluateSources.push(source);
+      if (source.includes("Array.from(document.images).map")) {
+        return new Promise(() => undefined);
+      }
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 4,
+          imageCount: 4,
+          firstSectionImageCount: 1,
+          captureRelevantImageCount: 1,
+          ignoredImageCount: 3,
+          outsideFirstSectionImageCount: 3,
+          hiddenOutsideSectionCount: 1,
+          lazyImageCount: 3,
+          firstSectionLazyImageCount: 0,
+          ignoredLazyImageCount: 3,
+          remainingDocumentImageCount: 4,
+          ignoredImageHostsSample: ["heavy.example.test"],
+          ignoredImageUrlSample: ["https://heavy.example.test/gallery-never.jpg"],
+        };
+      }
+      if (source.includes("pendingFirstSectionImageUrlSample")) {
+        return {
+          imageCount: 1,
+          completeImageCount: 1,
+          pendingImageCount: 0,
+          lazyImageCount: 0,
+          firstSectionImageCount: 1,
+          remainingDocumentImageCount: 1,
+          pendingFirstSectionImageHostsSample: [],
+          pendingFirstSectionImageUrlSample: [],
+        };
+      }
+      if (source.includes("failedImageCount")) {
+        return {
+          waitedImageCount: 1,
+          alreadyCompleteImageCount: 1,
+          loadedImageCount: 0,
+          failedImageCount: 0,
+          failedImageHostsSample: [],
+          failedImageUrlSample: [],
+        };
+      }
+      if (source.includes("clipX") && source.includes("targetWidth")) {
+        return { x: 0, y: 0, width: 1200, height: 630 };
+      }
+      return undefined;
+    },
+    async screenshot(options) {
+      calls.screenshot = options;
+      return Buffer.from("first-section-only-jpeg");
+    },
+  };
+  const fakeBrowser = {
+    async newPage() {
+      return fakePage;
+    },
+    async close() {},
+  };
+
+  const output = await captureFirstSectionShareImage(
+    {
+      html: '<html><body><div class="inv"><section class="sec"><img src="https://cdn.example.test/hero.jpg" /></section><section class="sec"><img loading="lazy" src="https://heavy.example.test/gallery-never.jpg" /></section></div></body></html>',
+      diagnostics: {
+        recordDiagnostics(context) {
+          events.push({ type: "record", context });
+        },
+      },
+    },
+    {
+      loadBrowserRuntime: () => ({
+        puppeteer: {
+          async launch() {
+            return fakeBrowser;
+          },
+        },
+        chromium: {
+          args: [],
+          headless: "shell",
+          async executablePath() {
+            return "/tmp/chromium";
+          },
+        },
+      }),
+    }
+  );
+
+  assert.equal(output.toString(), "first-section-only-jpeg");
+  assert.equal(calls.screenshot.clip.width, 1200);
+  assert.ok(calls.evaluateSources.some((source) => source.includes("ignoredImageCount")));
+  assert.ok(
+    calls.evaluateSources.some((source) =>
+      source.includes("firstSection.querySelectorAll(\"img\")")
+    )
+  );
+  assert.equal(
+    calls.evaluateSources.some((source) =>
+      source.includes("Array.from(document.images).map")
+    ),
+    false
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.context?.totalImageCount === 4 &&
+        event.context?.firstSectionImageCount === 1 &&
+        event.context?.captureRelevantImageCount === 1 &&
+        event.context?.ignoredImageCount === 3 &&
+        event.context?.hiddenOutsideSectionCount === 1
+    )
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.context?.imagesReady === true &&
+        event.context?.waitedImageCount === 1
+    )
+  );
+});
+
+test("captureFirstSectionShareImage rejects invalid capture regions before screenshot", async () => {
+  const events = [];
+  const calls = {
+    screenshotCalled: false,
+  };
+  const fakePage = {
+    setDefaultTimeout() {},
+    setDefaultNavigationTimeout() {},
+    async setViewport() {},
+    async setContent() {},
+    async waitForFunction() {},
+    async evaluate(fn) {
+      const source = String(fn);
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 0,
+          firstSectionImageCount: 0,
+          captureRelevantImageCount: 0,
+          ignoredImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("pendingFirstSectionImageUrlSample")) {
+        return {
+          imageCount: 0,
+          completeImageCount: 0,
+          pendingImageCount: 0,
+          lazyImageCount: 0,
+          firstSectionImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("failedImageCount")) {
+        return {
+          waitedImageCount: 0,
+          alreadyCompleteImageCount: 0,
+          loadedImageCount: 0,
+          failedImageCount: 0,
+        };
+      }
+      if (source.includes("clipX") && source.includes("targetWidth")) {
+        return { x: Number.NaN, y: 0, width: 1200, height: 630 };
+      }
+      return undefined;
+    },
+    async screenshot() {
+      calls.screenshotCalled = true;
+      return Buffer.from("should-not-capture");
+    },
+  };
+  const fakeBrowser = {
+    async newPage() {
+      return fakePage;
+    },
+    async close() {},
+  };
+
+  await assert.rejects(
+    () =>
+      captureFirstSectionShareImage(
+        {
+          html: '<html><body><div class="inv"><section class="sec">A</section></div></body></html>',
+          diagnostics: {
+            failSubstage(error, context) {
+              events.push({
+                type: "fail",
+                error: error instanceof Error ? error.message : String(error || ""),
+                context,
+              });
+            },
+          },
+        },
+        {
+          loadBrowserRuntime: () => ({
+            puppeteer: {
+              async launch() {
+                return fakeBrowser;
+              },
+            },
+            chromium: {
+              args: [],
+              headless: "shell",
+              async executablePath() {
+                return "/tmp/chromium";
+              },
+            },
+          }),
+        }
+      ),
+    /invalid-capture-region/
+  );
+
+  assert.equal(calls.screenshotCalled, false);
+  const failure = events.find((event) => event.type === "fail");
+  assert.equal(failure?.error, "invalid-capture-region");
+  assert.equal(failure?.context?.substage, "settling_layout");
+  assert.equal(failure?.context?.phase, "capture-region");
+  assert.ok(Number.isNaN(failure?.context?.rawCaptureX));
+});
+
+test("captureFirstSectionShareImage reports screenshot diagnostics when capture times out", async () => {
+  const events = [];
+  const fakePage = {
+    setDefaultTimeout() {},
+    setDefaultNavigationTimeout() {},
+    async setViewport() {},
+    async setContent() {},
+    async waitForFunction() {},
+    async evaluate(fn) {
+      const source = String(fn);
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 0,
+          firstSectionImageCount: 0,
+          captureRelevantImageCount: 0,
+          ignoredImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("pendingFirstSectionImageUrlSample")) {
+        return {
+          imageCount: 0,
+          completeImageCount: 0,
+          pendingImageCount: 0,
+          lazyImageCount: 0,
+          firstSectionImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("failedImageCount")) {
+        return {
+          waitedImageCount: 0,
+          alreadyCompleteImageCount: 0,
+          loadedImageCount: 0,
+          failedImageCount: 0,
+        };
+      }
+      if (source.includes("clipX") && source.includes("targetWidth")) {
+        return {
+          x: 0,
+          y: 0,
+          width: 1200,
+          height: 630,
+          sectionRectWidth: 1200,
+          sectionRectHeight: 2200,
+          documentScrollWidth: 1200,
+          documentScrollHeight: 2200,
+          firstSectionNodeCount: 12,
+          firstSectionVisibleImageCount: 0,
+        };
+      }
+      return undefined;
+    },
+    async screenshot() {
+      return new Promise(() => undefined);
+    },
+    async close() {},
+  };
+  const fakeBrowser = {
+    async newPage() {
+      return fakePage;
+    },
+    async close() {},
+  };
+
+  await assert.rejects(
+    () =>
+      captureFirstSectionShareImage(
+        {
+          html: '<html><body><div class="inv"><section class="sec">A</section></div></body></html>',
+          timeoutMs: 45,
+          effectSettleMaxMs: 0,
+          diagnostics: {
+            startSubstage(substage, context) {
+              events.push({ type: "start", key: substage.key, context });
+            },
+            failSubstage(error, context) {
+              events.push({
+                type: "fail",
+                error: error instanceof Error ? error.message : String(error || ""),
+                context,
+              });
+            },
+            recordDiagnostics(context) {
+              events.push({ type: "record", context });
+            },
+          },
+        },
+        {
+          loadBrowserRuntime: () => ({
+            puppeteer: {
+              async launch() {
+                return fakeBrowser;
+              },
+            },
+            chromium: {
+              args: [],
+              headless: "shell",
+              async executablePath() {
+                return "/tmp/chromium";
+              },
+            },
+          }),
+        }
+      ),
+    /renderer-timeout/
+  );
+
+  assert.ok(
+    events.some((event) => event.type === "start" && event.key === "capturing_screenshot")
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.type === "record" &&
+        event.context?.screenshotReady === true &&
+        event.context?.screenshotClipWidth === 1200 &&
+        event.context?.screenshotClipHeight === 630 &&
+        event.context?.sectionRectHeight === 2200
+    )
+  );
+  const failure = events.find((event) => event.type === "fail");
+  assert.equal(failure?.error, "renderer-timeout");
+  assert.equal(failure?.context?.substage, "capturing_screenshot");
+  assert.equal(failure?.context?.timedOut, true);
+  assert.equal(failure?.context?.screenshotClipWidth, 1200);
+  assert.equal(failure?.context?.sectionRectHeight, 2200);
+});
+
+test("captureFirstSectionShareImage does not overwrite a timed-out screenshot failure when screenshot resolves late", async () => {
+  const events = [];
+  let resolveScreenshot;
+  const fakePage = {
+    setDefaultTimeout() {},
+    setDefaultNavigationTimeout() {},
+    async setViewport() {},
+    async setContent() {},
+    async waitForFunction() {},
+    async evaluate(fn) {
+      const source = String(fn);
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 0,
+          firstSectionImageCount: 0,
+          captureRelevantImageCount: 0,
+          ignoredImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("pendingFirstSectionImageUrlSample")) {
+        return {
+          imageCount: 0,
+          completeImageCount: 0,
+          pendingImageCount: 0,
+          lazyImageCount: 0,
+          firstSectionImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      if (source.includes("failedImageCount")) {
+        return {
+          waitedImageCount: 0,
+          alreadyCompleteImageCount: 0,
+          loadedImageCount: 0,
+          failedImageCount: 0,
+        };
+      }
+      if (source.includes("clipX") && source.includes("targetWidth")) {
+        return { x: 0, y: 0, width: 1200, height: 630 };
+      }
+      return undefined;
+    },
+    async screenshot() {
+      return new Promise((resolveLate) => {
+        resolveScreenshot = () => resolveLate(Buffer.from("late-jpeg"));
+      });
+    },
+    async close() {},
+  };
+  const fakeBrowser = {
+    async newPage() {
+      return fakePage;
+    },
+    async close() {},
+  };
+
+  const capturePromise = captureFirstSectionShareImage(
+    {
+      html: '<html><body><div class="inv"><section class="sec">A</section></div></body></html>',
+      timeoutMs: 30,
+      effectSettleMaxMs: 0,
+      diagnostics: {
+        completeSubstage(substage, context) {
+          events.push({
+            type: "complete",
+            key: substage.key,
+            context,
+          });
+        },
+        failSubstage(error, context) {
+          events.push({
+            type: "fail",
+            error: error instanceof Error ? error.message : String(error || ""),
+            context,
+          });
+        },
+      },
+    },
+    {
+      loadBrowserRuntime: () => ({
+        puppeteer: {
+          async launch() {
+            return fakeBrowser;
+          },
+        },
+        chromium: {
+          args: [],
+          headless: "shell",
+          async executablePath() {
+            return "/tmp/chromium";
+          },
+        },
+      }),
+    }
+  );
+
+  const rejection = await capturePromise.then(
+    () => null,
+    (error) => error
+  );
+  assert.match(rejection instanceof Error ? rejection.message : String(rejection), /renderer-timeout/);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.type === "fail" &&
+        event.error === "renderer-timeout" &&
+        event.context?.substage === "capturing_screenshot"
+    )
+  );
+
+  if (resolveScreenshot) {
+    resolveScreenshot();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  assert.equal(
+    events.some(
+      (event) => event.type === "complete" && event.key === "capturing_screenshot"
+    ),
+    false
+  );
 });
 
 test("captureFirstSectionShareImage closes page and browser before renderer timeout fallback", async () => {
@@ -1743,6 +2256,119 @@ test("captureFirstSectionShareImage closes page and browser before renderer time
   assert.equal(calls.launchOptions.timeout, 20);
 });
 
+test("captureFirstSectionShareImage reports the substage active when renderer timeout fires", async () => {
+  const events = [];
+  const fakePage = {
+    setDefaultTimeout() {},
+    setDefaultNavigationTimeout() {},
+    async setViewport() {},
+    async setContent() {},
+    async waitForFunction() {},
+    async evaluate(fn) {
+      const source = String(fn);
+      if (source.includes("fontFaceCount")) {
+        return { fontFaceCount: 1, fontStatus: "loading" };
+      }
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 3,
+          imageCount: 3,
+          firstSectionImageCount: 1,
+          captureRelevantImageCount: 1,
+          ignoredImageCount: 2,
+          outsideFirstSectionImageCount: 2,
+          hiddenOutsideSectionCount: 1,
+          lazyImageCount: 2,
+          firstSectionLazyImageCount: 0,
+          ignoredLazyImageCount: 2,
+          remainingDocumentImageCount: 3,
+          ignoredImageHostsSample: ["cdn.example"],
+          ignoredImageUrlSample: ["https://cdn.example/b.jpg"],
+        };
+      }
+      if (source.includes("pendingFirstSectionImageUrlSample")) {
+        return {
+          imageCount: 1,
+          completeImageCount: 0,
+          pendingImageCount: 1,
+          lazyImageCount: 0,
+          firstSectionImageCount: 1,
+          remainingDocumentImageCount: 1,
+          pendingFirstSectionImageHostsSample: ["cdn.example"],
+          pendingFirstSectionImageUrlSample: ["https://cdn.example/a.jpg"],
+        };
+      }
+      if (source.includes("Promise.all") && source.includes("failedImageCount")) {
+        return new Promise(() => undefined);
+      }
+      return undefined;
+    },
+    async close() {},
+  };
+  const fakeBrowser = {
+    async newPage() {
+      return fakePage;
+    },
+    async close() {},
+  };
+
+  await assert.rejects(
+    () =>
+      captureFirstSectionShareImage(
+        {
+          html: '<html><body><div class="inv"><section class="sec"><img src="https://cdn.example/a.jpg" /></section><section class="sec"><img loading="lazy" src="https://cdn.example/b.jpg" /></section></div></body></html>',
+          timeoutMs: 30,
+          diagnostics: {
+            startSubstage(substage, context) {
+              events.push({ type: "start", key: substage.key, context });
+            },
+            failSubstage(error, context) {
+              events.push({
+                type: "fail",
+                error: error instanceof Error ? error.message : String(error || ""),
+                context,
+              });
+            },
+            recordDiagnostics(context) {
+              events.push({ type: "record", context });
+            },
+          },
+        },
+        {
+          loadBrowserRuntime: () => ({
+            puppeteer: {
+              async launch() {
+                return fakeBrowser;
+              },
+            },
+            chromium: {
+              args: [],
+              headless: "shell",
+              async executablePath() {
+                return "/tmp/chromium";
+              },
+            },
+          }),
+        }
+      ),
+    /renderer-timeout/
+  );
+
+  assert.ok(events.some((event) => event.type === "start" && event.key === "waiting_images"));
+  assert.ok(
+    events.some(
+      (event) => event.type === "record" && event.context?.pendingImageCount === 1
+    )
+  );
+  const failure = events.find((event) => event.type === "fail");
+  assert.equal(failure?.error, "renderer-timeout");
+  assert.equal(failure?.context?.substage, "waiting_images");
+  assert.equal(failure?.context?.timedOut, true);
+  assert.equal(failure?.context?.pendingImageCount, 1);
+  assert.equal(failure?.context?.ignoredImageCount, 2);
+});
+
 test("captureFirstSectionShareImage uses PUPPETEER_EXECUTABLE_PATH for local emulator override", async () => {
   const previousExecutablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   const calls = {
@@ -1756,9 +2382,20 @@ test("captureFirstSectionShareImage uses PUPPETEER_EXECUTABLE_PATH for local emu
     async setViewport() {},
     async setContent() {},
     async waitForFunction() {},
-    async evaluate() {
+    async evaluate(fn) {
       calls.evaluate += 1;
-      return calls.evaluate === 2
+      const source = String(fn);
+      if (source.includes("ignoredImageCount")) {
+        return {
+          hasFirstSection: true,
+          totalImageCount: 0,
+          firstSectionImageCount: 0,
+          captureRelevantImageCount: 0,
+          ignoredImageCount: 0,
+          remainingDocumentImageCount: 0,
+        };
+      }
+      return source.includes("clipX") && source.includes("targetWidth")
         ? { x: 0, y: 0, width: 1200, height: 630 }
         : undefined;
     },

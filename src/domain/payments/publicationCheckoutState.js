@@ -135,6 +135,47 @@ export function isRetryablePublishFailureStatusPayload(payload = {}) {
   return status === "payment_approved" && Boolean(errorMessage);
 }
 
+export function resolvePublicationAutoRetryState(payload = {}) {
+  const record = asRecord(payload) || {};
+  const retryRecord = asRecord(record.publicationAutoRetry);
+  const status = normalizeText(retryRecord?.status);
+  const attempt = Number(retryRecord?.attempt || retryRecord?.attempts) || 0;
+  const maxAttempts = Number(retryRecord?.maxAttempts) || 0;
+  const nextAttempt = Number(retryRecord?.nextAttempt) || 0;
+  const lastError = normalizeText(retryRecord?.lastError);
+  const lastErrorCode = normalizeText(retryRecord?.lastErrorCode);
+  const reason = normalizeText(retryRecord?.reason);
+  const active = status === "scheduled" || status === "running";
+
+  return {
+    status,
+    attempt,
+    maxAttempts,
+    nextAttempt,
+    lastError,
+    lastErrorCode,
+    reason,
+    isActive: active,
+    isScheduled: status === "scheduled",
+    isRunning: status === "running",
+    isExhausted: status === "exhausted",
+    isNotRetryable: status === "not_retryable",
+    isSucceeded: status === "succeeded",
+  };
+}
+
+export function buildPublicationAutoRetryUserMessage(payload = {}) {
+  const retry = resolvePublicationAutoRetryState(payload);
+  if (!retry.isActive) return "";
+
+  const attemptText =
+    retry.nextAttempt && retry.maxAttempts
+      ? ` Intento ${retry.nextAttempt} de ${retry.maxAttempts}.`
+      : "";
+
+  return `Estamos finalizando tu publicacion. Esto puede tardar unos segundos mas.${attemptText} No necesitas volver a pagar.`;
+}
+
 export function isTerminalCheckoutFailureStatus(value) {
   const status = normalizeText(value);
   return status === "payment_rejected" || status === "expired";
@@ -147,11 +188,13 @@ export function isRecoverableCheckoutStatus(value) {
 export function resolveCheckoutStatusFlowState(value) {
   const payload = asRecord(value);
   const status = normalizeText(payload?.sessionStatus || payload?.status || value);
+  const autoRetry = resolvePublicationAutoRetryState(payload || {});
   const isRetryablePublishFailure = isRetryablePublishFailureStatusPayload(
     payload || { sessionStatus: status }
   );
   const isTerminalSuccess = isPublishedCheckoutStatus(status);
-  const isProcessing = !isRetryablePublishFailure && isProcessingCheckoutStatus(status);
+  const isProcessing =
+    autoRetry.isActive || (!isRetryablePublishFailure && isProcessingCheckoutStatus(status));
   const isRecoverable = isRecoverableCheckoutStatus(status);
   const isTerminalFailure = isTerminalCheckoutFailureStatus(status);
 
@@ -162,6 +205,7 @@ export function resolveCheckoutStatusFlowState(value) {
     isTerminalSuccess,
     isTerminalFailure,
     isRetryablePublishFailure,
+    isAutoRetryingPublication: autoRetry.isActive,
     shouldContinuePolling: isProcessing,
     shouldClearPolling:
       isTerminalSuccess || isRecoverable || isTerminalFailure || isRetryablePublishFailure,

@@ -287,6 +287,7 @@ test("approved-session publish success keeps session write, reservation consume,
     publicUrl: "https://reservaeldia.com.ar/i/mi-slug",
     receipt,
     lastError: null,
+    publishingLeaseExpiresAt: null,
     updatedAt: updatedAtValue,
   });
   assert.deepEqual(plan.reservationUpdate, {
@@ -342,12 +343,48 @@ test("approved-session retryable failure write preserves payment_approved and cu
   assert.deepEqual(fromError, {
     status: "payment_approved",
     lastError: "publish failed",
+    publishingLeaseExpiresAt: null,
     updatedAt: updatedAtValue,
   });
   assert.deepEqual(fallback, {
     status: "payment_approved",
     lastError: "Pago aprobado, pero la publicacion no se pudo completar en este intento.",
+    publishingLeaseExpiresAt: null,
     updatedAt: updatedAtValue,
+  });
+});
+
+test("approved-session publishing claim can recover an expired publishing lease", () => {
+  const updatedAtValue = { sentinel: "updated" };
+  const leaseExpiresAtValue = { sentinel: "lease-expires" };
+  const activeLease = planApprovedSessionPublishingClaim({
+    status: "publishing",
+    existingPublishingLeaseExpiresAt: "2026-03-27T09:05:00.000Z",
+    nowMs: Date.parse("2026-03-27T09:00:00.000Z"),
+    updatedAtValue,
+    publishingLeaseExpiresAtValue: leaseExpiresAtValue,
+  });
+  const expiredLease = planApprovedSessionPublishingClaim({
+    status: "publishing",
+    existingPublishingLeaseExpiresAt: "2026-03-27T08:59:00.000Z",
+    nowMs: Date.parse("2026-03-27T09:00:00.000Z"),
+    updatedAtValue,
+    publishingLeaseExpiresAtValue: leaseExpiresAtValue,
+  });
+
+  assert.deepEqual(activeLease, { shouldPublish: false, sessionWrite: null });
+  assert.deepEqual(expiredLease, {
+    shouldPublish: true,
+    sessionWrite: {
+      status: "publishing",
+      lastError: null,
+      publishingStage: null,
+      publishingStageDurationsMs: null,
+      publishingShareImageSubstage: null,
+      publishingShareImageDiagnostics: null,
+      updatedAt: updatedAtValue,
+      publishingLeaseExpiresAt: leaseExpiresAtValue,
+    },
   });
 });
 

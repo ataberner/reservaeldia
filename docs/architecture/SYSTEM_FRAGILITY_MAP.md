@@ -177,17 +177,17 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Expected impact: reduces lifecycle ambiguity and makes finalization logs easier to trust.
 - Compatibility risk: Low if added as an additive field; medium if readers drop legacy fallback too early.
 
-### F8b. Checkout Success UI Can Drift From Backend Publication State
+### F8b. Checkout Post-Payment UI Can Drift From Backend Publication State
 
 - Level: MEDIUM
 - Type: State Management, UX, Publication Lifecycle
 - Revalidates: `P1`, `P4`, `V3`
-- Evidence: checkout success depends on the backend `publication_checkout_sessions` terminal `published` state and returned `publicUrl`, while the preview/dashboard parent also syncs `slugPublico`, `urlPublicaVistaPrevia`, and `urlPublicadaReciente` after publish. If a visible checkout modal reinitializes from those parent props, it can discard its terminal receipt state and show the slug/payment form again even though the backend publication already succeeded.
+- Evidence: checkout success depends on the backend `publication_checkout_sessions` terminal `published` state and returned `publicUrl`, while retryable post-payment recovery is represented by backend-owned `publicationAutoRetry` metadata on the same session. The preview/dashboard parent also syncs `slugPublico`, `urlPublicaVistaPrevia`, and `urlPublicadaReciente` after publish. If a visible checkout modal reinitializes from those parent props, it can discard its terminal receipt state and show the slug/payment form again even though the backend publication already succeeded. If it treats `payment_approved + lastError` as immediate failure while backend recovery is still active, it can also surface a hard error before the authoritative retry window ends.
 - Contract: the authoritative lifecycle is now captured in `docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md`.
-- Contract Mismatch: parent publication sync is a reflection of backend truth, not a new checkout context.
-- Failure mode: duplicate publish modal or second publish prompt after successful payment/publication.
-- Action: checkout UI initialization must be keyed to modal open and checkout context (`draftSlug` + operation), while terminal success remains keyed to backend `sessionStatus: "published"` plus final public URL.
-- Expected impact: prevents post-payment UI loops without changing Mercado Pago, discount, slug reservation, or publish execution behavior.
+- Contract Mismatch: parent publication sync and frontend polling are reflections of backend truth, not new checkout or retry authorities.
+- Failure mode: duplicate publish modal, second publish prompt after successful payment/publication, or premature hard failure while backend automatic recovery is still running.
+- Action: checkout UI initialization must be keyed to modal open and checkout context (`draftSlug` + operation), terminal success remains keyed to backend `sessionStatus: "published"` plus final public URL, and `publicationAutoRetry.status: "scheduled" | "running"` should be shown as post-payment recovery rather than a terminal error.
+- Expected impact: prevents post-payment UI loops and hides transient retryable publish failures behind a bounded backend recovery window without changing Mercado Pago, discount, slug reservation, or publish execution behavior.
 - Compatibility risk: Low. The change is frontend state-boundary only and keeps backend settlement authoritative.
 
 ### F9. Hardcoded URLs, Duplicated Contract Files, And Dual RSVP Payloads Still Create Environment Drift

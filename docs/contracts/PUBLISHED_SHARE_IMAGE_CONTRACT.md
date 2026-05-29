@@ -62,7 +62,8 @@ current publish attempt. This applies to:
 - initial publish
 - republish/update after edits
 - publish/update that changes the public slug
-- retry of a failed or interrupted publish attempt
+- retry of a failed or interrupted publish attempt, including bounded automatic
+  backend retries after payment approval
 
 Generated share images must be based on the current base published HTML for that
 same publish attempt.

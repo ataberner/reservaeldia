@@ -28,6 +28,7 @@ export type CheckoutPaymentResult = {
   publishingStageDurationsMs?: Record<string, unknown>;
   publishingShareImageSubstage?: Record<string, unknown>;
   publishingShareImageDiagnostics?: Record<string, unknown>;
+  publicationAutoRetry?: Record<string, unknown>;
   paymentId: string;
   message?: string;
 };
@@ -45,6 +46,22 @@ type SessionRefLike = {
 type TransactionLike<SessionRef extends SessionRefLike> = {
   get(ref: SessionRef): Promise<SessionSnapshotLike>;
   set(ref: SessionRef, data: Record<string, unknown>, options: { merge: true }): void;
+};
+
+type PublicationAutoRetryOptions = {
+  maxAttempts?: number;
+  backoffMs?: number[];
+  delay?(ms: number): Promise<void>;
+  createTimestampValue?(date: Date): unknown;
+  createLeaseExpiresAtValue?(date: Date): unknown;
+  leaseMs?: number;
+  getNowMs?(): number;
+};
+
+type PublicationRetryClassification = {
+  retryable: boolean;
+  reason: string;
+  errorCode: string;
 };
 
 type ApprovedPaymentAnalyticsDeps = {
@@ -78,6 +95,122 @@ function toAmount(value: unknown, fallback: number): number {
 
 function normalizeOperation(value: unknown): CheckoutOperation {
   return getString(value) === "update" ? "update" : "new";
+}
+
+function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(num)));
+}
+
+function getErrorCode(error: unknown): string {
+  if (error instanceof HttpsError) return getString(error.code) || "https-error";
+  if (error instanceof Error) return getString(error.message) || "error";
+  return getString(error) || "unknown-error";
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : getString(error) || "Pago aprobado, pero la publicacion no se pudo completar en este intento.";
+}
+
+function classifyPublicationRetryError(error: unknown): PublicationRetryClassification {
+  const message = getErrorMessage(error);
+  const errorCode = getErrorCode(error);
+
+  if (error instanceof HttpsError) {
+    if (
+      error.code === "invalid-argument" ||
+      error.code === "permission-denied" ||
+      error.code === "not-found"
+    ) {
+      return { retryable: false, reason: "non-retryable-http-error", errorCode };
+    }
+
+    if (
+      error.code === "internal" ||
+      error.code === "unavailable" ||
+      error.code === "deadline-exceeded" ||
+      error.code === "resource-exhausted" ||
+      error.code === "aborted"
+    ) {
+      return { retryable: true, reason: "transient-http-error", errorCode };
+    }
+
+    if (error.code === "failed-precondition") {
+      const details = error.details;
+      const hasValidationDetails =
+        Boolean(details) &&
+        typeof details === "object" &&
+        "validation" in (details as Record<string, unknown>);
+      if (hasValidationDetails) {
+        return { retryable: false, reason: "publish-validation-blocker", errorCode };
+      }
+
+      if (
+        /renderer-timeout|share-upload-failed|invalid-generated-image|timeout|storage|artifact|chromium|puppeteer/i.test(
+          message
+        )
+      ) {
+        return { retryable: true, reason: "publish-transient-stage-error", errorCode };
+      }
+
+      return { retryable: false, reason: "failed-precondition", errorCode };
+    }
+  }
+
+  return { retryable: true, reason: "unexpected-publish-error", errorCode };
+}
+
+function getAutoRetryBackoffMs(values: number[] | undefined, completedAttempt: number): number {
+  const configured = Array.isArray(values) ? values[completedAttempt - 1] : undefined;
+  const fallback = completedAttempt <= 1 ? 1_500 : 3_000;
+  return clampInteger(configured, fallback, 0, 10_000);
+}
+
+function buildPublicationAutoRetryState(params: {
+  status: "scheduled" | "running" | "succeeded" | "exhausted" | "not_retryable";
+  attempt: number;
+  maxAttempts: number;
+  updatedAt: unknown;
+  error?: unknown;
+  retryable?: boolean;
+  reason?: string;
+  nextAttempt?: number;
+  nextRetryAt?: unknown;
+  failedSession?: Record<string, unknown>;
+}): Record<string, unknown> {
+  const errorCode = params.error ? getErrorCode(params.error) : null;
+  const state: Record<string, unknown> = {
+    status: params.status,
+    attempt: params.attempt,
+    attempts: params.attempt,
+    maxAttempts: params.maxAttempts,
+    updatedAt: params.updatedAt,
+  };
+
+  if (typeof params.retryable === "boolean") state.retryable = params.retryable;
+  if (params.reason) state.reason = params.reason;
+  if (errorCode) state.lastErrorCode = errorCode;
+  if (params.error) state.lastError = getErrorMessage(params.error);
+  if (params.nextAttempt) state.nextAttempt = params.nextAttempt;
+  if (typeof params.nextRetryAt !== "undefined") state.nextRetryAt = params.nextRetryAt;
+
+  const failedStage = asRecord(params.failedSession?.publishingStage);
+  if (Object.keys(failedStage).length > 0) state.lastFailedStage = failedStage;
+
+  const failedSubstage = asRecord(params.failedSession?.publishingShareImageSubstage);
+  if (Object.keys(failedSubstage).length > 0) {
+    state.lastFailedShareImageSubstage = failedSubstage;
+  }
+
+  const failedDiagnostics = asRecord(params.failedSession?.publishingShareImageDiagnostics);
+  if (Object.keys(failedDiagnostics).length > 0) {
+    state.lastFailedShareImageDiagnostics = failedDiagnostics;
+  }
+
+  return state;
 }
 
 function toSafeIsoDate(value: unknown): string {
@@ -121,6 +254,11 @@ export function buildPaymentResultFromSession(
   );
   if (Object.keys(publishingShareImageDiagnostics).length > 0) {
     result.publishingShareImageDiagnostics = publishingShareImageDiagnostics;
+  }
+
+  const publicationAutoRetry = asRecord(data.publicationAutoRetry);
+  if (Object.keys(publicationAutoRetry).length > 0) {
+    result.publicationAutoRetry = publicationAutoRetry;
   }
 
   return result;
@@ -218,6 +356,8 @@ export async function claimApprovedSessionPublishingSlot<SessionRef extends Sess
     updateFn: (tx: TransactionLike<SessionRef>) => Promise<T>
   ): Promise<T>;
   createUpdatedAtValue(): unknown;
+  createLeaseExpiresAtValue?: () => unknown;
+  getNowMs?: () => number;
 }): Promise<{
   sessionPayload: Record<string, unknown>;
   shouldPublish: boolean;
@@ -238,6 +378,9 @@ export async function claimApprovedSessionPublishingSlot<SessionRef extends Sess
     const plannedClaim = planApprovedSessionPublishingClaim({
       status,
       updatedAtValue: params.createUpdatedAtValue(),
+      publishingLeaseExpiresAtValue: params.createLeaseExpiresAtValue?.(),
+      existingPublishingLeaseExpiresAt: data.publishingLeaseExpiresAt,
+      nowMs: params.getNowMs?.(),
     });
 
     if (!plannedClaim.shouldPublish || !plannedClaim.sessionWrite) {
@@ -286,13 +429,31 @@ export async function finalizeApprovedSessionFlow<SessionRef extends SessionRefL
     approvedAt?: string;
   }): Promise<void>;
   approvedPaymentAnalytics?: ApprovedPaymentAnalyticsDeps | null;
+  autoRetry?: PublicationAutoRetryOptions | null;
   logError?(message: string, context: Record<string, unknown>): void;
 }): Promise<CheckoutPaymentResult> {
   const { sessionId, fallbackPaymentId, approvedAt, sessionRef } = params;
+  const autoRetry = params.autoRetry || null;
+  const maxAttempts = clampInteger(autoRetry?.maxAttempts, 1, 1, 3);
+  const delay =
+    autoRetry?.delay ||
+    (async (ms: number) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    });
+  const getNowMs = autoRetry?.getNowMs || (() => Date.now());
+  const createTimestampValue =
+    autoRetry?.createTimestampValue || ((date: Date) => date.toISOString());
+  const createLeaseExpiresAtValue =
+    autoRetry?.createLeaseExpiresAtValue ||
+    ((date: Date) => createTimestampValue(date));
+  const leaseMs = clampInteger(autoRetry?.leaseMs, 90_000, 30_000, 180_000);
   const { sessionPayload, shouldPublish } = await claimApprovedSessionPublishingSlot({
     sessionRef,
     runTransaction: params.runTransaction,
     createUpdatedAtValue: params.createUpdatedAtValue,
+    createLeaseExpiresAtValue: () =>
+      createLeaseExpiresAtValue(new Date(getNowMs() + leaseMs)),
+    getNowMs,
   });
 
   if (params.approvedPaymentAnalytics) {
@@ -347,108 +508,207 @@ export async function finalizeApprovedSessionFlow<SessionRef extends SessionRefL
         ? "ARS"
         : "ARS";
 
-  try {
-    const publication = await params.publishDraftToPublic({
-      draftSlug,
-      publicSlug,
-      uid,
-      operation,
-      paymentSessionId: sessionId,
-    });
+  let attempt = 0;
 
-    const receipt = buildApprovedSessionReceipt({
-      operation,
-      amountBaseArs,
-      amountArs,
-      discountAmountArs,
-      discountCode,
-      discountDescription,
-      currency,
-      paymentId: fallbackPaymentId,
-      publicSlug: publication.publicSlug,
-      publicUrl: publication.publicUrl,
-      approvedAt,
-    });
-    const plannedSuccess = planApprovedSessionPublishSuccess({
-      operation,
-      sessionId,
-      fallbackPaymentId,
-      publicSlug: publication.publicSlug,
-      publicUrl: publication.publicUrl,
-      receipt,
-      updatedAtValue: params.createUpdatedAtValue(),
-    });
+  while (attempt < maxAttempts) {
+    attempt += 1;
 
-    await executeApprovedSessionOutcomeEffects({
-      sessionRef,
-      sessionWrite: plannedSuccess.sessionWrite,
-      reservationUpdate: plannedSuccess.reservationUpdate,
-      updateReservationStatus: params.updateReservationStatus,
-    });
-
-    if (params.recordDiscountUsageIfNeeded) {
-      try {
-        await params.recordDiscountUsageIfNeeded({
-          sessionId,
-          sessionPayload: {
-            ...sessionPayload,
-            publicSlug: publication.publicSlug,
-          },
-          paymentId: fallbackPaymentId,
-          approvedAt,
-        });
-      } catch (usageError) {
-        params.logError?.("No se pudo registrar uso de codigo de descuento", {
-          sessionId,
-          error: usageError instanceof Error ? usageError.message : String(usageError || ""),
-        });
-      }
+    if (attempt > 1) {
+      await sessionRef.set(
+        {
+          status: "publishing",
+          lastError: null,
+          publicationAutoRetry: buildPublicationAutoRetryState({
+            status: "running",
+            attempt,
+            maxAttempts,
+            updatedAt: createTimestampValue(new Date(getNowMs())),
+          }),
+          publishingLeaseExpiresAt: createLeaseExpiresAtValue(
+            new Date(getNowMs() + leaseMs)
+          ),
+          updatedAt: params.createUpdatedAtValue(),
+        },
+        { merge: true }
+      );
     }
 
-    return plannedSuccess.result;
-  } catch (error) {
-    if (isSlugConflictError(error)) {
-      const plannedConflict = planApprovedSessionSlugConflict({
+    try {
+      const publication = await params.publishDraftToPublic({
+        draftSlug,
+        publicSlug,
+        uid,
+        operation,
+        paymentSessionId: sessionId,
+      });
+
+      const receipt = buildApprovedSessionReceipt({
+        operation,
+        amountBaseArs,
+        amountArs,
+        discountAmountArs,
+        discountCode,
+        discountDescription,
+        currency,
+        paymentId: fallbackPaymentId,
+        publicSlug: publication.publicSlug,
+        publicUrl: publication.publicUrl,
+        approvedAt,
+      });
+      const plannedSuccess = planApprovedSessionPublishSuccess({
+        operation,
         sessionId,
         fallbackPaymentId,
-        publicSlug,
+        publicSlug: publication.publicSlug,
+        publicUrl: publication.publicUrl,
+        receipt,
         updatedAtValue: params.createUpdatedAtValue(),
+        publicationAutoRetry:
+          attempt > 1
+            ? buildPublicationAutoRetryState({
+                status: "succeeded",
+                attempt,
+                maxAttempts,
+                updatedAt: createTimestampValue(new Date(getNowMs())),
+              })
+            : null,
       });
 
       await executeApprovedSessionOutcomeEffects({
         sessionRef,
-        sessionWrite: plannedConflict.sessionWrite,
-        reservationUpdate: plannedConflict.reservationUpdate,
+        sessionWrite: plannedSuccess.sessionWrite,
+        reservationUpdate: plannedSuccess.reservationUpdate,
         updateReservationStatus: params.updateReservationStatus,
       });
 
-      return plannedConflict.result;
+      if (params.recordDiscountUsageIfNeeded) {
+        try {
+          await params.recordDiscountUsageIfNeeded({
+            sessionId,
+            sessionPayload: {
+              ...sessionPayload,
+              publicSlug: publication.publicSlug,
+            },
+            paymentId: fallbackPaymentId,
+            approvedAt,
+          });
+        } catch (usageError) {
+          params.logError?.("No se pudo registrar uso de codigo de descuento", {
+            sessionId,
+            error: usageError instanceof Error ? usageError.message : String(usageError || ""),
+          });
+        }
+      }
+
+      return plannedSuccess.result;
+    } catch (error) {
+      if (isSlugConflictError(error)) {
+        const plannedConflict = planApprovedSessionSlugConflict({
+          sessionId,
+          fallbackPaymentId,
+          publicSlug,
+          updatedAtValue: params.createUpdatedAtValue(),
+        });
+
+        await executeApprovedSessionOutcomeEffects({
+          sessionRef,
+          sessionWrite: {
+            ...plannedConflict.sessionWrite,
+            publishingLeaseExpiresAt: null,
+            publicationAutoRetry: buildPublicationAutoRetryState({
+              status: "not_retryable",
+              attempt,
+              maxAttempts,
+              error,
+              retryable: false,
+              reason: "slug-conflict",
+              updatedAt: createTimestampValue(new Date(getNowMs())),
+            }),
+          },
+          reservationUpdate: plannedConflict.reservationUpdate,
+          updateReservationStatus: params.updateReservationStatus,
+        });
+
+        return plannedConflict.result;
+      }
+
+      const classification = classifyPublicationRetryError(error);
+      const shouldRetry = classification.retryable && attempt < maxAttempts;
+      params.logError?.("Error publicando sesion aprobada", {
+        sessionId,
+        attempt,
+        maxAttempts,
+        retryable: classification.retryable,
+        retryReason: classification.reason,
+        error: getErrorMessage(error),
+      });
+
+      if (shouldRetry) {
+        const failedSnapshot = await sessionRef.get();
+        const failedSession = (failedSnapshot.data() || {}) as Record<string, unknown>;
+        const backoff = getAutoRetryBackoffMs(autoRetry?.backoffMs, attempt);
+        const nowMs = getNowMs();
+        await sessionRef.set(
+          {
+            status: "publishing",
+            lastError: getErrorMessage(error),
+            publishingStage: null,
+            publishingShareImageSubstage: null,
+            publicationAutoRetry: buildPublicationAutoRetryState({
+              status: "scheduled",
+              attempt,
+              maxAttempts,
+              error,
+              retryable: true,
+              reason: classification.reason,
+              nextAttempt: attempt + 1,
+              nextRetryAt: createTimestampValue(new Date(nowMs + backoff)),
+              updatedAt: createTimestampValue(new Date(nowMs)),
+              failedSession,
+            }),
+            publishingLeaseExpiresAt: createLeaseExpiresAtValue(
+              new Date(nowMs + leaseMs)
+            ),
+            updatedAt: params.createUpdatedAtValue(),
+          },
+          { merge: true }
+        );
+        await delay(backoff);
+        continue;
+      }
+
+      await executeApprovedSessionOutcomeEffects({
+        sessionRef,
+        sessionWrite: buildApprovedSessionRetryableFailureWrite({
+          error,
+          updatedAtValue: params.createUpdatedAtValue(),
+          publicationAutoRetry: buildPublicationAutoRetryState({
+            status: classification.retryable ? "exhausted" : "not_retryable",
+            attempt,
+            maxAttempts,
+            error,
+            retryable: classification.retryable,
+            reason: classification.reason,
+            updatedAt: createTimestampValue(new Date(getNowMs())),
+          }),
+        }),
+      });
+
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      throw new HttpsError(
+        "failed-precondition",
+        getErrorMessage(error)
+      );
     }
-
-    params.logError?.("Error publicando sesion aprobada", {
-      sessionId,
-      error: error instanceof Error ? error.message : String(error || ""),
-    });
-
-    await executeApprovedSessionOutcomeEffects({
-      sessionRef,
-      sessionWrite: buildApprovedSessionRetryableFailureWrite({
-        error,
-        updatedAtValue: params.createUpdatedAtValue(),
-      }),
-    });
-
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-
-    throw new HttpsError(
-      "failed-precondition",
-      error instanceof Error && error.message
-        ? error.message
-        : "Pago aprobado, pero la publicacion no se pudo completar en este intento."
-    );
   }
+
+  throw new HttpsError(
+    "failed-precondition",
+    "Pago aprobado, pero la publicacion no se pudo completar en este intento."
+  );
 }
 
 export function statusFromMercadoPago(status: string): CheckoutSessionStatus {

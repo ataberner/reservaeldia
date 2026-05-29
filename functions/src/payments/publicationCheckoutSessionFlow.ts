@@ -142,6 +142,7 @@ export function buildCheckoutStatusResponseFromSession(data: UnknownRecord): {
   publishingStageDurationsMs?: Record<string, unknown>;
   publishingShareImageSubstage?: Record<string, unknown>;
   publishingShareImageDiagnostics?: Record<string, unknown>;
+  publicationAutoRetry?: Record<string, unknown>;
 } {
   const response: {
     sessionStatus: CheckoutSessionStatus;
@@ -152,6 +153,7 @@ export function buildCheckoutStatusResponseFromSession(data: UnknownRecord): {
     publishingStageDurationsMs?: Record<string, unknown>;
     publishingShareImageSubstage?: Record<string, unknown>;
     publishingShareImageDiagnostics?: Record<string, unknown>;
+    publicationAutoRetry?: Record<string, unknown>;
   } = {
     sessionStatus: (getString(data.status) as CheckoutSessionStatus) || "awaiting_payment",
     publicUrl: getString(data.publicUrl) || undefined,
@@ -179,6 +181,11 @@ export function buildCheckoutStatusResponseFromSession(data: UnknownRecord): {
   );
   if (Object.keys(publishingShareImageDiagnostics).length > 0) {
     response.publishingShareImageDiagnostics = publishingShareImageDiagnostics;
+  }
+
+  const publicationAutoRetry = asRecord(data.publicationAutoRetry);
+  if (Object.keys(publicationAutoRetry).length > 0) {
+    response.publicationAutoRetry = publicationAutoRetry;
   }
 
   return response;

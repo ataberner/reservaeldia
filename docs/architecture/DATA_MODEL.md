@@ -742,6 +742,13 @@ Observed fields include:
   host samples, capture clip and section bounding-box metrics, document scroll
   dimensions, external host count, render timeout, memory snapshots, storage
   path, and error code
+- `publicationAutoRetry` with backend-owned bounded automatic recovery metadata
+  after an approved payment and retryable publish failure; observed statuses are
+  `scheduled`, `running`, `succeeded`, `exhausted`, and `not_retryable`
+- `publishingLeaseExpiresAt`, used by approved-session settlement as an
+  execution lease while `status === "publishing"` so duplicate webhook/callable
+  attempts do not start parallel publish executions and stale executions can be
+  reclaimed safely
 - `mpPreferenceId`, `mpPaymentId`, `mpStatus`, `mpStatusDetail`
 - `publicUrl`
 - `receipt` with `operation`, `amountBaseArs`, `amountArs`, `discountAmountArs`, `discountCode`, `discountDescription`, `currency`, `approvedAt`, `paymentId`, `publicSlug`, `publicUrl`
@@ -762,6 +769,11 @@ Relationship to publication state:
 
 - When an approved session settles successfully, the backend writes `publicadas/{publicSlug}`, stores the generated HTML artifact, mirrors `slugPublico` and `publicationLifecycle` onto `borradores/{draftSlug}`, marks the session `published`, and stores `publicUrl` plus `receipt`.
 - The dashboard may sync its preview/publication props from that result, but this sync is not a new checkout context and must not reset a visible checkout success state.
+- If the first publish attempt after payment fails with a retryable error, the
+  backend may keep the session in `publishing` and persist
+  `publicationAutoRetry` while it runs a bounded automatic retry. If recovery is
+  exhausted, the session returns to `payment_approved` with `lastError` so the
+  same paid session remains manually retryable.
 - `payment_processing`, `payment_rejected`, `approved_slug_conflict`, and `expired` are not published-success states; they keep the user in a retry, wait, or conflict-resolution flow.
 
 ### `public_slug_reservations`

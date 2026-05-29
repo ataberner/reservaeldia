@@ -11,7 +11,12 @@ The current production flow is draft-first. The editable invitation source of tr
 
 Published social sharing support is defined by [PUBLISHED_SHARE_IMAGE_CONTRACT.md](../contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md). It defines a backend publish-pipeline artifact, `publicadas/{slug}/share.jpg`, generated from the first section of the generated published HTML and resolved into Open Graph metadata before the public publication document is persisted.
 
-Checkout, payment approval, slug reservation, retry, public URL creation, and post-payment UI state are governed by [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](../contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md). That contract owns lifecycle authority across `publication_checkout_sessions`, `public_slug_reservations`, `publicadas`, Storage artifacts, and the `/i/{slug}` delivery route.
+Checkout, payment approval, slug reservation, retry, automatic post-payment
+recovery, public URL creation, and post-payment UI state are governed by
+[CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](../contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md).
+That contract owns lifecycle authority across `publication_checkout_sessions`,
+`public_slug_reservations`, `publicadas`, Storage artifacts, and the `/i/{slug}`
+delivery route.
 
 ## 2. Tech Stack
 - Next.js + React: landing page, authenticated dashboard shell, template modal flows, and editor orchestration.
@@ -55,7 +60,7 @@ Checkout, payment approval, slug reservation, retry, public URL creation, and po
 12. Draft preview generation calls `prepareDraftPreviewRender`, which reads the owned draft on the backend, builds `prepareRenderPayload(...)`, validates it with `validatePreparedRenderPayload(...)`, and generates preview HTML from that same prepared payload. This path is `previewAuthority: "draft-authoritative"`. Blockers return validation without trusted preview HTML; warnings still allow preview. If the rollback/local path is used, it is `previewAuthority: "local-fallback"` and is not publish parity.
 13. Before publish checkout opens, the dashboard forces another immediate draft flush and calls `validateDraftForPublication`. The backend uses the same prepared render payload boundary to classify blockers and warnings. If blockers are present, checkout is not opened.
 14. The checkout flow in `src/components/payments/PublicationCheckoutModal.jsx` creates a session with `createPublicationCheckoutSession`, reserves or reuses the public slug depending on `new` vs `update`, submits payment with `createPublicationPayment`, polls `getPublicationCheckoutStatus`, and can recover from an approved slug conflict with `retryPaidPublicationWithNewSlug`. Once a checkout session reaches terminal `published`, the modal must preserve its success state and final backend-provided public URL even while the parent preview/dashboard state syncs `slugPublico`, `urlPublica`, and publication metadata from the publish result.
-15. After payment approval, the request still enters through `functions/src/payments/publicationPayments.ts`, but approved-session settlement is now delegated to `functions/src/payments/publicationApprovedSessionFlow.ts`. That flow claims the approved checkout session, reuses `publishDraftToPublic`, and the post-gating publish execution now delegates HTML generation, Storage write, publication payload assembly, linked-draft sync, and first-publication analytics to `functions/src/payments/publicationPublishExecution.ts`. Lifecycle/date shaping, write preparation, operation planning, and operation execution are handled by dedicated backend helpers in the same domain.
+15. After payment approval, the request still enters through `functions/src/payments/publicationPayments.ts`, but approved-session settlement is now delegated to `functions/src/payments/publicationApprovedSessionFlow.ts`. That flow claims the approved checkout session with a bounded `publishing` lease, reuses `publishDraftToPublic`, and can run a small automatic recovery retry for retryable post-payment publish failures without creating a new persisted status or a second publish pipeline. The post-gating publish execution now delegates HTML generation, Storage write, publication payload assembly, linked-draft sync, and first-publication analytics to `functions/src/payments/publicationPublishExecution.ts`. Lifecycle/date shaping, write preparation, operation planning, and operation execution are handled by dedicated backend helpers in the same domain.
 16. Frontend responsibility ends at authoring state, flush confirmation, preview request/link shaping, checkout initiation, and reflecting terminal checkout results. Backend responsibility starts at prepared draft preview, publish preflight, asset normalization for public delivery, lifecycle gating, HTML artifact generation, checkout-session settlement, and publication metadata writes. The frontend must not infer successful publication from draft or preview state alone; post-payment success is driven by backend checkout/publication state.
 17. Public visitors open `/i/{slug}`. Firebase Hosting rewrites the request to `verInvitacionPublicada`, which reads `publicadas/{slug}`, builds a backend lifecycle snapshot through `resolvePublicationLifecycleSnapshotFromData`, rejects requests unless the resolved raw public state is currently publicly accessible, finalizes expired publications on access when needed, and serves the stored HTML artifact from Storage only when the invitation is currently publicly accessible.
 18. Public RSVP submission goes through `publicRsvpSubmit`. It only accepts `POST`, validates slug and publication accessibility through the same backend lifecycle snapshot boundary, finalizes expired publications on request when needed, writes under `publicadas/{slug}/rsvps`, and stores both the current structured RSVP payload (`answers`, `metrics`, `schemaQuestionIds`) and legacy compatibility fields such as `nombre`, `asistencia`, `confirma`, `cantidad`, and `mensaje`.
@@ -147,10 +152,18 @@ The publish sequence implemented today is:
 1. Validate draft ownership and requested operation in `publicationPayments.ts`.
 2. For `new`, validate and reserve the requested public slug through `publicationSlugReservationFlow.ts`. For `update`, resolve the active linked public slug through the same slug-resolution seam.
 3. Create a checkout session in `publication_checkout_sessions` and, when needed, initialize Mercado Pago preference/payment data.
-4. After payment approval, `publicationApprovedSessionFlow.ts` claims the session's `publishing` slot and short-circuits duplicate settlement attempts.
+4. After payment approval, `publicationApprovedSessionFlow.ts` claims the session's `publishing` slot with a lease, short-circuits duplicate settlement attempts while the lease is active, and may reclaim the session if a previous `publishing` lease has expired.
 5. `publishDraftToPublic` re-reads the draft, re-runs publish preflight, and keeps ownership/new-vs-update/conflict/expired-publication gating in `publicationPayments.ts`.
 6. `publicationPublishExecution.ts` generates base HTML, generates and confirms `publicadas/{slug}/share.jpg`, injects final Open Graph metadata, writes `publicadas/{slug}/index.html` to Storage, applies icon-usage delta, writes or updates `publicadas/{slug}`, and mirrors publication linkage back onto the source draft.
 7. `publicationWritePreparation.ts`, `publicationOperationPlanning.ts`, and `publicationOperationExecution.ts` shape and apply the linked Firestore writes without changing current document contracts.
+
+If a retryable failure occurs after payment approval, approved-session settlement
+may keep `publication_checkout_sessions/{sessionId}` in `status: "publishing"`
+with additive `publicationAutoRetry` metadata while it runs the bounded automatic
+retry. Success still requires the normal terminal `published` session state with
+a backend `publicUrl`. Exhausted recovery returns the paid session to
+`payment_approved` with `lastError`, preserving manual retry without another
+charge.
 
 The normative source for checkout/payment/publication lifecycle behavior is [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](../contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md). This overview is an implementation map; use the contract for exact session statuses, slug reservation transitions, retry rules, and frontend post-payment authority.
 

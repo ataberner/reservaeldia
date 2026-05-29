@@ -377,27 +377,49 @@ export function planPublicationPublishOperations(params: {
 export function planApprovedSessionPublishingClaim(params: {
   status: string;
   updatedAtValue: unknown;
+  publishingLeaseExpiresAtValue?: unknown;
+  existingPublishingLeaseExpiresAt?: unknown;
+  nowMs?: number;
 }): PlannedApprovedSessionPublishingClaim {
-  const { status, updatedAtValue } = params;
+  const {
+    status,
+    updatedAtValue,
+    publishingLeaseExpiresAtValue,
+    existingPublishingLeaseExpiresAt,
+    nowMs,
+  } = params;
 
-  if (status === "published" || status === "publishing" || status === "expired") {
+  if (status === "published" || status === "expired") {
     return {
       shouldPublish: false,
       sessionWrite: null,
     };
   }
 
+  if (status === "publishing" && !isExpiredLease(existingPublishingLeaseExpiresAt, nowMs)) {
+    return {
+      shouldPublish: false,
+      sessionWrite: null,
+    };
+  }
+
+  const sessionWrite: Record<string, unknown> = {
+    status: "publishing",
+    lastError: null,
+    publishingStage: null,
+    publishingStageDurationsMs: null,
+    publishingShareImageSubstage: null,
+    publishingShareImageDiagnostics: null,
+    updatedAt: updatedAtValue,
+  };
+
+  if (typeof publishingLeaseExpiresAtValue !== "undefined") {
+    sessionWrite.publishingLeaseExpiresAt = publishingLeaseExpiresAtValue;
+  }
+
   return {
     shouldPublish: true,
-    sessionWrite: {
-      status: "publishing",
-      lastError: null,
-      publishingStage: null,
-      publishingStageDurationsMs: null,
-      publishingShareImageSubstage: null,
-      publishingShareImageDiagnostics: null,
-      updatedAt: updatedAtValue,
-    },
+    sessionWrite,
   };
 }
 
@@ -409,6 +431,7 @@ export function planApprovedSessionPublishSuccess(params: {
   publicUrl: string;
   receipt: Record<string, unknown>;
   updatedAtValue: unknown;
+  publicationAutoRetry?: Record<string, unknown> | null;
 }): PlannedApprovedSessionOutcome {
   const {
     operation,
@@ -418,16 +441,24 @@ export function planApprovedSessionPublishSuccess(params: {
     publicUrl,
     receipt,
     updatedAtValue,
+    publicationAutoRetry,
   } = params;
 
+  const sessionWrite: Record<string, unknown> = {
+    status: "published",
+    publicUrl,
+    receipt,
+    lastError: null,
+    publishingLeaseExpiresAt: null,
+    updatedAt: updatedAtValue,
+  };
+
+  if (typeof publicationAutoRetry !== "undefined") {
+    sessionWrite.publicationAutoRetry = publicationAutoRetry;
+  }
+
   return {
-    sessionWrite: {
-      status: "published",
-      publicUrl,
-      receipt,
-      lastError: null,
-      updatedAt: updatedAtValue,
-    },
+    sessionWrite,
     reservationUpdate:
       operation === "new"
         ? {
@@ -475,17 +506,57 @@ export function planApprovedSessionSlugConflict(params: {
 export function buildApprovedSessionRetryableFailureWrite(params: {
   error: unknown;
   updatedAtValue: unknown;
+  publicationAutoRetry?: Record<string, unknown> | null;
 }): Record<string, unknown> {
-  const { error, updatedAtValue } = params;
+  const { error, updatedAtValue, publicationAutoRetry } = params;
 
-  return {
+  const write: Record<string, unknown> = {
     status: "payment_approved",
     lastError:
       error instanceof Error
         ? error.message
         : "Pago aprobado, pero la publicacion no se pudo completar en este intento.",
+    publishingLeaseExpiresAt: null,
     updatedAt: updatedAtValue,
   };
+
+  if (typeof publicationAutoRetry !== "undefined") {
+    write.publicationAutoRetry = publicationAutoRetry;
+  }
+
+  return write;
+}
+
+function toMillis(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.getTime();
+  if (value && typeof value === "object") {
+    const record = value as {
+      toMillis?: () => number;
+      toDate?: () => Date;
+      seconds?: number;
+    };
+    if (typeof record.toMillis === "function") {
+      const millis = record.toMillis();
+      return Number.isFinite(millis) ? millis : null;
+    }
+    if (typeof record.toDate === "function") {
+      const date = record.toDate();
+      return Number.isFinite(date.getTime()) ? date.getTime() : null;
+    }
+    if (typeof record.seconds === "number" && Number.isFinite(record.seconds)) {
+      return record.seconds * 1000;
+    }
+  }
+
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isExpiredLease(value: unknown, nowMs: unknown): boolean {
+  const leaseMs = toMillis(value);
+  const currentMs = typeof nowMs === "number" && Number.isFinite(nowMs) ? nowMs : Date.now();
+  return leaseMs !== null && leaseMs <= currentMs;
 }
 
 export function planTrashedPublicationPurgeOperations(params: {

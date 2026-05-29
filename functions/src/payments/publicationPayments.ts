@@ -196,6 +196,8 @@ type CheckoutSessionDoc = {
   publicUrl?: string;
   receipt?: Record<string, unknown>;
   lastError?: string;
+  publicationAutoRetry?: Record<string, unknown>;
+  publishingLeaseExpiresAt?: admin.firestore.Timestamp | null;
   createdAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
   updatedAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
 };
@@ -223,6 +225,7 @@ type CheckoutStatusResponse = {
   publishingStageDurationsMs?: Record<string, unknown>;
   publishingShareImageSubstage?: Record<string, unknown>;
   publishingShareImageDiagnostics?: Record<string, unknown>;
+  publicationAutoRetry?: Record<string, unknown>;
 };
 
 type DiscountDoc = {
@@ -1444,6 +1447,13 @@ async function finalizeApprovedSession(params: {
     sessionRef,
     runTransaction: (updateFn) => db.runTransaction((tx) => updateFn(tx as any)),
     createUpdatedAtValue: () => serverTimestamp(),
+    autoRetry: {
+      maxAttempts: 2,
+      backoffMs: [1500],
+      leaseMs: 90_000,
+      createTimestampValue: (date) => admin.firestore.Timestamp.fromDate(date),
+      createLeaseExpiresAtValue: (date) => admin.firestore.Timestamp.fromDate(date),
+    },
     publishDraftToPublic: async (input) => {
       try {
         return await publishDraftToPublic({
@@ -2202,7 +2212,7 @@ export async function publishWithApprovedPaymentSession(params: {
     return { success: true, url: existingUrl };
   }
 
-  if (status !== "payment_approved") {
+  if (status !== "payment_approved" && status !== "publishing") {
     throw new HttpsError(
       "failed-precondition",
       "El pago aun no fue aprobado para esta sesion"

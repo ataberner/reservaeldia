@@ -394,6 +394,197 @@ test("finalizeApprovedSessionFlow can recover a paid non-conflict publish failur
   ]);
 });
 
+test("finalizeApprovedSessionFlow auto-retries a retryable approved publish failure and publishes once recovered", async () => {
+  let publishAttempt = 0;
+  const harness = createSettlementHarness(createBaseSession(), {
+    approvedPaymentAnalytics: null,
+    async publishDraftToPublic(input) {
+      publishAttempt += 1;
+      harness.calls.publish.push(clone({ ...input, attempt: publishAttempt }));
+      if (publishAttempt === 1) {
+        throw new Error("renderer-timeout");
+      }
+      return {
+        publicSlug: input.publicSlug,
+        publicUrl: `https://reservaeldia.com.ar/i/${input.publicSlug}`,
+      };
+    },
+  });
+
+  const result = await finalizeApprovedSessionFlow({
+    sessionId: "session-1",
+    fallbackPaymentId: "pay-1",
+    approvedAt: "2026-03-27T12:00:00.000Z",
+    ...harness.deps,
+    autoRetry: {
+      maxAttempts: 2,
+      backoffMs: [0],
+      delay: async () => {},
+      createTimestampValue: (date) => date.toISOString(),
+      createLeaseExpiresAtValue: (date) => date.toISOString(),
+      getNowMs: () => Date.parse("2026-03-27T12:00:00.000Z"),
+    },
+  });
+
+  assert.equal(result.sessionStatus, "published");
+  assert.equal(harness.runtime.state.session.status, "published");
+  assert.equal(harness.runtime.state.session.publicationAutoRetry.status, "succeeded");
+  assert.equal(harness.runtime.state.session.publicationAutoRetry.attempts, 2);
+  assert.equal(harness.runtime.state.session.publishingLeaseExpiresAt, null);
+  assert.deepEqual(
+    harness.calls.publish.map((item) => item.attempt),
+    [1, 2]
+  );
+  assert.deepEqual(harness.calls.reservationUpdates, [
+    {
+      slug: "mi-slug",
+      sessionId: "session-1",
+      nextStatus: "consumed",
+    },
+  ]);
+});
+
+test("finalizeApprovedSessionFlow exhausts automatic retries and preserves manual retry state", async () => {
+  const harness = createSettlementHarness(createBaseSession(), {
+    approvedPaymentAnalytics: null,
+    async publishDraftToPublic(input) {
+      harness.calls.publish.push(clone(input));
+      throw new Error("renderer-timeout");
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      finalizeApprovedSessionFlow({
+        sessionId: "session-1",
+        fallbackPaymentId: "pay-1",
+        ...harness.deps,
+        autoRetry: {
+          maxAttempts: 2,
+          backoffMs: [0],
+          delay: async () => {},
+          createTimestampValue: (date) => date.toISOString(),
+          createLeaseExpiresAtValue: (date) => date.toISOString(),
+          getNowMs: () => Date.parse("2026-03-27T12:00:00.000Z"),
+        },
+      }),
+    (error) => {
+      assert.equal(error?.code, "failed-precondition");
+      assert.equal(error?.message, "renderer-timeout");
+      return true;
+    }
+  );
+
+  assert.equal(harness.calls.publish.length, 2);
+  assert.equal(harness.runtime.state.session.status, "payment_approved");
+  assert.equal(harness.runtime.state.session.lastError, "renderer-timeout");
+  assert.equal(harness.runtime.state.session.publicationAutoRetry.status, "exhausted");
+  assert.equal(harness.runtime.state.session.publicationAutoRetry.attempts, 2);
+  assert.equal(harness.runtime.state.session.publishingLeaseExpiresAt, null);
+});
+
+test("finalizeApprovedSessionFlow does not auto-retry non-retryable validation blockers", async () => {
+  const validationError = new HttpsError(
+    "failed-precondition",
+    "La invitacion tiene bloqueadores.",
+    { validation: { canPublish: false, blockers: [{ code: "missing-section" }] } }
+  );
+  const harness = createSettlementHarness(createBaseSession(), {
+    approvedPaymentAnalytics: null,
+    async publishDraftToPublic(input) {
+      harness.calls.publish.push(clone(input));
+      throw validationError;
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      finalizeApprovedSessionFlow({
+        sessionId: "session-1",
+        fallbackPaymentId: "pay-1",
+        ...harness.deps,
+        autoRetry: {
+          maxAttempts: 3,
+          backoffMs: [0, 0],
+          delay: async () => {},
+          createTimestampValue: (date) => date.toISOString(),
+          createLeaseExpiresAtValue: (date) => date.toISOString(),
+        },
+      }),
+    (error) => {
+      assert.equal(error?.code, "failed-precondition");
+      return true;
+    }
+  );
+
+  assert.equal(harness.calls.publish.length, 1);
+  assert.equal(harness.runtime.state.session.status, "payment_approved");
+  assert.equal(harness.runtime.state.session.publicationAutoRetry.status, "not_retryable");
+  assert.equal(harness.runtime.state.session.publicationAutoRetry.retryable, false);
+  assert.equal(
+    harness.runtime.state.session.publicationAutoRetry.reason,
+    "publish-validation-blocker"
+  );
+});
+
+test("finalizeApprovedSessionFlow does not duplicate publish while a publishing lease is active", async () => {
+  const harness = createSettlementHarness(
+    createBaseSession({
+      status: "publishing",
+      publishingLeaseExpiresAt: "2026-03-27T12:05:00.000Z",
+      publicationAutoRetry: {
+        status: "running",
+        attempt: 1,
+        maxAttempts: 2,
+      },
+    }),
+    {
+      approvedPaymentAnalytics: null,
+      async publishDraftToPublic() {
+        throw new Error("should not publish");
+      },
+    }
+  );
+
+  const result = await finalizeApprovedSessionFlow({
+    sessionId: "session-1",
+    fallbackPaymentId: "pay-1",
+    ...harness.deps,
+    autoRetry: {
+      getNowMs: () => Date.parse("2026-03-27T12:00:00.000Z"),
+    },
+  });
+
+  assert.equal(result.sessionStatus, "publishing");
+  assert.equal(result.publicationAutoRetry.status, "running");
+  assert.equal(harness.calls.publish.length, 0);
+});
+
+test("finalizeApprovedSessionFlow can recover a stale publishing lease", async () => {
+  const harness = createSettlementHarness(
+    createBaseSession({
+      status: "publishing",
+      publishingLeaseExpiresAt: "2026-03-27T11:59:00.000Z",
+    }),
+    {
+      approvedPaymentAnalytics: null,
+    }
+  );
+
+  const result = await finalizeApprovedSessionFlow({
+    sessionId: "session-1",
+    fallbackPaymentId: "pay-1",
+    ...harness.deps,
+    autoRetry: {
+      getNowMs: () => Date.parse("2026-03-27T12:00:00.000Z"),
+      createLeaseExpiresAtValue: (date) => date.toISOString(),
+    },
+  });
+
+  assert.equal(result.sessionStatus, "published");
+  assert.equal(harness.calls.publish.length, 1);
+});
+
 test("processMercadoPagoPaymentFlow keeps rejected payments local to the session result", async () => {
   const runtime = createSessionRuntime(
     createBaseSession({

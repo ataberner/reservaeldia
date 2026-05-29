@@ -274,6 +274,11 @@ test("buildCheckoutStatusResponseFromSession includes publishing stage diagnosti
       imageCount: 6,
       pendingImageCount: 4,
     },
+    publicationAutoRetry: {
+      status: "scheduled",
+      attempt: 1,
+      maxAttempts: 2,
+    },
   });
 
   assert.deepEqual(response, {
@@ -299,6 +304,11 @@ test("buildCheckoutStatusResponseFromSession includes publishing stage diagnosti
       substage: "waiting_images",
       imageCount: 6,
       pendingImageCount: 4,
+    },
+    publicationAutoRetry: {
+      status: "scheduled",
+      attempt: 1,
+      maxAttempts: 2,
     },
   });
 });

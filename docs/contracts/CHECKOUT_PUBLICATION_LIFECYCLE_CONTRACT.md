@@ -67,7 +67,8 @@ document is the source of truth for whether publication is still processing,
 retryable, conflicted, expired, rejected, or published. Key fields include
 `uid`, `draftSlug`, `operation`, `publicSlug`, `status`, `expiresAt`,
 `mpPaymentId`, `mpStatus`, `mpStatusDetail`, `publicUrl`, `receipt`,
-`lastError`, `publishingStage`, `publishingStageDurationsMs`, `createdAt`, and
+`lastError`, `publishingStage`, `publishingStageDurationsMs`,
+`publicationAutoRetry`, `publishingLeaseExpiresAt`, `createdAt`, and
 `updatedAt`.
 
 `public_slug_reservations`
@@ -108,9 +109,11 @@ The current checkout session status union is:
 - `expired`
 
 There is no persisted checkout status named `cancelled`, `failed`, `retrying`,
-or `publication_planned`. Mercado Pago `cancelled` maps to
-`payment_rejected`. `awaiting_retry` is a return shape from
+`publishing_retrying`, or `publication_planned`. Mercado Pago `cancelled` maps
+to `payment_rejected`. `awaiting_retry` is a return shape from
 `retryPaidPublicationWithNewSlug`, not a stored checkout session status.
+Automatic publication retry is represented by `status: "publishing"` plus
+additive `publicationAutoRetry` metadata.
 
 ## Publication Progress Fields
 
@@ -185,6 +188,41 @@ include counters such as `htmlBytes`, `imageCount`, `lazyImageCount`,
 snapshots, `renderTimeoutMs`, `storagePath`, and `errorCode`. It must remain
 small, Firestore-safe, and free of raw HTML or large URL lists.
 
+`publicationAutoRetry`
+: Optional backend-owned metadata for bounded automatic recovery after an
+approved payment and a retryable publish failure. It must not replace `status`.
+Current shape:
+
+```ts
+{
+  status:
+    | "scheduled"
+    | "running"
+    | "succeeded"
+    | "exhausted"
+    | "not_retryable",
+  attempt: number,
+  attempts?: number,
+  maxAttempts: number,
+  nextRetryAt?: Timestamp,
+  nextAttempt?: number,
+  lastError?: string,
+  lastErrorCode?: string,
+  retryable?: boolean,
+  reason?: string,
+  lastFailedStage?: object | null,
+  lastFailedShareImageSubstage?: object | null,
+  lastFailedShareImageDiagnostics?: object | null,
+  updatedAt: Timestamp,
+}
+```
+
+`publishingLeaseExpiresAt`
+: Optional backend-owned execution lease used while `status: "publishing"`.
+Duplicate webhook/callable/manual settlement attempts must not start a second
+publish while the lease is active. If the lease is expired, approved-session
+settlement may reclaim the session and attempt safe recovery.
+
 Rules:
 
 - Only the backend writes these fields.
@@ -194,11 +232,15 @@ Rules:
   success signal.
 - `payment_approved` plus `lastError` is a retryable publish failure, not an
   indefinite processing state.
+- `publishing` plus active `publicationAutoRetry.status` of `scheduled` or
+  `running` is a bounded backend recovery attempt, not a terminal failure.
 - Stage progress must come from real backend stage transitions, not client-side
   timers or fake percentage bars.
 - Share-image substage and diagnostic fields are additive debugging metadata.
   They must not replace `status`, `lastError`, or the generated share-image
   fail-closed contract.
+- Automatic retry metadata is additive. Frontend code may display it but must
+  not infer publish success from it.
 
 ## Lifecycle State Machine
 
@@ -235,9 +277,15 @@ Rules:
 6. Publication executing
    - `publicationApprovedSessionFlow.ts` attempts to claim the approved session.
    - The persisted execution marker is `status: "publishing"`.
+   - The backend may write `publishingLeaseExpiresAt` with that claim. While the
+     lease is active, other settlement callers observe the existing session
+     instead of starting another publish execution.
    - While `status: "publishing"`, the backend may persist
      `publishingStage` as an additive progress/debug field. This field is
      descriptive only; it does not create a second lifecycle state machine.
+   - If a retryable publish failure happens after payment approval, the same
+     backend settlement flow may keep the session in `publishing` and run a
+     bounded automatic retry, represented only by `publicationAutoRetry`.
    - `publicationOperationPlanning.ts` shapes in-memory plans for session,
      reservation, publication, draft, history, and artifact effects. There is no
      separate persisted "planned" checkout status.
@@ -250,16 +298,31 @@ Rules:
      Storage artifacts and generated share metadata are ready.
 
 8. Retryable publication failure
-- A non-conflict publish execution failure keeps the paid session retryable
-  by writing `status: "payment_approved"` with `lastError`.
-- If the failure happened after a reported publish stage started, the backend
-  should leave `publishingStage.status: "failed"` on the stage that failed so
-  the UI can explain where the retryable failure occurred.
-- If the failure happened inside generated share-image work, the backend should
-  leave `publishingShareImageSubstage` and `publishingShareImageDiagnostics`
-  with the latest known substep so support can tell whether the failure was
-  Chromium startup, HTML load, font readiness, image readiness, screenshot,
-  Sharp normalization, Storage upload, or confirmation.
+   - A non-conflict publish execution failure keeps the paid session retryable
+     by writing `status: "payment_approved"` with `lastError` after automatic
+     backend recovery is exhausted or skipped.
+   - Before surfacing the hard retryable failure, the backend may run a bounded
+     automatic retry for retryable errors. During that recovery window the
+     session remains `status: "publishing"` with `publicationAutoRetry.status:
+     "scheduled"` or `"running"` and the frontend should keep polling.
+   - If an automatic retry succeeds, the normal success write applies:
+     `status: "published"` with backend `publicUrl`/`receipt.publicUrl`.
+   - If automatic retries are exhausted, the session returns to
+     `status: "payment_approved"` with `lastError` and
+     `publicationAutoRetry.status: "exhausted"`, preserving manual retry without
+     a second payment.
+   - Non-retryable publish failures must not loop. They should persist
+     `publicationAutoRetry.status: "not_retryable"` when automatic retry
+     evaluated and declined the error.
+   - If the failure happened after a reported publish stage started, the backend
+     should leave `publishingStage.status: "failed"` on the stage that failed so
+     the UI can explain where the retryable failure occurred.
+   - If the failure happened inside generated share-image work, the backend
+     should leave `publishingShareImageSubstage` and
+     `publishingShareImageDiagnostics` with the latest known substep so support
+     can tell whether the failure was Chromium startup, HTML load, font
+     readiness, image readiness, screenshot, Sharp normalization, Storage
+     upload, or confirmation.
    - A slug conflict writes `status: "approved_slug_conflict"` and releases the
      reservation for the conflicted slug.
 
@@ -372,8 +435,11 @@ session finalization again.
 
 Retryable non-conflict failures
 : Publish errors after payment approval write the session back to
-`payment_approved` with `lastError`. A backend retry may call approved-session
-settlement again. Frontend-only retries must not bypass this backend lifecycle.
+`payment_approved` with `lastError` after bounded automatic recovery is
+exhausted or skipped. While automatic recovery is pending, the same backend
+settlement flow may keep the session in `publishing` with
+`publicationAutoRetry.status: "scheduled" | "running"`. Frontend-only retries
+must not bypass this backend lifecycle.
 
 Terminal failures
 : `payment_rejected` and `expired` are terminal for the current checkout
@@ -385,8 +451,11 @@ Idempotency expectations:
   key.
 - Repeated settlement of an already `published` session returns the persisted
   `publicUrl` and `receipt` without republishing.
-- A session already in `publishing` is not claimed again by the same planning
-  rule; callers receive the current session result instead of duplicating work.
+- A session already in `publishing` with an active `publishingLeaseExpiresAt` is
+  not claimed again by the same planning rule; callers receive the current
+  session result instead of duplicating work.
+- A session in `publishing` with an expired `publishingLeaseExpiresAt` may be
+  reclaimed by approved-session settlement for safe recovery.
 - Retrying an approved slug conflict is backend-controlled and must either
   publish with the newly reserved slug or return an awaiting-retry response.
 
@@ -400,8 +469,8 @@ Idempotency expectations:
 - `approved_slug_conflict`: paid but unresolved. The modal must show the
   conflict recovery flow and call `retryPaidPublicationWithNewSlug` with a new
   validated slug.
-- `payment_processing` or `payment_approved`: processing state. The modal may
-  poll `getPublicationCheckoutStatus`.
+- `payment_processing` or `payment_approved` without `lastError`: processing
+  state. The modal may poll `getPublicationCheckoutStatus`.
 - `payment_approved` with `lastError`: paid but publish failed in a retryable
   way. The modal must not keep showing indefinite processing; it should show the
   failed `publishingStage` when present and avoid exposing raw renderer/debug
@@ -409,6 +478,10 @@ Idempotency expectations:
 - `publishing`: backend execution has claimed the paid session. The modal must
   continue treating the attempt as processing and must not show success until
   backend status becomes `published` with a final URL.
+- `publishing` with active `publicationAutoRetry.status` of `scheduled` or
+  `running`: backend automatic recovery is in progress. The modal should show
+  post-payment recovery copy, keep polling, and make clear that the payment is
+  approved and no second payment is needed.
 - `payment_rejected`: failure state for the current payment attempt.
 - `expired`: failure state for the current session.
 - `awaiting_payment`: normal pre-payment state.

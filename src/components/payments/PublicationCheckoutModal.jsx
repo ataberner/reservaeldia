@@ -4,12 +4,14 @@ import { AlertCircle, CheckCircle2, Circle, Loader2, RefreshCw, X } from "lucide
 import { functions as cloudFunctions } from "@/firebase";
 import PublicationSuccessState from "@/components/payments/PublicationSuccessState";
 import {
+  buildPublicationAutoRetryUserMessage,
   buildPublishFailureUserMessage,
   buildCheckoutModalContextKey,
   isProcessingCheckoutStatus,
   isPublishedCheckoutStatus,
   isRetryablePublishFailureStatusPayload,
   resolveCheckoutModalInitialization,
+  resolvePublicationAutoRetryState,
   resolvePublishingProgressState,
   resolveTerminalPublicationResult,
 } from "@/domain/payments/publicationCheckoutState";
@@ -211,6 +213,26 @@ function PublicationDebugDetails({ sessionId, progress, diagnostics }) {
   );
 }
 
+function PublicationAutoRetryNotice({ retry }) {
+  if (!retry?.isActive) return null;
+
+  const attemptText =
+    retry.nextAttempt && retry.maxAttempts
+      ? `Intento ${retry.nextAttempt} de ${retry.maxAttempts}`
+      : "Reintentando publicacion";
+
+  return (
+    <div className="rounded-lg border border-[#d8ccea] bg-[#faf6ff] p-3 text-xs text-slate-700">
+      <p className="inline-flex items-center gap-2 font-semibold text-[#6f3bc0]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Estamos finalizando tu publicacion
+      </p>
+      <p className="mt-1">Esto puede tardar unos segundos mas. No necesitas volver a pagar.</p>
+      <p className="mt-1 text-slate-500">{attemptText}</p>
+    </div>
+  );
+}
+
 export default function PublicationCheckoutModal({
   visible,
   onClose,
@@ -250,6 +272,7 @@ export default function PublicationCheckoutModal({
   const [retryingConflict, setRetryingConflict] = useState(false);
   const [publishingProgress, setPublishingProgress] = useState(null);
   const [publishingDiagnostics, setPublishingDiagnostics] = useState(null);
+  const [publicationAutoRetry, setPublicationAutoRetry] = useState(null);
   const [hasRetryablePublishFailure, setHasRetryablePublishFailure] = useState(false);
   const [retryingPublish, setRetryingPublish] = useState(false);
 
@@ -374,6 +397,7 @@ export default function PublicationCheckoutModal({
     setRetryingConflict(false);
     setPublishingProgress(null);
     setPublishingDiagnostics(null);
+    setPublicationAutoRetry(null);
     setHasRetryablePublishFailure(false);
     setRetryingPublish(false);
     notifiedPublishRef.current = false;
@@ -453,6 +477,7 @@ export default function PublicationCheckoutModal({
     setCheckoutError("");
     setPublishingProgress(null);
     setPublishingDiagnostics(null);
+    setPublicationAutoRetry(null);
     clearPolling();
     logCheckoutDebug("checkout:published", {
       sessionId: sessionData?.sessionId || null,
@@ -486,11 +511,25 @@ export default function PublicationCheckoutModal({
         statusPayload?.publishingStage?.substage?.key ||
         statusPayload?.publishingShareImageSubstage?.key ||
         null,
+      publicationAutoRetryStatus: statusPayload?.publicationAutoRetry?.status || null,
+      publicationAutoRetryAttempt:
+        statusPayload?.publicationAutoRetry?.nextAttempt ||
+        statusPayload?.publicationAutoRetry?.attempt ||
+        null,
     });
 
     const progress = resolvePublishingProgressState(statusPayload);
+    const autoRetry = resolvePublicationAutoRetryState(statusPayload);
     setPublishingProgress(progress.hasProgress ? progress : null);
     setPublishingDiagnostics(statusPayload?.publishingShareImageDiagnostics || null);
+    setPublicationAutoRetry(autoRetry.isActive ? autoRetry : null);
+
+    if (autoRetry.isActive) {
+      setHasRetryablePublishFailure(false);
+      setCheckoutInfo(buildPublicationAutoRetryUserMessage(statusPayload));
+      setCheckoutError("");
+      return;
+    }
 
     if (isRetryablePublishFailureStatusPayload(statusPayload)) {
       setHasRetryablePublishFailure(true);
@@ -639,6 +678,7 @@ export default function PublicationCheckoutModal({
     setHasApprovedSlugConflict(false);
     setPublishingProgress(null);
     setPublishingDiagnostics(null);
+    setPublicationAutoRetry(null);
     setHasRetryablePublishFailure(false);
     setRetryingPublish(false);
     setCheckoutInfo("");
@@ -727,7 +767,10 @@ export default function PublicationCheckoutModal({
         } catch (error) {
           const message = parseErrorMessage(error, "No se pudo completar la publicacion.");
           const statusPayload = await refreshCheckoutStatus(data.sessionId);
-          if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+          if (
+            !isRetryablePublishFailureStatusPayload(statusPayload || {}) &&
+            !resolvePublicationAutoRetryState(statusPayload || {}).isActive
+          ) {
             setCheckoutError(message);
           }
           logCheckoutDebug("createPayment:autoDiscount:error", {
@@ -825,7 +868,10 @@ export default function PublicationCheckoutModal({
     } catch (error) {
       const message = parseErrorMessage(error, "No se pudo procesar el pago.");
       const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
-      if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+      if (
+        !isRetryablePublishFailureStatusPayload(statusPayload || {}) &&
+        !resolvePublicationAutoRetryState(statusPayload || {}).isActive
+      ) {
         setCheckoutError(message);
       }
       logCheckoutDebug("createPayment:error", {
@@ -885,7 +931,10 @@ export default function PublicationCheckoutModal({
     } catch (error) {
       const message = parseErrorMessage(error, "No se pudo completar la publicacion.");
       const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
-      if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+      if (
+        !isRetryablePublishFailureStatusPayload(statusPayload || {}) &&
+        !resolvePublicationAutoRetryState(statusPayload || {}).isActive
+      ) {
         setCheckoutError(message);
       }
       logCheckoutDebug("retryConflict:error", {
@@ -903,6 +952,7 @@ export default function PublicationCheckoutModal({
     setRetryingPublish(true);
     setHasRetryablePublishFailure(false);
     setPublishingDiagnostics(null);
+    setPublicationAutoRetry(null);
     setCheckoutError("");
     setCheckoutInfo("Reintentando publicacion...");
 
@@ -938,7 +988,10 @@ export default function PublicationCheckoutModal({
     } catch (error) {
       const message = parseErrorMessage(error, "No se pudo reintentar la publicacion.");
       const statusPayload = await refreshCheckoutStatus(sessionData.sessionId);
-      if (!isRetryablePublishFailureStatusPayload(statusPayload || {})) {
+      if (
+        !isRetryablePublishFailureStatusPayload(statusPayload || {}) &&
+        !resolvePublicationAutoRetryState(statusPayload || {}).isActive
+      ) {
         setCheckoutError(message);
       }
       logCheckoutDebug("retryPublish:error", {
@@ -975,6 +1028,7 @@ export default function PublicationCheckoutModal({
     setPublishedUrl("");
     setPublishingProgress(null);
     setPublishingDiagnostics(null);
+    setPublicationAutoRetry(null);
     setHasRetryablePublishFailure(false);
     setRetryingPublish(false);
     notifiedPublishRef.current = false;
@@ -1125,6 +1179,12 @@ export default function PublicationCheckoutModal({
   const slugReasonMessage = getReasonMessage(slugValidation.reason);
   const conflictReasonMessage = getReasonMessage(conflictValidation.reason);
   const showPreSuccessFlow = !receipt;
+  const isPostPaymentFlowActive =
+    Boolean(publicationAutoRetry?.isActive) ||
+    Boolean(publishingProgress?.hasProgress) ||
+    hasRetryablePublishFailure ||
+    pollingStatus ||
+    paying;
 
   return (
     <div className="fixed inset-0 z-[10000] bg-black/45 backdrop-blur-sm">
@@ -1285,6 +1345,10 @@ export default function PublicationCheckoutModal({
                 <PublicationProgressList progress={publishingProgress} />
               ) : null}
 
+              {!receipt && publicationAutoRetry?.isActive ? (
+                <PublicationAutoRetryNotice retry={publicationAutoRetry} />
+              ) : null}
+
               {!receipt && showConflictFlow ? (
                 <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50/80 p-4">
                   <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
@@ -1334,7 +1398,7 @@ export default function PublicationCheckoutModal({
                 </div>
               ) : null}
 
-              {!receipt && sessionData?.sessionId && !showConflictFlow ? (
+              {!receipt && sessionData?.sessionId && !showConflictFlow && !isPostPaymentFlowActive ? (
                 summaryFinalAmount <= 0 ? (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm text-emerald-800">
                     Descuento total aplicado. No necesitas ingresar un medio de pago.

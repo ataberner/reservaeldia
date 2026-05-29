@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildPublicationAutoRetryUserMessage,
   buildCheckoutModalContextKey,
   buildPublishFailureUserMessage,
   isProcessingCheckoutStatus,
@@ -10,6 +11,7 @@ import {
   isRetryablePublishFailureStatusPayload,
   isTerminalCheckoutFailureStatus,
   resolvePublishingProgressState,
+  resolvePublicationAutoRetryState,
   resolveCheckoutStatusFlowState,
   resolveCheckoutModalInitialization,
   resolveTerminalPublicationResult,
@@ -156,6 +158,7 @@ test("publishing stays in progress and published still needs a final backend URL
     isTerminalSuccess: false,
     isTerminalFailure: false,
     isRetryablePublishFailure: false,
+    isAutoRetryingPublication: false,
     shouldContinuePolling: true,
     shouldClearPolling: false,
   });
@@ -183,6 +186,7 @@ test("terminal and recoverable checkout flow states stop polling without reporti
     isTerminalSuccess: false,
     isTerminalFailure: true,
     isRetryablePublishFailure: false,
+    isAutoRetryingPublication: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
   });
@@ -194,6 +198,7 @@ test("terminal and recoverable checkout flow states stop polling without reporti
     isTerminalSuccess: false,
     isTerminalFailure: true,
     isRetryablePublishFailure: false,
+    isAutoRetryingPublication: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
   });
@@ -205,6 +210,7 @@ test("terminal and recoverable checkout flow states stop polling without reporti
     isTerminalSuccess: false,
     isTerminalFailure: false,
     isRetryablePublishFailure: false,
+    isAutoRetryingPublication: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
   });
@@ -237,6 +243,7 @@ test("retryable publish failures stop polling and keep backend as authority", ()
     isTerminalSuccess: false,
     isTerminalFailure: false,
     isRetryablePublishFailure: true,
+    isAutoRetryingPublication: false,
     shouldContinuePolling: false,
     shouldClearPolling: true,
   });
@@ -245,6 +252,52 @@ test("retryable publish failures stop polling and keep backend as authority", ()
     /Fallo en: Generando imagen para compartir/
   );
   assert.match(buildPublishFailureUserMessage(payload), /Cargando imagenes/);
+});
+
+test("automatic publication retry stays in progress without surfacing a hard failure", () => {
+  const payload = {
+    sessionStatus: "publishing",
+    errorMessage: "renderer-timeout",
+    publicationAutoRetry: {
+      status: "scheduled",
+      attempt: 1,
+      nextAttempt: 2,
+      maxAttempts: 2,
+      lastError: "renderer-timeout",
+      reason: "publish-transient-stage-error",
+    },
+  };
+
+  assert.deepEqual(resolvePublicationAutoRetryState(payload), {
+    status: "scheduled",
+    attempt: 1,
+    maxAttempts: 2,
+    nextAttempt: 2,
+    lastError: "renderer-timeout",
+    lastErrorCode: "",
+    reason: "publish-transient-stage-error",
+    isActive: true,
+    isScheduled: true,
+    isRunning: false,
+    isExhausted: false,
+    isNotRetryable: false,
+    isSucceeded: false,
+  });
+  assert.deepEqual(resolveCheckoutStatusFlowState(payload), {
+    status: "publishing",
+    isProcessing: true,
+    isRecoverable: false,
+    isTerminalSuccess: false,
+    isTerminalFailure: false,
+    isRetryablePublishFailure: false,
+    isAutoRetryingPublication: true,
+    shouldContinuePolling: true,
+    shouldClearPolling: false,
+  });
+  assert.match(
+    buildPublicationAutoRetryUserMessage(payload),
+    /No necesitas volver a pagar/
+  );
 });
 
 test("publishing progress maps a real backend stage to ordered UI steps", () => {

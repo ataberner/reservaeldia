@@ -993,18 +993,13 @@ export default function MenuOpcionesElemento({
                     selectedElement={elementoSeleccionado}
                     selectedElementType={authoringConfig?.selectedElementType || ""}
                     selectedIsSupportedElement={authoringConfig?.selectedIsSupportedElement === true}
-                    suggestedFieldType={authoringConfig?.selectedElementDefaultFieldType || "text"}
                     selectedField={authoringConfig?.selectedField || null}
                     fieldsSchema={authoringConfig?.fieldsSchema || []}
-                    onRefreshFields={authoringConfig?.onRefreshFields}
-                    onCreateField={authoringConfig?.onCreateField}
-                    onLinkField={authoringConfig?.onLinkField}
                     onLinkEventPersonName={authoringConfig?.onLinkEventPersonName}
                     onLinkEventLocation={authoringConfig?.onLinkEventLocation}
                     onLinkEventTime={authoringConfig?.onLinkEventTime}
-                    onEditField={authoringConfig?.onEditField}
+                    onLinkEventDate={authoringConfig?.onLinkEventDate}
                     onUnlinkField={authoringConfig?.onUnlinkField}
-                    onDeleteField={authoringConfig?.onDeleteField}
                     onViewUsage={authoringConfig?.onViewUsage}
                 />
             )}

@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { requireSuperAdmin } from "../auth/adminAuth";
+import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
 
 const OPTIONS = {
   region: "us-central1" as const,
@@ -359,6 +359,21 @@ export const adminGetPricingConfigV1 = onCall(
   async (request: CallableRequest<Record<string, never>>) => {
     requireSuperAdmin(request);
     const config = await getStoredPricingConfigOrThrow();
+
+    return {
+      config: buildConfigResponse(config),
+    };
+  }
+);
+
+export const getPricingConfigV1 = onCall(
+  OPTIONS,
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = requireAuth(request);
+    const config = await loadCheckoutPricingConfig({
+      context: "getPricingConfigV1",
+      uid,
+    });
 
     return {
       config: buildConfigResponse(config),

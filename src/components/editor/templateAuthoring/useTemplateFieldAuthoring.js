@@ -42,7 +42,14 @@ import {
   normalizeEventTimeValue,
   resolveEventTimesFromAuthoring,
 } from "@/domain/eventDetails/time.js";
+import {
+  ensureEventDateField,
+  getEventDateFieldKey,
+} from "@/domain/eventDetails/date.js";
 import { validateAuthoringState } from "@/domain/templates/authoring/validation.js";
+import {
+  resolveTemplateAuthoringCapabilities,
+} from "@/domain/templates/authoring/capabilities.js";
 import {
   AUTHORING_DRAFT_VERSION,
   loadAuthoringState,
@@ -189,6 +196,8 @@ function emptySnapshot() {
 
 export default function useTemplateFieldAuthoring({
   enabled = false,
+  canEditSchema = enabled,
+  canUseFields = enabled,
   slug,
   editorSession = null,
   userId,
@@ -474,7 +483,14 @@ export default function useTemplateFieldAuthoring({
     };
   }, [draftMeta, editorSession, enabled, hydrateSnapshot, safeObjetos, slug]);
 
-  const canConfigure = enabled && Boolean(sourceTemplateId);
+  const authoringCapabilities = resolveTemplateAuthoringCapabilities({
+    enabled,
+    canEditSchema,
+    canUseFields,
+    sourceTemplateId,
+  });
+  const canConfigure = authoringCapabilities.canEditSchema;
+  const canUseExistingFields = authoringCapabilities.canUseFields;
 
   const applyFieldTargetsToObjects = useCallback(
     (field, value, { targetObjectIds = null } = {}) => {
@@ -541,7 +557,7 @@ export default function useTemplateFieldAuthoring({
 
   const updateEventPersonNames = useCallback(
     async (patch = {}) => {
-      if (!canConfigure) {
+      if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
 
@@ -558,17 +574,22 @@ export default function useTemplateFieldAuthoring({
           ? normalizeText(safePatch.secondaryName)
           : currentNames.secondaryName,
       };
-      const ensureResult = ensureEventPersonNameFields({
-        fieldsSchema,
-        includeBaseFields: true,
-        coupleFormats: collectEventPersonNameFields(fieldsSchema)
-          .filter(
-            (field) =>
-              normalizeEventPersonNameRole(field.eventDetailsRole) ===
-              EVENT_PERSON_NAME_ROLES.COUPLE
-          )
-          .map((field) => field.eventDetailsFormat),
-      });
+      const ensureResult = canConfigure
+        ? ensureEventPersonNameFields({
+            fieldsSchema,
+            includeBaseFields: true,
+            coupleFormats: collectEventPersonNameFields(fieldsSchema)
+              .filter(
+                (field) =>
+                  normalizeEventPersonNameRole(field.eventDetailsRole) ===
+                  EVENT_PERSON_NAME_ROLES.COUPLE
+              )
+              .map((field) => field.eventDetailsFormat),
+          })
+        : {
+            fieldsSchema,
+            changed: false,
+          };
       const nextFieldsSchema = ensureResult.fieldsSchema;
       const nextDefaults = ensureDefaultsForSchema(
         nextFieldsSchema,
@@ -601,6 +622,7 @@ export default function useTemplateFieldAuthoring({
     [
       applyEventPersonNameTargetsToObjects,
       canConfigure,
+      canUseExistingFields,
       commitSnapshot,
       defaults,
       fieldsSchema,
@@ -709,7 +731,7 @@ export default function useTemplateFieldAuthoring({
 
   const updateEventLocation = useCallback(
     async (patch = {}) => {
-      if (!canConfigure) {
+      if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
 
@@ -743,8 +765,13 @@ export default function useTemplateFieldAuthoring({
           ? safePatch.addressTextFormatPreset
           : currentLocation.addressTextFormatPreset,
       };
-      const ensureResult = ensureEventLocationFields({ fieldsSchema });
-      const formatResult = Object.prototype.hasOwnProperty.call(
+      const ensureResult = canConfigure
+        ? ensureEventLocationFields({ fieldsSchema })
+        : {
+            fieldsSchema,
+            changed: false,
+          };
+      const formatResult = canConfigure && Object.prototype.hasOwnProperty.call(
         safePatch,
         "addressTextFormatPreset"
       )
@@ -789,6 +816,7 @@ export default function useTemplateFieldAuthoring({
     [
       applyEventLocationTargetsToObjects,
       canConfigure,
+      canUseExistingFields,
       commitSnapshot,
       defaults,
       fieldsSchema,
@@ -884,7 +912,7 @@ export default function useTemplateFieldAuthoring({
 
   const updateEventTimes = useCallback(
     async (patch = {}) => {
-      if (!canConfigure) {
+      if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
 
@@ -901,7 +929,12 @@ export default function useTemplateFieldAuthoring({
           ? normalizeEventTimeValue(safePatch.endTime)
           : currentTimes.endTime,
       };
-      const ensureResult = ensureEventTimeFields({ fieldsSchema });
+      const ensureResult = canConfigure
+        ? ensureEventTimeFields({ fieldsSchema })
+        : {
+            fieldsSchema,
+            changed: false,
+          };
       const nextFieldsSchema = ensureResult.fieldsSchema;
       const nextDefaults = ensureDefaultsForSchema(
         nextFieldsSchema,
@@ -934,6 +967,7 @@ export default function useTemplateFieldAuthoring({
     [
       applyEventTimeTargetsToObjects,
       canConfigure,
+      canUseExistingFields,
       commitSnapshot,
       defaults,
       fieldsSchema,
@@ -1018,6 +1052,79 @@ export default function useTemplateFieldAuthoring({
       selectedElement,
       selectedElementId,
       selectedElementFieldPath,
+      selectedElementType,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const linkSelectionToEventDate = useCallback(
+    async () => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+      if (selectedElementType !== "texto" && selectedElementType !== "countdown") {
+        throw new Error("Selecciona un texto o countdown para vincular la fecha del evento.");
+      }
+      if (!selectedElementId) {
+        throw new Error("Selecciona un elemento para vincular la fecha del evento.");
+      }
+
+      const fieldKey = getEventDateFieldKey();
+      const ensureResult = ensureEventDateField({ fieldsSchema });
+      const linkResult = linkElementToField({
+        fieldsSchema: ensureResult.fieldsSchema,
+        fieldKey,
+        elementId: selectedElementId,
+        path: selectedElementFieldPath || (selectedElementType === "countdown" ? "fechaObjetivo" : "texto"),
+      });
+      const nextFieldsSchema = linkResult.fieldsSchema;
+      const linkedField =
+        nextFieldsSchema.find((field) => normalizeText(field?.key) === fieldKey) ||
+        ensureResult.field;
+      const linkedValue =
+        resolveFieldValueFromLinkedCountdown({
+          field: linkedField,
+          objetos: safeObjetos,
+          fallbackValue:
+            defaults[fieldKey] ||
+            (selectedElementType === "countdown" ? selectedElementDefaultValue : ""),
+        }) || "";
+      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, {
+        ...defaults,
+        [fieldKey]: linkedValue || defaults[fieldKey] || "",
+      });
+
+      if (
+        !ensureResult.changed &&
+        !linkResult.changed &&
+        areValuesMapsEqual(nextDefaults, defaults)
+      ) {
+        return false;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      if (linkedValue) {
+        applyFieldTargetsToObjects(linkedField, linkedValue);
+      }
+      return true;
+    },
+    [
+      applyFieldTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      safeObjetos,
+      selectedElementDefaultValue,
+      selectedElementFieldPath,
+      selectedElementId,
       selectedElementType,
       snapshot,
       sourceTemplateId,
@@ -1264,7 +1371,7 @@ export default function useTemplateFieldAuthoring({
 
   const updateFieldDefaultValue = useCallback(
     async (fieldKey, value, options = {}) => {
-      if (!canConfigure) {
+      if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
 
@@ -1297,7 +1404,7 @@ export default function useTemplateFieldAuthoring({
     },
     [
       applyFieldTargetsToObjects,
-      canConfigure,
+      canUseExistingFields,
       commitSnapshot,
       defaults,
       fieldsSchema,
@@ -1486,6 +1593,8 @@ export default function useTemplateFieldAuthoring({
     saving,
     error,
     canConfigure,
+    canEditSchema: canConfigure,
+    canUseFields: canUseExistingFields,
     sourceTemplateId,
     fieldsSchema,
     defaults,
@@ -1509,6 +1618,7 @@ export default function useTemplateFieldAuthoring({
     linkSelectionToEventLocation,
     updateEventTimes,
     linkSelectionToEventTime,
+    linkSelectionToEventDate,
     getFieldUsage,
     repairSnapshot,
     reloadAvailableFields,

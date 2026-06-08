@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   EVENT_PERSON_NAME_ROLES,
 } from "@/domain/eventDetails/personNames.js";
@@ -13,50 +13,6 @@ import {
   resolveCountdownTargetIso,
 } from "../../../../shared/renderContractPolicy.js";
 
-const TEXT_FIELD_TYPE_OPTIONS = [
-  { value: "text", label: "Texto corto" },
-  { value: "textarea", label: "Texto largo" },
-  { value: "date", label: "Fecha" },
-  { value: "time", label: "Hora" },
-  { value: "datetime", label: "Fecha y hora" },
-  { value: "location", label: "Ubicacion" },
-  { value: "url", label: "URL" },
-];
-const MEDIA_FIELD_TYPE_OPTIONS = [{ value: "images", label: "Fotos" }];
-
-const FIELD_GROUP_OPTIONS = [
-  "Datos principales",
-  "Ubicaciones",
-  "Regalos",
-  "Galeria",
-  "Vestimenta",
-];
-
-function normalizeText(value) {
-  return String(value || "").trim();
-}
-
-function isMediaElementType(value) {
-  const safeType = normalizeText(value).toLowerCase();
-  return safeType === "imagen" || safeType === "galeria";
-}
-
-function buildSuggestedLabel(selectedElement, selectedElementType) {
-  if (selectedElementType === "countdown") {
-    return "Fecha del evento";
-  }
-  if (selectedElementType === "imagen") {
-    return "Imagen principal";
-  }
-  if (selectedElementType === "galeria") {
-    return "Fotos";
-  }
-  const rawText = normalizeText(selectedElement?.texto);
-  if (!rawText) return "Nuevo campo";
-  if (rawText.length <= 32) return rawText;
-  return `${rawText.slice(0, 32)}...`;
-}
-
 export default function TemplateDynamicFieldMenuSection({
   visible = false,
   canConfigure = false,
@@ -66,32 +22,15 @@ export default function TemplateDynamicFieldMenuSection({
   selectedElement = null,
   selectedElementType = "",
   selectedIsSupportedElement = false,
-  suggestedFieldType = "text",
   selectedField = null,
-  fieldsSchema = [],
-  onRefreshFields,
-  onCreateField,
-  onLinkField,
   onLinkEventPersonName,
   onLinkEventLocation,
   onLinkEventTime,
-  onEditField,
+  onLinkEventDate,
   onUnlinkField,
-  onDeleteField,
   onViewUsage,
 }) {
-  const [mode, setMode] = useState("");
   const [submitError, setSubmitError] = useState("");
-  const [createLabel, setCreateLabel] = useState("");
-  const [createType, setCreateType] = useState("text");
-  const [createGroup, setCreateGroup] = useState("Datos principales");
-  const [createOptional, setCreateOptional] = useState(false);
-  const [linkFieldKey, setLinkFieldKey] = useState("");
-  const [editLabel, setEditLabel] = useState("");
-  const [editType, setEditType] = useState("text");
-  const [editGroup, setEditGroup] = useState("Datos principales");
-  const [editOptional, setEditOptional] = useState(false);
-  const isMediaElement = isMediaElementType(selectedElementType);
   const selectedCountdownContract = useMemo(
     () =>
       selectedElementType === "countdown"
@@ -107,80 +46,6 @@ export default function TemplateDynamicFieldMenuSection({
     [selectedElement, selectedElementType]
   );
 
-  const availableFields = useMemo(
-    () => (Array.isArray(fieldsSchema) ? fieldsSchema : []),
-    [fieldsSchema]
-  );
-  const linkableFields = useMemo(() => {
-    return availableFields.filter((field) => {
-      const fieldType = normalizeText(field?.type).toLowerCase();
-      if (selectedElementType === "countdown") {
-        return fieldType === "date" || fieldType === "datetime";
-      }
-      if (isMediaElement) {
-        return fieldType === "images";
-      }
-      return fieldType !== "images";
-    });
-  }, [availableFields, isMediaElement, selectedElementType]);
-  const createTypeOptions = useMemo(() => {
-    if (selectedElementType === "countdown") {
-      return TEXT_FIELD_TYPE_OPTIONS.filter(
-        (option) => option.value === "date" || option.value === "datetime"
-      );
-    }
-    if (isMediaElement) {
-      return MEDIA_FIELD_TYPE_OPTIONS;
-    }
-    return TEXT_FIELD_TYPE_OPTIONS;
-  }, [isMediaElement, selectedElementType]);
-  const editTypeOptions = useMemo(() => {
-    if (selectedElementType === "countdown") {
-      return TEXT_FIELD_TYPE_OPTIONS.filter(
-        (option) => option.value === "date" || option.value === "datetime"
-      );
-    }
-    if (isMediaElement) {
-      return MEDIA_FIELD_TYPE_OPTIONS;
-    }
-    return TEXT_FIELD_TYPE_OPTIONS;
-  }, [isMediaElement, selectedElementType]);
-
-  useEffect(() => {
-    setMode("");
-    setSubmitError("");
-    setCreateLabel(buildSuggestedLabel(selectedElement, selectedElementType));
-    setCreateType(
-      selectedElementType === "countdown"
-        ? "date"
-        : isMediaElement
-          ? "images"
-          : normalizeText(suggestedFieldType) || "text"
-    );
-    setCreateGroup(isMediaElement ? "Galeria" : "Datos principales");
-    setCreateOptional(false);
-    setLinkFieldKey("");
-  }, [isMediaElement, selectedElement?.id, selectedElementType, suggestedFieldType, visible]);
-
-  useEffect(() => {
-    if (!selectedField) return;
-    setEditLabel(normalizeText(selectedField.label) || selectedField.key || "Campo");
-    const incomingType = normalizeText(selectedField.type) || "text";
-    if (
-      selectedElementType === "countdown" &&
-      incomingType !== "date" &&
-      incomingType !== "datetime"
-    ) {
-      setEditType("date");
-    } else if (isMediaElement) {
-      setEditType("images");
-    } else {
-      setEditType(incomingType);
-    }
-    setEditGroup(normalizeText(selectedField.group) || (isMediaElement ? "Galeria" : "Datos principales"));
-    setEditOptional(Boolean(selectedField.optional));
-  }, [isMediaElement, selectedElementType, selectedField]);
-
   if (!visible) return null;
 
   const hasLinkedField = Boolean(selectedField?.key);
@@ -190,12 +55,13 @@ export default function TemplateDynamicFieldMenuSection({
     selectedElementType === "texto" && typeof onLinkEventLocation === "function";
   const canUseEventTimeLinks =
     selectedElementType === "texto" && typeof onLinkEventTime === "function";
+  const canUseEventDateLinks =
+    (selectedElementType === "texto" || selectedElementType === "countdown") &&
+    typeof onLinkEventDate === "function";
 
   const sectionButtonBase =
     "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] transition";
   const sectionButtonNeutral = `${sectionButtonBase} bg-slate-50 text-slate-700 hover:bg-slate-100`;
-  const sectionButtonHighlight = `${sectionButtonBase} bg-violet-50 text-violet-700 hover:bg-violet-100`;
-  const sectionButtonDanger = `${sectionButtonBase} bg-rose-50 text-rose-700 hover:bg-rose-100`;
 
   const renderHint = () => {
     if (loading) {
@@ -211,7 +77,7 @@ export default function TemplateDynamicFieldMenuSection({
     if (!selectedIsSupportedElement) {
       return (
         <p className="text-[10px] text-slate-500">
-          Selecciona un texto, countdown, imagen o galeria para configurar un campo dinamico.
+          Selecciona un texto o countdown para vincularlo a datos del evento.
         </p>
       );
     }
@@ -235,65 +101,19 @@ export default function TemplateDynamicFieldMenuSection({
         </div>
       );
     }
-
-    if (selectedElementType === "imagen") {
+    if (selectedElementType !== "texto") {
       return (
         <p className="text-[10px] text-slate-500">
-          Vincula esta imagen a un campo de fotos para reemplazarla desde el formulario.
-        </p>
-      );
-    }
-
-    if (selectedElementType === "galeria") {
-      return (
-        <p className="text-[10px] text-slate-500">
-          Vincula esta galeria a un campo de fotos para activar su composicion dinamica.
+          Este elemento tiene un campo dinamico heredado. Solo se permite revisar o desvincularlo.
         </p>
       );
     }
 
     return (
       <p className="text-[10px] text-slate-500">
-        Configura este elemento como campo del formulario para reutilizarlo en templates.
+        Vincula este texto a un dato editable desde Detalles del evento.
       </p>
     );
-  };
-
-  const handleCreateField = async () => {
-    if (typeof onCreateField !== "function") return;
-    setSubmitError("");
-
-    try {
-      await onCreateField({
-        label: createLabel,
-        type: createType,
-        group: createGroup,
-        optional: createOptional,
-      });
-      setMode("");
-    } catch (createError) {
-      setSubmitError(
-        createError instanceof Error
-          ? createError.message
-          : "No se pudo crear el campo dinamico."
-      );
-    }
-  };
-
-  const handleLinkField = async () => {
-    if (!linkFieldKey || typeof onLinkField !== "function") return;
-    setSubmitError("");
-
-    try {
-      await onLinkField(linkFieldKey);
-      setMode("");
-    } catch (linkError) {
-      setSubmitError(
-        linkError instanceof Error
-          ? linkError.message
-          : "No se pudo vincular el elemento al campo seleccionado."
-      );
-    }
   };
 
   const handleLinkEventPersonName = async (role) => {
@@ -302,7 +122,6 @@ export default function TemplateDynamicFieldMenuSection({
 
     try {
       await onLinkEventPersonName(role);
-      setMode("");
     } catch (linkError) {
       setSubmitError(
         linkError instanceof Error
@@ -318,7 +137,6 @@ export default function TemplateDynamicFieldMenuSection({
 
     try {
       await onLinkEventLocation(role);
-      setMode("");
     } catch (linkError) {
       setSubmitError(
         linkError instanceof Error
@@ -334,7 +152,6 @@ export default function TemplateDynamicFieldMenuSection({
 
     try {
       await onLinkEventTime(role);
-      setMode("");
     } catch (linkError) {
       setSubmitError(
         linkError instanceof Error
@@ -344,67 +161,17 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
-  const refreshAvailableFields = async () => {
-    if (typeof onRefreshFields !== "function") return;
+  const handleLinkEventDate = async () => {
+    if (typeof onLinkEventDate !== "function") return;
     setSubmitError("");
 
     try {
-      await onRefreshFields();
-    } catch (refreshError) {
+      await onLinkEventDate();
+    } catch (linkError) {
       setSubmitError(
-        refreshError instanceof Error
-          ? refreshError.message
-          : "No se pudo actualizar la lista de campos."
-      );
-    }
-  };
-
-  const handleToggleLinkMode = () => {
-    const nextMode = mode === "link" ? "" : "link";
-    setMode(nextMode);
-    if (nextMode !== "link") return;
-
-    setLinkFieldKey("");
-    void refreshAvailableFields();
-  };
-
-  const handleEditField = async () => {
-    if (!selectedField?.key || typeof onEditField !== "function") return;
-    setSubmitError("");
-
-    try {
-      await onEditField(selectedField.key, {
-        label: editLabel,
-        type: editType,
-        group: editGroup,
-        optional: editOptional,
-      });
-      setMode("");
-    } catch (editError) {
-      setSubmitError(
-        editError instanceof Error
-          ? editError.message
-          : "No se pudo actualizar la configuracion del campo."
-      );
-    }
-  };
-
-  const handleDeleteField = async () => {
-    if (!selectedField?.key || typeof onDeleteField !== "function") return;
-    const confirmDelete = window.confirm(
-      `Eliminar el campo '${selectedField.key}'? Solo se elimina si no tiene targets.`
-    );
-    if (!confirmDelete) return;
-
-    setSubmitError("");
-    try {
-      await onDeleteField(selectedField.key);
-      setMode("");
-    } catch (deleteError) {
-      setSubmitError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "No se pudo eliminar el campo."
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo vincular el elemento a la fecha del evento."
       );
     }
   };
@@ -433,12 +200,22 @@ export default function TemplateDynamicFieldMenuSection({
         </div>
       ) : null}
 
-      {canUseEventPersonNameLinks || canUseEventLocationLinks || canUseEventTimeLinks ? (
+      {canUseEventPersonNameLinks || canUseEventLocationLinks || canUseEventTimeLinks || canUseEventDateLinks ? (
         <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
           <p className="mb-1 text-[11px] font-semibold text-violet-700">
             Detalles del evento
           </p>
           <div className="space-y-1.5">
+            {canUseEventDateLinks ? (
+              <button
+                type="button"
+                className={sectionButtonNeutral}
+                disabled={!canConfigure || saving}
+                onClick={handleLinkEventDate}
+              >
+                Vincular a fecha del evento
+              </button>
+            ) : null}
             {canUseEventPersonNameLinks ? (
               <>
                 <button
@@ -511,220 +288,35 @@ export default function TemplateDynamicFieldMenuSection({
         </div>
       ) : null}
 
-      <div className="mt-2 space-y-1.5">
-        {!hasLinkedField ? (
-          <>
-            <button
-              type="button"
-              className={sectionButtonHighlight}
-              disabled={!canConfigure || !selectedIsSupportedElement}
-              onClick={() => setMode((prev) => (prev === "create" ? "" : "create"))}
-            >
-              Configurar como campo dinamico
-            </button>
-
-            <button
-              type="button"
-              className={sectionButtonNeutral}
-              disabled={!canConfigure || !selectedIsSupportedElement}
-              onClick={handleToggleLinkMode}
-            >
-              Vincular a campo existente
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              className={sectionButtonHighlight}
-              disabled={!canConfigure}
-              onClick={() => setMode((prev) => (prev === "edit" ? "" : "edit"))}
-            >
-              Editar configuracion del campo
-            </button>
-            <button
-              type="button"
-              className={sectionButtonNeutral}
-              disabled={!canConfigure || typeof onUnlinkField !== "function"}
-              onClick={() => {
-                setSubmitError("");
-                Promise.resolve(onUnlinkField?.()).catch((unlinkError) => {
-                  setSubmitError(
-                    unlinkError instanceof Error
-                      ? unlinkError.message
-                      : "No se pudo desvincular el elemento."
-                  );
-                });
-              }}
-            >
-              Desvincular de campo
-            </button>
-            <button
-              type="button"
-              className={sectionButtonNeutral}
-              disabled={!canConfigure || typeof onViewUsage !== "function"}
-              onClick={() => onViewUsage?.(selectedField.key)}
-            >
-              Ver donde se usa
-            </button>
-            <button
-              type="button"
-              className={sectionButtonDanger}
-              disabled={!canConfigure}
-              onClick={handleDeleteField}
-            >
-              Eliminar campo (si esta huerfano)
-            </button>
-          </>
-        )}
-      </div>
-
-      {mode === "create" && (
-        <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
-          <p className="mb-1 text-[11px] font-semibold text-violet-700">Nuevo campo</p>
-          <label className="mb-1 block text-[11px] text-slate-600">Label</label>
-          <input
-            value={createLabel}
-            onChange={(event) => setCreateLabel(event.target.value)}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
-            placeholder="Ej: Nombres"
-          />
-
-          <label className="mb-1 block text-[11px] text-slate-600">Tipo</label>
-          <select
-            value={createType}
-            onChange={(event) => setCreateType(event.target.value)}
-            disabled={isMediaElement}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
-          >
-            {createTypeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <label className="mb-1 block text-[11px] text-slate-600">Grupo</label>
-          <select
-            value={createGroup}
-            onChange={(event) => setCreateGroup(event.target.value)}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
-          >
-            {FIELD_GROUP_OPTIONS.map((group) => (
-              <option key={group} value={group}>
-                {group}
-              </option>
-            ))}
-          </select>
-
-          <label className="mb-2 flex items-center gap-2 text-[12px] text-slate-700">
-            <input
-              type="checkbox"
-              checked={createOptional}
-              onChange={(event) => setCreateOptional(event.target.checked)}
-            />
-            Campo opcional
-          </label>
-
+      {hasLinkedField ? (
+        <div className="mt-2 space-y-1.5">
           <button
             type="button"
-            className="w-full rounded bg-violet-600 px-2 py-1.5 text-[12px] font-medium text-white hover:bg-violet-700"
-            onClick={handleCreateField}
-            disabled={!canConfigure || saving}
-          >
-            Confirmar campo
-          </button>
-        </div>
-      )}
-
-      {mode === "link" && (
-        <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
-          <p className="mb-1 text-[11px] font-semibold text-violet-700">Vincular a existente</p>
-          <select
-            value={linkFieldKey}
-            onChange={(event) => setLinkFieldKey(event.target.value)}
-            onFocus={() => {
-              void refreshAvailableFields();
+            className={sectionButtonNeutral}
+            disabled={!canConfigure || typeof onUnlinkField !== "function"}
+            onClick={() => {
+              setSubmitError("");
+              Promise.resolve(onUnlinkField?.()).catch((unlinkError) => {
+                setSubmitError(
+                  unlinkError instanceof Error
+                    ? unlinkError.message
+                    : "No se pudo desvincular el elemento."
+                );
+              });
             }}
-            onPointerDown={() => {
-              void refreshAvailableFields();
-            }}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
           >
-            <option value="">Seleccionar campo...</option>
-            {linkableFields.map((field) => (
-              <option key={field.key} value={field.key}>
-                {field.label || field.key} ({field.key})
-              </option>
-            ))}
-          </select>
+            Desvincular de campo
+          </button>
           <button
             type="button"
-            className="w-full rounded bg-violet-600 px-2 py-1.5 text-[12px] font-medium text-white hover:bg-violet-700"
-            onClick={handleLinkField}
-            disabled={!linkFieldKey || saving}
+            className={sectionButtonNeutral}
+            disabled={!canConfigure || typeof onViewUsage !== "function"}
+            onClick={() => onViewUsage?.(selectedField.key)}
           >
-            Vincular
+            Ver donde se usa
           </button>
         </div>
-      )}
-
-      {mode === "edit" && hasLinkedField && (
-        <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
-          <p className="mb-1 text-[11px] font-semibold text-violet-700">Editar campo</p>
-          <label className="mb-1 block text-[11px] text-slate-600">Label</label>
-          <input
-            value={editLabel}
-            onChange={(event) => setEditLabel(event.target.value)}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
-          />
-
-          <label className="mb-1 block text-[11px] text-slate-600">Tipo</label>
-          <select
-            value={editType}
-            onChange={(event) => setEditType(event.target.value)}
-            disabled={isMediaElement}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
-          >
-            {editTypeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <label className="mb-1 block text-[11px] text-slate-600">Grupo</label>
-          <select
-            value={editGroup}
-            onChange={(event) => setEditGroup(event.target.value)}
-            className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-[12px]"
-          >
-            {FIELD_GROUP_OPTIONS.map((group) => (
-              <option key={group} value={group}>
-                {group}
-              </option>
-            ))}
-          </select>
-
-          <label className="mb-2 flex items-center gap-2 text-[12px] text-slate-700">
-            <input
-              type="checkbox"
-              checked={editOptional}
-              onChange={(event) => setEditOptional(event.target.checked)}
-            />
-            Campo opcional
-          </label>
-
-          <button
-            type="button"
-            className="w-full rounded bg-violet-600 px-2 py-1.5 text-[12px] font-medium text-white hover:bg-violet-700"
-            onClick={handleEditField}
-            disabled={saving}
-          >
-            Guardar cambios
-          </button>
-        </div>
-      )}
+      ) : null}
 
       {submitError || error ? (
         <p className="mt-2 rounded-md bg-rose-50 px-2 py-1 text-[11px] text-rose-700">

@@ -682,9 +682,15 @@ export default function CanvasEditor({
     elementosSeleccionados.length === 1
       ? objetos.find(o => o.id === elementosSeleccionados[0])
       : null;
+  const canUseTemplateFields =
+    canManageSite ||
+    Boolean(draftMeta?.templateAuthoringDraft) ||
+    Boolean(draftMeta?.plantillaId);
 
   const templateAuthoring = useTemplateFieldAuthoring({
-    enabled: canManageSite,
+    enabled: canUseTemplateFields,
+    canEditSchema: canManageSite,
+    canUseFields: canUseTemplateFields,
     slug,
     editorSession,
     userId,
@@ -700,7 +706,11 @@ export default function CanvasEditor({
   });
   const canRenderTemplateAuthoringMenu =
     canManageSite &&
-    templateAuthoring.selectedIsSupportedElement;
+    (
+      templateAuthoring.selectedElementType === "texto" ||
+      templateAuthoring.selectedElementType === "countdown" ||
+      Boolean(templateAuthoring.selectedField)
+    );
 
   const handleViewTemplateFieldUsage = useCallback(
     (fieldKey) => {

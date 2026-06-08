@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { AlertCircle, CheckCircle2, Circle, Loader2, RefreshCw, X } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Circle,
+  Loader2,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { functions as cloudFunctions } from "@/firebase";
 import PublicationSuccessState from "@/components/payments/PublicationSuccessState";
 import {
@@ -20,6 +27,8 @@ import {
   parseSlugFromPublicUrl,
   validatePublicSlug,
 } from "@/lib/publicSlug";
+import { normalizePricingConfig } from "@/domain/siteSettings/pricingModel";
+import { getPublicPublicationPricing } from "@/domain/siteSettings/service";
 
 let mercadoPagoSdkPromise = null;
 
@@ -112,49 +121,209 @@ function isCheckoutDebugEnabled() {
   }
 }
 
-function PublicationProgressList({ progress }) {
-  if (!progress?.hasProgress) return null;
+const CHECKOUT_PANEL_CLASS =
+  "rounded-xl border border-[#E5E5E5] bg-white p-3";
+const CHECKOUT_LABEL_CLASS = "text-xs font-semibold uppercase text-[#262626]/60";
+const CHECKOUT_INPUT_CLASS =
+  "min-h-[40px] w-full rounded-lg border border-[#E5E5E5] bg-white px-3 py-2 text-sm text-[#262626] outline-none transition placeholder:text-[#262626]/38 focus:border-[#692B9A] focus:ring-2 focus:ring-[#EFDBFF] disabled:bg-[#FBF7F9] disabled:text-[#262626]/38";
+const CHECKOUT_FOCUS_CLASS =
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#692B9A]";
+
+const PUBLICATION_STAGE_COPY = Object.freeze({
+  preparing_invitation: {
+    title: "Preparando tu invitacion",
+    shortTitle: "Datos",
+    description: "Organizamos los datos necesarios para empezar.",
+  },
+  validating_content: {
+    title: "Revisando contenido",
+    shortTitle: "Revision",
+    description: "Chequeamos que la invitacion este lista para publicar.",
+  },
+  generating_public_html: {
+    title: "Armando la pagina publica",
+    shortTitle: "Pagina",
+    description: "Creamos la version online de tu invitacion.",
+  },
+  generating_share_image: {
+    title: "Creando imagen para compartir",
+    shortTitle: "Imagen",
+    description: "Generamos la vista previa que acompana el enlace.",
+  },
+  saving_publication: {
+    title: "Guardando la publicacion",
+    shortTitle: "Guardado",
+    description: "Subimos los archivos y reservamos el enlace final.",
+  },
+  finalizing_publication: {
+    title: "Activando el enlace",
+    shortTitle: "Activacion",
+    description: "Confirmamos que todo quede disponible para compartir.",
+  },
+});
+
+const STATUS_STYLES = Object.freeze({
+  completed: {
+    label: "Completada",
+    iconClass: "border-[#029B4A] bg-[#029B4A] text-white",
+    textClass: "text-[#029B4A]",
+    cardClass: "border-[#029B4A]/25 bg-white",
+  },
+  running: {
+    label: "En curso",
+    iconClass: "border-[#692B9A] bg-[#EFDBFF] text-[#692B9A]",
+    textClass: "text-[#692B9A]",
+    cardClass: "border-[#692B9A]/35 bg-[#FAF5FF]",
+  },
+  failed: {
+    label: "Con error",
+    iconClass: "border-[#B3261E] bg-[#FFDADA] text-[#B3261E]",
+    textClass: "text-[#B3261E]",
+    cardClass: "border-[#B3261E]/35 bg-[#FFF7F7]",
+  },
+  pending: {
+    label: "Pendiente",
+    iconClass: "border-[#E5E5E5] bg-white text-[#262626]/38",
+    textClass: "text-[#262626]/54",
+    cardClass: "border-[#E5E5E5] bg-white",
+  },
+});
+
+function getStageCopy(step) {
+  return PUBLICATION_STAGE_COPY[step?.key] || {
+    title: step?.label || "Etapa de publicacion",
+    description: "Seguimos el avance informado por el sistema.",
+  };
+}
+
+function getStepVisual(step, retry) {
+  const status = STATUS_STYLES[step.status] ? step.status : "pending";
+  const styles = STATUS_STYLES[status];
+  const isRunning = status === "running";
+  const isCompleted = status === "completed";
+  const isFailed = status === "failed";
+  const Icon = isFailed ? AlertCircle : isCompleted ? CheckCircle2 : isRunning ? Loader2 : Circle;
+  const label = retry?.isActive && isRunning ? "Reintentando" : styles.label;
+
+  return {
+    ...styles,
+    Icon,
+    label,
+    isRunning,
+  };
+}
+
+function StatusPill({ tone = "neutral", children }) {
+  const toneClass =
+    tone === "success"
+      ? "border-[#029B4A]/25 bg-[#029B4A]/10 text-[#026B35]"
+      : tone === "alert"
+        ? "border-[#B3261E]/25 bg-[#FFDADA] text-[#B3261E]"
+        : tone === "warning"
+          ? "border-[#F39F5F]/35 bg-[#FAF5ED] text-[#8A4D16]"
+          : tone === "brand"
+            ? "border-[#692B9A]/25 bg-[#FAF5FF] text-[#692B9A]"
+            : "border-[#E5E5E5] bg-white text-[#262626]/70";
 
   return (
-    <div className="rounded-lg border border-[#d8ccea] bg-white p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-        Publicacion en curso
-      </p>
-      <div className="mt-3 space-y-2">
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClass}`}>
+      {children}
+    </span>
+  );
+}
+
+function PublicationProgressList({ progress, retry }) {
+  if (!progress?.hasProgress) return null;
+
+  const currentStage = progress.currentStage || {};
+  const currentStep =
+    progress.steps.find((step) => step.key === currentStage.key) ||
+    progress.steps.find((step) => step.status === "failed") ||
+    progress.steps.find((step) => step.status === "running") ||
+    null;
+  const currentCopy = currentStep ? getStageCopy(currentStep) : null;
+  const substageLabel = currentStage?.substage?.label || "";
+  const isFailed = currentStep?.status === "failed" || currentStage?.status === "failed";
+  const headline = isFailed
+    ? "Necesitamos revisar una etapa"
+    : retry?.isActive
+      ? "Reintentando automaticamente"
+      : "Publicacion en curso";
+  const currentDetail = currentCopy
+    ? `${isFailed ? "Fallo en" : "Ahora"}: ${currentCopy.title}`
+    : "Estamos confirmando el avance.";
+
+  return (
+    <div className={`${CHECKOUT_PANEL_CLASS} p-2.5`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className={CHECKOUT_LABEL_CLASS}>Avance de publicacion</p>
+          <p className="mt-0.5 text-sm font-semibold text-[#020B0A]">{headline}</p>
+        </div>
+        {retry?.isActive ? <StatusPill tone="brand">Retry automatico</StatusPill> : null}
+      </div>
+
+      <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
         {progress.steps.map((step) => {
-          const isRunning = step.status === "running";
-          const isCompleted = step.status === "completed";
-          const isFailed = step.status === "failed";
-          const Icon = isFailed
-            ? AlertCircle
-            : isCompleted
-              ? CheckCircle2
-              : isRunning
-                ? Loader2
-                : Circle;
-          const colorClass = isFailed
-            ? "text-red-600"
-            : isCompleted
-              ? "text-emerald-700"
-              : isRunning
-                ? "text-[#6f3bc0]"
-                : "text-slate-400";
+          const copy = getStageCopy(step);
+          const visual = getStepVisual(step, retry);
 
           return (
-            <div key={step.key} className={`flex items-center gap-2 text-xs ${colorClass}`}>
-              <Icon className={`h-3.5 w-3.5 shrink-0 ${isRunning ? "animate-spin" : ""}`} />
-              <span className="min-w-0">
-                {step.label}
-                {progress.currentStage?.key === step.key && progress.currentStage?.substage?.label ? (
-                  <span className="block text-[11px] text-slate-500">
-                    {progress.currentStage.substage.label}
-                  </span>
-                ) : null}
+            <div
+              key={step.key}
+              className={`min-w-0 rounded-lg border px-1.5 py-2 text-center ${visual.cardClass}`}
+              aria-current={visual.isRunning ? "step" : undefined}
+            >
+              <span
+                className={`mx-auto inline-flex h-6 w-6 items-center justify-center rounded-full border ${visual.iconClass}`}
+              >
+                <visual.Icon className={`h-3.5 w-3.5 ${visual.isRunning ? "animate-spin" : ""}`} />
+              </span>
+              <span className="mt-1 block text-[11px] font-semibold leading-3 text-[#262626]" title={copy.title}>
+                {copy.shortTitle || copy.title}
+              </span>
+              <span className={`mt-0.5 block text-[10px] font-semibold leading-3 ${visual.textClass}`}>
+                {visual.label}
               </span>
             </div>
           );
         })}
       </div>
+
+      <div
+        className={`mt-2 rounded-lg border px-2 py-1.5 text-xs leading-4 ${
+          isFailed
+            ? "border-[#B3261E]/25 bg-[#FFF7F7] text-[#B3261E]"
+            : "border-[#E5E5E5] bg-[#FBF7F9] text-[#262626]/70"
+        }`}
+      >
+        <p className="font-semibold">{currentDetail}</p>
+        {substageLabel ? <p className="mt-0.5">{substageLabel}</p> : currentCopy?.description ? (
+          <p className="mt-0.5">{currentCopy.description}</p>
+        ) : null}
+      </div>
+
+      <details className="mt-2 rounded-lg border border-[#E5E5E5] bg-white px-2 py-1.5 text-xs text-[#262626]/70">
+        <summary className="cursor-pointer font-semibold text-[#262626]/70">
+          Ver detalle de etapas
+        </summary>
+        <div className="mt-2 grid gap-1.5">
+          {progress.steps.map((step) => {
+            const copy = getStageCopy(step);
+            const visual = getStepVisual(step, retry);
+
+            return (
+              <div key={step.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <span className="min-w-0">
+                  <span className="block font-semibold text-[#262626]">{copy.title}</span>
+                  <span className="block leading-4">{copy.description}</span>
+                </span>
+                <span className={`font-semibold ${visual.textClass}`}>{visual.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </details>
     </div>
   );
 }
@@ -222,14 +391,214 @@ function PublicationAutoRetryNotice({ retry }) {
       : "Reintentando publicacion";
 
   return (
-    <div className="rounded-lg border border-[#d8ccea] bg-[#faf6ff] p-3 text-xs text-slate-700">
-      <p className="inline-flex items-center gap-2 font-semibold text-[#6f3bc0]">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    <div className="rounded-xl border border-[#EFDBFF] bg-[#FAF5FF] p-3 text-sm text-[#262626]">
+      <p className="inline-flex items-center gap-2 font-semibold text-[#692B9A]">
+        <Loader2 className="h-4 w-4 animate-spin" />
         Estamos finalizando tu publicacion
       </p>
-      <p className="mt-1">Esto puede tardar unos segundos mas. No necesitas volver a pagar.</p>
-      <p className="mt-1 text-slate-500">{attemptText}</p>
+      <p className="mt-1 text-xs leading-4 text-[#262626]/70">
+        Tu pago ya esta aprobado. Estamos recuperando el proceso y no necesitas volver a pagar.
+      </p>
+      <p className="mt-1 text-xs font-semibold text-[#692B9A]">{attemptText}</p>
     </div>
+  );
+}
+
+function ValidationMessage({ validation, emptyText, checkingText, successText, errorText }) {
+  if (validation?.checking) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-[#262626]/54">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        {checkingText}
+      </span>
+    );
+  }
+
+  if (validation?.normalizedSlug) {
+    if (validation.isValid && validation.isAvailable) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#029B4A]">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {successText}
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#B3261E]">
+        <AlertCircle className="h-3.5 w-3.5" />
+        {errorText}
+      </span>
+    );
+  }
+
+  return <span className="text-xs text-[#262626]/54">{emptyText}</span>;
+}
+
+function FieldPanel({ label, title, children }) {
+  return (
+    <section className={CHECKOUT_PANEL_CLASS}>
+      <div className="mb-2">
+        <p className={CHECKOUT_LABEL_CLASS}>{label}</p>
+        <h3 className="mt-0.5 text-sm font-semibold text-[#020B0A]">{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PaymentSummaryCard({
+  operation,
+  hasSessionAmounts,
+  hasDisplayAmounts,
+  pricingPreviewLoading,
+  hasPendingDiscountCode,
+  amountBaseLabel,
+  discountAmountLabel,
+  amountLabel,
+  hasAppliedDiscount,
+  summaryFinalAmount,
+  sessionPublicSlug,
+  showConflictFlow,
+  isPostPaymentFlowActive,
+  hasRetryablePublishFailure,
+  publicationAutoRetry,
+}) {
+  const statusTone = hasRetryablePublishFailure
+    ? "alert"
+    : showConflictFlow
+      ? "warning"
+      : publicationAutoRetry?.isActive || isPostPaymentFlowActive
+        ? "brand"
+        : hasSessionAmounts
+          ? "success"
+          : "neutral";
+  const statusLabel = hasRetryablePublishFailure
+    ? "Requiere reintento"
+    : showConflictFlow
+      ? "Pago aprobado"
+      : publicationAutoRetry?.isActive
+        ? "Retry automatico"
+        : isPostPaymentFlowActive
+          ? "Procesando"
+          : hasSessionAmounts
+            ? summaryFinalAmount <= 0
+              ? "Sin pago requerido"
+              : "Pago preparado"
+            : pricingPreviewLoading
+              ? "Cargando"
+              : hasDisplayAmounts
+                ? ""
+                : "No disponible";
+  const showStatusPill =
+    Boolean(statusLabel) &&
+    (hasRetryablePublishFailure ||
+      showConflictFlow ||
+      Boolean(publicationAutoRetry?.isActive) ||
+      isPostPaymentFlowActive ||
+      hasSessionAmounts ||
+      pricingPreviewLoading ||
+      !hasDisplayAmounts);
+  const amountDisplay = hasDisplayAmounts
+    ? amountLabel
+    : pricingPreviewLoading
+      ? "Cargando..."
+      : "No disponible";
+  const priceLineLabel = operation === "update" ? "Precio de actualizacion" : "Precio de publicacion";
+  const discountDisplay = hasSessionAmounts
+    ? hasAppliedDiscount
+      ? `-${discountAmountLabel}`
+      : "$ 0"
+    : hasPendingDiscountCode
+      ? "Al preparar"
+      : "$ 0";
+  const discountClass = hasAppliedDiscount
+    ? "font-semibold text-[#029B4A]"
+    : hasPendingDiscountCode
+      ? "font-semibold text-[#692B9A]"
+      : "font-semibold text-[#262626]/54";
+
+  return (
+    <aside className={`${CHECKOUT_PANEL_CLASS} lg:sticky lg:top-0`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={CHECKOUT_LABEL_CLASS}>Resumen de pago</p>
+          <h3 className="mt-0.5 text-sm font-semibold text-[#020B0A]">
+            {operation === "update" ? "Actualizacion" : "Publicacion nueva"}
+          </h3>
+        </div>
+        {showStatusPill ? <StatusPill tone={statusTone}>{statusLabel}</StatusPill> : null}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-[#EFDBFF] bg-[#FAF5FF] p-3">
+        <dl className="space-y-2 text-sm text-[#262626]">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-[#262626]/70">{showConflictFlow ? "Pago aprobado" : priceLineLabel}</dt>
+            <dd className="font-semibold text-[#020B0A]">{hasAppliedDiscount ? amountBaseLabel : amountDisplay}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-[#262626]/70">Descuento</dt>
+            <dd className={discountClass}>{discountDisplay}</dd>
+          </div>
+          <div className="border-t border-[#E5E5E5] pt-2">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="font-semibold text-[#020B0A]">Total a pagar</dt>
+              <dd className="text-xl font-semibold text-[#692B9A]">{amountDisplay}</dd>
+            </div>
+          </div>
+        </dl>
+        {!hasSessionAmounts && hasPendingDiscountCode ? (
+          <p className="mt-1 text-xs leading-4 text-[#262626]/60">
+            El codigo se descuenta al preparar el pago.
+          </p>
+        ) : null}
+      </div>
+
+      {showConflictFlow ? (
+        <p className="mt-3 rounded-lg border border-[#F39F5F]/30 bg-[#FAF5ED] p-2 text-xs leading-4 text-[#8A4D16]">
+          No se realizara un nuevo cobro. Solo falta elegir otro enlace para publicar.
+        </p>
+      ) : null}
+
+      {sessionPublicSlug ? (
+        <div className="mt-3 rounded-lg border border-[#E5E5E5] bg-white p-2">
+          <p className="text-xs font-semibold text-[#262626]/60">Enlace final</p>
+          <p className="mt-0.5 break-all text-xs font-semibold text-[#020B0A]">
+            reservaeldia.com.ar/i/{sessionPublicSlug}
+          </p>
+        </div>
+      ) : null}
+    </aside>
+  );
+}
+
+function CheckoutStatusPanel({ checkoutInfo, checkoutError }) {
+  if (!checkoutInfo && !checkoutError) return null;
+
+  return (
+    <div className="space-y-2">
+      {checkoutInfo ? (
+        <div className="rounded-lg border border-[#EFDBFF] bg-[#FAF5FF] p-2 text-xs leading-4 text-[#692B9A]">
+          <p>{checkoutInfo}</p>
+        </div>
+      ) : null}
+
+      {checkoutError ? (
+        <div className="flex items-start gap-2 rounded-lg border border-[#B3261E]/25 bg-[#FFDADA] p-2 text-xs leading-4 text-[#B3261E]">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{checkoutError}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function InlineProcessingNotice({ children }) {
+  return (
+    <p className="inline-flex items-center gap-1.5 rounded-full border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs text-[#262626]/70">
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#692B9A]" />
+      {children}
+    </p>
   );
 }
 
@@ -257,6 +626,8 @@ export default function PublicationCheckoutModal({
   const [paying, setPaying] = useState(false);
   const [pollingStatus, setPollingStatus] = useState(false);
   const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [pricingPreview, setPricingPreview] = useState(null);
+  const [pricingPreviewLoading, setPricingPreviewLoading] = useState(false);
   const [hasApprovedSlugConflict, setHasApprovedSlugConflict] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [publishedUrl, setPublishedUrl] = useState("");
@@ -313,6 +684,31 @@ export default function PublicationCheckoutModal({
     [currentPublicSlug, currentPublicUrl]
   );
 
+  useEffect(() => {
+    if (!visible) return undefined;
+
+    let cancelled = false;
+    setPricingPreviewLoading(true);
+
+    getPublicPublicationPricing()
+      .then((config) => {
+        if (cancelled) return;
+        setPricingPreview(config ? normalizePricingConfig(config) : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPricingPreview(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setPricingPreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
   const normalizedDiscountCode = useMemo(
     () => String(discountCodeInput || "").trim().toUpperCase(),
     [discountCodeInput]
@@ -324,11 +720,20 @@ export default function PublicationCheckoutModal({
   const summaryFinalAmount = Number(
     sessionData?.amountArs ?? Math.max(0, summaryBaseAmount - summaryDiscountAmount)
   );
+  const pricingPreviewBaseAmount = Number(
+    isNewOperation ? pricingPreview?.publishPrice : pricingPreview?.updatePrice
+  );
+  const hasPricingPreviewAmount =
+    Boolean(pricingPreview) && Number.isFinite(pricingPreviewBaseAmount) && pricingPreviewBaseAmount >= 0;
+  const displayBaseAmount = hasSessionAmounts ? summaryBaseAmount : pricingPreviewBaseAmount;
+  const displayFinalAmount = hasSessionAmounts ? summaryFinalAmount : displayBaseAmount;
+  const hasDisplayAmounts = hasSessionAmounts || hasPricingPreviewAmount;
 
-  const amountLabel = hasSessionAmounts ? formatArs(summaryFinalAmount) : "";
-  const amountBaseLabel = hasSessionAmounts ? formatArs(summaryBaseAmount) : "";
+  const amountLabel = hasDisplayAmounts ? formatArs(displayFinalAmount) : "";
+  const amountBaseLabel = hasDisplayAmounts ? formatArs(displayBaseAmount) : "";
   const discountAmountLabel = hasSessionAmounts ? formatArs(summaryDiscountAmount) : "";
-  const hasAppliedDiscount = summaryDiscountAmount > 0;
+  const hasAppliedDiscount = hasSessionAmounts && summaryDiscountAmount > 0;
+  const hasPendingDiscountCode = Boolean(normalizedDiscountCode) && !hasSessionAmounts;
 
   const isReadyToCreateSession = isNewOperation
     ? slugValidation.isValid && slugValidation.isAvailable && !slugValidation.checking
@@ -389,6 +794,8 @@ export default function PublicationCheckoutModal({
     setCreatingSession(false);
     setPaying(false);
     setDiscountCodeInput("");
+    setPricingPreview(null);
+    setPricingPreviewLoading(false);
     setHasApprovedSlugConflict(false);
     setReceipt(null);
     setPublishedUrl("");
@@ -1185,150 +1592,55 @@ export default function PublicationCheckoutModal({
     hasRetryablePublishFailure ||
     pollingStatus ||
     paying;
+  const primaryActionDisabled = !isReadyToCreateSession || creatingSession;
+  const primaryActionClass = `inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${CHECKOUT_FOCUS_CLASS} ${
+    primaryActionDisabled
+      ? "cursor-not-allowed bg-[#E5E5E5] text-[#262626]/38"
+      : "bg-[#692B9A] text-white hover:bg-[#5A2188]"
+  }`;
+  const retryPublishActionClass = `inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition sm:w-auto ${CHECKOUT_FOCUS_CLASS} ${
+    retryingPublish
+      ? "cursor-not-allowed bg-[#E5E5E5] text-[#262626]/38"
+      : "bg-[#692B9A] text-white hover:bg-[#5A2188]"
+  }`;
+  const retryConflictActionClass = `inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${CHECKOUT_FOCUS_CLASS} ${
+    !isReadyToRetryConflict || retryingConflict
+      ? "cursor-not-allowed bg-[#E5E5E5] text-[#262626]/38"
+      : "bg-[#8A4D16] text-white hover:bg-[#6F3D10]"
+  }`;
 
   return (
-    <div className="fixed inset-0 z-[10000] bg-black/45 backdrop-blur-sm">
-      <div className="flex h-full items-center justify-center p-3 sm:p-6">
-        <div className="w-full max-w-[920px] overflow-hidden rounded-2xl border border-[#ddd2f5] bg-white shadow-[0_24px_72px_rgba(20,10,45,0.32)]">
-          <div className="flex items-center justify-between border-b border-[#e7dcf8] bg-gradient-to-r from-[#faf6ff] via-white to-[#f6f9ff] px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Checkout de publicacion</p>
-              <p className="text-[11px] text-[#6f3bc0]/85">
-                {isNewOperation ? "Publicacion nueva" : "Actualizacion"} - {amountLabel}
+    <div className="fixed inset-0 z-[10000] bg-[#020B0A]/55 backdrop-blur-sm">
+      <div className="flex h-full items-center justify-center p-2 sm:p-6">
+        <div className="flex max-h-[90dvh] w-full max-w-[820px] flex-col overflow-hidden rounded-2xl border border-[#E5E5E5] bg-white font-['DM_Sans',sans-serif] shadow-[0_24px_64px_rgba(2,11,10,0.26)]">
+          <div className="flex items-start justify-between gap-4 border-b border-[#E5E5E5] bg-white px-4 py-3">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-[#020B0A]">
+                Publicar invitacion
+              </h2>
+              <p className="mt-0.5 text-xs text-[#262626]/60">
+                {isNewOperation ? "Publicacion nueva" : "Actualizacion"}{" "}
+                {amountLabel
+                  ? `- ${amountLabel}`
+                  : pricingPreviewLoading
+                    ? "- cargando precio"
+                    : "- precio no disponible"}
               </p>
             </div>
 
             <button
               type="button"
               onClick={handleClose}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d8ccea] bg-white text-[#6f3bc0] hover:bg-[#f3ebff]"
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E5E5] bg-white text-[#692B9A] transition hover:bg-[#FAF5FF] ${CHECKOUT_FOCUS_CLASS}`}
               aria-label="Cerrar checkout"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="max-h-[80vh] overflow-auto px-4 py-4 sm:px-5 sm:py-5">
-            <div className="space-y-4">
-              {showPreSuccessFlow && isNewOperation && showStandardFlow ? (
-                <div className="space-y-2 rounded-xl border border-[#d8ccea] bg-white p-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Elegi tu enlace publico
-                  </label>
-                  <div className="flex items-center overflow-hidden rounded-xl border border-[#d7caef] bg-white">
-                    <span className="bg-[#f8f2ff] px-3 py-2 text-xs text-[#6f3bc0]">reservaeldia.com.ar/i/</span>
-                    <input
-                      type="text"
-                      value={slugInput}
-                      onChange={(event) => {
-                        setSlugInput(event.target.value);
-                        if (sessionData?.sessionId && !receipt) invalidateCurrentSession();
-                      }}
-                      className="flex-1 px-3 py-2 text-sm text-slate-800 focus:outline-none"
-                      placeholder="mi-invitacion"
-                      autoComplete="off"
-                      disabled={Boolean(receipt)}
-                    />
-                  </div>
-                  <div className="min-h-[20px] text-xs">
-                    {slugValidation.checking ? (
-                      <span className="inline-flex items-center gap-1 text-slate-500">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Verificando enlace...
-                      </span>
-                    ) : slugValidation.normalizedSlug ? (
-                      slugValidation.isValid && slugValidation.isAvailable ? (
-                        <span className="text-emerald-700">Disponible: {slugValidation.normalizedSlug}</span>
-                      ) : (
-                        <span className="text-red-600">{slugReasonMessage || "Ese enlace no esta disponible."}</span>
-                      )
-                    ) : (
-                      <span className="text-slate-400">Ingresa un enlace para continuar.</span>
-                    )}
-                  </div>
-                </div>
-              ) : showPreSuccessFlow && !isNewOperation && showStandardFlow ? (
-                <div className="rounded-xl border border-[#d8ccea] bg-[#faf6ff] p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6f3bc0]">URL actual (fija en esta actualizacion)</p>
-                  <p className="mt-1 break-all text-sm text-slate-700">https://reservaeldia.com.ar/i/{effectiveCurrentSlug || "sin-enlace"}</p>
-                </div>
-              ) : showPreSuccessFlow ? (
-                <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 text-sm text-amber-900">
-                  Tu pago ya fue aprobado. Solo falta elegir un nuevo enlace para completar la publicacion.
-                </div>
-              ) : null}
-
-              {showPreSuccessFlow && showStandardFlow ? (
-                <div className="space-y-2 rounded-xl border border-[#d8ccea] bg-white p-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Codigo de descuento (opcional)</label>
-                  <input
-                    type="text"
-                    value={discountCodeInput}
-                    onChange={(event) => {
-                      setDiscountCodeInput(event.target.value.toUpperCase());
-                      if (sessionData?.sessionId && !receipt) invalidateCurrentSession();
-                    }}
-                    className="w-full rounded-lg border border-[#d7caef] px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#d9c6f8]"
-                    placeholder="EJ: BODA10"
-                    autoComplete="off"
-                    disabled={Boolean(receipt)}
-                  />
-                  <p className="text-[11px] text-slate-500">Se valida al preparar el checkout.</p>
-                </div>
-              ) : null}
-
-              {showPreSuccessFlow ? (
-                <div className="rounded-xl border border-[#d8ccea] bg-[#faf6ff] p-3 text-sm text-slate-700">
-                  <p className="font-semibold text-[#6f3bc0]">
-                    {isNewOperation ? "Publicacion nueva" : "Actualizacion"} - Resumen
-                  </p>
-                  <div className="mt-2 space-y-1 text-xs">
-                    {hasSessionAmounts ? (
-                      <>
-                        <p>
-                          Precio base: <strong>{amountBaseLabel}</strong>
-                        </p>
-                        <p>
-                          Descuento: <strong>-{discountAmountLabel}</strong>
-                        </p>
-                        <p className="font-semibold text-[#6f3bc0]">
-                          {showConflictFlow ? "Pago ya aprobado: " : "Total a pagar: "}
-                          {amountLabel}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p>El monto exacto se confirmara al preparar el checkout.</p>
-                        <p>El backend siempre define el precio vigente antes de crear el pago.</p>
-                      </>
-                    )}
-                    {showConflictFlow ? <p>No se realizara un nuevo cobro.</p> : null}
-                    {sessionData?.publicSlug ? (
-                      <p>
-                        Enlace final: <strong>{sessionData.publicSlug}</strong>
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
-              {!receipt && showStandardFlow ? (
-                <button
-                  type="button"
-                  onClick={handleCreateSession}
-                  disabled={!isReadyToCreateSession || creatingSession}
-                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition ${
-                    !isReadyToCreateSession || creatingSession
-                      ? "cursor-not-allowed bg-[#baa4df]"
-                      : "bg-gradient-to-r from-[#874fce] via-[#7741bf] to-[#6532b2] hover:from-[#7d47c4] hover:via-[#6f3bbc] hover:to-[#5f2ea6]"
-                  }`}
-                >
-                  {creatingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {sessionData?.sessionId ? "Actualizar total y pago" : "Preparar checkout"}
-                </button>
-              ) : null}
-
-              {receipt ? (
+          <div className="overflow-y-auto bg-white px-4 py-4">
+            {receipt ? (
+              <div className="mx-auto max-w-3xl">
                 <PublicationSuccessState
                   operation={receipt?.operation || operation}
                   publicUrl={successPublicUrl}
@@ -1339,126 +1651,228 @@ export default function PublicationCheckoutModal({
                   onCopy={handleCopyPublicUrl}
                   onClose={handleClose}
                 />
-              ) : null}
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_270px] md:items-start">
+                <div className="space-y-3">
+                  {showPreSuccessFlow && isNewOperation && showStandardFlow ? (
+                    <FieldPanel label="URL publica" title="Elegi tu enlace">
+                      <div className="overflow-hidden rounded-lg border border-[#E5E5E5] bg-white transition focus-within:border-[#692B9A] focus-within:ring-2 focus-within:ring-[#EFDBFF] sm:flex">
+                        <span className="flex min-h-[40px] items-center border-b border-[#E5E5E5] bg-[#FAF5FF] px-3 text-xs font-semibold text-[#692B9A] sm:border-b-0 sm:border-r">
+                          reservaeldia.com.ar/i/
+                        </span>
+                        <input
+                          type="text"
+                          value={slugInput}
+                          onChange={(event) => {
+                            setSlugInput(event.target.value);
+                            if (sessionData?.sessionId && !receipt) invalidateCurrentSession();
+                          }}
+                          className="min-h-[40px] w-full min-w-0 flex-1 px-3 py-2 text-sm text-[#262626] outline-none placeholder:text-[#262626]/38"
+                          placeholder="mi-invitacion"
+                          autoComplete="off"
+                          disabled={Boolean(receipt)}
+                        />
+                      </div>
+                      <div className="mt-2 min-h-[20px]">
+                        <ValidationMessage
+                          validation={slugValidation}
+                          checkingText="Verificando enlace..."
+                          successText={`Disponible: ${slugValidation.normalizedSlug}`}
+                          errorText={slugReasonMessage || "Ese enlace no esta disponible."}
+                          emptyText="Ingresa un enlace para continuar."
+                        />
+                      </div>
+                    </FieldPanel>
+                  ) : showPreSuccessFlow && !isNewOperation && showStandardFlow ? (
+                    <FieldPanel label="URL publica" title="Enlace actual">
+                      <div className="rounded-lg border border-[#EFDBFF] bg-[#FAF5FF] p-2">
+                        <p className="break-all text-sm font-semibold text-[#020B0A]">
+                          https://reservaeldia.com.ar/i/{effectiveCurrentSlug || "sin-enlace"}
+                        </p>
+                        <p className="mt-1 text-xs leading-4 text-[#262626]/60">
+                          En una actualizacion se mantiene el enlace publico existente.
+                        </p>
+                      </div>
+                    </FieldPanel>
+                  ) : showPreSuccessFlow ? (
+                    <div className="rounded-xl border border-[#F39F5F]/35 bg-[#FAF5ED] p-3 text-sm leading-5 text-[#8A4D16]">
+                      Tu pago ya fue aprobado. Solo falta elegir un nuevo enlace para completar la publicacion.
+                    </div>
+                  ) : null}
 
-              {!receipt && publishingProgress?.hasProgress ? (
-                <PublicationProgressList progress={publishingProgress} />
-              ) : null}
+                  {showPreSuccessFlow && showStandardFlow ? (
+                    <FieldPanel label="Descuento" title="Codigo promocional">
+                      <input
+                        type="text"
+                        value={discountCodeInput}
+                        onChange={(event) => {
+                          setDiscountCodeInput(event.target.value.toUpperCase());
+                          if (sessionData?.sessionId && !receipt) invalidateCurrentSession();
+                        }}
+                        className={CHECKOUT_INPUT_CLASS}
+                        placeholder="EJ: BODA10"
+                        autoComplete="off"
+                        disabled={Boolean(receipt)}
+                      />
+                      <p className="mt-1 text-xs leading-4 text-[#262626]/54">
+                        Si tenes un codigo, se aplica al preparar el checkout.
+                      </p>
+                    </FieldPanel>
+                  ) : null}
 
-              {!receipt && publicationAutoRetry?.isActive ? (
-                <PublicationAutoRetryNotice retry={publicationAutoRetry} />
-              ) : null}
+                  {!receipt && showStandardFlow ? (
+                    <section className="pt-1">
+                      <button
+                        type="button"
+                        onClick={handleCreateSession}
+                        disabled={primaryActionDisabled}
+                        className={primaryActionClass}
+                      >
+                        {creatingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        {sessionData?.sessionId ? "Actualizar total y pago" : "Preparar pago"}
+                      </button>
+                    </section>
+                  ) : null}
 
-              {!receipt && showConflictFlow ? (
-                <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50/80 p-4">
-                  <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
-                    <RefreshCw className="h-4 w-4" />
-                    Ese enlace ya no esta disponible, elegi uno nuevo
-                  </p>
-                  <div className="flex items-center overflow-hidden rounded-xl border border-amber-300 bg-white">
-                    <span className="bg-amber-100 px-3 py-2 text-xs text-amber-900">reservaeldia.com.ar/i/</span>
-                    <input
-                      type="text"
-                      value={conflictSlugInput}
-                      onChange={(event) => setConflictSlugInput(event.target.value)}
-                      className="flex-1 px-3 py-2 text-sm text-slate-800 focus:outline-none"
-                      placeholder="nuevo-enlace"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="min-h-[20px] text-xs">
-                    {conflictValidation.checking ? (
-                      <span className="inline-flex items-center gap-1 text-slate-600">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Verificando...
-                      </span>
-                    ) : conflictValidation.normalizedSlug ? (
-                      conflictValidation.isValid && conflictValidation.isAvailable ? (
-                        <span className="text-emerald-700">Disponible: {conflictValidation.normalizedSlug}</span>
-                      ) : (
-                        <span className="text-red-600">{conflictReasonMessage || "Enlace no disponible."}</span>
-                      )
+                  <CheckoutStatusPanel checkoutInfo={showPreSuccessFlow ? checkoutInfo : ""} checkoutError={checkoutError} />
+
+                  {!receipt && publishingProgress?.hasProgress ? (
+                    <PublicationProgressList progress={publishingProgress} retry={publicationAutoRetry} />
+                  ) : null}
+
+                  {!receipt && publicationAutoRetry?.isActive ? (
+                    <PublicationAutoRetryNotice retry={publicationAutoRetry} />
+                  ) : null}
+
+                  {!receipt && showConflictFlow ? (
+                    <section className="space-y-2 rounded-xl border border-[#F39F5F]/45 bg-[#FAF5ED] p-3">
+                      <div className="flex items-start gap-2">
+                        <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-[#8A4D16]" />
+                        <div>
+                          <p className="text-sm font-semibold text-[#8A4D16]">
+                            Ese enlace ya no esta disponible
+                          </p>
+                          <p className="mt-0.5 text-xs leading-4 text-[#8A4D16]/85">
+                            Elegi uno nuevo para finalizar sin volver a pagar.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="overflow-hidden rounded-lg border border-[#F39F5F]/45 bg-white transition focus-within:border-[#8A4D16] focus-within:ring-2 focus-within:ring-[#FFF1C2] sm:flex">
+                        <span className="flex min-h-[40px] items-center border-b border-[#F39F5F]/35 bg-[#FFF1C2] px-3 text-xs font-semibold text-[#8A4D16] sm:border-b-0 sm:border-r">
+                          reservaeldia.com.ar/i/
+                        </span>
+                        <input
+                          type="text"
+                          value={conflictSlugInput}
+                          onChange={(event) => setConflictSlugInput(event.target.value)}
+                          className="min-h-[40px] w-full min-w-0 flex-1 px-3 py-2 text-sm text-[#262626] outline-none placeholder:text-[#262626]/38"
+                          placeholder="nuevo-enlace"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="min-h-[20px]">
+                        <ValidationMessage
+                          validation={conflictValidation}
+                          checkingText="Verificando..."
+                          successText={`Disponible: ${conflictValidation.normalizedSlug}`}
+                          errorText={conflictReasonMessage || "Enlace no disponible."}
+                          emptyText="Ingresa un enlace para reintentar."
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRetryWithNewSlug}
+                        disabled={!isReadyToRetryConflict || retryingConflict}
+                        className={retryConflictActionClass}
+                      >
+                        {retryingConflict ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        Publicar con nuevo enlace
+                      </button>
+                    </section>
+                  ) : null}
+
+                  {!receipt && sessionData?.sessionId && !showConflictFlow && !isPostPaymentFlowActive ? (
+                    summaryFinalAmount <= 0 ? (
+                      <div className="rounded-xl border border-[#029B4A]/25 bg-[#029B4A]/10 p-3 text-sm leading-5 text-[#026B35]">
+                        Descuento total aplicado. No necesitas ingresar un medio de pago.
+                      </div>
                     ) : (
-                      <span className="text-slate-500">Ingresa un enlace para reintentar.</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRetryWithNewSlug}
-                    disabled={!isReadyToRetryConflict || retryingConflict}
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition ${
-                      !isReadyToRetryConflict || retryingConflict
-                        ? "cursor-not-allowed bg-amber-300"
-                        : "bg-amber-600 hover:bg-amber-700"
-                    }`}
-                  >
-                    {retryingConflict ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Publicar con nuevo enlace
-                  </button>
+                      <div className={`${CHECKOUT_PANEL_CLASS} p-3 sm:p-4`}>
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#020B0A]">
+                          Medio de pago
+                        </div>
+                        <div id="publication-payment-brick" className="rounded-lg border border-[#E5E5E5] bg-white p-2" />
+                      </div>
+                    )
+                  ) : null}
+
+                  {showPreSuccessFlow && checkoutDebugEnabled && hasRetryablePublishFailure ? (
+                    <PublicationDebugDetails
+                      sessionId={sessionData?.sessionId || ""}
+                      progress={publishingProgress}
+                      diagnostics={publishingDiagnostics}
+                    />
+                  ) : null}
+
+                  {showPreSuccessFlow && hasRetryablePublishFailure && sessionData?.sessionId ? (
+                    <section className="rounded-xl border border-[#B3261E]/25 bg-white p-3">
+                      <p className="text-sm font-semibold text-[#B3261E]">
+                        Tu pago quedo aprobado y la publicacion se puede reintentar.
+                      </p>
+                      <p className="mt-1 text-xs leading-4 text-[#262626]/70">
+                        Vamos a usar la misma sesion aprobada, sin iniciar un nuevo cobro.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleRetryPublish}
+                        disabled={retryingPublish}
+                        className={`mt-3 ${retryPublishActionClass}`}
+                      >
+                        {retryingPublish ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        Reintentar sin volver a pagar
+                      </button>
+                    </section>
+                  ) : null}
+
+                  {showPreSuccessFlow && pollingStatus && !paying && !hasRetryablePublishFailure && !publishingProgress?.hasProgress ? (
+                    <InlineProcessingNotice>
+                      {publishingProgress?.currentStage?.label || "Confirmando estado del pago..."}
+                    </InlineProcessingNotice>
+                  ) : null}
+
+                  {showPreSuccessFlow && paying && !hasRetryablePublishFailure && !publishingProgress?.hasProgress ? (
+                    <InlineProcessingNotice>
+                      {publishingProgress?.currentStage?.label || "Enviando pago..."}
+                    </InlineProcessingNotice>
+                  ) : null}
                 </div>
-              ) : null}
 
-              {!receipt && sessionData?.sessionId && !showConflictFlow && !isPostPaymentFlowActive ? (
-                summaryFinalAmount <= 0 ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm text-emerald-800">
-                    Descuento total aplicado. No necesitas ingresar un medio de pago.
-                  </div>
-                ) : (
-                  <div id="publication-payment-brick" className="rounded-xl border border-[#d8ccea] bg-white p-3" />
-                )
-              ) : null}
-
-              {showPreSuccessFlow && checkoutInfo ? <p className="text-xs text-[#6f3bc0]">{checkoutInfo}</p> : null}
-
-              {checkoutError ? (
-                <p className="inline-flex items-center gap-1.5 text-xs text-red-600">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  {checkoutError}
-                </p>
-              ) : null}
-
-              {showPreSuccessFlow && checkoutDebugEnabled && hasRetryablePublishFailure ? (
-                <PublicationDebugDetails
-                  sessionId={sessionData?.sessionId || ""}
-                  progress={publishingProgress}
-                  diagnostics={publishingDiagnostics}
-                />
-              ) : null}
-
-              {showPreSuccessFlow && hasRetryablePublishFailure && sessionData?.sessionId ? (
-                <button
-                  type="button"
-                  onClick={handleRetryPublish}
-                  disabled={retryingPublish}
-                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white transition ${
-                    retryingPublish
-                      ? "cursor-not-allowed bg-[#baa4df]"
-                      : "bg-[#6f3bc0] hover:bg-[#6232ad]"
-                  }`}
-                >
-                  {retryingPublish ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  Reintentar publicacion
-                </button>
-              ) : null}
-
-              {showPreSuccessFlow && pollingStatus && !hasRetryablePublishFailure ? (
-                <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {publishingProgress?.currentStage?.label || "Confirmando estado del pago..."}
-                </p>
-              ) : null}
-
-              {showPreSuccessFlow && paying && !hasRetryablePublishFailure ? (
-                <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {publishingProgress?.currentStage?.label || "Enviando pago..."}
-                </p>
-              ) : null}
-            </div>
+                <div>
+                  <PaymentSummaryCard
+                    operation={operation}
+                    hasSessionAmounts={hasSessionAmounts}
+                    hasDisplayAmounts={hasDisplayAmounts}
+                    pricingPreviewLoading={pricingPreviewLoading}
+                    hasPendingDiscountCode={hasPendingDiscountCode}
+                    amountBaseLabel={amountBaseLabel}
+                    discountAmountLabel={discountAmountLabel}
+                    amountLabel={amountLabel}
+                    hasAppliedDiscount={hasAppliedDiscount}
+                    summaryFinalAmount={summaryFinalAmount}
+                    sessionPublicSlug={sessionData?.publicSlug || effectiveCurrentSlug}
+                    showConflictFlow={showConflictFlow}
+                    isPostPaymentFlowActive={isPostPaymentFlowActive}
+                    hasRetryablePublishFailure={hasRetryablePublishFailure}
+                    publicationAutoRetry={publicationAutoRetry}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

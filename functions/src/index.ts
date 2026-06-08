@@ -95,6 +95,7 @@ import {
   buildTemplateCatalogFromContract,
   normalizeTemplateContractDocument,
 } from "./templates/contractLoader";
+import { buildDraftTemplateAuthoringMetadata } from "./templates/draftAuthoringMetadata";
 import {
   normalizeTemplateAssetValue,
   normalizeTemplateAssetsDeep,
@@ -134,6 +135,7 @@ import {
   adminGetPricingConfigV1 as adminGetPricingConfigV1Handler,
   adminListPricingHistoryV1 as adminListPricingHistoryV1Handler,
   adminUpdatePricingConfigV1 as adminUpdatePricingConfigV1Handler,
+  getPricingConfigV1 as getPricingConfigV1Handler,
 } from "./siteSettings/pricing";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 
@@ -200,6 +202,7 @@ export const runBusinessAnalyticsExportJobsV1 = runBusinessAnalyticsExportJobsV1
 export const runBusinessAnalyticsRebuildJobsV1 = runBusinessAnalyticsRebuildJobsV1Handler;
 export const getDashboardHomeConfigV1 = getDashboardHomeConfigV1Handler;
 export const adminUpsertDashboardHomeConfigV1 = adminUpsertDashboardHomeConfigV1Handler;
+export const getPricingConfigV1 = getPricingConfigV1Handler;
 export const adminGetPricingConfigV1 = adminGetPricingConfigV1Handler;
 export const adminListPricingHistoryV1 = adminListPricingHistoryV1Handler;
 export const adminUpdatePricingConfigV1 = adminUpdatePricingConfigV1Handler;
@@ -1807,11 +1810,26 @@ export const copiarPlantilla = onCall(
       objetos: Array.isArray(objetosNormalizados) ? objetosNormalizados : [],
       secciones: Array.isArray(seccionesNormalizadas) ? seccionesNormalizadas : [],
     });
+    const templateAuthoringDraft = buildDraftTemplateAuthoringMetadata({
+      template: plantillaNormalizada as Record<string, unknown>,
+      templateId: plantillaId,
+      uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    const rsvp =
+      plantillaNormalizada.rsvp && typeof plantillaNormalizada.rsvp === "object"
+        ? plantillaNormalizada.rsvp
+        : null;
+    const gifts =
+      plantillaNormalizada.gifts && typeof plantillaNormalizada.gifts === "object"
+        ? plantillaNormalizada.gifts
+        : null;
 
     await db.collection("borradores").doc(slug).set({
       slug,
       userId: uid,
       plantillaId,
+      sourceTemplateId: plantillaId,
       editor: "konva",
       objetos: normalizeCountdownGeometryDeep(renderAssetState.objetos) as unknown[],
       secciones: renderAssetState.secciones,
@@ -1824,6 +1842,9 @@ export const copiarPlantilla = onCall(
       estadoBorrador: DRAFT_STATES.ACTIVE,
       enPapeleraAt: null,
       eliminacionDefinitivaAt: null,
+      ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
+      ...(rsvp ? { rsvp } : {}),
+      ...(gifts ? { gifts } : {}),
       ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
       creado: admin.firestore.FieldValue.serverTimestamp(),
     });

@@ -2,12 +2,16 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildCountdownTargetIsoFromLocalParts,
   buildDynamicCountdownEventDetails,
+  splitCountdownTargetIso,
 } from "@/domain/eventDetails/countdownEventDetails";
 import {
   DATE_TEXT_FORMAT_PRESET_OPTIONS,
   DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
   resolveFieldDateTextFormatPreset,
 } from "@/domain/templates/fieldValueResolver";
+import {
+  resolveEventDateSidebarBinding,
+} from "@/domain/eventDetails/date";
 import {
   resolveEventPersonNamesFromAuthoring,
 } from "@/domain/eventDetails/personNames";
@@ -53,6 +57,10 @@ const EVENT_LOCATION_SAVE_DELAY_MS = 350;
 const EVENT_TIMES_SAVE_DELAY_MS = 350;
 const GOOGLE_MAPS_SCRIPT_ID = "reservaeldia-google-maps-js";
 
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
 function readInitialDocumentNameState() {
   if (typeof window === "undefined") return readDashboardDocumentNameState();
   return readDashboardDocumentNameState(window);
@@ -72,11 +80,70 @@ function readCountdownDetailsState(targetWindow) {
       ? getTemplateAuthoringSnapshot()
       : {};
   const objetos = readEditorObjects(targetWindow);
-
-  return buildDynamicCountdownEventDetails({
-    fieldsSchema: authoringSnapshot?.fieldsSchema,
-    objetos,
+  const fieldsSchema = Array.isArray(authoringSnapshot?.fieldsSchema)
+    ? authoringSnapshot.fieldsSchema
+    : [];
+  const baseEventDateBinding = resolveEventDateSidebarBinding({
+    fieldsSchema,
+    defaults: authoringSnapshot?.defaults,
   });
+  const eventDateCountdownDetails = baseEventDateBinding.field
+    ? buildDynamicCountdownEventDetails({
+        fieldsSchema: [baseEventDateBinding.field],
+        objetos,
+      })
+    : null;
+  const countdownDetails = eventDateCountdownDetails?.hasBinding
+    ? eventDateCountdownDetails
+    : buildDynamicCountdownEventDetails({
+        fieldsSchema,
+        objetos,
+      });
+  const eventDateBinding = resolveEventDateSidebarBinding({
+    fieldsSchema,
+    defaults: authoringSnapshot?.defaults,
+    countdownDetails,
+  });
+
+  if (countdownDetails?.hasBinding) {
+    const targetISO = normalizeText(eventDateBinding.targetISO);
+    const parts = splitCountdownTargetIso(targetISO);
+    const field = eventDateBinding.field || countdownDetails.field;
+    const fieldKey =
+      normalizeText(eventDateBinding.fieldKey) ||
+      normalizeText(countdownDetails.fieldKey);
+    return {
+      ...countdownDetails,
+      field,
+      fieldKey,
+      fieldType:
+        normalizeText(field?.type).toLowerCase() ||
+        normalizeText(countdownDetails.fieldType).toLowerCase(),
+      targetISO,
+      date: parts.date,
+      time: parts.time,
+      hasBinding: Boolean(fieldKey),
+      hasCountdownBinding: true,
+    };
+  }
+
+  const targetISO = normalizeText(eventDateBinding.targetISO);
+  const parts = splitCountdownTargetIso(targetISO);
+  const fieldKey = normalizeText(eventDateBinding.fieldKey);
+  return {
+    hasBinding: Boolean(fieldKey),
+    hasCountdownBinding: false,
+    field: eventDateBinding.field,
+    fieldKey,
+    fieldType: normalizeText(eventDateBinding.field?.type).toLowerCase(),
+    target: null,
+    countdown: null,
+    countdownId: "",
+    targetISO,
+    date: parts.date,
+    time: parts.time,
+    visible: false,
+  };
 }
 
 function readTemplateAuthoringSnapshot(targetWindow) {
@@ -422,7 +489,8 @@ export default function MiniToolbarTabDetallesEvento() {
   const googleAutocompleteSessionTokenRef = useRef(null);
   const locationSuggestionTimerRef = useRef(null);
   const countdownDetails = countdownUi.details;
-  const countdownControlsDisabled = !countdownDetails.hasBinding;
+  const eventDateControlsDisabled = !countdownDetails.fieldKey;
+  const countdownVisibilityDisabled = !countdownDetails.countdownId;
   const googleMapsApiKey = getGoogleMapsApiKey();
   const hasGoogleMapsApiKey = Boolean(googleMapsApiKey);
   const canShowEventMap = Boolean(eventLocation.googlePlaceId);
@@ -1028,7 +1096,7 @@ export default function MiniToolbarTabDetallesEvento() {
       time: nextTime,
     }));
 
-    if (countdownControlsDisabled || !countdownDetails.countdownId) return;
+    if (eventDateControlsDisabled || !countdownDetails.fieldKey) return;
 
     const targetISO = buildCountdownTargetIsoFromLocalParts({
       date: nextDate,
@@ -1036,9 +1104,11 @@ export default function MiniToolbarTabDetallesEvento() {
     });
     if (!targetISO) return;
 
-    dispatchCountdownPatch(countdownDetails.countdownId, {
-      fechaObjetivo: targetISO,
-    });
+    if (countdownDetails.countdownId) {
+      dispatchCountdownPatch(countdownDetails.countdownId, {
+        fechaObjetivo: targetISO,
+      });
+    }
     updateLinkedFieldDefault(countdownDetails.fieldKey, targetISO, {
       applyTargets: true,
     });
@@ -1061,7 +1131,7 @@ export default function MiniToolbarTabDetallesEvento() {
       showCountdown: checked,
     }));
 
-    if (countdownControlsDisabled || !countdownDetails.countdownId) return;
+    if (countdownVisibilityDisabled || !countdownDetails.countdownId) return;
     dispatchCountdownPatch(countdownDetails.countdownId, {
       mostrarCuentaRegresiva: checked,
     });
@@ -1074,7 +1144,7 @@ export default function MiniToolbarTabDetallesEvento() {
       dateTextFormatPreset: nextPreset,
     }));
 
-    if (countdownControlsDisabled || !countdownDetails.fieldKey) return;
+    if (eventDateControlsDisabled || !countdownDetails.fieldKey) return;
     updateLinkedFieldDateTextFormat(countdownDetails.fieldKey, nextPreset);
   };
 
@@ -1186,7 +1256,7 @@ export default function MiniToolbarTabDetallesEvento() {
             type="date"
             value={countdownUi.date}
             onChange={handleEventDateChange}
-            disabled={countdownControlsDisabled}
+            disabled={eventDateControlsDisabled}
             className={`${inputClass} ${disabledControlClass}`}
           />
         </div>
@@ -1234,7 +1304,7 @@ export default function MiniToolbarTabDetallesEvento() {
             id="event-date-text-format"
             value={countdownUi.dateTextFormatPreset}
             onChange={handleDateTextFormatChange}
-            disabled={countdownControlsDisabled}
+            disabled={eventDateControlsDisabled}
             className={`${inputClass} ${disabledControlClass}`}
           >
             {DATE_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
@@ -1250,7 +1320,7 @@ export default function MiniToolbarTabDetallesEvento() {
             type="checkbox"
             checked={countdownUi.showCountdown}
             onChange={handleShowCountdownChange}
-            disabled={countdownControlsDisabled}
+            disabled={countdownVisibilityDisabled}
             className={`${checkboxClass} disabled:cursor-not-allowed`}
           />
           Mostrar contador con cuenta regresiva

@@ -2,6 +2,7 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 
 const getPricingConfigCallable = httpsCallable(functions, "adminGetPricingConfigV1");
+const getPublicPricingConfigCallable = httpsCallable(functions, "getPricingConfigV1");
 const listPricingHistoryCallable = httpsCallable(functions, "adminListPricingHistoryV1");
 const updatePricingConfigCallable = httpsCallable(functions, "adminUpdatePricingConfigV1");
 
@@ -11,6 +12,11 @@ function unwrap(result) {
 
 export async function getPublicationPricing() {
   const result = unwrap(await getPricingConfigCallable({}));
+  return result?.config || null;
+}
+
+export async function getPublicPublicationPricing() {
+  const result = unwrap(await getPublicPricingConfigCallable({}));
   return result?.config || null;
 }
 

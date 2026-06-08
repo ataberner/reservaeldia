@@ -227,19 +227,13 @@ export default function CanvasEditorOverlays({
                   error: templateAuthoring.error,
                   selectedElementType: templateAuthoring.selectedElementType,
                   selectedIsSupportedElement: templateAuthoring.selectedIsSupportedElement,
-                  selectedElementDefaultFieldType:
-                    templateAuthoring.selectedElementDefaultFieldType,
                   selectedField: templateAuthoring.selectedField,
                   fieldsSchema: templateAuthoring.fieldsSchema,
-                  onRefreshFields: templateAuthoring.reloadAvailableFields,
-                  onCreateField: templateAuthoring.createFieldFromSelection,
-                  onLinkField: templateAuthoring.linkSelectionToField,
                   onLinkEventPersonName: templateAuthoring.linkSelectionToEventPersonName,
                   onLinkEventLocation: templateAuthoring.linkSelectionToEventLocation,
                   onLinkEventTime: templateAuthoring.linkSelectionToEventTime,
-                  onEditField: templateAuthoring.editField,
+                  onLinkEventDate: templateAuthoring.linkSelectionToEventDate,
                   onUnlinkField: templateAuthoring.unlinkSelection,
-                  onDeleteField: templateAuthoring.deleteField,
                   onViewUsage: handleViewTemplateFieldUsage,
                 }
               : null

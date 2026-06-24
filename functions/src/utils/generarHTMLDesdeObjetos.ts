@@ -1772,43 +1772,23 @@ ${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
         const preset = obj.presetId || obj.layout || "pills";
         const isMinimal = String(preset).toLowerCase().includes("minimal");
 
-        // ✅ ancho/alto del objeto (si existen)
-        const wObj = Number.isFinite(obj?.width) ? Number(obj.width) : null;
-        const hObj = Number.isFinite(obj?.height) ? Number(obj.height) : null;
+        const legacyLayout = buildCountdownLayoutMetrics(obj);
+        const effectiveWObj = legacyLayout.containerW;
+        const effectiveHObj = legacyLayout.containerH;
 
         // ✅ gap: si viene de Konva, respetarlo
-        const gap = Number.isFinite(obj.gap)
-          ? Number(obj.gap)
-          : Number.isFinite(obj.spacing)
-            ? Number(obj.spacing)
-            : 8;
+        const gap = legacyLayout.gap;
 
         // ✅ Si tu Konva guarda chipWidth / paddingX, respetalos
         // chipWidth: ancho interno del texto (sin padding)
-        const chipWidthProp = Number.isFinite(obj.chipWidth) ? Number(obj.chipWidth) : null;
-        const paddingXProp = Number.isFinite(obj.paddingX) ? Number(obj.paddingX) : null;
-
-        // ✅ Derivación raíz (cuando no hay props)
-        const n = 4;
-
-        // chipWTotal: ancho total de cada chip (incluye padding)
-        let chipWTotal = 56; // fallback razonable
-        if (wObj && wObj > 0) {
-          chipWTotal = Math.max(40, (wObj - gap * (n - 1)) / n);
-        }
-
-        // paddingX derivado del chipWTotal (si no vino)
-        const paddingX = paddingXProp ?? Math.max(6, Math.round(chipWTotal * 0.18)); // ~18%
-        const paddingY = Math.max(5, Math.round(paddingX * 0.65));
-
-        // chipWidth (texto) derivado si no vino
-        const chipWidth = chipWidthProp ?? Math.max(10, Math.round(chipWTotal - paddingX * 2));
+        const chipWTotal = legacyLayout.baseChipW;
+        const paddingX = legacyLayout.paddingX;
+        const paddingY = legacyLayout.paddingY;
+        const chipWidth = legacyLayout.chipWidth;
 
         // ✅ font sizes: si vienen, respetar; si no, derivar desde chipWTotal
-        const valueSize =
-          Number.isFinite(obj.fontSize) ? Number(obj.fontSize) : Math.max(14, Math.round(chipWTotal * 0.34));
-        const labelSize =
-          Number.isFinite(obj.labelSize) ? Number(obj.labelSize) : Math.max(9, Math.round(valueSize * 0.62));
+        const valueSize = legacyLayout.valueSize;
+        const labelSize = legacyLayout.labelSize;
 
         const labelColor = sanitizeCssPaint(obj.labelColor, "#6b7280");
         const fontWeight = Number.isFinite(obj.fontWeight) ? obj.fontWeight : 700;
@@ -1839,8 +1819,8 @@ ${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
 
         const containerStyle = `
 ${baseStyle}
-${wObj ? `width: ${pxX(obj, wObj)};` : ""}
-${hObj ? `height: ${pxY(obj, hObj)};` : ""}
+width: ${pxX(obj, effectiveWObj)};
+height: ${pxY(obj, effectiveHObj)};
 display: flex;
 align-items: center;
 justify-content: center;
@@ -1852,8 +1832,9 @@ border-radius: calc(${sChip} * ${containerRadius}px);
 letter-spacing: calc(${sChip} * ${letterSpacing}px);
 `.trim();
 
-        const chipStyle = `
+const chipStyle = `
 width: calc(${sChip} * ${Math.round(chipWTotal)}px);
+height: calc(${sChip} * ${Math.round(legacyLayout.chipH)}px);
 padding: calc(${sChip} * ${paddingY}px) calc(${sChip} * ${paddingX}px);
 border: ${isMinimal ? "0" : `calc(${sChip} * 1px) solid ${chipBorderColorFinal}`};
 border-radius: calc(${sChip} * ${chipRadiusFinal}px);
@@ -1878,19 +1859,16 @@ line-height: 1.05;
 ${buildTextPaintStyleCss(labelColor, "#6b7280")}
 `.trim();
 
-        const showLabels = obj.showLabels !== false;
-        const chipH =
-          hObj && hObj > 0
-            ? hObj
-            : Math.max(44, paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0));
-        const naturalW = n * Math.round(chipWTotal) + gap * Math.max(0, n - 1);
-        const unitLayouts = Array.from({ length: n }, (_, index) => ({
-          key: COUNTDOWN_DEFAULT_VISIBLE_UNITS[index] || String(index),
-          unit: COUNTDOWN_DEFAULT_VISIBLE_UNITS[index] || String(index),
-          x: index * (Math.round(chipWTotal) + gap),
-          y: 0,
-          width: Math.round(chipWTotal),
-          height: chipH,
+        const showLabels = legacyLayout.showLabels;
+        const chipH = legacyLayout.chipH;
+        const naturalW = legacyLayout.naturalW;
+        const unitLayouts = legacyLayout.unitLayouts.map((item: any, index: number) => ({
+          key: item.unit || COUNTDOWN_DEFAULT_VISIBLE_UNITS[index] || String(index),
+          unit: item.unit || COUNTDOWN_DEFAULT_VISIBLE_UNITS[index] || String(index),
+          x: item.x,
+          y: item.y,
+          width: item.width,
+          height: item.height,
         }));
         const countdownAuditAttrs = buildCountdownAuditAttrs(obj, {
           id: String(obj?.id || "").trim() || null,
@@ -1902,8 +1880,8 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
           y: roundCountdownAuditMetric(obj?.y),
           yNorm:
             Number.isFinite(Number(obj?.yNorm)) ? roundCountdownAuditMetric(obj?.yNorm) : null,
-          width: roundCountdownAuditMetric(wObj || naturalW),
-          height: roundCountdownAuditMetric(hObj || chipH),
+          width: roundCountdownAuditMetric(effectiveWObj),
+          height: roundCountdownAuditMetric(effectiveHObj),
           scaleX: roundCountdownAuditMetric(obj?.scaleX ?? 1),
           scaleY: roundCountdownAuditMetric(obj?.scaleY ?? 1),
           rotation: roundCountdownAuditMetric(obj?.rotation ?? 0),
@@ -1923,11 +1901,11 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
           chipH: roundCountdownAuditMetric(chipH),
           baseChipW: roundCountdownAuditMetric(Math.round(chipWTotal)),
           naturalW: roundCountdownAuditMetric(naturalW),
-          naturalH: roundCountdownAuditMetric(chipH),
-          containerW: roundCountdownAuditMetric(wObj || naturalW),
-          containerH: roundCountdownAuditMetric(hObj || chipH),
-          startX: 0,
-          startY: 0,
+          naturalH: roundCountdownAuditMetric(legacyLayout.naturalH),
+          containerW: roundCountdownAuditMetric(effectiveWObj),
+          containerH: roundCountdownAuditMetric(effectiveHObj),
+          startX: roundCountdownAuditMetric(legacyLayout.startX),
+          startY: roundCountdownAuditMetric(legacyLayout.startY),
           unitLayouts: compactCountdownAuditUnitLayouts(unitLayouts),
           separatorLayouts: [],
         });

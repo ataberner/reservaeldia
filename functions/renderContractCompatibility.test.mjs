@@ -570,6 +570,38 @@ test("generates explicit countdown contract markers for v1 and v2 objects", () =
   assert.match(modernHtml, /data-countdown-target-source="fechaObjetivo"/);
 });
 
+test("legacy countdown HTML uses the canvas-equivalent visual bounds for horizontal centering", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-legacy-centered",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownAuditTraceId: "count-legacy-centered-test",
+        fechaObjetivo: "2026-05-10T20:00:00.000Z",
+        x: 264,
+        y: 140,
+        width: 220,
+        height: 120,
+        visibleUnits: ["days", "hours", "minutes", "seconds"],
+        layoutType: "singleFrame",
+        distribution: "centered",
+        framePadding: 10,
+        chipWidth: 46,
+        paddingX: 8,
+        gap: 8,
+        tamanoBase: 320,
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-countdown-contract="v1"/);
+  assert.match(html, /left:\s*calc\(var\(--sx\) \* 264px\)/);
+  assert.match(html, /width:\s*calc\(var\(--sx\) \* 272px\)/);
+  assert.match(html, /data-countdown-audit-payload="[^"]*&quot;containerW&quot;:272/);
+});
+
 test("omits countdown HTML when the event details visibility flag is false", () => {
   const visibleHtml = generarHTMLDesdeObjetos(
     [

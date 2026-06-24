@@ -48,6 +48,13 @@ import {
   normalizarMedidasGaleria as normalizarMedidasGaleriaUtil,
   applyLineUpdate,
 } from "@/components/editor/canvasEditor/objectUpdateUtils";
+import {
+  applySectionLockState,
+  canEditObject,
+  canEditObjectById,
+  canMutateSection,
+  isProtectedSection,
+} from "@/domain/editor/protectedSections";
 import { createTextLayoutUtils } from "@/components/editor/canvasEditor/textLayoutUtils";
 import useCanvasEditorStartupStatus from "@/components/editor/canvasEditor/useCanvasEditorStartupStatus";
 import useCanvasEditorStageInteraction from "@/components/editor/canvasEditor/useCanvasEditorStageInteraction";
@@ -321,6 +328,23 @@ export default function CanvasEditor({
     setTemplateEditorialPanelOpen,
     setSectionDecorationEdit,
   });
+  const canToggleTemplateSectionLock =
+    canManageSite &&
+    templateWorkspace?.mode === "template_edit" &&
+    templateWorkspace?.readOnly !== true &&
+    templateWorkspace?.permissions?.readOnly !== true;
+  const handleToggleSectionLock = useCallback((sectionId) => {
+    if (!canToggleTemplateSectionLock) return;
+    const safeSectionId = String(sectionId || "").trim();
+    if (!safeSectionId) return;
+
+    setSecciones((previous) =>
+      previous.map((section) => {
+        if (section?.id !== safeSectionId) return section;
+        return applySectionLockState(section, !isProtectedSection(section));
+      })
+    );
+  }, [canToggleTemplateSectionLock, setSecciones]);
   const {
     readSnapshot: readSelectionRuntimeSnapshot,
     setCommittedSelection: setRuntimeCommittedSelection,
@@ -678,9 +702,13 @@ export default function CanvasEditor({
   }, []);
 
   // ???Elemento actualmente seleccionado (o null)
-  const objetoSeleccionado =
+  const rawObjetoSeleccionado =
     elementosSeleccionados.length === 1
       ? objetos.find(o => o.id === elementosSeleccionados[0])
+      : null;
+  const objetoSeleccionado =
+    rawObjetoSeleccionado && canEditObject(rawObjetoSeleccionado, { secciones })
+      ? rawObjetoSeleccionado
       : null;
   const canUseTemplateFields =
     canManageSite ||
@@ -701,7 +729,11 @@ export default function CanvasEditor({
     onPatchObject: (objectId, patch) => {
       const safeObjectId = String(objectId || "").trim();
       if (!safeObjectId || !patch || typeof patch !== "object") return;
-      setObjetos((prev) => applyObjectUpdateById(prev, safeObjectId, patch));
+      setObjetos((prev) =>
+        canEditObjectById(safeObjectId, { objetos: prev, secciones })
+          ? applyObjectUpdateById(prev, safeObjectId, patch)
+          : prev
+      );
     },
   });
   const canRenderTemplateAuthoringMenu =
@@ -830,6 +862,7 @@ export default function CanvasEditor({
     mostrarPanelZ,
     setMostrarPanelZ,
     objetos,
+    secciones,
     elementosSeleccionados,
     isMobile,
     setObjetos,
@@ -840,6 +873,7 @@ export default function CanvasEditor({
     setSecciones(prev =>
       prev.map(s => {
         if (s.id !== seccionId) return s;
+        if (!canMutateSection(s)) return s;
 
         // ?? CREAR OBJETO LIMPIO
         const seccionActualizada = { ...s };
@@ -867,6 +901,7 @@ export default function CanvasEditor({
       const { objId, index } = celdaGaleriaActiva;
       const i = prev.findIndex(o => o.id === objId && o.tipo === "galeria");
       if (i === -1) return prev;
+      if (!canEditObject(prev[i], { secciones })) return prev;
 
       const copia = structuredClone(prev);
       const g = copia[i];
@@ -985,13 +1020,18 @@ export default function CanvasEditor({
 
 
   const actualizarObjeto = (index, nuevo) => {
-    setObjetos((prev) => applyObjectUpdateAtIndex(prev, index, nuevo));
+    setObjetos((prev) =>
+      canEditObject(prev[index], { secciones })
+        ? applyObjectUpdateAtIndex(prev, index, nuevo)
+        : prev
+    );
   };
 
   const actualizarObjetoPorId = (id, cambios) => {
     setObjetos((prev) => {
       const index = prev.findIndex((o) => o.id === id);
       if (index === -1) return console.warn("? No se encontrÃ³ el objeto con ID:", id), prev;
+      if (!canEditObject(prev[index], { secciones })) return prev;
       return applyObjectUpdateById(prev, id, cambios);
     });
   };
@@ -1001,7 +1041,11 @@ export default function CanvasEditor({
   }, []);
 
   const actualizarLinea = (lineId, nuevaData) => {
-    setObjetos((prev) => applyLineUpdate(prev, lineId, nuevaData));
+    setObjetos((prev) =>
+      canEditObjectById(lineId, { objetos: prev, secciones })
+        ? applyLineUpdate(prev, lineId, nuevaData)
+        : prev
+    );
   };
 
   const textLayoutUtils = createTextLayoutUtils({
@@ -1330,6 +1374,7 @@ export default function CanvasEditor({
       captureInlineSnapshot: runtime.captureInlineSnapshot,
       updateEdit,
       objetos,
+      secciones,
       elementRefs,
       inlineEditPreviewRef,
       inlineCommitDebugRef,
@@ -1682,8 +1727,10 @@ export default function CanvasEditor({
                 setBackgroundEditSectionId={setBackgroundEditSectionId}
                 setSeccionActivaId={setSeccionActivaId}
                 canManageSite={canManageSite}
+                templateWorkspace={templateWorkspace}
                 refrescarPlantillasDeSeccion={refrescarPlantillasDeSeccion}
                 abrirModalBorrarSeccion={abrirModalBorrarSeccion}
+                onToggleSectionLock={handleToggleSectionLock}
               />
             )}
 

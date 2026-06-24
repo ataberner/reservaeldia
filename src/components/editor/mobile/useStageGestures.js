@@ -1,6 +1,7 @@
 ﻿import { useCallback, useRef } from "react";
 
 import { isPostDragSelectionGuardActive } from "@/components/editor/canvasEditor/postDragSelectionGuard";
+import { canEditObject } from "@/domain/editor/protectedSections";
 
 const TOUCH_MOVE_PX = 16;
 const TOUCH_SCROLL_PX = 2;
@@ -287,6 +288,7 @@ export default function useStageGestures({
           requestAnimationFrame(() => {
             const ids = objetos
               .filter((obj) => {
+                if (!canEditObject(obj, { secciones })) return false;
                 const node = elementRefs.current[obj.id];
                 if (!node) return false;
 
@@ -315,6 +317,7 @@ export default function useStageGestures({
       inicioSeleccion,
       setAreaSeleccion,
       objetos,
+      secciones,
       elementRefs,
       detectarInterseccionLinea,
       setElementosPreSeleccionados,
@@ -335,6 +338,7 @@ export default function useStageGestures({
       if (!seleccionActiva || !areaSeleccion) return;
 
       const nuevaSeleccion = objetos.filter((obj) => {
+        if (!canEditObject(obj, { secciones })) return false;
         const node = elementRefs.current[obj.id];
         if (!node) return false;
 
@@ -363,6 +367,7 @@ export default function useStageGestures({
       seleccionActiva,
       areaSeleccion,
       objetos,
+      secciones,
       elementRefs,
       detectarInterseccionLinea,
       setElementosSeleccionados,

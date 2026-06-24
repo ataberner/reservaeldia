@@ -9,6 +9,7 @@ import {
     getAllowedMotionEffectsForElement,
     sanitizeMotionEffect,
 } from "@/domain/motionEffects";
+import { canEditObject } from "@/domain/editor/protectedSections";
 import { resolveUngroupSelectionCandidate } from "@/domain/editor/grouping";
 import TemplateDynamicFieldMenuSection from "@/components/editor/templateAuthoring/TemplateDynamicFieldMenuSection";
 import { classifyRenderObjectContract } from "../../shared/renderContractPolicy.js";
@@ -228,6 +229,14 @@ export default function MenuOpcionesElemento({
         [elementoSeleccionado?.id, esGrupo, menuKind, objetos, secciones]
     );
     const canUngroupSelection = ungroupCandidate?.eligible === true;
+    const canMutateCanvasObject = useMemo(
+        () => (
+            menuKind === "canvas-object" &&
+            Boolean(elementoSeleccionado) &&
+            canEditObject(elementoSeleccionado, { secciones })
+        ),
+        [elementoSeleccionado, menuKind, secciones]
+    );
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -425,6 +434,10 @@ export default function MenuOpcionesElemento({
     }, [mostrarSubmenuUso, recalcularSubmenuUsoPos]);
 
     const guardarEnlace = () => {
+        if (!canMutateCanvasObject) {
+            onCerrar();
+            return;
+        }
         const limpio = sanitizeURL(urlInput);
         if (!limpio) {
             setUrlError(true);
@@ -434,6 +447,7 @@ export default function MenuOpcionesElemento({
         setObjetos(prev =>
             prev.map(o => {
                 if (o.id !== elementoSeleccionado?.id) return o;
+                if (!canEditObject(o, { secciones })) return o;
                 return {
                     ...o,
                     enlace: {
@@ -449,9 +463,14 @@ export default function MenuOpcionesElemento({
     };
 
     const quitarEnlace = () => {
+        if (!canMutateCanvasObject) {
+            onCerrar();
+            return;
+        }
         setObjetos(prev =>
             prev.map(o => {
                 if (o.id !== elementoSeleccionado?.id) return o;
+                if (!canEditObject(o, { secciones })) return o;
                 const { enlace, ...rest } = o;
                 return rest;
             })
@@ -461,10 +480,15 @@ export default function MenuOpcionesElemento({
     };
 
     const actualizarMotionEffect = (effect) => {
+        if (!canMutateCanvasObject) {
+            onCerrar();
+            return;
+        }
         const nextEffect = sanitizeMotionEffect(effect);
         setObjetos((prev) =>
             prev.map((item) => {
                 if (item.id !== elementoSeleccionado?.id) return item;
+                if (!canEditObject(item, { secciones })) return item;
                 return { ...item, motionEffect: nextEffect };
             })
         );
@@ -941,6 +965,10 @@ export default function MenuOpcionesElemento({
             {/* Copiar */}
             <button
                 onClick={() => {
+                    if (!canMutateCanvasObject) {
+                        onCerrar();
+                        return;
+                    }
                     onCopiar();
                     onCerrar();
                 }}
@@ -952,6 +980,10 @@ export default function MenuOpcionesElemento({
             {/* Pegar */}
             <button
                 onClick={() => {
+                    if (!canMutateCanvasObject) {
+                        onCerrar();
+                        return;
+                    }
                     onPegar();
                     onCerrar();
                 }}
@@ -963,6 +995,10 @@ export default function MenuOpcionesElemento({
             {/* Duplicar */}
             <button
                 onClick={() => {
+                    if (!canMutateCanvasObject) {
+                        onCerrar();
+                        return;
+                    }
                     onDuplicar();
                     onCerrar();
                 }}
@@ -974,6 +1010,10 @@ export default function MenuOpcionesElemento({
             {esGrupo && canUngroupSelection && (
                 <button
                     onClick={() => {
+                        if (!canMutateCanvasObject) {
+                            onCerrar();
+                            return;
+                        }
                         onDesagrupar?.();
                         onCerrar();
                     }}
@@ -1251,6 +1291,10 @@ export default function MenuOpcionesElemento({
                                         title="Elemento visual que queda detrás del contenido y no afecta el diseño en mobile."
                                         onClick={() => {
                                             setMostrarSubmenuUso(false);
+                                            if (!canMutateCanvasObject) {
+                                                onCerrar();
+                                                return;
+                                            }
                                             if (typeof usarComoDecoracionFondo !== "function") {
                                                 onCerrar();
                                                 return;
@@ -1275,6 +1319,10 @@ export default function MenuOpcionesElemento({
                                     title="Imagen principal que cubre toda la sección."
                                     onClick={() => {
                                         setMostrarSubmenuUso(false);
+                                        if (!canMutateCanvasObject) {
+                                            onCerrar();
+                                            return;
+                                        }
                                         if (typeof reemplazarFondo !== "function") {
                                             onCerrar();
                                             return;
@@ -1310,6 +1358,10 @@ export default function MenuOpcionesElemento({
                                             title="Decoración anclada en la parte superior que se adapta al ancho de la pantalla."
                                             onClick={() => {
                                                 setMostrarSubmenuUso(false);
+                                                if (!canMutateCanvasObject) {
+                                                    onCerrar();
+                                                    return;
+                                                }
                                                 if (typeof usarComoDecoracionBorde !== "function") {
                                                     onCerrar();
                                                     return;
@@ -1333,6 +1385,10 @@ export default function MenuOpcionesElemento({
                                             title="Decoración anclada en la parte inferior que se adapta al ancho de la pantalla."
                                             onClick={() => {
                                                 setMostrarSubmenuUso(false);
+                                                if (!canMutateCanvasObject) {
+                                                    onCerrar();
+                                                    return;
+                                                }
                                                 if (typeof usarComoDecoracionBorde !== "function") {
                                                     onCerrar();
                                                     return;
@@ -1363,6 +1419,10 @@ export default function MenuOpcionesElemento({
             {esRsvp && (
                 <button
                     onClick={() => {
+                        if (!canMutateCanvasObject) {
+                            onCerrar();
+                            return;
+                        }
                         if (typeof onConfigurarRsvp === "function") {
                             onConfigurarRsvp();
                         }
@@ -1378,6 +1438,10 @@ export default function MenuOpcionesElemento({
             {esRegalo && (
                 <button
                     onClick={() => {
+                        if (!canMutateCanvasObject) {
+                            onCerrar();
+                            return;
+                        }
                         if (typeof onConfigurarRegalos === "function") {
                             onConfigurarRegalos();
                         }
@@ -1393,6 +1457,10 @@ export default function MenuOpcionesElemento({
             {/* Eliminar */}
             <button
                 onClick={() => {
+                    if (!canMutateCanvasObject) {
+                        onCerrar();
+                        return;
+                    }
                     onEliminar();
                     onCerrar();
                 }}
@@ -1434,6 +1502,11 @@ export default function MenuOpcionesElemento({
                         >
                             <button
                                 onClick={() => {
+                                    if (!canMutateCanvasObject) {
+                                        setMostrarSubmenuCapa(false);
+                                        onCerrar();
+                                        return;
+                                    }
                                     moverElemento("al-frente");
                                     setMostrarSubmenuCapa(false);
                                     onCerrar();
@@ -1445,6 +1518,11 @@ export default function MenuOpcionesElemento({
 
                             <button
                                 onClick={() => {
+                                    if (!canMutateCanvasObject) {
+                                        setMostrarSubmenuCapa(false);
+                                        onCerrar();
+                                        return;
+                                    }
                                     moverElemento("subir");
                                     setMostrarSubmenuCapa(false);
                                     onCerrar();
@@ -1456,6 +1534,11 @@ export default function MenuOpcionesElemento({
 
                             <button
                                 onClick={() => {
+                                    if (!canMutateCanvasObject) {
+                                        setMostrarSubmenuCapa(false);
+                                        onCerrar();
+                                        return;
+                                    }
                                     moverElemento("bajar");
                                     setMostrarSubmenuCapa(false);
                                     onCerrar();
@@ -1467,6 +1550,11 @@ export default function MenuOpcionesElemento({
 
                             <button
                                 onClick={() => {
+                                    if (!canMutateCanvasObject) {
+                                        setMostrarSubmenuCapa(false);
+                                        onCerrar();
+                                        return;
+                                    }
                                     moverElemento("al-fondo");
                                     setMostrarSubmenuCapa(false);
                                     onCerrar();

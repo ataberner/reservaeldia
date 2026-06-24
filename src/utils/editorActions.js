@@ -4,9 +4,18 @@ import {
   isFunctionalCtaButton,
   shouldSkipFunctionalCtaDuplicate,
 } from "@/domain/functionalCtaButtons";
+import {
+  buildProtectedSectionObjectSanitizer,
+  buildProtectedSectionStateSanitizer,
+  canEditObject,
+  canInsertIntoSection,
+  filterEditableObjectIds,
+} from "@/domain/editor/protectedSections";
 
 export function ejecutarDeshacer({
   historial,
+  objetos = [],
+  secciones = [],
   setHistorial,
   setObjetos,
   setSecciones,
@@ -20,6 +29,13 @@ export function ejecutarDeshacer({
     setMostrarPanelZ(false);
 
     ignoreNextUpdateRef.current = (ignoreNextUpdateRef.current || 0) + 1;
+    const sanitizeObjetos = buildProtectedSectionObjectSanitizer({
+      currentObjetos: objetos,
+      currentSecciones: secciones,
+    });
+    const sanitizeSecciones = buildProtectedSectionStateSanitizer({
+      currentSecciones: secciones,
+    });
 
 
     setHistorial((prev) => {
@@ -28,8 +44,8 @@ export function ejecutarDeshacer({
       const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
 
       // Aplicar estado anterior
-      setObjetos(estadoAnterior.objetos || []);
-      setSecciones(estadoAnterior.secciones || []);
+      setObjetos(sanitizeObjetos(estadoAnterior.objetos || []));
+      setSecciones(sanitizeSecciones(estadoAnterior.secciones || []));
 
       // Guardar para rehacer (push al frente, igual que tu lógica actual)
       setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
@@ -41,6 +57,8 @@ export function ejecutarDeshacer({
 
 export function ejecutarRehacer({
   futuros,
+  objetos = [],
+  secciones = [],
   setFuturos,
   setHistorial,
   setObjetos,
@@ -56,9 +74,16 @@ export function ejecutarRehacer({
     const siguienteEstado = futuros[0];
 
     ignoreNextUpdateRef.current = (ignoreNextUpdateRef.current || 0) + 1;
+    const sanitizeObjetos = buildProtectedSectionObjectSanitizer({
+      currentObjetos: objetos,
+      currentSecciones: secciones,
+    });
+    const sanitizeSecciones = buildProtectedSectionStateSanitizer({
+      currentSecciones: secciones,
+    });
 
-    setObjetos(siguienteEstado.objetos || []);
-    setSecciones(siguienteEstado.secciones || []);
+    setObjetos(sanitizeObjetos(siguienteEstado.objetos || []));
+    setSecciones(sanitizeSecciones(siguienteEstado.secciones || []));
 
     setFuturos((f) => f.slice(1));
     setHistorial((h) => [...h, siguienteEstado]);
@@ -66,10 +91,13 @@ export function ejecutarRehacer({
 }
 
 
-export function duplicarElemento({ objetos, elementosSeleccionados, setObjetos, setElementosSeleccionados }) {
+export function duplicarElemento({ objetos, secciones, elementosSeleccionados, setObjetos, setElementosSeleccionados }) {
   const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
   const duplicables = seleccionados.filter(
-    (o) => o?.tipo !== "countdown" && !shouldSkipFunctionalCtaDuplicate(objetos, o)
+    (o) =>
+      canEditObject(o, { secciones }) &&
+      o?.tipo !== "countdown" &&
+      !shouldSkipFunctionalCtaDuplicate(objetos, o)
   );
 
   if (duplicables.length === 0) return;
@@ -85,9 +113,10 @@ export function duplicarElemento({ objetos, elementosSeleccionados, setObjetos, 
   setElementosSeleccionados(duplicados.map((d) => d.id));
 }
 
-export function eliminarElemento({ objetos, elementosSeleccionados, setObjetos, setElementosSeleccionados, setMostrarPanelZ }) {
+export function eliminarElemento({ objetos, secciones, elementosSeleccionados, setObjetos, setElementosSeleccionados, setMostrarPanelZ }) {
   if (elementosSeleccionados.length === 0) return;
-  const idsAEliminar = [...elementosSeleccionados];
+  const idsAEliminar = filterEditableObjectIds(elementosSeleccionados, { objetos, secciones });
+  if (idsAEliminar.length === 0) return;
 
   setElementosSeleccionados([]);
   setMostrarPanelZ(false);
@@ -97,14 +126,16 @@ export function eliminarElemento({ objetos, elementosSeleccionados, setObjetos, 
   }, 10);
 }
 
-export function copiarElemento({ objetos, elementosSeleccionados }) {
-  const seleccionados = objetos.filter((o) => elementosSeleccionados.includes(o.id));
+export function copiarElemento({ objetos, secciones, elementosSeleccionados }) {
+  const seleccionados = objetos.filter(
+    (o) => elementosSeleccionados.includes(o.id) && canEditObject(o, { secciones })
+  );
   if (seleccionados.length > 0) {
     window._objetosCopiados = seleccionados.map((o) => ({ ...o, id: undefined }));
   }
 }
 
-export function pegarElemento({ objetos, setObjetos, setElementosSeleccionados }) {
+export function pegarElemento({ objetos, secciones, setObjetos, setElementosSeleccionados }) {
   const copiados = window._objetosCopiados || [];
   if (!window._objetosCopiados || window._objetosCopiados.length === 0) return;
   const offset = 30 + Math.random() * 20;
@@ -116,6 +147,10 @@ export function pegarElemento({ objetos, setObjetos, setElementosSeleccionados }
   const nuevos = [];
 
   copiados.forEach((c, i) => {
+    if (!canInsertIntoSection(c?.seccionId, secciones)) {
+      return;
+    }
+
     if (c?.tipo === "countdown") {
       if (alreadyHasCountdown || pastedCountdown) return;
       pastedCountdown = true;
@@ -139,7 +174,7 @@ export function pegarElemento({ objetos, setObjetos, setElementosSeleccionados }
   setElementosSeleccionados(nuevos.map((n) => n.id));
 }
 
-export function cambiarAlineacionTexto({ objetos, elementosSeleccionados, setObjetos }) {
+export function cambiarAlineacionTexto({ objetos, secciones, elementosSeleccionados, setObjetos }) {
   const alineaciones = ['left', 'center', 'right', 'justify'];
 
   setObjetos((prev) =>
@@ -152,6 +187,7 @@ export function cambiarAlineacionTexto({ objetos, elementosSeleccionados, setObj
 
       if (
         !elementosSeleccionados.includes(o.id) ||
+        !canEditObject(o, { secciones }) ||
         (!esTexto && !esRectConTexto && !isFunctionalCtaButton(o))
       ) {
         return o;

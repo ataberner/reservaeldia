@@ -223,6 +223,16 @@ export function isEventLocationField(field) {
   return Boolean(normalizeEventLocationRole(asObject(field).eventDetailsRole));
 }
 
+export function isEventVenueAddressField(field) {
+  const safeField = asObject(field);
+  return (
+    normalizeText(safeField.key) ===
+      EVENT_LOCATION_FIELD_KEYS[EVENT_LOCATION_ROLES.VENUE_ADDRESS] ||
+    normalizeEventLocationRole(safeField.eventDetailsRole) ===
+      EVENT_LOCATION_ROLES.VENUE_ADDRESS
+  );
+}
+
 export function buildEventLocationField(role) {
   const safeRole = normalizeEventLocationRole(role);
   const fieldKey = getEventLocationFieldKey(safeRole);

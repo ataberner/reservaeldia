@@ -12,12 +12,14 @@ import {
   getCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import { canEditObject } from "@/domain/editor/protectedSections";
 
 export default function useCanvasEditorInlineCommitHandlers({
   editing,
   captureInlineSnapshot,
   updateEdit,
   objetos,
+  secciones,
   inlineEditPreviewRef,
   inlineCommitDebugRef,
   setInlineOverlayMountedId,
@@ -109,6 +111,37 @@ export default function useCanvasEditorInlineCommitHandlers({
             mounted: false,
             swapCommitted: false,
             phase: "finish-missing-object",
+            token: Number(prev?.token || 0),
+            offsetY: 0,
+            offsetRevision: null,
+            offsetSource: null,
+            offsetSpace: "content-ink",
+            renderAuthority: "konva",
+            caretVisible: false,
+            paintStable: false,
+          };
+        });
+        finishEdit();
+      });
+      restoreElementDrag(finishId);
+      clearCurrentInlineEditingIdIfMatches(finishId);
+      return;
+    }
+    if (!canEditObject(objeto, { secciones })) {
+      inlineDebugLog("finish-abort-protected-object", { id: finishId });
+      inlineCommitDebugRef.current = { id: null };
+      inlineEditPreviewRef.current = { id: null, centerX: null };
+      flushSync(() => {
+        setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+        setInlineOverlayMountSession((prev) => {
+          const prevId = prev?.mounted ? prev.id : null;
+          if (prevId !== finishId) return prev;
+          return {
+            id: null,
+            sessionId: null,
+            mounted: false,
+            swapCommitted: false,
+            phase: "finish-protected-object",
             token: Number(prev?.token || 0),
             offsetY: 0,
             offsetRevision: null,

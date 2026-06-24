@@ -116,6 +116,33 @@ test("section creation reuses the computed section snapshot for object placement
   assert.equal(payload.draftContentMeta.lastReason, "section-create");
 });
 
+test("section creation inserts before an explicitly protected final section", () => {
+  const { nuevaSeccion, nextSecciones } = buildSectionCreationState({
+    datos: {},
+    secciones: [
+      { id: "sec-1", altura: 300, altoModo: "fijo", orden: 0 },
+      { id: "sec-final", altura: 120, altoModo: "fijo", orden: 1, bloqueada: true },
+    ],
+    objetos: [],
+    crearSeccion: (_datos, prevSecciones) => ({
+      id: `sec-${prevSecciones.length + 1}`,
+      altura: 300,
+      altoModo: "fijo",
+      orden: prevSecciones.length,
+    }),
+  });
+
+  assert.equal(nuevaSeccion.id, "sec-3");
+  assert.deepEqual(
+    nextSecciones.map((section) => [section.id, section.orden]),
+    [
+      ["sec-1", 0],
+      ["sec-3", 1],
+      ["sec-final", 2],
+    ]
+  );
+});
+
 test("section reorder payload preserves the current secciones-only write contract", () => {
   const { payload } = buildSectionMutationWritePayload({
     secciones: [

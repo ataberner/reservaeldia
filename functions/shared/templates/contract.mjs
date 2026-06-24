@@ -100,6 +100,11 @@ function asObject(value) {
   return value;
 }
 
+function normalizeTemplateSections(value) {
+  if (!Array.isArray(value)) return [];
+  return value;
+}
+
 function toStringList(value) {
   if (Array.isArray(value)) {
     return value
@@ -618,7 +623,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
   const portada = normalizeText(source.portada) || null;
   const editor = normalizeText(source.editor) || null;
   const objetos = Array.isArray(source.objetos) ? source.objetos : [];
-  const secciones = Array.isArray(source.secciones) ? source.secciones : [];
+  const secciones = normalizeTemplateSections(source.secciones);
   const estado = normalizeState(source.estado);
   const estadoEditorial = normalizeTemplateEditorialState(source.estadoEditorial);
   const updatedAt = source.updatedAt || source.actualizadoEn || null;

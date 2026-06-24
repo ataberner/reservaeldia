@@ -5,6 +5,7 @@ import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorActiveSectionDetail,
 } from "@/lib/editorBridgeContracts";
+import { canMutateSection } from "@/domain/editor/protectedSections";
 
 export default function useCanvasEditorSectionFlow({
   slug,
@@ -57,8 +58,10 @@ export default function useCanvasEditorSectionFlow({
 
   const abrirModalBorrarSeccion = useCallback((seccionId) => {
     if (!seccionId || isDeletingSection) return;
+    const targetSection = secciones.find((seccion) => seccion?.id === seccionId);
+    if (!canMutateSection(targetSection)) return;
     setDeleteSectionModal({ isOpen: true, sectionId: seccionId });
-  }, [isDeletingSection, setDeleteSectionModal]);
+  }, [isDeletingSection, secciones, setDeleteSectionModal]);
 
   const cerrarModalBorrarSeccion = useCallback(() => {
     if (isDeletingSection) return;
@@ -68,6 +71,8 @@ export default function useCanvasEditorSectionFlow({
   const confirmarBorrarSeccion = useCallback(async () => {
     const seccionId = deleteSectionModal.sectionId;
     if (!seccionId || isDeletingSection) return;
+    const targetSection = secciones.find((seccion) => seccion?.id === seccionId);
+    if (!canMutateSection(targetSection)) return;
 
     setIsDeletingSection(true);
     try {
@@ -321,6 +326,12 @@ export default function useCanvasEditorSectionFlow({
 
     const indiceDestino = direccion === "subir" ? indiceActual - 1 : indiceActual + 1;
     if (indiceDestino < 0 || indiceDestino >= ordenadasActuales.length) return;
+    if (
+      !canMutateSection(ordenadasActuales[indiceActual]) ||
+      !canMutateSection(ordenadasActuales[indiceDestino])
+    ) {
+      return;
+    }
 
     moverSeccionExternal({
       seccionId,

@@ -209,6 +209,8 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `fondoImagenDraggable` | Optional | Editor-only background interaction flag. |
 | `decoracionesFondo` | Optional but normalized | Background decoration payload normalized to `{ items, parallax }`. |
 | `decoracionesBorde` | Optional but normalized | Section edge decoration payload for top/bottom viewport-width ornaments. |
+| `bloqueada` | Optional editor-only flag | When exactly `true`, the editor renders the section normally but blocks edits to the section and its objects. Missing/false never auto-locks a section. |
+| `bloqueoMotivo` | Optional editor-only metadata | Human/system reason for a locked section, for example `"system-final-section"`. Preview and publish ignore it. |
 
 ### Background Decoration Payload
 Current section background normalizers convert `decoracionesFondo` into this shape:

@@ -5,6 +5,7 @@ import {
   isCountdownRepeatDragDebugEnabled,
   publishCountdownRepeatDragDebugEntry,
 } from "@/components/editor/canvasEditor/countdownRepeatDragDebug";
+import { canEditObject } from "@/domain/editor/protectedSections";
 
 export default function useCanvasEditorElementRegistry({
   elementRefs,
@@ -12,6 +13,7 @@ export default function useCanvasEditorElementRegistry({
   mostrarPanelZ,
   setMostrarPanelZ,
   objetos,
+  secciones,
   elementosSeleccionados,
   isMobile,
   setObjetos,
@@ -112,6 +114,7 @@ export default function useCanvasEditorElementRegistry({
     (accion) => {
       const index = objetos.findIndex((o) => o.id === elementosSeleccionados[0]);
       if (index === -1) return;
+      if (!canEditObject(objetos[index], { secciones })) return;
 
       const nuevos = [...objetos];
       const [elemento] = nuevos.splice(index, 1);
@@ -131,7 +134,7 @@ export default function useCanvasEditorElementRegistry({
       setObjetos(nuevos);
       setMostrarPanelZ(false);
     },
-    [elementosSeleccionados, objetos, setMostrarPanelZ, setObjetos]
+    [elementosSeleccionados, objetos, secciones, setMostrarPanelZ, setObjetos]
   );
 
   return {

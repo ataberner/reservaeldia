@@ -11,6 +11,8 @@ import {
   resolveGalleryCellMediaUrl,
 } from "../../../shared/renderAssetContract.js";
 import { buildTemplatePersonalizationPlan } from "./personalizationContract.js";
+import { buildFixedTextBoxLayoutPatch } from "./objectTargetPatch.js";
+import { isEventVenueAddressField } from "../eventDetails/location.js";
 import {
   findRenderObjectById,
   forEachRenderObject,
@@ -243,12 +245,33 @@ function getTextPositionFromCenter(objeto, textValue, centerX, centerY) {
   };
 }
 
-function setTextValuePreservingCenter(objeto, nextText, textMeasurementOptions) {
+function setTextValuePreservingCenter(
+  objeto,
+  nextText,
+  textMeasurementOptions,
+  options = {}
+) {
   if (!objeto || typeof objeto !== "object") return false;
 
+  const safeOptions = options && typeof options === "object" ? options : {};
   const currentText = String(objeto.texto ?? "");
   const resolvedNextText = String(nextText ?? "");
-  if (currentText === resolvedNextText) return false;
+  const fixedTextBoxPatch =
+    safeOptions.fixedTextBox === true
+      ? buildFixedTextBoxLayoutPatch(objeto, safeOptions)
+      : {};
+  if (
+    currentText === resolvedNextText &&
+    Object.keys(fixedTextBoxPatch).length === 0
+  ) {
+    return false;
+  }
+
+  if (safeOptions.fixedTextBox === true) {
+    objeto.texto = resolvedNextText;
+    Object.assign(objeto, fixedTextBoxPatch);
+    return true;
+  }
 
   const shouldPreserveCenter = shouldKeepTextBoxCenter(objeto);
   const currentCenter = shouldPreserveCenter
@@ -327,13 +350,18 @@ function setTextValuePreservingCenter(objeto, nextText, textMeasurementOptions) 
   return true;
 }
 
-function setValueAtPath(target, path, value, textMeasurementOptions) {
+function setValueAtPath(target, path, value, textMeasurementOptions, textTargetOptions = null) {
   if (!target || typeof target !== "object") return false;
   const safePath = normalizeText(path);
   if (!safePath) return false;
 
   if (isDirectTextContentPath(safePath) && normalizeText(target.tipo).toLowerCase() === "texto") {
-    return setTextValuePreservingCenter(target, value, textMeasurementOptions);
+    return setTextValuePreservingCenter(
+      target,
+      value,
+      textMeasurementOptions,
+      textTargetOptions
+    );
   }
 
   setByPath(target, safePath, value);
@@ -387,6 +415,7 @@ function findSeccionById(secciones, id) {
 }
 
 function applyTarget({
+  field,
   target,
   path,
   mode,
@@ -402,13 +431,26 @@ function applyTarget({
     return { applied: applyGalleryCells(target, nextValue) };
   }
 
+  const textTargetOptions =
+    isEventVenueAddressField(field) && isDirectTextContentPath(safePath)
+      ? {
+          fixedTextBox: true,
+          wrapMode: "word",
+        }
+      : null;
   const currentValue = getByPath(target, safePath);
   if (mode === "replace") {
     if (typeof currentValue === "string") {
       const replaced = replaceInText(currentValue, defaultValue, nextValue);
       if (replaced !== currentValue) {
         return {
-          applied: setValueAtPath(target, safePath, replaced, textMeasurementOptions),
+          applied: setValueAtPath(
+            target,
+            safePath,
+            replaced,
+            textMeasurementOptions,
+            textTargetOptions
+          ),
         };
       }
       if (normalizeText(nextValue) && normalizeText(defaultValue) === "") {
@@ -417,7 +459,8 @@ function applyTarget({
             target,
             safePath,
             String(nextValue),
-            textMeasurementOptions
+            textMeasurementOptions,
+            textTargetOptions
           ),
         };
       }
@@ -426,7 +469,13 @@ function applyTarget({
   }
 
   return {
-    applied: setValueAtPath(target, safePath, nextValue, textMeasurementOptions),
+    applied: setValueAtPath(
+      target,
+      safePath,
+      nextValue,
+      textMeasurementOptions,
+      textTargetOptions
+    ),
   };
 }
 
@@ -537,6 +586,7 @@ export function buildDraftPersonalizationPatch({
         const objeto = findObjetoById(objetos, targetId);
         if (!objeto) return;
         const result = applyTarget({
+          field,
           target: objeto,
           path,
           mode,
@@ -555,6 +605,7 @@ export function buildDraftPersonalizationPatch({
         const seccion = findSeccionById(secciones, targetId);
         if (!seccion) return;
         const result = applyTarget({
+          field,
           target: seccion,
           path,
           mode,
@@ -572,6 +623,7 @@ export function buildDraftPersonalizationPatch({
       if (scope === "rsvp") {
         const rsvpTarget = rsvp || {};
         const result = applyTarget({
+          field,
           target: rsvpTarget,
           path,
           mode,

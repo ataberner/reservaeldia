@@ -50,6 +50,11 @@ import {
   buildImageCropObjectState,
 } from "@/components/editor/textSystem/render/konva/imageCropStatePatch";
 import {
+  canEditObject,
+  canInsertIntoSection,
+  canMutateSection,
+} from "@/domain/editor/protectedSections";
+import {
   resolveActiveInlineSessionId,
 } from "@/components/editor/canvasEditor/inlineCriticalBoundary";
 import {
@@ -362,11 +367,23 @@ function canonicalizeFinalizedDragPatch({
   esSeccionPantallaById,
   ALTURA_PANTALLA_EDITOR,
 }) {
+  if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) {
+    return {};
+  }
+
   const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
     dragPatch.y,
     objOriginal.seccionId,
     seccionesOrdenadas
   );
+  if (nuevaSeccion && !canInsertIntoSection(nuevaSeccion, seccionesOrdenadas)) {
+    return {
+      x: objOriginal.x,
+      y: objOriginal.y,
+      ...(objOriginal.yNorm != null ? { yNorm: objOriginal.yNorm } : {}),
+      seccionId: objOriginal.seccionId,
+    };
+  }
 
   let nextPatch = { ...dragPatch };
   delete nextPatch.finalizoDrag;
@@ -2743,14 +2760,18 @@ export default function CanvasStageContent({
   }, [finalizeDragOverlayDriftPairingState, resetDragOverlayDriftState]);
   const selectedPrimaryObject =
     elementosSeleccionados.length === 1
-      ? objetos.find((obj) => obj.id === elementosSeleccionados[0]) || null
+      ? objetos.find((obj) => obj.id === elementosSeleccionados[0] && canEditObject(obj, { secciones: seccionesOrdenadas })) || null
       : null;
   const selectedObjectsForVisualMode = useMemo(
     () =>
       sanitizeSelectionIds(elementosSeleccionados)
         .map((id) => objectLookup.get(id) || null)
-        .filter(Boolean),
-    [elementosSeleccionados, objectLookup]
+        .filter((object) => object && canEditObject(object, { secciones: seccionesOrdenadas })),
+    [elementosSeleccionados, objectLookup, seccionesOrdenadas]
+  );
+  const editableSelectedIds = useMemo(
+    () => selectedObjectsForVisualMode.map((object) => object.id).filter(Boolean),
+    [selectedObjectsForVisualMode]
   );
   const runtimeDragActive =
     typeof window !== "undefined" ? Boolean(window._isDragging) : false;
@@ -2807,7 +2828,7 @@ export default function CanvasStageContent({
   const stageSelectionVisualMode = useMemo(
     () =>
       resolveStageSelectionVisualMode({
-        selectedIds: elementosSeleccionados,
+        selectedIds: editableSelectedIds,
         selectedObjects: selectedObjectsForVisualMode,
         selectionActive: seleccionActiva,
         selectionArea: areaSeleccion,
@@ -2832,7 +2853,7 @@ export default function CanvasStageContent({
       dragOverlayBoxFlowSession.phase,
       dragOverlayBoxFlowSession.selectedIds,
       dragVisualSelectionIds,
-      elementosSeleccionados,
+      editableSelectedIds,
       isAnyCanvasDragActive,
       isCanvasDragCoordinatorActive,
       isCanvasDragGestureActive,
@@ -2845,6 +2866,7 @@ export default function CanvasStageContent({
   );
   const shouldMountPrimarySelectionOverlay = Boolean(
     stageSelectionVisualMode.mountPrimarySelectionOverlay &&
+      selectedObjectsForVisualMode.length > 0 &&
       !isPredragVisualSelectionActive
   );
   const shouldShowDragSelectionOverlay =
@@ -10271,6 +10293,7 @@ export default function CanvasStageContent({
 
       const current = prev[objIndex];
       if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
+      if (!canEditObject(current, { secciones: seccionesOrdenadas })) return prev;
 
       const next = [...prev];
       const nextObject = buildImageCropObjectState({
@@ -10309,6 +10332,7 @@ export default function CanvasStageContent({
 
       const current = prev[objIndex];
       if (!current || current.tipo !== "imagen" || current.esFondo) return prev;
+      if (!canEditObject(current, { secciones: seccionesOrdenadas })) return prev;
 
       const next = [...prev];
       const nextObject = buildImageCropObjectState({
@@ -10476,7 +10500,10 @@ export default function CanvasStageContent({
       return null;
     }
 
-    const isInlineEditableObject = obj.tipo === "texto";
+    const objectEditable = canEditObject(obj, { secciones: seccionesOrdenadas });
+    const objectSelected = objectEditable && elementosSeleccionados.includes(obj.id);
+    const objectPreselected = objectEditable && elementosPreSeleccionados.includes(obj.id);
+    const isInlineEditableObject = objectEditable && obj.tipo === "texto";
     const isInEditMode =
       isInlineEditableObject &&
       editing.id === obj.id &&
@@ -10489,14 +10516,15 @@ export default function CanvasStageContent({
           obj={obj}
           registerRef={registerRef}
           onHover={setHoverIdWhenIdle}
-          isSelected={elementosSeleccionados.includes(obj.id)}
+          isSelected={objectSelected}
+          isPassiveRender={!objectEditable}
           celdaGaleriaActiva={celdaGaleriaActiva}
-          onPickCell={(info) => setCeldaGaleriaActiva(info)}
+          onPickCell={objectEditable ? (info) => setCeldaGaleriaActiva(info) : null}
           setCeldaGaleriaActiva={setCeldaGaleriaActiva}
           seccionesOrdenadas={seccionesOrdenadas}
           altoCanvas={altoCanvas}
           ALTURA_PANTALLA_EDITOR={ALTURA_PANTALLA_EDITOR}
-          onSelect={(id, e) => handleSpecialElementSelectIntent(id, obj, e)}
+          onSelect={objectEditable ? (id, e) => handleSpecialElementSelectIntent(id, obj, e) : null}
           onDragMovePersonalizado={(pos, id, meta = null) => {
             window._isDragging = true;
             const guideRequest = buildGuideEvaluationRequest(
@@ -10630,10 +10658,12 @@ export default function CanvasStageContent({
             });
           }}
           onChange={(id, nuevo) => {
+            if (!objectEditable) return;
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
               const objOriginal = prev[index];
+              if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return prev;
               const updated = [...prev];
               updated[index] = nuevo.finalizoDrag
                 ? {
@@ -10655,13 +10685,14 @@ export default function CanvasStageContent({
           obj={obj}
           registerRef={registerRef}
           onHover={setHoverIdWhenIdle}
-          isSelected={elementosSeleccionados.includes(obj.id)}
+          isSelected={objectSelected}
+          isPassiveRender={!objectEditable}
         selectionCount={elementosSeleccionados.length}
         seccionesOrdenadas={seccionesOrdenadas}
         altoCanvas={altoCanvas}
         ALTURA_PANTALLA_EDITOR={ALTURA_PANTALLA_EDITOR}
         selectionRuntime={selectionRuntime}
-        onSelect={handleElementSelectIntent}
+        onSelect={objectEditable ? handleElementSelectIntent : null}
           onPredragVisualSelectionStart={beginPredragVisualSelection}
           onPredragVisualSelectionCancel={clearDragVisualSelection}
           onDragStartPersonalizado={(dragId = obj.id, _event = null, meta = null) => {
@@ -10846,11 +10877,13 @@ export default function CanvasStageContent({
           dragStartPos={dragStartPos}
           hasDragged={hasDragged}
           onChange={(id, cambios) => {
+            if (!objectEditable) return;
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
 
               const objOriginal = prev[index];
+              if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return prev;
 
               if (!cambios.finalizoDrag) {
                 const updated = [...prev];
@@ -10910,11 +10943,12 @@ export default function CanvasStageContent({
           y: resolveObjectStageY(objPreview),
         }}
         anchoCanvas={800}
-        isSelected={!isInEditMode && elementosSeleccionados.includes(obj.id)}
+        isSelected={!isInEditMode && objectSelected}
         selectionCount={elementosSeleccionados.length}
-        preSeleccionado={!isInEditMode && elementosPreSeleccionados.includes(obj.id)}
+        preSeleccionado={!isInEditMode && objectPreselected}
         isInEditMode={isInEditMode}
-        onHover={isInEditMode ? null : setHoverIdWhenIdle}
+        isPassiveRender={!objectEditable}
+        onHover={isInEditMode || !objectEditable ? null : setHoverIdWhenIdle}
         registerRef={registerRef}
         selectionRuntime={selectionRuntime}
         editingId={editing.id}
@@ -10926,14 +10960,16 @@ export default function CanvasStageContent({
         onInlineEditPointer={
           isInEditMode ? onInlineEditCanvasPointer : null
         }
-        onPredragVisualSelectionStart={beginPredragVisualSelection}
-        onPredragVisualSelectionCancel={clearDragVisualSelection}
-        onSelect={isInEditMode ? null : handleElementSelectIntent}
+        onPredragVisualSelectionStart={objectEditable ? beginPredragVisualSelection : null}
+        onPredragVisualSelectionCancel={objectEditable ? clearDragVisualSelection : null}
+        onSelect={isInEditMode || !objectEditable ? null : handleElementSelectIntent}
         onChange={(id, nuevo) => {
+          if (!objectEditable) return;
           if (nuevo.isDragPreview) {
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
+              if (!canEditObject(prev[index], { secciones: seccionesOrdenadas })) return prev;
 
               const updated = [...prev];
               const { isDragPreview, skipHistorial, ...cleanNuevo } = nuevo;
@@ -10948,6 +10984,9 @@ export default function CanvasStageContent({
 
             setObjetos((prev) => {
               return prev.map((objeto) => {
+                if (!canEditObject(objeto, { secciones: seccionesOrdenadas })) {
+                  return objeto;
+                }
                 if (elementos.includes(objeto.id) && dragInicial && dragInicial[objeto.id]) {
                   const posInicial = dragInicial[objeto.id];
                   const node = elementRefs.current?.[objeto.id] || null;
@@ -10977,6 +11016,7 @@ export default function CanvasStageContent({
 
           const objOriginal = objetos.find((o) => o.id === id);
           if (!objOriginal) return;
+          if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
 
           if (nuevo.finalizoDrag) {
             const coordenadasFinales = applyCanonicalDragFinalization(objOriginal, nuevo);
@@ -10984,6 +11024,7 @@ export default function CanvasStageContent({
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
+              if (!canEditObject(prev[index], { secciones: seccionesOrdenadas })) return prev;
 
               const updated = [...prev];
               updated[index] = { ...updated[index], ...coordenadasFinales };
@@ -11013,13 +11054,14 @@ export default function CanvasStageContent({
           setObjetos((prev) => {
             const index = prev.findIndex((o) => o.id === id);
             if (index === -1) return prev;
+            if (!canEditObject(prev[index], { secciones: seccionesOrdenadas })) return prev;
 
             const updated = [...prev];
             updated[index] = { ...updated[index], ...nuevo };
             return updated;
           });
         }}
-        onDragStartPersonalizado={isInEditMode ? null : (dragId = obj.id, _event = null, meta = null) => {
+        onDragStartPersonalizado={isInEditMode || !objectEditable ? null : (dragId = obj.id, _event = null, meta = null) => {
           const isGroupPipeline = meta?.pipeline === "group";
           clearInlineIntent("drag-start", { dragId });
           const interactionEpoch = beginCanvasDragGesture(dragId, obj.tipo || null);
@@ -11189,7 +11231,7 @@ export default function CanvasStageContent({
             source: "element-drag-start",
           });
         }}
-        onDragEndPersonalizado={isInEditMode ? null : (dragId = obj.id, meta = null) => {
+        onDragEndPersonalizado={isInEditMode || !objectEditable ? null : (dragId = obj.id, meta = null) => {
           const isGroupPipeline = meta?.pipeline === "group";
           const dragEndSource = isGroupPipeline
             ? (
@@ -11243,7 +11285,7 @@ export default function CanvasStageContent({
             source: dragEndSource,
           });
         }}
-        onDragMovePersonalizado={isInEditMode ? null : (pos, elementId, meta = null) => {
+        onDragMovePersonalizado={isInEditMode || !objectEditable ? null : (pos, elementId, meta = null) => {
           const isGroupPipeline = meta?.pipeline === "group";
           const dragMoveSource = isGroupPipeline
             ? (
@@ -11445,7 +11487,8 @@ export default function CanvasStageContent({
                     const controlY = offsetY + seccion.altura - 5; // 5px antes del final
 
                     const modoSeccion = normalizarAltoModo(seccion.altoModo);
-                    const permiteResizeAltura = (modoSeccion !== "pantalla");
+                    const permiteResizeAltura =
+                      modoSeccion !== "pantalla" && canMutateSection(seccion);
 
 
                     return (
@@ -11598,7 +11641,8 @@ export default function CanvasStageContent({
                         );
 
                         const modoSeccion = normalizarAltoModo(seccion.altoModo);
-                        const permiteResizeAltura = (modoSeccion !== "pantalla");
+                        const permiteResizeAltura =
+                          modoSeccion !== "pantalla" && canMutateSection(seccion);
 
                         return (
                           <Group key={seccion.id}>
@@ -11717,6 +11761,7 @@ export default function CanvasStageContent({
                           alturaPx={editedSection.altura}
                           isMobile={isMobile}
                           onCommitOffset={(offsetDesktopPx) => {
+                            if (!canMutateSection(editedSection)) return;
                             setSecciones((prev) =>
                               updateSectionEdgeDecorationOffset(
                                 prev,
@@ -11757,6 +11802,7 @@ export default function CanvasStageContent({
                         alturaPx={editedSection.altura}
                         isMobile={isMobile}
                         onCommit={(nextDecoration) => {
+                          if (!canMutateSection(editedSection)) return;
                           setSecciones((prev) =>
                             updateBackgroundDecorationTransform(
                               prev,
@@ -11811,7 +11857,7 @@ export default function CanvasStageContent({
                   {shouldMountPrimarySelectionOverlay && (() => {
                     return (
                       <SelectionBounds
-                        selectedElements={elementosSeleccionados}
+                        selectedElements={editableSelectedIds}
                         elementRefs={elementRefs}
                         objetos={objetos}
                         boxFlowSessionIdentity={
@@ -11873,6 +11919,7 @@ export default function CanvasStageContent({
 
                               const objOriginal = objetos.find((o) => o.id === id);
                               if (!objOriginal) return;
+                              if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
 
                               if (objOriginal.tipo === "imagen") {
                                 hasImage = true;
@@ -11902,6 +11949,7 @@ export default function CanvasStageContent({
                                 const next = prev.map((obj) => {
                                   const patch = batchById.get(obj.id);
                                   if (!patch) return obj;
+                                  if (!canEditObject(obj, { secciones: seccionesOrdenadas })) return obj;
                                   changed = true;
                                   return { ...obj, ...patch };
                                 });
@@ -11922,12 +11970,14 @@ export default function CanvasStageContent({
                             const objIndex = objetos.findIndex(o => o.id === id);
 
                             if (objIndex !== -1) {
+                              if (!canEditObject(objetos[objIndex], { secciones: seccionesOrdenadas })) return;
 
                               if (newAttrs.isPreview) {
                                 // Preview: actualizaciÃ³n sin historial
                                 setObjetos(prev => {
                                   const nuevos = [...prev];
                                   const elemento = nuevos[objIndex];
+                                  if (!canEditObject(elemento, { secciones: seccionesOrdenadas })) return prev;
                                   const isPureRotatePreview =
                                     activeTransformInteractionRef.current?.isRotate === true;
                                   const isImageRotatePreview =

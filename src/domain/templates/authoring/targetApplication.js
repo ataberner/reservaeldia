@@ -13,6 +13,9 @@ import {
   resolveCountdownTargetValue,
 } from "../../eventDetails/countdownEventDetails.js";
 import {
+  isEventVenueAddressField,
+} from "../../eventDetails/location.js";
+import {
   findRenderObjectById,
 } from "../../editor/renderObjectTree.js";
 
@@ -186,11 +189,20 @@ export function buildTemplateAuthoringTargetPatches({
       target,
       value,
     });
+    const textTargetOptions =
+      isEventVenueAddressField(safeField) &&
+      isTextualTemplateTargetPath(target?.path)
+        ? {
+            fixedTextBox: true,
+            wrapMode: "word",
+          }
+        : null;
     const patch = buildObjectTargetPatch({
       object: baseObject,
       path: target?.path,
       value: resolvedValue,
       textMeasurementOptions,
+      textTargetOptions,
     });
     if (!patch || Object.keys(patch).length === 0) return;
 

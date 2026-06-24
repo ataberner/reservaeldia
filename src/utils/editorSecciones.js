@@ -3,6 +3,7 @@
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase";
 import { buildSectionMutationWritePayload } from "@/components/editor/sections/sectionMutationPersistence";
+import { canMutateSection } from "@/domain/editor/protectedSections";
 
 /**
  * Borrar una seccion y sus objetos asociados.
@@ -23,6 +24,7 @@ export const borrarSeccion = async ({
 }) => {
   const seccion = secciones.find((s) => s.id === seccionId);
   if (!seccion) return;
+  if (!canMutateSection(seccion)) return;
 
   try {
     const objetosFiltrados = objetos.filter((obj) => obj.seccionId !== seccionId);
@@ -94,6 +96,9 @@ export const moverSeccion = async ({
   const indiceDestino = direccion === "subir" ? indiceActual - 1 : indiceActual + 1;
   const seccionActual = seccionesOrdenadas[indiceActual];
   const seccionDestino = seccionesOrdenadas[indiceDestino];
+  if (!canMutateSection(seccionActual) || !canMutateSection(seccionDestino)) {
+    return;
+  }
 
   // Animar
   setSeccionesAnimando([seccionActual.id, seccionDestino.id]);

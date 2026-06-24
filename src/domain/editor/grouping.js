@@ -1,4 +1,5 @@
 import { prepareGroupAwareRenderState } from "../../../shared/groupRenderContract.js";
+import { isSectionProtectedById } from "./protectedSections.js";
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -350,6 +351,15 @@ export function buildGroupedSelectionState({
       nextObjetos: asArray(objetos),
     };
   }
+  if (isSectionProtectedById(selection.sectionId, secciones)) {
+    return {
+      ok: false,
+      reason: "selection-section-protected",
+      selection,
+      contractIssues: [],
+      nextObjetos: asArray(objetos),
+    };
+  }
 
   const sectionMode = normalizeSectionMode(targetSection.section?.altoModo);
   const localY = safeFrame.y - targetSection.top;
@@ -543,6 +553,17 @@ export function resolveUngroupSelectionCandidate({
     return {
       eligible: false,
       reason: "selection-section-missing",
+      selectedIds: safeSelectedIds,
+      group,
+      groupIndex,
+      groupChildren,
+      contractIssues: [],
+    };
+  }
+  if (isSectionProtectedById(group?.seccionId, secciones)) {
+    return {
+      eligible: false,
+      reason: "selection-section-protected",
       selectedIds: safeSelectedIds,
       group,
       groupIndex,

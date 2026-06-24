@@ -8,6 +8,7 @@ import {
     buildSectionMutationWritePayload,
     shouldPersistSectionMutationSnapshot,
 } from "./sectionMutationPersistence.js";
+import { canMutateSection } from "../../../domain/editor/protectedSections.js";
 import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
 
 /**
@@ -200,6 +201,7 @@ export default function useSectionsManager({
 
             const seccion = seccionesRef.current.find((s) => s.id === seccionId);
             if (!seccion) return;
+            if (!canMutateSection(seccion)) return;
 
             const pointerY = getClientYFromEvent(evt);
             if (!Number.isFinite(pointerY)) return;
@@ -390,6 +392,8 @@ export default function useSectionsManager({
     const togglePantallaCompletaSeccion = useCallback(
         async (seccionId) => {
             if (!seccionId) return;
+            const targetSection = seccionesRef.current.find((section) => section?.id === seccionId);
+            if (!canMutateSection(targetSection)) return;
 
             const nextSecciones = buildNextSectionModeState(seccionesRef.current, {
                 seccionId,
@@ -427,6 +431,10 @@ export default function useSectionsManager({
     const handleCrearSeccion = useCallback(
         async (datos) => {
             if (!slug) return;
+            if (seccionActivaId) {
+                const activeSection = seccionesRef.current.find((section) => section?.id === seccionActivaId);
+                if (activeSection && !canMutateSection(activeSection)) return;
+            }
             const { nuevaSeccion, nextSecciones, nextObjetos } = buildSectionCreationState({
                 datos,
                 secciones: seccionesRef.current,
@@ -452,7 +460,7 @@ export default function useSectionsManager({
                 console.error("❌ Error al guardar sección", error);
             }
         },
-        [slug, crearSeccion, applyDraftSnapshot, persistSectionMutation]
+        [slug, seccionActivaId, crearSeccion, applyDraftSnapshot, persistSectionMutation]
     );
 
     // Listener global: "crear-seccion"

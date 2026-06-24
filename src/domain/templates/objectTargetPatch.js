@@ -4,6 +4,8 @@ import {
 } from "../../lib/templatePreviewTextMeasure.js";
 
 const DEFAULT_TEXT_CONTAINER_WIDTH_PX = 800;
+const DEFAULT_FIXED_TEXT_BOX_WIDTH_PX = 360;
+const MIN_FIXED_TEXT_BOX_WIDTH_PX = 120;
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -12,6 +14,50 @@ function normalizeText(value) {
 function toFiniteNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizeWrapMode(value) {
+  const mode = normalizeText(value).toLowerCase();
+  if (mode === "char") return "char";
+  if (mode === "word") return "word";
+  return "word";
+}
+
+function resolveFixedTextBoxWidth(objeto, options = {}) {
+  const currentWidth = toFiniteNumber(objeto?.width, null);
+  if (Number.isFinite(currentWidth) && currentWidth > 0) {
+    return currentWidth;
+  }
+
+  const requestedWidth = toFiniteNumber(options.width, null);
+  const fallbackWidth =
+    Number.isFinite(requestedWidth) && requestedWidth > 0
+      ? requestedWidth
+      : DEFAULT_FIXED_TEXT_BOX_WIDTH_PX;
+  return Math.max(MIN_FIXED_TEXT_BOX_WIDTH_PX, fallbackWidth);
+}
+
+export function buildFixedTextBoxLayoutPatch(objeto, options = {}) {
+  if (!objeto || typeof objeto !== "object") return {};
+
+  const width = resolveFixedTextBoxWidth(objeto, options);
+  const textWrapMode = normalizeWrapMode(options.wrapMode);
+  const patch = {};
+
+  if (objeto.__autoWidth !== false) {
+    patch.__autoWidth = false;
+  }
+  if (toFiniteNumber(objeto.width, null) !== width) {
+    patch.width = width;
+  }
+  const currentWrapMode = normalizeText(objeto.textWrapMode)
+    ? normalizeWrapMode(objeto.textWrapMode)
+    : "";
+  if (currentWrapMode !== textWrapMode) {
+    patch.textWrapMode = textWrapMode;
+  }
+
+  return patch;
 }
 
 function parsePath(path) {
@@ -161,12 +207,34 @@ function getTextPositionFromCenter(objeto, textValue, centerX, centerY) {
   };
 }
 
-export function buildTextValuePatchPreservingCenter(objeto, nextText, textMeasurementOptions) {
+export function buildTextValuePatchPreservingCenter(
+  objeto,
+  nextText,
+  textMeasurementOptions,
+  options = {}
+) {
   if (!objeto || typeof objeto !== "object") return null;
 
+  const safeOptions = options && typeof options === "object" ? options : {};
   const currentText = String(objeto.texto ?? "");
   const resolvedNextText = String(nextText ?? "");
-  if (currentText === resolvedNextText) return null;
+  const fixedTextBoxPatch =
+    safeOptions.fixedTextBox === true
+      ? buildFixedTextBoxLayoutPatch(objeto, safeOptions)
+      : {};
+  if (
+    currentText === resolvedNextText &&
+    Object.keys(fixedTextBoxPatch).length === 0
+  ) {
+    return null;
+  }
+
+  if (safeOptions.fixedTextBox === true) {
+    return {
+      ...(currentText === resolvedNextText ? {} : { texto: resolvedNextText }),
+      ...fixedTextBoxPatch,
+    };
+  }
 
   const patch = { texto: resolvedNextText };
   const shouldPreserveCenter = shouldPreserveTextCenterPosition(objeto);
@@ -222,6 +290,7 @@ export function buildObjectTargetPatch({
   path,
   value,
   textMeasurementOptions,
+  textTargetOptions = null,
 } = {}) {
   if (!object || typeof object !== "object") return null;
   const segments = parsePath(path);
@@ -232,7 +301,12 @@ export function buildObjectTargetPatch({
     normalizeText(segments[0]).toLowerCase() === "texto" &&
     normalizeText(object.tipo).toLowerCase() === "texto"
   ) {
-    return buildTextValuePatchPreservingCenter(object, value, textMeasurementOptions);
+    return buildTextValuePatchPreservingCenter(
+      object,
+      value,
+      textMeasurementOptions,
+      textTargetOptions
+    );
   }
 
   if (segments.length === 1) {

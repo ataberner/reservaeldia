@@ -36,6 +36,8 @@ export default function useEditorHandlers({
 }) {
   const onDeshacer = useCallback(() => ejecutarDeshacer({
     historial,
+    objetos,
+    secciones,
     setHistorial,
     setObjetos,
     setSecciones,
@@ -43,10 +45,12 @@ export default function useEditorHandlers({
     ignoreNextUpdateRef,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [historial, futuros]);
+  }), [historial, futuros, objetos, secciones]);
 
   const onRehacer = useCallback(() => ejecutarRehacer({
     futuros,
+    objetos,
+    secciones,
     setFuturos,
     setHistorial,
     setObjetos,
@@ -54,10 +58,11 @@ export default function useEditorHandlers({
     ignoreNextUpdateRef,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [futuros]);
+  }), [futuros, objetos, secciones]);
 
   const onDuplicar = useCallback(() => duplicarElemento({
     objetos,
+    secciones,
     elementosSeleccionados,
     setObjetos,
     setElementosSeleccionados
@@ -79,30 +84,34 @@ const onEliminar = useCallback(() => {
   // 🔹 Ejecutar la eliminación real
   eliminarElemento({
     objetos,
+    secciones,
     elementosSeleccionados,
     setObjetos,
     setElementosSeleccionados,
     setMostrarPanelZ
   });
-}, [objetos, elementosSeleccionados]);
+}, [objetos, secciones, elementosSeleccionados]);
 
 
   const onCopiar = useCallback(() => copiarElemento({
     objetos,
+    secciones,
     elementosSeleccionados
-  }), [objetos, elementosSeleccionados]);
+  }), [objetos, secciones, elementosSeleccionados]);
 
   const onPegar = useCallback(() => pegarElemento({
     objetos,
+    secciones,
     setObjetos,
     setElementosSeleccionados
-  }), [objetos, setObjetos, setElementosSeleccionados]);
+  }), [objetos, secciones, setObjetos, setElementosSeleccionados]);
 
   const onCambiarAlineacion = useCallback(() => cambiarAlineacionTexto({
     objetos,
+    secciones,
     elementosSeleccionados,
     setObjetos
-  }), [objetos, elementosSeleccionados]);
+  }), [objetos, secciones, elementosSeleccionados]);
 
   const onAgrupar = useCallback(() => {
     const selectionFrame = resolveSelectionUnionRect({

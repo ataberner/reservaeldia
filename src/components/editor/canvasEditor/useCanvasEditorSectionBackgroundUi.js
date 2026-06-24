@@ -19,6 +19,7 @@ import {
   resolveGroupingSelectionCandidate,
   resolveMultiSelectionMenuCandidate,
 } from "@/domain/editor/grouping";
+import { canEditObject, canMutateSection } from "@/domain/editor/protectedSections";
 
 export default function useCanvasEditorSectionBackgroundUi({
   altoCanvas,
@@ -90,6 +91,8 @@ export default function useCanvasEditorSectionBackgroundUi({
 
   const cambiarColorFondoSeccion = useCallback(
     (seccionId, nuevoColor) => {
+      const targetSection = secciones.find((section) => section?.id === seccionId);
+      if (!canMutateSection(targetSection)) return;
       setSectionDecorationEdit((previous) =>
         previous?.sectionId === seccionId ? null : previous
       );
@@ -97,7 +100,7 @@ export default function useCanvasEditorSectionBackgroundUi({
         applySectionSolidBackground(previous, seccionId, nuevoColor)
       );
     },
-    [setSecciones, setSectionDecorationEdit]
+    [secciones, setSecciones, setSectionDecorationEdit]
   );
 
   const usarImagenComoDecoracionFondo = useCallback(
@@ -114,6 +117,8 @@ export default function useCanvasEditorSectionBackgroundUi({
       );
       const targetSection =
         targetSectionIndex >= 0 ? seccionesOrdenadas[targetSectionIndex] : null;
+      if (!safeImage || !canEditObject(safeImage, { secciones })) return;
+      if (!canMutateSection(targetSection)) return;
       const sectionOffsetY =
         targetSectionIndex >= 0
           ? calcularOffsetY(seccionesOrdenadas, targetSectionIndex, altoCanvas)
@@ -196,6 +201,9 @@ export default function useCanvasEditorSectionBackgroundUi({
 
   const usarImagenComoDecoracionBorde = useCallback(
     (elementoImagen, slot) => {
+      const targetSection = secciones.find((section) => section?.id === elementoImagen?.seccionId);
+      if (!canEditObject(elementoImagen, { secciones })) return;
+      if (!canMutateSection(targetSection)) return;
       if (editingId) {
         requestInlineEditFinishRef.current?.("edge-decoration-conversion");
       }
@@ -235,6 +243,8 @@ export default function useCanvasEditorSectionBackgroundUi({
     (sectionId, node) => {
       const safeSectionId = String(sectionId || "").trim();
       if (!safeSectionId) return;
+      const targetSection = secciones.find((section) => section?.id === safeSectionId);
+      if (!canMutateSection(targetSection)) return;
 
       if (node) {
         backgroundEditNodeRefs.current[safeSectionId] = node;
@@ -257,6 +267,8 @@ export default function useCanvasEditorSectionBackgroundUi({
     (sectionId) => {
       const safeSectionId = String(sectionId || "").trim();
       if (!safeSectionId) return;
+      const targetSection = secciones.find((section) => section?.id === safeSectionId);
+      if (!canMutateSection(targetSection)) return;
 
       if (editingId) {
         requestInlineEditFinishRef.current?.("section-base-image-edit");
@@ -272,6 +284,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     [
       editingId,
       requestInlineEditFinishRef,
+      secciones,
       setBackgroundEditSectionId,
       setIsBackgroundEditInteracting,
       selectionClearPolicy,
@@ -296,6 +309,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     if (sectionIndex === -1) return null;
 
     const targetSection = seccionesOrdenadas[sectionIndex];
+    if (!canMutateSection(targetSection)) return null;
     const sectionHeight = Math.max(1, Number(targetSection.altura) || 1);
     const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
       sectionHeight,
@@ -346,6 +360,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     if (sectionIndex === -1) return null;
 
     const targetSection = seccionesOrdenadas[sectionIndex];
+    if (!canMutateSection(targetSection)) return null;
     const sectionHeight = Math.max(1, Number(targetSection.altura) || 1);
     const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
       sectionHeight,
@@ -391,6 +406,7 @@ export default function useCanvasEditorSectionBackgroundUi({
       (section) => section?.id === backgroundEditSectionId
     );
     if (!targetSection) return null;
+    if (!canMutateSection(targetSection)) return null;
 
     const backgroundModel = normalizeSectionBackgroundModel(targetSection, {
       sectionHeight: targetSection.altura,
@@ -461,6 +477,7 @@ export default function useCanvasEditorSectionBackgroundUi({
       const selectedObject =
         objetos.find((item) => item.id === elementosSeleccionados[0]) || null;
       if (!selectedObject) return null;
+      if (!canEditObject(selectedObject, { secciones })) return null;
 
       return {
         kind: "canvas-object",
@@ -470,6 +487,13 @@ export default function useCanvasEditorSectionBackgroundUi({
     }
 
     if (!multiSelectionMenu.eligible) return null;
+    if (
+      multiSelectionMenu.selectedObjects.some(
+        (selectedObject) => !canEditObject(selectedObject, { secciones })
+      )
+    ) {
+      return null;
+    }
 
     return {
       kind: "multi-selection",
@@ -485,13 +509,18 @@ export default function useCanvasEditorSectionBackgroundUi({
     elementosSeleccionados,
     groupingSelection.eligible,
     multiSelectionMenu.eligible,
-    multiSelectionMenu.selectedIds,
-    multiSelectionMenu.selectedObjects,
-    objetos,
+      multiSelectionMenu.selectedIds,
+      multiSelectionMenu.selectedObjects,
+      objetos,
+      secciones,
   ]);
 
   const handleDesanclarImagenFondoBase = useCallback(() => {
     if (!activeBaseBackgroundMenuItem?.seccionId) return;
+    const targetSection = secciones.find(
+      (section) => section?.id === activeBaseBackgroundMenuItem.seccionId
+    );
+    if (!canMutateSection(targetSection)) return;
 
     setSectionDecorationEdit(null);
     setBackgroundEditSectionId(null);
@@ -532,6 +561,10 @@ export default function useCanvasEditorSectionBackgroundUi({
 
   const handleConvertirDecoracionFondoEnImagen = useCallback(() => {
     if (!activeBackgroundDecorationMenuItem) return;
+    const targetSection = secciones.find(
+      (section) => section?.id === activeBackgroundDecorationMenuItem.seccionId
+    );
+    if (!canMutateSection(targetSection)) return;
 
     convertirDecoracionFondoEnImagen({
       seccionId: activeBackgroundDecorationMenuItem.seccionId,
@@ -559,6 +592,10 @@ export default function useCanvasEditorSectionBackgroundUi({
 
   const handleEliminarDecoracionFondo = useCallback(() => {
     if (!activeBackgroundDecorationMenuItem) return;
+    const targetSection = secciones.find(
+      (section) => section?.id === activeBackgroundDecorationMenuItem.seccionId
+    );
+    if (!canMutateSection(targetSection)) return;
 
     setSecciones((previous) =>
       removeBackgroundDecoration(
@@ -579,6 +616,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     setMostrarPanelZ(false);
   }, [
     activeBackgroundDecorationMenuItem,
+    secciones,
     setSecciones,
     setSectionDecorationEdit,
     setMostrarPanelZ,
@@ -587,6 +625,10 @@ export default function useCanvasEditorSectionBackgroundUi({
   const handleToggleDecoracionBorde = useCallback(
     (slot) => {
       if (!activeEdgeDecorationMenuItem) return;
+      const targetSection = secciones.find(
+        (section) => section?.id === activeEdgeDecorationMenuItem.seccionId
+      );
+      if (!canMutateSection(targetSection)) return;
       const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
       if (!safeSlot) return;
 
@@ -600,12 +642,16 @@ export default function useCanvasEditorSectionBackgroundUi({
       );
       setMostrarPanelZ(false);
     },
-    [activeEdgeDecorationMenuItem, setSecciones, setMostrarPanelZ]
+    [activeEdgeDecorationMenuItem, secciones, setSecciones, setMostrarPanelZ]
   );
 
   const handleEliminarDecoracionBorde = useCallback(
     (slot) => {
       if (!activeEdgeDecorationMenuItem) return;
+      const targetSection = secciones.find(
+        (section) => section?.id === activeEdgeDecorationMenuItem.seccionId
+      );
+      if (!canMutateSection(targetSection)) return;
       const safeSlot = slot === "bottom" ? "bottom" : slot === "top" ? "top" : "";
       if (!safeSlot) return;
 
@@ -630,6 +676,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     },
     [
       activeEdgeDecorationMenuItem,
+      secciones,
       setSecciones,
       setSectionDecorationEdit,
       setMostrarPanelZ,
@@ -644,6 +691,10 @@ export default function useCanvasEditorSectionBackgroundUi({
   const handleActualizarMovimientoDecoracionFondo = useCallback(
     (nextMotionMode) => {
       if (!activeBackgroundMotionSectionId) return;
+      const targetSection = secciones.find(
+        (section) => section?.id === activeBackgroundMotionSectionId
+      );
+      if (!canMutateSection(targetSection)) return;
 
       const normalizedMode =
         String(nextMotionMode || "").trim().toLowerCase() === "none"
@@ -676,6 +727,11 @@ export default function useCanvasEditorSectionBackgroundUi({
       (section) => section?.id === backgroundEditSectionId
     );
     if (!targetSection) {
+      setBackgroundEditSectionId(null);
+      setIsBackgroundEditInteracting(false);
+      return;
+    }
+    if (!canMutateSection(targetSection)) {
       setBackgroundEditSectionId(null);
       setIsBackgroundEditInteracting(false);
       return;

@@ -27,6 +27,43 @@ function createFixedSection(id = "details") {
   };
 }
 
+test("does not group objects in an explicitly protected section", () => {
+  const result = buildGroupedSelectionState({
+    objetos: [
+      { id: "a", tipo: "texto", seccionId: "locked", x: 10, y: 10, texto: "A" },
+      { id: "b", tipo: "texto", seccionId: "locked", x: 30, y: 30, texto: "B" },
+    ],
+    secciones: [{ ...createFixedSection("locked"), bloqueada: true }],
+    selectedIds: ["a", "b"],
+    selectionFrame: { x: 10, y: 10, width: 120, height: 80 },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "selection-section-protected");
+});
+
+test("does not ungroup a group in an explicitly protected section", () => {
+  const result = buildUngroupedSelectionState({
+    objetos: [
+      {
+        id: "group-locked",
+        tipo: "grupo",
+        seccionId: "locked",
+        x: 10,
+        y: 10,
+        width: 120,
+        height: 80,
+        children: [{ id: "child", tipo: "texto", x: 0, y: 0, texto: "A" }],
+      },
+    ],
+    secciones: [{ ...createFixedSection("locked"), bloqueada: true }],
+    selectedIds: ["group-locked"],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "selection-section-protected");
+});
+
 test("builds a preserved pantalla group from 5 selected root objects in root order", () => {
   const result = buildGroupedSelectionState({
     objetos: [

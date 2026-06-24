@@ -105,6 +105,36 @@ test("loaded render state preserves decoration payload shaping and pantalla hydr
   });
 });
 
+test("loaded and persistable render states preserve explicit protected section marker", () => {
+  const loaded = buildLoadedEditorRenderState({
+    objetos: [],
+    secciones: [
+      {
+        id: "final-system",
+        orden: 1,
+        altura: 180,
+        altoModo: "fijo",
+        bloqueada: true,
+        bloqueoMotivo: "system-final-section",
+      },
+    ],
+    ALTURA_PANTALLA_EDITOR: 500,
+  });
+
+  assert.equal(loaded.secciones[0].bloqueada, true);
+  assert.equal(loaded.secciones[0].bloqueoMotivo, "system-final-section");
+
+  const persisted = buildPersistableRenderState({
+    objetos: [],
+    secciones: loaded.secciones,
+    validarPuntosLinea: (objeto) => objeto,
+    ALTURA_PANTALLA_EDITOR: 500,
+  });
+
+  assert.equal(persisted.secciones[0].bloqueada, true);
+  assert.equal(persisted.secciones[0].bloqueoMotivo, "system-final-section");
+});
+
 test("persistable render state preserves the current normalization bundle", () => {
   const lineCalls = [];
   const result = buildPersistableRenderState({

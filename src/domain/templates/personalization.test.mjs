@@ -121,3 +121,57 @@ test("post-copy personalization patch applies explicit targets inside preserved 
   assert.equal(patch.objetos[0].id, "group-hero");
   assert.equal(patch.objetos[0].children[0].texto, "Mara");
 });
+
+test("post-copy personalization patch projects venue address targets as fixed wrapped text boxes", () => {
+  const longAddress =
+    "Avenida Corrientes 1234, C1043 Ciudad Autonoma de Buenos Aires, Argentina";
+  const template = {
+    fieldsSchema: [
+      {
+        key: "event_venue_address",
+        label: "Direccion del evento",
+        type: "location",
+        group: "Ubicaciones",
+        eventDetailsRole: "venue_address",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "address-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      },
+    ],
+    defaults: {
+      event_venue_address: "Av. Corrientes 1234",
+    },
+  };
+  const draftData = {
+    objetos: [
+      {
+        id: "address-text",
+        tipo: "texto",
+        texto: "Av. Corrientes 1234",
+        x: 120,
+        y: 240,
+        fontSize: 18,
+      },
+    ],
+    secciones: [{ id: "hero", orden: 0, altura: 500 }],
+  };
+
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template,
+    draftData,
+    resolvedValues: {
+      event_venue_address: longAddress,
+    },
+  });
+
+  const addressObject = patch.objetos.find((entry) => entry.id === "address-text");
+  assert.equal(addressObject.texto, longAddress);
+  assert.equal(addressObject.__autoWidth, false);
+  assert.equal(addressObject.width, 360);
+  assert.equal(addressObject.textWrapMode, "word");
+});

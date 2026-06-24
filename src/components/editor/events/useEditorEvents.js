@@ -24,6 +24,12 @@ import {
   isFunctionalCtaButton,
 } from "@/domain/functionalCtaButtons";
 import {
+  canEditObject,
+  canEditObjectById,
+  canInsertIntoSection,
+  canMutateSection,
+} from "@/domain/editor/protectedSections";
+import {
   applyObjectUpdateById,
 } from "@/components/editor/canvasEditor/objectUpdateUtils";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
@@ -239,6 +245,7 @@ export default function useEditorEvents({
         : null;
       const galeriaActual = readEditorObjectById(objId);
       if (!galeriaActual || galeriaActual.tipo !== "galeria") return false;
+      if (!canEditObject(galeriaActual, { secciones })) return false;
 
       const nextActiveCell = resolveNextActiveCell(galeriaActual, indexActual, photoInput);
 
@@ -248,6 +255,7 @@ export default function useEditorEvents({
 
         const obj = prev[i];
         if (obj.tipo !== "galeria") return prev;
+        if (!canEditObject(obj, { secciones })) return prev;
 
         const mutation = assignGalleryPhotoToCell(
           obj,
@@ -269,7 +277,7 @@ export default function useEditorEvents({
     return () => {
       if (window.asignarImagenACelda) delete window.asignarImagenACelda;
     };
-  }, [celdaGaleriaActiva, setObjetos, setCeldaGaleriaActiva]);
+  }, [celdaGaleriaActiva, secciones, setObjetos, setCeldaGaleriaActiva]);
 
   // ------------------------------------------------------------
   // 2) Evento global: insertar-elemento
@@ -290,6 +298,10 @@ export default function useEditorEvents({
         return;
       }
 
+      if (!canInsertIntoSection(targetSeccionId, secciones)) {
+        return;
+      }
+
       const nuevoConSeccion = computeInsertDefaults({
         payload: nuevo,
         targetSeccionId,
@@ -298,18 +310,30 @@ export default function useEditorEvents({
         ALTURA_PANTALLA_EDITOR,
       });
 
-      const existingCountdownId =
+      const existingCountdownObject =
         nuevoConSeccion?.tipo === "countdown"
-          ? readEditorObjectByType("countdown")?.id || null
+          ? readEditorObjectByType("countdown")
           : null;
-      const existingRsvpId =
+      if (existingCountdownObject && !canEditObject(existingCountdownObject, { secciones })) {
+        return;
+      }
+      const existingRsvpObject =
         nuevoConSeccion?.tipo === "rsvp-boton"
-          ? readEditorObjectByType("rsvp-boton")?.id || null
+          ? readEditorObjectByType("rsvp-boton")
           : null;
-      const existingGiftId =
+      if (existingRsvpObject && !canEditObject(existingRsvpObject, { secciones })) {
+        return;
+      }
+      const existingGiftObject =
         nuevoConSeccion?.tipo === "regalo-boton"
-          ? readEditorObjectByType("regalo-boton")?.id || null
+          ? readEditorObjectByType("regalo-boton")
           : null;
+      if (existingGiftObject && !canEditObject(existingGiftObject, { secciones })) {
+        return;
+      }
+      const existingCountdownId = existingCountdownObject?.id || null;
+      const existingRsvpId = existingRsvpObject?.id || null;
+      const existingGiftId = existingGiftObject?.id || null;
 
       setObjetos((prev) => {
         if (nuevoConSeccion?.tipo !== "countdown") {
@@ -332,6 +356,9 @@ export default function useEditorEvents({
 
         const primaryIndex = countdownIndexes[0];
         const existingCountdown = prev[primaryIndex];
+        if (!canEditObject(existingCountdown, { secciones })) {
+          return prev;
+        }
         const targetWidth = toFiniteMetric(
           existingCountdown?.width,
           nuevoConSeccion?.width
@@ -435,10 +462,14 @@ export default function useEditorEvents({
 
       setObjetos((prev) => {
         const i = prev.findIndex((o) => o.id === targetId);
-        if (i === -1) return applyObjectUpdateById(prev, targetId, cambios);
+        if (i === -1) {
+          if (!canEditObjectById(targetId, { objetos: prev, secciones })) return prev;
+          return applyObjectUpdateById(prev, targetId, cambios);
+        }
 
         const next = [...prev];
         const currentObject = next[i];
+        if (!canEditObject(currentObject, { secciones })) return prev;
         const mergedObject = { ...currentObject, ...cambios };
 
         if (mergedObject?.tipo === "galeria" && hasGalleryStructuralChanges(cambios)) {
@@ -507,7 +538,7 @@ export default function useEditorEvents({
 
     window.addEventListener("actualizar-elemento", handler);
     return () => window.removeEventListener("actualizar-elemento", handler);
-  }, [setElementosSeleccionados, setObjetos]);
+  }, [secciones, setElementosSeleccionados, setObjetos]);
 
   // ------------------------------------------------------------
   // 4) Evento global: aplicar-estilo-efectos
@@ -533,13 +564,16 @@ export default function useEditorEvents({
               presetId,
               secciones,
             });
+        const protectedAwareNext = next.map((item, index) =>
+          canEditObject(current[index], { secciones }) ? item : current[index]
+        );
 
-        summary.total = next.length;
-        summary.changed = next.reduce((acc, item, index) => {
+        summary.total = protectedAwareNext.length;
+        summary.changed = protectedAwareNext.reduce((acc, item, index) => {
           const beforeEffect = sanitizeMotionEffect(current[index]?.motionEffect);
           return acc + (beforeEffect !== item.motionEffect ? 1 : 0);
         }, 0);
-        return next;
+        return protectedAwareNext;
       });
 
       if (typeof setSecciones === "function") {
@@ -547,7 +581,9 @@ export default function useEditorEvents({
           const currentSections = Array.isArray(prev) ? prev : [];
           const nextSections = applyGlobalMotionPresetToSections(currentSections, {
             presetId: normalizedPresetId,
-          });
+          }).map((section, index) =>
+            canMutateSection(currentSections[index]) ? section : currentSections[index]
+          );
 
           summary.totalSections = currentSections.reduce((acc, section) => {
             const backgroundModel = normalizeSectionBackgroundModel(section, {
@@ -595,6 +631,10 @@ export default function useEditorEvents({
     const handler = () => {
       if (!seccionActivaId) {
         alert("Seleccioná una sección antes de agregar un cuadro de texto.");
+        return;
+      }
+
+      if (!canInsertIntoSection(seccionActivaId, secciones)) {
         return;
       }
 

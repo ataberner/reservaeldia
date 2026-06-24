@@ -117,6 +117,17 @@ function normalizeFontSize(value, fallback = 24) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeTextWrapMode(value) {
+  const mode = normalizeText(value).toLowerCase();
+  if (mode === "char") return "char";
+  if (mode === "word") return "word";
+  return "word";
+}
+
 function isInlineCanvasTextDebugEnabled() {
   if (typeof window === "undefined") return false;
   return (
@@ -4124,10 +4135,19 @@ export default function ElementoCanvas({
 
     // Ã¢Å“â€¦ Si entra, NO usamos width (bounds ajustado)
     // Ã¢Å“â€¦ Si no entra, usamos width=available y wrap por caracteres para cortar en el borde
-    const shouldWrapToCanvasEdge = realTextWidth > availableWidth;
+    const fixedTextBoxWidth = Number(obj?.width);
+    const shouldUseFixedTextBox =
+      obj.__autoWidth === false &&
+      Number.isFinite(fixedTextBoxWidth) &&
+      fixedTextBoxWidth > 0;
+    const shouldWrapToCanvasEdge = !shouldUseFixedTextBox && realTextWidth > availableWidth;
 
-    const wrapToUse = shouldWrapToCanvasEdge ? "char" : "none";
-    const widthToUse = shouldWrapToCanvasEdge ? availableWidth : undefined;
+    const wrapToUse = shouldUseFixedTextBox
+      ? normalizeTextWrapMode(obj.textWrapMode)
+      : (shouldWrapToCanvasEdge ? "char" : "none");
+    const widthToUse = shouldUseFixedTextBox
+      ? fixedTextBoxWidth
+      : (shouldWrapToCanvasEdge ? availableWidth : undefined);
     const visualTextBoxWidth = Number.isFinite(widthToUse) ? widthToUse : realTextWidth;
     const textOriginOffsetX = resolveTextTransformOriginOffset(
       align,

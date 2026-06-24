@@ -329,3 +329,66 @@ test("date text format update changes textual targets without changing countdown
     [["text-date", "13/12/2026, 18:00"]]
   );
 });
+
+test("venue address text targets are projected as fixed-width wrapped text boxes", () => {
+  const field = {
+    key: "event_venue_address",
+    type: "location",
+    eventDetailsRole: "venue_address",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "address-text",
+        path: "texto",
+        mode: "set",
+      },
+      {
+        scope: "objeto",
+        id: "address-without-width",
+        path: "texto",
+        mode: "set",
+      },
+    ],
+  };
+  const longAddress =
+    "Avenida Corrientes 1234, C1043 Ciudad Autonoma de Buenos Aires, Argentina";
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field,
+    value: longAddress,
+    objetos: [
+      {
+        id: "address-text",
+        tipo: "texto",
+        texto: "Direccion anterior",
+        width: 240,
+        fontSize: 18,
+      },
+      {
+        id: "address-without-width",
+        tipo: "texto",
+        texto: longAddress,
+        fontSize: 18,
+      },
+    ],
+  });
+
+  assert.deepEqual(patches, [
+    {
+      objectId: "address-text",
+      patch: {
+        texto: longAddress,
+        __autoWidth: false,
+        textWrapMode: "word",
+      },
+    },
+    {
+      objectId: "address-without-width",
+      patch: {
+        __autoWidth: false,
+        width: 360,
+        textWrapMode: "word",
+      },
+    },
+  ]);
+});

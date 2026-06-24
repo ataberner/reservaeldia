@@ -1,4 +1,8 @@
 import { buildDraftContentMeta } from "../../../domain/drafts/sourceOfTruth.js";
+import {
+  canMutateSection,
+  placeSectionBeforeProtectedFinal,
+} from "../../../domain/editor/protectedSections.js";
 import { buildPersistableRenderState } from "../persistence/borradorSyncRenderState.js";
 
 const ALTURA_PANTALLA_EDITOR_FALLBACK = 500;
@@ -34,6 +38,7 @@ export function buildNextSectionHeightState(
 
   const nextSecciones = safeSecciones.map((section) => {
     if (section?.id !== seccionId) return section;
+    if (!canMutateSection(section)) return section;
     if (Number(section?.altura) === nextHeight) return section;
     changed = true;
     return {
@@ -63,6 +68,7 @@ export function buildNextSectionModeState(
 
   const nextSecciones = safeSecciones.map((section) => {
     if (section?.id !== seccionId) return section;
+    if (!canMutateSection(section)) return section;
 
     const modoActual = normalizarAltoModo(section?.altoModo);
     const modoNuevo = modoActual === "pantalla" ? "fijo" : "pantalla";
@@ -127,7 +133,7 @@ export function buildSectionCreationState(
 
   return {
     nuevaSeccion,
-    nextSecciones: [...safeSecciones, nuevaSeccion],
+    nextSecciones: placeSectionBeforeProtectedFinal(safeSecciones, nuevaSeccion),
     nextObjetos: [...safeObjetos, ...objetosDesdePlantilla],
   };
 }

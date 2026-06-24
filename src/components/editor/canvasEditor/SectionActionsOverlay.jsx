@@ -11,6 +11,8 @@ import {
   Image as ImageIcon,
   ChevronDown,
   ChevronUp,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
@@ -19,6 +21,7 @@ import {
   normalizeSectionBackgroundModel,
   setSectionEdgeDecorationEnabled,
 } from "@/domain/sections/backgrounds";
+import { canMutateSection } from "@/domain/editor/protectedSections";
 
 const DESKTOP_PANEL_WIDTH = 76;
 const DESKTOP_CANVAS_WIDTH = 800;
@@ -33,6 +36,8 @@ const DESKTOP_TOOLTIP_LABELS = Object.freeze({
   saveTemplate: "Guardar como plantilla",
   delete: "Eliminar seccion",
   backgroundColor: "Color de fondo",
+  lock: "Bloquear seccion",
+  unlock: "Desbloquear seccion",
 });
 
 const DESKTOP_BUTTON_BASE =
@@ -125,8 +130,10 @@ export default function SectionActionsOverlay({
   setSecciones,
   objetos,
   canManageSite,
+  templateWorkspace,
   refrescarPlantillasDeSeccion,
   abrirModalBorrarSeccion,
+  onToggleSectionLock,
 }) {
   const activeSectionIndex = seccionesOrdenadas.findIndex((seccion) => seccion.id === seccionActivaId);
   const seccion = activeSectionIndex === -1 ? null : seccionesOrdenadas[activeSectionIndex];
@@ -144,10 +151,19 @@ export default function SectionActionsOverlay({
   const estaAnimando = seccionesAnimando.includes(seccion.id);
   const modoSeccion = normalizarAltoModo(seccion.altoModo);
   const esPantalla = modoSeccion === "pantalla";
+  const seccionProtegida = !canMutateSection(seccion);
+  const canToggleSectionLock = Boolean(
+    canManageSite &&
+      templateWorkspace?.mode === "template_edit" &&
+      templateWorkspace?.readOnly !== true &&
+      templateWorkspace?.permissions?.readOnly !== true &&
+      typeof onToggleSectionLock === "function"
+  );
   const colorInputValue = resolveColorInputValue(backgroundModel.base.fondo);
   const edgeDecorations = backgroundModel.decoracionesBorde || {};
 
   const handleToggleEdgeDecoration = (slot) => {
+    if (seccionProtegida) return;
     const current = edgeDecorations?.[slot];
     if (!current?.src || typeof setSecciones !== "function") return;
     setSecciones((previous) =>
@@ -160,19 +176,27 @@ export default function SectionActionsOverlay({
     );
   };
 
-  const handleGuardarComoPlantilla = () =>
+  const handleGuardarComoPlantilla = () => {
+    if (seccionProtegida) return;
     guardarSeccionComoPlantilla({
       seccionId: seccion.id,
       secciones,
       objetos,
       refrescarPlantillasDeSeccion,
     });
+  };
 
   const handleEliminarSeccion = () => {
+    if (seccionProtegida) return;
     if (isMobile) {
       setMobileSectionActionsOpen(false);
     }
     abrirModalBorrarSeccion(seccion.id);
+  };
+
+  const handleToggleSectionLock = () => {
+    if (!canToggleSectionLock || estaAnimando) return;
+    onToggleSectionLock(seccion.id);
   };
 
   const mobileButtonBase =
@@ -211,9 +235,9 @@ export default function SectionActionsOverlay({
           <button
             type="button"
             onClick={() => handleToggleEdgeDecoration(slot)}
-            disabled={estaAnimando}
+            disabled={seccionProtegida || estaAnimando}
             className={`${mobileButtonBase} ${
-              estaAnimando ? mobileButtonDisabled : mobileButtonNeutral
+              seccionProtegida || estaAnimando ? mobileButtonDisabled : mobileButtonNeutral
             }`}
             title={enabled ? "Ocultar decoración" : "Mostrar decoración"}
             aria-label={enabled ? "Ocultar decoración" : "Mostrar decoración"}
@@ -234,15 +258,48 @@ export default function SectionActionsOverlay({
           <input
             type="color"
             value={colorInputValue}
-            disabled={estaAnimando || isDeletingSection}
+            disabled={seccionProtegida || estaAnimando || isDeletingSection}
             onChange={(event) => cambiarColorFondoSeccion(seccion.id, event.target.value)}
             className="h-9 w-11 cursor-pointer rounded-lg border border-[#dac7f7] bg-white p-1"
           />
         </span>
       </label>
 
+      {seccionProtegida ? (
+        <div
+          className="inline-flex items-center gap-2 rounded-xl border border-[#e4d7f6] bg-[#faf6ff] px-3 py-2 text-xs font-semibold text-[#5f3596] shadow-[0_6px_16px_rgba(15,23,42,0.06)]"
+          title="Seccion protegida del sistema"
+          aria-label="Seccion protegida del sistema"
+        >
+          <Lock className="h-3.5 w-3.5" />
+          <span>Seccion protegida</span>
+        </div>
+      ) : null}
+
       {renderMobileEdgeControls("top", "Decoración arriba")}
       {renderMobileEdgeControls("bottom", "Decoración abajo")}
+
+      {canToggleSectionLock ? (
+        <button
+          type="button"
+          onClick={handleToggleSectionLock}
+          disabled={estaAnimando}
+          className={`${mobileButtonBase} ${
+            estaAnimando
+              ? mobileButtonDisabled
+              : seccionProtegida
+                ? mobileButtonNeutral
+                : mobileButtonPrimary
+          } ${estaAnimando ? "animate-pulse" : ""}`}
+          title="Impide editar esta seccion en borradores creados desde esta plantilla."
+          aria-label={seccionProtegida ? "Desbloquear seccion" : "Bloquear seccion"}
+        >
+          {renderMobileActionContent(
+            seccionProtegida ? Unlock : Lock,
+            seccionProtegida ? "Desbloquear seccion" : "Bloquear seccion"
+          )}
+        </button>
+      ) : null}
 
       <button
         type="button"
@@ -252,9 +309,9 @@ export default function SectionActionsOverlay({
             direccion: "subir",
           })
         }
-        disabled={esPrimera || estaAnimando}
+        disabled={seccionProtegida || esPrimera || estaAnimando}
         className={`${mobileButtonBase} ${
-          esPrimera || estaAnimando ? mobileButtonDisabled : mobileButtonPrimary
+          seccionProtegida || esPrimera || estaAnimando ? mobileButtonDisabled : mobileButtonPrimary
         } ${estaAnimando ? "animate-pulse" : ""}`}
         title={esPrimera ? "Ya es la primera seccion" : "Subir seccion"}
         aria-label="Subir seccion"
@@ -270,9 +327,9 @@ export default function SectionActionsOverlay({
             direccion: "bajar",
           })
         }
-        disabled={esUltima || estaAnimando}
+        disabled={seccionProtegida || esUltima || estaAnimando}
         className={`${mobileButtonBase} ${
-          esUltima || estaAnimando ? mobileButtonDisabled : mobileButtonPrimary
+          seccionProtegida || esUltima || estaAnimando ? mobileButtonDisabled : mobileButtonPrimary
         } ${estaAnimando ? "animate-pulse" : ""}`}
         title={esUltima ? "Ya es la ultima seccion" : "Bajar seccion"}
         aria-label="Bajar seccion"
@@ -283,9 +340,9 @@ export default function SectionActionsOverlay({
       <button
         type="button"
         onClick={handleCrearSeccion}
-        disabled={estaAnimando}
+        disabled={seccionProtegida || estaAnimando}
         className={`${mobileButtonBase} ${
-          estaAnimando ? `${mobileButtonDisabled} animate-pulse` : mobileButtonPrimary
+          seccionProtegida || estaAnimando ? `${mobileButtonDisabled} animate-pulse` : mobileButtonPrimary
         }`}
         title="Anadir una nueva seccion debajo"
         aria-label="Anadir seccion"
@@ -296,7 +353,10 @@ export default function SectionActionsOverlay({
       <button
         type="button"
         onClick={() => togglePantallaCompletaSeccion(seccion.id)}
-        className={`${mobileButtonBase} ${esPantalla ? mobileButtonPrimary : mobileButtonNeutral}`}
+        disabled={seccionProtegida}
+        className={`${mobileButtonBase} ${
+          seccionProtegida ? mobileButtonDisabled : esPantalla ? mobileButtonPrimary : mobileButtonNeutral
+        }`}
         title="Pantalla completa de la seccion"
         aria-label={esPantalla ? "Pantalla completa activada" : "Pantalla completa desactivada"}
       >
@@ -310,9 +370,9 @@ export default function SectionActionsOverlay({
         <button
           type="button"
           onClick={handleGuardarComoPlantilla}
-          disabled={estaAnimando}
+          disabled={seccionProtegida || estaAnimando}
           className={`${mobileButtonBase} ${
-            estaAnimando ? mobileButtonDisabled : mobileButtonSuccess
+            seccionProtegida || estaAnimando ? mobileButtonDisabled : mobileButtonSuccess
           } ${estaAnimando ? "animate-pulse" : ""}`}
           title="Guardar esta seccion como plantilla"
           aria-label="Guardar seccion como plantilla"
@@ -324,9 +384,9 @@ export default function SectionActionsOverlay({
       <button
         type="button"
         onClick={handleEliminarSeccion}
-        disabled={estaAnimando || isDeletingSection}
+        disabled={seccionProtegida || estaAnimando || isDeletingSection}
         className={`${mobileButtonBase} ${
-          estaAnimando || isDeletingSection ? mobileButtonDisabled : mobileButtonDanger
+          seccionProtegida || estaAnimando || isDeletingSection ? mobileButtonDisabled : mobileButtonDanger
         } ${estaAnimando || isDeletingSection ? "animate-pulse" : ""}`}
         title="Borrar esta seccion y todos sus elementos"
         aria-label="Borrar seccion"
@@ -389,7 +449,7 @@ export default function SectionActionsOverlay({
                 title: enabled ? `Ocultar ${label}` : `Mostrar ${label}`,
                 ariaLabel: enabled ? `Ocultar ${label}` : `Mostrar ${label}`,
                 variant: "neutral",
-                disabled: estaAnimando,
+                disabled: seccionProtegida || estaAnimando,
                 pulse: estaAnimando,
                 onClick: () => handleToggleEdgeDecoration(slot),
               },
@@ -406,7 +466,7 @@ export default function SectionActionsOverlay({
           title: DESKTOP_TOOLTIP_LABELS.moveUp,
           ariaLabel: DESKTOP_TOOLTIP_LABELS.moveUp,
           variant: "neutral",
-          disabled: esPrimera || estaAnimando,
+          disabled: seccionProtegida || esPrimera || estaAnimando,
           pulse: estaAnimando,
           onClick: () =>
             moverSeccionConScroll({
@@ -420,7 +480,7 @@ export default function SectionActionsOverlay({
           title: DESKTOP_TOOLTIP_LABELS.moveDown,
           ariaLabel: DESKTOP_TOOLTIP_LABELS.moveDown,
           variant: "neutral",
-          disabled: esUltima || estaAnimando,
+          disabled: seccionProtegida || esUltima || estaAnimando,
           pulse: estaAnimando,
           onClick: () =>
             moverSeccionConScroll({
@@ -439,7 +499,7 @@ export default function SectionActionsOverlay({
           title: DESKTOP_TOOLTIP_LABELS.add,
           ariaLabel: DESKTOP_TOOLTIP_LABELS.add,
           variant: "accent",
-          disabled: estaAnimando,
+          disabled: seccionProtegida || estaAnimando,
           pulse: estaAnimando,
           onClick: handleCrearSeccion,
         },
@@ -455,10 +515,34 @@ export default function SectionActionsOverlay({
           ariaLabel: DESKTOP_TOOLTIP_LABELS.fullscreen,
           variant: esPantalla ? "active" : "neutral",
           pressed: esPantalla,
+          disabled: seccionProtegida,
           onClick: () => togglePantallaCompletaSeccion(seccion.id),
         },
       ],
     },
+    ...(canToggleSectionLock
+      ? [
+          {
+            id: "admin-lock",
+            items: [
+              {
+                id: "toggle-lock",
+                icon: seccionProtegida ? Unlock : Lock,
+                title: seccionProtegida
+                  ? DESKTOP_TOOLTIP_LABELS.unlock
+                  : DESKTOP_TOOLTIP_LABELS.lock,
+                ariaLabel: seccionProtegida
+                  ? DESKTOP_TOOLTIP_LABELS.unlock
+                  : DESKTOP_TOOLTIP_LABELS.lock,
+                variant: seccionProtegida ? "neutral" : "active",
+                disabled: estaAnimando,
+                pulse: estaAnimando,
+                onClick: handleToggleSectionLock,
+              },
+            ],
+          },
+        ]
+      : []),
     ...(canManageSite
       ? [
           {
@@ -470,7 +554,7 @@ export default function SectionActionsOverlay({
                 title: DESKTOP_TOOLTIP_LABELS.saveTemplate,
                 ariaLabel: DESKTOP_TOOLTIP_LABELS.saveTemplate,
                 variant: "success",
-                disabled: estaAnimando,
+                disabled: seccionProtegida || estaAnimando,
                 pulse: estaAnimando,
                 onClick: handleGuardarComoPlantilla,
               },
@@ -487,7 +571,7 @@ export default function SectionActionsOverlay({
           title: DESKTOP_TOOLTIP_LABELS.delete,
           ariaLabel: DESKTOP_TOOLTIP_LABELS.delete,
           variant: "danger",
-          disabled: estaAnimando || isDeletingSection,
+          disabled: seccionProtegida || estaAnimando || isDeletingSection,
           pulse: estaAnimando || isDeletingSection,
           onClick: handleEliminarSeccion,
         },
@@ -531,9 +615,19 @@ export default function SectionActionsOverlay({
         />
 
         <div className="relative flex flex-col items-center gap-2">
+          {seccionProtegida ? (
+            <div
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#e4d7f6] bg-[#faf6ff] text-[#5f3596] shadow-[0_8px_18px_rgba(15,23,42,0.08)]"
+              title="Seccion protegida del sistema"
+              aria-label="Seccion protegida del sistema"
+            >
+              <Lock className="h-4 w-4" />
+            </div>
+          ) : null}
+
           <DesktopColorControl
             value={colorInputValue}
-            disabled={estaAnimando || isDeletingSection}
+            disabled={seccionProtegida || estaAnimando || isDeletingSection}
             onChange={(nextColor) => cambiarColorFondoSeccion(seccion.id, nextColor)}
           />
 

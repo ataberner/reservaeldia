@@ -31,6 +31,8 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
     alturaFijoBackup,
     decoracionesFondo,
     decoracionesBorde,
+    bloqueada,
+    bloqueoMotivo,
   } = datos;
   const maxOrden = Math.max(-1, ...seccionesExistentes.map((s) => s.orden ?? 0));
   const edgeDecorations = buildSectionEdgeDecorationsPayload(decoracionesBorde);
@@ -63,6 +65,10 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
     decoracionesFondo: sanitizeDecoracionesFondo(decoracionesFondo, altura),
     ...(Object.keys(edgeDecorations).length
       ? { decoracionesBorde: edgeDecorations }
+      : {}),
+    ...(bloqueada === true ? { bloqueada: true } : {}),
+    ...(bloqueada === true && typeof bloqueoMotivo === "string" && bloqueoMotivo.trim()
+      ? { bloqueoMotivo: bloqueoMotivo.trim() }
       : {}),
     orden: maxOrden + 1, // ✅ Siempre consecutivo
   };

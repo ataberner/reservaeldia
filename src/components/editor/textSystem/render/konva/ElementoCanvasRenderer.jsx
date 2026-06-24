@@ -102,6 +102,7 @@ import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
+import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
 import {
   decidePressSelection,
   decideSelectionGestureDispatch,
@@ -656,36 +657,6 @@ export default function ElementoCanvas({
     readRuntimeSelectedIds,
     selectionCount,
   ]);
-  const readPendingDragSelectionRuntime = useCallback(() => {
-    if (typeof selectionRuntime?.readSnapshot === "function") {
-      const pendingDragSelection =
-        selectionRuntime.readSnapshot()?.pendingDragSelection;
-      return {
-        id: pendingDragSelection?.id || null,
-        phase: pendingDragSelection?.phase || null,
-      };
-    }
-
-    return {
-      id:
-        typeof window !== "undefined" ? window._pendingDragSelectionId || null : null,
-      phase:
-        typeof window !== "undefined"
-          ? window._pendingDragSelectionPhase || null
-          : null,
-    };
-  }, [selectionRuntime]);
-  const clearPendingDragSelectionRuntime = useCallback((source = null) => {
-    if (typeof selectionRuntime?.setPendingDragSelection === "function") {
-      selectionRuntime.setPendingDragSelection(null, { source });
-      return;
-    }
-
-    if (typeof window !== "undefined") {
-      window._pendingDragSelectionId = null;
-      window._pendingDragSelectionPhase = null;
-    }
-  }, [selectionRuntime]);
   const dragLifecycleRef = useRef({
     lastStartAt: 0,
     lastStartId: null,
@@ -1870,14 +1841,11 @@ export default function ElementoCanvas({
     let clearedPredragSelectionLock = false;
     if (typeof window !== "undefined") {
       window._isDragging = false;
-      const pendingDragSelection = readPendingDragSelectionRuntime();
-      if (
-        pendingDragSelection.phase === "predrag" &&
-        pendingDragSelection.id === obj.id
-      ) {
-        clearPendingDragSelectionRuntime("element:predrag-cancel");
-        clearedPredragSelectionLock = true;
-      }
+      clearedPredragSelectionLock = clearMatchingPredragSelectionLock({
+        elementId: obj.id,
+        selectionRuntime,
+        source: "element:predrag-cancel",
+      });
     }
 
     logSelectedDragDebug("element:predrag-cancel", {
@@ -1932,6 +1900,7 @@ export default function ElementoCanvas({
     obj.tipo,
     queueTransformerRestoreAfterPredragCancel,
     restoreSelectAndDragPredragTouchAction,
+    selectionRuntime,
     syncInteractionDraggableState,
   ]);
 

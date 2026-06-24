@@ -24,6 +24,7 @@ import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
+import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
 import {
@@ -1323,10 +1324,19 @@ export default function CountdownKonva({
       // Si NO se convirtió en drag, garantizamos 0 movimiento
       if (!ownsActiveDragSession && !pressRef.current.movedEnough && !pressRef.current.startedDrag) {
         onPredragVisualSelectionCancel?.(obj.id);
+        const clearedPredragSelectionLock = clearMatchingPredragSelectionLock({
+          elementId: obj.id,
+          selectionRuntime,
+          source: "countdown:predrag-cancel",
+        });
         try {
           node.position({ x: pressRef.current.startNodeX, y: pressRef.current.startNodeY });
           node.getLayer()?.batchDraw();
         } catch {}
+        logCountdownRepeatDragDiag("release-no-drag", {
+          listenerSessionId,
+          clearedPredragSelectionLock,
+        });
         resetPressStateForSession(listenerSessionId);
         setNodeDraggable(node, false, "release-no-drag", {
           listenerSessionId,
@@ -1373,6 +1383,7 @@ export default function CountdownKonva({
     onPredragVisualSelectionCancel,
     onPredragVisualSelectionStart,
     resetPressStateForSession,
+    selectionRuntime,
     setNodeDraggable,
   ]);
 

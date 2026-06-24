@@ -417,6 +417,65 @@ export function setEditorPendingDragSelection(
   return runtime.setPendingDragSelection(value);
 }
 
+function readPendingDragSelectionFromRuntimeApi(selectionRuntime) {
+  if (typeof selectionRuntime?.readSnapshot === "function") {
+    return clonePendingDragSelection(
+      selectionRuntime.readSnapshot()?.pendingDragSelection
+    );
+  }
+
+  if (typeof selectionRuntime?.getSnapshot === "function") {
+    return clonePendingDragSelection(
+      selectionRuntime.getSnapshot()?.pendingDragSelection
+    );
+  }
+
+  return null;
+}
+
+function clearPendingDragSelectionInRuntimeApi(
+  selectionRuntime,
+  source = null
+) {
+  if (typeof selectionRuntime?.setPendingDragSelection !== "function") {
+    return false;
+  }
+
+  selectionRuntime.setPendingDragSelection(null, { source });
+  return true;
+}
+
+export function clearMatchingPredragSelectionLock({
+  elementId,
+  selectionRuntime = null,
+  source = null,
+  targetWindow,
+} = {}) {
+  const safeElementId = String(elementId ?? "").trim();
+  if (!safeElementId) return false;
+
+  const resolvedWindow = resolveTargetWindow(targetWindow);
+  const pendingDragSelection =
+    readPendingDragSelectionFromRuntimeApi(selectionRuntime) ||
+    readEditorSelectionRuntimeSnapshot(resolvedWindow).pendingDragSelection;
+
+  if (
+    pendingDragSelection?.phase !== "predrag" ||
+    pendingDragSelection?.id !== safeElementId
+  ) {
+    return false;
+  }
+
+  if (clearPendingDragSelectionInRuntimeApi(selectionRuntime, source)) {
+    return true;
+  }
+
+  if (!resolvedWindow) return false;
+
+  setEditorPendingDragSelection(null, { source }, resolvedWindow);
+  return true;
+}
+
 export function setEditorDragVisualSelection(
   value,
   options = {},

@@ -1,11 +1,8 @@
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "../../../firebase.js";
-import { saveTemplateEditorDocument } from "../../../domain/templates/adminService.js";
-import { buildDraftContentMeta } from "../../../domain/drafts/sourceOfTruth.js";
 import { normalizeEditorSession } from "../../../domain/drafts/session.js";
 import { recordCountdownAuditSnapshot } from "../../../domain/countdownAudit/runtime.js";
 import { pushEditorBreadcrumb } from "../../../lib/monitoring/editorIssueReporter.js";
 import { buildPersistableRenderState } from "./borradorSyncRenderState.js";
+import { persistEditorSessionSnapshot } from "./editorSessionPersistence.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -80,38 +77,30 @@ export async function persistBorradorSyncState({
   const giftsLimpios = persistedRenderState.gifts;
   const countdownForAudit = persistedRenderState.countdownForAudit;
 
-  if (session.kind === "template") {
-    await saveTemplateEditorDocument({
-      templateId: safeSlug,
-      document: {
-        nombre: normalizeText(safeState.nombre) || undefined,
-        objetos: objetosLimpios,
-        secciones: seccionesLimpias,
-        rsvp: rsvpLimpio,
-        gifts: giftsLimpios,
-      },
-    });
+  await persistEditorSessionSnapshot({
+    state: {
+      ...safeState,
+      editorSession: session,
+      slug: safeSlug,
+    },
+    reason,
+    readOnly,
+    patch: {
+      ...(normalizeText(safeState.nombre)
+        ? { nombre: normalizeText(safeState.nombre) }
+        : {}),
+      objetos: objetosLimpios,
+      secciones: seccionesLimpias,
+      rsvp: rsvpLimpio,
+      gifts: giftsLimpios,
+    },
+  });
 
+  if (session.kind === "template") {
     return {
       ok: true,
     };
   }
-
-  const ref = doc(db, "borradores", safeSlug);
-  await updateDoc(ref, {
-    objetos: objetosLimpios,
-    secciones: seccionesLimpias,
-    rsvp: rsvpLimpio,
-    gifts: giftsLimpios,
-    draftContentMeta: {
-      ...buildDraftContentMeta({
-        lastWriter: "canvas",
-        reason,
-      }),
-      updatedAt: serverTimestamp(),
-    },
-    ultimaEdicion: serverTimestamp(),
-  });
 
   if (countdownForAudit) {
     const sectionMode = normalizeText(

@@ -32,7 +32,7 @@ No previous item is fully obsolete. Some are better constrained than before beca
 | E5 | Still valid | HIGH | State Management | Global events and runtime bridges still carry important control flow. |
 | D1 | Still valid | HIGH | Data Contract | `normalizeDraftRenderState` is still intentionally shallow and permissive. |
 | D2 | Still valid | HIGH | Data Contract | Draft load can still mutate Firestore by backfilling `tipoInvitacion`. |
-| D3 | Reduced but valid | HIGH | State Management / Data Contract | Write queueing improved ordering, but autosave and flush still depend on transient interaction state and multiple transports. |
+| D3 | Reduced but valid | MEDIUM | State Management / Data Contract | Editor-session transport is now centralized, but autosave and flush still depend on transient interaction state. |
 | D4 | Reduced but valid | MEDIUM | Data Contract / Rendering | Publishable draft preview and publish share backend asset normalization; editor load, template copy, and template/fallback preview still differ. |
 | D5 | Still valid | HIGH | Data Contract | Draft/publication linkage still resolves through compatibility field families. |
 | R1 | Reduced but valid | MEDIUM | Data Contract / Rendering | Publishable draft preview now uses the publish prepared payload; template/fallback preview still uses local overlay/generator behavior. |
@@ -147,8 +147,8 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Level: HIGH
 - Type: Data Contract, State Management
 - Revalidates: `D2`, `D3`, `D4`
-- Evidence: `loadBorradorSyncState()` can backfill `tipoInvitacion` on read; load also rewrites storage-backed URLs through `refreshUrlsDeep()`; `useBorradorSync.js` skips autosave while `window._resizeData?.isResizing`; flush can travel either through a window event or a direct bridge; `criticalFlush.js` captures the compatibility snapshot only after flush success.
-- Failure mode: opening a draft can mutate it, flush behavior depends on interaction timing, and the snapshot handed to preview is not just "what the editor had in memory".
+- Evidence: `loadBorradorSyncState()` can backfill `tipoInvitacion` on read through the session-aware persistence authority; load also rewrites storage-backed URLs through `refreshUrlsDeep()`; `useBorradorSync.js` skips autosave while `window._resizeData?.isResizing`; flush can travel either through a window event or a direct bridge; `criticalFlush.js` captures the compatibility snapshot only after flush success.
+- Failure mode: opening a draft can still mutate it, flush behavior depends on interaction timing, and the snapshot handed to preview is not just "what the editor had in memory". The previous template-vs-draft Firestore transport mismatch is closed by `editorSessionPersistence.js`, but timing fragility remains.
 - Action: `P1` remove `tipoInvitacion` write-on-read from the load path and move it to an explicit migration/save repair, then replace the resize global guard with a persistence-owned interaction token instead of `window._resizeData`.
 - Expected impact: makes load reproducible and makes persistence timing easier to reason about during preview/publish.
 - Compatibility risk: Medium. Old drafts will stop self-healing on open until migrated or saved.

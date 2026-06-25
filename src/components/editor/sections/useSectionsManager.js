@@ -1,6 +1,5 @@
 // src/components/editor/sections/useSectionsManager.js
 import { useCallback, useEffect, useRef, useState } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import {
     buildNextSectionHeightState,
     buildNextSectionModeState,
@@ -9,7 +8,7 @@ import {
     shouldPersistSectionMutationSnapshot,
 } from "./sectionMutationPersistence.js";
 import { canMutateSection } from "../../../domain/editor/protectedSections.js";
-import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
+import { persistEditorSessionPatch } from "../persistence/editorSessionPersistence.js";
 
 /**
  * Maneja todo lo relacionado a secciones:
@@ -19,6 +18,7 @@ import { db } from "../../../firebase"; // ✅ ajustado a tu estructura real
  */
 export default function useSectionsManager({
     slug,
+    editorSession = null,
     secciones,
     setSecciones,
     objetos,
@@ -125,7 +125,6 @@ export default function useSectionsManager({
             if (!slug) return;
 
             const persistTask = async () => {
-                const ref = doc(db, "borradores", slug);
                 const { payload } = buildSectionMutationWritePayload({
                     secciones: nextSecciones,
                     objetos: nextObjetos,
@@ -133,21 +132,29 @@ export default function useSectionsManager({
                     includeObjetos,
                     validarPuntosLinea,
                     ALTURA_PANTALLA_EDITOR,
-                    createTimestamp: () => serverTimestamp(),
                 });
 
-                await updateDoc(ref, payload);
+                await persistEditorSessionPatch({
+                    session: editorSession,
+                    slug,
+                    patch: payload,
+                    reason,
+                });
             };
 
-            // Compatibility boundary: section writes remain direct, but they
-            // now join the shared draft-write FIFO used by autosave/flush.
             if (typeof enqueueDraftWrite === "function") {
                 return enqueueDraftWrite(persistTask);
             }
 
             return persistTask();
         },
-        [slug, validarPuntosLinea, ALTURA_PANTALLA_EDITOR, enqueueDraftWrite]
+        [
+            slug,
+            editorSession,
+            validarPuntosLinea,
+            ALTURA_PANTALLA_EDITOR,
+            enqueueDraftWrite,
+        ]
     );
 
     const aplicarResizeAltura = useCallback(() => {

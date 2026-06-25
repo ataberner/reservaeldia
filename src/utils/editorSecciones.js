@@ -1,8 +1,7 @@
 // src/utils/editorSecciones.js
 
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/firebase";
 import { buildSectionMutationWritePayload } from "@/components/editor/sections/sectionMutationPersistence";
+import { persistEditorSessionPatch } from "@/components/editor/persistence/editorSessionPersistence";
 import { canMutateSection } from "@/domain/editor/protectedSections";
 
 /**
@@ -14,6 +13,7 @@ export const borrarSeccion = async ({
   secciones,
   objetos,
   slug,
+  editorSession = null,
   seccionActivaId,
   setSecciones,
   setObjetos,
@@ -38,7 +38,6 @@ export const borrarSeccion = async ({
     }
 
     const persistTask = async () => {
-      const ref = doc(db, "borradores", slug);
       const { payload } = buildSectionMutationWritePayload({
         secciones: seccionesFiltradas,
         objetos: objetosFiltrados,
@@ -46,13 +45,15 @@ export const borrarSeccion = async ({
         includeObjetos: true,
         validarPuntosLinea,
         ALTURA_PANTALLA_EDITOR,
-        createTimestamp: () => serverTimestamp(),
       });
-      await updateDoc(ref, payload);
+      await persistEditorSessionPatch({
+        session: editorSession,
+        slug,
+        patch: payload,
+        reason: "section-delete",
+      });
     };
 
-    // Compatibility boundary: delete/reorder still persist directly, but they
-    // now join the shared draft-write FIFO so immediate flush observes them.
     if (typeof enqueueDraftWrite === "function") {
       await enqueueDraftWrite(persistTask);
     } else {
@@ -74,6 +75,7 @@ export const moverSeccion = async ({
   direccion, // 'subir' o 'bajar'
   secciones,
   slug,
+  editorSession = null,
   setSecciones,
   setSeccionesAnimando,
   validarPuntosLinea,
@@ -120,15 +122,18 @@ export const moverSeccion = async ({
   // Guardar en Firestore
   try {
     const persistTask = async () => {
-      const ref = doc(db, "borradores", slug);
       const { payload } = buildSectionMutationWritePayload({
         secciones: nuevasSecciones,
         reason: "section-reorder",
         validarPuntosLinea,
         ALTURA_PANTALLA_EDITOR,
-        createTimestamp: () => serverTimestamp(),
       });
-      await updateDoc(ref, payload);
+      await persistEditorSessionPatch({
+        session: editorSession,
+        slug,
+        patch: payload,
+        reason: "section-reorder",
+      });
     };
 
     if (typeof enqueueDraftWrite === "function") {

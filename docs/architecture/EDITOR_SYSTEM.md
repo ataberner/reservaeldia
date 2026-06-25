@@ -41,6 +41,10 @@ Current primary modules:
   - draft/template load
   - autosave
   - immediate flush handling
+- `src/components/editor/persistence/editorSessionPersistence.js`
+  - session-aware editor read/write authority
+  - routes draft sessions to `borradores/{slug}`
+  - routes template sessions to template editor callables
 
 Supporting interaction/runtime modules:
 
@@ -63,7 +67,7 @@ The current editable render state is:
 - `rsvp`
 - `gifts`
 
-This state is owned by `CanvasEditor.jsx` and persisted through `useBorradorSync.js`.
+This state is owned by `CanvasEditor.jsx` and persisted through `useBorradorSync.js`, which delegates actual session transport to `editorSessionPersistence.js`.
 
 ### 3.2 Immediate Interaction State
 
@@ -99,15 +103,19 @@ Preserved groups are stored as `tipo: "grupo"` roots in `objetos`. The group own
 
 ### 3.4 Persistence Boundary
 
-`useBorradorSync.js` is the main persistence boundary.
+`editorSessionPersistence.js` is the transport authority for editor-session persistence. `useBorradorSync.js` is the editor hook that hydrates state, schedules autosave, and exposes the flush bridge.
 
 Current behavior:
 
-- loads draft or template-editor state
+- loads draft or template-editor state through `readEditorSessionDocument`
 - normalizes the render payload
 - debounces autosave
 - exposes immediate flush for critical actions
-- shares write ordering through the draft-write coordinator even when section mutations still use direct writes
+- persists autosave snapshots through `persistEditorSessionSnapshot`
+- persists section height, `altoModo`, create, delete, reorder, name, and authoring patches through `persistEditorSessionPatch`
+- shares write ordering through the draft-write coordinator for autosave, flush, and section mutation writes
+
+Editor modules must not call `doc(db, "borradores", slug)` to persist editor-session state. New session kinds must be represented explicitly in `normalizeEditorSession`; unsupported kinds fail closed at the persistence authority instead of falling back to draft.
 
 ## 4. Runtime Bridges
 

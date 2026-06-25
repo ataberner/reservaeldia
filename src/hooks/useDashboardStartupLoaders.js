@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/firebase";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import { getErrorMessage } from "@/domain/dashboard/helpers";
 import { pushEditorBreadcrumb } from "@/lib/monitoring/editorIssueReporter";
+import { readEditorSessionDocument } from "@/components/editor/persistence/editorSessionPersistence";
 
 const IMAGE_PRELOAD_TIMEOUT_MS = 15000;
 const IMAGE_PRELOAD_BATCH_SIZE = 6;
@@ -227,6 +226,9 @@ async function preloadImagesInBatches(urls, { onProgress } = {}) {
 
 export function useDashboardStartupLoaders({
   slugInvitacion,
+  editorSession = null,
+  initialDraftData = null,
+  initialEditorData = null,
   isHomeView,
   homeResetKey,
 }) {
@@ -321,12 +323,22 @@ export function useDashboardStartupLoaders({
       pushEditorBreadcrumb("editor-preload-start", { slug: currentSlug });
 
       try {
-        const draftRef = doc(db, "borradores", currentSlug);
         const draftReadStarted = Date.now();
-        const draftSnap = await getDoc(draftRef);
+        const readResult = await readEditorSessionDocument({
+          session: editorSession,
+          slug: currentSlug,
+          initialData:
+            editorSession?.kind === "template" &&
+            initialEditorData &&
+            typeof initialEditorData === "object"
+              ? initialEditorData
+              : initialDraftData && typeof initialDraftData === "object"
+                ? initialDraftData
+                : null,
+        });
         if (cancelled || forcedFinish) return;
 
-        const draftData = draftSnap.exists() ? draftSnap.data() || {} : {};
+        const draftData = readResult.exists ? readResult.data || {} : {};
         const draftObjetos = Array.isArray(draftData?.objetos)
           ? draftData.objetos
           : [];
@@ -354,6 +366,7 @@ export function useDashboardStartupLoaders({
         logEditorPreload("draft-loaded", {
           slug: currentSlug,
           elapsedMs: Date.now() - draftReadStarted,
+          source: readResult.source || null,
           objetos: draftObjetos.length,
           secciones: draftSecciones.length,
           fontsToPreload: fontsToPreload.length,
@@ -621,7 +634,7 @@ export function useDashboardStartupLoaders({
     return () => {
       cancelled = true;
     };
-  }, [slugInvitacion]);
+  }, [editorSession, initialDraftData, initialEditorData, slugInvitacion]);
 
   useEffect(() => {
     if (!slugInvitacion) {

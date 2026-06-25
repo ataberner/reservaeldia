@@ -597,6 +597,7 @@ export default function CanvasEditor({
     handleCrearSeccion,
   } = useSectionsManager({
     slug,
+    editorSession,
     secciones,
     setSecciones,
     objetos,
@@ -1196,6 +1197,7 @@ export default function CanvasEditor({
     moverSeccionConScroll,
   } = useCanvasEditorSectionFlow({
     slug,
+    editorSession,
     secciones,
     objetos,
     seccionesOrdenadas,

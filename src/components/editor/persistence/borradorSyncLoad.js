@@ -1,13 +1,16 @@
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { db, storage } from "../../../firebase.js";
 import { normalizeRsvpConfig } from "../../../domain/rsvp/config.js";
 import { normalizeGiftConfig } from "../../../domain/gifts/config.js";
 import { normalizeInvitationType } from "../../../domain/invitationTypes.js";
-import { getTemplateEditorDocument } from "../../../domain/templates/adminService.js";
 import { normalizeDraftRenderState } from "../../../domain/drafts/sourceOfTruth.js";
 import { pushEditorBreadcrumb } from "../../../lib/monitoring/editorIssueReporter.js";
 import { buildLoadedEditorRenderState } from "./borradorSyncRenderState.js";
+import {
+  persistEditorSessionPatch,
+  readEditorSessionDocument,
+} from "./editorSessionPersistence.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -107,36 +110,22 @@ export async function loadBorradorSyncState({
     session && typeof session === "object"
       ? session
       : { kind: "draft", id: "" };
-  const hasInjectedDraft =
-    (safeSession.kind === "template" ? initialEditorData : initialDraftData) &&
-    typeof (safeSession.kind === "template" ? initialEditorData : initialDraftData) ===
-      "object";
   let exists = false;
   let data = {};
-
-  if (hasInjectedDraft) {
-    exists = true;
-    data = safeSession.kind === "template" ? initialEditorData : initialDraftData;
-  } else if (safeSession.kind === "template") {
-    const result = await getTemplateEditorDocument({
-      templateId: safeSession.id,
-    });
-    data =
-      result?.editorDocument && typeof result.editorDocument === "object"
-        ? result.editorDocument
-        : {};
-    exists = Object.keys(data).length > 0;
-  } else {
-    const ref = doc(db, "borradores", safeSession.id);
-    const snap = await getDoc(ref);
-    exists = snap.exists();
-    data = snap.exists() ? snap.data() || {} : {};
-  }
+  const injectedData = safeSession.kind === "template" ? initialEditorData : initialDraftData;
+  const readResult = await readEditorSessionDocument({
+    session: safeSession,
+    slug: safeSession.id,
+    initialData:
+      injectedData && typeof injectedData === "object" ? injectedData : null,
+  });
+  exists = readResult.exists;
+  data = exists ? readResult.data || {} : {};
 
   if (!exists) {
     return {
       exists: false,
-      session: safeSession,
+      session: readResult.session || safeSession,
     };
   }
 
@@ -155,15 +144,20 @@ export async function loadBorradorSyncState({
 
   if (safeSession.kind !== "template" && !tipoDraftRaw && plantillaId) {
     try {
-      const ref = doc(db, "borradores", safeSession.id);
       const plantillaSnap = await getDoc(doc(db, "plantillas", plantillaId));
       if (plantillaSnap.exists()) {
         const plantillaData = plantillaSnap.data() || {};
         tipoInvitacion = normalizeInvitationType(plantillaData?.tipo);
 
         if (tipoInvitacion && !readOnly) {
-          await updateDoc(ref, {
-            tipoInvitacion,
+          await persistEditorSessionPatch({
+            session: safeSession,
+            slug: safeSession.id,
+            patch: {
+              tipoInvitacion,
+            },
+            reason: "tipo-invitacion-backfill",
+            includeDraftMetadata: false,
           });
         }
       }
@@ -198,11 +192,7 @@ export async function loadBorradorSyncState({
   return {
     exists: true,
     session: safeSession,
-    source: hasInjectedDraft
-      ? "injected-readonly"
-      : safeSession.kind === "template"
-        ? "callable"
-        : "firestore",
+    source: readResult.source === "injected" ? "injected-readonly" : readResult.source,
     plantillaId: plantillaId || null,
     hydratedObjetos,
     hydratedSecciones,

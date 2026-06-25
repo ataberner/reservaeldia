@@ -1,11 +1,11 @@
-import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/firebase";
+import { serverTimestamp } from "firebase/firestore";
 import { normalizeDraftRenderState } from "@/domain/drafts/sourceOfTruth";
 import { getTemplateById } from "../repository.js";
+import { normalizeEditorSession } from "@/domain/drafts/session";
 import {
-  getTemplateEditorDocument,
-  saveTemplateEditorDocument,
-} from "../adminService.js";
+  persistEditorSessionPatch,
+  readEditorSessionDocument,
+} from "@/components/editor/persistence/editorSessionPersistence";
 import { validateAuthoringState } from "./validation.js";
 import {
   ensureDefaultsForSchema,
@@ -150,7 +150,7 @@ function isStoredAuthoringAligned(storedDraft, expectedTemplateId) {
   return storedTemplateId === safeExpectedTemplateId;
 }
 
-function normalizeEditorSession(session, fallbackSlug = "", fallbackTemplateId = "") {
+function resolveAuthoringEditorSession(session, fallbackSlug = "", fallbackTemplateId = "") {
   const safeSession = session && typeof session === "object" ? session : {};
   const requestedKind =
     normalizeText(safeSession.kind).toLowerCase() === "template"
@@ -160,11 +160,14 @@ function normalizeEditorSession(session, fallbackSlug = "", fallbackTemplateId =
     requestedKind === "template"
       ? normalizeText(fallbackTemplateId) || normalizeText(fallbackSlug)
       : normalizeText(fallbackSlug) || normalizeText(fallbackTemplateId);
-  const id = normalizeText(safeSession.id) || fallbackId;
-  return {
-    kind: requestedKind,
-    id,
-  };
+  return normalizeEditorSession(
+    {
+      ...safeSession,
+      kind: normalizeText(safeSession.kind) || requestedKind,
+      id: normalizeText(safeSession.id) || fallbackId,
+    },
+    fallbackId
+  );
 }
 
 export async function loadAuthoringState({
@@ -174,24 +177,17 @@ export async function loadAuthoringState({
   editorSession = null,
 } = {}) {
   const safeSlug = normalizeText(slug);
-  const session = normalizeEditorSession(editorSession, safeSlug, templateId);
+  const session = resolveAuthoringEditorSession(editorSession, safeSlug, templateId);
   const preloaded = asObject(preloadedDraft);
   let draftData = canUsePreloadedDraft(preloaded, session, templateId) ? preloaded : {};
 
   if (!Object.keys(draftData).length) {
     if (!session.id) return buildEmptySnapshot(templateId);
-    if (session.kind === "template") {
-      const result = await getTemplateEditorDocument({
-        templateId: session.id,
-      });
-      draftData =
-        result?.editorDocument && typeof result.editorDocument === "object"
-          ? result.editorDocument
-          : {};
-    } else {
-      const draftSnap = await getDoc(doc(db, "borradores", session.id));
-      draftData = draftSnap.exists() ? draftSnap.data() || {} : {};
-    }
+    const readResult = await readEditorSessionDocument({
+      session,
+      slug: session.id,
+    });
+    draftData = readResult.exists ? readResult.data || {} : {};
   }
 
   const draftRenderState = normalizeDraftRenderState(draftData);
@@ -240,7 +236,7 @@ export async function saveAuthoringDraft({
   editorSession = null,
 } = {}) {
   const safeSlug = normalizeText(slug);
-  const session = normalizeEditorSession(editorSession, safeSlug, templateId);
+  const session = resolveAuthoringEditorSession(editorSession, safeSlug, templateId);
   if (!session.id) {
     throw new Error("No se pudo guardar el authoring: slug invalido.");
   }
@@ -253,26 +249,18 @@ export async function saveAuthoringDraft({
     fieldsSchema: snapshot.fieldsSchema,
     defaults: snapshot.defaults,
     status: snapshot.status,
-    updatedAt: serverTimestamp(),
+    updatedAt: session.kind === "template" ? new Date().toISOString() : serverTimestamp(),
     updatedByUid: safeUid,
   };
 
-  if (session.kind === "template") {
-    await saveTemplateEditorDocument({
-      templateId: session.id,
-      document: {
-        templateAuthoringDraft: {
-          ...payload,
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    });
-  } else {
-    await updateDoc(doc(db, "borradores", session.id), {
+  await persistEditorSessionPatch({
+    session,
+    slug: session.id,
+    patch: {
       templateAuthoringDraft: payload,
-      ultimaEdicion: serverTimestamp(),
-    });
-  }
+    },
+    reason: "template-authoring",
+  });
 
   return payload;
 }

@@ -6,10 +6,10 @@ Status: Canonical Data Contract.
 The data model is the contract that keeps three different runtimes aligned:
 
 1. The editor runtime in React + Konva.
-2. Firestore persistence in `borradores`.
+2. Editor-session persistence: Firestore `borradores` for drafts and template editor documents for template sessions.
 3. HTML generation for preview and publication.
 
-In the current codebase, the canonical invitation render state is a Firestore draft document with four render fields:
+In the current codebase, the canonical draft invitation render state is a Firestore draft document with four render fields. Template editor sessions carry the same render fields in template editor documents and must be accessed through the session-aware editor persistence boundary:
 
 - `objetos`
 - `secciones`
@@ -28,7 +28,7 @@ The current root model has three layers:
 3. Publication metadata stored separately in `publicadas/{publicSlug}` after publish.
 
 ### Canonical Render State
-This is the only part of the draft document that `normalizeDraftRenderState` keeps:
+This is the only part of the draft or template editor document that `normalizeDraftRenderState` keeps:
 
 | Field | Where Stored | Used By | Status |
 | --- | --- | --- | --- |
@@ -141,7 +141,7 @@ Observed publication fields include:
 
 Relationship summary:
 
-- `borradores/{slug}` is the canonical editable source.
+- `borradores/{slug}` is the canonical editable source for draft invitations; template editor sessions use template editor documents and must be routed through `editorSessionPersistence`.
 - `publicadas/{publicSlug}` is a publication wrapper and lifecycle record.
 - `publicadas/{publicSlug}` is not a fallback source for `objetos` or `secciones`.
 - Published HTML is stored separately at `publicadas/{publicSlug}/index.html` in Firebase Storage.
@@ -685,13 +685,14 @@ The modern draft schema is embedded in a single Firestore document:
 
 Current editor persistence behavior:
 
-- `useBorradorSync` writes `objetos`, `secciones`, `rsvp`, `gifts`.
-- It also writes `draftContentMeta` and `ultimaEdicion`.
+- Editor-session writes go through `src/components/editor/persistence/editorSessionPersistence.js`.
+- Draft sessions write `objetos`, `secciones`, `rsvp`, `gifts`, `draftContentMeta`, and `ultimaEdicion` to `borradores/{slug}`.
+- Template sessions write the same editor render fields through the template editor callable surface; they do not write `borradores/{templateId}`.
 - It strips `undefined` recursively before writing.
 - It normalizes section decoration payloads before writing.
 - It normalizes countdown geometry, line points, and text compatibility style fields before writing.
 
-Section-level workflows can also update the same draft document directly outside the debounce cycle, including:
+Section-level workflows persist through the same session-aware authority, including:
 
 - section creation
 - section deletion
@@ -701,7 +702,7 @@ Section-level workflows can also update the same draft document directly outside
 
 Current ordering rule:
 
-- those direct section writes now join the same draft-write FIFO used by autosave and flush, so persistence order is serialized even though the write triggers are still split
+- autosave, flush, and section writes join the same draft-write FIFO, so persistence order is serialized even though the write triggers are still split
 
 ### `publicadas`
 `publicadas/{publicSlug}` is a separate Firestore metadata document written by the publish flow.
@@ -818,7 +819,8 @@ That artifact is generated from the first `.inv > .sec` in the generated publish
 #### 1. Editor Load
 Input:
 
-- raw `borradores/{slug}` document
+- draft session: raw `borradores/{slug}` document read through `readEditorSessionDocument`
+- template session: template editor document read through `readEditorSessionDocument`
 
 Transformation:
 
@@ -844,11 +846,13 @@ Transformation:
 - text color/stroke/shadow compatibility fields are normalized
 - section decorations are normalized
 - `undefined` values are removed
-- `draftContentMeta` and `ultimaEdicion` are updated
+- draft sessions update `draftContentMeta` and `ultimaEdicion`
+- template sessions strip draft-only metadata before calling the template editor save API
 
 Output:
 
-- updated `borradores/{slug}` document
+- draft session: updated `borradores/{slug}` document
+- template session: updated template editor document
 
 #### 3. Preview
 Input:
@@ -859,7 +863,7 @@ Input:
 Transformation:
 
 - preview requests a critical flush before opening
-- preview re-reads the draft document or template editor document
+- preview re-reads through `readEditorSessionDocument`, which routes by `editorSession.kind`
 - publishable draft preview calls `prepareDraftPreviewRender`, which uses `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`
 - if backend validation has blockers, preview receives validation without trusted HTML
 - template/fallback preview can still overlay a compatible editor boundary snapshot and call `generarHTMLDesdeSecciones(secciones, objetos, rsvp, opciones)` locally

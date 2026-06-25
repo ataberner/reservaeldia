@@ -156,6 +156,9 @@ export default function Dashboard() {
     handleHomeViewReadyChange,
   } = useDashboardStartupLoaders({
     slugInvitacion,
+    editorSession,
+    initialDraftData: adminDraftView?.draftData || null,
+    initialEditorData: templateWorkspaceView?.initialData || null,
     isHomeView: pageViewState.isHomeView,
     homeResetKey: tipoSeleccionado,
   });

@@ -42,6 +42,7 @@ import {
 import { readCanvasEditorMethod } from "../lib/editorRuntimeBridge.js";
 import { readEditorRenderSnapshot } from "../lib/editorSnapshotAdapter.js";
 import { pushEditorBreadcrumb } from "../lib/monitoring/editorIssueReporter.js";
+import { readEditorSessionDocument } from "../components/editor/persistence/editorSessionPersistence.js";
 
 const EMPTY_PREVIEW_CONTROLLER_SESSION = Object.freeze({
   targetId: "",
@@ -70,10 +71,6 @@ function isStalePreviewSessionError(error) {
     error?.code === STALE_PREVIEW_SESSION_ERROR_CODE ||
     error?.message === STALE_PREVIEW_SESSION_ERROR_CODE
   );
-}
-
-async function loadTemplateAdminServiceModule() {
-  return import("../domain/templates/adminService.js");
 }
 
 async function loadHtmlGeneratorModule() {
@@ -186,14 +183,27 @@ async function runDashboardPreviewControllerPreviewPipeline({
     canUsePublishCompatibility,
     previewBoundarySnapshot,
     readTemplateEditorDocument: async ({ templateId }) => {
-      const { getTemplateEditorDocument } =
-        await loadTemplateAdminServiceModule();
-      return getTemplateEditorDocument({
-        templateId,
+      const result = await readEditorSessionDocument({
+        session: {
+          kind: "template",
+          id: templateId,
+        },
+        slug: templateId,
       });
+      return {
+        editorDocument: result.data,
+      };
     },
-    readDraftDocument: async ({ draftSlug }) =>
-      getDoc(doc(db, "borradores", draftSlug)),
+    readDraftDocument: async ({ draftSlug }) => {
+      const result = await readEditorSessionDocument({
+        session: {
+          kind: "draft",
+          id: draftSlug,
+        },
+        slug: draftSlug,
+      });
+      return result.snapshot;
+    },
     readLiveEditorSnapshot: () => readEditorRenderSnapshot(),
     readPublicationBySlug: async (publicSlug) =>
       getDoc(doc(db, "publicadas", publicSlug)),

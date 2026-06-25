@@ -1223,7 +1223,7 @@ Remaining caveats:
 ## 24. Assumptions
 
 - Assumption: where this document describes exact sub-frame ordering inside the inline DOM swap path, that order is inferred from the hook structure, emitted phase transitions, and runtime state transitions in the audited modules; the code does not expose one centralized timeline tracer for every inner step.
-- Assumption: template editor sessions use the same interaction/rendering subsystem as draft sessions unless a preview/publish-facing bridge explicitly branches by session kind. This matches the active `CanvasEditor.jsx` composition.
+- Assumption: template editor sessions use the same interaction/rendering subsystem as draft sessions. Persistence, preload, preview re-read, authoring, and section mutations branch only through `editorSessionPersistence.js`; preview/publish-facing bridges may still branch by session kind for authority/transport semantics.
 
 ## 25. Critical Invariants
 

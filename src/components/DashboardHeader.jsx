@@ -1,7 +1,5 @@
 // src/components/DashboardHeader.jsx
-import { useState, useRef, useEffect, useCallback } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/firebase";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/router";
 import {
     ChevronDown,
@@ -14,11 +12,13 @@ import {
 import AppHeader from "@/components/appHeader/AppHeader";
 import CanvasEditorHeader from "@/components/editor/header/CanvasEditorHeader";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
+import { normalizeEditorSession } from "@/domain/drafts/session";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
+import { convertDraftToTemplate } from "@/domain/templates/adminService";
 import {
-    convertDraftToTemplate,
-    saveTemplateEditorDocument,
-} from "@/domain/templates/adminService";
+    persistEditorSessionPatch,
+    readEditorSessionDocument,
+} from "@/components/editor/persistence/editorSessionPersistence";
 import {
     captureCountdownAuditTemplateDocument,
     recordCountdownAuditSnapshot,
@@ -37,19 +37,6 @@ const MOBILE_EDITOR_BREAKPOINT_PX = 768;
 
 function normalizeText(value) {
     return String(value || "").trim();
-}
-
-function normalizeEditorSession(value, fallbackId = "") {
-    const safeValue = value && typeof value === "object" ? value : {};
-    const kind =
-        normalizeText(safeValue.kind).toLowerCase() === "template"
-            ? "template"
-            : "draft";
-    const id = normalizeText(safeValue.id) || normalizeText(fallbackId);
-    return {
-        kind,
-        id,
-    };
 }
 
 function normalizeTemplateWorkspaceMeta(value) {
@@ -192,9 +179,9 @@ export default function DashboardHeader(props) {
             .charAt(0)
             .toUpperCase() || "U";
     const [isMobile, setIsMobile] = useState(false);
-    const normalizedEditorSession = normalizeEditorSession(
-        editorSession,
-        slugInvitacion
+    const normalizedEditorSession = useMemo(
+        () => normalizeEditorSession(editorSession, slugInvitacion),
+        [editorSession, slugInvitacion]
     );
     const isTemplateSession = normalizedEditorSession.kind === "template";
 
@@ -271,11 +258,13 @@ export default function DashboardHeader(props) {
             }
 
             try {
-                const ref = doc(db, "borradores", slugInvitacion);
-                const snap = await getDoc(ref);
+                const result = await readEditorSessionDocument({
+                    session: normalizedEditorSession,
+                    slug: slugInvitacion,
+                });
 
-                if (snap.exists()) {
-                    const data = snap.data();
+                if (result.exists) {
+                    const data = result.data || {};
                     setNombreBorrador(data?.nombre || draftDisplayName || "Sin nombre");
                     setTemplateWorkspaceMeta(
                         normalizeTemplateWorkspaceMeta(data?.templateWorkspace)
@@ -294,6 +283,7 @@ export default function DashboardHeader(props) {
     }, [
         draftDisplayName,
         editorReadOnly,
+        editorSession,
         isTemplateSession,
         slugInvitacion,
         templateSessionMeta,
@@ -451,9 +441,10 @@ export default function DashboardHeader(props) {
             }
 
             if (isTemplateSession) {
-                await saveTemplateEditorDocument({
-                    templateId,
-                    document: {
+                await persistEditorSessionPatch({
+                    session: normalizedEditorSession,
+                    slug: templateId,
+                    patch: {
                         nombre,
                         portada,
                         ...(runtimeAuthoringSnapshot
@@ -467,9 +458,10 @@ export default function DashboardHeader(props) {
                                   secciones: liveEditorSnapshot.secciones,
                                   rsvp: liveEditorSnapshot.rsvp,
                                   gifts: liveEditorSnapshot.gifts,
-                              }
+                          }
                             : {}),
                     },
+                    reason: "template-dashboard-save",
                 });
                 await captureCountdownAuditTemplateDocument(
                     templateId,
@@ -483,11 +475,16 @@ export default function DashboardHeader(props) {
                 return;
             }
 
-            const ref = doc(db, "borradores", templateId);
-            const snap = await getDoc(ref);
-            if (!snap.exists()) throw new Error("No se encontro el borrador.");
+            const readResult = await readEditorSessionDocument({
+                session: {
+                    kind: "draft",
+                    id: templateId,
+                },
+                slug: templateId,
+            });
+            if (!readResult.exists) throw new Error("No se encontro el borrador.");
 
-            const dataBase = snap.data();
+            const dataBase = readResult.data || {};
             const data =
                 liveEditorSnapshot && dataBase && typeof dataBase === "object"
                     ? {
@@ -560,13 +557,16 @@ export default function DashboardHeader(props) {
             if (!currentId) return;
             const nextName = String(nombreDocumento ?? "");
 
+            await persistEditorSessionPatch({
+                session: normalizedEditorSession,
+                slug: currentId,
+                patch: {
+                    nombre: nextName,
+                },
+                reason: "document-name",
+            });
+
             if (isTemplateSession) {
-                await saveTemplateEditorDocument({
-                    templateId: currentId,
-                    document: {
-                        nombre: nextName,
-                    },
-                });
                 setTemplateWorkspaceMeta((previous) => ({
                     ...previous,
                     templateName: normalizeText(nextName) || previous.templateName,
@@ -575,13 +575,9 @@ export default function DashboardHeader(props) {
                 return;
             }
 
-            const ref = doc(db, "borradores", currentId);
-            await updateDoc(ref, {
-                nombre: nextName,
-            });
             setNombreBorrador(nextName);
         },
-        [isTemplateSession, nombreBorrador, slugInvitacion]
+        [isTemplateSession, normalizedEditorSession, nombreBorrador, slugInvitacion]
     );
 
     useEffect(() => {

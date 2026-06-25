@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCanvasImageElementFromLibraryImage,
   canAccessGalleryBuilder,
   getGalleryAllowedLayoutState,
   getGallerySidebarCandidates,
   getSelectedGalleryPhotoUsages,
   isTemplateGalleryAuthoringSession,
+  resolveAvailableImageGalleryAction,
   resolveGallerySidebarEditingTarget,
 } from "./sidebarModel.js";
 
@@ -244,4 +246,57 @@ test("gallery sidebar target asks for sidebar choice with multiple unselected Ga
   assert.equal(result.source, "multiple-galleries");
   assert.equal(result.needsSidebarChoice, true);
   assert.deepEqual(result.candidates, [galleryA, galleryB]);
+});
+
+test("uploaded library image primary action builds a normal canvas image object", () => {
+  const element = buildCanvasImageElementFromLibraryImage(
+    {
+      id: "asset-1",
+      url: "https://cdn.test/user-photo.jpg",
+      ancho: 1200,
+      alto: 800,
+    },
+    {
+      id: "img-fixed",
+      seccionActivaId: "sec-1",
+    }
+  );
+
+  assert.deepEqual(element, {
+    id: "img-fixed",
+    tipo: "imagen",
+    src: "https://cdn.test/user-photo.jpg",
+    ancho: 1200,
+    alto: 800,
+    seccionId: "sec-1",
+  });
+});
+
+test("available image gallery action requires an explicit gallery target state", () => {
+  assert.equal(
+    resolveAvailableImageGalleryAction({ gallery: null }).action,
+    "none"
+  );
+
+  assert.equal(
+    resolveAvailableImageGalleryAction({ gallery: galleryA }).action,
+    "add-to-gallery"
+  );
+
+  assert.equal(
+    resolveAvailableImageGalleryAction({
+      gallery: galleryA,
+      selectedPhotoTarget: { displayIndex: 0 },
+    }).action,
+    "replace-selected-photo"
+  );
+
+  assert.equal(
+    resolveAvailableImageGalleryAction({
+      gallery: galleryA,
+      activeCell: { objId: "gal-a", index: 1 },
+      selectedPhotoTarget: { displayIndex: 0 },
+    }).action,
+    "assign-active-cell"
+  );
 });

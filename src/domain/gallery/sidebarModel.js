@@ -13,6 +13,23 @@ function isGalleryObject(object) {
   return object?.tipo === "galeria" && Boolean(normalizeText(object?.id));
 }
 
+function toFiniteMetric(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+}
+
+function resolveLibraryImageUrl(image) {
+  if (typeof image === "string") return normalizeText(image);
+
+  return (
+    normalizeText(image?.url) ||
+    normalizeText(image?.src) ||
+    normalizeText(image?.downloadURL) ||
+    normalizeText(image?.mediaUrl) ||
+    normalizeText(image?.imageUrl)
+  );
+}
+
 export function isTemplateGalleryAuthoringSession({
   editorSession = null,
   templateSessionMeta = null,
@@ -147,5 +164,64 @@ export function getGalleryAllowedLayoutState(gallery) {
     hasPresetContract: selection.hasPresetContract,
     hasLayoutFields: selection.hasLayoutFields,
     reason: selection.reason,
+  };
+}
+
+export function buildCanvasImageElementFromLibraryImage(image, options = {}) {
+  const src = resolveLibraryImageUrl(image);
+  if (!src) return null;
+
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const now = Number.isFinite(Number(safeOptions.now))
+    ? Number(safeOptions.now)
+    : Date.now();
+  const id = normalizeText(safeOptions.id) || `img-${now}`;
+  const seccionId = normalizeText(safeOptions.seccionActivaId);
+  const width = toFiniteMetric(image?.ancho ?? image?.width);
+  const height = toFiniteMetric(image?.alto ?? image?.height);
+
+  return {
+    id,
+    tipo: "imagen",
+    src,
+    ...(width ? { ancho: width } : {}),
+    ...(height ? { alto: height } : {}),
+    ...(seccionId ? { seccionId } : {}),
+  };
+}
+
+export function resolveAvailableImageGalleryAction({
+  gallery = null,
+  activeCell = null,
+  selectedPhotoTarget = null,
+} = {}) {
+  if (!gallery || gallery.tipo !== "galeria") {
+    return {
+      action: "none",
+      label: "",
+      reason: "no-gallery",
+    };
+  }
+
+  if (activeCell) {
+    return {
+      action: "assign-active-cell",
+      label: "Usar en celda",
+      reason: "active-cell",
+    };
+  }
+
+  if (selectedPhotoTarget) {
+    return {
+      action: "replace-selected-photo",
+      label: "Reemplazar",
+      reason: "selected-photo",
+    };
+  }
+
+  return {
+    action: "add-to-gallery",
+    label: "Agregar a gal.",
+    reason: "active-gallery",
   };
 }

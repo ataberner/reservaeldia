@@ -11,6 +11,7 @@ export default function GaleriaDeImagenes({
   hayMas,
   onInsertar,
   onSelectImage,
+  getImageActions,
   onSeleccionadasChange,
 }) {
   const [seleccionadas, setSeleccionadas] = useState([]);
@@ -91,6 +92,10 @@ export default function GaleriaDeImagenes({
 
         {imagenes.map((img) => {
           const estaSeleccionada = seleccionadas.includes(img.id);
+          const imageActions =
+            typeof getImageActions === "function"
+              ? (getImageActions(img) || []).filter(Boolean)
+              : [];
 
           return (
             <div
@@ -133,6 +138,27 @@ export default function GaleriaDeImagenes({
               >
                 {estaSeleccionada && "?"}
               </div>
+
+              {imageActions.length > 0 && (
+                <div className="absolute bottom-1 left-1 right-1 z-20 flex flex-col gap-1 opacity-95 transition group-hover:opacity-100">
+                  {imageActions.map((action) => (
+                    <button
+                      key={action.key || action.label}
+                      type="button"
+                      title={action.title || action.label}
+                      aria-label={action.title || action.label}
+                      disabled={action.disabled === true}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        action.onClick?.(img, event);
+                      }}
+                      className="min-h-[24px] rounded-md border border-white/70 bg-white/95 px-1.5 py-1 text-[10px] font-semibold leading-tight text-purple-800 shadow-sm transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:text-zinc-300"
+                    >
+                      <span className="block truncate">{action.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

@@ -9,8 +9,10 @@ import {
 } from "@/lib/editorRuntimeBridge";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
+  buildCanvasImageElementFromLibraryImage,
   getGalleryAllowedLayoutState,
   getSelectedGalleryPhotoUsages,
+  resolveAvailableImageGalleryAction,
   resolveGallerySidebarEditingTarget,
 } from "@/domain/gallery/sidebarModel";
 import {
@@ -811,64 +813,115 @@ export default function MiniToolbarTabImagen({
     );
   }, [commitGalleryMutation, galeriaSeleccionada]);
 
-  const handleAvailableImageSelected = useCallback((img) => {
+  const insertAvailableImageIntoCanvas = useCallback((img) => {
+    const imageElement = buildCanvasImageElementFromLibraryImage(img, {
+      id: `img-${Date.now()}`,
+      seccionActivaId,
+    });
+
+    if (!imageElement) {
+      setPanelNotice("No se encontro una imagen valida para insertar.");
+      return false;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT, {
+        detail: imageElement,
+      })
+    );
+    setMostrarGaleria(false);
+    setPanelNotice("Imagen insertada en el lienzo.");
+    return true;
+  }, [seccionActivaId, setMostrarGaleria]);
+
+  const handleAvailableImageGalleryAction = useCallback((img) => {
     const photo = buildGalleryPhotoFromLibraryImage(img);
 
-    if (galeriaSeleccionada) {
-      if (celdaActiva && typeof window.asignarImagenACelda === "function") {
-        const ok = window.asignarImagenACelda(photo, "cover");
-        if (ok) {
-          setPanelNotice("Imagen asignada a la celda activa.");
-          return;
-        }
-      }
+    if (!photo) {
+      setPanelNotice("No se encontro una imagen valida para aplicar.");
+      return;
+    }
 
-      if (galleryEditMode === "replace" && selectedPhotoTarget) {
-        const committed = commitGalleryMutation(
-          replaceGalleryPhoto(galeriaSeleccionada, selectedPhotoTarget, photo),
-          "Foto reemplazada en esta galeria."
-        );
-        if (committed) {
-          setGalleryEditMode("add");
-        }
-        return;
+    if (!galeriaSeleccionada) {
+      if (galleryTargetState.needsSidebarChoice) {
+        setPanelNotice("Elige una galeria del listado para usar esta imagen.");
       }
+      return;
+    }
 
+    const galleryAction = resolveAvailableImageGalleryAction({
+      gallery: galeriaSeleccionada,
+      activeCell: celdaActiva,
+      selectedPhotoTarget,
+    });
+
+    if (
+      galleryAction.action === "assign-active-cell" &&
+      typeof window.asignarImagenACelda === "function"
+    ) {
+      const ok = window.asignarImagenACelda(photo, "cover");
+      if (ok) {
+        setPanelNotice("Imagen asignada a la celda activa.");
+      }
+      return;
+    }
+
+    if (galleryAction.action === "replace-selected-photo" && selectedPhotoTarget) {
+      const committed = commitGalleryMutation(
+        replaceGalleryPhoto(galeriaSeleccionada, selectedPhotoTarget, photo),
+        "Foto reemplazada en esta galeria."
+      );
+      if (committed) {
+        setGalleryEditMode("add");
+      }
+      return;
+    }
+
+    if (galleryAction.action === "add-to-gallery") {
       commitGalleryMutation(
         addGalleryPhotos(galeriaSeleccionada, photo),
         "Foto agregada a esta galeria."
       );
-      return;
     }
-
-    if (galleryTargetState.needsSidebarChoice) {
-      setPanelNotice("Elige una galeria del listado para agregar esta imagen.");
-      return;
-    }
-
-    if (!img || typeof img.url !== "string") return;
-    window.dispatchEvent(
-      new CustomEvent(EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT, {
-        detail: {
-          id: `img-${Date.now()}`,
-          tipo: "imagen",
-          src: img.url,
-          ancho: Number.isFinite(img.ancho) ? img.ancho : undefined,
-          alto: Number.isFinite(img.alto) ? img.alto : undefined,
-          seccionId: seccionActivaId,
-        },
-      })
-    );
-    setMostrarGaleria(false);
   }, [
     celdaActiva,
     commitGalleryMutation,
     galeriaSeleccionada,
     galleryTargetState.needsSidebarChoice,
-    galleryEditMode,
-    seccionActivaId,
     selectedPhotoTarget,
-    setMostrarGaleria,
+  ]);
+
+  const handleAvailableImageSelected = useCallback((img) => {
+    insertAvailableImageIntoCanvas(img);
+  }, [insertAvailableImageIntoCanvas]);
+
+  const getAvailableImageActions = useCallback(() => {
+    const galleryAction = resolveAvailableImageGalleryAction({
+      gallery: galeriaSeleccionada,
+      activeCell: celdaActiva,
+      selectedPhotoTarget,
+    });
+
+    if (galleryAction.action === "none") return [];
+
+    return [
+      {
+        key: galleryAction.action,
+        label: galleryAction.label,
+        title:
+          galleryAction.action === "assign-active-cell"
+            ? "Usar esta imagen en la celda seleccionada"
+            : galleryAction.action === "replace-selected-photo"
+              ? "Reemplazar la foto seleccionada con esta imagen"
+              : "Agregar esta imagen a la galeria activa",
+        onClick: handleAvailableImageGalleryAction,
+      },
+    ];
+  }, [
+    celdaActiva,
+    galeriaSeleccionada,
+    handleAvailableImageGalleryAction,
+    selectedPhotoTarget,
   ]);
 
   const handleUploadButtonClick = useCallback(() => {
@@ -1202,11 +1255,7 @@ export default function MiniToolbarTabImagen({
               Imagenes disponibles
             </div>
             <p className="text-xs text-zinc-500">
-              {galeriaSeleccionada
-                ? galleryEditMode === "replace"
-                  ? "Elige una imagen para reemplazar la foto seleccionada, o sube una nueva."
-                  : "Elige una imagen para agregarla a esta galeria."
-                : "Biblioteca subida disponible para el lienzo."}
+              Biblioteca subida disponible para el lienzo.
             </p>
           </div>
         </div>
@@ -1231,6 +1280,7 @@ export default function MiniToolbarTabImagen({
           seccionActivaId={seccionActivaId}
           cargando={cargando}
           onSelectImage={handleAvailableImageSelected}
+          getImageActions={getAvailableImageActions}
           onSeleccionadasChange={setImagenesSeleccionadas}
         />
       </div>

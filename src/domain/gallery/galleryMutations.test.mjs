@@ -317,3 +317,26 @@ test("applyGalleryMutationToObjects updates only the selected gallery object", (
   assert.equal(result.objects[1], objects[1]);
   assert.notEqual(result.objects[2], galleryB);
 });
+
+test("replace through object mutation updates only the target gallery cell", () => {
+  const galleryA = fixedGallery({ id: "gal-a" });
+  const galleryB = fixedGallery({ id: "gal-b" });
+  const uploadedAssets = [
+    { id: "asset-new", url: "https://cdn.test/new.jpg" },
+  ];
+  const objects = [galleryA, galleryB];
+
+  const result = applyGalleryMutationToObjects(objects, "gal-b", (gallery) =>
+    replaceGalleryPhoto(gallery, { sourceIndex: 2 }, uploadedAssets[0])
+  );
+
+  assert.equal(result.changed, true);
+  assert.equal(result.objects[0], galleryA);
+  assert.notEqual(result.objects[1], galleryB);
+  assert.equal(result.objects[1].cells[0].mediaUrl, galleryB.cells[0].mediaUrl);
+  assert.equal(result.objects[1].cells[1].mediaUrl, galleryB.cells[1].mediaUrl);
+  assert.equal(result.objects[1].cells[2].mediaUrl, "https://cdn.test/new.jpg");
+  assert.deepEqual(uploadedAssets, [
+    { id: "asset-new", url: "https://cdn.test/new.jpg" },
+  ]);
+});

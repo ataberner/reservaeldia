@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     buildNextSectionHeightState,
+    buildNextSectionMobileLayoutModeState,
     buildNextSectionModeState,
     buildSectionCreationState,
     buildSectionMutationWritePayload,
@@ -25,6 +26,7 @@ export default function useSectionsManager({
     setObjetos,
     seccionActivaId,
     setSeccionActivaId,
+    canManageSite = false,
 
     stageRef,
     setGlobalCursor,
@@ -433,6 +435,39 @@ export default function useSectionsManager({
     );
 
     // ------------------------------------------
+    // B.2) Toggle mobile smart reflow ON/OFF
+    // ------------------------------------------
+    const toggleMobileLayoutModeSeccion = useCallback(
+        async (seccionId) => {
+            if (!canManageSite) return;
+            if (!seccionId) return;
+            const targetSection = seccionesRef.current.find((section) => section?.id === seccionId);
+            if (!canMutateSection(targetSection)) return;
+
+            const nextSecciones = buildNextSectionMobileLayoutModeState(seccionesRef.current, {
+                seccionId,
+            });
+            if (nextSecciones === seccionesRef.current) return;
+
+            applySectionSnapshot(nextSecciones);
+
+            try {
+                await persistSectionMutation({
+                    nextSecciones,
+                    nextObjetos: objetosRef.current,
+                    reason: "section-mobile-layout-mode-toggle",
+                    includeObjetos: false,
+                });
+
+                console.log("mobileLayoutMode actualizado:", seccionId);
+            } catch (e) {
+                console.error("Error guardando mobileLayoutMode:", e);
+            }
+        },
+        [applySectionSnapshot, canManageSite, persistSectionMutation]
+    );
+
+    // ------------------------------------------
     // C) Crear sección (y persistir)
     // ------------------------------------------
     const handleCrearSeccion = useCallback(
@@ -487,6 +522,7 @@ export default function useSectionsManager({
 
         // toggle pantalla
         togglePantallaCompletaSeccion,
+        toggleMobileLayoutModeSeccion,
 
         // crear sección
         handleCrearSeccion,

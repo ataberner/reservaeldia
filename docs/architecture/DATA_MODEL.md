@@ -200,6 +200,7 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `fondo` | Required in practice | Base background value. Usually a color string. Background normalizers fall back to `#ffffff`. |
 | `tipo` | Optional | Section classification used by creation/workflow code. |
 | `altoModo` | Optional but behavior-critical | Section layout mode. Current code uses values such as `pantalla` and `fijo`. |
+| `mobileLayoutMode` | Optional render-control enum | Mobile smart-layout participation. Missing/invalid/`auto` uses current automatic behavior. `preserve` opts the section out of smart reflow while keeping normal mobile viewport/fit-scale behavior. |
 | `alturaFijoBackup` | Optional | Backup fixed height when toggling section modes. |
 | `fondoTipo` | Optional | Base background kind. Current HTML generator checks `"imagen"` explicitly. |
 | `fondoImagen` | Optional | Base background image URL/path. |
@@ -295,6 +296,7 @@ Important section rules:
 - Section visuals live on `secciones`, not in `objetos`.
 - `altoModo: "fijo"` starts from persisted `altura`; mobile smart layout can expand the generated section at runtime when content needs more height.
 - `altoModo: "pantalla"` uses viewport-height behavior and `yNorm` placement; it is not processed as a fixed-section smart-layout reflow.
+- `mobileLayoutMode: "preserve"` is an explicit per-section opt-out from mobile smart reflow. The generated section carries `data-mobile-layout-mode="preserve"`, and the runtime skips anchor detection, clustering, ordering, and stack reflow for that section. `fitScale` and fixed-section height expansion can still run because they are part of the general mobile height/fit model.
 - Mobile smart layout records runtime height interpretation with `data-msl-height-model` values such as `publish-like`, `publish-like-pending`, and `embedded-preview`. This marker is generated/runtime state, not Firestore data.
 - `decoracionesFondo` supports legacy shapes (`superior` / `inferior`) but normalizes them into `items`.
 - `decoracionesBorde` is independent from `decoracionesFondo`: use it for top/bottom full-width ornaments, not arbitrary positioned decorations.

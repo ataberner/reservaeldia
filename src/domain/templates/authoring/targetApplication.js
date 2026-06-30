@@ -13,6 +13,9 @@ import {
   resolveCountdownTargetValue,
 } from "../../eventDetails/countdownEventDetails.js";
 import {
+  resolveEventDateValueFromTextTargets,
+} from "../../eventDetails/date.js";
+import {
   isEventVenueAddressField,
 } from "../../eventDetails/location.js";
 import {
@@ -66,6 +69,25 @@ export function resolveFieldValueFromLinkedCountdown({
   }
 
   return fallbackValue;
+}
+
+export function resolveFieldValueFromLinkedDateTargets({
+  field,
+  objetos,
+  fallbackValue,
+} = {}) {
+  return (
+    resolveFieldValueFromLinkedCountdown({
+      field,
+      objetos,
+      fallbackValue: "",
+    }) ||
+    resolveEventDateValueFromTextTargets({
+      field,
+      objetos,
+    }) ||
+    fallbackValue
+  );
 }
 
 export function collectTextualTargetObjectIds(field) {

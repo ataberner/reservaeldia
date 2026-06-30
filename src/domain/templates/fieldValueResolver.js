@@ -14,6 +14,7 @@ export const DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET = "event_datetime_long_es_ar
 export const DATE_TEXT_FORMAT_PRESETS = Object.freeze([
   "event_date_long_es_ar",
   "event_date_short_es_ar",
+  "event_date_dotted_es_ar",
   "event_date_day_month_es_ar",
   "event_datetime_long_es_ar",
   "event_datetime_short_es_ar",
@@ -28,6 +29,11 @@ export const DATE_TEXT_FORMAT_PRESET_OPTIONS = Object.freeze([
     value: "event_date_short_es_ar",
     label: "Fecha corta",
     example: "13/12/2026",
+  },
+  {
+    value: "event_date_dotted_es_ar",
+    label: "Dia.mes.anio",
+    example: "27.4.2026",
   },
   {
     value: "event_date_day_month_es_ar",
@@ -83,6 +89,10 @@ function formatShortDateText(date) {
   return `${padDateSegment(date.getDate())}/${padDateSegment(
     date.getMonth() + 1
   )}/${date.getFullYear()}`;
+}
+
+function formatDottedDateText(date) {
+  return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
 }
 
 function formatTimeText(date) {
@@ -179,6 +189,10 @@ function formatDateTextPreset(date, preset, fieldType = "") {
     return includeTime
       ? `${formatShortDateText(date)}, ${formatTimeText(date)}`
       : formatShortDateText(date);
+  }
+
+  if (safePreset === "event_date_dotted_es_ar") {
+    return formatDottedDateText(date);
   }
 
   if (safePreset === "event_date_day_month_es_ar") {

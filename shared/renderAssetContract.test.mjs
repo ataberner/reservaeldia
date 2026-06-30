@@ -5,6 +5,7 @@ import {
   normalizeRenderAssetObject,
   normalizeRenderAssetState,
   normalizeRenderAssetSection,
+  normalizeSectionMobileLayoutMode,
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
   resolveSectionDecorationAssetUrl,
@@ -119,6 +120,29 @@ test("preserves canonical section background and decoration fields", () => {
     "https://cdn.example.com/edge-bottom.png"
   );
   assert.equal(normalized.decoracionesBorde.bottom.enabled, false);
+});
+
+test("normalizes section mobile layout mode as an explicit preserve opt-out", () => {
+  assert.equal(normalizeSectionMobileLayoutMode("preserve"), "preserve");
+  assert.equal(normalizeSectionMobileLayoutMode("auto"), "auto");
+  assert.equal(normalizeSectionMobileLayoutMode("legacy"), "auto");
+
+  const preserved = normalizeRenderAssetSection({
+    id: "section-preserve",
+    mobileLayoutMode: "preserve",
+  });
+  const automatic = normalizeRenderAssetSection({
+    id: "section-auto",
+    mobileLayoutMode: "auto",
+  });
+  const invalid = normalizeRenderAssetSection({
+    id: "section-invalid",
+    mobileLayoutMode: "off",
+  });
+
+  assert.equal(preserved.mobileLayoutMode, "preserve");
+  assert.equal("mobileLayoutMode" in automatic, false);
+  assert.equal("mobileLayoutMode" in invalid, false);
 });
 
 test("normalizes representative draft-load assets the same way preview preparation expects them", () => {

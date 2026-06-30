@@ -11,6 +11,13 @@ function normalizeLowerText(value) {
   return normalizeText(value).toLowerCase();
 }
 
+const SECTION_MOBILE_LAYOUT_MODES = new Set(["auto", "preserve"]);
+
+function normalizeSectionMobileLayoutMode(value) {
+  const mode = normalizeLowerText(value);
+  return SECTION_MOBILE_LAYOUT_MODES.has(mode) ? mode : "auto";
+}
+
 function isRasterIconObject(value) {
   const safeValue = asObject(value);
   if (normalizeLowerText(safeValue.tipo) !== "icono") return false;
@@ -187,6 +194,13 @@ function normalizeRenderAssetSection(value) {
     next.decoracionesBorde = normalizeSectionEdgeDecorationsValue(safeValue.decoracionesBorde);
   }
 
+  const mobileLayoutMode = normalizeSectionMobileLayoutMode(safeValue.mobileLayoutMode);
+  if (mobileLayoutMode === "preserve") {
+    next.mobileLayoutMode = mobileLayoutMode;
+  } else {
+    delete next.mobileLayoutMode;
+  }
+
   return next;
 }
 
@@ -208,6 +222,7 @@ module.exports = {
   resolveGalleryCellMediaUrl,
   resolveSectionDecorationAssetUrl,
   resolveSectionEdgeDecorationAssetUrl,
+  normalizeSectionMobileLayoutMode,
   normalizeRenderAssetObject,
   normalizeGalleryCellRecord,
   normalizeSectionDecorationRecord,

@@ -4,6 +4,7 @@ import {
   placeSectionBeforeProtectedFinal,
 } from "../../../domain/editor/protectedSections.js";
 import { buildPersistableRenderState } from "../persistence/borradorSyncRenderState.js";
+import { normalizeSectionMobileLayoutMode } from "../../../../shared/renderAssetContract.js";
 
 const ALTURA_PANTALLA_EDITOR_FALLBACK = 500;
 
@@ -94,6 +95,40 @@ export function buildNextSectionModeState(
       ...rest,
       altoModo: "fijo",
       altura: Number.isFinite(backup) ? backup : 600,
+    };
+  });
+
+  return changed ? nextSecciones : safeSecciones;
+}
+
+export function buildNextSectionMobileLayoutModeState(
+  secciones,
+  {
+    seccionId,
+  } = {}
+) {
+  const safeSecciones = asArray(secciones);
+  if (!seccionId) {
+    return safeSecciones;
+  }
+
+  let changed = false;
+
+  const nextSecciones = safeSecciones.map((section) => {
+    if (section?.id !== seccionId) return section;
+    if (!canMutateSection(section)) return section;
+
+    const currentMode = normalizeSectionMobileLayoutMode(section?.mobileLayoutMode);
+    if (currentMode === "preserve") {
+      const { mobileLayoutMode: _mobileLayoutMode, ...rest } = section || {};
+      changed = true;
+      return rest;
+    }
+
+    changed = true;
+    return {
+      ...section,
+      mobileLayoutMode: "preserve",
     };
   });
 

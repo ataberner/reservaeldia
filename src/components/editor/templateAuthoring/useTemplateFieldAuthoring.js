@@ -58,6 +58,7 @@ import {
 import {
   buildTemplateAuthoringTargetPatches,
   resolveFieldValueFromLinkedCountdown,
+  resolveFieldValueFromLinkedDateTargets,
   updateFieldDateTextFormatInSchema,
 } from "@/domain/templates/authoring/targetApplication.js";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
@@ -1083,7 +1084,7 @@ export default function useTemplateFieldAuthoring({
         nextFieldsSchema.find((field) => normalizeText(field?.key) === fieldKey) ||
         ensureResult.field;
       const linkedValue =
-        resolveFieldValueFromLinkedCountdown({
+        resolveFieldValueFromLinkedDateTargets({
           field: linkedField,
           objetos: safeObjetos,
           fallbackValue:
@@ -1250,7 +1251,7 @@ export default function useTemplateFieldAuthoring({
         (field) => normalizeText(field?.key) === normalizeText(fieldKey)
       );
       if (isCountdownCompatibleFieldType(linkedField?.type)) {
-        const linkedValue = resolveFieldValueFromLinkedCountdown({
+        const linkedValue = resolveFieldValueFromLinkedDateTargets({
           field: linkedField,
           objetos: safeObjetos,
           fallbackValue: nextDefaults[normalizeText(fieldKey)],
@@ -1429,7 +1430,7 @@ export default function useTemplateFieldAuthoring({
       });
       if (!updateResult.field) return false;
 
-      const linkedValue = resolveFieldValueFromLinkedCountdown({
+      const linkedValue = resolveFieldValueFromLinkedDateTargets({
         field: updateResult.field,
         objetos: safeObjetos,
         fallbackValue: defaults[safeFieldKey],

@@ -4,8 +4,16 @@ import assert from "node:assert/strict";
 import {
   buildTemplateAuthoringTargetPatches,
   resolveFieldValueFromLinkedCountdown,
+  resolveFieldValueFromLinkedDateTargets,
   updateFieldDateTextFormatInSchema,
 } from "./targetApplication.js";
+import {
+  ensureEventDateField,
+  getEventDateFieldKey,
+} from "../../eventDetails/date.js";
+import {
+  linkElementToField,
+} from "./model.js";
 import {
   buildSuggestedTemplateTargetTransform,
   formatTemplateDateTextValue,
@@ -44,6 +52,10 @@ test("date text presets format event dates in supported display styles", () => {
   assert.equal(
     formatTemplateDateTextValue(iso, "event_date_short_es_ar", "date"),
     "13/12/2026"
+  );
+  assert.equal(
+    formatTemplateDateTextValue(iso, "event_date_dotted_es_ar", "date"),
+    "13.12.2026"
   );
   assert.equal(
     formatTemplateDateTextValue(iso, "event_date_short_es_ar", "datetime"),
@@ -145,6 +157,33 @@ test("authoring target patches prefer linked countdown date when linking text", 
   assert.deepEqual(
     patches.map((entry) => [entry.objectId, entry.patch.texto || entry.patch.fechaObjetivo]),
     [["text-date", "13 de diciembre de 2026, 18:00"]]
+  );
+});
+
+test("event date authoring link initializes from visible linked text target", () => {
+  const fieldKey = getEventDateFieldKey();
+  const ensured = ensureEventDateField({ fieldsSchema: [] });
+  const linked = linkElementToField({
+    fieldsSchema: ensured.fieldsSchema,
+    fieldKey,
+    elementId: "date-title",
+    path: "texto",
+  });
+  const field = linked.fieldsSchema.find((entry) => entry.key === fieldKey);
+
+  assert.equal(
+    resolveFieldValueFromLinkedDateTargets({
+      field,
+      objetos: [
+        {
+          id: "date-title",
+          tipo: "texto",
+          texto: "13 de diciembre de 2026",
+        },
+      ],
+      fallbackValue: "",
+    }),
+    "2026-12-13"
   );
 });
 

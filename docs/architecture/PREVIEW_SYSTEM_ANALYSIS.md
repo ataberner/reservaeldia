@@ -150,6 +150,7 @@ Section height is decided by a combination of generation-time section mode and r
 - `pantalla` sections are viewport-height based and use the `pantalla`/`yNorm` placement model.
 - mobile smart layout can reflow and expand fixed sections after HTML generation.
 - mobile smart layout does not mutate Firestore or editor state.
+- `mobileLayoutMode: "preserve"` on a section is an explicit opt-out from smart reflow. The runtime still measures the section for normal mobile fit/height behavior, but skips anchor detection, clustering, ordering, and stack reflow.
 
 The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It clusters generated DOM nodes, decides whether reflow is needed, stacks flow content when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
 

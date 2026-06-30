@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Lock,
   Unlock,
+  Smartphone,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
@@ -38,6 +39,8 @@ const DESKTOP_TOOLTIP_LABELS = Object.freeze({
   backgroundColor: "Color de fondo",
   lock: "Bloquear seccion",
   unlock: "Desbloquear seccion",
+  mobileReflowOn: "Reflow movil: Activado",
+  mobileReflowOff: "Reflow movil: Desactivado",
 });
 
 const DESKTOP_BUTTON_BASE =
@@ -126,6 +129,7 @@ export default function SectionActionsOverlay({
   isDeletingSection,
   cambiarColorFondoSeccion,
   togglePantallaCompletaSeccion,
+  toggleMobileLayoutModeSeccion,
   secciones,
   setSecciones,
   objetos,
@@ -158,6 +162,17 @@ export default function SectionActionsOverlay({
       templateWorkspace?.readOnly !== true &&
       templateWorkspace?.permissions?.readOnly !== true &&
       typeof onToggleSectionLock === "function"
+  );
+  const mobileLayoutMode =
+    String(seccion?.mobileLayoutMode || "").trim().toLowerCase() === "preserve"
+      ? "preserve"
+      : "auto";
+  const mobileReflowEnabled = mobileLayoutMode !== "preserve";
+  const mobileReflowLabel = mobileReflowEnabled
+    ? DESKTOP_TOOLTIP_LABELS.mobileReflowOn
+    : DESKTOP_TOOLTIP_LABELS.mobileReflowOff;
+  const canToggleMobileLayoutMode = Boolean(
+    canManageSite && typeof toggleMobileLayoutModeSeccion === "function"
   );
   const colorInputValue = resolveColorInputValue(backgroundModel.base.fondo);
   const edgeDecorations = backgroundModel.decoracionesBorde || {};
@@ -197,6 +212,11 @@ export default function SectionActionsOverlay({
   const handleToggleSectionLock = () => {
     if (!canToggleSectionLock || estaAnimando) return;
     onToggleSectionLock(seccion.id);
+  };
+
+  const handleToggleMobileLayoutMode = () => {
+    if (!canToggleMobileLayoutMode || seccionProtegida || estaAnimando) return;
+    toggleMobileLayoutModeSeccion(seccion.id);
   };
 
   const mobileButtonBase =
@@ -366,6 +386,26 @@ export default function SectionActionsOverlay({
         )}
       </button>
 
+      {canToggleMobileLayoutMode ? (
+        <button
+          type="button"
+          onClick={handleToggleMobileLayoutMode}
+          disabled={seccionProtegida || estaAnimando}
+          className={`${mobileButtonBase} ${
+            seccionProtegida || estaAnimando
+              ? mobileButtonDisabled
+              : mobileReflowEnabled
+                ? mobileButtonPrimary
+                : mobileButtonNeutral
+          } ${estaAnimando ? "animate-pulse" : ""}`}
+          title={mobileReflowLabel}
+          aria-label={mobileReflowLabel}
+          aria-pressed={mobileReflowEnabled}
+        >
+          {renderMobileActionContent(Smartphone, mobileReflowLabel)}
+        </button>
+      ) : null}
+
       {canManageSite ? (
         <button
           type="button"
@@ -518,6 +558,21 @@ export default function SectionActionsOverlay({
           disabled: seccionProtegida,
           onClick: () => togglePantallaCompletaSeccion(seccion.id),
         },
+        ...(canToggleMobileLayoutMode
+          ? [
+              {
+                id: "mobile-reflow",
+                icon: Smartphone,
+                title: mobileReflowLabel,
+                ariaLabel: mobileReflowLabel,
+                variant: mobileReflowEnabled ? "active" : "neutral",
+                pressed: mobileReflowEnabled,
+                disabled: seccionProtegida || estaAnimando,
+                pulse: estaAnimando,
+                onClick: handleToggleMobileLayoutMode,
+              },
+            ]
+          : []),
       ],
     },
     ...(canToggleSectionLock

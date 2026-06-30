@@ -1,3 +1,10 @@
+import {
+  findRenderObjectById,
+} from "../editor/renderObjectTree.js";
+import {
+  isTextualTemplateTargetPath,
+} from "../templates/fieldValueResolver.js";
+
 export const EVENT_PERSON_NAME_ROLES = Object.freeze({
   PRIMARY: "primary_person_name",
   SECONDARY: "secondary_person_name",
@@ -39,6 +46,49 @@ function normalizeText(value) {
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
+}
+
+function parsePath(path) {
+  const source = normalizeText(path);
+  if (!source) return [];
+
+  return source
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function readObjectPathValue(object, path) {
+  const segments = parsePath(path);
+  if (!segments.length) return "";
+
+  let current = object;
+  for (const segment of segments) {
+    if (!current || typeof current !== "object") return "";
+    current = current[segment];
+  }
+
+  if (typeof current === "string") return current;
+  if (typeof current === "number" || typeof current === "boolean") {
+    return String(current);
+  }
+  return "";
+}
+
+function resolveFirstLinkedTextualTargetValue(field, objetos) {
+  const targets = Array.isArray(field?.applyTargets) ? field.applyTargets : [];
+
+  for (const target of targets) {
+    if (normalizeText(target?.scope).toLowerCase() !== "objeto") continue;
+    if (!isTextualTemplateTargetPath(target?.path)) continue;
+
+    const targetObject = findRenderObjectById(objetos, target?.id);
+    const value = normalizeText(readObjectPathValue(targetObject, target?.path));
+    if (value) return value;
+  }
+
+  return "";
 }
 
 function coupleKey(format) {
@@ -245,18 +295,46 @@ export function collectEventPersonNameFields(fieldsSchema) {
 export function resolveEventPersonNamesFromAuthoring({
   fieldsSchema,
   defaults,
+  objetos,
 } = {}) {
   const safeDefaults = asObject(defaults);
+  const fields = collectEventPersonNameFields(fieldsSchema);
   const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
   const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
-  let primaryName = normalizeText(safeDefaults[primaryKey]);
-  let secondaryName = normalizeText(safeDefaults[secondaryKey]);
+  const primaryField =
+    fields.find(
+      (field) =>
+        normalizeEventPersonNameRole(field.eventDetailsRole) ===
+        EVENT_PERSON_NAME_ROLES.PRIMARY
+    ) || null;
+  const secondaryField =
+    fields.find(
+      (field) =>
+        normalizeEventPersonNameRole(field.eventDetailsRole) ===
+        EVENT_PERSON_NAME_ROLES.SECONDARY
+    ) || null;
+  const coupleFields = fields.filter(
+    (field) =>
+      normalizeEventPersonNameRole(field.eventDetailsRole) ===
+      EVENT_PERSON_NAME_ROLES.COUPLE
+  );
+  let primaryName =
+    resolveFirstLinkedTextualTargetValue(primaryField, objetos) ||
+    normalizeText(safeDefaults[primaryKey]);
+  let secondaryName =
+    resolveFirstLinkedTextualTargetValue(secondaryField, objetos) ||
+    normalizeText(safeDefaults[secondaryKey]);
 
   if (!primaryName || !secondaryName) {
-    const coupleField = collectEventPersonNameFields(fieldsSchema).find(
-      (field) => normalizeEventPersonNameRole(field.eventDetailsRole) === EVENT_PERSON_NAME_ROLES.COUPLE
+    const visibleCoupleText = coupleFields.reduce((value, field) => {
+      return value || resolveFirstLinkedTextualTargetValue(field, objetos);
+    }, "");
+    const defaultCoupleText = coupleFields.reduce((value, field) => {
+      return value || normalizeText(safeDefaults[field?.key]);
+    }, "");
+    const parsed = splitEventCoupleNamesText(
+      visibleCoupleText || defaultCoupleText
     );
-    const parsed = splitEventCoupleNamesText(safeDefaults[coupleField?.key]);
     primaryName = primaryName || parsed.primaryName;
     secondaryName = secondaryName || parsed.secondaryName;
   }

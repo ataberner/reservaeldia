@@ -3,6 +3,7 @@ import {
   buildSectionDecorationsPayload,
   buildSectionEdgeDecorationsPayload,
 } from "@/domain/sections/backgrounds";
+import { normalizeSectionMobileLayoutMode } from "../../shared/renderAssetContract.js";
 
 function sanitizeDecoracionesFondo(rawDecoracionesFondo, altura = 300) {
   return buildSectionDecorationsPayload(
@@ -33,9 +34,11 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
     decoracionesBorde,
     bloqueada,
     bloqueoMotivo,
+    mobileLayoutMode,
   } = datos;
   const maxOrden = Math.max(-1, ...seccionesExistentes.map((s) => s.orden ?? 0));
   const edgeDecorations = buildSectionEdgeDecorationsPayload(decoracionesBorde);
+  const normalizedMobileLayoutMode = normalizeSectionMobileLayoutMode(mobileLayoutMode);
 
   return {
     id: `seccion-${Date.now()}`,
@@ -69,6 +72,9 @@ export const crearSeccion = (datos = {}, seccionesExistentes = []) => {
     ...(bloqueada === true ? { bloqueada: true } : {}),
     ...(bloqueada === true && typeof bloqueoMotivo === "string" && bloqueoMotivo.trim()
       ? { bloqueoMotivo: bloqueoMotivo.trim() }
+      : {}),
+    ...(normalizedMobileLayoutMode === "preserve"
+      ? { mobileLayoutMode: normalizedMobileLayoutMode }
       : {}),
     orden: maxOrden + 1, // ✅ Siempre consecutivo
   };

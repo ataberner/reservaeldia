@@ -594,6 +594,7 @@ export default function CanvasEditor({
     iniciarControlAltura,
     finalizarControlAltura,
     togglePantallaCompletaSeccion,
+    toggleMobileLayoutModeSeccion,
     handleCrearSeccion,
   } = useSectionsManager({
     slug,
@@ -604,6 +605,7 @@ export default function CanvasEditor({
     setObjetos,
     seccionActivaId,
     setSeccionActivaId,
+    canManageSite,
 
     crearSeccion,
     normalizarAltoModo,
@@ -1719,6 +1721,7 @@ export default function CanvasEditor({
                 isDeletingSection={isDeletingSection}
                 cambiarColorFondoSeccion={cambiarColorFondoSeccion}
                 togglePantallaCompletaSeccion={togglePantallaCompletaSeccion}
+                toggleMobileLayoutModeSeccion={toggleMobileLayoutModeSeccion}
                 secciones={secciones}
                 objetos={objetos}
                 setSecciones={setSecciones}

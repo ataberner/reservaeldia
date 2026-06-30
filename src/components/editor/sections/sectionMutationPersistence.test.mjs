@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildNextSectionHeightState,
+  buildNextSectionMobileLayoutModeState,
   buildNextSectionModeState,
   buildSectionCreationState,
   buildSectionMutationWritePayload,
@@ -29,6 +30,41 @@ test("section height mutation builds a single nextSecciones snapshot", () => {
   assert.notEqual(next, current);
   assert.equal(next[0], current[0]);
   assert.equal(next[1].altura, 641);
+});
+
+test("section mobile layout mode toggles preserve and auto without touching other sections", () => {
+  const current = [
+    { id: "sec-1", altura: 300, altoModo: "fijo", orden: 0 },
+    { id: "sec-2", altura: 420, altoModo: "fijo", orden: 1 },
+  ];
+
+  const preserve = buildNextSectionMobileLayoutModeState(current, {
+    seccionId: "sec-1",
+  });
+
+  assert.notEqual(preserve, current);
+  assert.equal(preserve[0].mobileLayoutMode, "preserve");
+  assert.equal(preserve[1], current[1]);
+
+  const auto = buildNextSectionMobileLayoutModeState(preserve, {
+    seccionId: "sec-1",
+  });
+
+  assert.notEqual(auto, preserve);
+  assert.equal("mobileLayoutMode" in auto[0], false);
+  assert.equal(auto[1], current[1]);
+});
+
+test("section mobile layout mode toggle respects protected sections", () => {
+  const current = [
+    { id: "sec-1", altura: 300, altoModo: "fijo", orden: 0, bloqueada: true },
+  ];
+
+  const next = buildNextSectionMobileLayoutModeState(current, {
+    seccionId: "sec-1",
+  });
+
+  assert.equal(next, current);
 });
 
 test("section mode payload normalizes object placement for pantalla persistence", () => {
@@ -157,6 +193,26 @@ test("section reorder payload preserves the current secciones-only write contrac
   assert.equal(payload.draftContentMeta.lastReason, "section-reorder");
   assert.equal(payload.ultimaEdicion, "ts");
   assert.equal("objetos" in payload, false);
+});
+
+test("section mutation payload preserves explicit mobile layout mode", () => {
+  const { payload } = buildSectionMutationWritePayload({
+    secciones: [
+      {
+        id: "sec-1",
+        altura: 300,
+        altoModo: "fijo",
+        orden: 0,
+        mobileLayoutMode: "preserve",
+      },
+    ],
+    reason: "section-mobile-layout-mode-toggle",
+    ALTURA_PANTALLA_EDITOR: 500,
+    createTimestamp: () => "ts",
+  });
+
+  assert.equal(payload.secciones[0].mobileLayoutMode, "preserve");
+  assert.equal(payload.draftContentMeta.lastReason, "section-mobile-layout-mode-toggle");
 });
 
 test("section delete payload preserves the current secciones plus objetos contract", () => {

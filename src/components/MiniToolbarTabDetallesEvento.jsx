@@ -86,6 +86,7 @@ function readCountdownDetailsState(targetWindow) {
   const baseEventDateBinding = resolveEventDateSidebarBinding({
     fieldsSchema,
     defaults: authoringSnapshot?.defaults,
+    objetos,
   });
   const eventDateCountdownDetails = baseEventDateBinding.field
     ? buildDynamicCountdownEventDetails({
@@ -103,6 +104,7 @@ function readCountdownDetailsState(targetWindow) {
     fieldsSchema,
     defaults: authoringSnapshot?.defaults,
     countdownDetails,
+    objetos,
   });
 
   if (countdownDetails?.hasBinding) {
@@ -162,6 +164,7 @@ function readEventPersonNamesState(targetWindow) {
   return resolveEventPersonNamesFromAuthoring({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
     defaults: authoringSnapshot?.defaults,
+    objetos: readEditorObjects(targetWindow),
   });
 }
 
@@ -248,6 +251,29 @@ function resolveTimeInputValue(value) {
   const minute = Number(match[2]);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "";
   return normalized;
+}
+
+function isDateInputValue(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalizeText(value));
+}
+
+function buildEventDateTargetValue({ date, time, fieldType } = {}) {
+  const safeDate = normalizeText(date);
+  const safeTime = normalizeEventTimeValue(time);
+  const targetISO = buildCountdownTargetIsoFromLocalParts({
+    date: safeDate,
+    time: safeTime,
+  });
+  if (targetISO) return targetISO;
+
+  if (
+    normalizeText(fieldType).toLowerCase() === "date" &&
+    isDateInputValue(safeDate)
+  ) {
+    return safeDate;
+  }
+
+  return "";
 }
 
 function dispatchCountdownPatch(countdownId, cambios) {
@@ -1100,16 +1126,23 @@ export default function MiniToolbarTabDetallesEvento() {
 
     const targetISO = buildCountdownTargetIsoFromLocalParts({
       date: nextDate,
-      time: nextTime,
+      time: normalizeEventTimeValue(nextTime),
     });
-    if (!targetISO) return;
+    const targetValue =
+      targetISO ||
+      buildEventDateTargetValue({
+        date: nextDate,
+        time: nextTime,
+        fieldType: countdownDetails.fieldType || countdownDetails.field?.type,
+      });
+    if (!targetValue) return;
 
-    if (countdownDetails.countdownId) {
+    if (countdownDetails.countdownId && targetISO) {
       dispatchCountdownPatch(countdownDetails.countdownId, {
         fechaObjetivo: targetISO,
       });
     }
-    updateLinkedFieldDefault(countdownDetails.fieldKey, targetISO, {
+    updateLinkedFieldDefault(countdownDetails.fieldKey, targetValue, {
       applyTargets: true,
     });
   };

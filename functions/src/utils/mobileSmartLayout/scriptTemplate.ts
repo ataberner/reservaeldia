@@ -345,10 +345,17 @@ export function buildScript(cfg: NormalizedConfig): string {
     secs.forEach(function(sec){
       var secIndex = secs.indexOf(sec);
       var secModo = (sec.getAttribute("data-modo") || "fijo").toLowerCase();
+      var mobileLayoutMode = (sec.getAttribute("data-mobile-layout-mode") || "auto").toLowerCase();
+      if (mobileLayoutMode !== "preserve") mobileLayoutMode = "auto";
       var allowReflow = shouldProcessSection(sec);
       var isEmbeddedPreview = previewDocument && embeddedContext;
       var usePublishLikeHeightModel = !isEmbeddedPreview || parityPreviewLayout;
-      mslLog("section:start", { secIndex: secIndex, modo: secModo, allowReflow: allowReflow });
+      mslLog("section:start", {
+        secIndex: secIndex,
+        modo: secModo,
+        allowReflow: allowReflow,
+        mobileLayoutMode: mobileLayoutMode
+      });
 
       if (isEmbeddedPreview && !parityPreviewLayout) {
         resetFixedSectionInlineHeight(sec);
@@ -596,6 +603,15 @@ export function buildScript(cfg: NormalizedConfig): string {
         logReflowDecision("skip:invalidRects", {
           willApplyReflow: false,
           allHeightsTiny: true
+        });
+        finalizeSection(0, baseBottomGap);
+        return;
+      }
+
+      if (mobileLayoutMode === "preserve") {
+        logReflowDecision("skip:mobileLayoutPreserve", {
+          willApplyReflow: false,
+          mobileLayoutMode: mobileLayoutMode
         });
         finalizeSection(0, baseBottomGap);
         return;

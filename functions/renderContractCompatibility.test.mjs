@@ -934,6 +934,35 @@ test("keeps preview mobile parity mode out of legacy iframe layout overrides", (
   assert.match(html, /usePublishLikeHeightModel/);
 });
 
+test("renders section mobile layout mode preserve as a smart reflow opt-out", () => {
+  const section = {
+    ...FIXED_SECTION[0],
+    mobileLayoutMode: "preserve",
+  };
+  const object = {
+    id: "mobile-preserve-text",
+    tipo: "texto",
+    seccionId: "section-1",
+    x: 72,
+    y: 96,
+    width: 320,
+    texto: "Mobile preserve",
+    fontSize: 28,
+  };
+
+  const preserveHtml = generarHTMLDesdeSecciones([section], [object], null, {});
+  const autoHtml = generarHTMLDesdeSecciones(
+    [{ ...section, mobileLayoutMode: "auto" }],
+    [object],
+    null,
+    {}
+  );
+
+  assert.match(preserveHtml, /data-mobile-layout-mode="preserve"/);
+  assert.doesNotMatch(autoHtml, /data-mobile-layout-mode=/);
+  assert.match(preserveHtml, /skip:mobileLayoutPreserve/);
+});
+
 test("keeps grouped text plus icon compositions nested under one authored object id", () => {
   const html = generarHTMLDesdeObjetos(
     [createPreservedTextIconGroup()],

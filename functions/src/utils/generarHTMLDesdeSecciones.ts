@@ -21,6 +21,9 @@ import {
 const {
   isCountdownVisible,
 } = require("../../shared/countdownEventDetails.cjs");
+const {
+  normalizeSectionMobileLayoutMode,
+} = require("../../shared/renderAssetContract.cjs");
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
@@ -1326,6 +1329,9 @@ export function generarHTMLDesdeSecciones(
       const hbase = Number.isFinite(seccion?.altura) ? Number(seccion.altura) : 600;
       const fondoEsImagen = hasImageBackground(seccion);
       const seccionId = escapeAttr(String(seccion?.id || "").trim());
+      const mobileLayoutMode = normalizeSectionMobileLayoutMode(seccion?.mobileLayoutMode);
+      const mobileLayoutModeAttr =
+        mobileLayoutMode === "preserve" ? ' data-mobile-layout-mode="preserve"' : "";
 
       const objsDeSeccion = objetos.filter((o) => o.seccionId === seccion.id);
 
@@ -1353,7 +1359,7 @@ export function generarHTMLDesdeSecciones(
 
 
       return `
-<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}"${edgeDecorationsAttr} style="--hbase:${hbase}">
+<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}"${edgeDecorationsAttr}${mobileLayoutModeAttr} style="--hbase:${hbase}">
   <div class="sec-zoom sec-zoom-backdrop">
     ${fondoLayerHtml}
   </div>

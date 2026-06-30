@@ -56,14 +56,14 @@ export default function LandingHero({
         ))}
 
         <h1 className={styles.heroTitle}>
-          Resolv&eacute; la{" "}
+          Cre&aacute; la{" "}
           <span
             className={joinClassNames(
               "landing-hero-title-gradient",
               styles.heroTitleGradient
             )}
           >
-            invitaci&oacute;n de tu
+            invitaci&oacute;n digital de tu
           </span>
           <br />
           <span

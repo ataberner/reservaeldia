@@ -58,6 +58,10 @@ test("date text presets format event dates in supported display styles", () => {
     "13.12.2026"
   );
   assert.equal(
+    formatTemplateDateTextValue(iso, "event_date_pipe_short_year_es_ar", "date"),
+    "13|12|26"
+  );
+  assert.equal(
     formatTemplateDateTextValue(iso, "event_date_short_es_ar", "datetime"),
     "13/12/2026"
   );

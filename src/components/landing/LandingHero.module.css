@@ -11,7 +11,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background-image: url("/assets/img/Imagen Hero.jpg");
+  background-image: url("/assets/img/Imagen Hero.webp");
   background-position: center var(--landing-hero-bg-position-y);
   background-repeat: no-repeat;
   background-size: var(--landing-hero-bg-size);
@@ -191,7 +191,7 @@
     z-index: 0;
     width: calc(var(--landing-hero-mobile-bg-height) * 3.25424);
     height: var(--landing-hero-mobile-bg-height);
-    background-image: url("/assets/img/Imagen Hero.jpg");
+    background-image: url("/assets/img/Imagen Hero.webp");
     background-position: center center;
     background-repeat: no-repeat;
     background-size: 100% 100%;

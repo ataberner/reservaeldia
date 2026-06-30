@@ -3,6 +3,8 @@ import { resolvePublicationLifecycleSnapshotFromData } from "./publicationLifecy
 import {
   isCompliantPublishedShareImageBuffer,
   isCurrentGeneratedShareImageRequest,
+  PUBLIC_INVITATION_ROBOTS_CONTENT,
+  PUBLIC_SHARE_IMAGE_ROBOTS_CONTENT,
 } from "./publishedShareImage";
 
 type PublicDeliveryLogger = {
@@ -19,6 +21,17 @@ export type PublicDeliveryResponse = {
   headers?: Record<string, string>;
   body: string | Buffer;
 };
+
+const PUBLIC_INVITATION_ROBOTS_HEADERS = Object.freeze({
+  "X-Robots-Tag": PUBLIC_INVITATION_ROBOTS_CONTENT,
+});
+const PUBLIC_INVITATION_HTML_HEADERS = Object.freeze({
+  "Content-Type": "text/html; charset=utf-8",
+  "X-Robots-Tag": PUBLIC_INVITATION_ROBOTS_CONTENT,
+});
+const PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS = Object.freeze({
+  "X-Robots-Tag": PUBLIC_SHARE_IMAGE_ROBOTS_CONTENT,
+});
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || "");
@@ -89,7 +102,13 @@ export async function resolvePublicInvitationHtmlResponse(params: {
   logger?: PublicDeliveryLogger;
 }): Promise<PublicDeliveryResponse> {
   const slug = normalizePublicSlug(params.slugInput);
-  if (!slug) return { status: 400, body: "Falta el slug" };
+  if (!slug) {
+    return {
+      status: 400,
+      headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
+      body: "Falta el slug",
+    };
+  }
 
   const access = await resolvePublicInvitationAccessFlow({
     slug,
@@ -97,17 +116,27 @@ export async function resolvePublicInvitationHtmlResponse(params: {
     finalizeExpiredPublication: params.finalizeExpiredPublication,
     logger: params.logger,
   });
-  if (!access.ok) return { status: access.status, body: access.message };
+  if (!access.ok) {
+    return {
+      status: access.status,
+      headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
+      body: access.message,
+    };
+  }
 
   try {
     const content = await params.readPublicHtmlArtifact(slug);
     if (!content) {
-      return { status: 404, body: "Invitacion publicada no encontrada" };
+      return {
+        status: 404,
+        headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
+        body: "Invitacion publicada no encontrada",
+      };
     }
 
     return {
       status: 200,
-      headers: { "Content-Type": "text/html" },
+      headers: PUBLIC_INVITATION_HTML_HEADERS,
       body: Buffer.isBuffer(content) ? content.toString() : String(content),
     };
   } catch (error) {
@@ -115,7 +144,11 @@ export async function resolvePublicInvitationHtmlResponse(params: {
       slug,
       error: getErrorMessage(error),
     });
-    return { status: 500, body: "No se pudo cargar la invitacion" };
+    return {
+      status: 500,
+      headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
+      body: "No se pudo cargar la invitacion",
+    };
   }
 }
 
@@ -132,7 +165,13 @@ export async function resolvePublicShareImageResponse(params: {
   logger?: PublicDeliveryLogger;
 }): Promise<PublicDeliveryResponse> {
   const slug = normalizePublicSlug(params.slugInput);
-  if (!slug) return { status: 400, body: "Falta el slug" };
+  if (!slug) {
+    return {
+      status: 400,
+      headers: PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS,
+      body: "Falta el slug",
+    };
+  }
 
   const access = await resolvePublicInvitationAccessFlow({
     slug,
@@ -140,7 +179,13 @@ export async function resolvePublicShareImageResponse(params: {
     finalizeExpiredPublication: params.finalizeExpiredPublication,
     logger: params.logger,
   });
-  if (!access.ok) return { status: access.status, body: access.message };
+  if (!access.ok) {
+    return {
+      status: access.status,
+      headers: PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS,
+      body: access.message,
+    };
+  }
 
   try {
     const requestedVersion = resolveRequestedShareVersion(params.requestedVersionInput);
@@ -151,12 +196,20 @@ export async function resolvePublicShareImageResponse(params: {
         requestedVersion,
       })
     ) {
-      return { status: 404, body: "Imagen share no encontrada" };
+      return {
+        status: 404,
+        headers: PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS,
+        body: "Imagen share no encontrada",
+      };
     }
 
     const content = await params.readPublicShareImageArtifact(slug);
     if (!content) {
-      return { status: 404, body: "Imagen share no encontrada" };
+      return {
+        status: 404,
+        headers: PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS,
+        body: "Imagen share no encontrada",
+      };
     }
 
     const isCompliant = await (params.isShareImageCompliant ||
@@ -165,7 +218,11 @@ export async function resolvePublicShareImageResponse(params: {
       params.logger?.warn?.("Imagen share publica no cumple dimensiones requeridas", {
         slug,
       });
-      return { status: 404, body: "Imagen share no encontrada" };
+      return {
+        status: 404,
+        headers: PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS,
+        body: "Imagen share no encontrada",
+      };
     }
 
     return {
@@ -173,6 +230,7 @@ export async function resolvePublicShareImageResponse(params: {
       headers: {
         "Content-Type": "image/jpeg",
         "Cache-Control": "public,max-age=31536000,immutable",
+        "X-Robots-Tag": PUBLIC_SHARE_IMAGE_ROBOTS_CONTENT,
       },
       body: content,
     };
@@ -181,6 +239,10 @@ export async function resolvePublicShareImageResponse(params: {
       slug,
       error: getErrorMessage(error),
     });
-    return { status: 500, body: "No se pudo cargar la imagen share" };
+    return {
+      status: 500,
+      headers: PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS,
+      body: "No se pudo cargar la imagen share",
+    };
   }
 }

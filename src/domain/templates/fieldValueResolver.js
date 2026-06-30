@@ -15,6 +15,7 @@ export const DATE_TEXT_FORMAT_PRESETS = Object.freeze([
   "event_date_long_es_ar",
   "event_date_short_es_ar",
   "event_date_dotted_es_ar",
+  "event_date_pipe_short_year_es_ar",
   "event_date_day_month_es_ar",
   "event_datetime_long_es_ar",
   "event_datetime_short_es_ar",
@@ -34,6 +35,11 @@ export const DATE_TEXT_FORMAT_PRESET_OPTIONS = Object.freeze([
     value: "event_date_dotted_es_ar",
     label: "Dia.mes.anio",
     example: "27.4.2026",
+  },
+  {
+    value: "event_date_pipe_short_year_es_ar",
+    label: "DD|MM|YY",
+    example: "26|08|27",
   },
   {
     value: "event_date_day_month_es_ar",
@@ -93,6 +99,11 @@ function formatShortDateText(date) {
 
 function formatDottedDateText(date) {
   return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
+}
+
+function formatPipeShortYearDateText(date) {
+  const shortYear = String(date.getFullYear()).slice(-2);
+  return `${padDateSegment(date.getDate())}|${padDateSegment(date.getMonth() + 1)}|${shortYear}`;
 }
 
 function formatTimeText(date) {
@@ -193,6 +204,10 @@ function formatDateTextPreset(date, preset, fieldType = "") {
 
   if (safePreset === "event_date_dotted_es_ar") {
     return formatDottedDateText(date);
+  }
+
+  if (safePreset === "event_date_pipe_short_year_es_ar") {
+    return formatPipeShortYearDateText(date);
   }
 
   if (safePreset === "event_date_day_month_es_ar") {

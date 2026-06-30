@@ -13,6 +13,7 @@ import {
   buildPublicationOgDescription,
   injectOpenGraphMetadata,
   isPublishedShareImageEnabled,
+  PUBLIC_INVITATION_ROBOTS_CONTENT,
   resolveRequiredGeneratedPublishedShareImageMetadata,
   type GeneratedShareImageResult,
   type PublishedShareMetadata,
@@ -374,6 +375,7 @@ export async function executePublicationPublish(
       url: plannedPublish.publicUrl,
       imageWidth: share.width,
       imageHeight: share.height,
+      robots: PUBLIC_INVITATION_ROBOTS_CONTENT,
     });
 
     htmlWriteAttempted = true;

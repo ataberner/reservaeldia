@@ -57,8 +57,34 @@ test("public invitation route fails closed when published metadata exists but in
   assert.equal(htmlReads, 1);
   assert.deepEqual(result, {
     status: 404,
+    headers: {
+      "X-Robots-Tag": "noindex, noarchive",
+    },
     body: "Invitacion publicada no encontrada",
   });
+});
+
+test("public invitation route serves active html with noindex robots headers", async () => {
+  const result = await resolvePublicInvitationHtmlResponse({
+    slugInput: "mi-slug",
+    async loadPublicationData() {
+      return createActivePublication();
+    },
+    async finalizeExpiredPublication() {
+      throw new Error("should not finalize active publication");
+    },
+    async readPublicHtmlArtifact(slug) {
+      assert.equal(slug, "mi-slug");
+      return "<!doctype html><html><head></head><body>ok</body></html>";
+    },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.headers, {
+    "Content-Type": "text/html; charset=utf-8",
+    "X-Robots-Tag": "noindex, noarchive",
+  });
+  assert.match(String(result.body), /<body>ok<\/body>/);
 });
 
 test("public invitation route fails closed when index artifact cannot be downloaded", async () => {
@@ -79,6 +105,9 @@ test("public invitation route fails closed when index artifact cannot be downloa
 
   assert.deepEqual(result, {
     status: 500,
+    headers: {
+      "X-Robots-Tag": "noindex, noarchive",
+    },
     body: "No se pudo cargar la invitacion",
   });
   assert.equal(calls.errors.length, 1);
@@ -118,6 +147,9 @@ test("public share image route rejects stale versions before reading storage", a
   assert.equal(shareReads, 0);
   assert.deepEqual(result, {
     status: 404,
+    headers: {
+      "X-Robots-Tag": "noindex",
+    },
     body: "Imagen share no encontrada",
   });
 });
@@ -153,6 +185,9 @@ test("public share image route rejects fallback metadata as non-current generate
   assert.equal(shareReads, 0);
   assert.deepEqual(result, {
     status: 404,
+    headers: {
+      "X-Robots-Tag": "noindex",
+    },
     body: "Imagen share no encontrada",
   });
 });
@@ -190,6 +225,7 @@ test("public share image route serves only current generated metadata with a com
   assert.deepEqual(result.headers, {
     "Content-Type": "image/jpeg",
     "Cache-Control": "public,max-age=31536000,immutable",
+    "X-Robots-Tag": "noindex",
   });
   assert.equal(result.body, image);
 });
@@ -224,6 +260,9 @@ test("public share image route fails closed when the current artifact is not com
 
   assert.deepEqual(result, {
     status: 404,
+    headers: {
+      "X-Robots-Tag": "noindex",
+    },
     body: "Imagen share no encontrada",
   });
   assert.equal(calls.warnings.length, 1);

@@ -14,6 +14,8 @@ export const PUBLISHED_SHARE_IMAGE_QUALITY = 85;
 export const PUBLISHED_SHARE_IMAGE_TIMEOUT_MS = 15000;
 export const PUBLISHED_SHARE_IMAGE_RENDER_DELAY_MS = 15000;
 export const PUBLISHED_SHARE_IMAGE_MIME_TYPE = "image/jpeg";
+export const PUBLIC_INVITATION_ROBOTS_CONTENT = "noindex, noarchive";
+export const PUBLIC_SHARE_IMAGE_ROBOTS_CONTENT = "noindex";
 const MAX_PUBLIC_SHARE_IMAGE_VALIDATION_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_STATIC_SHARE_IMAGE_URL =
   "https://reservaeldia.com.ar/assets/img/default-share.jpg";
@@ -149,6 +151,7 @@ export type OpenGraphMetadataInput = {
   url: string;
   imageWidth?: number;
   imageHeight?: number;
+  robots?: string;
 };
 
 function getString(value: unknown): string {
@@ -1022,6 +1025,10 @@ function stripManagedOpenGraphTags(html: string): string {
     "og:url",
     "og:type",
     "twitter:card",
+    "twitter:title",
+    "twitter:description",
+    "twitter:image",
+    "robots",
   ];
 
   return managedKeys.reduce((currentHtml, key) => {
@@ -1046,7 +1053,11 @@ export function buildOpenGraphMetadataTags(input: OpenGraphMetadataInput): strin
     metaTag("property", "og:url", input.url),
     metaTag("property", "og:type", "website"),
     metaTag("name", "twitter:card", "summary_large_image"),
-  ].join("\n");
+    metaTag("name", "twitter:title", input.title),
+    metaTag("name", "twitter:description", input.description),
+    metaTag("name", "twitter:image", input.imageUrl),
+    getString(input.robots) ? metaTag("name", "robots", input.robots) : "",
+  ].filter(Boolean).join("\n");
 }
 
 export function injectOpenGraphMetadata(

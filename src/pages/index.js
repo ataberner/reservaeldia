@@ -93,6 +93,38 @@ function getAuthNoticeMessage(code) {
 }
 
 const LANDING_TEMPLATES_ANCHOR = "#plantillas";
+const LANDING_SITE_URL = "https://reservaeldia.com.ar";
+const LANDING_CANONICAL_URL = `${LANDING_SITE_URL}/`;
+const LANDING_BRAND_NAME = "Reserva el D\u00eda";
+const LANDING_TITLE = "Invitaciones digitales para casamientos | Reserva el D\u00eda";
+const LANDING_DESCRIPTION =
+  "Cre\u00e1 tu invitaci\u00f3n digital de casamiento, compartila por WhatsApp y gestion\u00e1 confirmaciones, invitados, regalos, mapas y fotos desde un solo link.";
+const LANDING_SHARE_IMAGE_URL = `${LANDING_SITE_URL}/assets/img/default-share.jpg`;
+const LANDING_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${LANDING_SITE_URL}/#organization`,
+      name: LANDING_BRAND_NAME,
+      url: LANDING_CANONICAL_URL,
+      logo: {
+        "@type": "ImageObject",
+        url: `${LANDING_SITE_URL}/assets/img/logo-full.png`,
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${LANDING_SITE_URL}/#website`,
+      name: LANDING_BRAND_NAME,
+      url: LANDING_CANONICAL_URL,
+      inLanguage: "es-AR",
+      publisher: {
+        "@id": `${LANDING_SITE_URL}/#organization`,
+      },
+    },
+  ],
+};
 
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
@@ -256,9 +288,30 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Invitaciones Digitales para Bodas | Reserva el Día</title>
-        <meta name="description" content="Crea y personaliza invitaciones digitales para bodas de manera fácil y rápida. ¡Diseños únicos y elegantes para tu casamiento!" />
-        <meta name="robots" content="noindex, nofollow" /> {/* BORRAR ESTA LINEA CUANDO QUIERA MEJORAR EL SEO */}
+        <title>{LANDING_TITLE}</title>
+        <meta name="description" content={LANDING_DESCRIPTION} />
+        <meta name="robots" content="index, follow" />
+        <link rel="canonical" href={LANDING_CANONICAL_URL} />
+        <link rel="preload" as="image" href="/assets/img/Imagen%20Hero.webp" />
+        <meta property="og:type" content="website" />
+        <meta property="og:locale" content="es_AR" />
+        <meta property="og:site_name" content={LANDING_BRAND_NAME} />
+        <meta property="og:title" content={LANDING_TITLE} />
+        <meta property="og:description" content={LANDING_DESCRIPTION} />
+        <meta property="og:url" content={LANDING_CANONICAL_URL} />
+        <meta property="og:image" content={LANDING_SHARE_IMAGE_URL} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={LANDING_TITLE} />
+        <meta name="twitter:description" content={LANDING_DESCRIPTION} />
+        <meta name="twitter:image" content={LANDING_SHARE_IMAGE_URL} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(LANDING_STRUCTURED_DATA),
+          }}
+        />
         <link rel="preconnect" href="https://accounts.google.com" />
         <link rel="preconnect" href="https://apis.google.com" />
         <link rel="preconnect" href="https://www.gstatic.com" crossOrigin="anonymous" />

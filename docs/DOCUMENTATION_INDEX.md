@@ -58,6 +58,7 @@ likely to be used as an authority by humans or AI agents.
 | Checkout/publication lifecycle | [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md) | Checkout, payment approval, slug reservation, publish execution, retry, and public delivery lifecycle. |
 | Public interactivity | [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) | Functional CTA behavior across preview and publish. |
 | Share image | [PUBLISHED_SHARE_IMAGE_CONTRACT.md](contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md) | Published `share.jpg` and Open Graph contract. |
+| SEO route policy | [SEO_ROUTE_INVENTORY.md](architecture/SEO_ROUTE_INVENTORY.md) | Crawlability, indexability, sitemap inclusion, and metadata policy by public route. |
 | Image roles and decorations | [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md) | Image role conversion, section backgrounds, free decorations, and edge decorations. |
 | Gallery | [GALLERY_SYSTEM_CONTRACT.md](contracts/GALLERY_SYSTEM_CONTRACT.md), [GALLERY_EDITOR_CONTRACT.md](contracts/GALLERY_EDITOR_CONTRACT.md), [GALLERY_LAYOUT_PRESETS_CONTRACT.md](contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md), [GALLERY_VIEWER_RENDER_CONTRACT.md](contracts/GALLERY_VIEWER_RENDER_CONTRACT.md) | Gallery invariants, editor/sidebar behavior, preset model, and generated viewer behavior. |
 | Grouping | [GROUP_RENDER_MODEL.md](architecture/GROUP_RENDER_MODEL.md) | Preserved `tipo: "grupo"` render model. |
@@ -189,6 +190,13 @@ as code-level anchors.
 Code-level anchors include `functions/src/payments/publishedShareImage.ts`,
 `functions/src/payments/publishedShareImageRenderer.ts`, and
 `functions/src/payments/publicationPublishExecution.ts`.
+
+### SEO And Public Indexing
+
+1. [SEO_ROUTE_INVENTORY.md](architecture/SEO_ROUTE_INVENTORY.md)
+2. [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md)
+3. [PUBLISHED_SHARE_IMAGE_CONTRACT.md](contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md)
+4. [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md) when public invitation delivery is involved.
 
 ### CSS And Design System
 

@@ -78,6 +78,12 @@ function buildDateInputValue({ year, month, day } = {}) {
   return `${safeYear}-${padDateSegment(safeMonth)}-${padDateSegment(safeDay)}`;
 }
 
+function expandTwoDigitYear(year) {
+  const safeYear = Number(year);
+  if (!Number.isInteger(safeYear) || safeYear < 0 || safeYear > 99) return "";
+  return 2000 + safeYear;
+}
+
 function parsePath(path) {
   const source = normalizeText(path);
   if (!source) return [];
@@ -138,6 +144,17 @@ export function normalizeVisibleEventDateValue(value) {
       day: dottedDateMatch[1],
       month: dottedDateMatch[2],
       year: dottedDateMatch[3],
+    });
+  }
+
+  const pipeShortYearDateMatch = raw.match(
+    /^(\d{1,2})\|(\d{1,2})\|(\d{2})(?:\D.*)?$/
+  );
+  if (pipeShortYearDateMatch) {
+    return buildDateInputValue({
+      day: pipeShortYearDateMatch[1],
+      month: pipeShortYearDateMatch[2],
+      year: expandTwoDigitYear(pipeShortYearDateMatch[3]),
     });
   }
 

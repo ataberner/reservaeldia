@@ -357,6 +357,11 @@ test("executePublicationPublish preserves first-publication writes, html path, a
   assert.equal(harness.calls.savedHtml.length, 1);
   assert.equal(harness.calls.savedHtml[0].filePath, "publicadas/mi-slug/index.html");
   assert.match(harness.calls.savedHtml[0].html, /<html/i);
+  assert.match(
+    harness.calls.savedHtml[0].html,
+    /name="robots" content="noindex, noarchive"/
+  );
+  assert.doesNotMatch(harness.calls.savedHtml[0].html, /nofollow|nosnippet/);
   assert.equal(harness.calls.writes.length, 1);
   assert.equal(harness.calls.iconUsage.length, 1);
 
@@ -562,12 +567,18 @@ test("injectOpenGraphMetadata escapes managed Open Graph and Twitter metadata", 
     description: "Venite > ahora & disfruta",
     imageUrl: 'https://cdn.example.test/share.jpg?x=1&name="bad"',
     url: "https://reservaeldia.com.ar/i/mi-slug?x=1&y=2",
+    robots: "noindex, noarchive",
   });
 
   assert.doesNotMatch(output, /content="old"/);
   assert.match(output, /property="og:title" content="Fiesta &quot;A&quot; &amp; &lt;B&gt;"/);
   assert.match(output, /property="og:description" content="Venite &gt; ahora &amp; disfruta"/);
   assert.match(output, /name="twitter:card" content="summary_large_image"/);
+  assert.match(output, /name="twitter:title" content="Fiesta &quot;A&quot; &amp; &lt;B&gt;"/);
+  assert.match(output, /name="twitter:description" content="Venite &gt; ahora &amp; disfruta"/);
+  assert.match(output, /name="twitter:image" content="https:\/\/cdn\.example\.test\/share\.jpg\?x=1&amp;name=&quot;bad&quot;"/);
+  assert.match(output, /name="robots" content="noindex, noarchive"/);
+  assert.doesNotMatch(output, /nofollow|nosnippet/);
   assert.match(output, /og:image:width" content="1200"/);
   assert.match(output, /og:image:height" content="630"/);
 });

@@ -60,6 +60,10 @@
           {
             "key": "Cache-Control",
             "value": "no-cache, no-store, must-revalidate"
+          },
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, noarchive"
           }
         ]
       },
@@ -69,6 +73,73 @@
           {
             "key": "Cache-Control",
             "value": "no-cache, no-store, must-revalidate"
+          },
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/admin",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/admin/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/boda/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/para-diseño/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/404.html",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex"
+          }
+        ]
+      },
+      {
+        "source": "/404/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex"
+          }
+        ]
+      },
+      {
+        "source": "/assets/**/*.pdf",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex"
           }
         ]
       },

@@ -1,7 +1,7 @@
 import styles from "./LandingShareSection.module.css";
 
 const SHARE_INVITATION_MOCKUP_SRC =
-  "/assets/img/landing/compartir-invitacion-mockup.png";
+  "/assets/img/landing/compartir-invitacion-mockup.webp";
 
 export default function LandingShareSection({
   titleId = "landing-share-title",
@@ -17,7 +17,7 @@ export default function LandingShareSection({
         <div className={styles.shareMedia}>
           <img
             src={SHARE_INVITATION_MOCKUP_SRC}
-            alt="Mockup de invitaci&oacute;n digital compartida en celular, tablet y tarjeta"
+            alt="Mockup de invitacion digital compartida en celular, tablet y tarjeta"
             className={styles.shareImage}
             loading="lazy"
             decoding="async"

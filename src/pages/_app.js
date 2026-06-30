@@ -2,11 +2,25 @@ import '../../styles/globals.css';
 import '../../styles/styles.css';
 import Head from 'next/head';
 import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { initializeCountdownAuditRuntime } from "@/domain/countdownAudit/runtime";
 
 const VIEWPORT_CONTENT = 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover';
+const PRIVATE_ROUTE_PREFIXES = ["/dashboard", "/admin"];
+const PRIVATE_ROBOTS_CONTENT = "noindex, noarchive";
+
+function shouldNoIndexRoute(pathname) {
+  const normalizedPathname = String(pathname || "").trim();
+  return PRIVATE_ROUTE_PREFIXES.some(
+    (prefix) =>
+      normalizedPathname === prefix || normalizedPathname.startsWith(`${prefix}/`)
+  );
+}
 
 export default function MyApp({ Component, pageProps }) {
+  const router = useRouter();
+  const shouldNoIndex = shouldNoIndexRoute(router.pathname);
+
   useEffect(() => {
     initializeCountdownAuditRuntime();
   }, []);
@@ -83,6 +97,7 @@ export default function MyApp({ Component, pageProps }) {
     <>
       <Head>
         <meta name="viewport" content={VIEWPORT_CONTENT} />
+        {shouldNoIndex && <meta name="robots" content={PRIVATE_ROBOTS_CONTENT} />}
         <link rel="preconnect" href="https://accounts.google.com" />
         <link rel="preconnect" href="https://www.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://reservaeldia.com.ar" />

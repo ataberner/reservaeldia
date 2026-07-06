@@ -12,7 +12,7 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 
 | Route | Index | Robots | Canonical | Sitemap | Social metadata | Structured data | Priority |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `/` | Yes | `index, follow` | `https://reservaeldia.com.ar/` | Yes | Open Graph and Twitter Card | `Organization`, `WebSite` | High |
+| `/` | Yes | `index, follow` | `https://reservaeldia.com.ar/` | Yes | Open Graph and Twitter Card | `Organization`, `WebSite`, `WebPage` | High |
 | `/i/{slug}` | No | `noindex, noarchive` | Omitted | No | Open Graph and Twitter Card for private sharing | None | High |
 | `/i/{slug}/share.jpg` | No | `X-Robots-Tag: noindex` | N/A | No | N/A | None | High |
 | `/dashboard/`, `/dashboard/**` | No | `noindex, noarchive` | Omitted | No | None | None | High |
@@ -37,6 +37,9 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 - Future SEO pages such as `/plantillas/`, `/funcionalidades/*`,
   `/preguntas-frecuentes/`, guides, or blog posts must be added to this
   inventory before implementation.
+- AEO policy is tracked in [AEO_ROUTE_INVENTORY.md](AEO_ROUTE_INVENTORY.md).
+  Keep both inventories aligned when route indexability, metadata, or
+  structured-data policy changes.
 
 ## Verification Anchors
 

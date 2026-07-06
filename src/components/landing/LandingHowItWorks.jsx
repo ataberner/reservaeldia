@@ -28,12 +28,8 @@ export default function LandingHowItWorks({ id = "como-funciona" }) {
     <section
       id={id || undefined}
       className={styles.howItWorksSection}
-      aria-labelledby="landing-how-it-works-title"
     >
       <div className={styles.howItWorksInner}>
-        <h2 id="landing-how-it-works-title" className={styles.howItWorksTitle}>
-          C&oacute;mo crear tu invitaci&oacute;n digital
-        </h2>
         <ol className={styles.howItWorksGrid}>
           {HOW_IT_WORKS_STEPS.map((step, index) => (
             <li key={step.title} className={styles.howItWorksStep}>

@@ -27,6 +27,17 @@ import {
   hasGoogleRedirectPending,
   isLikelyGoogleReturnNavigation,
 } from "@/lib/auth/googleRedirectFlow";
+import {
+  LANDING_BRAND_NAME,
+  LANDING_CANONICAL_URL,
+  LANDING_DESCRIPTION,
+  LANDING_HERO_IMAGE_PRELOAD_URL,
+  LANDING_SHARE_IMAGE_URL,
+  LANDING_STRUCTURED_DATA,
+  LANDING_TEMPLATES_ANCHOR,
+  LANDING_TITLE,
+  serializeLandingStructuredData,
+} from "@/domain/seo/landingMetadata";
 
 async function waitForAuthUser(timeoutMs = 3500) {
   if (auth.currentUser) return auth.currentUser;
@@ -91,40 +102,6 @@ function getAuthNoticeMessage(code) {
 
   return "";
 }
-
-const LANDING_TEMPLATES_ANCHOR = "#plantillas";
-const LANDING_SITE_URL = "https://reservaeldia.com.ar";
-const LANDING_CANONICAL_URL = `${LANDING_SITE_URL}/`;
-const LANDING_BRAND_NAME = "Reserva el D\u00eda";
-const LANDING_TITLE = "Invitaciones digitales para casamientos | Reserva el D\u00eda";
-const LANDING_DESCRIPTION =
-  "Cre\u00e1 tu invitaci\u00f3n digital de casamiento, compartila por WhatsApp y gestion\u00e1 confirmaciones, invitados, regalos, mapas y fotos desde un solo link.";
-const LANDING_SHARE_IMAGE_URL = `${LANDING_SITE_URL}/assets/img/default-share.jpg`;
-const LANDING_STRUCTURED_DATA = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": `${LANDING_SITE_URL}/#organization`,
-      name: LANDING_BRAND_NAME,
-      url: LANDING_CANONICAL_URL,
-      logo: {
-        "@type": "ImageObject",
-        url: `${LANDING_SITE_URL}/assets/img/logo-full.png`,
-      },
-    },
-    {
-      "@type": "WebSite",
-      "@id": `${LANDING_SITE_URL}/#website`,
-      name: LANDING_BRAND_NAME,
-      url: LANDING_CANONICAL_URL,
-      inLanguage: "es-AR",
-      publisher: {
-        "@id": `${LANDING_SITE_URL}/#organization`,
-      },
-    },
-  ],
-};
 
 export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
@@ -292,7 +269,7 @@ export default function Home() {
         <meta name="description" content={LANDING_DESCRIPTION} />
         <meta name="robots" content="index, follow" />
         <link rel="canonical" href={LANDING_CANONICAL_URL} />
-        <link rel="preload" as="image" href="/assets/img/Imagen%20Hero.webp" />
+        <link rel="preload" as="image" href={LANDING_HERO_IMAGE_PRELOAD_URL} />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="es_AR" />
         <meta property="og:site_name" content={LANDING_BRAND_NAME} />
@@ -309,7 +286,7 @@ export default function Home() {
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(LANDING_STRUCTURED_DATA),
+            __html: serializeLandingStructuredData(LANDING_STRUCTURED_DATA),
           }}
         />
         <link rel="preconnect" href="https://accounts.google.com" />

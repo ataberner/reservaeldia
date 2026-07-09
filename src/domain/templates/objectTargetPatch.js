@@ -23,6 +23,12 @@ function normalizeWrapMode(value) {
   return "word";
 }
 
+function normalizeTextAlign(value) {
+  const align = normalizeText(value).toLowerCase();
+  if (align === "center" || align === "right") return align;
+  return "left";
+}
+
 function resolveFixedTextBoxWidth(objeto, options = {}) {
   const currentWidth = toFiniteNumber(objeto?.width, null);
   if (Number.isFinite(currentWidth) && currentWidth > 0) {
@@ -30,6 +36,16 @@ function resolveFixedTextBoxWidth(objeto, options = {}) {
   }
 
   const requestedWidth = toFiniteNumber(options.width, null);
+  if (options.defaultToMeasuredWidth === true) {
+    const measuredWidth = toFiniteNumber(
+      measureTextBox(objeto, objeto?.texto).width,
+      null
+    );
+    if (Number.isFinite(measuredWidth) && measuredWidth > 0) {
+      return Math.max(MIN_FIXED_TEXT_BOX_WIDTH_PX, measuredWidth);
+    }
+  }
+
   const fallbackWidth =
     Number.isFinite(requestedWidth) && requestedWidth > 0
       ? requestedWidth
@@ -55,6 +71,14 @@ export function buildFixedTextBoxLayoutPatch(objeto, options = {}) {
     : "";
   if (currentWrapMode !== textWrapMode) {
     patch.textWrapMode = textWrapMode;
+  }
+  const rawTextAlign =
+    options.align ?? objeto.align ?? objeto.textAlign ?? objeto.alignment ?? objeto.alineacion;
+  if (normalizeText(rawTextAlign)) {
+    const textAlign = normalizeTextAlign(rawTextAlign);
+    if (normalizeText(objeto.align).toLowerCase() !== textAlign) {
+      patch.align = textAlign;
+    }
   }
 
   return patch;

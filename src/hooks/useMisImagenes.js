@@ -100,6 +100,7 @@ export default function useMisImagenes() {
   const timestamp = Date.now();
   const fileName = `${timestamp}_${archivoComprimido.name}`;
   setImagenesEnProceso((prev) => [...prev, fileName]);
+  try {
 
   // 2️⃣ Subir imagen principal a Storage
   const storageRef = ref(storage, `usuarios/${uid}/imagenes/${fileName}`);
@@ -133,10 +134,12 @@ export default function useMisImagenes() {
 
   // 5️⃣ Actualizar estado en galería
   setImagenes((prev) => [{ id: nuevoId, ...metadata }, ...prev]);
-  setImagenesEnProceso((prev) => prev.filter((f) => f !== fileName));
 
   // 6️⃣ Retornar URL principal para que useUploaderDeImagen la use
   return url;
+  } finally {
+    setImagenesEnProceso((prev) => prev.filter((f) => f !== fileName));
+  }
 };
 
 

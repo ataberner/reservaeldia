@@ -1465,9 +1465,11 @@ export default function CanvasEditor({
   useEditorWindowBridge({
     seccionesOrdenadas,
     secciones,
+    setSecciones,
     seccionActivaId,
     objetos,
     altoCanvas,
+    readOnly,
     calcularOffsetY,
 
     cambiarColorFondoSeccion,
@@ -1478,6 +1480,7 @@ export default function CanvasEditor({
     futurosLength: futuros.length,
 
     stageRef,
+    elementRefs,
     getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
     updateTemplateAuthoringDefault: templateAuthoring.updateFieldDefaultValue,

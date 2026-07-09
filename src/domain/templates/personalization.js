@@ -12,6 +12,7 @@ import {
 } from "../../../shared/renderAssetContract.js";
 import { buildTemplatePersonalizationPlan } from "./personalizationContract.js";
 import { buildFixedTextBoxLayoutPatch } from "./objectTargetPatch.js";
+import { resolveStoryTextTargetOptions } from "./storyText.js";
 import { isEventVenueAddressField } from "../eventDetails/location.js";
 import {
   findRenderObjectById,
@@ -431,13 +432,17 @@ function applyTarget({
     return { applied: applyGalleryCells(target, nextValue) };
   }
 
+  const storyTextTargetOptions = resolveStoryTextTargetOptions(field, safePath);
   const textTargetOptions =
-    isEventVenueAddressField(field) && isDirectTextContentPath(safePath)
+    storyTextTargetOptions ||
+    (
+      isEventVenueAddressField(field) && isDirectTextContentPath(safePath)
       ? {
           fixedTextBox: true,
           wrapMode: "word",
         }
-      : null;
+      : null
+    );
   const currentValue = getByPath(target, safePath);
   if (mode === "replace") {
     if (typeof currentValue === "string") {

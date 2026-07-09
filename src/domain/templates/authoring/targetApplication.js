@@ -19,6 +19,9 @@ import {
   isEventVenueAddressField,
 } from "../../eventDetails/location.js";
 import {
+  resolveStoryTextTargetOptions,
+} from "../storyText.js";
+import {
   findRenderObjectById,
 } from "../../editor/renderObjectTree.js";
 
@@ -211,14 +214,21 @@ export function buildTemplateAuthoringTargetPatches({
       target,
       value,
     });
+    const storyTextTargetOptions = resolveStoryTextTargetOptions(
+      safeField,
+      target?.path
+    );
     const textTargetOptions =
-      isEventVenueAddressField(safeField) &&
-      isTextualTemplateTargetPath(target?.path)
+      storyTextTargetOptions ||
+      (
+        isEventVenueAddressField(safeField) &&
+        isTextualTemplateTargetPath(target?.path)
         ? {
             fixedTextBox: true,
             wrapMode: "word",
           }
-        : null;
+        : null
+      );
     const patch = buildObjectTargetPatch({
       object: baseObject,
       path: target?.path,

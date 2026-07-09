@@ -128,6 +128,10 @@ The editor currently exposes compatibility-sensitive runtime bridges through:
 
 These are active system boundaries, not incidental implementation details.
 
+`window.canvasEditor.scrollToDynamicFieldTarget(fieldKeyOrKeys, options?)` is a sidebar-to-canvas navigation bridge for dynamic-field editing. It may scroll the dashboard viewport toward the first linked render object for the requested field, but it must not mutate render data, selection state, hover state, inline edit state, or overlay ownership.
+
+`window.canvasEditor.replaceFirstSectionBackgroundImage(imageUrl, options?)` is a sidebar-to-editor bridge for the Fotos tab. It may replace only the base background image source of the ordered first section when that section already has an image background. It writes through the editor-owned `secciones` state, preserves existing background placement by default, and must not create or select an `objetos[]` image.
+
 ## 5. Related Documents
 
 - Whole product architecture: `docs/architecture/ARCHITECTURE_OVERVIEW.md`

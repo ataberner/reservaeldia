@@ -10,16 +10,17 @@ export default function useUploaderDeImagen(subirImagen) {
 
   const handleSeleccion = async (e) => {
     const archivo = e.target.files?.[0];
-    if (!archivo) return;
+    if (!archivo) return undefined;
 
-    // 🔹 1. Subir a Firebase
-    const url = await subirImagen(archivo);
-
-    // 🔹 2. Limpiar input
-    if (inputRef.current) inputRef.current.value = null;
-
-    // 🔹 3. Retornar la URL
-    return url;
+    try {
+      return await subirImagen(archivo);
+    } finally {
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      } else if (e?.target) {
+        e.target.value = "";
+      }
+    }
   };
 
   const componenteInput = (

@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applySectionBaseImage,
   buildSectionEdgeDecorationsPayload,
   convertImageObjectToSectionEdgeDecorationState,
+  resolveFirstSectionBaseImage,
   resolveEdgeDecorationCanvasHeight,
   resolveEdgeDecorationCanvasRenderBox,
   updateSectionEdgeDecorationOffset,
@@ -18,6 +20,96 @@ const defaultSizingFields = {
   minHeightMobilePx: 64,
   maxHeightMobilePx: 150,
 };
+
+test("applySectionBaseImage preserves existing placement when requested", () => {
+  const sections = [
+    {
+      id: "cover",
+      fondo: "#ffffff",
+      fondoTipo: "imagen",
+      fondoImagen: "https://cdn.example.com/old.jpg",
+      fondoImagenOffsetX: 24,
+      fondoImagenOffsetY: -18,
+      fondoImagenScale: 1.35,
+      fondoImagenDraggable: false,
+      mobileLayoutMode: "preserve",
+    },
+  ];
+
+  const result = applySectionBaseImage(
+    sections,
+    "cover",
+    "https://cdn.example.com/new.jpg",
+    { preservePlacement: true }
+  );
+
+  assert.equal(result[0].fondoImagen, "https://cdn.example.com/new.jpg");
+  assert.equal(result[0].fondoImagenOffsetX, 24);
+  assert.equal(result[0].fondoImagenOffsetY, -18);
+  assert.equal(result[0].fondoImagenScale, 1.35);
+  assert.equal(result[0].fondoImagenDraggable, false);
+  assert.equal(result[0].mobileLayoutMode, "preserve");
+});
+
+test("applySectionBaseImage resets placement by default", () => {
+  const result = applySectionBaseImage(
+    [
+      {
+        id: "cover",
+        fondoTipo: "imagen",
+        fondoImagen: "https://cdn.example.com/old.jpg",
+        fondoImagenOffsetX: 24,
+        fondoImagenOffsetY: -18,
+        fondoImagenScale: 1.35,
+        fondoImagenDraggable: false,
+      },
+    ],
+    "cover",
+    "https://cdn.example.com/new.jpg"
+  );
+
+  assert.equal(result[0].fondoImagen, "https://cdn.example.com/new.jpg");
+  assert.equal(result[0].fondoImagenOffsetX, 0);
+  assert.equal(result[0].fondoImagenOffsetY, 0);
+  assert.equal(result[0].fondoImagenScale, 1);
+  assert.equal(result[0].fondoImagenDraggable, true);
+});
+
+test("resolveFirstSectionBaseImage returns only the ordered first section image background", () => {
+  const visible = resolveFirstSectionBaseImage([
+    {
+      id: "gallery",
+      orden: 2,
+      fondoTipo: "imagen",
+      fondoImagen: "https://cdn.example.com/later.jpg",
+    },
+    {
+      id: "cover",
+      orden: 1,
+      fondoTipo: "imagen",
+      fondoImagen: "https://cdn.example.com/cover.jpg",
+    },
+  ]);
+  const hidden = resolveFirstSectionBaseImage([
+    {
+      id: "cover",
+      orden: 1,
+      fondo: "#fbfaf8",
+    },
+    {
+      id: "gallery",
+      orden: 2,
+      fondoTipo: "imagen",
+      fondoImagen: "https://cdn.example.com/later.jpg",
+    },
+  ]);
+
+  assert.equal(visible.hasImage, true);
+  assert.equal(visible.sectionId, "cover");
+  assert.equal(visible.imageUrl, "https://cdn.example.com/cover.jpg");
+  assert.equal(hidden.hasImage, false);
+  assert.equal(hidden.imageUrl, "");
+});
 
 test("convertImageObjectToSectionEdgeDecorationState creates top slot and removes source object", () => {
   const sections = [{ id: "section-1", decoracionesBorde: {} }];

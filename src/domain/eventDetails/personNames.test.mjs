@@ -160,6 +160,70 @@ test("resolves person names from visible linked text targets when defaults are e
   );
 });
 
+test("resolves person names from visible linked text targets before stale defaults", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+  });
+  const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+  const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+  const fieldsSchema = ensured.fieldsSchema.map((field) => {
+    if (field.key === primaryKey) {
+      return {
+        ...field,
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "primary-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      };
+    }
+    if (field.key === secondaryKey) {
+      return {
+        ...field,
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "secondary-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      };
+    }
+    return field;
+  });
+
+  assert.deepEqual(
+    resolveEventPersonNamesFromAuthoring({
+      fieldsSchema,
+      defaults: {
+        [primaryKey]: "Sofia",
+        [secondaryKey]: "Mateo",
+      },
+      objetos: [
+        {
+          id: "primary-name-text",
+          tipo: "texto",
+          texto: "Ana",
+        },
+        {
+          id: "secondary-name-text",
+          tipo: "texto",
+          texto: "Tomas",
+        },
+      ],
+    }),
+    {
+      primaryName: "Ana",
+      secondaryName: "Tomas",
+    }
+  );
+});
+
 test("splits visible linked couple names when defaults are empty", () => {
   const ensured = ensureEventPersonNameFields({
     fieldsSchema: [],

@@ -179,6 +179,37 @@ Resultado esperado:
 - no quedan handles, hover ni seleccion fantasma
 - el autosave posterior sigue funcionando
 
+### [ ] Campo dinamico Texto historia
+
+1. Abrir una sesion de edicion de plantilla con usuario admin o superadmin.
+2. Seleccionar un elemento de texto y abrir el engranaje.
+3. Confirmar que la opcion dinamica aparece como `Texto historia`.
+4. Vincular el texto a `Texto historia`.
+5. Abrir el Tab Texto y editar el campo bajo `Nuestra historia`.
+6. Editar el mismo texto directamente desde el canvas.
+7. Abrir un borrador o plantilla sin ningun texto vinculado a `Texto historia`.
+8. Con el transformer, cambiar el ancho de la caja del texto marcado y volver a editar desde `Nuestra historia`.
+9. Abrir el modo asistente en un borrador con `Texto historia` vinculado.
+10. Abrir el modo asistente en un borrador sin `Texto historia` vinculado.
+11. Repetir la revision del engranaje con un usuario sin permiso admin/superadmin sobre un borrador que hereda el campo.
+12. En el asistente o Tab Evento, enfocar nombre, fecha, hora, lugar y direccion con textos dinamicos vinculados en diferentes secciones.
+13. En el Tab Texto, enfocar y editar `Nuestra historia` con su texto vinculado fuera del viewport actual.
+
+Resultado esperado:
+
+- solo admin/superadmin puede asignar o reasignar `Texto historia` desde el engranaje
+- la opcion no aparece como `Textto historia`
+- el Tab Texto muestra `Nuestra historia` y el campo editable solo cuando existe un texto vinculado
+- editar desde el sidebar actualiza el texto del canvas
+- el texto editado desde el sidebar conserva el ancho y la alineacion de la caja; si el contenido es largo, envuelve dentro de esa caja
+- el transformer del canvas sigue pudiendo cambiar el ancho de la caja del texto marcado
+- editar desde el canvas actualiza el campo del sidebar
+- en modo asistente, el paso `Texto` aparece despues de `Evento` solo si existe `Texto historia`
+- el Tab Texto en modo asistente muestra solo `Nuestra historia` y su caja de texto
+- un usuario sin permiso no puede reasignar el campo desde el engranaje y el vinculo heredado no se elimina
+- al enfocar campos dinamicos del sidebar, el canvas hace scroll suave hasta el primer objeto vinculado sin cambiar seleccion, hover, transformer ni modo inline
+- al enfocar campos editables del sidebar, su contenido queda seleccionado y escribir reemplaza el valor existente
+
 ## 3. Preview boundary
 
 For normal draft sessions, expected preview means `draft-authoritative` backend prepared preview. If prepared validation returns blockers, the pass condition is that no trusted stale HTML is shown and the blocker message matches the current publish validation contract.
@@ -303,12 +334,25 @@ Resultado esperado:
 2. Mover la imagen base.
 3. Salir del modo.
 4. Recargar el borrador.
+5. Abrir el Tab Fotos en un borrador cuya primera seccion tenga fondo de imagen.
+6. Confirmar que aparece `Cambiar imagen de portada` antes de `Galeria`.
+7. Reemplazar la portada desde la tarjeta subiendo una imagen nueva.
+8. Reemplazar la portada desde una miniatura ya subida usando `Usar como portada`.
+9. Repetir el reemplazo de portada con una imagen pesada desde el dispositivo.
+10. Cambiar el fondo de la primera seccion a color y volver al Tab Fotos.
 
 Resultado esperado:
 
 - el fondo queda ligado a su seccion correcta
 - salir del modo devuelve el editor a interaccion normal
 - la transformacion persiste
+- el Tab Fotos muestra la vista previa solo si la primera seccion tiene `fondoTipo: "imagen"` y `fondoImagen`
+- reemplazar la portada cambia el fondo real de la primera seccion, no crea un objeto `imagen`
+- durante la subida desde el dispositivo, la tarjeta conserva la portada anterior y muestra `Subiendo imagen...`
+- el control de portada queda temporalmente deshabilitado y se reactiva al terminar o fallar
+- si falla la subida o el reemplazo, la portada anterior se conserva y no queda loader permanente
+- offsets, escala y configuracion responsive del fondo se conservan al cambiar la fuente
+- la seccion `Cambiar imagen de portada` desaparece si la primera seccion deja de tener fondo de imagen
 
 ## 6. Publish-adjacent checks
 
@@ -321,8 +365,10 @@ Resultado esperado:
 5. Limpiar seleccion de canvas en un borrador que tenga exactamente una galeria y confirmar que el panel sigue mostrando sus fotos sin pedir seleccionarla.
 6. En un borrador con dos o mas galerias sin seleccion de canvas, elegir una desde el selector/listado del panel.
 7. Agregar, reemplazar, quitar y reordenar una foto.
-8. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
-9. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
+8. Reemplazar una foto de galeria subiendo una imagen pesada desde el dispositivo.
+9. Cambiar de seleccion o de tab mientras esa subida sigue en curso.
+10. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
+11. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
 
 Resultado esperado:
 
@@ -331,6 +377,10 @@ Resultado esperado:
 - con varias galerias, el panel permite elegir cual editar sin seleccionar en canvas
 - las miniaturas subidas permanecen visibles debajo de la galeria y se desplazan con el scroll unico del panel
 - las operaciones afectan solo la galeria seleccionada en canvas o la galeria elegida en el panel
+- durante el reemplazo desde dispositivo, solo la fila/foto afectada muestra `Subiendo imagen...`
+- la foto anterior permanece visible hasta que la nueva URL se aplica
+- no se puede iniciar otro reemplazo sobre esa misma foto mientras sube, pero las demas fotos no quedan marcadas como cargando
+- si falla la subida o el reemplazo, la foto anterior se conserva y no queda loader permanente
 - el selector visual aparece arriba de la lista local de fotos y muestra `Collage` para el id interno `squares`
 - quitar una foto no elimina el asset subido
 - cambiar layout preserva todas las fotos, aunque algunas queden ocultas

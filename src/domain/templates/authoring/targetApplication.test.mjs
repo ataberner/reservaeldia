@@ -15,6 +15,9 @@ import {
   linkElementToField,
 } from "./model.js";
 import {
+  getStoryTextFieldKey,
+} from "../storyText.js";
+import {
   buildSuggestedTemplateTargetTransform,
   formatTemplateDateTextValue,
   resolveTemplateTargetValue,
@@ -434,4 +437,83 @@ test("venue address text targets are projected as fixed-width wrapped text boxes
       },
     },
   ]);
+});
+
+test("story text targets keep the linked text box width and alignment when projected", () => {
+  const field = {
+    key: getStoryTextFieldKey(),
+    label: "Texto historia",
+    type: "textarea",
+    group: "Datos principales",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "story-text",
+        path: "texto",
+        mode: "set",
+      },
+      {
+        scope: "objeto",
+        id: "story-legacy-align",
+        path: "texto",
+        mode: "set",
+      },
+    ],
+  };
+  const longStory =
+    "Nos conocimos en una tarde larga y desde entonces elegimos caminar juntos.";
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field,
+    value: longStory,
+    objetos: [
+      {
+        id: "story-text",
+        tipo: "texto",
+        texto: "Historia anterior",
+        width: 260,
+        align: "center",
+        fontSize: 18,
+      },
+      {
+        id: "story-legacy-align",
+        tipo: "texto",
+        texto: "Historia anterior",
+        width: 220,
+        textAlign: "right",
+        fontSize: 18,
+      },
+    ],
+  });
+
+  assert.deepEqual(patches, [
+    {
+      objectId: "story-text",
+      patch: {
+        texto: longStory,
+        __autoWidth: false,
+        textWrapMode: "word",
+      },
+    },
+    {
+      objectId: "story-legacy-align",
+      patch: {
+        texto: longStory,
+        __autoWidth: false,
+        textWrapMode: "word",
+        align: "right",
+      },
+    },
+  ]);
+
+  const mergedStory = {
+    id: "story-text",
+    tipo: "texto",
+    texto: "Historia anterior",
+    width: 260,
+    align: "center",
+    ...patches[0].patch,
+  };
+  assert.equal(mergedStory.width, 260);
+  assert.equal(mergedStory.align, "center");
 });

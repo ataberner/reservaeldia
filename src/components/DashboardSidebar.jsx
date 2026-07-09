@@ -27,6 +27,7 @@ import {
 } from "@/utils/editorHistoryControls";
 import { canAccessGalleryBuilder } from "@/domain/gallery/sidebarModel";
 import { normalizeGalleryLayoutIds } from "@/domain/gallery/galleryLayoutPresets";
+import { resolveStoryTextSidebarBinding } from "@/domain/templates/storyText";
 import {
     clampAssistantStepIndex,
     getAssistantNavigationState,
@@ -35,6 +36,11 @@ import {
     isAssistantTabId,
     resolveAssistantResumeStepIndex,
 } from "@/domain/editor/assistantMode";
+import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
+import {
+    readCanvasEditorMethod,
+    readEditorObjects,
+} from "@/lib/editorRuntimeBridge";
 
 
 /**
@@ -233,6 +239,34 @@ function publishSidebarPanelLayout(detail = {}) {
     );
 }
 
+function readTemplateAuthoringSnapshotState(targetWindow) {
+    if (typeof window === "undefined" && !targetWindow) {
+        return { ready: false, snapshot: {} };
+    }
+    const getTemplateAuthoringSnapshot = readCanvasEditorMethod(
+        "getTemplateAuthoringSnapshot",
+        targetWindow
+    );
+    if (typeof getTemplateAuthoringSnapshot !== "function") {
+        return { ready: false, snapshot: {} };
+    }
+    return { ready: true, snapshot: getTemplateAuthoringSnapshot() || {} };
+}
+
+function readStoryTextAssistantStepState(targetWindow) {
+    const { ready, snapshot: authoringSnapshot } =
+        readTemplateAuthoringSnapshotState(targetWindow);
+    if (!ready) return { ready: false, hasBinding: false };
+
+    const hasBinding = resolveStoryTextSidebarBinding({
+        fieldsSchema: authoringSnapshot?.fieldsSchema,
+        defaults: authoringSnapshot?.defaults,
+        objetos: readEditorObjects(targetWindow),
+    }).hasBinding === true;
+
+    return { ready: true, hasBinding };
+}
+
 
 export default function DashboardSidebar({
     slugInvitacion = "",
@@ -266,6 +300,7 @@ export default function DashboardSidebar({
     const [assistantActive, setAssistantActive] = useState(false);
     const [assistantHasStarted, setAssistantHasStarted] = useState(false);
     const [assistantStepIndex, setAssistantStepIndex] = useState(0);
+    const [assistantHasStoryTextStep, setAssistantHasStoryTextStep] = useState(false);
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
@@ -278,9 +313,16 @@ export default function DashboardSidebar({
     } = useMisImagenes();
     const { abrirSelector, componenteInput, handleSeleccion } = useUploaderDeImagen(subirImagen);
     const pendingUploadedImageHandlerRef = useRef(null);
-    const abrirSelectorImagen = useCallback((onUploadedImage) => {
-        pendingUploadedImageHandlerRef.current =
-            typeof onUploadedImage === "function" ? onUploadedImage : null;
+    const abrirSelectorImagen = useCallback((onUploadedImage, options = {}) => {
+        const request =
+            onUploadedImage && typeof onUploadedImage === "object" && !Array.isArray(onUploadedImage)
+                ? onUploadedImage
+                : {
+                    ...options,
+                    onUploadedImage:
+                        typeof onUploadedImage === "function" ? onUploadedImage : null,
+                };
+        pendingUploadedImageHandlerRef.current = request;
         abrirSelector();
     }, [abrirSelector]);
     const sidebarAbierta = fijadoSidebar || hoverSidebar;
@@ -292,6 +334,14 @@ export default function DashboardSidebar({
     });
     const canUseCountdown = canManageSite === true;
     const canUseEffects = canManageSite === true;
+    const assistantStoryTextStepState =
+        typeof window !== "undefined"
+            ? readStoryTextAssistantStepState(window)
+            : { ready: false, hasBinding: false };
+    const assistantIncludeStoryText = assistantStoryTextStepState.ready
+        ? assistantStoryTextStepState.hasBinding
+        : assistantHasStoryTextStep;
+    const assistantFlowOptions = { includeStoryText: assistantIncludeStoryText };
 
     // --------------------------
     // Reset de paneles al cerrar sidebar
@@ -337,6 +387,41 @@ export default function DashboardSidebar({
     const mobileToolbarScrollRef = useRef(null);
     const autoAssistantDraftKeyRef = useRef(null);
 
+    const syncAssistantStoryTextStep = useCallback(() => {
+        if (typeof window === "undefined") return assistantHasStoryTextStep;
+        const nextState = readStoryTextAssistantStepState(window);
+        if (!nextState.ready) return assistantHasStoryTextStep;
+        setAssistantHasStoryTextStep(nextState.hasBinding);
+        return nextState.hasBinding;
+    }, [assistantHasStoryTextStep]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        syncAssistantStoryTextStep();
+        window.addEventListener(
+            EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+            syncAssistantStoryTextStep
+        );
+        window.addEventListener(
+            EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+            syncAssistantStoryTextStep
+        );
+        window.addEventListener("abrir-borrador", syncAssistantStoryTextStep);
+
+        return () => {
+            window.removeEventListener(
+                EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+                syncAssistantStoryTextStep
+            );
+            window.removeEventListener(
+                EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+                syncAssistantStoryTextStep
+            );
+            window.removeEventListener("abrir-borrador", syncAssistantStoryTextStep);
+        };
+    }, [syncAssistantStoryTextStep]);
+
     // Helpers para mostrar/ocultar con pequeno delay seguro
     const openPanel = (tipo) => {
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
@@ -360,8 +445,10 @@ export default function DashboardSidebar({
     };
 
     const openAssistantAtStep = useCallback((stepIndex, options = {}) => {
-        const safeStepIndex = clampAssistantStepIndex(stepIndex);
-        const step = getAssistantStep(safeStepIndex);
+        const includeStoryText = syncAssistantStoryTextStep();
+        const flowOptions = { includeStoryText };
+        const safeStepIndex = clampAssistantStepIndex(stepIndex, flowOptions);
+        const step = getAssistantStep(safeStepIndex, flowOptions);
 
         if (closeTimerRef.current) {
             clearTimeout(closeTimerRef.current);
@@ -380,16 +467,54 @@ export default function DashboardSidebar({
             const bounds = resolveMobilePanelHeightBounds();
             setMobilePanelHeight(bounds.max);
         }
-    }, [isMobileViewport]);
+    }, [isMobileViewport, syncAssistantStoryTextStep]);
 
     const handleAssistantAccessClick = useCallback(() => {
+        const includeStoryText = syncAssistantStoryTextStep();
         const resumeStepIndex = resolveAssistantResumeStepIndex({
             hasStarted: assistantHasStarted,
             currentStepIndex: assistantStepIndex,
+            includeStoryText,
         });
 
         openAssistantAtStep(resumeStepIndex, { expandMobilePanel: true });
-    }, [assistantHasStarted, assistantStepIndex, openAssistantAtStep]);
+    }, [
+        assistantHasStarted,
+        assistantStepIndex,
+        openAssistantAtStep,
+        syncAssistantStoryTextStep,
+    ]);
+
+    useEffect(() => {
+        const flowOptions = { includeStoryText: assistantIncludeStoryText };
+        setAssistantStepIndex((currentIndex) => {
+            if (assistantActive && botonActivo) {
+                const activeStepIndex = getAssistantStepIndexByTabId(
+                    botonActivo,
+                    flowOptions
+                );
+                if (activeStepIndex >= 0) return activeStepIndex;
+            }
+            return clampAssistantStepIndex(currentIndex, flowOptions);
+        });
+
+        if (
+            assistantActive &&
+            botonActivo &&
+            !isAssistantTabId(botonActivo, flowOptions)
+        ) {
+            const nextStepIndex = clampAssistantStepIndex(
+                assistantStepIndex,
+                flowOptions
+            );
+            setBotonActivo(getAssistantStep(nextStepIndex, flowOptions).id);
+        }
+    }, [
+        assistantActive,
+        assistantIncludeStoryText,
+        assistantStepIndex,
+        botonActivo,
+    ]);
 
     useEffect(() => {
         if (modoSelector) {
@@ -414,16 +539,30 @@ export default function DashboardSidebar({
     }, [editorSession, modoSelector, openAssistantAtStep, slugInvitacion]);
 
     const handleAssistantPrevious = useCallback(() => {
-        const navigation = getAssistantNavigationState(assistantStepIndex);
+        const includeStoryText = syncAssistantStoryTextStep();
+        const navigation = getAssistantNavigationState(assistantStepIndex, {
+            includeStoryText,
+        });
         if (!navigation.canGoPrevious) return;
         openAssistantAtStep(navigation.previousStepIndex);
-    }, [assistantStepIndex, openAssistantAtStep]);
+    }, [
+        assistantStepIndex,
+        openAssistantAtStep,
+        syncAssistantStoryTextStep,
+    ]);
 
     const handleAssistantNext = useCallback(() => {
-        const navigation = getAssistantNavigationState(assistantStepIndex);
+        const includeStoryText = syncAssistantStoryTextStep();
+        const navigation = getAssistantNavigationState(assistantStepIndex, {
+            includeStoryText,
+        });
         if (!navigation.canGoNext) return;
         openAssistantAtStep(navigation.nextStepIndex);
-    }, [assistantStepIndex, openAssistantAtStep]);
+    }, [
+        assistantStepIndex,
+        openAssistantAtStep,
+        syncAssistantStoryTextStep,
+    ]);
 
     const clampMobilePanelHeight = useCallback((height) => {
         const bounds = resolveMobilePanelHeightBounds();
@@ -857,7 +996,12 @@ export default function DashboardSidebar({
     };
 
     const handleSidebarTabClick = (boton) => {
-        const assistantTabIndex = getAssistantStepIndexByTabId(boton);
+        const includeStoryText = syncAssistantStoryTextStep();
+        const flowOptions = { includeStoryText };
+        const assistantTabIndex = getAssistantStepIndexByTabId(
+            boton,
+            flowOptions
+        );
 
         if (assistantActive) {
             if (assistantTabIndex >= 0) {
@@ -938,12 +1082,15 @@ export default function DashboardSidebar({
     const assistantAccessTitle = assistantHasStarted
         ? "Continuar el asistente"
         : "Abrir el asistente";
-    const assistantNavigation = getAssistantNavigationState(assistantStepIndex);
+    const assistantNavigation = getAssistantNavigationState(
+        assistantStepIndex,
+        assistantFlowOptions
+    );
     const assistantCurrentStep = assistantNavigation.currentStep;
     const shouldShowAssistantControls =
         assistantActive &&
         Boolean(botonActivo) &&
-        isAssistantTabId(botonActivo) &&
+        isAssistantTabId(botonActivo, assistantFlowOptions) &&
         assistantCurrentStep.id === botonActivo;
     const assistantMode = shouldShowAssistantControls;
     const assistantNextIsPreview = shouldShowAssistantControls && !assistantNavigation.canGoNext;
@@ -984,14 +1131,39 @@ export default function DashboardSidebar({
             {componenteInput &&
                 React.cloneElement(componenteInput, {
                     onChange: async (e) => {
-                        const uploadedImageHandler = pendingUploadedImageHandlerRef.current;
+                        const uploadRequest = pendingUploadedImageHandlerRef.current;
+                        const uploadedImageHandler =
+                            typeof uploadRequest?.onUploadedImage === "function"
+                                ? uploadRequest.onUploadedImage
+                                : typeof uploadRequest === "function"
+                                    ? uploadRequest
+                                    : null;
+                        const selectedFile = e.target.files?.[0] || null;
+                        if (!selectedFile) return;
 
                         try {
+                            uploadRequest?.onUploadStart?.({ file: selectedFile });
                             const uploadedUrl = await handleSeleccion(e);
-                            if (typeof uploadedUrl !== "string" || !uploadedUrl) return;
+                            if (typeof uploadedUrl !== "string" || !uploadedUrl) {
+                                throw new Error("No se pudo obtener la URL de la imagen subida.");
+                            }
 
                             if (typeof uploadedImageHandler === "function") {
-                                uploadedImageHandler(uploadedUrl);
+                                const result = await uploadedImageHandler(uploadedUrl, {
+                                    file: selectedFile,
+                                });
+                                if (result === false) {
+                                    uploadRequest?.onUploadError?.(
+                                        new Error("No se pudo aplicar el reemplazo de imagen."),
+                                        { file: selectedFile, uploadedUrl }
+                                    );
+                                    return;
+                                }
+                                uploadRequest?.onUploadSuccess?.({
+                                    file: selectedFile,
+                                    uploadedUrl,
+                                    result,
+                                });
                                 return;
                             }
 
@@ -1000,8 +1172,10 @@ export default function DashboardSidebar({
                             }
                         } catch (error) {
                             console.error("Error al subir imagen desde el sidebar:", error);
+                            uploadRequest?.onUploadError?.(error, { file: selectedFile });
                         } finally {
-                            if (pendingUploadedImageHandlerRef.current === uploadedImageHandler) {
+                            uploadRequest?.onUploadSettled?.({ file: selectedFile });
+                            if (pendingUploadedImageHandlerRef.current === uploadRequest) {
                                 pendingUploadedImageHandlerRef.current = null;
                             }
                         }

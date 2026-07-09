@@ -1039,6 +1039,7 @@ export default function MenuOpcionesElemento({
                     onLinkEventLocation={authoringConfig?.onLinkEventLocation}
                     onLinkEventTime={authoringConfig?.onLinkEventTime}
                     onLinkEventDate={authoringConfig?.onLinkEventDate}
+                    onLinkStoryText={authoringConfig?.onLinkStoryText}
                     onUnlinkField={authoringConfig?.onUnlinkField}
                     onViewUsage={authoringConfig?.onViewUsage}
                 />

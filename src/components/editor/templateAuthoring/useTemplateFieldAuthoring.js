@@ -46,6 +46,10 @@ import {
   ensureEventDateField,
   getEventDateFieldKey,
 } from "@/domain/eventDetails/date.js";
+import {
+  ensureStoryTextField,
+  getStoryTextFieldKey,
+} from "@/domain/templates/storyText.js";
 import { validateAuthoringState } from "@/domain/templates/authoring/validation.js";
 import {
   resolveTemplateAuthoringCapabilities,
@@ -565,6 +569,7 @@ export default function useTemplateFieldAuthoring({
       const currentNames = resolveEventPersonNamesFromAuthoring({
         fieldsSchema,
         defaults,
+        objetos: safeObjetos,
       });
       const safePatch = asObject(patch);
       const nextNames = {
@@ -627,6 +632,7 @@ export default function useTemplateFieldAuthoring({
       commitSnapshot,
       defaults,
       fieldsSchema,
+      safeObjetos,
       snapshot,
       sourceTemplateId,
     ]
@@ -650,6 +656,7 @@ export default function useTemplateFieldAuthoring({
       const currentNames = resolveEventPersonNamesFromAuthoring({
         fieldsSchema,
         defaults,
+        objetos: safeObjetos,
       });
       let nextNames = { ...currentNames };
       let targetFieldKey = "";
@@ -725,6 +732,7 @@ export default function useTemplateFieldAuthoring({
       selectedElementId,
       selectedElementFieldPath,
       selectedElementType,
+      safeObjetos,
       snapshot,
       sourceTemplateId,
     ]
@@ -1123,6 +1131,71 @@ export default function useTemplateFieldAuthoring({
       defaults,
       fieldsSchema,
       safeObjetos,
+      selectedElementDefaultValue,
+      selectedElementFieldPath,
+      selectedElementId,
+      selectedElementType,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const linkSelectionToStoryText = useCallback(
+    async () => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+      if (selectedElementType !== "texto" || !selectedElementId) {
+        throw new Error("Selecciona un texto para vincular Texto historia.");
+      }
+
+      const fieldKey = getStoryTextFieldKey();
+      const ensureResult = ensureStoryTextField({ fieldsSchema });
+      const linkResult = linkElementToField({
+        fieldsSchema: ensureResult.fieldsSchema,
+        fieldKey,
+        elementId: selectedElementId,
+        path: selectedElementFieldPath || "texto",
+      });
+      const nextFieldsSchema = linkResult.fieldsSchema;
+      const selectedText =
+        typeof selectedElement?.texto === "string"
+          ? selectedElement.texto
+          : selectedElementDefaultValue;
+      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, {
+        ...defaults,
+        [fieldKey]: selectedText,
+      });
+
+      if (
+        !ensureResult.changed &&
+        !linkResult.changed &&
+        areValuesMapsEqual(nextDefaults, defaults)
+      ) {
+        return false;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      const linkedField = nextFieldsSchema.find(
+        (field) => normalizeText(field?.key) === fieldKey
+      );
+      applyFieldTargetsToObjects(linkedField, selectedText);
+
+      return true;
+    },
+    [
+      applyFieldTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      selectedElement,
       selectedElementDefaultValue,
       selectedElementFieldPath,
       selectedElementId,
@@ -1620,6 +1693,7 @@ export default function useTemplateFieldAuthoring({
     updateEventTimes,
     linkSelectionToEventTime,
     linkSelectionToEventDate,
+    linkSelectionToStoryText,
     getFieldUsage,
     repairSnapshot,
     reloadAvailableFields,

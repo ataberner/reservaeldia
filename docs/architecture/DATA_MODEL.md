@@ -653,6 +653,16 @@ These fields are real Firestore data, but they are not part of the canonical inv
 | `templateAuthoringDraft` | Template-authoring payload. Current workspace creation writes `version`, `sourceTemplateId`, `fieldsSchema`, `defaults`, `status`, `updatedAt`, `updatedByUid`. |
 | `templateInput` | Template-personalization snapshot. Current modal flow writes `initialValues`, `values`, `defaults`, `changedKeys`, `applyReport`, `appliedAt`, `updatedAt`, `policyVersion`. |
 
+`templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current story-content field is:
+
+| Key | Label | Type | Group | Render authority |
+| --- | --- | --- | --- | --- |
+| `texto_historia` | `Texto historia` | `textarea` | `Datos principales` | Linked `objeto.texto` targets remain the visible/canonical canvas text. |
+
+`templateAuthoringDraft.defaults.texto_historia` is authoring metadata for the dynamic-field flow. It must not become a second render authority: preview, publish, and canvas rendering continue to read the linked text object through the normal `objetos` model. Older templates or drafts without `texto_historia` are valid; editor UI should hide story-specific controls until the field has a linked text object target.
+
+When `texto_historia` is applied to a text object through template authoring or personalization, the linked text object keeps ownership of layout. The object stores the text box width and alignment (`width`, `align`) and dynamic updates set `__autoWidth: false` with word wrapping so longer story text wraps inside the existing box. Canvas transformer edits may still change that box width directly on the object.
+
 Assumption: older template-authoring documents may carry extra nested fields. The table above describes the currently written workspace shape.
 
 ### Dynamic and Compatibility Fields

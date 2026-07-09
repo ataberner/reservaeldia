@@ -8,6 +8,7 @@ import {
   clampAssistantStepIndex,
   getAssistantNavigationState,
   getAssistantStep,
+  getAssistantStepIds,
   getAssistantStepIndexByTabId,
   getAssistantStepProgressLabel,
   getNextAssistantStepIndex,
@@ -30,10 +31,34 @@ test("assistant flow keeps the required tab order", () => {
   assert.equal(getAssistantStep(3).label, "Regalos");
 });
 
+test("assistant flow inserts story text after Evento only when available", () => {
+  const storyOptions = { includeStoryText: true };
+
+  assert.deepEqual(getAssistantStepIds(), [
+    "detalles",
+    "imagen",
+    "rsvp",
+    "regalos",
+  ]);
+  assert.deepEqual(getAssistantStepIds(storyOptions), [
+    "detalles",
+    "texto",
+    "imagen",
+    "rsvp",
+    "regalos",
+  ]);
+
+  assert.equal(getAssistantStep(1, storyOptions).label, "Texto");
+  assert.equal(getAssistantStepIndexByTabId("texto"), -1);
+  assert.equal(getAssistantStepIndexByTabId("texto", storyOptions), 1);
+  assert.equal(isAssistantTabId("texto", storyOptions), true);
+});
+
 test("assistant step index clamps to the flow boundaries", () => {
   assert.equal(clampAssistantStepIndex(-3), 0);
   assert.equal(clampAssistantStepIndex("2"), 2);
   assert.equal(clampAssistantStepIndex(99), 3);
+  assert.equal(clampAssistantStepIndex(99, { includeStoryText: true }), 4);
   assert.equal(clampAssistantStepIndex(Number.NaN), 0);
 });
 
@@ -47,6 +72,9 @@ test("assistant navigation respects first and last step limits", () => {
   assert.equal(canGoToNextAssistantStep(3), false);
   assert.equal(getPreviousAssistantStepIndex(3), 2);
   assert.equal(getNextAssistantStepIndex(3), 3);
+
+  assert.equal(canGoToPreviousAssistantStep(4, { includeStoryText: true }), true);
+  assert.equal(canGoToNextAssistantStep(4, { includeStoryText: true }), false);
 });
 
 test("assistant maps only the guided tabs to step indexes", () => {
@@ -84,6 +112,14 @@ test("assistant resume starts at Evento first and keeps current step after start
     }),
     3
   );
+  assert.equal(
+    resolveAssistantResumeStepIndex({
+      hasStarted: true,
+      currentStepIndex: 12,
+      includeStoryText: true,
+    }),
+    4
+  );
 });
 
 test("assistant navigation state exposes progress and target indexes", () => {
@@ -98,4 +134,14 @@ test("assistant navigation state exposes progress and target indexes", () => {
   });
 
   assert.equal(getAssistantStepProgressLabel(3), "4/4");
+  assert.equal(getAssistantStepProgressLabel(1, { includeStoryText: true }), "2/5");
+  assert.deepEqual(getAssistantNavigationState(1, { includeStoryText: true }), {
+    currentStepIndex: 1,
+    currentStep: { id: "texto", label: "Texto" },
+    progressLabel: "2/5",
+    canGoPrevious: true,
+    canGoNext: true,
+    previousStepIndex: 0,
+    nextStepIndex: 2,
+  });
 });

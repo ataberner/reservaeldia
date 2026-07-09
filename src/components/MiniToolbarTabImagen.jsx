@@ -1,13 +1,16 @@
 // components/MiniToolbarTabImagen.jsx
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { GripVertical, Upload } from "lucide-react";
+import { GripVertical, Loader2, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import GalleryLayoutSelector from "@/components/gallery/GalleryLayoutSelector";
 import {
+  readCanvasEditorMethod,
   readEditorObjects,
+  readEditorSections,
   readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
+import { resolveFirstSectionBaseImage } from "@/domain/sections/backgrounds";
 import {
   buildCanvasImageElementFromLibraryImage,
   getGalleryAllowedLayoutState,
@@ -28,16 +31,17 @@ function getWindowSelectionSnapshot() {
   return readEditorSelectionSnapshot();
 }
 
+function resolveLibraryImageUrl(img) {
+  if (typeof img === "string") return img;
+  if (!img || typeof img !== "object") return "";
+  return img.url || img.src || img.downloadURL || img.mediaUrl || "";
+}
+
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 function buildGalleryPhotoFromLibraryImage(img) {
-  const mediaUrl =
-    img?.url ||
-    img?.src ||
-    img?.downloadURL ||
-    img?.mediaUrl ||
-    (typeof img === "string" ? img : null);
+  const mediaUrl = resolveLibraryImageUrl(img);
   if (!mediaUrl) return null;
 
   return {
@@ -138,6 +142,46 @@ function resolveDragPreviewLeft(dragState) {
   return clampNumber(rawLeft, baseLeft - 32, baseLeft + 32);
 }
 
+function normalizeUploadKeyPart(value) {
+  return String(value ?? "").trim().replace(/\s+/g, "_");
+}
+
+function buildGalleryReplacementUploadKey(galleryId, target) {
+  const safeGalleryId = normalizeUploadKeyPart(galleryId);
+  if (!safeGalleryId || !target) return "";
+
+  const targetKey =
+    normalizeUploadKeyPart(target.cellId) ||
+    (Number.isFinite(Number(target.sourceIndex))
+      ? `source-${Number(target.sourceIndex)}`
+      : "") ||
+    (Number.isFinite(Number(target.displayIndex))
+      ? `display-${Number(target.displayIndex)}`
+      : "") ||
+    normalizeUploadKeyPart(target.mediaUrl);
+
+  return targetKey ? `gallery:${safeGalleryId}:${targetKey}` : "";
+}
+
+function buildCoverReplacementUploadKey(sectionId) {
+  const safeSectionId = normalizeUploadKeyPart(sectionId);
+  return safeSectionId ? `cover:${safeSectionId}` : "";
+}
+
+function ImageReplacementOverlay({ text = "Subiendo imagen..." }) {
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1 rounded-lg bg-zinc-950/60 px-2 text-center text-[10px] font-semibold leading-tight text-white backdrop-blur-[1px]"
+    >
+      <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+      <span>{text}</span>
+    </span>
+  );
+}
+
 export default function MiniToolbarTabImagen({
   abrirSelector,
   imagenes,
@@ -150,6 +194,9 @@ export default function MiniToolbarTabImagen({
   setMostrarGaleria,
   setImagenesSeleccionadas,
   simplifiedForAssistant = false,
+  replacementUploadState: controlledReplacementUploadState = null,
+  onBeginReplacementUpload = null,
+  onClearReplacementUpload = null,
 }) {
   const [isMobileViewport, setIsMobileViewport] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
@@ -163,12 +210,21 @@ export default function MiniToolbarTabImagen({
   const [selectionRefreshToken, setSelectionRefreshToken] = useState(0);
   const [editorSnapshotToken, setEditorSnapshotToken] = useState(0);
   const [sidebarGalleryId, setSidebarGalleryId] = useState("");
+  const [localReplacementUploadState, setLocalReplacementUploadState] = useState({});
+  const isMountedRef = useRef(true);
   const galleryPhotoListRef = useRef(null);
   const galleryPhotoRowNodesRef = useRef(new Map());
   const galleryPhotoRowRectsBeforeUpdateRef = useRef(null);
   const galleryPhotoRowAnimationFrameRef = useRef(null);
   const galleryPhotoDragSessionRef = useRef(null);
   const galleryPhotoDragCleanupRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -238,6 +294,66 @@ export default function MiniToolbarTabImagen({
   const editorObjects = useMemo(
     () => readEditorObjects(),
     [editorSnapshotToken, selectionRefreshToken]
+  );
+  const editorSections = useMemo(
+    () => readEditorSections(),
+    [editorSnapshotToken, selectionRefreshToken]
+  );
+  const firstSectionCover = useMemo(
+    () => resolveFirstSectionBaseImage(editorSections),
+    [editorSections]
+  );
+  const replacementUploadState =
+    controlledReplacementUploadState && typeof controlledReplacementUploadState === "object"
+      ? controlledReplacementUploadState
+      : localReplacementUploadState;
+  const coverReplacementUploadKey = useMemo(
+    () => buildCoverReplacementUploadKey(firstSectionCover.sectionId),
+    [firstSectionCover.sectionId]
+  );
+  const isCoverReplacementUploading = Boolean(
+    coverReplacementUploadKey && replacementUploadState[coverReplacementUploadKey]
+  );
+
+  const setPanelNoticeSafe = useCallback((message) => {
+    if (!isMountedRef.current) return;
+    setPanelNotice(message);
+  }, []);
+
+  const beginReplacementUpload = useCallback((descriptor) => {
+    if (!descriptor?.key) return;
+    if (typeof onBeginReplacementUpload === "function") {
+      onBeginReplacementUpload(descriptor);
+      return;
+    }
+    if (!isMountedRef.current) return;
+    setLocalReplacementUploadState((current) => ({
+      ...current,
+      [descriptor.key]: {
+        ...descriptor,
+        status: "uploading",
+      },
+    }));
+  }, [onBeginReplacementUpload]);
+
+  const clearReplacementUpload = useCallback((key) => {
+    if (!key) return;
+    if (typeof onClearReplacementUpload === "function") {
+      onClearReplacementUpload(key);
+      return;
+    }
+    if (!isMountedRef.current) return;
+    setLocalReplacementUploadState((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }, [onClearReplacementUpload]);
+
+  const isReplacementUploadActive = useCallback(
+    (key) => Boolean(key && replacementUploadState[key]),
+    [replacementUploadState]
   );
 
   const galleryTargetState = useMemo(
@@ -325,6 +441,13 @@ export default function MiniToolbarTabImagen({
   }, [galleryDragState, orderedGalleryPhotoRows]);
 
   const draggedGalleryPhoto = draggedGalleryPhotoRow?.photo || null;
+  const selectedPhotoReplacementUploadKey = useMemo(
+    () => buildGalleryReplacementUploadKey(galeriaSeleccionada?.id, selectedPhotoTarget),
+    [galeriaSeleccionada?.id, selectedPhotoTarget]
+  );
+  const isSelectedPhotoReplacementUploading = Boolean(
+    selectedPhotoReplacementUploadKey && replacementUploadState[selectedPhotoReplacementUploadKey]
+  );
 
   const setGalleryPhotoRowNode = useCallback((rowKey, node) => {
     if (!rowKey) return;
@@ -479,8 +602,9 @@ export default function MiniToolbarTabImagen({
     }
   };
 
-  const commitGalleryMutation = useCallback((mutation, successMessage) => {
-    if (!galeriaSeleccionada || !mutation) return false;
+  const commitGalleryMutation = useCallback((mutation, successMessage, galleryOverride = null) => {
+    const targetGallery = galleryOverride || galeriaSeleccionada;
+    if (!targetGallery || !mutation) return false;
 
     if (!mutation.changed) {
       const reasonMessages = {
@@ -490,22 +614,24 @@ export default function MiniToolbarTabImagen({
         "already-selected": "Ese layout ya esta seleccionado.",
         "missing-media": "No se encontro una imagen valida para aplicar.",
       };
-      setPanelNotice(reasonMessages[mutation.reason] || "No hubo cambios para aplicar.");
+      setPanelNoticeSafe(reasonMessages[mutation.reason] || "No hubo cambios para aplicar.");
       return false;
     }
 
     window.dispatchEvent(
       new CustomEvent(EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT, {
         detail: {
-          id: galeriaSeleccionada.id,
+          id: targetGallery.id,
           cambios: mutation.gallery,
         },
       })
     );
-    setSelectionRefreshToken((value) => value + 1);
-    setPanelNotice(successMessage);
+    if (isMountedRef.current) {
+      setSelectionRefreshToken((value) => value + 1);
+    }
+    setPanelNoticeSafe(successMessage);
     return true;
-  }, [galeriaSeleccionada]);
+  }, [galeriaSeleccionada, setPanelNoticeSafe]);
 
   const selectGalleryPhoto = useCallback((photo) => {
     const target = buildGalleryPhotoTarget(photo);
@@ -513,20 +639,82 @@ export default function MiniToolbarTabImagen({
     setSelectedPhotoTarget(target);
   }, []);
 
-  const replaceGalleryPhotoTargetWithUpload = useCallback((target, uploadedUrl) => {
-    if (!galeriaSeleccionada || !target) return false;
+  const resolveLatestGalleryById = useCallback((galleryId) => {
+    const safeGalleryId = String(galleryId || "").trim();
+    if (!safeGalleryId) return null;
+
+    const currentObjects = readEditorObjects();
+    const currentGallery = currentObjects.find(
+      (object) => object?.id === safeGalleryId && object?.tipo === "galeria"
+    );
+    if (currentGallery) return currentGallery;
+
+    return galeriaSeleccionada?.id === safeGalleryId ? galeriaSeleccionada : null;
+  }, [galeriaSeleccionada]);
+
+  const replaceGalleryPhotoTargetWithUpload = useCallback((galleryId, target, uploadedUrl) => {
+    const targetGallery = resolveLatestGalleryById(galleryId);
+    if (!targetGallery || !target) return false;
     if (typeof uploadedUrl !== "string" || !uploadedUrl) return false;
 
     const committed = commitGalleryMutation(
-      replaceGalleryPhoto(galeriaSeleccionada, target, uploadedUrl),
-      "Foto reemplazada en esta galeria."
+      replaceGalleryPhoto(targetGallery, target, uploadedUrl),
+      "Foto reemplazada en esta galeria.",
+      targetGallery
     );
-    if (committed) {
+    if (committed && isMountedRef.current) {
       setSelectedPhotoTarget(target);
       setGalleryEditMode("add");
     }
     return committed;
-  }, [commitGalleryMutation, galeriaSeleccionada]);
+  }, [commitGalleryMutation, resolveLatestGalleryById]);
+
+  const openGalleryPhotoReplacementUpload = useCallback((galleryId, target, positionLabel) => {
+    const uploadKey = buildGalleryReplacementUploadKey(galleryId, target);
+    if (!galleryId || !target || !uploadKey) {
+      setPanelNoticeSafe("Selecciona una foto de esta galeria primero.");
+      return;
+    }
+
+    if (isReplacementUploadActive(uploadKey)) {
+      setPanelNoticeSafe("Esa foto ya se esta reemplazando.");
+      return;
+    }
+
+    if (typeof abrirSelector !== "function") {
+      setPanelNoticeSafe("No se encontro el selector de archivos para subir la imagen.");
+      return;
+    }
+
+    const safePositionLabel = positionLabel || "la foto seleccionada";
+    setPanelNoticeSafe(`Selecciona una imagen del sistema para reemplazar ${safePositionLabel}.`);
+    abrirSelector({
+      onUploadStart: () => {
+        beginReplacementUpload({
+          key: uploadKey,
+          kind: "gallery",
+          galleryId,
+          target,
+        });
+        setPanelNoticeSafe(`Subiendo imagen para ${safePositionLabel}...`);
+      },
+      onUploadedImage: (uploadedUrl) =>
+        replaceGalleryPhotoTargetWithUpload(galleryId, target, uploadedUrl),
+      onUploadError: () => {
+        setPanelNoticeSafe("No se pudo actualizar esa foto. Conservamos la imagen anterior.");
+      },
+      onUploadSettled: () => {
+        clearReplacementUpload(uploadKey);
+      },
+    });
+  }, [
+    abrirSelector,
+    beginReplacementUpload,
+    clearReplacementUpload,
+    isReplacementUploadActive,
+    replaceGalleryPhotoTargetWithUpload,
+    setPanelNoticeSafe,
+  ]);
 
   const startPhotoReplacement = useCallback((photo, options = {}) => {
     const target = buildGalleryPhotoTarget(photo);
@@ -535,24 +723,22 @@ export default function MiniToolbarTabImagen({
     selectGalleryPhoto(photo);
     setGalleryEditMode("replace");
     const photoPosition = Number(photo?.displayIndex || 0) + 1;
+    const positionLabel = `la foto ${photoPosition}`;
 
     if (options.openFilePicker === true) {
-      if (typeof abrirSelector !== "function") {
-        setPanelNotice("No se encontro el selector de archivos para subir la imagen.");
-        return;
-      }
-
-      setPanelNotice(`Selecciona una imagen del sistema para reemplazar la foto ${photoPosition}.`);
-      abrirSelector((uploadedUrl) => {
-        replaceGalleryPhotoTargetWithUpload(target, uploadedUrl);
-      });
+      openGalleryPhotoReplacementUpload(galeriaSeleccionada?.id, target, positionLabel);
       return;
     }
 
-    setPanelNotice(
-      `Elige una imagen disponible o sube una nueva para reemplazar la foto ${photoPosition}.`
+    setPanelNoticeSafe(
+      `Elige una imagen disponible o sube una nueva para reemplazar ${positionLabel}.`
     );
-  }, [abrirSelector, replaceGalleryPhotoTargetWithUpload, selectGalleryPhoto]);
+  }, [
+    galeriaSeleccionada?.id,
+    openGalleryPhotoReplacementUpload,
+    selectGalleryPhoto,
+    setPanelNoticeSafe,
+  ]);
 
   const cleanupGalleryPhotoDrag = useCallback(() => {
     if (galleryPhotoDragCleanupRef.current) {
@@ -792,21 +978,27 @@ export default function MiniToolbarTabImagen({
 
   const openSelectedPhotoReplacementPicker = useCallback(() => {
     if (!selectedPhotoTarget) {
-      setPanelNotice("Selecciona una foto de esta galeria primero.");
+      setPanelNoticeSafe("Selecciona una foto de esta galeria primero.");
       return;
     }
 
     setGalleryEditMode("replace");
-    if (typeof abrirSelector !== "function") {
-      setPanelNotice("Elige una imagen disponible para reemplazar la foto seleccionada.");
+    if (!galeriaSeleccionada?.id) {
+      setPanelNoticeSafe("Selecciona una galeria para reemplazar la foto.");
       return;
     }
 
-    setPanelNotice("Selecciona una imagen del sistema para reemplazar la foto seleccionada.");
-    abrirSelector((uploadedUrl) => {
-      replaceGalleryPhotoTargetWithUpload(selectedPhotoTarget, uploadedUrl);
-    });
-  }, [abrirSelector, replaceGalleryPhotoTargetWithUpload, selectedPhotoTarget]);
+    openGalleryPhotoReplacementUpload(
+      galeriaSeleccionada.id,
+      selectedPhotoTarget,
+      "la foto seleccionada"
+    );
+  }, [
+    galeriaSeleccionada?.id,
+    openGalleryPhotoReplacementUpload,
+    selectedPhotoTarget,
+    setPanelNoticeSafe,
+  ]);
 
   const handleSwitchLayout = useCallback((layoutId) => {
     if (!galeriaSeleccionada) return;
@@ -815,6 +1007,81 @@ export default function MiniToolbarTabImagen({
       "Layout seleccionado para esta galeria."
     );
   }, [commitGalleryMutation, galeriaSeleccionada]);
+
+  const replaceFirstSectionCoverImage = useCallback((imageInput, options = {}) => {
+    const imageUrl = resolveLibraryImageUrl(imageInput);
+    if (!imageUrl) {
+      setPanelNoticeSafe("No se encontro una imagen valida para usar como portada.");
+      return false;
+    }
+
+    const replaceCoverImage = readCanvasEditorMethod("replaceFirstSectionBackgroundImage");
+    if (typeof replaceCoverImage !== "function") {
+      setPanelNoticeSafe("No se encontro el flujo de fondo de portada del editor.");
+      return false;
+    }
+
+    const ok = replaceCoverImage(imageUrl, {
+      preservePlacement: true,
+      sectionId: options.sectionId || options.expectedSectionId || "",
+    });
+    if (!ok) {
+      setPanelNoticeSafe("No se pudo actualizar la imagen de portada.");
+      return false;
+    }
+
+    if (isMountedRef.current) {
+      setEditorSnapshotToken((value) => value + 1);
+    }
+    setPanelNoticeSafe("Imagen de portada actualizada.");
+    return true;
+  }, [setPanelNoticeSafe]);
+
+  const handleCoverUploadClick = useCallback(() => {
+    const sectionId = firstSectionCover.sectionId;
+    const uploadKey = buildCoverReplacementUploadKey(sectionId);
+    if (!sectionId || !uploadKey) {
+      setPanelNoticeSafe("No se encontro la seccion de portada para reemplazar.");
+      return;
+    }
+
+    if (isReplacementUploadActive(uploadKey)) {
+      setPanelNoticeSafe("La imagen de portada ya se esta reemplazando.");
+      return;
+    }
+
+    if (typeof abrirSelector !== "function") {
+      setPanelNoticeSafe("No se encontro el selector de archivos para subir la imagen.");
+      return;
+    }
+
+    abrirSelector({
+      onUploadStart: () => {
+        beginReplacementUpload({
+          key: uploadKey,
+          kind: "cover",
+          sectionId,
+        });
+        setPanelNoticeSafe("Subiendo imagen de portada...");
+      },
+      onUploadedImage: (uploadedUrl) =>
+        replaceFirstSectionCoverImage(uploadedUrl, { sectionId }),
+      onUploadError: () => {
+        setPanelNoticeSafe("No se pudo actualizar la portada. Conservamos la imagen anterior.");
+      },
+      onUploadSettled: () => {
+        clearReplacementUpload(uploadKey);
+      },
+    });
+  }, [
+    abrirSelector,
+    beginReplacementUpload,
+    clearReplacementUpload,
+    firstSectionCover.sectionId,
+    isReplacementUploadActive,
+    replaceFirstSectionCoverImage,
+    setPanelNoticeSafe,
+  ]);
 
   const insertAvailableImageIntoCanvas = useCallback((img) => {
     const imageElement = buildCanvasImageElementFromLibraryImage(img, {
@@ -836,6 +1103,10 @@ export default function MiniToolbarTabImagen({
     setPanelNotice("Imagen insertada en el lienzo.");
     return true;
   }, [seccionActivaId, setMostrarGaleria]);
+
+  const handleAvailableImageCoverAction = useCallback((img) => {
+    replaceFirstSectionCoverImage(img);
+  }, [replaceFirstSectionCoverImage]);
 
   const handleAvailableImageGalleryAction = useCallback((img) => {
     const photo = buildGalleryPhotoFromLibraryImage(img);
@@ -905,10 +1176,18 @@ export default function MiniToolbarTabImagen({
       selectedPhotoTarget,
     });
 
-    if (galleryAction.action === "none") return [];
+    const actions = [];
+    if (firstSectionCover.hasImage) {
+      actions.push({
+        key: "replace-first-section-cover",
+        label: "Usar como portada",
+        title: "Reemplazar la imagen de portada con esta foto",
+        onClick: handleAvailableImageCoverAction,
+      });
+    }
 
-    return [
-      {
+    if (galleryAction.action !== "none") {
+      actions.push({
         key: galleryAction.action,
         label: galleryAction.label,
         title:
@@ -918,11 +1197,15 @@ export default function MiniToolbarTabImagen({
               ? "Reemplazar la foto seleccionada con esta imagen"
               : "Agregar esta imagen a la galeria activa",
         onClick: handleAvailableImageGalleryAction,
-      },
-    ];
+      });
+    }
+
+    return actions;
   }, [
     celdaActiva,
+    firstSectionCover.hasImage,
     galeriaSeleccionada,
+    handleAvailableImageCoverAction,
     handleAvailableImageGalleryAction,
     selectedPhotoTarget,
   ]);
@@ -950,6 +1233,46 @@ export default function MiniToolbarTabImagen({
 
   return (
     <div className={`flex flex-col flex-1 min-h-0 ${isMobileViewport ? "gap-2" : "gap-3"}`}>
+      {firstSectionCover.hasImage && (
+        <section
+          className={`shrink-0 border border-zinc-200 bg-white ${
+            isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
+          }`}
+        >
+          <div className="text-[13px] font-semibold leading-[18px] text-zinc-700">
+            Cambiar imagen de portada
+          </div>
+          <button
+            type="button"
+            onClick={handleCoverUploadClick}
+            disabled={isCoverReplacementUploading}
+            aria-busy={isCoverReplacementUploading}
+            className="mt-2 block w-full rounded-lg border border-zinc-200 bg-zinc-50 p-1.5 text-left transition hover:border-purple-200 hover:bg-purple-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 disabled:cursor-wait disabled:hover:border-zinc-200 disabled:hover:bg-zinc-50"
+          >
+            <span className="relative block aspect-[16/10] w-full overflow-hidden rounded-md bg-zinc-100">
+              <img
+                src={firstSectionCover.imageUrl}
+                alt="Imagen de portada"
+                className="h-full w-full object-cover"
+              />
+              {isCoverReplacementUploading && (
+                <ImageReplacementOverlay text="Subiendo imagen..." />
+              )}
+            </span>
+            <span className="mt-2 flex items-center justify-between gap-2 px-0.5">
+              <span className="min-w-0 truncate text-xs font-medium text-zinc-700">
+                {isCoverReplacementUploading ? "Reemplazando..." : "Reemplazar imagen"}
+              </span>
+              {isCoverReplacementUploading ? (
+                <Loader2 size={15} className="shrink-0 animate-spin text-zinc-500" aria-hidden="true" />
+              ) : (
+                <Upload size={15} className="shrink-0 text-zinc-500" aria-hidden="true" />
+              )}
+            </span>
+          </button>
+        </section>
+      )}
+
       {galleryCandidates.length > 0 && (
         <section
           className={`shrink-0 border border-zinc-200 bg-white ${
@@ -1051,12 +1374,19 @@ export default function MiniToolbarTabImagen({
                     visiblePhotoLimit !== null &&
                     visualIndex >= visiblePhotoLimit;
                   const positionLabel = `Foto ${visualIndex + 1} de ${selectedGalleryPhotos.length}`;
+                  const photoUploadTarget = buildGalleryPhotoTarget(photo);
+                  const photoReplacementUploadKey = buildGalleryReplacementUploadKey(
+                    galeriaSeleccionada?.id,
+                    photoUploadTarget
+                  );
+                  const isPhotoReplacementUploading = isReplacementUploadActive(photoReplacementUploadKey);
 
                   return (
                     <div
                       key={photoKey}
                       ref={(node) => setGalleryPhotoRowNode(photoKey, node)}
                       role="listitem"
+                      aria-busy={isPhotoReplacementUploading}
                       data-gallery-photo-row="true"
                       className={`relative flex min-h-[58px] items-center gap-2 rounded-lg border bg-white p-1.5 transition ${
                         isSelectedPhoto
@@ -1073,7 +1403,7 @@ export default function MiniToolbarTabImagen({
                         type="button"
                         onPointerDown={(event) => handleGalleryPhotoDragStart(event, photoRow, visualIndex)}
                         onKeyDown={(event) => handleGalleryPhotoHandleKeyDown(event, photo)}
-                        disabled={selectedGalleryPhotos.length < 2}
+                        disabled={selectedGalleryPhotos.length < 2 || isPhotoReplacementUploading}
                         aria-label={`Reordenar ${positionLabel}`}
                         title="Arrastra desde aqui para reordenar"
                         className="flex h-10 w-8 shrink-0 touch-none items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-500 cursor-grab active:cursor-grabbing disabled:cursor-default disabled:text-zinc-300"
@@ -1084,8 +1414,9 @@ export default function MiniToolbarTabImagen({
                       <button
                         type="button"
                         onClick={() => startPhotoReplacement(photo, { openFilePicker: true })}
+                        disabled={isPhotoReplacementUploading}
                         aria-label={`Reemplazar ${positionLabel}`}
-                        className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100"
+                        className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 disabled:cursor-wait"
                         title="Reemplazar foto"
                       >
                         <img
@@ -1119,12 +1450,20 @@ export default function MiniToolbarTabImagen({
                       <button
                         type="button"
                         onClick={() => startPhotoReplacement(photo, { openFilePicker: true })}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100"
+                        disabled={isPhotoReplacementUploading}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 disabled:cursor-wait disabled:text-zinc-300 disabled:hover:bg-zinc-50"
                         aria-label={`Subir o elegir reemplazo para ${positionLabel}`}
                         title="Reemplazar"
                       >
-                        <Upload size={15} aria-hidden="true" />
+                        {isPhotoReplacementUploading ? (
+                          <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Upload size={15} aria-hidden="true" />
+                        )}
                       </button>
+                      {isPhotoReplacementUploading && (
+                        <ImageReplacementOverlay text="Subiendo imagen..." />
+                      )}
                     </div>
                   );
                 })}
@@ -1180,7 +1519,11 @@ export default function MiniToolbarTabImagen({
               <div className="mt-2 grid grid-cols-4 gap-1.5">
                 <button
                   type="button"
-                  disabled={!selectedPhotoTarget || selectedPhotoTarget.displayIndex <= 0}
+                  disabled={
+                    !selectedPhotoTarget ||
+                    isSelectedPhotoReplacementUploading ||
+                    selectedPhotoTarget.displayIndex <= 0
+                  }
                   onClick={() => handleMoveSelectedPhoto(-1)}
                   className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
                 >
@@ -1190,6 +1533,7 @@ export default function MiniToolbarTabImagen({
                   type="button"
                   disabled={
                     !selectedPhotoTarget ||
+                    isSelectedPhotoReplacementUploading ||
                     selectedPhotoTarget.displayIndex >= selectedGalleryPhotos.length - 1
                   }
                   onClick={() => handleMoveSelectedPhoto(1)}
@@ -1199,7 +1543,7 @@ export default function MiniToolbarTabImagen({
                 </button>
                 <button
                   type="button"
-                  disabled={!selectedPhotoTarget}
+                  disabled={!selectedPhotoTarget || isSelectedPhotoReplacementUploading}
                   onClick={openSelectedPhotoReplacementPicker}
                   className={`rounded border px-1.5 py-1 text-[11px] ${
                     galleryEditMode === "replace"
@@ -1211,7 +1555,7 @@ export default function MiniToolbarTabImagen({
                 </button>
                 <button
                   type="button"
-                  disabled={!selectedPhotoTarget}
+                  disabled={!selectedPhotoTarget || isSelectedPhotoReplacementUploading}
                   onClick={handleRemoveSelectedPhoto}
                   className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
                 >

@@ -11,8 +11,12 @@ import {
 } from "@/domain/templates/fieldValueResolver";
 import {
   resolveEventDateSidebarBinding,
+  getEventDateFieldKey,
 } from "@/domain/eventDetails/date";
 import {
+  EVENT_COUPLE_NAME_FORMATS,
+  EVENT_PERSON_NAME_ROLES,
+  getEventPersonNameFieldKey,
   resolveEventPersonNamesFromAuthoring,
 } from "@/domain/eventDetails/personNames";
 import {
@@ -22,10 +26,14 @@ import {
   buildEventGoogleMapObjectPatch,
   findEventGoogleMapObject,
   formatEventAddressText,
+  getEventLocationFieldKey,
+  EVENT_LOCATION_ROLES,
   normalizeGooglePlaceInput,
   resolveEventLocationFromAuthoring,
 } from "@/domain/eventDetails/location";
 import {
+  EVENT_TIME_ROLES,
+  getEventTimeFieldKey,
   normalizeEventTimeValue,
   resolveEventTimesFromAuthoring,
 } from "@/domain/eventDetails/time";
@@ -56,6 +64,42 @@ const EVENT_PERSON_NAMES_SAVE_DELAY_MS = 350;
 const EVENT_LOCATION_SAVE_DELAY_MS = 350;
 const EVENT_TIMES_SAVE_DELAY_MS = 350;
 const GOOGLE_MAPS_SCRIPT_ID = "reservaeldia-google-maps-js";
+const EVENT_COUPLE_SCROLL_FIELD_KEYS = [
+  getEventPersonNameFieldKey(
+    EVENT_PERSON_NAME_ROLES.COUPLE,
+    EVENT_COUPLE_NAME_FORMATS.AND
+  ),
+  getEventPersonNameFieldKey(
+    EVENT_PERSON_NAME_ROLES.COUPLE,
+    EVENT_COUPLE_NAME_FORMATS.AMPERSAND
+  ),
+  getEventPersonNameFieldKey(
+    EVENT_PERSON_NAME_ROLES.COUPLE,
+    EVENT_COUPLE_NAME_FORMATS.LINEBREAK
+  ),
+];
+const EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS = [
+  getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY),
+  ...EVENT_COUPLE_SCROLL_FIELD_KEYS,
+];
+const EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS = [
+  getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY),
+  ...EVENT_COUPLE_SCROLL_FIELD_KEYS,
+];
+const EVENT_DATE_SCROLL_FIELD_KEYS = [getEventDateFieldKey()];
+const EVENT_START_TIME_SCROLL_FIELD_KEYS = [
+  getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME),
+  getEventDateFieldKey(),
+];
+const EVENT_END_TIME_SCROLL_FIELD_KEYS = [
+  getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME),
+];
+const EVENT_VENUE_NAME_SCROLL_FIELD_KEYS = [
+  getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME),
+];
+const EVENT_VENUE_ADDRESS_SCROLL_FIELD_KEYS = [
+  getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS),
+];
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -331,6 +375,34 @@ function updateLinkedFieldDateTextFormat(fieldKey, preset) {
   void Promise.resolve(updateDateTextFormat(fieldKey, preset)).catch((error) => {
     console.error("No se pudo actualizar el formato de fecha del campo dinamico.", error);
   });
+}
+
+function scrollToDynamicFieldTarget(fieldKeys) {
+  if (typeof window === "undefined") return false;
+  const scrollToTarget = readCanvasEditorMethod("scrollToDynamicFieldTarget");
+  if (typeof scrollToTarget !== "function") return false;
+  return scrollToTarget(fieldKeys);
+}
+
+function selectSidebarFieldText(event) {
+  const target = event?.currentTarget;
+  if (!target) return;
+
+  if (typeof target.select === "function") {
+    try {
+      target.select();
+      return;
+    } catch {
+      // Native date/time controls do not always expose text selection.
+    }
+  }
+
+  if (typeof target.setSelectionRange !== "function") return;
+  try {
+    target.setSelectionRange(0, String(target.value ?? "").length);
+  } catch {
+    // Ignore controls that reject programmatic text selection.
+  }
 }
 
 function updateLinkedEventPersonNames(names) {
@@ -656,6 +728,10 @@ export default function MiniToolbarTabDetallesEvento({
       syncEventPersonNamesState
     );
     window.addEventListener(
+      EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+      syncEventPersonNamesState
+    );
+    window.addEventListener(
       EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
       syncEventLocationState
     );
@@ -679,6 +755,10 @@ export default function MiniToolbarTabDetallesEvento({
       );
       window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+        syncEventPersonNamesState
+      );
+      window.removeEventListener(
+        EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
         syncEventPersonNamesState
       );
       window.removeEventListener(
@@ -719,6 +799,11 @@ export default function MiniToolbarTabDetallesEvento({
     if (event.key === "Enter") {
       event.currentTarget.blur();
     }
+  };
+
+  const handleEventNameFocus = (event) => {
+    editingNameRef.current = true;
+    selectSidebarFieldText(event);
   };
 
   const persistEventPersonNames = useCallback((nextNames) => {
@@ -766,8 +851,10 @@ export default function MiniToolbarTabDetallesEvento({
     });
   };
 
-  const handleEventPersonNameFocus = () => {
+  const handleEventPersonNameFocus = (event, fieldKeys) => {
     editingEventPersonNamesRef.current = true;
+    selectSidebarFieldText(event);
+    scrollToDynamicFieldTarget(fieldKeys);
   };
 
   const handleEventPersonNameBlur = () => {
@@ -838,8 +925,10 @@ export default function MiniToolbarTabDetallesEvento({
     });
   };
 
-  const handleEventTimeFocus = () => {
+  const handleEventTimeFocus = (event, fieldKeys) => {
     editingEventTimesRef.current = true;
+    selectSidebarFieldText(event);
+    scrollToDynamicFieldTarget(fieldKeys);
   };
 
   const handleEventTimeBlur = () => {
@@ -956,8 +1045,14 @@ export default function MiniToolbarTabDetallesEvento({
     [hasGoogleMapsApiKey, resolveGoogleAutocompleteSessionToken]
   );
 
-  const handleEventLocationFocus = (fieldName, value) => {
+  const handleEventLocationFocus = (event, fieldName, value) => {
     editingEventLocationRef.current = true;
+    selectSidebarFieldText(event);
+    scrollToDynamicFieldTarget(
+      fieldName === "venueName"
+        ? EVENT_VENUE_NAME_SCROLL_FIELD_KEYS
+        : EVENT_VENUE_ADDRESS_SCROLL_FIELD_KEYS
+    );
     scheduleLocationSuggestions(fieldName, value);
   };
 
@@ -1225,9 +1320,7 @@ export default function MiniToolbarTabDetallesEvento({
           id="event-name"
           type="text"
           value={eventName}
-          onFocus={() => {
-            editingNameRef.current = true;
-          }}
+          onFocus={handleEventNameFocus}
           onChange={handleEventNameChange}
           onBlur={commitEventName}
           onKeyDown={handleEventNameKeyDown}
@@ -1250,7 +1343,9 @@ export default function MiniToolbarTabDetallesEvento({
             id="first-person-name"
             type="text"
             value={eventPersonNames.primaryName}
-            onFocus={handleEventPersonNameFocus}
+            onFocus={(event) =>
+              handleEventPersonNameFocus(event, EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS)
+            }
             onChange={handlePrimaryPersonNameChange}
             onBlur={handleEventPersonNameBlur}
             onKeyDown={handleEventPersonNameKeyDown}
@@ -1267,7 +1362,9 @@ export default function MiniToolbarTabDetallesEvento({
             id="second-person-name"
             type="text"
             value={eventPersonNames.secondaryName}
-            onFocus={handleEventPersonNameFocus}
+            onFocus={(event) =>
+              handleEventPersonNameFocus(event, EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS)
+            }
             onChange={handleSecondaryPersonNameChange}
             onBlur={handleEventPersonNameBlur}
             onKeyDown={handleEventPersonNameKeyDown}
@@ -1290,6 +1387,10 @@ export default function MiniToolbarTabDetallesEvento({
             id="event-date"
             type="date"
             value={countdownUi.date}
+            onFocus={(event) => {
+              selectSidebarFieldText(event);
+              scrollToDynamicFieldTarget(EVENT_DATE_SCROLL_FIELD_KEYS);
+            }}
             onChange={handleEventDateChange}
             disabled={eventDateControlsDisabled}
             className={`${inputClass} ${disabledControlClass}`}
@@ -1305,7 +1406,9 @@ export default function MiniToolbarTabDetallesEvento({
               id="event-start-time"
               type="time"
               value={eventStartTimeValue}
-              onFocus={handleEventTimeFocus}
+              onFocus={(event) =>
+                handleEventTimeFocus(event, EVENT_START_TIME_SCROLL_FIELD_KEYS)
+              }
               onChange={handleEventStartTimeChange}
               onBlur={handleEventTimeBlur}
               onKeyDown={handleEventTimeKeyDown}
@@ -1321,7 +1424,9 @@ export default function MiniToolbarTabDetallesEvento({
               id="event-end-time"
               type="time"
               value={eventEndTimeValue}
-              onFocus={handleEventTimeFocus}
+              onFocus={(event) =>
+                handleEventTimeFocus(event, EVENT_END_TIME_SCROLL_FIELD_KEYS)
+              }
               onChange={handleEventEndTimeChange}
               onBlur={handleEventTimeBlur}
               onKeyDown={handleEventTimeKeyDown}
@@ -1340,6 +1445,7 @@ export default function MiniToolbarTabDetallesEvento({
               <select
                 id="event-date-text-format"
                 value={countdownUi.dateTextFormatPreset}
+                onFocus={() => scrollToDynamicFieldTarget(EVENT_DATE_SCROLL_FIELD_KEYS)}
                 onChange={handleDateTextFormatChange}
                 disabled={eventDateControlsDisabled}
                 className={`${inputClass} ${disabledControlClass}`}
@@ -1379,7 +1485,9 @@ export default function MiniToolbarTabDetallesEvento({
             id="event-place"
             type="text"
             value={eventLocation.venueName}
-            onFocus={() => handleEventLocationFocus("venueName", eventLocation.venueName)}
+            onFocus={(event) =>
+              handleEventLocationFocus(event, "venueName", eventLocation.venueName)
+            }
             onChange={handleVenueNameChange}
             onBlur={handleEventLocationBlur}
             onKeyDown={handleEventLocationKeyDown}
@@ -1397,7 +1505,9 @@ export default function MiniToolbarTabDetallesEvento({
             id="event-address"
             type="text"
             value={eventLocation.address}
-            onFocus={() => handleEventLocationFocus("address", eventLocation.address)}
+            onFocus={(event) =>
+              handleEventLocationFocus(event, "address", eventLocation.address)
+            }
             onChange={handleVenueAddressChange}
             onBlur={handleEventLocationBlur}
             onKeyDown={handleEventLocationKeyDown}
@@ -1415,6 +1525,9 @@ export default function MiniToolbarTabDetallesEvento({
             <select
               id="event-address-text-format"
               value={eventLocation.addressTextFormatPreset}
+              onFocus={() =>
+                scrollToDynamicFieldTarget(EVENT_VENUE_ADDRESS_SCROLL_FIELD_KEYS)
+              }
               onChange={handleAddressTextFormatChange}
               className={inputClass}
             >

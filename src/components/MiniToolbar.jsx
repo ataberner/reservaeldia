@@ -1,5 +1,5 @@
 // components/MiniToolbar.jsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import MiniToolbarTabTexto from "@/components/MiniToolbarTabTexto";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
 import MiniToolbarTabGalleryBuilder from "@/components/MiniToolbarTabGalleryBuilder";
@@ -38,6 +38,28 @@ export default function MiniToolbar({
   const [seccionActivaId, setSeccionActivaId] = useState(
     seccionProp || (typeof window !== "undefined" ? window._seccionActivaId : null)
   );
+  const [imageReplacementUploadState, setImageReplacementUploadState] = useState({});
+
+  const beginImageReplacementUpload = useCallback((descriptor) => {
+    if (!descriptor?.key) return;
+    setImageReplacementUploadState((current) => ({
+      ...current,
+      [descriptor.key]: {
+        ...descriptor,
+        status: "uploading",
+      },
+    }));
+  }, []);
+
+  const clearImageReplacementUpload = useCallback((key) => {
+    if (!key) return;
+    setImageReplacementUploadState((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }, []);
 
   // 1) Sync con la prop cuando cambie
   useEffect(() => {
@@ -66,6 +88,7 @@ export default function MiniToolbar({
           onAgregarSubtitulo={onAgregarSubtitulo}
           onAgregarParrafo={onAgregarParrafo}
           seccionActivaId={seccionActivaId}
+          simplifiedForAssistant={assistantMode}
         />
       )}
 
@@ -86,6 +109,9 @@ export default function MiniToolbar({
           setMostrarGaleria={setMostrarGaleria}
           setImagenesSeleccionadas={setImagenesSeleccionadas}
           simplifiedForAssistant={assistantMode}
+          replacementUploadState={imageReplacementUploadState}
+          onBeginReplacementUpload={beginImageReplacementUpload}
+          onClearReplacementUpload={clearImageReplacementUpload}
         />
       )}
 

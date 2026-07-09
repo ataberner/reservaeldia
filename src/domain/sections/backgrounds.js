@@ -1491,22 +1491,67 @@ export function buildImageObjectFromBackgroundDecoration(
   };
 }
 
-export function applySectionBaseImage(sections, sectionId, imageUrl) {
+export function applySectionBaseImage(sections, sectionId, imageUrl, options = {}) {
   const src = normalizeText(imageUrl);
   if (!src) return Array.isArray(sections) ? sections : [];
+  const preservePlacement = options?.preservePlacement === true;
 
   return (Array.isArray(sections) ? sections : []).map((section) => {
     if (section?.id !== sectionId) return section;
-    return {
+    const backgroundModel = normalizeSectionBackgroundModel(section, {
+      sectionHeight: section?.altura,
+    });
+    const next = {
       ...section,
       fondoTipo: "imagen",
       fondoImagen: src,
-      fondoImagenOffsetX: 0,
-      fondoImagenOffsetY: 0,
-      fondoImagenScale: 1,
-      fondoImagenDraggable: true,
+      fondoImagenOffsetX: preservePlacement
+        ? backgroundModel.base.fondoImagenOffsetX
+        : 0,
+      fondoImagenOffsetY: preservePlacement
+        ? backgroundModel.base.fondoImagenOffsetY
+        : 0,
+      fondoImagenScale: preservePlacement
+        ? backgroundModel.base.fondoImagenScale
+        : 1,
     };
+    if (!preservePlacement || !Object.prototype.hasOwnProperty.call(next, "fondoImagenDraggable")) {
+      next.fondoImagenDraggable = true;
+    }
+    return next;
   });
+}
+
+export function resolveFirstSectionBaseImage(sections) {
+  const orderedSections = (Array.isArray(sections) ? sections : [])
+    .filter(Boolean)
+    .sort((left, right) => Number(left?.orden ?? 0) - Number(right?.orden ?? 0));
+  const section = orderedSections[0] || null;
+  if (!section) {
+    return {
+      hasImage: false,
+      section: null,
+      sectionId: "",
+      imageUrl: "",
+      backgroundModel: null,
+    };
+  }
+
+  const backgroundModel = normalizeSectionBackgroundModel(section, {
+    sectionHeight: section.altura,
+  });
+  const imageUrl =
+    backgroundModel.base.fondoTipo === "imagen"
+      ? backgroundModel.base.fondoImagen
+      : "";
+
+  return {
+    hasImage: Boolean(imageUrl),
+    section,
+    sectionId: normalizeText(section.id),
+    imageUrl,
+    backgroundModel,
+  };
 }
 
 export function clearSectionBaseImage(section) {

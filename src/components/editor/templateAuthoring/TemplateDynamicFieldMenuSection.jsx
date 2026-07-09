@@ -27,6 +27,7 @@ export default function TemplateDynamicFieldMenuSection({
   onLinkEventLocation,
   onLinkEventTime,
   onLinkEventDate,
+  onLinkStoryText,
   onUnlinkField,
   onViewUsage,
 }) {
@@ -58,6 +59,8 @@ export default function TemplateDynamicFieldMenuSection({
   const canUseEventDateLinks =
     (selectedElementType === "texto" || selectedElementType === "countdown") &&
     typeof onLinkEventDate === "function";
+  const canUseStoryTextLink =
+    selectedElementType === "texto" && typeof onLinkStoryText === "function";
 
   const sectionButtonBase =
     "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] transition";
@@ -176,6 +179,21 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
+  const handleLinkStoryText = async () => {
+    if (typeof onLinkStoryText !== "function") return;
+    setSubmitError("");
+
+    try {
+      await onLinkStoryText();
+    } catch (linkError) {
+      setSubmitError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo vincular el texto a Texto historia."
+      );
+    }
+  };
+
   return (
     <section className="rounded-lg border border-violet-200 bg-violet-50/40 p-2">
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -196,6 +214,24 @@ export default function TemplateDynamicFieldMenuSection({
           <strong>Campo activo:</strong> {selectedField.label || selectedField.key}
           <div className="text-[10px] text-violet-600">
             key: {selectedField.key} - grupo: {selectedField.group || "Datos principales"}
+          </div>
+        </div>
+      ) : null}
+
+      {canUseStoryTextLink ? (
+        <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
+          <p className="mb-1 text-[11px] font-semibold text-violet-700">
+            Contenido
+          </p>
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              className={sectionButtonNeutral}
+              disabled={!canConfigure || saving}
+              onClick={handleLinkStoryText}
+            >
+              Texto historia
+            </button>
           </div>
         </div>
       ) : null}

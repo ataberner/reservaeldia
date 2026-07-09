@@ -92,6 +92,8 @@ export default function DashboardLayout({
       {/* Sidebar */}
       {!ocultarSidebar && (
         <DashboardSidebar
+          slugInvitacion={slugInvitacion}
+          generarVistaPrevia={generarVistaPrevia}
           modoSelector={modoSelector}
           mostrarMiniToolbar={mostrarMiniToolbar}
           seccionActivaId={seccionActivaId}

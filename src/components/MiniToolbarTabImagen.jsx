@@ -149,6 +149,7 @@ export default function MiniToolbarTabImagen({
   seccionActivaId,
   setMostrarGaleria,
   setImagenesSeleccionadas,
+  simplifiedForAssistant = false,
 }) {
   const [isMobileViewport, setIsMobileViewport] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
@@ -253,6 +254,8 @@ export default function MiniToolbarTabImagen({
   const galeriaSeleccionada = galleryTargetState.gallery;
   const showGalleryBlockSelector =
     galleryCandidates.length > 1 && galleryTargetState.source !== "canvas-selection";
+  const shouldShowGalleryBlockSelector =
+    showGalleryBlockSelector && !simplifiedForAssistant;
 
   useEffect(() => {
     if (!sidebarGalleryId) return;
@@ -953,7 +956,7 @@ export default function MiniToolbarTabImagen({
             isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
           }`}
         >
-          {showGalleryBlockSelector && (
+          {shouldShowGalleryBlockSelector && (
             <div className="flex flex-col gap-1.5">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
                 Galerias del borrador
@@ -992,7 +995,7 @@ export default function MiniToolbarTabImagen({
           )}
 
           {galeriaSeleccionada && (
-            <div className={`${showGalleryBlockSelector ? "mt-2" : ""} flex items-start justify-between gap-2`}>
+            <div className={`${shouldShowGalleryBlockSelector ? "mt-2" : ""} flex items-start justify-between gap-2`}>
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
                   Galeria
@@ -1001,24 +1004,28 @@ export default function MiniToolbarTabImagen({
                   {selectedGalleryPhotos.length} foto{selectedGalleryPhotos.length === 1 ? "" : "s"} en este bloque.
                 </p>
               </div>
-              <span className="max-w-[120px] truncate rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
-                {galeriaSeleccionada.id}
-              </span>
+              {!simplifiedForAssistant && (
+                <span className="max-w-[120px] truncate rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
+                  {galeriaSeleccionada.id}
+                </span>
+              )}
             </div>
           )}
 
           {galeriaSeleccionada && (
             <>
-              <div className="mt-2">
-                <GalleryLayoutSelector
-                  title="Layout permitido"
-                  options={layoutState.allowedLayoutOptions}
-                  activeLayoutId={layoutState.selectedLayout}
-                  onSelect={handleSwitchLayout}
-                  compact={isMobileViewport}
-                  emptyMessage="Esta galeria usa el layout actual sin presets configurados."
-                />
-              </div>
+              {!simplifiedForAssistant && (
+                <div className="mt-2">
+                  <GalleryLayoutSelector
+                    title="Layout permitido"
+                    options={layoutState.allowedLayoutOptions}
+                    activeLayoutId={layoutState.selectedLayout}
+                    onSelect={handleSwitchLayout}
+                    compact={isMobileViewport}
+                    emptyMessage="Esta galeria usa el layout actual sin presets configurados."
+                  />
+                </div>
+              )}
 
             {selectedGalleryPhotos.length > 0 ? (
               <div
@@ -1169,54 +1176,56 @@ export default function MiniToolbarTabImagen({
               </p>
             )}
 
-            <div className="mt-2 grid grid-cols-4 gap-1.5">
-              <button
-                type="button"
-                disabled={!selectedPhotoTarget || selectedPhotoTarget.displayIndex <= 0}
-                onClick={() => handleMoveSelectedPhoto(-1)}
-                className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
-              >
-                Subir
-              </button>
-              <button
-                type="button"
-                disabled={
-                  !selectedPhotoTarget ||
-                  selectedPhotoTarget.displayIndex >= selectedGalleryPhotos.length - 1
-                }
-                onClick={() => handleMoveSelectedPhoto(1)}
-                className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
-              >
-                Bajar
-              </button>
-              <button
-                type="button"
-                disabled={!selectedPhotoTarget}
-                onClick={openSelectedPhotoReplacementPicker}
-                className={`rounded border px-1.5 py-1 text-[11px] ${
-                  galleryEditMode === "replace"
-                    ? "border-purple-300 bg-purple-50 text-purple-700"
-                    : "border-zinc-200 bg-zinc-50 text-zinc-600 disabled:text-zinc-300"
-                }`}
-              >
-                Reemplazar
-              </button>
-              <button
-                type="button"
-                disabled={!selectedPhotoTarget}
-                onClick={handleRemoveSelectedPhoto}
-                className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
-              >
-                Quitar
-              </button>
-            </div>
+            {!simplifiedForAssistant && (
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  disabled={!selectedPhotoTarget || selectedPhotoTarget.displayIndex <= 0}
+                  onClick={() => handleMoveSelectedPhoto(-1)}
+                  className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
+                >
+                  Subir
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !selectedPhotoTarget ||
+                    selectedPhotoTarget.displayIndex >= selectedGalleryPhotos.length - 1
+                  }
+                  onClick={() => handleMoveSelectedPhoto(1)}
+                  className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
+                >
+                  Bajar
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedPhotoTarget}
+                  onClick={openSelectedPhotoReplacementPicker}
+                  className={`rounded border px-1.5 py-1 text-[11px] ${
+                    galleryEditMode === "replace"
+                      ? "border-purple-300 bg-purple-50 text-purple-700"
+                      : "border-zinc-200 bg-zinc-50 text-zinc-600 disabled:text-zinc-300"
+                  }`}
+                >
+                  Reemplazar
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedPhotoTarget}
+                  onClick={handleRemoveSelectedPhoto}
+                  className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
+                >
+                  Quitar
+                </button>
+              </div>
+            )}
 
             </>
           )}
         </section>
       )}
 
-      {celdaActiva && (
+      {celdaActiva && !simplifiedForAssistant && (
         <div
           className={`border border-emerald-200 bg-emerald-50 ${
             isMobileViewport ? "rounded-lg px-2.5 py-1.5" : "rounded-xl px-3 py-2"
@@ -1248,6 +1257,7 @@ export default function MiniToolbarTabImagen({
         </p>
       )}
 
+      {!simplifiedForAssistant && (
       <div className="shrink-0">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
@@ -1284,6 +1294,7 @@ export default function MiniToolbarTabImagen({
           onSeleccionadasChange={setImagenesSeleccionadas}
         />
       </div>
+      )}
     </div>
   );
 }

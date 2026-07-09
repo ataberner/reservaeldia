@@ -15,7 +15,7 @@ import {
     FaShapes,
     FaTimes,
 } from "react-icons/fa";
-import { GripHorizontal, Redo2, Undo2 } from "lucide-react";
+import { GripHorizontal, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -27,6 +27,14 @@ import {
 } from "@/utils/editorHistoryControls";
 import { canAccessGalleryBuilder } from "@/domain/gallery/sidebarModel";
 import { normalizeGalleryLayoutIds } from "@/domain/gallery/galleryLayoutPresets";
+import {
+    clampAssistantStepIndex,
+    getAssistantNavigationState,
+    getAssistantStep,
+    getAssistantStepIndexByTabId,
+    isAssistantTabId,
+    resolveAssistantResumeStepIndex,
+} from "@/domain/editor/assistantMode";
 
 
 /**
@@ -127,6 +135,7 @@ const SIDEBAR_TOOL_TABS = Object.freeze([
         mobileLabel: "Efectos",
         Icon: FaMagic,
         mobileIconText: "Fx",
+        requiresAdmin: true,
     },
 ]);
 
@@ -226,6 +235,8 @@ function publishSidebarPanelLayout(detail = {}) {
 
 
 export default function DashboardSidebar({
+    slugInvitacion = "",
+    generarVistaPrevia,
     modoSelector,
     seccionActivaId,
     historialExternos = [],
@@ -252,6 +263,9 @@ export default function DashboardSidebar({
     const [isMobilePanelResizing, setIsMobilePanelResizing] = useState(false);
     const modalCrear = useModalCrearSeccion();
     const [botonActivo, setBotonActivo] = useState(null); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'gallery-builder' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
+    const [assistantActive, setAssistantActive] = useState(false);
+    const [assistantHasStarted, setAssistantHasStarted] = useState(false);
+    const [assistantStepIndex, setAssistantStepIndex] = useState(0);
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
         imagenes,
@@ -277,6 +291,7 @@ export default function DashboardSidebar({
         templateSessionMeta,
     });
     const canUseCountdown = canManageSite === true;
+    const canUseEffects = canManageSite === true;
 
     // --------------------------
     // Reset de paneles al cerrar sidebar
@@ -320,6 +335,7 @@ export default function DashboardSidebar({
     const panelRef = useRef(null);
     const mobilePanelResizeSessionRef = useRef(null);
     const mobileToolbarScrollRef = useRef(null);
+    const autoAssistantDraftKeyRef = useRef(null);
 
     // Helpers para mostrar/ocultar con pequeno delay seguro
     const openPanel = (tipo) => {
@@ -342,6 +358,72 @@ export default function DashboardSidebar({
             closeTimerRef.current = null;
         }
     };
+
+    const openAssistantAtStep = useCallback((stepIndex, options = {}) => {
+        const safeStepIndex = clampAssistantStepIndex(stepIndex);
+        const step = getAssistantStep(safeStepIndex);
+
+        if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+
+        setAssistantStepIndex(safeStepIndex);
+        setAssistantActive(true);
+        setAssistantHasStarted(true);
+        setBotonActivo(step.id);
+        setFijadoSidebar(true);
+        setHoverSidebar(true);
+        setRsvpForcePresetSelection(false);
+
+        if (options.expandMobilePanel === true && isMobileViewport) {
+            const bounds = resolveMobilePanelHeightBounds();
+            setMobilePanelHeight(bounds.max);
+        }
+    }, [isMobileViewport]);
+
+    const handleAssistantAccessClick = useCallback(() => {
+        const resumeStepIndex = resolveAssistantResumeStepIndex({
+            hasStarted: assistantHasStarted,
+            currentStepIndex: assistantStepIndex,
+        });
+
+        openAssistantAtStep(resumeStepIndex, { expandMobilePanel: true });
+    }, [assistantHasStarted, assistantStepIndex, openAssistantAtStep]);
+
+    useEffect(() => {
+        if (modoSelector) {
+            autoAssistantDraftKeyRef.current = null;
+            return;
+        }
+
+        const draftKey = String(
+            slugInvitacion ||
+            editorSession?.slug ||
+            editorSession?.id ||
+            ""
+        ).trim();
+        if (!draftKey) {
+            autoAssistantDraftKeyRef.current = null;
+            return;
+        }
+        if (autoAssistantDraftKeyRef.current === draftKey) return;
+
+        autoAssistantDraftKeyRef.current = draftKey;
+        openAssistantAtStep(0, { expandMobilePanel: true });
+    }, [editorSession, modoSelector, openAssistantAtStep, slugInvitacion]);
+
+    const handleAssistantPrevious = useCallback(() => {
+        const navigation = getAssistantNavigationState(assistantStepIndex);
+        if (!navigation.canGoPrevious) return;
+        openAssistantAtStep(navigation.previousStepIndex);
+    }, [assistantStepIndex, openAssistantAtStep]);
+
+    const handleAssistantNext = useCallback(() => {
+        const navigation = getAssistantNavigationState(assistantStepIndex);
+        if (!navigation.canGoNext) return;
+        openAssistantAtStep(navigation.nextStepIndex);
+    }, [assistantStepIndex, openAssistantAtStep]);
 
     const clampMobilePanelHeight = useCallback((height) => {
         const bounds = resolveMobilePanelHeightBounds();
@@ -472,6 +554,7 @@ export default function DashboardSidebar({
         : undefined;
 
     const closeSidebarPanel = useCallback(() => {
+        setAssistantActive(false);
         setFijadoSidebar(false);
         setHoverSidebar(false);
         setBotonActivo(null);
@@ -489,6 +572,12 @@ export default function DashboardSidebar({
         if (canUseCountdown) return;
         closeSidebarPanel();
     }, [botonActivo, canUseCountdown, closeSidebarPanel]);
+
+    useEffect(() => {
+        if (botonActivo !== "efectos") return;
+        if (canUseEffects) return;
+        closeSidebarPanel();
+    }, [botonActivo, canUseEffects, closeSidebarPanel]);
 
     useEffect(() => {
         return () => {
@@ -551,6 +640,7 @@ export default function DashboardSidebar({
         if (!isMobileViewport) return;
 
         const handleInsertElement = () => {
+            if (assistantActive) return;
             if (!fijadoSidebar) return;
             if (!botonActivo || !TABS_WITH_AUTO_CLOSE_ON_INSERT.has(botonActivo)) return;
             closeSidebarPanel();
@@ -558,11 +648,12 @@ export default function DashboardSidebar({
 
         window.addEventListener("insertar-elemento", handleInsertElement);
         return () => window.removeEventListener("insertar-elemento", handleInsertElement);
-    }, [isMobileViewport, fijadoSidebar, botonActivo, closeSidebarPanel]);
+    }, [assistantActive, isMobileViewport, fijadoSidebar, botonActivo, closeSidebarPanel]);
 
     useEffect(() => {
         const handleAbrirPanelRsvp = (event) => {
             const forcePresetSelection = event?.detail?.forcePresetSelection === true;
+            setAssistantActive(false);
             setBotonActivo("rsvp");
             setFijadoSidebar(true);
             setHoverSidebar(true);
@@ -575,6 +666,7 @@ export default function DashboardSidebar({
 
     useEffect(() => {
         const handleAbrirPanelRegalos = () => {
+            setAssistantActive(false);
             setBotonActivo("regalos");
             setFijadoSidebar(true);
             setHoverSidebar(true);
@@ -765,6 +857,19 @@ export default function DashboardSidebar({
     };
 
     const handleSidebarTabClick = (boton) => {
+        const assistantTabIndex = getAssistantStepIndexByTabId(boton);
+
+        if (assistantActive) {
+            if (assistantTabIndex >= 0) {
+                openAssistantAtStep(assistantTabIndex);
+                return;
+            }
+
+            setAssistantActive(false);
+        } else if (assistantHasStarted && assistantTabIndex >= 0) {
+            setAssistantStepIndex(assistantTabIndex);
+        }
+
         if (boton === "rsvp") {
             setRsvpForcePresetSelection(false);
         }
@@ -829,11 +934,40 @@ export default function DashboardSidebar({
         "border-[#e5d7fb] bg-white text-[#6f3bc0] shadow-[0_10px_20px_rgba(95,53,150,0.12)] hover:-translate-y-[1px] hover:border-[#d7c4f5] hover:bg-[#faf6ff]";
     const mobileHistoryButtonDisabled =
         "cursor-not-allowed border-[#ece7f7] bg-[#f5f3fa] text-slate-300 shadow-none";
+    const assistantAccessLabel = assistantHasStarted ? "Continuar" : "Asistente";
+    const assistantAccessTitle = assistantHasStarted
+        ? "Continuar el asistente"
+        : "Abrir el asistente";
+    const assistantNavigation = getAssistantNavigationState(assistantStepIndex);
+    const assistantCurrentStep = assistantNavigation.currentStep;
+    const shouldShowAssistantControls =
+        assistantActive &&
+        Boolean(botonActivo) &&
+        isAssistantTabId(botonActivo) &&
+        assistantCurrentStep.id === botonActivo;
+    const assistantMode = shouldShowAssistantControls;
+    const assistantNextIsPreview = shouldShowAssistantControls && !assistantNavigation.canGoNext;
+    const canOpenAssistantPreview = typeof generarVistaPrevia === "function";
+    const mobileAssistantButtonClass =
+        assistantActive
+            ? "border-white/70 bg-gradient-to-br from-[#692B9A] to-[#F39F5F] text-white shadow-[0_12px_24px_rgba(105,43,154,0.24)] ring-2 ring-white/55"
+            : "border-[#e5d7fb] bg-white text-[#692B9A] shadow-[0_10px_20px_rgba(95,53,150,0.12)] hover:-translate-y-[1px] hover:border-[#d7c4f5] hover:bg-[#faf6ff]";
+    const desktopAssistantButtonClass =
+        assistantActive
+            ? "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-transparent bg-[#692B9A] px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-white shadow-[0_12px_24px_rgba(105,43,154,0.18)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]"
+            : "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-[#eadff8] bg-white px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-[#692B9A] transition hover:bg-[#EFDFFB] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]";
+    const assistantStepButtonBase =
+        "inline-flex min-h-10 items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1] disabled:cursor-not-allowed disabled:opacity-45";
+    const assistantStepButtonSecondary =
+        "border-[#e4d8f5] bg-white text-[#5f3596] hover:bg-[#faf6ff]";
+    const assistantStepButtonPrimary =
+        "border-transparent bg-[#692B9A] text-white hover:bg-[#5b2387]";
     const canUndo = !editorReadOnly && historialExternos.length > 1;
     const canRedo = !editorReadOnly && futurosExternos.length > 0;
     const availableSidebarTabs = SIDEBAR_TOOL_TABS.filter((tab) => {
         if (tab.requiresGalleryBuilder) return canUseGalleryBuilder;
         if (tab.requiresCountdown) return canUseCountdown;
+        if (tab.requiresAdmin) return canUseEffects;
         return true;
     });
 
@@ -884,6 +1018,20 @@ export default function DashboardSidebar({
             >
                 {/* Escritorio: barra vertical a la izquierda */}
                 <div className="mt-2 hidden flex-col items-start gap-2 py-3 pl-0 pr-0 md:flex">
+                    <button
+                        type="button"
+                        onClick={handleAssistantAccessClick}
+                        className={desktopAssistantButtonClass}
+                        title={assistantAccessTitle}
+                        aria-label={assistantAccessTitle}
+                    >
+                        <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span className="whitespace-nowrap">
+                            {assistantAccessLabel}
+                        </span>
+                    </button>
+                    <div className="h-px w-[158px] bg-[#efe5fb]" />
+
                     {availableSidebarTabs.map((tab) => {
                         const Icon = tab.Icon;
 
@@ -950,6 +1098,21 @@ export default function DashboardSidebar({
                                 </button>
                                 <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
                                     Rehacer
+                                </span>
+                            </div>
+
+                            <div className="flex min-w-[70px] shrink-0 flex-col items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={handleAssistantAccessClick}
+                                    className={`${mobileHistoryButtonBase} ${mobileAssistantButtonClass}`}
+                                    title={assistantAccessTitle}
+                                    aria-label={assistantAccessTitle}
+                                >
+                                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
+                                    {assistantAccessLabel}
                                 </span>
                             </div>
 
@@ -1028,7 +1191,9 @@ export default function DashboardSidebar({
                                 top: "var(--dashboard-header-height, 52px)",
                                 height: "calc(100vh - var(--dashboard-header-height, 52px))",
                                 width: `${DESKTOP_PANEL_WIDTH_PX}px`,
-                                overflowY: "auto",
+                                overflow: "hidden",
+                                display: "flex",
+                                flexDirection: "column",
                             }
                     }
                 >
@@ -1047,25 +1212,21 @@ export default function DashboardSidebar({
                         </button>
                     ) : null}
                     <div
-                        className={`relative w-full h-full min-h-0 flex flex-col text-slate-700 ${
+                        className={`relative w-full min-h-0 flex flex-1 flex-col text-slate-700 ${
                             botonActivo === "forma"
                                 ? "gap-0 px-2.5 pb-0.5 pt-8"
                                 : botonActivo === "detalles"
                                     ? "gap-3 px-0 pb-3 pt-10"
                                 : "gap-3 px-2.5 pb-3 pt-10"
                         }`}
-                        style={
-                            isMobileViewport
-                                ? {
-                                    flex: 1,
-                                    minHeight: 0,
-                                    height: "auto",
-                                    overflowY: "auto",
-                                    WebkitOverflowScrolling: "touch",
-                                    overscrollBehaviorY: "contain",
-                                }
-                                : undefined
-                        }
+                        style={{
+                            flex: 1,
+                            minHeight: 0,
+                            height: "auto",
+                            overflowY: "auto",
+                            WebkitOverflowScrolling: "touch",
+                            overscrollBehaviorY: "contain",
+                        }}
                     >
                         {/* Boton para cerrar el panel */}
                         {fijadoSidebar && (
@@ -1161,8 +1322,49 @@ export default function DashboardSidebar({
                             templateSessionMeta={templateSessionMeta}
                             rsvpForcePresetSelection={rsvpForcePresetSelection}
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}
+                            assistantMode={assistantMode}
                         />
                     </div>
+                    {shouldShowAssistantControls && (
+                        <div
+                            className="shrink-0 border-t border-[#eadff8] bg-white/96 px-2.5 py-2 shadow-[0_-8px_18px_rgba(95,53,150,0.06)]"
+                        >
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <div className="min-w-0 truncate font-['Source_Sans_Pro',sans-serif] text-[10px] font-semibold uppercase leading-[14px] tracking-[0.06em] text-[#692B9A]">
+                                    Asistente {assistantNavigation.progressLabel}
+                                </div>
+                                <div className="shrink-0 truncate font-['Source_Sans_Pro',sans-serif] text-[11px] font-semibold leading-[14px] text-[#262626]">
+                                    {assistantCurrentStep.label}
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={handleAssistantPrevious}
+                                    disabled={!assistantNavigation.canGoPrevious}
+                                    className={`${assistantStepButtonBase} ${assistantStepButtonSecondary}`}
+                                >
+                                    Anterior
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={
+                                        assistantNextIsPreview
+                                            ? generarVistaPrevia
+                                            : handleAssistantNext
+                                    }
+                                    disabled={
+                                        assistantNextIsPreview
+                                            ? !canOpenAssistantPreview
+                                            : !assistantNavigation.canGoNext
+                                    }
+                                    className={`${assistantStepButtonBase} ${assistantStepButtonPrimary}`}
+                                >
+                                    {assistantNextIsPreview ? "Vista previa" : "Siguiente"}
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

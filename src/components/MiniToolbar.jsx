@@ -31,6 +31,7 @@ export default function MiniToolbar({
   templateSessionMeta = null,
   rsvpForcePresetSelection,
   onRsvpPresetSelectionComplete,
+  assistantMode = false,
 }) {
 
   // Estado interno sincronizado con 3 fuentes: prop -> evento global -> fallback por selección
@@ -68,7 +69,9 @@ export default function MiniToolbar({
         />
       )}
 
-      {botonActivo === "detalles" && <MiniToolbarTabDetallesEvento />}
+      {botonActivo === "detalles" && (
+        <MiniToolbarTabDetallesEvento simplifiedForAssistant={assistantMode} />
+      )}
 
       {botonActivo === "imagen" && (
         <MiniToolbarTabImagen
@@ -82,6 +85,7 @@ export default function MiniToolbar({
           seccionActivaId={seccionActivaId}
           setMostrarGaleria={setMostrarGaleria}
           setImagenesSeleccionadas={setImagenesSeleccionadas}
+          simplifiedForAssistant={assistantMode}
         />
       )}
 

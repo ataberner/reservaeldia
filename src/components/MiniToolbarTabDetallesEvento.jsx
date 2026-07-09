@@ -479,7 +479,9 @@ async function fetchGooglePlaceDetailsFromPrediction(prediction) {
   return normalizeGooglePlaceInput(place);
 }
 
-export default function MiniToolbarTabDetallesEvento() {
+export default function MiniToolbarTabDetallesEvento({
+  simplifiedForAssistant = false,
+}) {
   const [documentNameState, setDocumentNameState] = useState(
     readInitialDocumentNameState
   );
@@ -1329,35 +1331,39 @@ export default function MiniToolbarTabDetallesEvento() {
           </div>
         </div>
 
-        <div className="mt-3">
-          <label className={subLabelClass} htmlFor="event-date-text-format">
-            Formato de fecha en textos
-          </label>
-          <select
-            id="event-date-text-format"
-            value={countdownUi.dateTextFormatPreset}
-            onChange={handleDateTextFormatChange}
-            disabled={eventDateControlsDisabled}
-            className={`${inputClass} ${disabledControlClass}`}
-          >
-            {DATE_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label} - {option.example}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!simplifiedForAssistant && (
+          <>
+            <div className="mt-3">
+              <label className={subLabelClass} htmlFor="event-date-text-format">
+                Formato de fecha en textos
+              </label>
+              <select
+                id="event-date-text-format"
+                value={countdownUi.dateTextFormatPreset}
+                onChange={handleDateTextFormatChange}
+                disabled={eventDateControlsDisabled}
+                className={`${inputClass} ${disabledControlClass}`}
+              >
+                {DATE_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} - {option.example}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-          <input
-            type="checkbox"
-            checked={countdownUi.showCountdown}
-            onChange={handleShowCountdownChange}
-            disabled={countdownVisibilityDisabled}
-            className={`${checkboxClass} disabled:cursor-not-allowed`}
-          />
-          Mostrar contador con cuenta regresiva
-        </label>
+            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+              <input
+                type="checkbox"
+                checked={countdownUi.showCountdown}
+                onChange={handleShowCountdownChange}
+                disabled={countdownVisibilityDisabled}
+                className={`${checkboxClass} disabled:cursor-not-allowed`}
+              />
+              Mostrar contador con cuenta regresiva
+            </label>
+          </>
+        )}
       </section>
 
       <div className={dividerClass} />
@@ -1401,23 +1407,25 @@ export default function MiniToolbarTabDetallesEvento() {
           {renderLocationSuggestions("address")}
         </div>
 
-        <div className="mt-3">
-          <label className={subLabelClass} htmlFor="event-address-text-format">
-            Formato de direccion en textos
-          </label>
-          <select
-            id="event-address-text-format"
-            value={eventLocation.addressTextFormatPreset}
-            onChange={handleAddressTextFormatChange}
-            className={inputClass}
-          >
-            {ADDRESS_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label} - {option.example}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!simplifiedForAssistant && (
+          <div className="mt-3">
+            <label className={subLabelClass} htmlFor="event-address-text-format">
+              Formato de direccion en textos
+            </label>
+            <select
+              id="event-address-text-format"
+              value={eventLocation.addressTextFormatPreset}
+              onChange={handleAddressTextFormatChange}
+              className={inputClass}
+            >
+              {ADDRESS_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} - {option.example}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {locationSuggestionsLoading ? (
           <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
@@ -1435,21 +1443,25 @@ export default function MiniToolbarTabDetallesEvento() {
           </p>
         ) : null}
 
-        <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-          <input
-            type="checkbox"
-            checked={eventLocation.showMap}
-            onChange={handleShowMapChange}
-            disabled={!canShowEventMap}
-            className={`${checkboxClass} disabled:cursor-not-allowed`}
-          />
-          Mostrar mapa en la invitacion
-        </label>
-        {!canShowEventMap ? (
-          <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
-            Selecciona una sugerencia de Google Maps para activar el mapa.
-          </p>
-        ) : null}
+        {!simplifiedForAssistant && (
+          <>
+            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+              <input
+                type="checkbox"
+                checked={eventLocation.showMap}
+                onChange={handleShowMapChange}
+                disabled={!canShowEventMap}
+                className={`${checkboxClass} disabled:cursor-not-allowed`}
+              />
+              Mostrar mapa en la invitacion
+            </label>
+            {!canShowEventMap ? (
+              <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
+                Selecciona una sugerencia de Google Maps para activar el mapa.
+              </p>
+            ) : null}
+          </>
+        )}
       </section>
     </div>
   );

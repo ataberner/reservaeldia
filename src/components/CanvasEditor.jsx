@@ -25,7 +25,9 @@ import useSectionsManager from "./editor/sections/useSectionsManager";
 import useEditorEvents from "./editor/events/useEditorEvents";
 import useEditorWindowBridge from "./editor/window/useEditorWindowBridge";
 import useHistoryManager from "./editor/history/useHistoryManager";
-import useCanvasScaleLayout from "@/components/editor/mobile/useCanvasScaleLayout";
+import useCanvasScaleLayout, {
+  MOBILE_PORTRAIT_WRAPPER_BASE_WIDTH_ZOOM_08,
+} from "@/components/editor/mobile/useCanvasScaleLayout";
 import useCanvasInteractionState from "@/components/editor/mobile/useCanvasInteractionState";
 import useStageGestures from "./editor/mobile/useStageGestures";
 import useOptionButtonPosition from "@/components/editor/overlays/useOptionButtonPosition";
@@ -1640,6 +1642,14 @@ export default function CanvasEditor({
         )
       : 0;
 
+  const canvasWrapperWidthPx =
+    isMobilePortrait && zoom === 0.8
+      ? MOBILE_PORTRAIT_WRAPPER_BASE_WIDTH_ZOOM_08
+      : zoom === 0.8
+        ? 1220
+        : 1000;
+  const canvasWrapperWidth = `${canvasWrapperWidthPx}px`;
+
 
 
   return (
@@ -1661,7 +1671,7 @@ export default function CanvasEditor({
         // ? espacio para que no â€œchoqueâ€ con header / barras
         paddingLeft: sidebarPanelInsetLeft,
         paddingRight: sidebarPanelInsetLeft ? SIDEBAR_PANEL_CANVAS_GAP_PX : 0,
-        paddingTop: 12 + mobileCanvasToolbarOffset,
+        paddingTop: isMobile ? mobileCanvasToolbarOffset : 12,
         paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
         transition: "padding-left 220ms ease, padding-right 220ms ease, padding-top 180ms ease",
       }}
@@ -1676,7 +1686,7 @@ export default function CanvasEditor({
           backgroundColor: "#ffffff",
           display: "flex",
           justifyContent: "center",
-          paddingTop: "20px", // ? MENOS PADDING INTERNO
+          paddingTop: isMobile ? 0 : "20px", // ? MENOS PADDING INTERNO
           paddingBottom: "calc(40px + env(safe-area-inset-bottom, 0px))", // ? ESPACIO INFERIOR
         }}
       >
@@ -1687,7 +1697,7 @@ export default function CanvasEditor({
             transformOrigin: 'top center',
             transition: "transform 220ms ease, margin-bottom 220ms ease",
             willChange: "transform",
-            width: zoom === 0.8 ? "1220px" : "1000px", // ? 920px canvas + 150px cada lado
+            width: canvasWrapperWidth, // Visual wrapper; the Stage remains 800px.
             position: "relative",
             marginBottom: scaledCanvasHeightCompensation,
           }}
@@ -1696,7 +1706,7 @@ export default function CanvasEditor({
           <div
             className="relative"
             style={{
-              width: zoom === 0.8 ? "1220px" : "1000px", // ? AJUSTAR SEGÃšN ZOOM
+              width: canvasWrapperWidth, // Keep outer and inner wrapper widths in sync.
               display: "flex",
               justifyContent: "center",
               transform: desktopCanvasShiftX

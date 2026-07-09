@@ -6,7 +6,7 @@ export const LANDING_TITLE =
   "Invitaciones digitales para casamientos | Reserva el D\u00eda";
 export const LANDING_DESCRIPTION =
   "Cre\u00e1 tu invitaci\u00f3n digital de casamiento, compartila por WhatsApp y gestion\u00e1 confirmaciones, invitados, regalos, mapas y fotos desde un solo link.";
-export const LANDING_SHARE_IMAGE_URL = `${LANDING_SITE_URL}/assets/img/default-share.jpg`;
+export const LANDING_SHARE_IMAGE_URL = `${LANDING_SITE_URL}/assets/img/og-home-2026.jpg`;
 export const LANDING_LOGO_URL = `${LANDING_SITE_URL}/assets/img/logo-full.png`;
 export const LANDING_HERO_IMAGE_PRELOAD_URL = "/assets/img/Imagen%20Hero.webp";
 

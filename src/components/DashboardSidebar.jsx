@@ -15,7 +15,7 @@ import {
     FaShapes,
     FaTimes,
 } from "react-icons/fa";
-import { Redo2, Undo2 } from "lucide-react";
+import { GripHorizontal, Redo2, Undo2 } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -46,10 +46,162 @@ const MOBILE_BAR_HEIGHT_PX = 96;
 const MOBILE_PANEL_GUTTER_PX = 8;
 const MOBILE_PANEL_BOTTOM_EXTRA_PX = 2;
 const MOBILE_SCROLL_FADE_WIDTH_PX = 92;
+const MOBILE_PANEL_MIN_HEIGHT_PX = 240;
+const MOBILE_PANEL_DEFAULT_HEIGHT_RATIO = 0.52;
+const MOBILE_PANEL_DEFAULT_MAX_HEIGHT_PX = 440;
+const MOBILE_PANEL_MAX_HEIGHT_RATIO = 0.72;
+const MOBILE_PANEL_TOP_GAP_PX = 12;
 const DESKTOP_PANEL_LEFT_PX = 197;
 const DESKTOP_PANEL_WIDTH_PX = 435;
 const DESKTOP_PANEL_GAP_PX = 16;
 const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "gallery-builder", "contador", "efectos"]);
+const SIDEBAR_TOOL_TABS = Object.freeze([
+    {
+        id: "detalles",
+        title: "Detalles del evento",
+        desktopLabel: "Detalles evento",
+        mobileLabel: "Evento",
+        Icon: FaRegCalendarAlt,
+        wide: true,
+    },
+    {
+        id: "texto",
+        title: "Texto",
+        desktopLabel: "Texto",
+        mobileLabel: "Texto",
+        Icon: FaFont,
+        mobileIconSrc: "/icons/texto.png",
+    },
+    {
+        id: "forma",
+        title: "Elementos",
+        desktopLabel: "Elementos",
+        mobileLabel: "Elementos",
+        Icon: FaShapes,
+        mobileIconSrc: "/icons/forma.png",
+    },
+    {
+        id: "imagen",
+        title: "Fotos",
+        desktopLabel: "Fotos",
+        mobileLabel: "Fotos",
+        Icon: FaRegImage,
+        mobileIconSrc: "/icons/imagen.png",
+    },
+    {
+        id: "gallery-builder",
+        title: "Builder de galeria",
+        mobileTitle: "Builder galeria",
+        desktopLabel: "Builder gal.",
+        mobileLabel: "Builder",
+        Icon: FaRegImage,
+        requiresGalleryBuilder: true,
+        wide: true,
+    },
+    {
+        id: "contador",
+        title: "Contador",
+        desktopLabel: "Contador",
+        mobileLabel: "Contador",
+        Icon: FaRegClock,
+        requiresCountdown: true,
+    },
+    {
+        id: "rsvp",
+        title: "Asistencia",
+        desktopLabel: "Asistencia",
+        mobileLabel: "Asistencia",
+        Icon: FaRegEnvelope,
+    },
+    {
+        id: "regalos",
+        title: "Regalos",
+        desktopLabel: "Regalos",
+        mobileLabel: "Regalos",
+        Icon: FaGift,
+    },
+    {
+        id: "efectos",
+        title: "Efectos",
+        desktopLabel: "Efectos",
+        mobileLabel: "Efectos",
+        Icon: FaMagic,
+        mobileIconText: "Fx",
+    },
+]);
+
+function renderMobileSidebarTabIcon(tab) {
+    if (tab.mobileIconSrc) {
+        return <img src={tab.mobileIconSrc} alt={tab.mobileLabel} className="h-5 w-5" />;
+    }
+
+    if (tab.mobileIconText) {
+        return <span className="text-[13px] font-bold">{tab.mobileIconText}</span>;
+    }
+
+    const Icon = tab.Icon;
+    return <Icon className="text-lg" aria-hidden="true" />;
+}
+
+function clampNumber(value, min, max) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return min;
+    return Math.min(max, Math.max(min, numeric));
+}
+
+function resolveDashboardHeaderBottom() {
+    if (typeof window === "undefined" || typeof document === "undefined") return 52;
+
+    let headerBottom = 0;
+    const headerNode = document.querySelector('[data-dashboard-header="true"]');
+    if (headerNode && typeof headerNode.getBoundingClientRect === "function") {
+        headerBottom = Math.max(0, Number(headerNode.getBoundingClientRect().bottom) || 0);
+    }
+
+    const cssValue = window
+        .getComputedStyle(document.documentElement)
+        .getPropertyValue("--dashboard-header-height");
+    const cssHeight = Number.parseFloat(cssValue);
+    if (Number.isFinite(cssHeight) && cssHeight > 0) {
+        headerBottom = Math.max(headerBottom, cssHeight);
+    }
+
+    return headerBottom || 52;
+}
+
+function resolveMobilePanelHeightBounds() {
+    if (typeof window === "undefined") {
+        return {
+            min: MOBILE_PANEL_MIN_HEIGHT_PX,
+            max: MOBILE_PANEL_DEFAULT_MAX_HEIGHT_PX,
+            defaultHeight: MOBILE_PANEL_DEFAULT_MAX_HEIGHT_PX,
+        };
+    }
+
+    const viewportHeight = Math.max(1, Number(window.innerHeight) || 0);
+    const panelBottomOffset =
+        MOBILE_BAR_HEIGHT_PX + MOBILE_PANEL_BOTTOM_EXTRA_PX;
+    const availableHeight =
+        viewportHeight -
+        resolveDashboardHeaderBottom() -
+        panelBottomOffset -
+        MOBILE_PANEL_TOP_GAP_PX;
+    const maxByViewport = Math.round(viewportHeight * MOBILE_PANEL_MAX_HEIGHT_RATIO);
+    const max = Math.max(160, Math.floor(Math.min(maxByViewport, availableHeight)));
+    const min = Math.min(MOBILE_PANEL_MIN_HEIGHT_PX, max);
+    const defaultHeight = clampNumber(
+        Math.round(
+            Math.min(
+                viewportHeight * MOBILE_PANEL_DEFAULT_HEIGHT_RATIO,
+                MOBILE_PANEL_DEFAULT_MAX_HEIGHT_PX
+            )
+        ),
+        min,
+        max
+    );
+
+    return { min, max, defaultHeight };
+}
 
 function publishSidebarPanelLayout(detail = {}) {
     if (typeof window === "undefined") return;
@@ -94,6 +246,10 @@ export default function DashboardSidebar({
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
     const [showMobileScrollHint, setShowMobileScrollHint] = useState(false);
+    const [mobilePanelHeight, setMobilePanelHeight] = useState(
+        () => resolveMobilePanelHeightBounds().defaultHeight
+    );
+    const [isMobilePanelResizing, setIsMobilePanelResizing] = useState(false);
     const modalCrear = useModalCrearSeccion();
     const [botonActivo, setBotonActivo] = useState(null); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'gallery-builder' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
@@ -128,6 +284,8 @@ export default function DashboardSidebar({
     useEffect(() => {
         if (!sidebarAbierta) {
             setMostrarGaleria(false);
+            mobilePanelResizeSessionRef.current = null;
+            setIsMobilePanelResizing(false);
         }
     }, [sidebarAbierta]);
 
@@ -160,6 +318,7 @@ export default function DashboardSidebar({
     const closeTimerRef = useRef(null);
     const asideRef = useRef(null);
     const panelRef = useRef(null);
+    const mobilePanelResizeSessionRef = useRef(null);
     const mobileToolbarScrollRef = useRef(null);
 
     // Helpers para mostrar/ocultar con pequeno delay seguro
@@ -183,6 +342,93 @@ export default function DashboardSidebar({
             closeTimerRef.current = null;
         }
     };
+
+    const clampMobilePanelHeight = useCallback((height) => {
+        const bounds = resolveMobilePanelHeightBounds();
+        return clampNumber(height, bounds.min, bounds.max);
+    }, []);
+
+    const handleMobilePanelResizePointerDown = useCallback((event) => {
+        if (!isMobileViewport) return;
+        if (event.button !== undefined && event.button !== 0) return;
+
+        const bounds = resolveMobilePanelHeightBounds();
+        const currentHeight = clampNumber(
+            mobilePanelHeight || bounds.defaultHeight,
+            bounds.min,
+            bounds.max
+        );
+
+        mobilePanelResizeSessionRef.current = {
+            pointerId: event.pointerId,
+            startY: Number(event.clientY) || 0,
+            startHeight: currentHeight,
+        };
+        setMobilePanelHeight(currentHeight);
+        setIsMobilePanelResizing(true);
+
+        try {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+        } catch {
+            // Pointer capture is an enhancement; the panel still ignores unsupported paths safely.
+        }
+        event.preventDefault();
+        event.stopPropagation();
+    }, [isMobileViewport, mobilePanelHeight]);
+
+    const handleMobilePanelResizePointerMove = useCallback((event) => {
+        const session = mobilePanelResizeSessionRef.current;
+        if (!session || session.pointerId !== event.pointerId) return;
+
+        const currentY = Number(event.clientY) || session.startY;
+        const nextHeight = session.startHeight + (session.startY - currentY);
+        setMobilePanelHeight(clampMobilePanelHeight(nextHeight));
+
+        event.preventDefault();
+        event.stopPropagation();
+    }, [clampMobilePanelHeight]);
+
+    const finishMobilePanelResize = useCallback((event) => {
+        const session = mobilePanelResizeSessionRef.current;
+        if (!session || session.pointerId !== event.pointerId) return;
+
+        mobilePanelResizeSessionRef.current = null;
+        setIsMobilePanelResizing(false);
+        try {
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
+            }
+        } catch {
+            // No-op: cleanup still resets the local resize session.
+        }
+        event.preventDefault();
+        event.stopPropagation();
+    }, []);
+
+    useEffect(() => {
+        if (!isMobileViewport) {
+            mobilePanelResizeSessionRef.current = null;
+            setIsMobilePanelResizing(false);
+            return undefined;
+        }
+        if (typeof window === "undefined") return undefined;
+
+        const syncMobilePanelBounds = () => {
+            setMobilePanelHeight((current) => {
+                const bounds = resolveMobilePanelHeightBounds();
+                return clampNumber(current || bounds.defaultHeight, bounds.min, bounds.max);
+            });
+        };
+
+        syncMobilePanelBounds();
+        window.addEventListener("resize", syncMobilePanelBounds);
+        window.addEventListener("orientationchange", syncMobilePanelBounds);
+
+        return () => {
+            window.removeEventListener("resize", syncMobilePanelBounds);
+            window.removeEventListener("orientationchange", syncMobilePanelBounds);
+        };
+    }, [isMobileViewport]);
 
     const syncMobileScrollHint = useCallback(() => {
         const scrollContainer = mobileToolbarScrollRef.current;
@@ -518,6 +764,14 @@ export default function DashboardSidebar({
         });
     };
 
+    const handleSidebarTabClick = (boton) => {
+        if (boton === "rsvp") {
+            setRsvpForcePresetSelection(false);
+        }
+
+        alternarSidebarConBoton(boton);
+    };
+
     // Runtime-sensitive shell contract: the header-height variable keeps the
     // editor tool rail aligned with the fixed dashboard header.
     const sidebarShellClass = `
@@ -531,6 +785,7 @@ export default function DashboardSidebar({
   `;
 
     const iconGradientByButton = {
+        detalles: "from-[#6f5fc4] to-[#523c9f]",
         texto: "from-[#7c4cc9] to-[#6538af]",
         forma: "from-[#3f74bf] to-[#345ea5]",
         imagen: "from-[#2f9a8f] to-[#247e74]",
@@ -558,6 +813,11 @@ export default function DashboardSidebar({
     const desktopToolIconClass = "h-4 w-4 shrink-0 text-[#262626]";
     const desktopToolTextClass =
         "whitespace-nowrap font-['Source_Sans_Pro',sans-serif] text-[14px] font-[550] leading-[24px] tracking-[0px] text-[#262626]";
+    const mobilePanelShellMotionClass = `animate-slideUp ${
+        isMobilePanelResizing ? "transition-none" : "transition-all duration-200"
+    }`;
+    const mobilePanelResizeHandleClass =
+        "flex h-5 shrink-0 cursor-ns-resize touch-none items-center justify-center bg-white/95 text-[#a58bc9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#d8c8f1]";
     const handleDesktopToolMouseLeave = (e) => {
         const panel = panelRef.current;
         if (safeContains(panel, e.relatedTarget)) return;
@@ -571,6 +831,11 @@ export default function DashboardSidebar({
         "cursor-not-allowed border-[#ece7f7] bg-[#f5f3fa] text-slate-300 shadow-none";
     const canUndo = !editorReadOnly && historialExternos.length > 1;
     const canRedo = !editorReadOnly && futurosExternos.length > 0;
+    const availableSidebarTabs = SIDEBAR_TOOL_TABS.filter((tab) => {
+        if (tab.requiresGalleryBuilder) return canUseGalleryBuilder;
+        if (tab.requiresCountdown) return canUseCountdown;
+        return true;
+    });
 
 
 
@@ -619,139 +884,26 @@ export default function DashboardSidebar({
             >
                 {/* Escritorio: barra vertical a la izquierda */}
                 <div className="mt-2 hidden flex-col items-start gap-2 py-3 pl-0 pr-0 md:flex">
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("detalles")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("detalles")}
-                        className={getDesktopToolButtonClass("detalles", { wide: true })}
-                        title="Detalles del evento"
-                    >
-                        <FaRegCalendarAlt className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Detalles evento
-                        </span>
-                    </button>
+                    {availableSidebarTabs.map((tab) => {
+                        const Icon = tab.Icon;
 
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("texto")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("texto")}
-                        className={getDesktopToolButtonClass("texto")}
-                        title="Texto"
-                    >
-                        <FaFont className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Texto
-                        </span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("forma")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("forma")}
-                        className={getDesktopToolButtonClass("forma")}
-                        title="Elementos"
-                    >
-                        <FaShapes className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Elementos
-                        </span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("imagen")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("imagen")}
-                        className={getDesktopToolButtonClass("imagen")}
-                        title="Fotos"
-                    >
-                        <FaRegImage className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Fotos
-                        </span>
-                    </button>
-
-                    {canUseGalleryBuilder && (
-                        <button
-                            type="button"
-                            onMouseEnter={() => openPanel("gallery-builder")}
-                            onMouseLeave={handleDesktopToolMouseLeave}
-                            onClick={() => alternarSidebarConBoton("gallery-builder")}
-                            className={getDesktopToolButtonClass("gallery-builder", { wide: true })}
-                            title="Builder de galeria"
-                        >
-                            <FaRegImage className={desktopToolIconClass} aria-hidden="true" />
-                            <span className={desktopToolTextClass}>
-                                Builder gal.
-                            </span>
-                        </button>
-                    )}
-
-                    {canUseCountdown && (
-                        <button
-                            type="button"
-                            onMouseEnter={() => openPanel("contador")}
-                            onMouseLeave={handleDesktopToolMouseLeave}
-                            onClick={() => alternarSidebarConBoton("contador")}
-                            className={getDesktopToolButtonClass("contador")}
-                            title="Contador"
-                        >
-                            <FaRegClock className={desktopToolIconClass} aria-hidden="true" />
-                            <span className={desktopToolTextClass}>
-                                Contador
-                            </span>
-                        </button>
-                    )}
-
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("rsvp")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => {
-                            setRsvpForcePresetSelection(false);
-                            alternarSidebarConBoton("rsvp");
-                        }}
-                        className={getDesktopToolButtonClass("rsvp")}
-                        title="Asistencia"
-                    >
-                        <FaRegEnvelope className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Asistencia
-                        </span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("regalos")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("regalos")}
-                        className={getDesktopToolButtonClass("regalos")}
-                        title="Regalos"
-                    >
-                        <FaGift className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Regalos
-                        </span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onMouseEnter={() => openPanel("efectos")}
-                        onMouseLeave={handleDesktopToolMouseLeave}
-                        onClick={() => alternarSidebarConBoton("efectos")}
-                        className={getDesktopToolButtonClass("efectos")}
-                        title="Efectos"
-                    >
-                        <FaMagic className={desktopToolIconClass} aria-hidden="true" />
-                        <span className={desktopToolTextClass}>
-                            Efectos
-                        </span>
-                    </button>
-
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onMouseEnter={() => openPanel(tab.id)}
+                                onMouseLeave={handleDesktopToolMouseLeave}
+                                onClick={() => handleSidebarTabClick(tab.id)}
+                                className={getDesktopToolButtonClass(tab.id, { wide: tab.wide })}
+                                title={tab.title}
+                            >
+                                <Icon className={desktopToolIconClass} aria-hidden="true" />
+                                <span className={desktopToolTextClass}>
+                                    {tab.desktopLabel}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* Movil: barra horizontal inferior */}
@@ -801,100 +953,23 @@ export default function DashboardSidebar({
                                 </span>
                             </div>
 
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => alternarSidebarConBoton("texto")}
-                                    className={`${getIconButtonClass("texto", { compact: true })} justify-self-center`}
-                                    title="Texto"
+                            {availableSidebarTabs.map((tab) => (
+                                <div
+                                    key={tab.id}
+                                    className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5"
                                 >
-                                    <img src="/icons/texto.png" alt="Texto" className="h-5 w-5" />
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Texto</span>
-                            </div>
-
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => alternarSidebarConBoton("forma")}
-                                    className={`${getIconButtonClass("forma", { compact: true })} justify-self-center`}
-                                    title="Elementos"
-                                >
-                                    <img src="/icons/forma.png" alt="Elementos" className="h-5 w-5" />
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Elementos</span>
-                            </div>
-
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => alternarSidebarConBoton("imagen")}
-                                    className={`${getIconButtonClass("imagen", { compact: true })} justify-self-center`}
-                                    title="Fotos"
-                                >
-                                    <img src="/icons/imagen.png" alt="Fotos" className="h-5 w-5" />
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Fotos</span>
-                            </div>
-
-                            {canUseGalleryBuilder && (
-                                <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
                                     <button type="button"
-                                        onClick={() => alternarSidebarConBoton("gallery-builder")}
-                                        className={`${getIconButtonClass("gallery-builder", { compact: true })} justify-self-center`}
-                                        title="Builder galeria"
+                                        onClick={() => handleSidebarTabClick(tab.id)}
+                                        className={`${getIconButtonClass(tab.id, { compact: true })} justify-self-center`}
+                                        title={tab.mobileTitle || tab.title}
                                     >
-                                        <FaRegImage className="text-lg" />
+                                        {renderMobileSidebarTabIcon(tab)}
                                     </button>
-                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Builder</span>
+                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
+                                        {tab.mobileLabel}
+                                    </span>
                                 </div>
-                            )}
-
-                            {canUseCountdown && (
-                                <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                    <button type="button"
-                                        onClick={() => alternarSidebarConBoton("contador")}
-                                        className={`${getIconButtonClass("contador", { compact: true })} justify-self-center`}
-                                        title="Contador"
-                                    >
-                                        <FaRegClock className="text-lg" />
-                                    </button>
-                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Contador</span>
-                                </div>
-                            )}
-
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => {
-                                        setRsvpForcePresetSelection(false);
-                                        alternarSidebarConBoton("rsvp");
-                                    }}
-                                    className={`${getIconButtonClass("rsvp", { compact: true })} justify-self-center`}
-                                    title="Asistencia"
-                                >
-                                    <FaRegEnvelope className="text-lg" />
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Asistencia</span>
-                            </div>
-
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => alternarSidebarConBoton("regalos")}
-                                    className={`${getIconButtonClass("regalos", { compact: true })} justify-self-center`}
-                                    title="Regalos"
-                                >
-                                    <FaGift className="text-lg" />
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Regalos</span>
-                            </div>
-
-                            <div className="flex min-w-[62px] shrink-0 flex-col items-center gap-1.5">
-                                <button type="button"
-                                    onClick={() => alternarSidebarConBoton("efectos")}
-                                    className={`${getIconButtonClass("efectos", { compact: true })} justify-self-center`}
-                                    title="Efectos"
-                                >
-                                    <span className="text-[13px] font-bold">Fx</span>
-                                </button>
-                                <span className="text-[10px] font-semibold leading-none text-[#5f3596]">Efectos</span>
-                            </div>
+                            ))}
                         </div>
                     </div>
                     </div>
@@ -916,10 +991,7 @@ export default function DashboardSidebar({
                 <div
                     ref={panelRef}
                     id="sidebar-panel"
-                    className="
-      absolute z-40 border border-[#e6dbf8] bg-white
-      transition-all duration-200 animate-slideUp
-    "
+                    className={`absolute z-40 border border-[#e6dbf8] bg-white ${mobilePanelShellMotionClass}`}
                     onMouseEnter={() => {
                         cancelClosePanel(); // Cancela el cierre programado
                         if (!fijadoSidebar) setHoverSidebar(true);
@@ -944,7 +1016,7 @@ export default function DashboardSidebar({
                                 right: `${MOBILE_PANEL_GUTTER_PX}px`,
                                 bottom: `${MOBILE_BAR_HEIGHT_PX + MOBILE_PANEL_BOTTOM_EXTRA_PX}px`,
                                 width: "auto",
-                                height: "min(52vh, 440px)",
+                                height: `${mobilePanelHeight}px`,
                                 overflow: "hidden",
                                 overscrollBehaviorY: "contain",
                                 touchAction: "pan-y",
@@ -960,6 +1032,20 @@ export default function DashboardSidebar({
                             }
                     }
                 >
+                    {isMobileViewport ? (
+                        <button
+                            type="button"
+                            className={mobilePanelResizeHandleClass}
+                            onPointerDown={handleMobilePanelResizePointerDown}
+                            onPointerMove={handleMobilePanelResizePointerMove}
+                            onPointerUp={finishMobilePanelResize}
+                            onPointerCancel={finishMobilePanelResize}
+                            aria-label="Ajustar altura del panel"
+                            title="Ajustar altura del panel"
+                        >
+                            <GripHorizontal className="h-4 w-4 opacity-70" aria-hidden="true" />
+                        </button>
+                    ) : null}
                     <div
                         className={`relative w-full h-full min-h-0 flex flex-col text-slate-700 ${
                             botonActivo === "forma"
@@ -973,6 +1059,7 @@ export default function DashboardSidebar({
                                 ? {
                                     flex: 1,
                                     minHeight: 0,
+                                    height: "auto",
                                     overflowY: "auto",
                                     WebkitOverflowScrolling: "touch",
                                     overscrollBehaviorY: "contain",

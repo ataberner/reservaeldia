@@ -41,13 +41,13 @@ import {
 } from "@/lib/editorRuntimeBridge";
 
 const inputClass =
-  "mt-2 block h-[38px] w-[361px] max-w-full box-border bg-white px-3 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none placeholder:text-[#9b9b9b] [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
+  "mt-2 block h-[38px] w-full max-w-[361px] box-border bg-white px-3 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none placeholder:text-[#9b9b9b] [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
 const labelClass =
   "block w-full text-left font-['Source_Sans_Pro',sans-serif] text-[16px] font-semibold leading-[24px] tracking-[0px] text-[#262626]";
 const subLabelClass =
   "font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]";
-const sectionClass = "w-[361px] max-w-full px-0 pb-4 text-left";
-const dividerClass = "w-[361px] max-w-full border-t border-[#262626]";
+const sectionClass = "w-full max-w-[361px] px-0 pb-4 text-left";
+const dividerClass = "w-full max-w-[361px] border-t border-[#262626]";
 const checkboxClass =
   "h-[14px] w-[14px] accent-[#692B9A]";
 const disabledControlClass =
@@ -1190,7 +1190,7 @@ export default function MiniToolbarTabDetallesEvento() {
     }
 
     return (
-      <div className="absolute z-20 mt-1 max-h-52 w-[361px] max-w-full overflow-y-auto rounded-md border border-[#00000029] bg-white shadow-lg">
+      <div className="absolute z-20 mt-1 max-h-52 w-full max-w-[361px] overflow-y-auto overflow-x-hidden rounded-md border border-[#00000029] bg-white shadow-lg">
         {locationSuggestions.map((suggestion) => (
           <button
             key={suggestion.id}
@@ -1214,7 +1214,7 @@ export default function MiniToolbarTabDetallesEvento() {
   const eventEndTimeValue = resolveTimeInputValue(eventTimes.endTime);
 
   return (
-    <div className="flex flex-1 min-h-0 w-full flex-col items-center gap-0 overflow-y-auto px-0 pb-4 pr-0 text-left">
+    <div className="flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-4 pr-0 text-left">
       <section className={`${sectionClass} pt-4`}>
         <label className={labelClass} htmlFor="event-name">
           Nombre del evento
@@ -1294,8 +1294,8 @@ export default function MiniToolbarTabDetallesEvento() {
           />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
+        <div className="mt-3 grid w-full grid-cols-2 gap-3">
+          <div className="min-w-0">
             <label className={subLabelClass} htmlFor="event-start-time">
               Hora de inicio
             </label>
@@ -1311,7 +1311,7 @@ export default function MiniToolbarTabDetallesEvento() {
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={subLabelClass} htmlFor="event-end-time">
               Hora Fin <span className="text-[#777777]">(opcional)</span>
             </label>

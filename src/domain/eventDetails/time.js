@@ -146,6 +146,24 @@ export function resolveEventTimesFromAuthoring({
   };
 }
 
+export function isValidEventTimesStateSnapshot(snapshot) {
+  const source = asObject(snapshot);
+  if (!Array.isArray(source.fieldsSchema)) return false;
+  if (asObject(source.defaults) !== source.defaults) return false;
+  return collectEventTimeFields(source.fieldsSchema).length > 0;
+}
+
+export function resolveEventTimesState(snapshot, options = {}) {
+  if (!isValidEventTimesStateSnapshot(snapshot)) return null;
+
+  const source = asObject(snapshot);
+  return resolveEventTimesFromAuthoring({
+    fieldsSchema: source.fieldsSchema,
+    defaults: source.defaults,
+    fallbackStartTime: options.fallbackStartTime,
+  });
+}
+
 export function buildEventTimeDefaults({
   fieldsSchema,
   defaults,

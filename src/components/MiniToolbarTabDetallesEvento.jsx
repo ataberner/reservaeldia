@@ -17,7 +17,7 @@ import {
   EVENT_COUPLE_NAME_FORMATS,
   EVENT_PERSON_NAME_ROLES,
   getEventPersonNameFieldKey,
-  resolveEventPersonNamesFromAuthoring,
+  resolveEventPersonNamesState,
 } from "@/domain/eventDetails/personNames";
 import {
   ADDRESS_TEXT_FORMAT_PRESET_OPTIONS,
@@ -36,6 +36,7 @@ import {
   getEventTimeFieldKey,
   normalizeEventTimeValue,
   resolveEventTimesFromAuthoring,
+  resolveEventTimesState,
 } from "@/domain/eventDetails/time";
 import {
   DASHBOARD_DOCUMENT_NAME_EVENTS,
@@ -110,20 +111,22 @@ function readInitialDocumentNameState() {
   return readDashboardDocumentNameState(window);
 }
 
-function readCountdownDetailsState(targetWindow) {
-  if (typeof window === "undefined" && !targetWindow) {
-    return buildDynamicCountdownEventDetails();
-  }
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
 
-  const getTemplateAuthoringSnapshot = readCanvasEditorMethod(
-    "getTemplateAuthoringSnapshot",
-    targetWindow
-  );
-  const authoringSnapshot =
-    typeof getTemplateAuthoringSnapshot === "function"
-      ? getTemplateAuthoringSnapshot()
-      : {};
-  const objetos = readEditorObjects(targetWindow);
+function isTemplateAuthoringStateSnapshot(snapshot) {
+  if (!isPlainObject(snapshot)) return false;
+  if (!Array.isArray(snapshot.fieldsSchema)) return false;
+  return Array.isArray(snapshot.objetos) || isPlainObject(snapshot.defaults);
+}
+
+function resolveCountdownDetailsStateFromSnapshot(authoringSnapshot) {
+  if (!isTemplateAuthoringStateSnapshot(authoringSnapshot)) return null;
+
+  const objetos = Array.isArray(authoringSnapshot.objetos)
+    ? authoringSnapshot.objetos
+    : [];
   const fieldsSchema = Array.isArray(authoringSnapshot?.fieldsSchema)
     ? authoringSnapshot.fieldsSchema
     : [];
@@ -150,6 +153,13 @@ function readCountdownDetailsState(targetWindow) {
     countdownDetails,
     objetos,
   });
+
+  if (
+    !countdownDetails?.hasBinding &&
+    !normalizeText(eventDateBinding.fieldKey)
+  ) {
+    return null;
+  }
 
   if (countdownDetails?.hasBinding) {
     const targetISO = normalizeText(eventDateBinding.targetISO);
@@ -192,6 +202,21 @@ function readCountdownDetailsState(targetWindow) {
   };
 }
 
+function readCountdownDetailsState(targetWindow, options = {}) {
+  if (typeof window === "undefined" && !targetWindow) {
+    return buildDynamicCountdownEventDetails();
+  }
+
+  const authoringSnapshot = {
+    ...readTemplateAuthoringSnapshot(targetWindow),
+    objetos: readEditorObjects(targetWindow),
+  };
+  const details = resolveCountdownDetailsStateFromSnapshot(authoringSnapshot);
+  if (details) return details;
+  if (options.requireValidSnapshot) return null;
+  return buildDynamicCountdownEventDetails();
+}
+
 function readTemplateAuthoringSnapshot(targetWindow) {
   if (typeof window === "undefined" && !targetWindow) return {};
   const getTemplateAuthoringSnapshot = readCanvasEditorMethod(
@@ -203,13 +228,18 @@ function readTemplateAuthoringSnapshot(targetWindow) {
     : {};
 }
 
-function readEventPersonNamesState(targetWindow) {
+function readEventPersonNamesState(targetWindow, options = {}) {
   const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
-  return resolveEventPersonNamesFromAuthoring({
-    fieldsSchema: authoringSnapshot?.fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+  const nextNames = resolveEventPersonNamesState({
+    ...authoringSnapshot,
     objetos: readEditorObjects(targetWindow),
   });
+  if (nextNames) return nextNames;
+  if (options.requireValidSnapshot) return null;
+  return {
+    primaryName: "",
+    secondaryName: "",
+  };
 }
 
 function readEventLocationState(targetWindow) {
@@ -221,8 +251,23 @@ function readEventLocationState(targetWindow) {
   });
 }
 
-function readEventTimesState(targetWindow) {
-  const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
+function resolveEventTimesStateFromSnapshot(authoringSnapshot) {
+  const countdownDetails = resolveCountdownDetailsStateFromSnapshot(
+    authoringSnapshot
+  );
+  return resolveEventTimesState(authoringSnapshot, {
+    fallbackStartTime: countdownDetails?.time,
+  });
+}
+
+function readEventTimesState(targetWindow, options = {}) {
+  const authoringSnapshot = {
+    ...readTemplateAuthoringSnapshot(targetWindow),
+    objetos: readEditorObjects(targetWindow),
+  };
+  const nextTimes = resolveEventTimesStateFromSnapshot(authoringSnapshot);
+  if (nextTimes) return nextTimes;
+  if (options.requireValidSnapshot) return null;
   const countdownDetails = readCountdownDetailsState(targetWindow);
   return resolveEventTimesFromAuthoring({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
@@ -595,12 +640,34 @@ export default function MiniToolbarTabDetallesEvento({
   const hasGoogleMapsApiKey = Boolean(googleMapsApiKey);
   const canShowEventMap = Boolean(eventLocation.googlePlaceId);
 
-  const syncCountdownUiState = useCallback(() => {
-    setCountdownUi(buildCountdownUiState(readCountdownDetailsState(window)));
+  const applySyncedCountdownDetailsState = useCallback((details) => {
+    if (!details) return;
+    setCountdownUi(buildCountdownUiState(details));
   }, []);
 
-  const syncEventPersonNamesState = useCallback(() => {
-    const nextNames = readEventPersonNamesState(window);
+  const syncCountdownUiState = useCallback(() => {
+    applySyncedCountdownDetailsState(readCountdownDetailsState(window));
+  }, [applySyncedCountdownDetailsState]);
+
+  const handleTemplateAuthoringChangeForCountdown = useCallback(
+    (event) => {
+      const details = resolveCountdownDetailsStateFromSnapshot(event?.detail);
+      if (details) {
+        applySyncedCountdownDetailsState(details);
+        return;
+      }
+
+      applySyncedCountdownDetailsState(
+        readCountdownDetailsState(window, {
+          requireValidSnapshot: event?.detail != null,
+        })
+      );
+    },
+    [applySyncedCountdownDetailsState]
+  );
+
+  const applySyncedEventPersonNamesState = useCallback((nextNames) => {
+    if (!nextNames) return;
     const nextSignature = buildEventPersonNamesSignature(nextNames);
     if (editingEventPersonNamesRef.current) return;
     if (
@@ -614,6 +681,27 @@ export default function MiniToolbarTabDetallesEvento({
     }
     setEventPersonNames(nextNames);
   }, []);
+
+  const syncEventPersonNamesState = useCallback(() => {
+    applySyncedEventPersonNamesState(readEventPersonNamesState(window));
+  }, [applySyncedEventPersonNamesState]);
+
+  const handleTemplateAuthoringChangeForPersonNames = useCallback(
+    (event) => {
+      const nextNames = resolveEventPersonNamesState(event?.detail);
+      if (nextNames) {
+        applySyncedEventPersonNamesState(nextNames);
+        return;
+      }
+
+      applySyncedEventPersonNamesState(
+        readEventPersonNamesState(window, {
+          requireValidSnapshot: event?.detail != null,
+        })
+      );
+    },
+    [applySyncedEventPersonNamesState]
+  );
 
   const syncEventLocationState = useCallback(() => {
     const nextLocation = readEventLocationState(window);
@@ -631,8 +719,8 @@ export default function MiniToolbarTabDetallesEvento({
     setEventLocation(nextLocation);
   }, []);
 
-  const syncEventTimesState = useCallback(() => {
-    const nextTimes = readEventTimesState(window);
+  const applySyncedEventTimesState = useCallback((nextTimes) => {
+    if (!nextTimes) return;
     const nextSignature = buildEventTimesSignature(nextTimes);
     if (editingEventTimesRef.current) return;
     if (
@@ -646,6 +734,27 @@ export default function MiniToolbarTabDetallesEvento({
     }
     setEventTimes(nextTimes);
   }, []);
+
+  const syncEventTimesState = useCallback(() => {
+    applySyncedEventTimesState(readEventTimesState(window));
+  }, [applySyncedEventTimesState]);
+
+  const handleTemplateAuthoringChangeForEventTimes = useCallback(
+    (event) => {
+      const nextTimes = resolveEventTimesStateFromSnapshot(event?.detail);
+      if (nextTimes) {
+        applySyncedEventTimesState(nextTimes);
+        return;
+      }
+
+      applySyncedEventTimesState(
+        readEventTimesState(window, {
+          requireValidSnapshot: event?.detail != null,
+        })
+      );
+    },
+    [applySyncedEventTimesState]
+  );
 
   useEffect(() => {
     eventPersonNamesRef.current = eventPersonNames;
@@ -721,11 +830,11 @@ export default function MiniToolbarTabDetallesEvento({
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
-      syncCountdownUiState
+      handleTemplateAuthoringChangeForCountdown
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
-      syncEventPersonNamesState
+      handleTemplateAuthoringChangeForPersonNames
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -737,7 +846,7 @@ export default function MiniToolbarTabDetallesEvento({
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
-      syncEventTimesState
+      handleTemplateAuthoringChangeForEventTimes
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -751,11 +860,11 @@ export default function MiniToolbarTabDetallesEvento({
       );
       window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
-        syncCountdownUiState
+        handleTemplateAuthoringChangeForCountdown
       );
       window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
-        syncEventPersonNamesState
+        handleTemplateAuthoringChangeForPersonNames
       );
       window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -767,7 +876,7 @@ export default function MiniToolbarTabDetallesEvento({
       );
       window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
-        syncEventTimesState
+        handleTemplateAuthoringChangeForEventTimes
       );
       window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -776,9 +885,12 @@ export default function MiniToolbarTabDetallesEvento({
     };
   }, [
     syncCountdownUiState,
+    handleTemplateAuthoringChangeForCountdown,
     syncEventPersonNamesState,
+    handleTemplateAuthoringChangeForPersonNames,
     syncEventLocationState,
     syncEventTimesState,
+    handleTemplateAuthoringChangeForEventTimes,
   ]);
 
   const canEditEventName = documentNameState.editable;

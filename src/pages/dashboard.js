@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useDashboardAuthGate } from "@/hooks/useDashboardAuthGate";
 import { useDashboardEditorIssues } from "@/hooks/useDashboardEditorIssues";
+import useDashboardEditorCanvasLayout from "@/hooks/useDashboardEditorCanvasLayout";
 import { useDashboardEditorRoute } from "@/hooks/useDashboardEditorRoute";
 import { useDashboardPreviewController } from "@/hooks/useDashboardPreviewController";
 import { useDashboardStartupLoaders } from "@/hooks/useDashboardStartupLoaders";
@@ -254,6 +255,19 @@ export default function Dashboard() {
     adminDraftView,
     templateWorkspaceView,
   });
+  const editorCanvasLayout = useDashboardEditorCanvasLayout({
+    slugInvitacion,
+    editorSession,
+    modoSelector: layoutProps.modoSelector,
+    sidebarHidden: layoutProps.ocultarSidebar,
+  });
+  const editorSurfaceStyle = {
+    width: "100%",
+    boxSizing: "border-box",
+    paddingLeft: editorCanvasLayout.sidebarInsetLeft,
+    paddingRight: editorCanvasLayout.sidebarPaddingRight,
+    transition: `padding-left ${editorCanvasLayout.sidebarTransitionMs}ms ease, padding-right ${editorCanvasLayout.sidebarTransitionMs}ms ease`,
+  };
 
   // Page-level event bridge: open a draft from external dashboard actions.
   useEffect(() => {
@@ -465,38 +479,43 @@ export default function Dashboard() {
 
       {pageViewState.showEditorView && (
         <ChunkErrorBoundary>
-          <div className={shouldMountCanvasEditor ? "relative" : ""}>
-            {shouldMountCanvasEditor && (
-              <div
-                className={
-                  "transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
-                  (showEditorStartupLoader
-                    ? "pointer-events-none opacity-0 scale-[0.985] blur-[3px]"
-                    : "opacity-100 scale-100 blur-0")
-                }
-                aria-hidden={showEditorStartupLoader ? "true" : undefined}
-              >
-                <CanvasEditor {...canvasEditorProps} />
-              </div>
-            )}
-
-            {shouldRenderEditorStartupLoader && (
-              <div className={shouldMountCanvasEditor ? "absolute inset-0 z-10" : ""}>
+          <div style={editorSurfaceStyle}>
+            <div className={shouldMountCanvasEditor ? "relative" : ""}>
+              {shouldMountCanvasEditor && (
                 <div
                   className={
-                    "w-full transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
-                    (isEditorStartupLoaderExiting
-                      ? "pointer-events-none opacity-0 translate-y-10 scale-[1.03] blur-[2.5px]"
-                      : "opacity-100 translate-y-0 scale-100 blur-0")
+                    "transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+                    (showEditorStartupLoader
+                      ? "pointer-events-none opacity-0 scale-[0.985] blur-[3px]"
+                      : "opacity-100 scale-100 blur-0")
                   }
+                  aria-hidden={showEditorStartupLoader ? "true" : undefined}
                 >
-                <EditorStartupLoader
-                  preloadState={editorPreloadState}
-                  runtimeState={editorRuntimeState}
-                />
+                  <CanvasEditor
+                    {...canvasEditorProps}
+                    editorCanvasSidebarInsetLeft={editorCanvasLayout.sidebarInsetLeft}
+                  />
                 </div>
-              </div>
-            )}
+              )}
+
+              {shouldRenderEditorStartupLoader && (
+                <div className={shouldMountCanvasEditor ? "absolute inset-0 z-10" : ""}>
+                  <div
+                    className={
+                      "w-full transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
+                      (isEditorStartupLoaderExiting
+                        ? "pointer-events-none opacity-0 translate-y-10 scale-[1.03] blur-[2.5px]"
+                        : "opacity-100 translate-y-0 scale-100 blur-0")
+                    }
+                  >
+                    <EditorStartupLoader
+                      preloadState={editorPreloadState}
+                      runtimeState={editorRuntimeState}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </ChunkErrorBoundary>
       )}

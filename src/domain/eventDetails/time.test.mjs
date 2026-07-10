@@ -7,6 +7,7 @@ import {
   ensureEventTimeFields,
   getEventTimeFieldKey,
   normalizeEventTimeValue,
+  resolveEventTimesState,
   resolveEventTimesFromAuthoring,
 } from "./time.js";
 import {
@@ -55,6 +56,71 @@ test("buildEventTimeDefaults and resolveEventTimesFromAuthoring keep event times
       fields: fieldsSchema,
     }
   );
+});
+
+test("resolveEventTimesState uses a fresh payload before a stale bridge", () => {
+  const { fieldsSchema } = ensureEventTimeFields({ fieldsSchema: [] });
+  const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME);
+  const endKey = getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME);
+
+  assert.deepEqual(
+    resolveEventTimesState({
+      fieldsSchema,
+      defaults: {},
+    }),
+    {
+      startTime: "",
+      endTime: "",
+      fields: fieldsSchema,
+    }
+  );
+  assert.deepEqual(
+    resolveEventTimesState({
+      fieldsSchema,
+      defaults: {
+        [startKey]: "19 hs",
+        [endKey]: "23:30",
+      },
+    }),
+    {
+      startTime: "19:00",
+      endTime: "23:30",
+      fields: fieldsSchema,
+    }
+  );
+});
+
+test("resolveEventTimesState keeps start time fallback available", () => {
+  const { fieldsSchema } = ensureEventTimeFields({ fieldsSchema: [] });
+  const endKey = getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME);
+
+  assert.deepEqual(
+    resolveEventTimesState(
+      {
+        fieldsSchema,
+        defaults: {
+          [endKey]: "23 hs",
+        },
+      },
+      {
+        fallbackStartTime: "19:30",
+      }
+    ),
+    {
+      startTime: "19:30",
+      endTime: "23:00",
+      fields: fieldsSchema,
+    }
+  );
+});
+
+test("resolveEventTimesState treats missing or invalid payloads as non-authoritative", () => {
+  const { fieldsSchema } = ensureEventTimeFields({ fieldsSchema: [] });
+
+  assert.equal(resolveEventTimesState(), null);
+  assert.equal(resolveEventTimesState({}), null);
+  assert.equal(resolveEventTimesState({ fieldsSchema }), null);
+  assert.equal(resolveEventTimesState({ fieldsSchema: [], defaults: {} }), null);
 });
 
 test("linked event time field patches text targets", () => {

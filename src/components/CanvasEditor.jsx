@@ -104,11 +104,11 @@ import {
   PRESERVE_CANVAS_SELECTION_SELECTOR,
   PRESERVE_INLINE_EDIT_SELECTOR,
 } from "@/components/editor/canvasEditor/selectionPreservationPolicy";
+import {
+  DASHBOARD_EDITOR_CANVAS_TRANSITION_MS,
+} from "@/domain/dashboard/editorCanvasLayout";
 
-const DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT = "dashboard-sidebar-panel-layout-change";
-const SIDEBAR_PANEL_CANVAS_GAP_PX = 16;
-const SIDEBAR_PANEL_CANVAS_TRANSITION_MS = 220;
-const SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS = SIDEBAR_PANEL_CANVAS_TRANSITION_MS + 60;
+const SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS = DASHBOARD_EDITOR_CANVAS_TRANSITION_MS + 60;
 const CANVAS_DESKTOP_WIDTH_PX = 800;
 const SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX = 76;
 const SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX = 8;
@@ -190,6 +190,7 @@ export default function CanvasEditor({
   readOnly = false,
   initialDraftData = null,
   initialEditorData = null,
+  editorCanvasSidebarInsetLeft = 0,
 }) {
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
@@ -762,10 +763,15 @@ export default function CanvasEditor({
   );
   const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
   const botonOpcionesRef = useRef(null);
-  const [sidebarPanelInsetLeft, setSidebarPanelInsetLeft] = useState(0);
+  const sidebarPanelInsetLeft = Math.max(
+    0,
+    Number(editorCanvasSidebarInsetLeft) || 0
+  );
   const [sidebarLayoutSettling, setSidebarLayoutSettling] = useState(false);
-  const sidebarPanelInsetLeftRef = useRef(0);
+  const sidebarPanelInsetLeftRef = useRef(sidebarPanelInsetLeft);
   const sidebarLayoutSettleTimerRef = useRef(null);
+  const sidebarPanelInsetChanging =
+    sidebarPanelInsetLeftRef.current !== sidebarPanelInsetLeft;
 
 
   const {
@@ -785,62 +791,32 @@ export default function CanvasEditor({
       : CANVAS_DESKTOP_WIDTH_PX +
         SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX +
         SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX,
-    suspendResizeSync: sidebarLayoutSettling,
+    suspendResizeSync: sidebarLayoutSettling || sidebarPanelInsetChanging,
   });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (sidebarPanelInsetLeftRef.current === sidebarPanelInsetLeft) return;
 
-    const scheduleSidebarLayoutSettle = () => {
-      if (sidebarLayoutSettleTimerRef.current) {
-        window.clearTimeout(sidebarLayoutSettleTimerRef.current);
-      }
+    if (sidebarLayoutSettleTimerRef.current) {
+      window.clearTimeout(sidebarLayoutSettleTimerRef.current);
+      sidebarLayoutSettleTimerRef.current = null;
+    }
 
-      setSidebarLayoutSettling(true);
-      sidebarLayoutSettleTimerRef.current = window.setTimeout(() => {
-        sidebarLayoutSettleTimerRef.current = null;
-        setSidebarLayoutSettling(false);
-      }, SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS);
-    };
-
-    const syncSidebarPanelInset = (event) => {
-      const layoutState =
-        event?.detail ||
-        window.__dashboardSidebarPanelLayout ||
-        null;
-      const fallbackOffset =
-        Number(layoutState?.panelRight || 0) + SIDEBAR_PANEL_CANVAS_GAP_PX;
-      const nextInset =
-        !isMobile && layoutState?.pinned
-          ? Math.max(0, Number(layoutState?.offsetLeft || fallbackOffset) || 0)
-          : 0;
-
-      if (sidebarPanelInsetLeftRef.current !== nextInset) {
-        scheduleSidebarLayoutSettle();
-        sidebarPanelInsetLeftRef.current = nextInset;
-        setSidebarPanelInsetLeft(nextInset);
-      }
-    };
-
-    syncSidebarPanelInset();
-    window.addEventListener(
-      DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT,
-      syncSidebarPanelInset
-    );
-    window.addEventListener("resize", syncSidebarPanelInset);
+    setSidebarLayoutSettling(true);
+    sidebarPanelInsetLeftRef.current = sidebarPanelInsetLeft;
+    sidebarLayoutSettleTimerRef.current = window.setTimeout(() => {
+      sidebarLayoutSettleTimerRef.current = null;
+      setSidebarLayoutSettling(false);
+    }, SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS);
 
     return () => {
       if (sidebarLayoutSettleTimerRef.current) {
         window.clearTimeout(sidebarLayoutSettleTimerRef.current);
         sidebarLayoutSettleTimerRef.current = null;
       }
-      window.removeEventListener(
-        DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT,
-        syncSidebarPanelInset
-      );
-      window.removeEventListener("resize", syncSidebarPanelInset);
     };
-  }, [isMobile]);
+  }, [sidebarPanelInsetLeft]);
 
   const mobileTypographyToolbarVisible =
     isMobile && isTypographyEditableCanvasObject(objetoSeleccionado);
@@ -1672,11 +1648,9 @@ export default function CanvasEditor({
         WebkitOverflowScrolling: "touch",
 
         // ? espacio para que no â€œchoqueâ€ con header / barras
-        paddingLeft: sidebarPanelInsetLeft,
-        paddingRight: sidebarPanelInsetLeft ? SIDEBAR_PANEL_CANVAS_GAP_PX : 0,
         paddingTop: isMobile ? mobileCanvasToolbarOffset : 12,
         paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
-        transition: "padding-left 220ms ease, padding-right 220ms ease, padding-top 180ms ease",
+        transition: "padding-top 180ms ease",
       }}
     >
 

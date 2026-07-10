@@ -1656,6 +1656,7 @@ export default function useTemplateFieldAuthoring({
           sourceTemplateId,
           fieldsSchema,
           defaults,
+          objetos: safeObjetos,
           status,
         },
       })

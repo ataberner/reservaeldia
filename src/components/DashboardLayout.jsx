@@ -62,6 +62,9 @@ export default function DashboardLayout({
     mainStyle.overscrollBehavior = "none";
     mainStyle.touchAction = "none";
   }
+  const sidebarInstanceKey = slugInvitacion
+    ? `editor-sidebar:${slugInvitacion}`
+    : "dashboard-sidebar";
 
   return (
     <div className={`relative flex h-screen overflow-hidden ${shellBackgroundClass}`}>
@@ -92,6 +95,7 @@ export default function DashboardLayout({
       {/* Sidebar */}
       {!ocultarSidebar && (
         <DashboardSidebar
+          key={sidebarInstanceKey}
           slugInvitacion={slugInvitacion}
           generarVistaPrevia={generarVistaPrevia}
           modoSelector={modoSelector}

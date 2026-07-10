@@ -9,6 +9,7 @@ import {
   formatEventCoupleNames,
   getEventPersonNameFieldKey,
   inferEventCoupleNamesFormat,
+  resolveEventPersonNamesState,
   resolveEventPersonNamesFromAuthoring,
   splitEventCoupleNamesText,
 } from "./personNames.js";
@@ -265,6 +266,270 @@ test("splits visible linked couple names when defaults are empty", () => {
     {
       primaryName: "Sofia",
       secondaryName: "Mateo",
+    }
+  );
+});
+
+test("resolves person names state from a fresh event snapshot before a stale bridge", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+  });
+  const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+  const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+  const fieldsSchema = ensured.fieldsSchema.map((field) => {
+    if (field.key === primaryKey) {
+      return {
+        ...field,
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "primary-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      };
+    }
+    if (field.key === secondaryKey) {
+      return {
+        ...field,
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "secondary-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      };
+    }
+    return field;
+  });
+
+  assert.deepEqual(
+    resolveEventPersonNamesState({
+      fieldsSchema,
+      defaults: {},
+      objetos: [],
+    }),
+    {
+      primaryName: "",
+      secondaryName: "",
+    }
+  );
+  assert.deepEqual(
+    resolveEventPersonNamesState({
+      fieldsSchema,
+      defaults: {},
+      objetos: [
+        {
+          id: "primary-name-text",
+          tipo: "texto",
+          texto: "Sofia",
+        },
+        {
+          id: "secondary-name-text",
+          tipo: "texto",
+          texto: "Mateo",
+        },
+      ],
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+    }
+  );
+});
+
+test("resolves person names state from defaults when no linked text target is valid", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+  });
+  const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+  const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+
+  assert.deepEqual(
+    resolveEventPersonNamesState({
+      fieldsSchema: ensured.fieldsSchema,
+      defaults: {
+        [primaryKey]: "Sofia",
+        [secondaryKey]: "Mateo",
+      },
+      objetos: [],
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+    }
+  );
+});
+
+test("treats missing or invalid person names event payloads as non-authoritative", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+  });
+
+  assert.equal(resolveEventPersonNamesState(), null);
+  assert.equal(resolveEventPersonNamesState({}), null);
+  assert.equal(resolveEventPersonNamesState({ fieldsSchema: [] }), null);
+  assert.equal(
+    resolveEventPersonNamesState({ fieldsSchema: ensured.fieldsSchema }),
+    null
+  );
+});
+
+test("keeps bridge fallback available when an event has no person names payload", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+  });
+  const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+  const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+  const fallbackSnapshot = {
+    fieldsSchema: ensured.fieldsSchema,
+    defaults: {
+      [primaryKey]: "Sofia",
+      [secondaryKey]: "Mateo",
+    },
+    objetos: [],
+  };
+
+  const eventPayloadState = resolveEventPersonNamesState();
+  const fallbackState = eventPayloadState || resolveEventPersonNamesState(fallbackSnapshot);
+
+  assert.deepEqual(fallbackState, {
+    primaryName: "Sofia",
+    secondaryName: "Mateo",
+  });
+});
+
+test("resolves person names state from linked couple names", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+    coupleFormats: [EVENT_COUPLE_NAME_FORMATS.LINEBREAK],
+  });
+  const coupleKey = getEventPersonNameFieldKey(
+    EVENT_PERSON_NAME_ROLES.COUPLE,
+    EVENT_COUPLE_NAME_FORMATS.LINEBREAK
+  );
+  const fieldsSchema = ensured.fieldsSchema.map((field) =>
+    field.key === coupleKey
+      ? {
+          ...field,
+          applyTargets: [
+            {
+              scope: "objeto",
+              id: "couple-names-text",
+              path: "texto",
+              mode: "set",
+            },
+          ],
+        }
+      : field
+  );
+
+  assert.deepEqual(
+    resolveEventPersonNamesState({
+      fieldsSchema,
+      defaults: {},
+      objetos: [
+        {
+          id: "couple-names-text",
+          tipo: "texto",
+          texto: "Sofia\nMateo",
+        },
+      ],
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+    }
+  );
+});
+
+test("resolves subsequent person names state updates from linked text targets", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+  });
+  const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+  const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+  const fieldsSchema = ensured.fieldsSchema.map((field) => {
+    if (field.key === primaryKey) {
+      return {
+        ...field,
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "primary-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      };
+    }
+    if (field.key === secondaryKey) {
+      return {
+        ...field,
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "secondary-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      };
+    }
+    return field;
+  });
+
+  assert.deepEqual(
+    resolveEventPersonNamesState({
+      fieldsSchema,
+      defaults: {},
+      objetos: [
+        {
+          id: "primary-name-text",
+          tipo: "texto",
+          texto: "Sofia",
+        },
+        {
+          id: "secondary-name-text",
+          tipo: "texto",
+          texto: "Mateo",
+        },
+      ],
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+    }
+  );
+  assert.deepEqual(
+    resolveEventPersonNamesState({
+      fieldsSchema,
+      defaults: {},
+      objetos: [
+        {
+          id: "primary-name-text",
+          tipo: "texto",
+          texto: "Ana",
+        },
+        {
+          id: "secondary-name-text",
+          tipo: "texto",
+          texto: "Tomas",
+        },
+      ],
+    }),
+    {
+      primaryName: "Ana",
+      secondaryName: "Tomas",
     }
   );
 });

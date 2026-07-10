@@ -201,6 +201,45 @@ test("event date sidebar binding reads long visible text target when defaults ar
   assert.equal(binding.targetISO, "2026-12-13");
 });
 
+test("event date sidebar binding uses a fresh payload before a stale bridge", () => {
+  const fieldsSchema = [
+    {
+      key: "event_date",
+      label: "Fecha del evento",
+      type: "date",
+      applyTargets: [
+        {
+          scope: "objeto",
+          id: "date-title",
+          path: "texto",
+        },
+      ],
+    },
+  ];
+
+  const staleBinding = resolveEventDateSidebarBinding({
+    fieldsSchema,
+    defaults: {},
+    objetos: [],
+  });
+  const freshBinding = resolveEventDateSidebarBinding({
+    fieldsSchema,
+    defaults: {},
+    objetos: [
+      {
+        id: "date-title",
+        tipo: "texto",
+        texto: "13 de diciembre de 2026",
+      },
+    ],
+  });
+
+  assert.equal(staleBinding.fieldKey, "event_date");
+  assert.equal(staleBinding.targetISO, "");
+  assert.equal(freshBinding.fieldKey, "event_date");
+  assert.equal(freshBinding.targetISO, "2026-12-13");
+});
+
 test("event date sidebar binding reads short visible text target when defaults are empty", () => {
   const fieldsSchema = [
     {

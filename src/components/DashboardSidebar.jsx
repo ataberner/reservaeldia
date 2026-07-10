@@ -36,6 +36,15 @@ import {
     isAssistantTabId,
     resolveAssistantResumeStepIndex,
 } from "@/domain/editor/assistantMode";
+import {
+    DASHBOARD_EDITOR_CANVAS_GAP_PX as DESKTOP_PANEL_GAP_PX,
+    DASHBOARD_SIDEBAR_DESKTOP_PANEL_LEFT_PX as DESKTOP_PANEL_LEFT_PX,
+    DASHBOARD_SIDEBAR_DESKTOP_PANEL_WIDTH_PX as DESKTOP_PANEL_WIDTH_PX,
+    DASHBOARD_SIDEBAR_MOBILE_BREAKPOINT_PX as MOBILE_BREAKPOINT,
+    DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT,
+    createDashboardSidebarPanelLayout,
+    resolveEditorSidebarAutoOpenDraftKey,
+} from "@/domain/dashboard/editorCanvasLayout";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
     readCanvasEditorMethod,
@@ -55,7 +64,6 @@ function safeContains(container, maybeNode) {
     return container.contains(maybeNode);
 }
 
-const MOBILE_BREAKPOINT = 768;
 const MOBILE_BAR_HEIGHT_PX = 96;
 const MOBILE_PANEL_GUTTER_PX = 8;
 const MOBILE_PANEL_BOTTOM_EXTRA_PX = 2;
@@ -65,9 +73,6 @@ const MOBILE_PANEL_DEFAULT_HEIGHT_RATIO = 0.52;
 const MOBILE_PANEL_DEFAULT_MAX_HEIGHT_PX = 440;
 const MOBILE_PANEL_MAX_HEIGHT_RATIO = 0.72;
 const MOBILE_PANEL_TOP_GAP_PX = 12;
-const DESKTOP_PANEL_LEFT_PX = 197;
-const DESKTOP_PANEL_WIDTH_PX = 435;
-const DESKTOP_PANEL_GAP_PX = 16;
 const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "gallery-builder", "contador", "efectos"]);
 const SIDEBAR_TOOL_TABS = Object.freeze([
     {
@@ -221,19 +226,11 @@ function resolveMobilePanelHeightBounds() {
 function publishSidebarPanelLayout(detail = {}) {
     if (typeof window === "undefined") return;
 
-    const nextDetail = {
-        pinned: false,
-        offsetLeft: 0,
-        panelLeft: DESKTOP_PANEL_LEFT_PX,
-        panelWidth: DESKTOP_PANEL_WIDTH_PX,
-        panelRight: DESKTOP_PANEL_LEFT_PX + DESKTOP_PANEL_WIDTH_PX,
-        botonActivo: null,
-        ...detail,
-    };
+    const nextDetail = createDashboardSidebarPanelLayout(detail);
 
     window.__dashboardSidebarPanelLayout = nextDetail;
     window.dispatchEvent(
-        new CustomEvent("dashboard-sidebar-panel-layout-change", {
+        new CustomEvent(DASHBOARD_SIDEBAR_PANEL_LAYOUT_EVENT, {
             detail: nextDetail,
         })
     );
@@ -283,8 +280,17 @@ export default function DashboardSidebar({
     // --------------------------
     // Estados internos del sidebar
     // --------------------------
-    const [hoverSidebar, setHoverSidebar] = useState(false);
-    const [fijadoSidebar, setFijadoSidebar] = useState(false);
+    const initialAutoAssistantDraftKey = resolveEditorSidebarAutoOpenDraftKey({
+        slugInvitacion,
+        editorSession,
+        modoSelector,
+    });
+    const shouldAutoOpenAssistantInitially = Boolean(initialAutoAssistantDraftKey);
+    const initialAssistantTabId = shouldAutoOpenAssistantInitially
+        ? getAssistantStep(0)?.id || "detalles"
+        : null;
+    const [hoverSidebar, setHoverSidebar] = useState(shouldAutoOpenAssistantInitially);
+    const [fijadoSidebar, setFijadoSidebar] = useState(shouldAutoOpenAssistantInitially);
     const [, setMostrarGaleria] = useState(false);
     const [, setImagenesSeleccionadas] = useState(0);
     const [isMobileViewport, setIsMobileViewport] = useState(
@@ -292,13 +298,18 @@ export default function DashboardSidebar({
     );
     const [showMobileScrollHint, setShowMobileScrollHint] = useState(false);
     const [mobilePanelHeight, setMobilePanelHeight] = useState(
-        () => resolveMobilePanelHeightBounds().defaultHeight
+        () => {
+            const bounds = resolveMobilePanelHeightBounds();
+            return shouldAutoOpenAssistantInitially && isMobileViewport
+                ? bounds.max
+                : bounds.defaultHeight;
+        }
     );
     const [isMobilePanelResizing, setIsMobilePanelResizing] = useState(false);
     const modalCrear = useModalCrearSeccion();
-    const [botonActivo, setBotonActivo] = useState(null); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'gallery-builder' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
-    const [assistantActive, setAssistantActive] = useState(false);
-    const [assistantHasStarted, setAssistantHasStarted] = useState(false);
+    const [botonActivo, setBotonActivo] = useState(initialAssistantTabId); // 'detalles' | 'texto' | 'forma' | 'imagen' | 'gallery-builder' | 'contador' | 'rsvp' | 'regalos' | 'efectos' | null
+    const [assistantActive, setAssistantActive] = useState(shouldAutoOpenAssistantInitially);
+    const [assistantHasStarted, setAssistantHasStarted] = useState(shouldAutoOpenAssistantInitially);
     const [assistantStepIndex, setAssistantStepIndex] = useState(0);
     const [assistantHasStoryTextStep, setAssistantHasStoryTextStep] = useState(false);
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
@@ -385,7 +396,7 @@ export default function DashboardSidebar({
     const panelRef = useRef(null);
     const mobilePanelResizeSessionRef = useRef(null);
     const mobileToolbarScrollRef = useRef(null);
-    const autoAssistantDraftKeyRef = useRef(null);
+    const autoAssistantDraftKeyRef = useRef(initialAutoAssistantDraftKey || null);
 
     const syncAssistantStoryTextStep = useCallback(() => {
         if (typeof window === "undefined") return assistantHasStoryTextStep;
@@ -522,12 +533,11 @@ export default function DashboardSidebar({
             return;
         }
 
-        const draftKey = String(
-            slugInvitacion ||
-            editorSession?.slug ||
-            editorSession?.id ||
-            ""
-        ).trim();
+        const draftKey = resolveEditorSidebarAutoOpenDraftKey({
+            slugInvitacion,
+            editorSession,
+            modoSelector,
+        });
         if (!draftKey) {
             autoAssistantDraftKeyRef.current = null;
             return;

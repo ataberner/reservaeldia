@@ -345,6 +345,29 @@ export function resolveEventPersonNamesFromAuthoring({
   };
 }
 
+export function isValidEventPersonNamesStateSnapshot(snapshot) {
+  const source = asObject(snapshot);
+  if (!Array.isArray(source.fieldsSchema)) return false;
+  if (
+    !Array.isArray(source.objetos) &&
+    asObject(source.defaults) !== source.defaults
+  ) {
+    return false;
+  }
+  return collectEventPersonNameFields(source.fieldsSchema).length > 0;
+}
+
+export function resolveEventPersonNamesState(snapshot) {
+  if (!isValidEventPersonNamesStateSnapshot(snapshot)) return null;
+
+  const source = asObject(snapshot);
+  return resolveEventPersonNamesFromAuthoring({
+    fieldsSchema: source.fieldsSchema,
+    defaults: source.defaults,
+    objetos: source.objetos,
+  });
+}
+
 export function buildEventPersonNameDefaults({
   fieldsSchema,
   defaults,

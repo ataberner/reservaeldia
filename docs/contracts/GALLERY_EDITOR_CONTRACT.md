@@ -8,7 +8,9 @@ Status: Canonical Contract. This document owns Gallery behavior in the canvas ed
 
 **Current:** The live Gallery component is `src/components/editor/GaleriaKonva.jsx`.
 
-**Current:** Gallery insertion is available to role-authorized template authors through the Gallery Builder flow in `DashboardSidebar.jsx` / `MiniToolbarTabGalleryBuilder.jsx`. It dispatches `insertar-elemento` with `tipo: "galeria"` and creates fixed cells initialized with `mediaUrl: null`.
+**Current:** Advanced Gallery insertion/configuration is available to role-authorized template authors through the Gallery Builder flow in `DashboardSidebar.jsx` / `MiniToolbarTabGalleryBuilder.jsx`. It dispatches `insertar-elemento` with `tipo: "galeria"` and creates fixed cells initialized with `mediaUrl: null`.
+
+**Current:** Writable normal editor sessions also expose a simple Fotos-tab insertion flow. It chooses a known shared grid-size preset through a compact rows/columns selector, dispatches the same `insertar-elemento` path with `tipo: "galeria"`, initializes empty local `cells[]`, and does not expose Builder-only blueprint/configuration controls.
 
 **Current:** Gallery selection and transform behavior use the normal object interaction stack. `SelectionTransformer.jsx` special-cases single Gallery selections and attaches to `.gallery-transform-frame` when available.
 
@@ -44,19 +46,19 @@ Status: Canonical Contract. This document owns Gallery behavior in the canvas ed
 
 ### End User Gallery Editing
 
-**Current:** Normal users do not create Gallery object structures.
+**Current:** Normal users may create simple independent Gallery object structures from the Fotos tab when the editor is writable.
 
-**Current:** Normal users edit Galleries already present in the template.
+**Current:** Normal users edit Galleries already present in the template or created from the simple Fotos-tab flow.
 
 **Current:** Normal users manage photos inside those Galleries and may switch only among layouts allowed by the template/Gallery configuration.
 
-**Current:** Normal users must not create new layouts, edit layout blueprints, bypass `allowedLayouts`, or access the Gallery Builder.
+**Current:** Normal users must not create new layout definitions, edit layout blueprints, bypass `allowedLayouts`, or access the Gallery Builder.
 
-**Current:** Normal sidebar Gallery insertion has been replaced by selected-Gallery photo management for end-user editing.
+**Current:** Normal sidebar Gallery insertion is intentionally limited to the simple Fotos-tab flow: choose a grid from `1x1` through `4x4` and insert an empty independent Gallery into the canvas.
 
 ## Selected-Gallery Sidebar Behavior
 
-**Current:** The normal Gallery sidebar resolves one active Gallery editing target from normal `objetos[]` Gallery objects. A single selected canvas Gallery remains the primary target. If no Gallery is selected and the draft has exactly one Gallery, the sidebar uses that Gallery automatically. If no Gallery is selected and the draft has multiple Galleries, the sidebar shows a simple Gallery block selector and uses the chosen Gallery as the active target.
+**Current:** The normal Gallery sidebar resolves one active Gallery editing target from normal `objetos[]` Gallery objects. A single selected canvas Gallery remains the primary target. If the draft has exactly one Gallery, the sidebar uses that Gallery automatically. If the draft has multiple Galleries, the sidebar shows a simple Gallery block selector so users can switch between Gallery targets from the Fotos tab; the active canvas-selected Gallery remains marked as the active target.
 
 **Current:** The sidebar shows available/uploaded invitation images separately from the active Gallery target's local usages.
 
@@ -68,16 +70,18 @@ Status: Canonical Contract. This document owns Gallery behavior in the canvas ed
 
 **Current:** If there is no Gallery object in the draft, Gallery photo management controls are hidden while upload/library browsing remains available.
 
+**Current:** In writable normal sessions, the Fotos tab still shows the simple `Agregar galeria` creation control even when no Gallery exists yet. Inserted Galleries become normal canvas objects and can then be selected or chosen from the sidebar target list.
+
 **Current:** If multiple Gallery objects exist and no Gallery is selected or chosen in the sidebar, Gallery photo management controls wait for the sidebar block choice instead of requiring canvas selection.
 
-**Current:** The implemented selected-Gallery photo UI is a thumbnail grid with explicit move-up/move-down, replace, and remove controls. Reorder and replace already route through `src/domain/gallery/galleryMutations.js`.
+**Current:** The implemented selected-Gallery photo UI is a thumbnail/slot list with explicit empty slot rows, move-up/move-down, replace/add, and remove controls. The number of visible fixed Gallery slot rows in the Fotos tab must match the selected layout's visible cell count. Empty fixed Gallery slots are visible from the Fotos tab so users can target a specific visible cell for upload or library assignment. Reorder/move, replace/add, and remove already route through `src/domain/gallery/galleryMutations.js`.
 
 Supported selected-Gallery operations:
 
 - Add photo usages.
 - Remove photo usages.
 - Replace photo usages.
-- Reorder photo usages.
+- Reorder/move photo usages between fixed Gallery slots, including empty slots.
 - Switch `currentLayout` among allowed layouts.
 
 ### Selected-Gallery Layout Selector
@@ -86,13 +90,27 @@ Supported selected-Gallery operations:
 
 **Current:** The selector displays only layouts allowed by the active Gallery/template configuration. It shows a clear selected state for the active resolved layout and commits layout changes through `switchGalleryLayout(gallery, layoutId)` in `src/domain/gallery/galleryMutations.js`.
 
+**Current:** For simple grid-size Galleries created from Fotos, the sidebar shows the current size as a compact control. Opening it uses the same visual rows/columns matrix from desktop and mobile, with 4 columns and 3 rows of selectable squares. Selecting a square commits a known `grid_{cols}x{rows}` preset through the Gallery mutation boundary.
+
 **Current:** Draft/legacy Galleries that do not yet carry `allowedLayouts` still show the primary safe selector options in the normal Gallery tab. This is an editor-only fallback for visibility and switching; it must not change preview/publish rendering until the user selects a layout. On first selection, the Gallery mutation boundary materializes additive `allowedLayouts`, `defaultLayout`, and `currentLayout` fields on that selected Gallery so the existing renderer can update the canvas immediately.
 
 **Current:** The primary user-facing selector labels are `1x4`, `2x2`, `2x3`, and `Collage`. Labels are UI presentation; persisted state remains stable preset ids as defined by [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md). In particular, `2x3` maps to the existing internal `three_by_n` id and `Collage` maps to the existing internal `squares` id. `Full width` / `Ancho completo` is legacy-renderable but no longer selectable in either the normal Gallery tab or Builder selector.
 
 **Current:** Layout previews are lightweight static CSS/SVG/icon previews. They are not live mini-rendered Galleries and do not create a second Gallery render path.
 
-**Current:** Selecting a layout changes only the active Gallery target's layout fields, preserves all `cells[]` photo usages, and leaves other Galleries untouched. Hidden/unrendered photos remain stored and manageable in the active Gallery photo list.
+**Current:** Selecting a layout changes only the active Gallery target's layout fields, preserves all `cells[]` photo usages, and leaves other Galleries untouched. The Fotos tab displays the visible slots for the selected layout; hidden/unrendered photo usages remain stored in `cells[]` and become available again when a layout with enough visible cells is selected.
+
+### Simple Fotos-Tab Gallery Creation
+
+**Current:** The simple creation control is deliberately small: `Agregar galeria` opens a visual `1x1` through `4x3` matrix. Choosing a matrix cell inserts immediately and closes the selector.
+
+**Current:** Inserted Galleries use only shared known presets. Their `allowedLayouts` contains the grid-size preset ids exposed by the normal Fotos-tab matrix (`grid_1x1` through `grid_4x3`), and `defaultLayout` / `currentLayout` are set to the chosen preset.
+
+**Current:** The newly inserted Gallery becomes the active sidebar target immediately and is selected by the existing canvas insertion flow. Uploading or choosing an available image can add it to the first empty visible cell of that active Gallery.
+
+**Current:** The creation flow must not add a new persistence model, new object type, direct `window.*` mutation API, or separate preview/publish path.
+
+**Current:** Each inserted Gallery is independent. Photo add/remove/replace/reorder and layout switching continue to resolve an active Gallery target and mutate only that object.
 
 ## Future Selected-Gallery Photo List UX
 
@@ -131,7 +149,7 @@ This section owns the next sidebar UX iteration only. It does not change the Gal
 - `alt`
 - any unknown compatible cell metadata
 
-**Future:** Fixed Gallery empty slots should not appear as draggable photo rows because they are not photo usages. They may appear as explicit add targets or empty-slot indicators, but those indicators must not participate in photo reorder.
+**Current:** Fixed Gallery empty slots appear as explicit add targets in the Fotos tab only up to the visible cell count of the selected layout. They are not themselves photo usages, but populated visible photos can be moved into those visible empty slots through the Gallery mutation boundary. Moving into an occupied visible slot swaps photo content and preserves both slot identities.
 
 **Future:** In fixed Galleries, populated rows follow fixed slot order while skipping empty slots. Reordering populated rows updates populated cell contents across occupied slots and preserves the fixed slot structure.
 
@@ -260,7 +278,7 @@ Required operations:
 | `replaceGalleryPhoto(gallery, target, photo)` | Replace one usage in place while preserving local position and cell styling such as `fit` and `bg`. |
 | `reorderGalleryPhotos(gallery, from, to)` | Reorder populated usages inside the selected Gallery only while preserving Gallery layout identity. |
 | `switchGalleryLayout(gallery, layoutId)` | Set `currentLayout` only when `layoutId` is a known selectable preset allowed by the Gallery and preserve all photo usages. For draft/legacy Galleries with no `allowedLayouts`, materialize the safe primary `allowedLayouts` fallback plus `defaultLayout` on first switch. Preset-to-render mapping is applied by render helpers, not by deleting or reshaping `cells[]`. |
-| `configureGalleryLayout(gallery, layoutId, options)` | Builder-only configuration helper. Preserve all photo usages, ensure the selected layout is allowed, and keep `defaultLayout` / `currentLayout` valid without creating a new Gallery. |
+| `configureGalleryLayout(gallery, layoutId, options)` | Layout configuration helper used by Builder and by the normal Fotos-tab rows/columns matrix when materializing a known grid preset. Preserve all photo usages, ensure the selected layout is allowed, and keep `defaultLayout` / `currentLayout` valid without creating a new Gallery. |
 | `normalizeGalleryState(gallery, context)` | Normalize fixed/dynamic state, canonicalize cell media, and preserve backward compatibility with existing Gallery objects. |
 | `resolveGalleryMediaKey(cell)` | Resolve identity with `storagePath`, then `assetId`, then normalized `mediaUrl`. |
 
@@ -301,6 +319,7 @@ Required operations:
 - Add/remove/replace/reorder through an unselected sidebar fallback mutate only the active sidebar Gallery target.
 - Removing a Gallery usage does not delete the uploaded asset.
 - Layout switching respects `allowedLayouts`.
+- Simple Fotos-tab creation inserts `tipo: "galeria"` objects through the existing insertion path and initializes only shared preset fields and local empty `cells[]`.
 - Visual layout selector appears above the selected-Gallery photo list and displays `Collage` for the `squares` id.
 - Builder selector updates the selected Gallery when one is selected and inserts a new `tipo: "galeria"` only when no Gallery is selected.
 - Normal users cannot open the Gallery Builder.

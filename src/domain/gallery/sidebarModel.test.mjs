@@ -184,6 +184,30 @@ test("gallery layout sidebar state shows fallback buttons for draft galleries wi
   assert.equal(state.reason, "editor-fallback-available");
 });
 
+test("gallery layout sidebar state supports simple photo-count gallery layouts", () => {
+  const state = getGalleryAllowedLayoutState({
+    tipo: "galeria",
+    allowedLayouts: ["grid_count_1", "grid_count_5", "grid_count_16"],
+    defaultLayout: "grid_count_5",
+    currentLayout: "grid_count_16",
+  });
+
+  assert.deepEqual(state.allowedLayouts, ["grid_count_1", "grid_count_5", "grid_count_16"]);
+  assert.deepEqual(
+    state.allowedLayoutOptions.map((option) => ({
+      id: option.id,
+      label: option.label,
+      maxPhotos: option.maxPhotos,
+    })),
+    [
+      { id: "grid_count_1", label: "1 foto", maxPhotos: 1 },
+      { id: "grid_count_5", label: "5 fotos", maxPhotos: 5 },
+      { id: "grid_count_16", label: "16 fotos", maxPhotos: 16 },
+    ]
+  );
+  assert.equal(state.selectedLayout, "grid_count_16");
+});
+
 const galleryA = { id: "gal-a", tipo: "galeria", cells: [] };
 const galleryB = { id: "gal-b", tipo: "galeria", cells: [] };
 const textObject = { id: "txt-1", tipo: "texto" };
@@ -290,6 +314,17 @@ test("available image gallery action requires an explicit gallery target state",
     }).action,
     "replace-selected-photo"
   );
+  assert.deepEqual(
+    resolveAvailableImageGalleryAction({
+      gallery: galleryA,
+      selectedPhotoTarget: { sourceIndex: 1, isEmpty: true },
+    }),
+    {
+      action: "replace-selected-photo",
+      label: "Agregar a celda",
+      reason: "selected-empty-slot",
+    }
+  );
 
   assert.equal(
     resolveAvailableImageGalleryAction({
@@ -298,5 +333,28 @@ test("available image gallery action requires an explicit gallery target state",
       selectedPhotoTarget: { displayIndex: 0 },
     }).action,
     "assign-active-cell"
+  );
+});
+
+test("gallery sidebar exposes exact grid-size layout options for simple galleries", () => {
+  const state = getGalleryAllowedLayoutState({
+    ...galleryA,
+    allowedLayouts: ["grid_1x1", "grid_2x3", "grid_4x4"],
+    defaultLayout: "grid_2x3",
+    currentLayout: "grid_4x4",
+  });
+
+  assert.deepEqual(state.allowedLayouts, ["grid_1x1", "grid_2x3", "grid_4x4"]);
+  assert.equal(state.selectedLayout, "grid_4x4");
+  assert.deepEqual(
+    state.allowedLayoutOptions.map((option) => ({
+      id: option.id,
+      maxPhotos: option.maxPhotos,
+    })),
+    [
+      { id: "grid_1x1", maxPhotos: 1 },
+      { id: "grid_2x3", maxPhotos: 6 },
+      { id: "grid_4x4", maxPhotos: 16 },
+    ]
   );
 });

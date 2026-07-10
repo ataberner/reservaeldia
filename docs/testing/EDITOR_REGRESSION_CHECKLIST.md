@@ -364,19 +364,23 @@ Resultado esperado:
 4. Confirmar que la seccion `Imagenes disponibles` sigue mostrando miniaturas subidas debajo de los controles de galeria.
 5. Limpiar seleccion de canvas en un borrador que tenga exactamente una galeria y confirmar que el panel sigue mostrando sus fotos sin pedir seleccionarla.
 6. En un borrador con dos o mas galerias sin seleccion de canvas, elegir una desde el selector/listado del panel.
-7. Agregar, reemplazar, quitar y reordenar una foto.
-8. Reemplazar una foto de galeria subiendo una imagen pesada desde el dispositivo.
-9. Cambiar de seleccion o de tab mientras esa subida sigue en curso.
-10. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
-11. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
+7. Usar `Agregar galeria`, elegir una celda del selector visual `1x1` a `4x4` y confirmar que la galeria se inserta inmediatamente en el canvas.
+8. Crear al menos dos galerias simples con distintos presets, por ejemplo 5 fotos y 16 fotos.
+9. Agregar, reemplazar, quitar y reordenar una foto.
+10. Reemplazar una foto de galeria subiendo una imagen pesada desde el dispositivo.
+11. Cambiar de seleccion o de tab mientras esa subida sigue en curso.
+12. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
+13. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
 
 Resultado esperado:
 
 - usuarios normales no ven el Gallery Builder ni herramientas de estructura
+- usuarios normales con editor writable ven el control simple `Agregar galeria` en Fotos y pueden insertar galerias `tipo: "galeria"`
 - con una sola galeria, el panel la usa automaticamente aunque no este seleccionada en canvas
 - con varias galerias, el panel permite elegir cual editar sin seleccionar en canvas
 - las miniaturas subidas permanecen visibles debajo de la galeria y se desplazan con el scroll unico del panel
 - las operaciones afectan solo la galeria seleccionada en canvas o la galeria elegida en el panel
+- las galerias creadas desde Fotos quedan seleccionadas/activas y tienen imagenes, layout, reemplazos y persistencia independientes
 - durante el reemplazo desde dispositivo, solo la fila/foto afectada muestra `Subiendo imagen...`
 - la foto anterior permanece visible hasta que la nueva URL se aplica
 - no se puede iniciar otro reemplazo sobre esa misma foto mientras sube, pero las demas fotos no quedan marcadas como cargando
@@ -384,6 +388,7 @@ Resultado esperado:
 - el selector visual aparece arriba de la lista local de fotos y muestra `Collage` para el id interno `squares`
 - quitar una foto no elimina el asset subido
 - cambiar layout preserva todas las fotos, aunque algunas queden ocultas
+- los presets `grid_1x1` a `grid_4x4` renderizan el tamano visual exacto elegido; `grid_count_1` a `grid_count_16` siguen renderizando el numero visible exacto de celdas y conservan fotos ocultas en `cells[]`
 - el canvas cambia de forma inmediatamente al pasar, por ejemplo, de `1x4` a `2x3`, y `2x3` se renderiza como 2 filas por 3 columnas
 - el visor de preview recorre fotos clickeables de todas las galerias en orden DOM y de-duplica repetidas
 - publish sigue bloqueando `gallery-media-unresolved` si una celda con media no tiene URL publicable

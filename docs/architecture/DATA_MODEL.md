@@ -457,7 +457,7 @@ Gallery objects use:
 | `defaultLayout` | Optional additive preset field | Template-authored fallback preset id when allowed. |
 | `currentLayout` | Optional additive preset field | Draft-selected preset id when allowed. |
 
-Preset layout fields are additive Gallery metadata only. They do not create a new Gallery schema, new object type, or second persistence model. The primary selector labels map to stable ids as follows: `1x4 -> one_by_n`, `2x2 -> two_by_n`, `2x3 -> three_by_n`, and `Collage -> squares`. Existing ids such as `banner`, `side_by_side`, `single_page`, and `full_width` remain compatible when present in older Gallery data, but `full_width` is no longer exposed as a selectable layout.
+Preset layout fields are additive Gallery metadata only. They do not create a new Gallery schema, new object type, or second persistence model. The primary selector labels map to stable ids as follows: `1x4 -> one_by_n`, `2x2 -> two_by_n`, `2x3 -> three_by_n`, and `Collage -> squares`. The simple Fotos-tab creation flow may set `allowedLayouts` to `grid_count_1` through `grid_count_16` and choose one as `defaultLayout` / `currentLayout`; those are shared fixed-render presets, not a separate Gallery model. Existing ids such as `banner`, `side_by_side`, `single_page`, and `full_width` remain compatible when present in older Gallery data, but `full_width` is no longer exposed as a selectable layout.
 
 Gallery cell payload:
 

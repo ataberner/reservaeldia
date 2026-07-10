@@ -27,6 +27,7 @@ export default function MiniToolbar({
   seccionActivaId: seccionProp,
   setImagenesSeleccionadas,
   onInsertarGaleria,
+  editorReadOnly = false,
   canUseGalleryBuilder = false,
   templateSessionMeta = null,
   rsvpForcePresetSelection,
@@ -112,6 +113,8 @@ export default function MiniToolbar({
           replacementUploadState={imageReplacementUploadState}
           onBeginReplacementUpload={beginImageReplacementUpload}
           onClearReplacementUpload={clearImageReplacementUpload}
+          onInsertarGaleria={onInsertarGaleria}
+          canCreateGallery={!editorReadOnly}
         />
       )}
 

@@ -214,8 +214,8 @@ export function resolveAvailableImageGalleryAction({
   if (selectedPhotoTarget) {
     return {
       action: "replace-selected-photo",
-      label: "Reemplazar",
-      reason: "selected-photo",
+      label: selectedPhotoTarget.isEmpty ? "Agregar a celda" : "Reemplazar",
+      reason: selectedPhotoTarget.isEmpty ? "selected-empty-slot" : "selected-photo",
     };
   }
 

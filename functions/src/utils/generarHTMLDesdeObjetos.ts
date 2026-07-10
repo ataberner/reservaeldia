@@ -2118,8 +2118,12 @@ gap: calc(${sGrid} * ${gapPx}px);
 box-sizing: border-box;
 `.trim();
 
-        const total = rows * cols;
-        const cells = Array.from({ length: total }, (_, i) => {
+        const gridTotal = rows * cols;
+        const fixedRenderTotal =
+          renderCellLimit !== null
+            ? Math.max(1, Math.min(gridTotal, renderCellLimit))
+            : gridTotal;
+        const cells = Array.from({ length: fixedRenderTotal }, (_, i) => {
           const c = sourceCells[i] || {};
           return {
             id: c.id,

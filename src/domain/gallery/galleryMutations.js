@@ -1,6 +1,8 @@
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import {
+  applyGalleryLayoutPresetToRenderObject,
   normalizeGalleryLayoutIds,
+  resolveGalleryLayoutRenderCellLimit,
   resolveGalleryLayoutSelection,
   resolveGalleryLayoutSelectionForEditor,
 } from "./galleryLayoutPresets.js";
@@ -49,6 +51,23 @@ function resolveFixedSlotCount(gallery) {
   const rows = Math.max(1, Number(gallery?.rows) || 1);
   const cols = Math.max(1, Number(gallery?.cols) || 1);
   return rows * cols;
+}
+
+function resolveFixedVisibleSlotCount(gallery) {
+  const renderedGallery = applyGalleryLayoutPresetToRenderObject(gallery);
+  const gridSlots = resolveFixedSlotCount(renderedGallery);
+  const renderCellLimit = resolveGalleryLayoutRenderCellLimit(renderedGallery);
+  if (renderCellLimit === null) return gridSlots;
+  return Math.max(1, Math.min(gridSlots, renderCellLimit));
+}
+
+function resolveFixedManageableSlotCount(gallery) {
+  const rawCellCount = Array.isArray(gallery?.cells) ? gallery.cells.length : 0;
+  return Math.max(
+    resolveFixedSlotCount(gallery),
+    resolveFixedVisibleSlotCount(gallery),
+    rawCellCount
+  );
 }
 
 function hasCellMedia(cell) {
@@ -180,9 +199,14 @@ function noop(originalGallery, action, reason) {
   });
 }
 
-function normalizeFixedCellsForMutation(gallery) {
+function normalizeFixedCellsForMutation(gallery, options = {}) {
   const rawCells = getRawCells(gallery);
-  const slotCount = resolveFixedSlotCount(gallery);
+  const slotCount = Math.max(
+    1,
+    Number.isFinite(Number(options.minSlotCount))
+      ? Number(options.minSlotCount)
+      : resolveFixedManageableSlotCount(gallery)
+  );
   const totalCells = Math.max(slotCount, rawCells.length);
 
   return Array.from({ length: totalCells }, (_, index) => {
@@ -230,7 +254,7 @@ function getPopulatedFixedSourceIndexes(cells, slotCount) {
 
 function resolveFixedSourceIndex(gallery, target) {
   const cells = normalizeFixedCellsForMutation(gallery);
-  const slotCount = resolveFixedSlotCount(gallery);
+  const slotCount = resolveFixedManageableSlotCount(gallery);
   const byCellId = resolveTargetByCellId(cells, target);
   if (byCellId >= 0 && byCellId < slotCount) return byCellId;
 
@@ -284,7 +308,7 @@ export function getGalleryPhotos(gallery) {
 
   const dynamic = isDynamicGallery(gallery);
   const cells = dynamic ? getRawCells(gallery) : normalizeFixedCellsForMutation(gallery);
-  const slotLimit = dynamic ? cells.length : resolveFixedSlotCount(gallery);
+  const slotLimit = dynamic ? cells.length : resolveFixedManageableSlotCount(gallery);
   const photos = [];
 
   for (let sourceIndex = 0; sourceIndex < slotLimit; sourceIndex += 1) {
@@ -308,6 +332,52 @@ export function getGalleryPhotos(gallery) {
   }
 
   return photos;
+}
+
+export function getGallerySlots(gallery, options = {}) {
+  if (!isGalleryObject(gallery)) return [];
+
+  if (isDynamicGallery(gallery)) {
+    return getGalleryPhotos(gallery).map((photo) => ({
+      ...photo,
+      slotIndex: photo.sourceIndex,
+      isEmpty: false,
+      isPopulated: true,
+    }));
+  }
+
+  const safeOptions = asObject(options);
+  const slotLimit =
+    safeOptions.visibleOnly === true
+      ? resolveFixedVisibleSlotCount(gallery)
+      : resolveFixedManageableSlotCount(gallery);
+  const cells = normalizeFixedCellsForMutation(gallery, { minSlotCount: slotLimit });
+  let displayIndex = 0;
+
+  return Array.from({ length: slotLimit }, (_, sourceIndex) => {
+    const cell = normalizeCellForRead(cells[sourceIndex] || {});
+    const mediaUrl = resolveGalleryCellMediaUrl(cell);
+    const populated = Boolean(mediaUrl);
+    const slot = {
+      sourceIndex,
+      slotIndex: sourceIndex,
+      index: sourceIndex,
+      cellId: normalizeText(cell.id),
+      mediaUrl: mediaUrl || "",
+      storagePath: normalizeText(cell.storagePath),
+      assetId: normalizeText(cell.assetId),
+      fit: normalizeText(cell.fit) || DEFAULT_CELL_FIT,
+      bg: normalizeText(cell.bg) || DEFAULT_CELL_BG,
+      alt: normalizeText(cell.alt),
+      cell,
+      isEmpty: !populated,
+      isPopulated: populated,
+      displayIndex: populated ? displayIndex : null,
+    };
+
+    if (populated) displayIndex += 1;
+    return slot;
+  });
 }
 
 export function resolveGalleryMediaKey(cell) {
@@ -372,8 +442,8 @@ export function addGalleryPhotos(gallery, photos, options = {}) {
     });
   }
 
-  const slotCount = resolveFixedSlotCount(gallery);
-  const nextCells = normalizeFixedCellsForMutation(gallery);
+  const slotCount = resolveFixedVisibleSlotCount(gallery);
+  const nextCells = normalizeFixedCellsForMutation(gallery, { minSlotCount: slotCount });
   let addedCount = 0;
 
   for (const photo of safePhotos) {
@@ -511,7 +581,7 @@ export function reorderGalleryPhotos(gallery, from, to) {
     });
   }
 
-  const slotCount = resolveFixedSlotCount(gallery);
+  const slotCount = resolveFixedManageableSlotCount(gallery);
   const nextCells = normalizeFixedCellsForMutation(gallery);
   const occupiedIndexes = getPopulatedFixedSourceIndexes(nextCells, slotCount);
   if (fromIndex >= occupiedIndexes.length || toIndex >= occupiedIndexes.length) {
@@ -536,6 +606,61 @@ export function reorderGalleryPhotos(gallery, from, to) {
     },
     {
       action: "reorder",
+      changed: true,
+    }
+  );
+}
+
+function resolveFixedSlotIndex(gallery, target) {
+  const cells = normalizeFixedCellsForMutation(gallery);
+  const slotCount = resolveFixedManageableSlotCount(gallery);
+  const byCellId = resolveTargetByCellId(cells, target);
+  if (byCellId >= 0 && byCellId < slotCount) return byCellId;
+
+  const explicitSourceIndex = toFiniteIndex(target?.sourceIndex ?? target?.slotIndex);
+  if (explicitSourceIndex >= 0 && explicitSourceIndex < slotCount) return explicitSourceIndex;
+
+  const directIndex = toFiniteIndex(target?.index);
+  if (directIndex >= 0 && directIndex < slotCount) return directIndex;
+
+  return -1;
+}
+
+export function moveGalleryPhotoToSlot(gallery, fromTarget = {}, toTarget = {}) {
+  if (!isGalleryObject(gallery)) return noop(gallery, "move-to-slot", "not-gallery");
+  if (isDynamicGallery(gallery)) {
+    return reorderGalleryPhotos(gallery, fromTarget, toTarget);
+  }
+
+  const fromIndex = resolveFixedSourceIndex(gallery, fromTarget);
+  const toIndex = resolveFixedSlotIndex(gallery, toTarget);
+  if (fromIndex < 0 || toIndex < 0) {
+    return noop(gallery, "move-to-slot", "target-not-found");
+  }
+  if (fromIndex === toIndex) {
+    return noop(gallery, "move-to-slot", "invalid-range");
+  }
+
+  const nextCells = normalizeFixedCellsForMutation(gallery);
+  const fromCell = nextCells[fromIndex];
+  const toCell = nextCells[toIndex];
+  if (!hasCellMedia(fromCell)) {
+    return noop(gallery, "move-to-slot", "missing-media");
+  }
+
+  nextCells[toIndex] = buildPopulatedCell(toCell, fromCell);
+  nextCells[fromIndex] = hasCellMedia(toCell)
+    ? buildPopulatedCell(fromCell, toCell)
+    : clearCellMedia(fromCell);
+
+  return buildResult(
+    gallery,
+    {
+      ...gallery,
+      cells: nextCells,
+    },
+    {
+      action: "move-to-slot",
       changed: true,
     }
   );

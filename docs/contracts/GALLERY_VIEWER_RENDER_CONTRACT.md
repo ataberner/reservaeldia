@@ -25,6 +25,8 @@ Status: Canonical Contract. This document owns Gallery generated HTML, preview/p
 
 **Current:** Empty fixed Gallery cells do not include `data-gallery-image="1"`.
 
+**Current:** Fixed photo-count presets such as `grid_count_5` render only their exact visible-cell count, even when the underlying fixed grid geometry has more structural slots. Non-rendered preserved photos do not emit clickable Gallery markers.
+
 **Current:** Generated HTML uses `cell.mediaUrl` for Gallery image `src`. Legacy `url` and `src` cells must be normalized into `mediaUrl` before or during the prepared render path.
 
 **Current:** `functions/src/utils/generarModalGaleria.ts` includes the Gallery modal only when `hayGaleriaConImagenes(...)` finds a Gallery cell with non-empty `mediaUrl`.
@@ -135,6 +137,7 @@ document.querySelectorAll(".galeria-celda[data-gallery-image='1']")
 
 - Multiple Galleries render with Gallery id, cell id/index, and media key markers.
 - Empty fixed cells do not become clickable viewer items.
+- Photo-count Gallery presets emit the exact expected number of generated cells and clickable markers.
 - Global viewer collects all generated clickable Gallery cells in DOM order.
 - Global viewer de-duplicates repeated photos by media identity.
 - Clicking a duplicate opens the canonical first retained item.

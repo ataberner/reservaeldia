@@ -1467,6 +1467,7 @@ export default function CanvasEditor({
     repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow: flushEditorPersistence,
+    selectionRuntime,
   });
 
   useCanvasEditorRuntimeEffects({

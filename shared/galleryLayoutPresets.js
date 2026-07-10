@@ -1,12 +1,22 @@
 import runtime from "./galleryLayoutPresets.cjs";
 
 export const GALLERY_LAYOUT_PRESET_DEFINITIONS = runtime.GALLERY_LAYOUT_PRESET_DEFINITIONS;
+export const GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS = runtime.GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS;
+export const GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS = runtime.GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS;
 export const applyGalleryLayoutPresetToRenderObject = runtime.applyGalleryLayoutPresetToRenderObject;
+export const getGalleryCountLayoutPhotoCount = runtime.getGalleryCountLayoutPhotoCount;
+export const getGalleryCountLayoutPresetIds = runtime.getGalleryCountLayoutPresetIds;
+export const getGalleryCountLayoutPresets = runtime.getGalleryCountLayoutPresets;
+export const getGalleryGridSizeLayoutPresetIds = runtime.getGalleryGridSizeLayoutPresetIds;
+export const getGalleryGridSizeLayoutPresets = runtime.getGalleryGridSizeLayoutPresets;
 export const getGalleryLayoutPreset = runtime.getGalleryLayoutPreset;
 export const getGalleryLayoutPresets = runtime.getGalleryLayoutPresets;
+export const isGalleryCountLayoutPreset = runtime.isGalleryCountLayoutPreset;
+export const isGalleryGridSizeLayoutPreset = runtime.isGalleryGridSizeLayoutPreset;
 export const isKnownGalleryLayoutPreset = runtime.isKnownGalleryLayoutPreset;
 export const isSelectableGalleryLayoutPreset = runtime.isSelectableGalleryLayoutPreset;
 export const normalizeGalleryLayoutIds = runtime.normalizeGalleryLayoutIds;
+export const resolveGalleryGridSizeSelection = runtime.resolveGalleryGridSizeSelection;
 export const resolveGalleryLayoutRenderCellLimit = runtime.resolveGalleryLayoutRenderCellLimit;
 export const resolveGalleryLayoutSelection = runtime.resolveGalleryLayoutSelection;
 

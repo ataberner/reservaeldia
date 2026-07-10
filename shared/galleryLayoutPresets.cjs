@@ -23,7 +23,86 @@ function clonePlain(value) {
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, clonePlain(entry)]));
 }
 
+const PHOTO_COUNT_LAYOUT_FAMILY = "photo_count";
+const GRID_SIZE_LAYOUT_FAMILY = "grid_size";
+const GRID_COUNT_LAYOUT_GRID_SPECS = Object.freeze([
+  Object.freeze({ count: 1, rows: 1, cols: 1 }),
+  Object.freeze({ count: 2, rows: 1, cols: 2 }),
+  Object.freeze({ count: 3, rows: 1, cols: 3 }),
+  Object.freeze({ count: 4, rows: 2, cols: 2 }),
+  Object.freeze({ count: 5, rows: 2, cols: 3 }),
+  Object.freeze({ count: 6, rows: 2, cols: 3 }),
+  Object.freeze({ count: 7, rows: 2, cols: 4 }),
+  Object.freeze({ count: 8, rows: 2, cols: 4 }),
+  Object.freeze({ count: 9, rows: 3, cols: 3 }),
+  Object.freeze({ count: 10, rows: 3, cols: 4 }),
+  Object.freeze({ count: 11, rows: 3, cols: 4 }),
+  Object.freeze({ count: 12, rows: 3, cols: 4 }),
+  Object.freeze({ count: 13, rows: 4, cols: 4 }),
+  Object.freeze({ count: 14, rows: 4, cols: 4 }),
+  Object.freeze({ count: 15, rows: 4, cols: 4 }),
+  Object.freeze({ count: 16, rows: 4, cols: 4 }),
+]);
+
+const GRID_SIZE_LAYOUT_GRID_SPECS = Object.freeze(
+  [1, 2, 3, 4].flatMap((rows) =>
+    [1, 2, 3, 4].map((cols) =>
+      Object.freeze({ rows, cols, count: rows * cols })
+    )
+  )
+);
+
+const GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS = Object.freeze(
+  GRID_COUNT_LAYOUT_GRID_SPECS.map(({ count, rows, cols }) =>
+    Object.freeze({
+      id: `grid_count_${count}`,
+      label: `${count} foto${count === 1 ? "" : "s"}`,
+      previewKind: "photo-count-grid",
+      layoutFamily: PHOTO_COUNT_LAYOUT_FAMILY,
+      minPhotos: 1,
+      maxPhotos: count,
+      recommendedPhotoCount: count,
+      emptyCellsAllowed: true,
+      supportsDynamicMedia: false,
+      selectableByEndUsers: true,
+      render: Object.freeze({
+        galleryLayoutMode: "fixed",
+        galleryLayoutType: "canvas_preserve",
+        rows,
+        cols,
+        ratio: "1:1",
+      }),
+    })
+  )
+);
+
+const GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS = Object.freeze(
+  GRID_SIZE_LAYOUT_GRID_SPECS.map(({ count, rows, cols }) =>
+    Object.freeze({
+      id: `grid_${cols}x${rows}`,
+      label: `${cols}x${rows}`,
+      previewKind: "grid-size",
+      layoutFamily: GRID_SIZE_LAYOUT_FAMILY,
+      minPhotos: 1,
+      maxPhotos: count,
+      recommendedPhotoCount: count,
+      emptyCellsAllowed: true,
+      supportsDynamicMedia: false,
+      selectableByEndUsers: true,
+      render: Object.freeze({
+        galleryLayoutMode: "fixed",
+        galleryLayoutType: "canvas_preserve",
+        rows,
+        cols,
+        ratio: "1:1",
+      }),
+    })
+  )
+);
+
 const GALLERY_LAYOUT_PRESET_DEFINITIONS = Object.freeze([
+  ...GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS,
+  ...GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS,
   Object.freeze({
     id: "one_by_n",
     label: "1xN",
@@ -307,9 +386,72 @@ function getGalleryLayoutPreset(id) {
 
 function getGalleryLayoutPresets(options = {}) {
   const includeUnavailable = options.includeUnavailable === true;
+  const includeCountPresets = options.includeCountPresets === true;
   return GALLERY_LAYOUT_PRESET_DEFINITIONS
     .filter((preset) => includeUnavailable || preset.selectableByEndUsers === true)
+    .filter((preset) =>
+      includeCountPresets ||
+      (preset.layoutFamily !== PHOTO_COUNT_LAYOUT_FAMILY &&
+        preset.layoutFamily !== GRID_SIZE_LAYOUT_FAMILY)
+    )
     .map(clonePreset);
+}
+
+function getGalleryCountLayoutPresets() {
+  return GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS.map(clonePreset);
+}
+
+function isGalleryCountLayoutPreset(id) {
+  const preset = PRESET_BY_ID.get(normalizeText(id));
+  return preset?.layoutFamily === PHOTO_COUNT_LAYOUT_FAMILY;
+}
+
+function getGalleryCountLayoutPresetIds() {
+  return GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS.map((preset) => preset.id);
+}
+
+function getGalleryCountLayoutPhotoCount(id) {
+  const preset = PRESET_BY_ID.get(normalizeText(id));
+  return preset?.layoutFamily === PHOTO_COUNT_LAYOUT_FAMILY ||
+    preset?.layoutFamily === GRID_SIZE_LAYOUT_FAMILY
+    ? Math.max(0, Math.round(toFiniteNumber(preset.maxPhotos, 0)))
+    : 0;
+}
+
+function getGalleryGridSizeLayoutPresets() {
+  return GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS.map(clonePreset);
+}
+
+function getGalleryGridSizeLayoutPresetIds() {
+  return GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS.map((preset) => preset.id);
+}
+
+function isGalleryGridSizeLayoutPreset(id) {
+  const preset = PRESET_BY_ID.get(normalizeText(id));
+  return preset?.layoutFamily === GRID_SIZE_LAYOUT_FAMILY;
+}
+
+function clampGridSizeDimension(value) {
+  const numeric = Math.round(toFiniteNumber(value, 1));
+  return Math.max(1, Math.min(4, numeric));
+}
+
+function resolveGalleryGridSizeSelection(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const rows = clampGridSizeDimension(source.rows);
+  const cols = clampGridSizeDimension(source.cols);
+  const photoCount = rows * cols;
+  const layoutId = `grid_${cols}x${rows}`;
+  const preset = PRESET_BY_ID.get(layoutId) || null;
+
+  return {
+    rows,
+    cols,
+    photoCount,
+    layoutId: preset ? layoutId : "",
+    preset: clonePreset(preset),
+    ratio: preset?.render?.ratio || "1:1",
+  };
 }
 
 function isKnownGalleryLayoutPreset(id) {
@@ -464,12 +606,22 @@ function applyGalleryLayoutPresetToRenderObject(gallery, options = {}) {
 
 module.exports = {
   GALLERY_LAYOUT_PRESET_DEFINITIONS,
+  GALLERY_COUNT_LAYOUT_PRESET_DEFINITIONS,
+  GALLERY_GRID_SIZE_LAYOUT_PRESET_DEFINITIONS,
   applyGalleryLayoutPresetToRenderObject,
+  getGalleryCountLayoutPhotoCount,
+  getGalleryCountLayoutPresetIds,
+  getGalleryCountLayoutPresets,
+  getGalleryGridSizeLayoutPresetIds,
+  getGalleryGridSizeLayoutPresets,
   getGalleryLayoutPreset,
   getGalleryLayoutPresets,
+  isGalleryCountLayoutPreset,
+  isGalleryGridSizeLayoutPreset,
   isKnownGalleryLayoutPreset,
   isSelectableGalleryLayoutPreset,
   normalizeGalleryLayoutIds,
+  resolveGalleryGridSizeSelection,
   resolveGalleryLayoutRenderCellLimit,
   resolveGalleryLayoutSelection,
 };

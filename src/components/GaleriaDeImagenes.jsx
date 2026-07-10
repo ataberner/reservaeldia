@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 import ConfirmDeleteImagesModal from "@/components/ConfirmDeleteImagesModal";
 
 export default function GaleriaDeImagenes({
@@ -15,6 +16,7 @@ export default function GaleriaDeImagenes({
   onSeleccionadasChange,
 }) {
   const [seleccionadas, setSeleccionadas] = useState([]);
+  const [accionesAbiertasId, setAccionesAbiertasId] = useState("");
   const [mostrarModalBorrado, setMostrarModalBorrado] = useState(false);
   const [borrandoSeleccionadas, setBorrandoSeleccionadas] = useState(false);
   const loadMoreRef = useRef(null);
@@ -48,6 +50,12 @@ export default function GaleriaDeImagenes({
   useEffect(() => {
     cargarImagenes(true);
   }, [cargarImagenes]);
+
+  useEffect(() => {
+    if (!accionesAbiertasId) return;
+    if (imagenes.some((img) => img.id === accionesAbiertasId)) return;
+    setAccionesAbiertasId("");
+  }, [accionesAbiertasId, imagenes]);
 
   const toggleSeleccion = (id) => {
     setSeleccionadas((prev) =>
@@ -100,9 +108,12 @@ export default function GaleriaDeImagenes({
           return (
             <div
               key={img.id}
-              className="relative bg-white rounded shadow overflow-hidden cursor-pointer hover:scale-105 transition w-full aspect-square group"
+              className={`relative bg-white rounded shadow overflow-visible cursor-pointer hover:scale-105 transition w-full aspect-square group ${
+                accionesAbiertasId === img.id ? "z-30" : ""
+              }`}
               onClick={() => {
                 if (typeof img.url !== "string") return;
+                setAccionesAbiertasId("");
 
                 if (typeof onSelectImage === "function") {
                   onSelectImage(img);
@@ -122,7 +133,7 @@ export default function GaleriaDeImagenes({
               <img
                 src={img.thumbnailUrl || img.url}
                 alt={img.nombre}
-                className="w-full h-full object-cover"
+                className="w-full h-full rounded object-cover"
               />
 
               <div
@@ -140,23 +151,47 @@ export default function GaleriaDeImagenes({
               </div>
 
               {imageActions.length > 0 && (
-                <div className="absolute bottom-1 left-1 right-1 z-20 flex flex-col gap-1 opacity-95 transition group-hover:opacity-100">
-                  {imageActions.map((action) => (
-                    <button
-                      key={action.key || action.label}
-                      type="button"
-                      title={action.title || action.label}
-                      aria-label={action.title || action.label}
-                      disabled={action.disabled === true}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        action.onClick?.(img, event);
-                      }}
-                      className="min-h-[24px] rounded-md border border-white/70 bg-white/95 px-1.5 py-1 text-[10px] font-semibold leading-tight text-purple-800 shadow-sm transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:text-zinc-300"
+                <div className="absolute right-1 top-1 z-20">
+                  <button
+                    type="button"
+                    aria-label="Mas acciones"
+                    aria-haspopup="menu"
+                    aria-expanded={accionesAbiertasId === img.id}
+                    title="Mas acciones"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setAccionesAbiertasId((current) => (current === img.id ? "" : img.id));
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-md border border-white/80 bg-white/95 text-zinc-700 shadow-sm transition hover:bg-purple-50"
+                  >
+                    <MoreHorizontal size={15} aria-hidden="true" />
+                  </button>
+                  {accionesAbiertasId === img.id && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-8 flex min-w-[138px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 text-left shadow-lg"
+                      onClick={(event) => event.stopPropagation()}
                     >
-                      <span className="block truncate">{action.label}</span>
-                    </button>
-                  ))}
+                      {imageActions.map((action) => (
+                        <button
+                          key={action.key || action.label}
+                          type="button"
+                          role="menuitem"
+                          title={action.title || action.label}
+                          aria-label={action.title || action.label}
+                          disabled={action.disabled === true}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            action.onClick?.(img, event);
+                            setAccionesAbiertasId("");
+                          }}
+                          className="min-h-[32px] px-2.5 py-1.5 text-left text-[11px] font-semibold leading-tight text-zinc-700 transition hover:bg-purple-50 hover:text-purple-800 disabled:cursor-not-allowed disabled:text-zinc-300"
+                        >
+                          <span className="block truncate">{action.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

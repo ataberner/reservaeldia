@@ -49,6 +49,8 @@ Example preset ids:
 - `marquee`
 - `text_only`
 - `single_page`
+- `grid_count_1` through `grid_count_16`
+- `grid_1x1` through `grid_4x4`
 
 The implemented selectable v1 preset catalog is:
 
@@ -68,6 +70,41 @@ The primary visual selector exposes these user-facing options:
 | `2x2` | `two_by_n` | Two fixed rows; columns are resolved from the current populated photo count, falling back to the preset recommendation for empty Galleries. |
 | `2x3` | `three_by_n` | Legacy internal id retained; renders as two fixed rows and three fixed columns. Do not rename saved data from `three_by_n`. |
 | `Collage` | `squares` | UI-only rename of the existing `squares` preset id. Do not migrate existing data from `squares`. The visual selector icon should use a lightweight static overlapping-photo preview. |
+
+The simple Fotos-tab creation flow also keeps a dedicated photo-count catalog for compatibility:
+
+| User-facing label | Internal preset id | Fixed render grid | Visible cells |
+| --- | --- | --- | --- |
+| `1 foto` | `grid_count_1` | `1x1` | 1 |
+| `2 fotos` | `grid_count_2` | `1x2` | 2 |
+| `3 fotos` | `grid_count_3` | `1x3` | 3 |
+| `4 fotos` | `grid_count_4` | `2x2` | 4 |
+| `5 fotos` | `grid_count_5` | `2x3` | 5 |
+| `6 fotos` | `grid_count_6` | `2x3` | 6 |
+| `7 fotos` | `grid_count_7` | `2x4` | 7 |
+| `8 fotos` | `grid_count_8` | `2x4` | 8 |
+| `9 fotos` | `grid_count_9` | `3x3` | 9 |
+| `10 fotos` | `grid_count_10` | `3x4` | 10 |
+| `11 fotos` | `grid_count_11` | `3x4` | 11 |
+| `12 fotos` | `grid_count_12` | `3x4` | 12 |
+| `13 fotos` | `grid_count_13` | `4x4` | 13 |
+| `14 fotos` | `grid_count_14` | `4x4` | 14 |
+| `15 fotos` | `grid_count_15` | `4x4` | 15 |
+| `16 fotos` | `grid_count_16` | `4x4` | 16 |
+
+These photo-count presets use the existing fixed `canvas_preserve` renderer with `ratio: "1:1"`. The grid may have more structural slots than the visible photo count; the renderer must honor the preset render limit so, for example, `grid_count_5` renders exactly five visible cells in a `2x3` geometry.
+
+Photo-count presets are globally known shared presets, but they are meant for simple Gallery creation and explicit Gallery `allowedLayouts`. Generic Builder/catalog lists may omit them unless they opt into count presets.
+
+The current Fotos-tab creation UI uses a compact visual rows/columns grid. That selector maps directly to exact grid-size presets:
+
+| Visual selection | Internal preset id | Fixed render grid | Visible cells |
+| --- | --- | --- | --- |
+| `1x1` | `grid_1x1` | `1x1` | 1 |
+| `2x3` | `grid_2x3` | `2x3` | 6 |
+| `4x4` | `grid_4x4` | `4x4` | 16 |
+
+All `grid_{cols}x{rows}` combinations from `1x1` through `4x4` are known shared presets. They use the same fixed `canvas_preserve` renderer with `ratio: "1:1"` and a visible-cell limit equal to `cols * rows`. They do not create a second Gallery object model or public renderer.
 
 Legacy ids such as `banner`, `side_by_side`, `single_page`, and `full_width` remain readable/renderable for existing Galleries. `full_width` is no longer selectable in the normal Gallery tab or the admin/superadmin Builder selector. Existing Gallery data that references only `full_width` should fall back to a current selectable layout rather than crashing or exposing `full_width` again. New default Builder configuration should prefer the primary visual selector options above.
 
@@ -111,6 +148,12 @@ Implemented global preset definition shape:
 **Current:** Row-count presets such as `one_by_n` and `two_by_n` are resolved inside the shared preset application helper. They do not introduce a second renderer. The helper may derive the fixed-grid `cols` and render `height` from the selected preset, current Gallery photo count, and existing Gallery width so editor canvas, preview, and publish use the same render shape.
 
 **Current:** The legacy internal `three_by_n` id is now the user-facing `2x3` preset. Its renderer must use exactly 2 rows and 3 columns. The id remains unchanged for compatibility.
+
+**Current:** Photo-count presets `grid_count_1` through `grid_count_16` are resolved inside the same shared preset application helper. They must preserve all local `cells[]` usages while limiting the visible fixed cells to the preset count in editor canvas, preview, and publish.
+
+**Current:** Exact grid-size presets `grid_1x1` through `grid_4x4` are resolved by the same helper. They preserve all local `cells[]` usages and render the chosen `cols x rows` geometry exactly.
+
+**Current:** The fixed visible-cell limit is derived from the selected preset's `maxPhotos` through `resolveGalleryLayoutRenderCellLimit(...)`. It is not a persisted per-cell visibility model.
 
 **Future:** Presets that require behavior outside current fixed/dynamic rendering, such as slideshow or marquee, must still render through the same generated invitation HTML pipeline. They must not create a separate public viewer pipeline.
 
@@ -171,7 +214,7 @@ Recommended additive Gallery object fields:
 
 **Current:** Normal users can switch among allowed layouts only.
 
-**Current:** Normal users cannot create layouts.
+**Current:** Normal users cannot create layout definitions. The simple Fotos-tab creation flow may instantiate a Gallery using known `grid_1x1` through `grid_4x4` presets. Existing Galleries that use `grid_count_1` through `grid_count_16` remain valid.
 
 **Current:** Normal users cannot edit `galleryLayoutBlueprint` directly.
 
@@ -187,4 +230,7 @@ Recommended additive Gallery object fields:
 - Switching layouts does not mutate uploaded image-library assets.
 - Legacy Galleries without preset fields still render through current fixed/dynamic fields.
 - Preset-to-current-renderer mapping preserves preview/publish parity.
+- `grid_count_1` through `grid_count_16` expose exact visible-cell counts and reuse the fixed renderer.
+- `grid_1x1` through `grid_4x4` expose exact visual grid sizes and reuse the fixed renderer.
+- Fixed photo-count presets with hidden preserved usages keep those usages in `cells[]` while rendering only visible cells.
 - Visual selector labels can differ from internal preset ids; `Collage` must continue to write/read `squares`.

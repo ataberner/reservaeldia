@@ -63,9 +63,11 @@ These invariants apply to current behavior and future implementation:
 
 ## Implemented Architecture Summary
 
-**Current:** Admin and superadmin users get a role-restricted Gallery Builder for template authoring only. It configures Gallery structure, layout presets, defaults, and end-user layout availability.
+**Current:** Admin and superadmin users get a role-restricted Gallery Builder for template authoring only. It configures advanced Gallery structure, layout presets, defaults, and end-user layout availability.
 
-**Current:** Normal users do not access the Gallery Builder. They edit photos inside selected Galleries already present in the template and may switch only among layouts allowed by the Gallery configuration.
+**Current:** Writable normal editor sessions expose a simple Fotos-tab creation flow for new independent Galleries. This flow inserts a normal `tipo: "galeria"` object through the existing object insertion path, uses known preset ids only, and creates empty local `cells[]` slots for the chosen grid-size layout.
+
+**Current:** Normal users do not access the Gallery Builder. They can edit photos inside selected or sidebar-chosen Galleries, create simple `1x1` through `4x4` Galleries from the Fotos tab, and switch only among layouts allowed by each Gallery configuration.
 
 **Current:** Gallery layout presets are predefined. End users must not edit arbitrary `galleryLayoutBlueprint` data or create new layouts.
 
@@ -82,6 +84,8 @@ These invariants apply to current behavior and future implementation:
 **Current:** Layout switching preserves all Gallery photo usages in local `cells[]` order. Layouts decide how many photos are visible/rendered; switching layouts does not delete hidden photos and does not mutate uploaded assets.
 
 **Current:** The primary visual layout selector labels are `1x4`, `2x2`, `2x3`, and `Collage`. These labels map to stable preset ids in [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md). `2x3` is a UI label for the existing internal `three_by_n` id, and `Collage` is a UI label for the existing internal `squares` id. `full_width` remains a legacy render-compatible id but is no longer a selectable option.
+
+**Current:** The simple Fotos-tab creation selector uses exact grid-size presets `grid_1x1` through `grid_4x4`. Legacy/simple photo-count presets `grid_count_1` through `grid_count_16` remain known shared presets for compatibility. Both preset families map to the current fixed `canvas_preserve` renderer.
 
 **Current:** Preview and published invitations use one generated-HTML viewer runtime that collects clickable Gallery cells globally from the generated invitation DOM.
 
@@ -105,7 +109,8 @@ The Gallery implementation is considered contract-ready only when all of these a
 - Existing `tipo: "galeria"` objects still load, render, persist, preview, and publish.
 - Existing Gallery cells using `mediaUrl`, `url`, or `src` remain readable through normalization.
 - Admin/superadmin Gallery Builder is role-restricted and template-authoring only.
-- Normal users can manage photos only inside existing template Galleries and can switch only among allowed layouts.
+- Normal users can create simple independent Galleries from the Fotos tab without accessing the Gallery Builder.
+- Normal users can manage photos only inside the active Gallery target and can switch only among allowed layouts for that Gallery.
 - The normal Gallery sidebar shows the active Gallery target's photos separately from available/uploaded images. The active target is the selected canvas Gallery, the only draft Gallery, or an explicit sidebar choice when multiple Galleries exist.
 - Add/remove/replace/reorder/switch-layout mutate only the active Gallery target object.
 - Removing a Gallery photo does not delete the uploaded image asset.

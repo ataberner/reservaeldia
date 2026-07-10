@@ -25,6 +25,8 @@ export const CANVAS_EDITOR_COMPATIBILITY_KEYS = Object.freeze([
   "updateTemplateAuthoringEventTimes",
   "repairTemplateAuthoringState",
   "scrollToDynamicFieldTarget",
+  "scrollToEditorObjectById",
+  "focusEditorObjectById",
   "replaceFirstSectionBackgroundImage",
   "stageRef",
   "seccionActivaId",

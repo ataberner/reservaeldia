@@ -183,7 +183,11 @@ export default function GaleriaKonva({
       return populatedCells;
     }
 
-    const total = Math.max(1, rows * cols);
+    const gridTotal = Math.max(1, rows * cols);
+    const total =
+      renderCellLimit !== null
+        ? Math.max(1, Math.min(gridTotal, renderCellLimit))
+        : gridTotal;
     return Array.from({ length: total }, (_, index) => {
       const cell = sourceCells[index] || {};
       return {
@@ -238,6 +242,10 @@ export default function GaleriaKonva({
   ]);
 
   const safeTotalHeight = Math.max(1, totalHeight);
+  const visibleRects =
+    !isDynamicGallery && renderCellLimit !== null
+      ? rects.slice(0, Math.max(1, Math.min(rects.length, renderCellLimit)))
+      : rects;
 
   const isRemoveButtonTarget = useCallback(
     (target) => {
@@ -546,7 +554,7 @@ export default function GaleriaKonva({
         listening={false}
       />
 
-      {rects.map((r, i) => {
+      {visibleRects.map((r, i) => {
         const cell = renderCells[i] || {};
         const bg = cell.bg || "#f3f4f6";
         const mediaUrl = cell.mediaUrl || null;

@@ -943,7 +943,11 @@ export default function DashboardSidebar({
     const insertarGaleria = useCallback((cfg = {}) => {
         const rows = Math.max(1, cfg.rows || 1);
         const cols = Math.max(1, cfg.cols || 1);
-        const total = rows * cols;
+        const requestedCellCount = Number(cfg.cellCount);
+        const total =
+            Number.isInteger(requestedCellCount) && requestedCellCount > 0
+                ? requestedCellCount
+                : rows * cols;
         const widthPct = Math.max(10, Math.min(100, Number(cfg.widthPct ?? 70)));
         const allowedLayouts = normalizeGalleryLayoutIds(cfg.allowedLayouts);
         const defaultLayout = allowedLayouts.includes(cfg.defaultLayout)
@@ -952,10 +956,11 @@ export default function DashboardSidebar({
         const currentLayout = allowedLayouts.includes(cfg.currentLayout)
             ? cfg.currentLayout
             : defaultLayout;
+        const galleryId = `gal-${Date.now().toString(36)}`;
 
         window.dispatchEvent(new CustomEvent("insertar-elemento", {
             detail: {
-                id: `gal-${Date.now().toString(36)}`,
+                id: galleryId,
                 tipo: "galeria",
                 rows,
                 cols,
@@ -975,6 +980,7 @@ export default function DashboardSidebar({
                     : {}),
             }
         }));
+        return galleryId;
     }, []);
 
 
@@ -1502,6 +1508,7 @@ export default function DashboardSidebar({
                             setImagenesSeleccionadas={setImagenesSeleccionadas}
                             abrirSelector={abrirSelectorImagen}
                             onInsertarGaleria={insertarGaleria}
+                            editorReadOnly={editorReadOnly}
                             canUseGalleryBuilder={canUseGalleryBuilder}
                             templateSessionMeta={templateSessionMeta}
                             rsvpForcePresetSelection={rsvpForcePresetSelection}

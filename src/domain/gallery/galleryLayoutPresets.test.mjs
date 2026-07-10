@@ -3,11 +3,15 @@ import test from "node:test";
 
 import {
   applyGalleryLayoutPresetToRenderObject,
+  getGalleryCountLayoutSelectorIds,
+  getGalleryCountLayoutSelectorOptions,
+  getGalleryGridSizeLayoutSelectorIds,
   getGalleryLayoutPresets,
   getGalleryLayoutPreset,
   getDefaultGalleryLayoutSelectorIds,
   isSelectableGalleryLayoutPreset,
   normalizeGalleryLayoutIds,
+  resolveGalleryGridSizeSelection,
   resolveGalleryLayoutRenderCellLimit,
   resolveGalleryLayoutSelectionForEditor,
   resolveGalleryLayoutSelection,
@@ -52,10 +56,83 @@ test("preset catalog exposes only selectable layouts by default", () => {
   assert.equal(getGalleryLayoutPreset("full_width")?.render?.cols, 1);
 });
 
+test("photo-count presets expose exact 1 to 16 gallery creation layouts", () => {
+  const ids = getGalleryCountLayoutSelectorIds();
+  const options = getGalleryCountLayoutSelectorOptions();
+
+  assert.deepEqual(
+    ids,
+    Array.from({ length: 16 }, (_, index) => `grid_count_${index + 1}`)
+  );
+  assert.equal(options.length, 16);
+  assert.equal(options[0].label, "1 foto");
+  assert.equal(options[15].label, "16 fotos");
+  assert.deepEqual(
+    options.map((option) => option.photoCount),
+    Array.from({ length: 16 }, (_, index) => index + 1)
+  );
+
+  const five = getGalleryLayoutPreset("grid_count_5");
+  const sixteen = getGalleryLayoutPreset("grid_count_16");
+  assert.equal(five.render.rows, 2);
+  assert.equal(five.render.cols, 3);
+  assert.equal(five.maxPhotos, 5);
+  assert.equal(sixteen.render.rows, 4);
+  assert.equal(sixteen.render.cols, 4);
+  assert.equal(sixteen.maxPhotos, 16);
+});
+
+test("grid-size presets map visual rows and columns from 1x1 to 4x4", () => {
+  const ids = getGalleryGridSizeLayoutSelectorIds();
+
+  assert.equal(ids.length, 16);
+  assert.equal(ids[0], "grid_1x1");
+  assert.equal(ids[15], "grid_4x4");
+  assert.ok(ids.includes("grid_2x3"));
+
+  const twoByThree = resolveGalleryGridSizeSelection({ cols: 2, rows: 3 });
+  assert.deepEqual(
+    {
+      layoutId: twoByThree.layoutId,
+      cols: twoByThree.cols,
+      rows: twoByThree.rows,
+      photoCount: twoByThree.photoCount,
+    },
+    {
+      layoutId: "grid_2x3",
+      cols: 2,
+      rows: 3,
+      photoCount: 6,
+    }
+  );
+
+  const rendered = applyGalleryLayoutPresetToRenderObject(
+    gallery({
+      rows: 1,
+      cols: 1,
+      allowedLayouts: ids,
+      defaultLayout: "grid_2x3",
+      currentLayout: "grid_2x3",
+      cells: Array.from({ length: 6 }, (_, index) => ({
+        mediaUrl: `https://cdn.test/${index + 1}.jpg`,
+      })),
+    })
+  );
+
+  assert.equal(rendered.rows, 3);
+  assert.equal(rendered.cols, 2);
+  assert.equal(resolveGalleryLayoutRenderCellLimit(rendered), 6);
+
+  const fourByFour = getGalleryLayoutPreset("grid_4x4");
+  assert.equal(fourByFour.render.rows, 4);
+  assert.equal(fourByFour.render.cols, 4);
+  assert.equal(fourByFour.maxPhotos, 16);
+});
+
 test("layout id normalization removes duplicates, unknown ids, and unavailable presets", () => {
   assert.deepEqual(
-    normalizeGalleryLayoutIds(["banner", "unknown", "slideshow", "full_width", "banner", "squares"]),
-    ["banner", "squares"]
+    normalizeGalleryLayoutIds(["banner", "unknown", "slideshow", "full_width", "banner", "squares", "grid_count_5"]),
+    ["banner", "squares", "grid_count_5"]
   );
 
   assert.deepEqual(
@@ -260,6 +337,47 @@ test("row-count presets derive columns from gallery photo count and render heigh
   assert.equal(twoByThreeLayout.rects.length, 6);
   assert.equal(twoByThreeLayout.rects[2].x, 272);
   assert.equal(twoByThreeLayout.rects[3].y, 136);
+});
+
+test("photo-count preset mapping preserves cells while exposing exact render limits", () => {
+  const original = gallery({
+    width: 360,
+    gap: 8,
+    rows: 4,
+    cols: 4,
+    allowedLayouts: ["grid_count_5", "grid_count_16"],
+    defaultLayout: "grid_count_5",
+    currentLayout: "grid_count_5",
+    cells: Array.from({ length: 8 }, (_, index) => ({
+      mediaUrl: `https://cdn.test/${index + 1}.jpg`,
+    })),
+  });
+
+  const rendered = applyGalleryLayoutPresetToRenderObject(original);
+  const renderCellLimit = resolveGalleryLayoutRenderCellLimit(rendered);
+  const layout = resolveGalleryRenderLayout({
+    width: rendered.width,
+    rows: rendered.rows,
+    cols: rendered.cols,
+    gap: rendered.gap,
+    ratio: rendered.ratio,
+    layoutMode: rendered.galleryLayoutMode,
+    layoutType: rendered.galleryLayoutType,
+    layoutBlueprint: rendered.galleryLayoutBlueprint,
+    mediaUrls: rendered.cells
+      .map((cell) => cell.mediaUrl)
+      .slice(0, renderCellLimit ?? undefined),
+    isMobile: false,
+  });
+
+  assert.equal(rendered.rows, 2);
+  assert.equal(rendered.cols, 3);
+  assert.equal(renderCellLimit, 5);
+  assert.equal(layout.rects.length, 6);
+  assert.equal(layout.rects.slice(0, renderCellLimit).length, 5);
+  assert.equal(rendered.cells, original.cells);
+  assert.equal(original.rows, 4);
+  assert.equal(original.cells.length, 8);
 });
 
 test("collage preset renders a two-image overlapping stack without deleting cells", () => {

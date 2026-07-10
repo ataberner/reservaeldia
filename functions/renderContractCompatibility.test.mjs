@@ -1104,6 +1104,37 @@ test("applies Gallery layout presets to generated HTML while preserving source p
   assert.equal(gallery.cells.length, 3);
 });
 
+test("renders photo-count Gallery presets with exact fixed visible cell count", () => {
+  const gallery = {
+    id: "gallery-count-five",
+    tipo: "galeria",
+    seccionId: "section-1",
+    x: 0,
+    y: 0,
+    width: 360,
+    height: 240,
+    rows: 4,
+    cols: 4,
+    allowedLayouts: ["grid_count_5", "grid_count_16"],
+    defaultLayout: "grid_count_5",
+    currentLayout: "grid_count_5",
+    cells: Array.from({ length: 6 }, (_, index) => ({
+      id: `cell-${index + 1}`,
+      mediaUrl: `https://cdn.example.com/count-${index + 1}.jpg`,
+    })),
+  };
+
+  const html = generarHTMLDesdeObjetos([gallery], FIXED_SECTION);
+
+  assert.equal(countOccurrences(html, /class="galeria-celda/g), 5);
+  assert.equal(countOccurrences(html, /data-gallery-image="1"/g), 5);
+  assert.match(html, /grid-template-columns: repeat\(3, 1fr\)/);
+  assert.match(html, /grid-template-rows: repeat\(2, 1fr\)/);
+  assert.match(html, /data-gallery-cell-id="cell-5"/);
+  assert.doesNotMatch(html, /data-gallery-cell-id="cell-6"/);
+  assert.equal(gallery.cells.length, 6);
+});
+
 test("global gallery viewer collects all galleries and maps duplicate clicks to the canonical item", async () => {
   const html = generarHTMLDesdeSecciones(
     FIXED_SECTION,

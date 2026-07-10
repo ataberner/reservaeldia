@@ -1,8 +1,7 @@
 // components/MiniToolbarTabImagen.jsx
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { GripVertical, Loader2, Upload } from "lucide-react";
+import { Grid3X3, GripVertical, Loader2, Plus, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
-import GalleryLayoutSelector from "@/components/gallery/GalleryLayoutSelector";
 import {
   readCanvasEditorMethod,
   readEditorObjects,
@@ -12,6 +11,10 @@ import {
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import { resolveFirstSectionBaseImage } from "@/domain/sections/backgrounds";
 import {
+  getGalleryGridSizeLayoutSelectorIds,
+  resolveGalleryGridSizeSelection,
+} from "@/domain/gallery/galleryLayoutPresets";
+import {
   buildCanvasImageElementFromLibraryImage,
   getGalleryAllowedLayoutState,
   getSelectedGalleryPhotoUsages,
@@ -20,10 +23,11 @@ import {
 } from "@/domain/gallery/sidebarModel";
 import {
   addGalleryPhotos,
+  configureGalleryLayout,
+  getGallerySlots,
+  moveGalleryPhotoToSlot,
   removeGalleryPhoto,
   replaceGalleryPhoto,
-  reorderGalleryPhotos,
-  switchGalleryLayout,
 } from "@/domain/gallery/galleryMutations";
 import { resolveGalleryCellMediaUrl } from "../../shared/renderAssetContract.js";
 
@@ -53,50 +57,143 @@ function buildGalleryPhotoFromLibraryImage(img) {
   };
 }
 
-function getGalleryPhotoRowKey(photo) {
+const GALLERY_GRID_PICKER_MAX_COLS = 4;
+const GALLERY_GRID_PICKER_MAX_ROWS = 3;
+const GALLERY_CREATION_ALLOWED_LAYOUTS = getGalleryGridSizeLayoutSelectorIds().filter((layoutId) => {
+  const match = /^grid_(\d)x(\d)$/.exec(String(layoutId || ""));
+  if (!match) return false;
   return (
-    photo?.cellId ||
-    photo?.storagePath ||
-    photo?.assetId ||
-    photo?.mediaUrl ||
-    `source-${photo?.sourceIndex ?? "unknown"}`
+    Number(match[1]) <= GALLERY_GRID_PICKER_MAX_COLS &&
+    Number(match[2]) <= GALLERY_GRID_PICKER_MAX_ROWS
+  );
+});
+const DEFAULT_GALLERY_CREATION_GRID = Object.freeze({ rows: 2, cols: 2 });
+
+function formatGalleryGridSelection(selection) {
+  const rows = Math.max(1, Number(selection?.rows) || 1);
+  const cols = Math.max(1, Number(selection?.cols) || 1);
+  const photoCount = Math.max(1, Number(selection?.photoCount) || rows * cols);
+  return `${cols} \u00d7 ${rows} \u00b7 ${photoCount} foto${photoCount === 1 ? "" : "s"}`;
+}
+
+function formatGalleryGridSize(selection) {
+  const rows = Math.max(1, Number(selection?.rows) || 1);
+  const cols = Math.max(1, Number(selection?.cols) || 1);
+  return `${cols} \u00d7 ${rows}`;
+}
+
+function GalleryGridSizePicker({
+  value,
+  onPreview,
+  onSelect,
+  title = "Elegi el tamano",
+  disabled = false,
+  surface = "framed",
+  maxCols = GALLERY_GRID_PICKER_MAX_COLS,
+  maxRows = GALLERY_GRID_PICKER_MAX_ROWS,
+}) {
+  const [hoveredGrid, setHoveredGrid] = useState(null);
+  const isPlainSurface = surface === "plain";
+  const rawActiveSelection = resolveGalleryGridSizeSelection(
+    hoveredGrid || value || DEFAULT_GALLERY_CREATION_GRID
+  );
+  const safeMaxCols = Math.max(1, Math.min(4, Number(maxCols) || 4));
+  const safeMaxRows = Math.max(1, Math.min(4, Number(maxRows) || 3));
+  const activeSelection = resolveGalleryGridSizeSelection({
+    cols: Math.min(safeMaxCols, rawActiveSelection.cols),
+    rows: Math.min(safeMaxRows, rawActiveSelection.rows),
+  });
+
+  const previewGrid = useCallback((grid) => {
+    setHoveredGrid(grid);
+    if (typeof onPreview === "function") {
+      onPreview(grid);
+    }
+  }, [onPreview]);
+
+  return (
+    <div
+      className={
+        isPlainSurface
+          ? "w-[154px]"
+          : "w-[166px] rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg"
+      }
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
+          {title}
+        </span>
+        <span className="shrink-0 rounded bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
+          {formatGalleryGridSelection(activeSelection)}
+        </span>
+      </div>
+      <div
+        className="grid grid-cols-4 gap-1"
+        onPointerLeave={() => setHoveredGrid(null)}
+      >
+        {Array.from({ length: safeMaxRows }, (_, index) => index + 1).map((row) =>
+          Array.from({ length: safeMaxCols }, (_, index) => index + 1).map((col) => {
+            const highlighted = row <= activeSelection.rows && col <= activeSelection.cols;
+            const selection = resolveGalleryGridSizeSelection({ rows: row, cols: col });
+            return (
+              <button
+                key={`${col}x${row}`}
+                type="button"
+                disabled={disabled}
+                aria-label={`${col} columnas por ${row} filas`}
+                title={formatGalleryGridSelection(selection)}
+                onPointerEnter={() => previewGrid({ rows: row, cols: col })}
+                onFocus={() => previewGrid({ rows: row, cols: col })}
+                onClick={() => {
+                  if (disabled) return;
+                  onSelect?.(selection);
+                }}
+                className={`${isPlainSurface ? "h-7 w-7" : "h-8 w-8"} rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 ${
+                  highlighted
+                    ? "border-purple-400 bg-purple-100"
+                    : "border-zinc-200 bg-white hover:border-purple-200 hover:bg-purple-50"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <span className="sr-only">{formatGalleryGridSelection(selection)}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
 
-function buildGalleryPhotoRows(photos) {
+function getGallerySlotRowKey(slot) {
+  return (
+    slot?.cellId ||
+    `slot-${Number.isFinite(Number(slot?.sourceIndex)) ? Number(slot.sourceIndex) : "unknown"}`
+  );
+}
+
+function buildGallerySlotRows(slots) {
   const seen = new Map();
-  return (Array.isArray(photos) ? photos : []).map((photo) => {
-    const baseKey = getGalleryPhotoRowKey(photo);
+  return (Array.isArray(slots) ? slots : []).map((slot) => {
+    const baseKey = getGallerySlotRowKey(slot);
     const seenCount = seen.get(baseKey) || 0;
     seen.set(baseKey, seenCount + 1);
     return {
-      photo,
+      slot,
       rowKey: `${baseKey}::${seenCount}`,
     };
   });
 }
 
-function buildGalleryPhotoTarget(photo) {
-  if (!photo) return null;
+function buildGallerySlotTarget(slot) {
+  if (!slot) return null;
   return {
-    cellId: photo.cellId,
-    sourceIndex: photo.sourceIndex,
-    displayIndex: photo.displayIndex,
-    mediaUrl: photo.mediaUrl,
+    cellId: slot.cellId,
+    sourceIndex: slot.sourceIndex,
+    slotIndex: slot.slotIndex,
+    displayIndex: Number.isInteger(slot.displayIndex) ? slot.displayIndex : undefined,
+    mediaUrl: slot.mediaUrl || "",
+    isEmpty: slot.isEmpty === true,
   };
-}
-
-function moveArrayItemForPreview(items, from, to) {
-  if (!Array.isArray(items)) return [];
-  if (!Number.isInteger(from) || !Number.isInteger(to)) return items;
-  if (from < 0 || to < 0 || from >= items.length || to >= items.length || from === to) {
-    return items;
-  }
-
-  const next = [...items];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
 }
 
 function arraysMatch(a, b) {
@@ -130,6 +227,28 @@ function orderRowsByKeys(rows, rowKeys) {
   const rowsByKey = new Map(rows.map((row) => [row.rowKey, row]));
   if (!rowKeys.every((rowKey) => rowsByKey.has(rowKey))) return rows;
   return rowKeys.map((rowKey) => rowsByKey.get(rowKey));
+}
+
+function moveRowsForDragPreview(rows, fromIndex, toIndex) {
+  if (!Array.isArray(rows) || rows.length < 2) return rows;
+  const from = Number(fromIndex);
+  const to = Number(toIndex);
+  if (
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from < 0 ||
+    to < 0 ||
+    from >= rows.length ||
+    to >= rows.length ||
+    from === to
+  ) {
+    return rows;
+  }
+
+  const nextRows = [...rows];
+  const [draggedRow] = nextRows.splice(from, 1);
+  nextRows.splice(to, 0, draggedRow);
+  return nextRows;
 }
 
 function clampNumber(value, min, max) {
@@ -182,6 +301,27 @@ function ImageReplacementOverlay({ text = "Subiendo imagen..." }) {
   );
 }
 
+function focusGalleryInCanvas(galleryId) {
+  const safeGalleryId = String(galleryId || "").trim();
+  if (!safeGalleryId) return false;
+
+  const focusObject = readCanvasEditorMethod("focusEditorObjectById");
+  if (typeof focusObject === "function") {
+    return focusObject(safeGalleryId, {
+      behavior: "smooth",
+      select: true,
+      source: "gallery-sidebar-selector",
+    });
+  }
+
+  const scrollToObject = readCanvasEditorMethod("scrollToEditorObjectById");
+  if (typeof scrollToObject === "function") {
+    return scrollToObject(safeGalleryId, { behavior: "smooth" });
+  }
+
+  return false;
+}
+
 export default function MiniToolbarTabImagen({
   abrirSelector,
   imagenes,
@@ -197,6 +337,8 @@ export default function MiniToolbarTabImagen({
   replacementUploadState: controlledReplacementUploadState = null,
   onBeginReplacementUpload = null,
   onClearReplacementUpload = null,
+  onInsertarGaleria = null,
+  canCreateGallery = false,
 }) {
   const [isMobileViewport, setIsMobileViewport] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
@@ -210,8 +352,12 @@ export default function MiniToolbarTabImagen({
   const [selectionRefreshToken, setSelectionRefreshToken] = useState(0);
   const [editorSnapshotToken, setEditorSnapshotToken] = useState(0);
   const [sidebarGalleryId, setSidebarGalleryId] = useState("");
+  const [openGalleryGridSelector, setOpenGalleryGridSelector] = useState("");
+  const [galleryCreationGrid, setGalleryCreationGrid] = useState(DEFAULT_GALLERY_CREATION_GRID);
   const [localReplacementUploadState, setLocalReplacementUploadState] = useState({});
   const isMountedRef = useRef(true);
+  const galleryCreationSelectorRef = useRef(null);
+  const galleryResizeSelectorRef = useRef(null);
   const galleryPhotoListRef = useRef(null);
   const galleryPhotoRowNodesRef = useRef(new Map());
   const galleryPhotoRowRectsBeforeUpdateRef = useRef(null);
@@ -233,6 +379,47 @@ export default function MiniToolbarTabImagen({
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
   }, []);
+
+  const showGalleryCreation = openGalleryGridSelector === "creation";
+  const showGalleryResize = openGalleryGridSelector === "resize";
+
+  const closeGalleryGridSelector = useCallback(() => {
+    setOpenGalleryGridSelector("");
+  }, []);
+
+  const toggleGalleryGridSelector = useCallback((selectorKey) => {
+    setOpenGalleryGridSelector((current) =>
+      current === selectorKey ? "" : selectorKey
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!openGalleryGridSelector || typeof document === "undefined") return undefined;
+
+    const activeRef =
+      openGalleryGridSelector === "creation"
+        ? galleryCreationSelectorRef
+        : galleryResizeSelectorRef;
+
+    const handlePointerDown = (event) => {
+      const node = activeRef.current;
+      if (node && event.target instanceof Node && node.contains(event.target)) return;
+      closeGalleryGridSelector();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        closeGalleryGridSelector();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeGalleryGridSelector, openGalleryGridSelector]);
 
   useEffect(() => {
     return () => {
@@ -368,10 +555,30 @@ export default function MiniToolbarTabImagen({
 
   const galleryCandidates = galleryTargetState.candidates;
   const galeriaSeleccionada = galleryTargetState.gallery;
-  const showGalleryBlockSelector =
-    galleryCandidates.length > 1 && galleryTargetState.source !== "canvas-selection";
+  const showGalleryBlockSelector = galleryCandidates.length > 1;
   const shouldShowGalleryBlockSelector =
     showGalleryBlockSelector && !simplifiedForAssistant;
+
+  useEffect(() => {
+    if (!openGalleryGridSelector) return;
+    if (simplifiedForAssistant) {
+      closeGalleryGridSelector();
+      return;
+    }
+    if (openGalleryGridSelector === "creation" && !canCreateGallery) {
+      closeGalleryGridSelector();
+      return;
+    }
+    if (openGalleryGridSelector === "resize" && !galeriaSeleccionada?.id) {
+      closeGalleryGridSelector();
+    }
+  }, [
+    canCreateGallery,
+    closeGalleryGridSelector,
+    galeriaSeleccionada?.id,
+    openGalleryGridSelector,
+    simplifiedForAssistant,
+  ]);
 
   useEffect(() => {
     if (!sidebarGalleryId) return;
@@ -384,8 +591,21 @@ export default function MiniToolbarTabImagen({
     setSidebarGalleryId(galeriaSeleccionada.id);
   }, [galeriaSeleccionada?.id, galleryTargetState.source]);
 
+  const handleSelectGalleryFromSidebar = useCallback((galleryId) => {
+    const safeGalleryId = String(galleryId || "").trim();
+    if (!safeGalleryId) return;
+    setSidebarGalleryId(safeGalleryId);
+    closeGalleryGridSelector();
+    focusGalleryInCanvas(safeGalleryId);
+  }, [closeGalleryGridSelector]);
+
   const selectedGalleryPhotos = useMemo(
     () => getSelectedGalleryPhotoUsages(galeriaSeleccionada),
+    [galeriaSeleccionada]
+  );
+
+  const selectedGallerySlots = useMemo(
+    () => getGallerySlots(galeriaSeleccionada, { visibleOnly: true }),
     [galeriaSeleccionada]
   );
 
@@ -399,6 +619,25 @@ export default function MiniToolbarTabImagen({
     [layoutState.allowedLayoutOptions, layoutState.selectedLayout]
   );
 
+  const currentGalleryGridSelection = useMemo(() => {
+    const match = /^grid_(\d)x(\d)$/.exec(String(layoutState.selectedLayout || ""));
+    if (match) {
+      return resolveGalleryGridSizeSelection({
+        cols: Number(match[1]),
+        rows: Number(match[2]),
+      });
+    }
+
+    return resolveGalleryGridSizeSelection({
+      rows: galeriaSeleccionada?.rows,
+      cols: galeriaSeleccionada?.cols,
+    });
+  }, [
+    galeriaSeleccionada?.cols,
+    galeriaSeleccionada?.rows,
+    layoutState.selectedLayout,
+  ]);
+
   const visiblePhotoLimit = useMemo(() => {
     if (!layoutState.hasPresetContract) return null;
     const rawLimit = selectedLayoutOption?.maxPhotos;
@@ -408,39 +647,47 @@ export default function MiniToolbarTabImagen({
     return Math.floor(numericLimit);
   }, [layoutState.hasPresetContract, selectedLayoutOption?.maxPhotos]);
 
-  const selectedGalleryPhotoRows = useMemo(
-    () => buildGalleryPhotoRows(selectedGalleryPhotos),
-    [selectedGalleryPhotos]
+  const selectedGallerySlotRows = useMemo(
+    () => buildGallerySlotRows(selectedGallerySlots),
+    [selectedGallerySlots]
   );
 
-  const orderedGalleryPhotoRows = useMemo(() => {
+  const orderedGallerySlotRows = useMemo(() => {
     if (!optimisticGalleryOrder || optimisticGalleryOrder.galleryId !== galeriaSeleccionada?.id) {
-      return selectedGalleryPhotoRows;
+      return selectedGallerySlotRows;
     }
 
-    const currentKeys = selectedGalleryPhotoRows.map((row) => row.rowKey);
+    const currentKeys = selectedGallerySlotRows.map((row) => row.rowKey);
     if (!haveSameItems(currentKeys, optimisticGalleryOrder.rowKeys)) {
-      return selectedGalleryPhotoRows;
+      return selectedGallerySlotRows;
     }
 
-    return orderRowsByKeys(selectedGalleryPhotoRows, optimisticGalleryOrder.rowKeys);
-  }, [galeriaSeleccionada?.id, optimisticGalleryOrder, selectedGalleryPhotoRows]);
+    return orderRowsByKeys(selectedGallerySlotRows, optimisticGalleryOrder.rowKeys);
+  }, [galeriaSeleccionada?.id, optimisticGalleryOrder, selectedGallerySlotRows]);
 
-  const displayedGalleryPhotoRows = useMemo(() => {
-    if (!galleryDragState) return orderedGalleryPhotoRows;
-    return moveArrayItemForPreview(
-      orderedGalleryPhotoRows,
+  const displayedGallerySlotRows = useMemo(() => {
+    if (!galleryDragState || galleryDragState.galleryId !== galeriaSeleccionada?.id) {
+      return orderedGallerySlotRows;
+    }
+
+    return moveRowsForDragPreview(
+      orderedGallerySlotRows,
       galleryDragState.fromIndex,
       galleryDragState.toIndex
-    ).filter((row) => row?.rowKey && row?.photo);
-  }, [galleryDragState, orderedGalleryPhotoRows]);
+    );
+  }, [galeriaSeleccionada?.id, galleryDragState, orderedGallerySlotRows]);
 
-  const draggedGalleryPhotoRow = useMemo(() => {
+  const draggedGallerySlotRow = useMemo(() => {
     if (!galleryDragState) return null;
-    return orderedGalleryPhotoRows[galleryDragState.fromIndex] || null;
-  }, [galleryDragState, orderedGalleryPhotoRows]);
+    return (
+      orderedGallerySlotRows.find((row) => row?.rowKey === galleryDragState.photoKey) ||
+      orderedGallerySlotRows[galleryDragState.fromIndex] ||
+      null
+    );
+  }, [galleryDragState, orderedGallerySlotRows]);
 
-  const draggedGalleryPhoto = draggedGalleryPhotoRow?.photo || null;
+  const draggedGallerySlot = draggedGallerySlotRow?.slot || null;
+  const draggedGalleryPhoto = draggedGallerySlot?.isPopulated ? draggedGallerySlot : null;
   const selectedPhotoReplacementUploadKey = useMemo(
     () => buildGalleryReplacementUploadKey(galeriaSeleccionada?.id, selectedPhotoTarget),
     [galeriaSeleccionada?.id, selectedPhotoTarget]
@@ -485,7 +732,7 @@ export default function MiniToolbarTabImagen({
     }
 
     const animatedNodes = [];
-    displayedGalleryPhotoRows.forEach((row) => {
+    displayedGallerySlotRows.forEach((row) => {
       if (!row?.rowKey) return;
       const node = galleryPhotoRowNodesRef.current.get(row.rowKey);
       const previousRect = previousRects.get(row.rowKey);
@@ -519,7 +766,7 @@ export default function MiniToolbarTabImagen({
 
       galleryPhotoRowAnimationFrameRef.current = null;
     });
-  }, [displayedGalleryPhotoRows]);
+  }, [displayedGallerySlotRows]);
 
   const totalCeldasGaleria = useMemo(() => {
     const isDynamicGallery =
@@ -556,12 +803,13 @@ export default function MiniToolbarTabImagen({
     setSelectedPhotoTarget(null);
     setGalleryEditMode("add");
     setOptimisticGalleryOrder(null);
-  }, [galeriaSeleccionada?.id]);
+    closeGalleryGridSelector();
+  }, [closeGalleryGridSelector, galeriaSeleccionada?.id]);
 
   useEffect(() => {
     if (!optimisticGalleryOrder || optimisticGalleryOrder.galleryId !== galeriaSeleccionada?.id) return;
 
-    const currentKeys = selectedGalleryPhotoRows.map((row) => row.rowKey);
+    const currentKeys = selectedGallerySlotRows.map((row) => row.rowKey);
     if (!haveSameItems(currentKeys, optimisticGalleryOrder.rowKeys)) {
       setOptimisticGalleryOrder(null);
       return;
@@ -570,21 +818,21 @@ export default function MiniToolbarTabImagen({
     if (arraysMatch(currentKeys, optimisticGalleryOrder.rowKeys)) {
       setOptimisticGalleryOrder(null);
     }
-  }, [galeriaSeleccionada?.id, optimisticGalleryOrder, selectedGalleryPhotoRows]);
+  }, [galeriaSeleccionada?.id, optimisticGalleryOrder, selectedGallerySlotRows]);
 
   useEffect(() => {
     if (!selectedPhotoTarget) return;
-    const stillExists = selectedGalleryPhotos.some((photo) => {
-      if (selectedPhotoTarget.cellId && photo.cellId) {
-        return selectedPhotoTarget.cellId === photo.cellId;
+    const stillExists = selectedGallerySlots.some((slot) => {
+      if (selectedPhotoTarget.cellId && slot.cellId) {
+        return selectedPhotoTarget.cellId === slot.cellId;
       }
-      return photo.sourceIndex === selectedPhotoTarget.sourceIndex;
+      return slot.sourceIndex === selectedPhotoTarget.sourceIndex;
     });
     if (!stillExists) {
       setSelectedPhotoTarget(null);
       setGalleryEditMode("add");
     }
-  }, [selectedGalleryPhotos, selectedPhotoTarget]);
+  }, [selectedGallerySlots, selectedPhotoTarget]);
 
   const textoAyudaGaleria = useMemo(() => {
     if (celdaActiva) {
@@ -633,10 +881,11 @@ export default function MiniToolbarTabImagen({
     return true;
   }, [galeriaSeleccionada, setPanelNoticeSafe]);
 
-  const selectGalleryPhoto = useCallback((photo) => {
-    const target = buildGalleryPhotoTarget(photo);
+  const selectGallerySlot = useCallback((slot) => {
+    const target = buildGallerySlotTarget(slot);
     if (!target) return;
     setSelectedPhotoTarget(target);
+    setGalleryEditMode(slot?.isEmpty ? "replace" : "add");
   }, []);
 
   const resolveLatestGalleryById = useCallback((galleryId) => {
@@ -652,6 +901,24 @@ export default function MiniToolbarTabImagen({
     return galeriaSeleccionada?.id === safeGalleryId ? galeriaSeleccionada : null;
   }, [galeriaSeleccionada]);
 
+  const addUploadedImageToActiveGallery = useCallback((galleryId, uploadedUrl) => {
+    const targetGallery = resolveLatestGalleryById(galleryId);
+    if (!targetGallery) {
+      setPanelNoticeSafe("Selecciona una galeria para usar la imagen.");
+      return false;
+    }
+    if (typeof uploadedUrl !== "string" || !uploadedUrl) {
+      setPanelNoticeSafe("No se encontro una imagen valida para aplicar.");
+      return false;
+    }
+
+    return commitGalleryMutation(
+      addGalleryPhotos(targetGallery, uploadedUrl),
+      "Foto agregada a esta galeria.",
+      targetGallery
+    );
+  }, [commitGalleryMutation, resolveLatestGalleryById, setPanelNoticeSafe]);
+
   const replaceGalleryPhotoTargetWithUpload = useCallback((galleryId, target, uploadedUrl) => {
     const targetGallery = resolveLatestGalleryById(galleryId);
     if (!targetGallery || !target) return false;
@@ -659,7 +926,7 @@ export default function MiniToolbarTabImagen({
 
     const committed = commitGalleryMutation(
       replaceGalleryPhoto(targetGallery, target, uploadedUrl),
-      "Foto reemplazada en esta galeria.",
+      target?.isEmpty ? "Foto agregada a esta celda." : "Foto reemplazada en esta galeria.",
       targetGallery
     );
     if (committed && isMountedRef.current) {
@@ -669,7 +936,7 @@ export default function MiniToolbarTabImagen({
     return committed;
   }, [commitGalleryMutation, resolveLatestGalleryById]);
 
-  const openGalleryPhotoReplacementUpload = useCallback((galleryId, target, positionLabel) => {
+  const openGalleryPhotoReplacementUpload = useCallback((galleryId, target, positionLabel, options = {}) => {
     const uploadKey = buildGalleryReplacementUploadKey(galleryId, target);
     if (!galleryId || !target || !uploadKey) {
       setPanelNoticeSafe("Selecciona una foto de esta galeria primero.");
@@ -686,8 +953,13 @@ export default function MiniToolbarTabImagen({
       return;
     }
 
-    const safePositionLabel = positionLabel || "la foto seleccionada";
-    setPanelNoticeSafe(`Selecciona una imagen del sistema para reemplazar ${safePositionLabel}.`);
+    const isEmptyTarget = options.empty === true || target?.isEmpty === true;
+    const safePositionLabel = positionLabel || (isEmptyTarget ? "esta celda" : "la foto seleccionada");
+    setPanelNoticeSafe(
+      isEmptyTarget
+        ? `Selecciona una imagen del sistema para agregar en ${safePositionLabel}.`
+        : `Selecciona una imagen del sistema para reemplazar ${safePositionLabel}.`
+    );
     abrirSelector({
       onUploadStart: () => {
         beginReplacementUpload({
@@ -716,27 +988,32 @@ export default function MiniToolbarTabImagen({
     setPanelNoticeSafe,
   ]);
 
-  const startPhotoReplacement = useCallback((photo, options = {}) => {
-    const target = buildGalleryPhotoTarget(photo);
+  const startSlotReplacement = useCallback((slot, options = {}) => {
+    const target = buildGallerySlotTarget(slot);
     if (!target) return;
 
-    selectGalleryPhoto(photo);
+    selectGallerySlot(slot);
     setGalleryEditMode("replace");
-    const photoPosition = Number(photo?.displayIndex || 0) + 1;
-    const positionLabel = `la foto ${photoPosition}`;
+    const slotPosition = Number(slot?.sourceIndex || 0) + 1;
+    const positionLabel = `la celda ${slotPosition}`;
+    const isEmptySlot = slot?.isEmpty === true;
 
     if (options.openFilePicker === true) {
-      openGalleryPhotoReplacementUpload(galeriaSeleccionada?.id, target, positionLabel);
+      openGalleryPhotoReplacementUpload(galeriaSeleccionada?.id, target, positionLabel, {
+        empty: isEmptySlot,
+      });
       return;
     }
 
     setPanelNoticeSafe(
-      `Elige una imagen disponible o sube una nueva para reemplazar ${positionLabel}.`
+      isEmptySlot
+        ? `Elige una imagen disponible o sube una nueva para agregar en ${positionLabel}.`
+        : `Elige una imagen disponible o sube una nueva para reemplazar ${positionLabel}.`
     );
   }, [
     galeriaSeleccionada?.id,
     openGalleryPhotoReplacementUpload,
-    selectGalleryPhoto,
+    selectGallerySlot,
     setPanelNoticeSafe,
   ]);
 
@@ -766,38 +1043,41 @@ export default function MiniToolbarTabImagen({
     return rows.length - 1;
   }, []);
 
-  const commitPhotoReorder = useCallback((from, to, optimisticRows = null) => {
+  const commitPhotoReorder = useCallback((from, to) => {
     if (!galeriaSeleccionada) return false;
     if (!Number.isInteger(from) || !Number.isInteger(to) || from === to) return false;
 
+    const fromSlot = orderedGallerySlotRows[from]?.slot || null;
+    const toSlot = orderedGallerySlotRows[to]?.slot || null;
+    if (!fromSlot?.isPopulated || !toSlot) {
+      setPanelNotice("Arrastra una foto hacia una celda disponible.");
+      return false;
+    }
+
     const committed = commitGalleryMutation(
-      reorderGalleryPhotos(galeriaSeleccionada, from, to),
+      moveGalleryPhotoToSlot(
+        galeriaSeleccionada,
+        buildGallerySlotTarget(fromSlot),
+        buildGallerySlotTarget(toSlot)
+      ),
       "Orden de la galeria actualizado."
     );
     if (committed) {
-      const nextRows = Array.isArray(optimisticRows)
-        ? optimisticRows
-        : moveArrayItemForPreview(orderedGalleryPhotoRows, from, to);
-      const nextRowKeys = nextRows
-        .map((row) => row?.rowKey)
-        .filter(Boolean);
       captureGalleryPhotoRowRects();
-      if (nextRowKeys.length === orderedGalleryPhotoRows.length) {
-        setOptimisticGalleryOrder({
-          galleryId: galeriaSeleccionada.id,
-          rowKeys: nextRowKeys,
-        });
-      } else {
-        setOptimisticGalleryOrder(null);
-      }
+      setOptimisticGalleryOrder(null);
       setSelectedPhotoTarget(null);
       setGalleryEditMode("add");
     }
     return committed;
-  }, [captureGalleryPhotoRowRects, commitGalleryMutation, galeriaSeleccionada, orderedGalleryPhotoRows]);
+  }, [
+    captureGalleryPhotoRowRects,
+    commitGalleryMutation,
+    galeriaSeleccionada,
+    orderedGallerySlotRows,
+  ]);
 
-  const handleGalleryPhotoHandleKeyDown = useCallback((event, photo) => {
-    const from = Number(photo?.displayIndex);
+  const handleGalleryPhotoHandleKeyDown = useCallback((event, slot) => {
+    const from = Number(slot?.sourceIndex);
     let to = from;
 
     if (event.key === "ArrowUp") {
@@ -807,26 +1087,26 @@ export default function MiniToolbarTabImagen({
     } else if (event.key === "Home") {
       to = 0;
     } else if (event.key === "End") {
-      to = selectedGalleryPhotos.length - 1;
+      to = selectedGallerySlots.length - 1;
     } else {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    selectGalleryPhoto(photo);
+    selectGallerySlot(slot);
 
-    if (!Number.isInteger(from) || to < 0 || to >= selectedGalleryPhotos.length || from === to) {
+    if (!Number.isInteger(from) || to < 0 || to >= selectedGallerySlots.length || from === to) {
       setPanelNotice("La foto ya esta en ese extremo de la galeria.");
       return;
     }
 
     commitPhotoReorder(from, to);
-  }, [commitPhotoReorder, selectGalleryPhoto, selectedGalleryPhotos.length]);
+  }, [commitPhotoReorder, selectGallerySlot, selectedGallerySlots.length]);
 
-  const handleGalleryPhotoDragStart = useCallback((event, photoRow, visualIndex) => {
-    const photo = photoRow?.photo;
-    if (!galeriaSeleccionada || orderedGalleryPhotoRows.length < 2 || !photo) return;
+  const handleGalleryPhotoDragStart = useCallback((event, slotRow, visualIndex) => {
+    const slot = slotRow?.slot;
+    if (!galeriaSeleccionada || orderedGallerySlotRows.length < 2 || !slot?.isPopulated) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
 
     const fromIndex = Number(visualIndex);
@@ -834,7 +1114,7 @@ export default function MiniToolbarTabImagen({
 
     event.preventDefault();
     event.stopPropagation();
-    selectGalleryPhoto(photo);
+    selectGallerySlot(slot);
 
     if (galleryPhotoDragCleanupRef.current) {
       galleryPhotoDragCleanupRef.current();
@@ -849,9 +1129,11 @@ export default function MiniToolbarTabImagen({
 
     const rowNode = event.currentTarget.closest("[data-gallery-photo-row='true']");
     const rowRect = rowNode?.getBoundingClientRect?.();
-    const photoKey = photoRow.rowKey;
+    const photoKey = slotRow.rowKey;
+    const galleryId = galeriaSeleccionada.id;
     galleryPhotoDragSessionRef.current = {
       pointerId: event.pointerId,
+      galleryId,
       fromIndex,
       toIndex: fromIndex,
       photoKey,
@@ -864,6 +1146,7 @@ export default function MiniToolbarTabImagen({
       grabOffsetY: rowRect ? event.clientY - rowRect.top : 0,
     };
     setGalleryDragState({
+      galleryId,
       photoKey,
       fromIndex,
       toIndex: fromIndex,
@@ -889,6 +1172,7 @@ export default function MiniToolbarTabImagen({
       session.pointerY = moveEvent.clientY;
       captureGalleryPhotoRowRects();
       setGalleryDragState({
+        galleryId: session.galleryId,
         photoKey: session.photoKey,
         fromIndex: session.fromIndex,
         toIndex: nextToIndex,
@@ -909,10 +1193,13 @@ export default function MiniToolbarTabImagen({
       endEvent.preventDefault();
       const from = session.fromIndex;
       const to = session.toIndex;
+      let committed = false;
 
       if (!cancelled && from !== to) {
-        const optimisticRows = moveArrayItemForPreview(orderedGalleryPhotoRows, from, to);
-        commitPhotoReorder(from, to, optimisticRows);
+        committed = commitPhotoReorder(from, to);
+      }
+      if (!committed) {
+        captureGalleryPhotoRowRects();
       }
       cleanupGalleryPhotoDrag();
     };
@@ -934,14 +1221,18 @@ export default function MiniToolbarTabImagen({
     cleanupGalleryPhotoDrag,
     commitPhotoReorder,
     galeriaSeleccionada,
-    orderedGalleryPhotoRows,
+    orderedGallerySlotRows,
     resolvePointerDropIndex,
-    selectGalleryPhoto,
+    selectGallerySlot,
   ]);
 
   const handleRemoveSelectedPhoto = useCallback(() => {
     if (!galeriaSeleccionada || !selectedPhotoTarget) {
       setPanelNotice("Selecciona una foto de esta galeria primero.");
+      return;
+    }
+    if (selectedPhotoTarget.isEmpty) {
+      setPanelNotice("Esa celda ya esta vacia.");
       return;
     }
 
@@ -960,10 +1251,14 @@ export default function MiniToolbarTabImagen({
       setPanelNotice("Selecciona una foto de esta galeria primero.");
       return;
     }
+    if (selectedPhotoTarget.isEmpty) {
+      setPanelNotice("Selecciona una foto para moverla.");
+      return;
+    }
 
-    const from = Number(selectedPhotoTarget.displayIndex);
+    const from = Number(selectedPhotoTarget.sourceIndex);
     const to = from + delta;
-    if (!Number.isInteger(from) || to < 0 || to >= selectedGalleryPhotos.length) {
+    if (!Number.isInteger(from) || to < 0 || to >= selectedGallerySlots.length) {
       setPanelNotice("La foto ya esta en ese extremo de la galeria.");
       return;
     }
@@ -972,7 +1267,7 @@ export default function MiniToolbarTabImagen({
   }, [
     commitPhotoReorder,
     galeriaSeleccionada,
-    selectedGalleryPhotos,
+    selectedGallerySlots,
     selectedPhotoTarget,
   ]);
 
@@ -991,7 +1286,8 @@ export default function MiniToolbarTabImagen({
     openGalleryPhotoReplacementUpload(
       galeriaSeleccionada.id,
       selectedPhotoTarget,
-      "la foto seleccionada"
+      selectedPhotoTarget.isEmpty ? "la celda seleccionada" : "la foto seleccionada",
+      { empty: selectedPhotoTarget.isEmpty === true }
     );
   }, [
     galeriaSeleccionada?.id,
@@ -1000,13 +1296,16 @@ export default function MiniToolbarTabImagen({
     setPanelNoticeSafe,
   ]);
 
-  const handleSwitchLayout = useCallback((layoutId) => {
-    if (!galeriaSeleccionada) return;
+  const handleSwitchGridSizeLayout = useCallback((selection) => {
+    if (!selection?.layoutId || !galeriaSeleccionada) return;
     commitGalleryMutation(
-      switchGalleryLayout(galeriaSeleccionada, layoutId),
-      "Layout seleccionado para esta galeria."
+      configureGalleryLayout(galeriaSeleccionada, selection.layoutId, {
+        allowedLayouts: GALLERY_CREATION_ALLOWED_LAYOUTS,
+      }),
+      "Diseno seleccionado para esta galeria."
     );
-  }, [commitGalleryMutation, galeriaSeleccionada]);
+    closeGalleryGridSelector();
+  }, [closeGalleryGridSelector, commitGalleryMutation, galeriaSeleccionada]);
 
   const replaceFirstSectionCoverImage = useCallback((imageInput, options = {}) => {
     const imageUrl = resolveLibraryImageUrl(imageInput);
@@ -1143,9 +1442,12 @@ export default function MiniToolbarTabImagen({
     if (galleryAction.action === "replace-selected-photo" && selectedPhotoTarget) {
       const committed = commitGalleryMutation(
         replaceGalleryPhoto(galeriaSeleccionada, selectedPhotoTarget, photo),
-        "Foto reemplazada en esta galeria."
+        selectedPhotoTarget.isEmpty
+          ? "Foto agregada a esta celda."
+          : "Foto reemplazada en esta galeria."
       );
       if (committed) {
+        setSelectedPhotoTarget(null);
         setGalleryEditMode("add");
       }
       return;
@@ -1166,8 +1468,25 @@ export default function MiniToolbarTabImagen({
   ]);
 
   const handleAvailableImageSelected = useCallback((img) => {
+    const galleryAction = resolveAvailableImageGalleryAction({
+      gallery: galeriaSeleccionada,
+      activeCell: celdaActiva,
+      selectedPhotoTarget,
+    });
+
+    if (galleryAction.action !== "none") {
+      handleAvailableImageGalleryAction(img);
+      return;
+    }
+
     insertAvailableImageIntoCanvas(img);
-  }, [insertAvailableImageIntoCanvas]);
+  }, [
+    celdaActiva,
+    galeriaSeleccionada,
+    handleAvailableImageGalleryAction,
+    insertAvailableImageIntoCanvas,
+    selectedPhotoTarget,
+  ]);
 
   const getAvailableImageActions = useCallback(() => {
     const galleryAction = resolveAvailableImageGalleryAction({
@@ -1188,15 +1507,10 @@ export default function MiniToolbarTabImagen({
 
     if (galleryAction.action !== "none") {
       actions.push({
-        key: galleryAction.action,
-        label: galleryAction.label,
-        title:
-          galleryAction.action === "assign-active-cell"
-            ? "Usar esta imagen en la celda seleccionada"
-            : galleryAction.action === "replace-selected-photo"
-              ? "Reemplazar la foto seleccionada con esta imagen"
-              : "Agregar esta imagen a la galeria activa",
-        onClick: handleAvailableImageGalleryAction,
+        key: "insert-canvas",
+        label: "Insertar en canvas",
+        title: "Insertar esta imagen como objeto independiente",
+        onClick: insertAvailableImageIntoCanvas,
       });
     }
 
@@ -1206,29 +1520,112 @@ export default function MiniToolbarTabImagen({
     firstSectionCover.hasImage,
     galeriaSeleccionada,
     handleAvailableImageCoverAction,
-    handleAvailableImageGalleryAction,
+    insertAvailableImageIntoCanvas,
     selectedPhotoTarget,
   ]);
 
   const handleUploadButtonClick = useCallback(() => {
-    if (galeriaSeleccionada && !celdaActiva && galleryEditMode === "replace" && selectedPhotoTarget) {
-      openSelectedPhotoReplacementPicker();
-      return;
-    }
-
     if (typeof abrirSelector !== "function") {
       setPanelNotice("No se encontro el selector de archivos para subir la imagen.");
       return;
     }
 
+    if (
+      galeriaSeleccionada &&
+      celdaActiva &&
+      typeof window !== "undefined" &&
+      typeof window.asignarImagenACelda === "function"
+    ) {
+      abrirSelector({
+        onUploadStart: () => {
+          setPanelNoticeSafe("Subiendo imagen...");
+        },
+        onUploadedImage: (uploadedUrl) => {
+          const ok = window.asignarImagenACelda(
+            { mediaUrl: uploadedUrl, fit: "cover" },
+            "cover"
+          );
+          if (ok) {
+            setPanelNoticeSafe("Imagen asignada a la celda activa.");
+          }
+          return ok;
+        },
+        onUploadError: () => {
+          setPanelNoticeSafe("No se pudo asignar la imagen. Conservamos la galeria sin cambios.");
+        },
+      });
+      return;
+    }
+
+    if (galeriaSeleccionada && !celdaActiva && galleryEditMode === "replace" && selectedPhotoTarget) {
+      openSelectedPhotoReplacementPicker();
+      return;
+    }
+
+    if (galeriaSeleccionada?.id) {
+      const targetGalleryId = galeriaSeleccionada.id;
+      abrirSelector({
+        onUploadStart: () => {
+          setPanelNoticeSafe("Subiendo imagen...");
+        },
+        onUploadedImage: (uploadedUrl) =>
+          addUploadedImageToActiveGallery(targetGalleryId, uploadedUrl),
+        onUploadError: () => {
+          setPanelNoticeSafe("No se pudo agregar esa imagen a la galeria.");
+        },
+      });
+      return;
+    }
+
     abrirSelector();
   }, [
+    addUploadedImageToActiveGallery,
     abrirSelector,
     celdaActiva,
     galeriaSeleccionada,
     galleryEditMode,
     openSelectedPhotoReplacementPicker,
     selectedPhotoTarget,
+    setPanelNoticeSafe,
+  ]);
+
+  const handleInsertGalleryFromPhotos = useCallback((gridInput = galleryCreationGrid) => {
+    if (!canCreateGallery || typeof onInsertarGaleria !== "function") {
+      setPanelNotice("No se puede agregar una galeria en esta sesion.");
+      return;
+    }
+
+    const selection = resolveGalleryGridSizeSelection(gridInput);
+    if (!selection.layoutId) {
+      setPanelNotice("Selecciona un tamano para la galeria.");
+      return;
+    }
+
+    const insertedGalleryId = onInsertarGaleria({
+      rows: selection.rows,
+      cols: selection.cols,
+      gap: 8,
+      radius: 6,
+      ratio: selection.ratio || "1:1",
+      widthPct: isMobileViewport ? 92 : 70,
+      cellCount: selection.photoCount,
+      allowedLayouts: GALLERY_CREATION_ALLOWED_LAYOUTS,
+      defaultLayout: selection.layoutId,
+      currentLayout: selection.layoutId,
+    });
+    setGalleryCreationGrid({ rows: selection.rows, cols: selection.cols });
+    closeGalleryGridSelector();
+    if (typeof insertedGalleryId === "string" && insertedGalleryId.trim()) {
+      setSidebarGalleryId(insertedGalleryId);
+      setSelectionRefreshToken((value) => value + 1);
+    }
+    setPanelNotice(`Galeria ${formatGalleryGridSelection(selection)} insertada.`);
+  }, [
+    canCreateGallery,
+    closeGalleryGridSelector,
+    galleryCreationGrid,
+    isMobileViewport,
+    onInsertarGaleria,
   ]);
 
   return (
@@ -1273,6 +1670,42 @@ export default function MiniToolbarTabImagen({
         </section>
       )}
 
+      {canCreateGallery && !simplifiedForAssistant && (
+        <section
+          ref={galleryCreationSelectorRef}
+          className={`shrink-0 border border-zinc-200 bg-white ${
+            isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
+          } relative overflow-visible`}
+        >
+          <button
+            type="button"
+            onClick={() => toggleGalleryGridSelector("creation")}
+            className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-left text-zinc-700 transition hover:border-purple-200 hover:bg-purple-50 hover:text-purple-800"
+            aria-expanded={showGalleryCreation}
+            aria-haspopup="menu"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <Plus size={15} className="shrink-0" aria-hidden="true" />
+              <span className="truncate text-[13px] font-semibold">Agregar galeria</span>
+            </span>
+            <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
+              4x3
+            </span>
+          </button>
+
+          {showGalleryCreation && (
+            <div className="absolute left-2.5 top-full z-50 mt-1">
+              <GalleryGridSizePicker
+                value={galleryCreationGrid}
+                onPreview={setGalleryCreationGrid}
+                onSelect={handleInsertGalleryFromPhotos}
+                title="Elegi el tamano"
+              />
+            </div>
+          )}
+        </section>
+      )}
+
       {galleryCandidates.length > 0 && (
         <section
           className={`shrink-0 border border-zinc-200 bg-white ${
@@ -1292,7 +1725,8 @@ export default function MiniToolbarTabImagen({
                     <button
                       key={gallery.id}
                       type="button"
-                      onClick={() => setSidebarGalleryId(gallery.id)}
+                      onClick={() => handleSelectGalleryFromSidebar(gallery.id)}
+                      aria-label={`Seleccionar galeria ${index + 1} con ${photoCount} foto${photoCount === 1 ? "" : "s"}`}
                       className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left transition ${
                         isActiveGallery
                           ? "border-purple-300 bg-purple-50 text-purple-800"
@@ -1303,9 +1737,11 @@ export default function MiniToolbarTabImagen({
                         <span className="block truncate text-xs font-medium">
                           Galeria {index + 1}
                         </span>
-                        <span className="block max-w-[220px] truncate text-[10px] text-zinc-400">
-                          {gallery.id}
-                        </span>
+                        {isActiveGallery && (
+                          <span className="block text-[10px] font-medium text-purple-600">
+                            Activa
+                          </span>
+                        )}
                       </span>
                       <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
                         {photoCount} foto{photoCount === 1 ? "" : "s"}
@@ -1328,8 +1764,8 @@ export default function MiniToolbarTabImagen({
                 </p>
               </div>
               {!simplifiedForAssistant && (
-                <span className="max-w-[120px] truncate rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
-                  {galeriaSeleccionada.id}
+                <span className="shrink-0 rounded bg-purple-50 px-2 py-1 text-[10px] font-medium text-purple-700">
+                  Activa
                 </span>
               )}
             </div>
@@ -1339,60 +1775,93 @@ export default function MiniToolbarTabImagen({
             <>
               {!simplifiedForAssistant && (
                 <div className="mt-2">
-                  <GalleryLayoutSelector
-                    title="Layout permitido"
-                    options={layoutState.allowedLayoutOptions}
-                    activeLayoutId={layoutState.selectedLayout}
-                    onSelect={handleSwitchLayout}
-                    compact={isMobileViewport}
-                    emptyMessage="Esta galeria usa el layout actual sin presets configurados."
-                  />
+                  <div
+                    ref={galleryResizeSelectorRef}
+                    className="relative overflow-visible"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleGalleryGridSelector("resize")}
+                      className="flex min-h-[34px] w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-left text-zinc-700 transition hover:border-purple-200 hover:bg-purple-50 hover:text-purple-800"
+                      aria-expanded={showGalleryResize}
+                      aria-haspopup="menu"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Grid3X3 size={14} className="shrink-0" aria-hidden="true" />
+                        <span className="truncate text-[12px] font-semibold">
+                          Diseno
+                        </span>
+                      </span>
+                      <span className="max-w-[120px] shrink-0 truncate rounded bg-white px-2 py-1 text-[11px] font-medium text-zinc-600">
+                        {formatGalleryGridSize(currentGalleryGridSelection)}
+                      </span>
+                    </button>
+                    {showGalleryResize && (
+                      <div className="absolute right-0 top-full z-50 mt-1 max-w-[calc(100vw-32px)]">
+                        <GalleryGridSizePicker
+                          value={currentGalleryGridSelection}
+                          onSelect={handleSwitchGridSizeLayout}
+                          title="Elegi el tamano"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-            {selectedGalleryPhotos.length > 0 ? (
+            {selectedGallerySlots.length > 0 ? (
               <div
                 ref={galleryPhotoListRef}
                 role="list"
                 className="mt-2 flex flex-col gap-1.5"
               >
-                {displayedGalleryPhotoRows.map((photoRow, visualIndex) => {
-                  const photo = photoRow?.photo;
-                  const photoKey = photoRow?.rowKey;
-                  if (!photo || !photoKey) return null;
+                {displayedGallerySlotRows.map((slotRow, visualIndex) => {
+                  const slot = slotRow?.slot;
+                  const slotKey = slotRow?.rowKey;
+                  if (!slot || !slotKey) return null;
 
-                  const isSelectedPhoto =
+                  const slotTarget = buildGallerySlotTarget(slot);
+                  const isEmptySlot = slot.isEmpty === true;
+                  const slotIndex = Number(slot.sourceIndex);
+                  const slotNumber = Number.isFinite(slotIndex) ? slotIndex + 1 : visualIndex + 1;
+                  const photoDisplayIndex = Number.isInteger(slot.displayIndex)
+                    ? slot.displayIndex
+                    : -1;
+                  const isSelectedSlot =
                     selectedPhotoTarget &&
-                    (selectedPhotoTarget.cellId && photo.cellId
-                      ? selectedPhotoTarget.cellId === photo.cellId
-                      : selectedPhotoTarget.sourceIndex === photo.sourceIndex);
-                  const isDraggingPhoto = galleryDragState?.photoKey === photoKey;
+                    (selectedPhotoTarget.cellId && slot.cellId
+                      ? selectedPhotoTarget.cellId === slot.cellId
+                      : selectedPhotoTarget.sourceIndex === slot.sourceIndex);
+                  const isDraggingPhoto = !isEmptySlot && galleryDragState?.photoKey === slotKey;
                   const isDropTarget =
                     galleryDragState &&
                     galleryDragState.toIndex === visualIndex;
                   const isHiddenByLayout =
                     visiblePhotoLimit !== null &&
-                    visualIndex >= visiblePhotoLimit;
-                  const positionLabel = `Foto ${visualIndex + 1} de ${selectedGalleryPhotos.length}`;
-                  const photoUploadTarget = buildGalleryPhotoTarget(photo);
+                    slotIndex >= visiblePhotoLimit;
+                  const positionLabel = isEmptySlot
+                    ? `Celda ${slotNumber} vacia`
+                    : `Foto ${photoDisplayIndex + 1} de ${selectedGalleryPhotos.length}`;
                   const photoReplacementUploadKey = buildGalleryReplacementUploadKey(
                     galeriaSeleccionada?.id,
-                    photoUploadTarget
+                    slotTarget
                   );
                   const isPhotoReplacementUploading = isReplacementUploadActive(photoReplacementUploadKey);
 
                   return (
                     <div
-                      key={photoKey}
-                      ref={(node) => setGalleryPhotoRowNode(photoKey, node)}
+                      key={slotKey}
+                      ref={(node) => setGalleryPhotoRowNode(slotKey, node)}
                       role="listitem"
                       aria-busy={isPhotoReplacementUploading}
                       data-gallery-photo-row="true"
-                      className={`relative flex min-h-[58px] items-center gap-2 rounded-lg border bg-white p-1.5 transition ${
-                        isSelectedPhoto
+                      className={`relative flex min-h-[58px] items-center gap-2 rounded-lg border p-1.5 transition ${
+                        isEmptySlot ? "border-dashed bg-zinc-50/80" : "bg-white"
+                      } ${
+                        isSelectedSlot
                           ? "border-purple-400 ring-2 ring-purple-100"
                           : "border-zinc-200"
-                      } ${isDraggingPhoto ? "invisible" : ""} ${
+                      } ${isDraggingPhoto ? "border-purple-200 bg-purple-50 opacity-40" : ""} ${
                         isDropTarget ? "shadow-[0_0_0_2px_rgba(168,85,247,0.22)]" : ""
                       }`}
                     >
@@ -1401,11 +1870,11 @@ export default function MiniToolbarTabImagen({
                       )}
                       <button
                         type="button"
-                        onPointerDown={(event) => handleGalleryPhotoDragStart(event, photoRow, visualIndex)}
-                        onKeyDown={(event) => handleGalleryPhotoHandleKeyDown(event, photo)}
-                        disabled={selectedGalleryPhotos.length < 2 || isPhotoReplacementUploading}
+                        onPointerDown={(event) => handleGalleryPhotoDragStart(event, slotRow, visualIndex)}
+                        onKeyDown={(event) => handleGalleryPhotoHandleKeyDown(event, slot)}
+                        disabled={isEmptySlot || selectedGallerySlots.length < 2 || isPhotoReplacementUploading}
                         aria-label={`Reordenar ${positionLabel}`}
-                        title="Arrastra desde aqui para reordenar"
+                        title={isEmptySlot ? "Celda vacia" : "Arrastra desde aqui para mover"}
                         className="flex h-10 w-8 shrink-0 touch-none items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-500 cursor-grab active:cursor-grabbing disabled:cursor-default disabled:text-zinc-300"
                       >
                         <GripVertical size={16} aria-hidden="true" />
@@ -1413,30 +1882,38 @@ export default function MiniToolbarTabImagen({
 
                       <button
                         type="button"
-                        onClick={() => startPhotoReplacement(photo, { openFilePicker: true })}
+                        onClick={() => startSlotReplacement(slot, { openFilePicker: true })}
                         disabled={isPhotoReplacementUploading}
-                        aria-label={`Reemplazar ${positionLabel}`}
-                        className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 disabled:cursor-wait"
-                        title="Reemplazar foto"
+                        aria-label={`${isEmptySlot ? "Agregar foto en" : "Reemplazar"} ${positionLabel}`}
+                        className={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border disabled:cursor-wait ${
+                          isEmptySlot
+                            ? "border-dashed border-zinc-300 bg-white text-zinc-400 hover:border-purple-200 hover:text-purple-600"
+                            : "border-zinc-200 bg-zinc-100"
+                        }`}
+                        title={isEmptySlot ? "Agregar foto" : "Reemplazar foto"}
                       >
-                        <img
-                          src={photo.mediaUrl}
-                          alt={photo.alt || positionLabel}
-                          className="h-full w-full object-cover"
-                        />
+                        {isEmptySlot ? (
+                          <Plus size={16} aria-hidden="true" />
+                        ) : (
+                          <img
+                            src={slot.mediaUrl}
+                            alt={slot.alt || positionLabel}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => selectGalleryPhoto(photo)}
+                        onClick={() => selectGallerySlot(slot)}
                         className="min-w-0 flex-1 text-left"
                         aria-label={`Seleccionar ${positionLabel}`}
                       >
                         <span className="block truncate text-xs font-medium text-zinc-700">
-                          {positionLabel}
+                          {isEmptySlot ? `Celda ${slotNumber}` : positionLabel}
                         </span>
                         <span className="block truncate text-[11px] text-zinc-400">
-                          Celda {Number(photo.sourceIndex) + 1}
+                          {isEmptySlot ? "Vacia" : `Celda ${slotNumber}`}
                           {isHiddenByLayout ? " - oculta en este layout" : ""}
                         </span>
                       </button>
@@ -1449,11 +1926,11 @@ export default function MiniToolbarTabImagen({
 
                       <button
                         type="button"
-                        onClick={() => startPhotoReplacement(photo, { openFilePicker: true })}
+                        onClick={() => startSlotReplacement(slot, { openFilePicker: true })}
                         disabled={isPhotoReplacementUploading}
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 disabled:cursor-wait disabled:text-zinc-300 disabled:hover:bg-zinc-50"
-                        aria-label={`Subir o elegir reemplazo para ${positionLabel}`}
-                        title="Reemplazar"
+                        aria-label={`${isEmptySlot ? "Agregar foto en" : "Subir o elegir reemplazo para"} ${positionLabel}`}
+                        title={isEmptySlot ? "Agregar foto" : "Reemplazar"}
                       >
                         {isPhotoReplacementUploading ? (
                           <Loader2 size={15} className="animate-spin" aria-hidden="true" />
@@ -1489,7 +1966,7 @@ export default function MiniToolbarTabImagen({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-medium text-zinc-700">
-                        Foto {Number(galleryDragState.toIndex || 0) + 1} de {selectedGalleryPhotos.length}
+                        Mover a celda {Number(galleryDragState.toIndex || 0) + 1}
                       </span>
                       <span className="block truncate text-[11px] text-zinc-400">
                         Celda {Number(draggedGalleryPhoto.sourceIndex) + 1}
@@ -1511,7 +1988,7 @@ export default function MiniToolbarTabImagen({
               </div>
             ) : (
               <p className="mt-2 rounded border border-dashed border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-500">
-                Esta galeria todavia no tiene fotos asignadas.
+                Esta galeria todavia no tiene celdas configuradas.
               </p>
             )}
 
@@ -1521,8 +1998,9 @@ export default function MiniToolbarTabImagen({
                   type="button"
                   disabled={
                     !selectedPhotoTarget ||
+                    selectedPhotoTarget.isEmpty ||
                     isSelectedPhotoReplacementUploading ||
-                    selectedPhotoTarget.displayIndex <= 0
+                    selectedPhotoTarget.sourceIndex <= 0
                   }
                   onClick={() => handleMoveSelectedPhoto(-1)}
                   className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
@@ -1533,8 +2011,9 @@ export default function MiniToolbarTabImagen({
                   type="button"
                   disabled={
                     !selectedPhotoTarget ||
+                    selectedPhotoTarget.isEmpty ||
                     isSelectedPhotoReplacementUploading ||
-                    selectedPhotoTarget.displayIndex >= selectedGalleryPhotos.length - 1
+                    selectedPhotoTarget.sourceIndex >= selectedGallerySlots.length - 1
                   }
                   onClick={() => handleMoveSelectedPhoto(1)}
                   className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
@@ -1551,11 +2030,11 @@ export default function MiniToolbarTabImagen({
                       : "border-zinc-200 bg-zinc-50 text-zinc-600 disabled:text-zinc-300"
                   }`}
                 >
-                  Reemplazar
+                  {selectedPhotoTarget?.isEmpty ? "Agregar" : "Reemplazar"}
                 </button>
                 <button
                   type="button"
-                  disabled={!selectedPhotoTarget || isSelectedPhotoReplacementUploading}
+                  disabled={!selectedPhotoTarget || selectedPhotoTarget.isEmpty || isSelectedPhotoReplacementUploading}
                   onClick={handleRemoveSelectedPhoto}
                   className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-1 text-[11px] text-zinc-600 disabled:text-zinc-300"
                 >
@@ -1618,12 +2097,22 @@ export default function MiniToolbarTabImagen({
           className={`mb-2 flex w-full shrink-0 items-center gap-2 font-medium shadow-sm transition-all ${
             isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
           } ${
-            celdaActiva
+            celdaActiva || galeriaSeleccionada
               ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
               : "bg-purple-100 hover:bg-purple-200 text-purple-800"
           }`}
         >
-          <span>{celdaActiva ? "Subir y asignar" : "Subir imagen"}</span>
+          <span>
+            {celdaActiva
+              ? "Subir y asignar"
+              : galeriaSeleccionada
+                ? galleryEditMode === "replace" && selectedPhotoTarget
+                  ? selectedPhotoTarget.isEmpty
+                    ? "Subir a celda"
+                    : "Subir reemplazo"
+                  : "Subir a galeria"
+                : "Subir imagen"}
+          </span>
         </button>
         <GaleriaDeImagenes
           imagenes={imagenes || []}

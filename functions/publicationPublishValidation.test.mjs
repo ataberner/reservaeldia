@@ -612,6 +612,41 @@ test("blocks unresolved Gallery media even when a preset hides the cell", () => 
   ]);
 });
 
+test("blocks unresolved Gallery media hidden by photo-count presets", () => {
+  const gallery = {
+    id: "gallery-count-hidden-unresolved",
+    tipo: "galeria",
+    seccionId: "section-1",
+    width: 360,
+    height: 240,
+    rows: 4,
+    cols: 4,
+    allowedLayouts: ["grid_count_5", "grid_count_16"],
+    defaultLayout: "grid_count_5",
+    currentLayout: "grid_count_5",
+    cells: [
+      { mediaUrl: "https://cdn.example.com/1.jpg" },
+      { mediaUrl: "https://cdn.example.com/2.jpg" },
+      { mediaUrl: "https://cdn.example.com/3.jpg" },
+      { mediaUrl: "https://cdn.example.com/4.jpg" },
+      { mediaUrl: "https://cdn.example.com/5.jpg" },
+      { mediaUrl: "usuarios/u/imagenes/hidden-count-unresolved.jpg" },
+    ],
+  };
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos: [gallery],
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: [gallery],
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, false);
+  assert.deepEqual(issueKeys(result.blockers), [
+    "gallery-media-unresolved|gallery-count-hidden-unresolved|section-1|cells[5].mediaUrl",
+  ]);
+});
+
 test("blocks unresolved enabled section edge decorations", () => {
   const rawSecciones = [
     {

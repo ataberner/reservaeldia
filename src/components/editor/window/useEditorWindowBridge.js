@@ -54,6 +54,7 @@ export default function useEditorWindowBridge({
   repairTemplateAuthoringState,
   ensureInlineEditSettledBeforeCriticalAction,
   flushPersistenceNow,
+  selectionRuntime,
 }) {
   const EXTRA_CANVAS_EDITOR_COMPATIBILITY_KEYS = [
     "cambiarColorFondoSeccion",
@@ -184,22 +185,12 @@ export default function useEditorWindowBridge({
     };
   };
 
-  const scrollToDynamicFieldTarget = (fieldKeys, options = {}) => {
+  const scrollToViewportRect = (targetRect, options = {}) => {
     if (typeof window === "undefined") return false;
-    const snapshot =
-      typeof getTemplateAuthoringSnapshot === "function"
-        ? getTemplateAuthoringSnapshot()
-        : null;
-    const target = resolveDynamicFieldScrollTarget({
-      fieldsSchema: snapshot?.fieldsSchema,
-      fieldKeys,
-      objetos,
-    });
-    if (!target) return false;
+    if (!targetRect) return false;
 
     const viewport = resolveViewportScroll();
-    const targetRect = resolveTargetViewportRect(target);
-    if (!viewport || !targetRect) return false;
+    if (!viewport) return false;
 
     let viewportTop = 0;
     let viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
@@ -228,6 +219,66 @@ export default function useEditorWindowBridge({
     }
 
     return true;
+  };
+
+  const resolveObjectScrollTarget = (objectId) => {
+    const safeObjectId = String(objectId || "").trim();
+    if (!safeObjectId) return null;
+    const targetObject =
+      (Array.isArray(objetos) ? objetos : []).find((item) => item?.id === safeObjectId) || null;
+    if (!targetObject) return null;
+    return {
+      objectId: safeObjectId,
+      object: targetObject,
+    };
+  };
+
+  const scrollToEditorObjectById = (objectId, options = {}) => {
+    const target = resolveObjectScrollTarget(objectId);
+    if (!target) return false;
+    const targetRect = resolveTargetViewportRect(target);
+    return scrollToViewportRect(targetRect, options);
+  };
+
+  const focusEditorObjectById = (objectId, options = {}) => {
+    const target = resolveObjectScrollTarget(objectId);
+    if (!target) return false;
+
+    const shouldSelect = options?.select !== false;
+    if (shouldSelect && typeof selectionRuntime?.setCommittedSelection === "function") {
+      selectionRuntime.setCommittedSelection([target.objectId], {
+        source: options?.source || "editor-object-focus",
+      });
+      selectionRuntime.clearTransientState?.({
+        clearPreselection: true,
+        clearMarquee: true,
+        clearPendingDrag: true,
+        clearDragVisual: true,
+      });
+    }
+
+    if (options?.scroll === false) return true;
+    const targetRect = resolveTargetViewportRect(target);
+    return scrollToViewportRect(targetRect, options);
+  };
+
+  const scrollToDynamicFieldTarget = (fieldKeys, options = {}) => {
+    if (typeof window === "undefined") return false;
+    const snapshot =
+      typeof getTemplateAuthoringSnapshot === "function"
+        ? getTemplateAuthoringSnapshot()
+        : null;
+    const target = resolveDynamicFieldScrollTarget({
+      fieldsSchema: snapshot?.fieldsSchema,
+      fieldKeys,
+      objetos,
+    });
+    if (!target) return false;
+
+    const targetRect = resolveTargetViewportRect(target);
+    if (!targetRect) return false;
+
+    return scrollToViewportRect(targetRect, options);
   };
 
   const replaceFirstSectionBackgroundImage = (imageUrl, options = {}) => {
@@ -309,6 +360,8 @@ export default function useEditorWindowBridge({
       getHistorial: () => ({ historial: historialLength, futuros: futurosLength }),
       getTemplateAuthoringSnapshot: templateAuthoringSnapshotReader,
       scrollToDynamicFieldTarget,
+      scrollToEditorObjectById,
+      focusEditorObjectById,
       replaceFirstSectionBackgroundImage,
       updateTemplateAuthoringDefault:
         typeof updateTemplateAuthoringDefault === "function"
@@ -397,6 +450,7 @@ export default function useEditorWindowBridge({
     repairTemplateAuthoringState,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow,
+    selectionRuntime,
   ]);
 
   useEffect(() => {

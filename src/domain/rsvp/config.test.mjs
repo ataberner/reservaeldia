@@ -144,6 +144,39 @@ const REPRESENTATIVE_CASES = [
       ],
     },
   },
+  {
+    name: "editable question types and custom select options",
+    input: {
+      presetId: "minimal",
+      questions: [
+        {
+          id: "full_name",
+          active: true,
+          type: "phone",
+          label: "WhatsApp principal",
+          order: 0,
+        },
+        {
+          id: "custom_1",
+          active: true,
+          type: "single_select",
+          label: "Preferencia",
+          order: 1,
+          options: [
+            { id: "morning", label: "Manana" },
+            { id: "night", label: "Noche" },
+          ],
+        },
+        {
+          id: "host_message",
+          active: true,
+          type: "boolean",
+          label: "Quiere dejar mensaje?",
+          order: 2,
+        },
+      ],
+    },
+  },
 ];
 
 test("client and server RSVP normalization stay in parity for representative configs", () => {
@@ -187,4 +220,54 @@ test("editor-side RSVP normalization keeps nullish configs disabled", () => {
 
   assert.equal(normalized.enabled, false);
   assert.equal("sheetUrl" in normalized, false);
+});
+
+test("editor-side RSVP normalization preserves editable field types and custom options", () => {
+  const normalized = normalizeClientRsvpConfig(
+    {
+      presetId: "minimal",
+      questions: [
+        {
+          id: "full_name",
+          active: true,
+          type: "phone",
+          label: "WhatsApp principal",
+          order: 0,
+        },
+        {
+          id: "attendance",
+          active: true,
+          type: "long_text",
+          label: "Contanos si venis",
+          order: 1,
+        },
+        {
+          id: "custom_1",
+          active: true,
+          type: "single_select",
+          label: "Preferencia",
+          order: 2,
+          options: [
+            { id: "morning", label: "Manana" },
+            { id: "night", label: "Noche" },
+          ],
+        },
+      ],
+    },
+    { forceEnabled: false }
+  );
+
+  const fullName = normalized.questions.find((question) => question.id === "full_name");
+  const attendance = normalized.questions.find((question) => question.id === "attendance");
+  const custom = normalized.questions.find((question) => question.id === "custom_1");
+
+  assert.equal(fullName.type, "phone");
+  assert.equal(fullName.options, undefined);
+  assert.equal(attendance.type, "long_text");
+  assert.equal(attendance.options, undefined);
+  assert.equal(custom.type, "single_select");
+  assert.deepEqual(custom.options, [
+    { id: "morning", label: "Manana" },
+    { id: "night", label: "Noche" },
+  ]);
 });

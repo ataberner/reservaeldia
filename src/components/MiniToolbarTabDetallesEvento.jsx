@@ -598,6 +598,7 @@ async function fetchGooglePlaceDetailsFromPrediction(prediction) {
 
 export default function MiniToolbarTabDetallesEvento({
   simplifiedForAssistant = false,
+  assistantSubstep = null,
 }) {
   const [documentNameState, setDocumentNameState] = useState(
     readInitialDocumentNameState
@@ -1421,73 +1422,90 @@ export default function MiniToolbarTabDetallesEvento({
     resolveTimeInputValue(eventTimes.startTime) ||
     resolveTimeInputValue(countdownUi.time);
   const eventEndTimeValue = resolveTimeInputValue(eventTimes.endTime);
+  const assistantScope = simplifiedForAssistant
+    ? normalizeText(assistantSubstep?.scope)
+    : "";
+  const showEventNamesBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "event-names";
+  const showEventDateBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "event-date";
+  const showEventLocationBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "event-location";
+  const detailsContainerClass = simplifiedForAssistant
+    ? "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-hidden px-0 pb-1 pr-0 text-left"
+    : "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-4 pr-0 text-left";
 
   return (
-    <div className="flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-4 pr-0 text-left">
-      <section className={`${sectionClass} pt-4`}>
-        <label className={labelClass} htmlFor="event-name">
-          Nombre del evento
-        </label>
-        <input
-          id="event-name"
-          type="text"
-          value={eventName}
-          onFocus={handleEventNameFocus}
-          onChange={handleEventNameChange}
-          onBlur={commitEventName}
-          onKeyDown={handleEventNameKeyDown}
-          disabled={!canEditEventName}
-          placeholder="Sin nombre"
-          className={`${inputClass} ${disabledControlClass}`}
-        />
-      </section>
+    <div className={detailsContainerClass}>
+      {showEventNamesBlock && (
+        <>
+          <section className={`${sectionClass} pt-4`}>
+            <label className={labelClass} htmlFor="event-name">
+              Nombre del evento
+            </label>
+            <input
+              id="event-name"
+              type="text"
+              value={eventName}
+              onFocus={handleEventNameFocus}
+              onChange={handleEventNameChange}
+              onBlur={commitEventName}
+              onKeyDown={handleEventNameKeyDown}
+              disabled={!canEditEventName}
+              placeholder="Sin nombre"
+              className={`${inputClass} ${disabledControlClass}`}
+            />
+          </section>
 
-      <div className={dividerClass} />
+          <div className={dividerClass} />
 
-      <section className={`${sectionClass} pt-4`}>
-        <h3 className={labelClass}>Nombre de los casados</h3>
+          <section className={`${sectionClass} pt-4`}>
+            <h3 className={labelClass}>Nombre de los casados</h3>
 
-        <div className="mt-3">
-          <label className={subLabelClass} htmlFor="first-person-name">
-            Nombre de la primera persona
-          </label>
-          <input
-            id="first-person-name"
-            type="text"
-            value={eventPersonNames.primaryName}
-            onFocus={(event) =>
-              handleEventPersonNameFocus(event, EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS)
-            }
-            onChange={handlePrimaryPersonNameChange}
-            onBlur={handleEventPersonNameBlur}
-            onKeyDown={handleEventPersonNameKeyDown}
-            placeholder="Ej: Sofia"
-            className={inputClass}
-          />
-        </div>
+            <div className="mt-3">
+              <label className={subLabelClass} htmlFor="first-person-name">
+                Nombre de la primera persona
+              </label>
+              <input
+                id="first-person-name"
+                type="text"
+                value={eventPersonNames.primaryName}
+                onFocus={(event) =>
+                  handleEventPersonNameFocus(event, EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS)
+                }
+                onChange={handlePrimaryPersonNameChange}
+                onBlur={handleEventPersonNameBlur}
+                onKeyDown={handleEventPersonNameKeyDown}
+                placeholder="Ej: Sofia"
+                className={inputClass}
+              />
+            </div>
 
-        <div className="mt-3">
-          <label className={subLabelClass} htmlFor="second-person-name">
-            Nombre de la segunda persona
-          </label>
-          <input
-            id="second-person-name"
-            type="text"
-            value={eventPersonNames.secondaryName}
-            onFocus={(event) =>
-              handleEventPersonNameFocus(event, EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS)
-            }
-            onChange={handleSecondaryPersonNameChange}
-            onBlur={handleEventPersonNameBlur}
-            onKeyDown={handleEventPersonNameKeyDown}
-            placeholder="Ej: Mateo"
-            className={inputClass}
-          />
-        </div>
-      </section>
+            <div className="mt-3">
+              <label className={subLabelClass} htmlFor="second-person-name">
+                Nombre de la segunda persona
+              </label>
+              <input
+                id="second-person-name"
+                type="text"
+                value={eventPersonNames.secondaryName}
+                onFocus={(event) =>
+                  handleEventPersonNameFocus(event, EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS)
+                }
+                onChange={handleSecondaryPersonNameChange}
+                onBlur={handleEventPersonNameBlur}
+                onKeyDown={handleEventPersonNameKeyDown}
+                placeholder="Ej: Mateo"
+                className={inputClass}
+              />
+            </div>
+          </section>
+        </>
+      )}
 
-      <div className={dividerClass} />
+      {showEventNamesBlock && showEventDateBlock && <div className={dividerClass} />}
 
+      {showEventDateBlock && (
       <section className={`${sectionClass} pt-4`}>
         <h3 className={labelClass}>Dia y hora de evento</h3>
 
@@ -1583,9 +1601,11 @@ export default function MiniToolbarTabDetallesEvento({
           </>
         )}
       </section>
+      )}
 
-      <div className={dividerClass} />
+      {showEventDateBlock && showEventLocationBlock && <div className={dividerClass} />}
 
+      {showEventLocationBlock && (
       <section className={`${sectionClass} pb-1 pt-4`}>
         <h3 className={labelClass}>Ubicacion del evento</h3>
 
@@ -1688,6 +1708,7 @@ export default function MiniToolbarTabDetallesEvento({
           </>
         )}
       </section>
+      )}
     </div>
   );
 }

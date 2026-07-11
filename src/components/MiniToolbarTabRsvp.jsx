@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, Eye, GripVertical, Plus, Settings2, X } from "lucide-react";
+import { Eye, GripVertical, Pencil, Plus, Settings2, X } from "lucide-react";
 import UnifiedColorPicker from "@/components/color/UnifiedColorPicker";
 import {
   countActiveCustomQuestions,
@@ -16,15 +16,75 @@ import {
 import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
 import { isFunctionalCtaHidden } from "@/domain/functionalCtaButtons";
 import {
-  moveQuestion,
-  setCustomQuestionType,
-  setMenuOptionLabel,
+  addQuestionOption,
+  removeQuestionOption,
+  reorderQuestion,
   setModalSettings,
   setQuestionLabel,
+  setQuestionOptionLabel,
   setQuestionRequired,
+  setQuestionType,
   toggleQuestionActive,
 } from "@/domain/rsvp/editorOps";
 import styles from "./MiniToolbarTabRsvp.module.css";
+
+const QUESTION_TYPE_OPTIONS = Object.freeze([
+  { value: "short_text", label: "Texto corto" },
+  { value: "long_text", label: "Texto largo" },
+  { value: "single_select", label: "Opciones" },
+  { value: "boolean", label: "Si / No" },
+  { value: "number", label: "Numero" },
+  { value: "phone", label: "Telefono" },
+]);
+
+const QUESTION_TYPE_LABELS = QUESTION_TYPE_OPTIONS.reduce((acc, option) => {
+  acc[option.value] = option.label;
+  return acc;
+}, {});
+
+const COMPACT_ACTION_BUTTON_CLASS =
+  "flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-md border border-violet-200 px-2.5 py-1.5 text-[11px] font-semibold text-violet-800 transition hover:bg-violet-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300";
+
+function getQuestionTypeLabel(question) {
+  return QUESTION_TYPE_LABELS[question?.type] || "Texto";
+}
+
+function getFieldSelectorLabel(question) {
+  if (question?.source === "custom" && /^Pregunta personalizada \d+$/i.test(question.label || "")) {
+    return "Crear campo personalizado";
+  }
+  return question?.label || "Campo";
+}
+
+function moveRowsForDragPreview(rows, from, to) {
+  if (
+    !Array.isArray(rows) ||
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from < 0 ||
+    to < 0 ||
+    from >= rows.length ||
+    to >= rows.length ||
+    from === to
+  ) {
+    return rows;
+  }
+
+  const nextRows = [...rows];
+  const [draggedRow] = nextRows.splice(from, 1);
+  nextRows.splice(to, 0, draggedRow);
+  return nextRows;
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, Number.isFinite(value) ? value : min));
+}
+
+function resolveDragPreviewLeft(dragState) {
+  const baseLeft = Number(dragState?.rowLeft) || 0;
+  const rawLeft = (Number(dragState?.pointerX) || 0) - (Number(dragState?.grabOffsetX) || 0);
+  return clampNumber(rawLeft, baseLeft - 32, baseLeft + 32);
+}
 
 function normalizeConfig(input) {
   if (!input || typeof input !== "object") {
@@ -101,12 +161,325 @@ function useCloseOnEscape(open, onClose) {
   }, [open, onClose]);
 }
 
-function AdvancedSettingsModal({
+function FormSettingsModal({
   open,
   config,
   onClose,
   onChange,
-  maxQuestions,
+}) {
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  useCloseOnEscape(open, onClose);
+
+  if (!open || !portalTarget) return null;
+
+  const updateConfig = (nextConfig) => {
+    onChange(normalizeConfig(nextConfig));
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[340] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[1.5px] sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rsvp-form-settings-title"
+        className="w-full max-h-[82vh] overflow-hidden rounded-t-2xl border border-violet-100 bg-white shadow-2xl sm:max-w-md sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-4 py-3">
+          <div>
+            <h4 id="rsvp-form-settings-title" className="text-sm font-semibold text-slate-900">
+              Ajustes del formulario
+            </h4>
+            <p className="mt-0.5 text-xs text-slate-600">
+              Textos y estilo del formulario que ven tus invitados.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+            aria-label="Cerrar ajustes"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="max-h-[62vh] space-y-3 overflow-y-auto p-4">
+          <Field label="Titulo principal">
+            <input
+              type="text"
+              className={inputClassName()}
+              value={config.modal.title}
+              onChange={(event) =>
+                updateConfig(setModalSettings(config, { title: event.target.value }))
+              }
+            />
+          </Field>
+          <Field label="Texto de ayuda">
+            <textarea
+              rows={3}
+              className={`${inputClassName()} resize-y`}
+              value={config.modal.subtitle}
+              onChange={(event) =>
+                updateConfig(setModalSettings(config, { subtitle: event.target.value }))
+              }
+            />
+          </Field>
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <Field label="Texto del boton">
+              <input
+                type="text"
+                className={inputClassName()}
+                value={config.modal.submitLabel}
+                onChange={(event) =>
+                  updateConfig(setModalSettings(config, { submitLabel: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Color boton">
+              <div className="flex min-h-[38px] items-center justify-between gap-2 rounded-md border border-zinc-300 bg-white px-2 py-1.5">
+                <span className="text-[11px] font-semibold text-zinc-700">
+                  {String(config.modal.primaryColor || "#773dbe").toUpperCase()}
+                </span>
+                <UnifiedColorPicker
+                  value={config.modal.primaryColor}
+                  fallbackColor="#773dbe"
+                  showGradients={false}
+                  panelWidth={272}
+                  title="Color del boton"
+                  triggerClassName="h-7 w-7 rounded border border-zinc-300"
+                  onChange={(nextColor) =>
+                    updateConfig(setModalSettings(config, { primaryColor: nextColor }))
+                  }
+                />
+              </div>
+            </Field>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[40px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>,
+    portalTarget
+  );
+}
+
+function buildOptionLabelDrafts(options = []) {
+  return (Array.isArray(options) ? options : []).reduce((acc, option) => {
+    if (!option?.id) return acc;
+    acc[option.id] = String(option.label ?? "");
+    return acc;
+  }, {});
+}
+
+function FieldEditorModal({
+  open,
+  config,
+  question,
+  onClose,
+  onChange,
+  onRemove,
+}) {
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  const selectOptions = Array.isArray(question?.options) ? question.options : [];
+  const selectOptionIds = selectOptions.map((option) => option.id).join("|");
+  const activeQuestionId = question?.id || "";
+  const questionRef = useRef(question);
+  const selectOptionsRef = useRef(selectOptions);
+  const [draftLabel, setDraftLabel] = useState("");
+  const [draftOptionLabels, setDraftOptionLabels] = useState({});
+  questionRef.current = question;
+  selectOptionsRef.current = selectOptions;
+  useCloseOnEscape(open, onClose);
+
+  useEffect(() => {
+    if (!open || !activeQuestionId) return;
+    setDraftLabel(String(questionRef.current?.label ?? ""));
+    setDraftOptionLabels(buildOptionLabelDrafts(selectOptionsRef.current));
+  }, [open, activeQuestionId]);
+
+  useEffect(() => {
+    if (!open || !activeQuestionId) return;
+    setDraftOptionLabels((prev) => {
+      const next = {};
+      selectOptionsRef.current.forEach((option) => {
+        if (!option?.id) return;
+        next[option.id] = Object.prototype.hasOwnProperty.call(prev, option.id)
+          ? prev[option.id]
+          : String(option.label ?? "");
+      });
+      return next;
+    });
+  }, [open, activeQuestionId, selectOptionIds]);
+
+  if (!open || !portalTarget || !question) return null;
+
+  const updateConfig = (nextConfig) => {
+    onChange(normalizeConfig(nextConfig));
+  };
+  const handleQuestionLabelChange = (value) => {
+    setDraftLabel(value);
+    updateConfig(setQuestionLabel(config, question.id, value));
+  };
+  const handleOptionLabelChange = (optionId, value) => {
+    setDraftOptionLabels((prev) => ({
+      ...prev,
+      [optionId]: value,
+    }));
+    updateConfig(setQuestionOptionLabel(config, question.id, optionId, value));
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[346] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[1.5px] sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rsvp-field-editor-title"
+        className="w-full max-h-[86vh] overflow-hidden rounded-t-2xl border border-violet-100 bg-white shadow-2xl sm:max-w-md sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-4 py-3">
+          <div className="min-w-0">
+            <h4 id="rsvp-field-editor-title" className="text-sm font-semibold text-slate-900">
+              Editar campo
+            </h4>
+            <p className="mt-0.5 truncate text-xs text-slate-600">
+              {question.label}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+            aria-label="Cerrar editor de campo"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="max-h-[66vh] space-y-3 overflow-y-auto p-4">
+          <Field label="Nombre del campo">
+            <input
+              type="text"
+              className={inputClassName()}
+              value={draftLabel}
+              onChange={(event) => handleQuestionLabelChange(event.target.value)}
+            />
+          </Field>
+
+          <Field label="Tipo de respuesta">
+            <select
+              className={inputClassName()}
+              value={question.type}
+              onChange={(event) =>
+                updateConfig(setQuestionType(config, question.id, event.target.value))
+              }
+            >
+              {QUESTION_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <label className="flex min-h-[42px] items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <span className="text-xs font-medium text-slate-700">Obligatorio</span>
+            <input
+              type="checkbox"
+              checked={question.required}
+              onChange={(event) =>
+                updateConfig(setQuestionRequired(config, question.id, event.target.checked))
+              }
+              className="h-4 w-4 accent-violet-700"
+            />
+          </label>
+
+          {question.type === "single_select" ? (
+            <section className="space-y-2 rounded-lg border border-violet-100 bg-violet-50/45 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h5 className="text-xs font-semibold text-slate-800">Opciones</h5>
+                <button
+                  type="button"
+                  onClick={() => updateConfig(addQuestionOption(config, question.id))}
+                  className="rounded-md border border-violet-200 bg-white px-2 py-1 text-[11px] font-semibold text-violet-800 transition hover:bg-violet-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                >
+                  Agregar opcion
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                {selectOptions.map((option) => (
+                  <div key={option.id} className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <input
+                      type="text"
+                      className={inputClassName()}
+                      value={draftOptionLabels[option.id] ?? String(option.label ?? "")}
+                      onChange={(event) => handleOptionLabelChange(option.id, event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={selectOptions.length <= 1}
+                      onClick={() =>
+                        updateConfig(removeQuestionOption(config, question.id, option.id))
+                      }
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-600 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Quitar opcion"
+                      title="Quitar opcion"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onRemove}
+            className="min-h-[40px] w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+          >
+            {question.source === "custom" ? "Eliminar campo personalizado" : "Quitar del formulario"}
+          </button>
+        </div>
+
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[40px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>,
+    portalTarget
+  );
+}
+
+function FieldSelectorModal({
+  open,
+  questions,
+  onClose,
+  onSelect,
+  canAddMoreQuestions,
+  activeCustomCount,
   maxCustomQuestions,
 }) {
   const portalTarget = typeof document !== "undefined" ? document.body : null;
@@ -114,227 +487,97 @@ function AdvancedSettingsModal({
 
   if (!open || !portalTarget) return null;
 
-  const orderedQuestions = getOrderedQuestions(config);
-  const activeQuestions = orderedQuestions.filter((question) => question.active);
-  const inactiveQuestions = orderedQuestions.filter((question) => !question.active);
-  const activeCount = countActiveQuestions(config);
-  const activeCustomCount = countActiveCustomQuestions(config);
-
-  const canAddMoreQuestions = activeCount < maxQuestions;
-
-  const updateConfig = (nextConfig) => {
-    onChange(normalizeConfig(nextConfig));
-  };
+  const hasQuestions = questions.length > 0;
 
   return createPortal(
-    <div className="fixed inset-0 z-[340] flex items-center justify-center bg-slate-950/45 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[345] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[1.5px] sm:items-center sm:p-4"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rsvp-field-selector-title"
+        className="w-full max-h-[82vh] overflow-hidden rounded-t-2xl border border-violet-100 bg-white shadow-2xl sm:max-w-md sm:rounded-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-violet-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-4 py-3">
-          <div>
-            <h4 className="text-sm font-semibold text-slate-900">Configuracion avanzada</h4>
-            <p className="mt-0.5 text-xs text-slate-600">Color, textos y etiquetas del formulario.</p>
+        <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-4 py-3">
+          <div className="min-w-0">
+            <h4 id="rsvp-field-selector-title" className="text-sm font-semibold text-slate-900">
+              Agregar otro campo
+            </h4>
+            <p className="mt-0.5 text-xs text-slate-600">
+              Campos disponibles para el formulario de asistencia.
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-white"
+            className="shrink-0 rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+            aria-label="Cerrar selector"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="max-h-[78vh] space-y-4 overflow-y-auto p-4">
-          <section className="space-y-2 rounded-xl border border-slate-200 p-3">
-            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Textos</h5>
-            <Field label="Titulo principal">
-              <input
-                type="text"
-                className={inputClassName()}
-                value={config.modal.title}
-                onChange={(event) =>
-                  updateConfig(setModalSettings(config, { title: event.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Texto de ayuda">
-              <input
-                type="text"
-                className={inputClassName()}
-                value={config.modal.subtitle}
-                onChange={(event) =>
-                  updateConfig(setModalSettings(config, { subtitle: event.target.value }))
-                }
-              />
-            </Field>
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Field label="Texto del boton">
-                <input
-                  type="text"
-                  className={inputClassName()}
-                  value={config.modal.submitLabel}
-                  onChange={(event) =>
-                    updateConfig(setModalSettings(config, { submitLabel: event.target.value }))
-                  }
-                />
-              </Field>
-              <Field label="Color boton">
-                <div className="flex items-center justify-between rounded-md border border-zinc-300 bg-white px-2 py-1.5">
-                  <span className="text-[11px] font-semibold text-zinc-700">
-                    {String(config.modal.primaryColor || "#773dbe").toUpperCase()}
-                  </span>
-                  <UnifiedColorPicker
-                    value={config.modal.primaryColor}
-                    fallbackColor="#773dbe"
-                    showGradients={false}
-                    panelWidth={272}
-                    title="Color del boton"
-                    triggerClassName="h-7 w-7 rounded border border-zinc-300"
-                    onChange={(nextColor) =>
-                      updateConfig(setModalSettings(config, { primaryColor: nextColor }))
-                    }
-                  />
-                </div>
-              </Field>
+        <div className="max-h-[min(62vh,420px)] overflow-y-auto p-3 sm:p-4">
+          {!canAddMoreQuestions ? (
+            <div className="rounded-lg border border-dashed border-violet-200 bg-violet-50/70 p-3 text-xs text-violet-800">
+              Llegaste al maximo de preguntas.
             </div>
-          </section>
-
-          <section className="space-y-2 rounded-xl border border-slate-200 p-3">
-            <div className="flex items-center justify-between">
-              <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Preguntas activas</h5>
-              <span className="text-[11px] text-slate-500">
-                {activeCount}/{maxQuestions} - personalizadas {activeCustomCount}/{maxCustomQuestions}
-              </span>
+          ) : !hasQuestions ? (
+            <div className="rounded-lg border border-dashed border-violet-200 bg-violet-50/70 p-3 text-xs text-violet-800">
+              Todos los campos disponibles ya fueron agregados.
             </div>
-
+          ) : (
             <div className="space-y-2">
-              {activeQuestions.map((question, index) => (
-                <article key={question.id} className="rounded-md border border-slate-200 bg-white p-2.5">
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <span className="min-w-0 flex-1 break-words text-[11px] font-semibold text-violet-700">
-                      {index + 1}. {question.label}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => updateConfig(toggleQuestionActive(config, question.id, false))}
-                      className="shrink-0 rounded border border-slate-200 px-1.5 py-1 text-[10px] text-slate-600 hover:bg-slate-50"
-                    >
-                      Quitar
-                    </button>
-                  </div>
-
-                  <Field label="Texto de la pregunta">
-                    <input
-                      type="text"
-                      className={inputClassName()}
-                      value={question.label}
-                      onChange={(event) =>
-                        updateConfig(setQuestionLabel(config, question.id, event.target.value))
-                      }
-                    />
-                  </Field>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={question.required}
-                        onChange={(event) =>
-                          updateConfig(setQuestionRequired(config, question.id, event.target.checked))
-                        }
-                      />
-                      Obligatoria
-                    </label>
-                    <button
-                      type="button"
-                      disabled={index === 0}
-                      onClick={() => updateConfig(moveQuestion(config, question.id, "up"))}
-                      className="ml-auto rounded border border-slate-200 px-1.5 py-1 text-[10px] disabled:opacity-40"
-                    >
-                      Subir
-                    </button>
-                    <button
-                      type="button"
-                      disabled={index === activeQuestions.length - 1}
-                      onClick={() => updateConfig(moveQuestion(config, question.id, "down"))}
-                      className="rounded border border-slate-200 px-1.5 py-1 text-[10px] disabled:opacity-40"
-                    >
-                      Bajar
-                    </button>
-                  </div>
-
-                  {question.source === "custom" ? (
-                    <div className="mt-2">
-                      <Field label="Tipo de respuesta">
-                        <select
-                          className={inputClassName()}
-                          value={question.type}
-                          onChange={(event) =>
-                            updateConfig(setCustomQuestionType(config, question.id, event.target.value))
-                          }
-                        >
-                          <option value="short_text">Texto corto</option>
-                          <option value="long_text">Texto largo</option>
-                        </select>
-                      </Field>
-                    </div>
-                  ) : null}
-
-                  {question.id === "menu_type" && Array.isArray(question.options) ? (
-                    <div className="mt-2 space-y-1.5">
-                      <p className="text-[11px] font-medium text-slate-600">Opciones de menu</p>
-                      {question.options.map((option) => (
-                        <input
-                          key={option.id}
-                          type="text"
-                          className={inputClassName()}
-                          value={option.label}
-                          onChange={(event) =>
-                            updateConfig(setMenuOptionLabel(config, option.id, event.target.value))
-                          }
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="space-y-2 rounded-xl border border-slate-200 p-3">
-            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Agregar preguntas</h5>
-            <div className="space-y-1.5">
-              {inactiveQuestions.map((question) => {
+              {questions.map((question) => {
                 const customBlocked =
                   question.source === "custom" && activeCustomCount >= maxCustomQuestions;
-                const disabled = !canAddMoreQuestions || customBlocked;
+                const disabled = customBlocked;
+                const selectorLabel = getFieldSelectorLabel(question);
 
                 return (
-                  <div
+                  <button
                     key={question.id}
-                    className="flex items-start justify-between gap-2 rounded-md border border-slate-200 px-2.5 py-2"
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onSelect(question)}
+                    className="flex min-h-[52px] w-full items-start rounded-lg border border-violet-100 bg-white px-3 py-2 text-left transition hover:border-violet-200 hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="break-words text-xs font-medium text-slate-800">{question.label}</div>
-                      <div className="text-[11px] text-slate-500">
-                        {question.source === "custom" ? "Pregunta personalizada" : "Pregunta sugerida"}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => updateConfig(toggleQuestionActive(config, question.id, true))}
-                      className="shrink-0 rounded border border-violet-200 px-1.5 py-1 text-[10px] text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Agregar
-                    </button>
-                  </div>
+                    <span className="min-w-0">
+                      <span
+                        className="block overflow-hidden break-words text-xs font-medium leading-[1.25] text-slate-800"
+                        title={selectorLabel}
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                        }}
+                      >
+                        {selectorLabel}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-500">
+                        {question.source === "custom"
+                          ? "Campo personalizado"
+                          : getQuestionTypeLabel(question)}
+                      </span>
+                    </span>
+                  </button>
                 );
               })}
             </div>
-          </section>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[40px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          >
+            Cancelar
+          </button>
         </div>
       </div>
     </div>,
@@ -552,22 +795,78 @@ function RsvpPreviewModal({ open, config, onClose }) {
 export default function MiniToolbarTabRsvp({
   forcePresetSelection = false,
   onPresetSelectionComplete,
+  simplifiedForAssistant = false,
+  assistantSubstep = null,
 }) {
   const [config, setConfig] = useState(() => createDefaultRsvpConfig("minimal"));
   const [rsvpButton, setRsvpButton] = useState(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [fieldSelectorOpen, setFieldSelectorOpen] = useState(false);
+  const [fieldEditorQuestionId, setFieldEditorQuestionId] = useState(null);
+  const [rsvpDragState, setRsvpDragState] = useState(null);
+  const rsvpQuestionListRef = useRef(null);
+  const rsvpQuestionRowNodesRef = useRef(new Map());
+  const rsvpQuestionDragSessionRef = useRef(null);
+  const rsvpQuestionDragCleanupRef = useRef(null);
 
   const normalizedConfig = useMemo(() => normalizeConfig(config), [config]);
   const orderedQuestions = useMemo(() => getOrderedQuestions(normalizedConfig), [normalizedConfig]);
 
   const activeQuestions = orderedQuestions.filter((question) => question.active);
   const inactiveQuestions = orderedQuestions.filter((question) => !question.active);
+  const displayedActiveQuestions = useMemo(() => {
+    if (!rsvpDragState) return activeQuestions;
+    return moveRowsForDragPreview(
+      activeQuestions,
+      rsvpDragState.fromIndex,
+      rsvpDragState.toIndex
+    );
+  }, [rsvpDragState, activeQuestions]);
+  const draggedRsvpQuestion = useMemo(() => {
+    if (!rsvpDragState) return null;
+    return (
+      activeQuestions.find((question) => question.id === rsvpDragState.questionId) ||
+      activeQuestions[rsvpDragState.fromIndex] ||
+      null
+    );
+  }, [rsvpDragState, activeQuestions]);
+  const editingQuestion = useMemo(() => {
+    if (!fieldEditorQuestionId) return null;
+    return orderedQuestions.find((question) => question.id === fieldEditorQuestionId) || null;
+  }, [fieldEditorQuestionId, orderedQuestions]);
 
   const activeCount = countActiveQuestions(normalizedConfig);
   const activeCustomCount = countActiveCustomQuestions(normalizedConfig);
   const maxQuestions = normalizedConfig.limits?.maxQuestions || 12;
   const maxCustomQuestions = normalizedConfig.limits?.maxCustomQuestions || 2;
+  const assistantScope = simplifiedForAssistant
+    ? String(assistantSubstep?.scope || "").trim()
+    : "";
+  const showActivationBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "activation";
+  const showActiveQuestionsBlock =
+    !simplifiedForAssistant ||
+    !assistantScope ||
+    assistantScope === "active" ||
+    assistantScope === "activation";
+  const showAddQuestionAction =
+    !simplifiedForAssistant ||
+    !assistantScope ||
+    assistantScope === "add" ||
+    assistantScope === "activation";
+  const rsvpContainerClass = simplifiedForAssistant
+    ? "flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1 md:overflow-hidden"
+    : "flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1";
+  const rsvpActivationGroupClass = simplifiedForAssistant
+    ? "shrink-0 space-y-2"
+    : "contents";
+  const rsvpScrollableSectionClass = simplifiedForAssistant
+    ? "min-h-0 flex shrink-0 flex-col overflow-visible md:flex-1 md:shrink md:overflow-hidden"
+    : "";
+  const rsvpListClass = simplifiedForAssistant
+    ? "space-y-1.5 pr-1 md:min-h-0 md:flex-1 md:overflow-y-auto"
+    : "space-y-1.5";
 
   const canAddMoreQuestions = activeCount < maxQuestions;
   const rsvpButtonId = rsvpButton?.id || null;
@@ -577,6 +876,24 @@ export default function MiniToolbarTabRsvp({
     const normalized = normalizeConfig(nextConfig);
     setConfig(normalized);
     emitRsvpConfigUpdate(normalized);
+  };
+
+  const handleSelectFieldToAdd = (question) => {
+    if (!question?.id) return;
+
+    const customBlocked =
+      question.source === "custom" && activeCustomCount >= maxCustomQuestions;
+    if (!canAddMoreQuestions || customBlocked) return;
+
+    updateConfig(toggleQuestionActive(normalizedConfig, question.id, true));
+    setFieldSelectorOpen(false);
+    setFieldEditorQuestionId(question.id);
+  };
+
+  const handleRemoveField = (questionId) => {
+    if (!questionId) return;
+    updateConfig(toggleQuestionActive(normalizedConfig, questionId, false));
+    setFieldEditorQuestionId((currentId) => (currentId === questionId ? null : currentId));
   };
 
   const handleActivationToggle = () => {
@@ -644,6 +961,190 @@ export default function MiniToolbarTabRsvp({
     insertDefaultRsvpButton();
   };
 
+  const setRsvpQuestionRowNode = useCallback((questionId, node) => {
+    if (!questionId) return;
+    if (node) {
+      rsvpQuestionRowNodesRef.current.set(questionId, node);
+    } else {
+      rsvpQuestionRowNodesRef.current.delete(questionId);
+    }
+  }, []);
+
+  const cleanupRsvpQuestionDrag = useCallback(() => {
+    if (rsvpQuestionDragCleanupRef.current) {
+      rsvpQuestionDragCleanupRef.current();
+      rsvpQuestionDragCleanupRef.current = null;
+    }
+    rsvpQuestionDragSessionRef.current = null;
+    setRsvpDragState(null);
+  }, []);
+
+  const resolveRsvpQuestionDropIndex = useCallback((clientY) => {
+    const listNode = rsvpQuestionListRef.current;
+    if (!listNode) return -1;
+
+    const rows = Array.from(listNode.querySelectorAll("[data-rsvp-question-row='true']"));
+    if (rows.length === 0) return -1;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const rect = rows[index].getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) {
+        return index;
+      }
+    }
+
+    return rows.length - 1;
+  }, []);
+
+  const commitSidebarQuestionReorder = useCallback((from, to) => {
+    if (
+      !Number.isInteger(from) ||
+      !Number.isInteger(to) ||
+      from < 0 ||
+      to < 0 ||
+      from >= activeQuestions.length ||
+      to >= activeQuestions.length ||
+      from === to
+    ) {
+      return false;
+    }
+
+    const fromQuestion = activeQuestions[from];
+    const toQuestion = activeQuestions[to];
+    if (!fromQuestion?.id || !toQuestion?.id) return false;
+
+    updateConfig(reorderQuestion(normalizedConfig, fromQuestion.id, toQuestion.id));
+    return true;
+  }, [normalizedConfig, activeQuestions]);
+
+  const handleRsvpQuestionHandleKeyDown = useCallback((event, question) => {
+    const from = activeQuestions.findIndex((item) => item.id === question?.id);
+    let to = from;
+
+    if (event.key === "ArrowUp") {
+      to = from - 1;
+    } else if (event.key === "ArrowDown") {
+      to = from + 1;
+    } else if (event.key === "Home") {
+      to = 0;
+    } else if (event.key === "End") {
+      to = activeQuestions.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    commitSidebarQuestionReorder(from, to);
+  }, [commitSidebarQuestionReorder, activeQuestions]);
+
+  const handleRsvpQuestionDragStart = useCallback((event, question, visualIndex) => {
+    if (activeQuestions.length < 2 || !question?.id) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    const fromIndex = Number(visualIndex);
+    if (!Number.isInteger(fromIndex) || fromIndex < 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (rsvpQuestionDragCleanupRef.current) {
+      rsvpQuestionDragCleanupRef.current();
+      rsvpQuestionDragCleanupRef.current = null;
+    }
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; window listeners below own the drag lifecycle.
+    }
+
+    const rowNode = event.currentTarget.closest("[data-rsvp-question-row='true']");
+    const rowRect = rowNode?.getBoundingClientRect?.();
+
+    rsvpQuestionDragSessionRef.current = {
+      pointerId: event.pointerId,
+      fromIndex,
+      toIndex: fromIndex,
+      questionId: question.id,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      rowLeft: rowRect?.left || 0,
+      rowWidth: rowRect?.width || 0,
+      rowHeight: rowRect?.height || 58,
+      grabOffsetX: rowRect ? event.clientX - rowRect.left : 0,
+      grabOffsetY: rowRect ? event.clientY - rowRect.top : 0,
+    };
+    setRsvpDragState({
+      questionId: question.id,
+      fromIndex,
+      toIndex: fromIndex,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      rowLeft: rowRect?.left || 0,
+      rowWidth: rowRect?.width || 0,
+      rowHeight: rowRect?.height || 58,
+      grabOffsetX: rowRect ? event.clientX - rowRect.left : 0,
+      grabOffsetY: rowRect ? event.clientY - rowRect.top : 0,
+    });
+
+    const handleMove = (moveEvent) => {
+      const session = rsvpQuestionDragSessionRef.current;
+      if (!session || moveEvent.pointerId !== session.pointerId) return;
+
+      moveEvent.preventDefault();
+      const toIndex = resolveRsvpQuestionDropIndex(moveEvent.clientY);
+      const nextToIndex = toIndex >= 0 ? toIndex : session.toIndex;
+
+      session.toIndex = nextToIndex;
+      session.pointerX = moveEvent.clientX;
+      session.pointerY = moveEvent.clientY;
+      setRsvpDragState({
+        questionId: session.questionId,
+        fromIndex: session.fromIndex,
+        toIndex: nextToIndex,
+        pointerX: session.pointerX,
+        pointerY: session.pointerY,
+        rowLeft: session.rowLeft,
+        rowWidth: session.rowWidth,
+        rowHeight: session.rowHeight,
+        grabOffsetX: session.grabOffsetX,
+        grabOffsetY: session.grabOffsetY,
+      });
+    };
+
+    const finishDrag = (endEvent, cancelled = false) => {
+      const session = rsvpQuestionDragSessionRef.current;
+      if (!session || endEvent.pointerId !== session.pointerId) return;
+
+      endEvent.preventDefault();
+      if (!cancelled && session.fromIndex !== session.toIndex) {
+        commitSidebarQuestionReorder(session.fromIndex, session.toIndex);
+      }
+      cleanupRsvpQuestionDrag();
+    };
+
+    const handleUp = (upEvent) => finishDrag(upEvent, false);
+    const handleCancel = (cancelEvent) => finishDrag(cancelEvent, true);
+
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleUp, true);
+    window.addEventListener("pointercancel", handleCancel, true);
+
+    rsvpQuestionDragCleanupRef.current = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp, true);
+      window.removeEventListener("pointercancel", handleCancel, true);
+    };
+  }, [
+    cleanupRsvpQuestionDrag,
+    commitSidebarQuestionReorder,
+    resolveRsvpQuestionDropIndex,
+    activeQuestions.length,
+  ]);
+
+  useEffect(() => cleanupRsvpQuestionDrag, [cleanupRsvpQuestionDrag]);
+
   useEffect(() => {
     if (!forcePresetSelection) return;
     onPresetSelectionComplete?.();
@@ -680,7 +1181,9 @@ export default function MiniToolbarTabRsvp({
 
   return (
     <>
-      <div className="flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+      <div className={rsvpContainerClass}>
+        {showActivationBlock && (
+        <div className={rsvpActivationGroupClass}>
         <section className={styles.activationPanel}>
           <div className={styles.activationHeader}>
             <h3 className={styles.activationTitle}>Pedir confirmación de asistencia</h3>
@@ -701,19 +1204,17 @@ export default function MiniToolbarTabRsvp({
               <span className={styles.activationSwitchThumb} aria-hidden="true" />
             </button>
           </div>
-          <p className={styles.activationCopy}>
-            Activa el formulario para que tus invitados puedan confirmar si asisten.
-          </p>
         </section>
 
-        <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-fuchsia-50 to-pink-50 p-3">
-          <h3 className="text-[13px] font-semibold text-slate-900">Confirmar asistencia</h3>
+        {!simplifiedForAssistant && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50/55 p-3">
+          <h3 className="text-[13px] font-semibold text-slate-900">Boton de asistencia</h3>
 
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="mt-2">
             <button
               type="button"
               onClick={handlePrimaryAction}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-violet-300 bg-white px-2 py-1.5 text-xs font-semibold text-violet-800 transition hover:bg-violet-100"
+              className="inline-flex min-h-[38px] w-full items-center justify-center gap-1 rounded-md border border-violet-300 bg-white px-2 py-1.5 text-xs font-semibold text-violet-800 transition hover:bg-violet-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
             >
               <Eye className="h-3.5 w-3.5" />
               {rsvpButtonId
@@ -722,27 +1223,51 @@ export default function MiniToolbarTabRsvp({
                   : "Vista previa"
                 : "Agregar boton"}
             </button>
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen(true)}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-violet-200 bg-violet-100 px-2 py-1.5 text-xs font-semibold text-violet-800 transition hover:bg-violet-200"
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              Avanzado
-            </button>
           </div>
         </div>
+        )}
+        </div>
+        )}
 
-        <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Activas</h4>
+        {showActiveQuestionsBlock && (
+        <section className={`space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 ${rsvpScrollableSectionClass}`}>
+          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Campos del formulario</h4>
 
-          <div className="space-y-1.5">
-            {activeQuestions.map((question, index) => (
+          <div
+            ref={rsvpQuestionListRef}
+            role="list"
+            className={rsvpListClass}
+          >
+            {displayedActiveQuestions.map((question, index) => {
+              const isDraggingQuestion = rsvpDragState?.questionId === question.id;
+              const isDropTarget = rsvpDragState && rsvpDragState.toIndex === index;
+
+              return (
               <article
                 key={question.id}
-                className="flex min-h-[56px] items-center gap-2 rounded-lg border border-emerald-200 bg-white px-2 py-2"
+                ref={(node) => setRsvpQuestionRowNode(question.id, node)}
+                role="listitem"
+                data-rsvp-question-row="true"
+                className={`relative flex min-h-[58px] items-center gap-2 rounded-lg border bg-white p-1.5 transition ${
+                  isDraggingQuestion
+                    ? "border-purple-200 bg-purple-50 opacity-40"
+                    : "border-zinc-200"
+                } ${isDropTarget ? "shadow-[0_0_0_2px_rgba(168,85,247,0.22)]" : ""}`}
               >
-                <GripVertical className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                {isDropTarget && (
+                  <span className="absolute -top-0.5 left-2 right-2 h-0.5 rounded bg-purple-400" />
+                )}
+                <button
+                  type="button"
+                  onPointerDown={(event) => handleRsvpQuestionDragStart(event, question, index)}
+                  onKeyDown={(event) => handleRsvpQuestionHandleKeyDown(event, question)}
+                  disabled={activeQuestions.length < 2}
+                  aria-label={`Reordenar ${question.label}`}
+                  title="Arrastra desde aqui para mover"
+                  className="flex h-10 w-8 shrink-0 touch-none items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-500 cursor-grab active:cursor-grabbing disabled:cursor-default disabled:text-zinc-300"
+                >
+                  <GripVertical size={16} aria-hidden="true" />
+                </button>
                 <div className="min-w-0 flex-1">
                   <div
                     className="overflow-hidden break-words text-xs font-medium leading-[1.2] text-slate-800"
@@ -755,108 +1280,126 @@ export default function MiniToolbarTabRsvp({
                   >
                     {question.label}
                   </div>
+                  <div className="mt-0.5 truncate text-[11px] leading-[1.2] text-slate-500">
+                    {getQuestionTypeLabel(question)}
+                  </div>
                 </div>
 
                 <button
                   type="button"
-                  disabled={index === 0}
-                  onClick={() => updateConfig(moveQuestion(normalizedConfig, question.id, "up"))}
-                  className="rounded border border-emerald-200 p-1 text-emerald-700 disabled:opacity-35"
-                  title="Subir"
-                  aria-label="Subir pregunta"
+                  onClick={() => setFieldEditorQuestionId(question.id)}
+                  className="rounded border border-violet-200 p-1 text-violet-700 hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                  title="Editar campo"
+                  aria-label={`Editar ${question.label}`}
                 >
-                  <ArrowUp className="h-3 w-3" />
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
                 </button>
 
                 <button
                   type="button"
-                  disabled={index === activeQuestions.length - 1}
-                  onClick={() => updateConfig(moveQuestion(normalizedConfig, question.id, "down"))}
-                  className="rounded border border-emerald-200 p-1 text-emerald-700 disabled:opacity-35"
-                  title="Bajar"
-                  aria-label="Bajar pregunta"
+                  onClick={() => handleRemoveField(question.id)}
+                  className="rounded border border-rose-200 p-1 text-rose-600 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+                  title="Quitar campo"
+                  aria-label={`Quitar ${question.label}`}
                 >
-                  <ArrowDown className="h-3 w-3" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => updateConfig(toggleQuestionActive(normalizedConfig, question.id, false))}
-                  className="rounded border border-rose-200 p-1 text-rose-600 hover:bg-rose-50"
-                  title="Quitar pregunta"
-                  aria-label="Quitar pregunta"
-                >
-                  <X className="h-3 w-3" />
+                  <X className="h-3 w-3" aria-hidden="true" />
                 </button>
               </article>
-            ))}
+              );
+            })}
+            {rsvpDragState && draggedRsvpQuestion && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none fixed z-[100] flex min-h-[58px] items-center gap-2 rounded-lg border border-purple-300 bg-white p-1.5 shadow-xl ring-2 ring-purple-100"
+                style={{
+                  left: `${resolveDragPreviewLeft(rsvpDragState)}px`,
+                  top: `${(rsvpDragState.pointerY || 0) - (rsvpDragState.grabOffsetY || 0)}px`,
+                  width: rsvpDragState.rowWidth ? `${rsvpDragState.rowWidth}px` : undefined,
+                }}
+              >
+                <span className="flex h-10 w-8 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-500">
+                  <GripVertical size={16} aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-zinc-700">
+                    Mover a posicion {Number(rsvpDragState.toIndex || 0) + 1}
+                  </span>
+                  <span className="block truncate text-[11px] text-zinc-400">
+                    {draggedRsvpQuestion.label}
+                  </span>
+                </span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600">
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </span>
+              </div>
+            )}
 
             {activeQuestions.length === 0 ? (
               <div className="rounded-md border border-dashed border-emerald-200 bg-white p-2 text-[11px] text-emerald-700">
-                No hay preguntas activas.
+                No hay campos activos.
               </div>
             ) : null}
           </div>
         </section>
+        )}
 
-        <section className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/55 p-3">
-          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">Para agregar</h4>
+        {showAddQuestionAction && (
+        <section className="shrink-0 rounded-xl border border-violet-200 bg-violet-50/55 p-2">
+          {canAddMoreQuestions && inactiveQuestions.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setFieldSelectorOpen(true)}
+              className={`${COMPACT_ACTION_BUTTON_CLASS} bg-white`}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Agregar otro campo
+            </button>
+          ) : (
+            <div className="rounded-md border border-dashed border-violet-200 bg-white p-2 text-[11px] text-violet-700">
+              {canAddMoreQuestions
+                ? "Todos los campos disponibles ya fueron agregados."
+                : "Llegaste al maximo de preguntas."}
+            </div>
+          )}
+        </section>
+        )}
 
-          <div className="space-y-1.5">
-            {inactiveQuestions.map((question) => {
-              const customBlocked =
-                question.source === "custom" && activeCustomCount >= maxCustomQuestions;
-              const disabled = !canAddMoreQuestions || customBlocked;
-
-              return (
-                <div
-                  key={question.id}
-                  className="flex min-h-[56px] items-center justify-between gap-2 rounded-lg border border-violet-200 bg-white px-2 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className="overflow-hidden break-words text-xs font-medium leading-[1.2] text-slate-800"
-                      title={question.label}
-                      style={{
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                      }}
-                    >
-                      {question.label}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => updateConfig(toggleQuestionActive(normalizedConfig, question.id, true))}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-violet-200 text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-35"
-                    title="Agregar pregunta"
-                    aria-label="Agregar pregunta"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              );
-            })}
-
-            {!canAddMoreQuestions ? (
-              <div className="rounded-md border border-dashed border-violet-200 bg-white p-2 text-[11px] text-violet-700">
-                Llegaste al maximo de preguntas.
-              </div>
-            ) : null}
-          </div>
+        <section className="shrink-0 rounded-xl border border-slate-200 bg-white p-2">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className={`${COMPACT_ACTION_BUTTON_CLASS} bg-violet-50`}
+          >
+            <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Ajustes del formulario
+          </button>
         </section>
       </div>
 
-      <AdvancedSettingsModal
-        open={advancedOpen}
-        config={normalizedConfig}
-        onClose={() => setAdvancedOpen(false)}
-        onChange={updateConfig}
-        maxQuestions={maxQuestions}
+      <FieldSelectorModal
+        open={fieldSelectorOpen}
+        questions={inactiveQuestions}
+        onClose={() => setFieldSelectorOpen(false)}
+        onSelect={handleSelectFieldToAdd}
+        canAddMoreQuestions={canAddMoreQuestions}
+        activeCustomCount={activeCustomCount}
         maxCustomQuestions={maxCustomQuestions}
+      />
+
+      <FieldEditorModal
+        open={Boolean(editingQuestion)}
+        config={normalizedConfig}
+        question={editingQuestion}
+        onClose={() => setFieldEditorQuestionId(null)}
+        onChange={updateConfig}
+        onRemove={() => handleRemoveField(editingQuestion?.id)}
+      />
+
+      <FormSettingsModal
+        open={settingsOpen}
+        config={normalizedConfig}
+        onClose={() => setSettingsOpen(false)}
+        onChange={updateConfig}
       />
 
       <RsvpPreviewModal

@@ -7,6 +7,17 @@ export type RsvpQuestionType =
   | "boolean"
   | "phone";
 
+const RSVP_QUESTION_TYPES: RsvpQuestionType[] = [
+  "short_text",
+  "long_text",
+  "number",
+  "single_select",
+  "boolean",
+  "phone",
+];
+
+const RSVP_QUESTION_TYPE_SET = new Set<string>(RSVP_QUESTION_TYPES);
+
 export type RsvpQuestionOption = {
   id: string;
   label: string;
@@ -239,6 +250,17 @@ function toOrder(value: unknown, fallback: number): number {
   return Math.max(0, Math.round(parsed));
 }
 
+function sanitizeQuestionType(value: unknown, fallback: RsvpQuestionType): RsvpQuestionType {
+  return typeof value === "string" && RSVP_QUESTION_TYPE_SET.has(value)
+    ? value as RsvpQuestionType
+    : fallback;
+}
+
+function sanitizeOptionId(value: unknown, fallback: string): string {
+  const text = sanitizeText(value, "", 48).replace(/[^a-zA-Z0-9_-]/g, "_");
+  return text || fallback;
+}
+
 function resolvePresetId(value: unknown): RsvpPresetId {
   if (value === "wedding_complete" || value === "minimal" || value === "basic") {
     return value;
@@ -288,9 +310,10 @@ function createPresetQuestions(presetId: RsvpPresetId): RsvpQuestion[] {
 
 function buildOptions(
   templateOptions: RsvpQuestionOption[] | undefined,
-  incomingOptions: unknown
+  incomingOptions: unknown,
+  questionType: RsvpQuestionType
 ): RsvpQuestionOption[] | undefined {
-  if (!Array.isArray(templateOptions) || templateOptions.length === 0) return undefined;
+  if (questionType !== "single_select") return undefined;
 
   const incomingById = new Map<string, Record<string, unknown>>();
   if (Array.isArray(incomingOptions)) {
@@ -302,7 +325,15 @@ function buildOptions(
     }
   }
 
-  const nextOptions = templateOptions.map((option) => {
+  const templateOptionIds = new Set(
+    Array.isArray(templateOptions)
+      ? templateOptions
+          .filter((option) => option && typeof option.id === "string")
+          .map((option) => option.id)
+      : []
+  );
+
+  const nextOptions = (Array.isArray(templateOptions) ? templateOptions : []).map((option) => {
     const incoming = incomingById.get(option.id);
     return {
       id: option.id,
@@ -313,7 +344,28 @@ function buildOptions(
     };
   });
 
-  return nextOptions.length ? nextOptions : undefined;
+  if (Array.isArray(incomingOptions)) {
+    incomingOptions.forEach((raw, index) => {
+      if (!raw || typeof raw !== "object") return;
+      const option = raw as Record<string, unknown>;
+      const id = sanitizeOptionId(option.id, `option_${index + 1}`);
+      if (templateOptionIds.has(id) || nextOptions.some((item) => item.id === id)) return;
+      nextOptions.push({
+        id,
+        label: sanitizeText(option.label, `Opcion ${nextOptions.length + 1}`, 80),
+        ...(typeof option.metricTag === "string" && option.metricTag
+          ? { metricTag: option.metricTag }
+          : {}),
+      });
+    });
+  }
+
+  return nextOptions.length
+    ? nextOptions
+    : [
+        { id: "option_1", label: "Opcion 1" },
+        { id: "option_2", label: "Opcion 2" },
+      ];
 }
 
 function sanitizeQuestion(
@@ -336,13 +388,9 @@ function sanitizeQuestion(
 
   const custom = isCustomQuestionId(template.id);
   const source: RsvpQuestionSource = custom ? "custom" : "catalog";
+  const type = sanitizeQuestionType(incoming.type, fallbackQuestion.type);
 
-  const requestedType = incoming.type;
-  const type: RsvpQuestionType = custom
-    ? (requestedType === "long_text" ? "long_text" : "short_text")
-    : fallbackQuestion.type;
-
-  const options = buildOptions(template.options, incoming.options);
+  const options = buildOptions(template.options, incoming.options, type);
 
   return {
     id: template.id,

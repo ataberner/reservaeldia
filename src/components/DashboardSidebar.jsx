@@ -1,5 +1,5 @@
 // src/components/DashboardSidebar.jsx
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
@@ -37,6 +37,13 @@ import {
     resolveAssistantResumeStepIndex,
 } from "@/domain/editor/assistantMode";
 import {
+    clampAssistantSubstepIndex,
+    getAssistantSubstep,
+    getAssistantSubstepProgressLabel,
+    getAssistantSubstepSignature,
+    resolveAssistantSubstepsForStep,
+} from "@/domain/editor/assistantSubsteps";
+import {
     DASHBOARD_EDITOR_CANVAS_GAP_PX as DESKTOP_PANEL_GAP_PX,
     DASHBOARD_SIDEBAR_DESKTOP_PANEL_LEFT_PX as DESKTOP_PANEL_LEFT_PX,
     DASHBOARD_SIDEBAR_DESKTOP_PANEL_WIDTH_PX as DESKTOP_PANEL_WIDTH_PX,
@@ -49,6 +56,7 @@ import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
     readCanvasEditorMethod,
     readEditorObjects,
+    readEditorSections,
 } from "@/lib/editorRuntimeBridge";
 
 
@@ -311,6 +319,8 @@ export default function DashboardSidebar({
     const [assistantActive, setAssistantActive] = useState(shouldAutoOpenAssistantInitially);
     const [assistantHasStarted, setAssistantHasStarted] = useState(shouldAutoOpenAssistantInitially);
     const [assistantStepIndex, setAssistantStepIndex] = useState(0);
+    const [assistantSubstepIndex, setAssistantSubstepIndex] = useState(0);
+    const [assistantContentVersion, setAssistantContentVersion] = useState(0);
     const [assistantHasStoryTextStep, setAssistantHasStoryTextStep] = useState(false);
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const {
@@ -433,6 +443,56 @@ export default function DashboardSidebar({
         };
     }, [syncAssistantStoryTextStep]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return undefined;
+
+        let rafId = null;
+        let timeoutId = null;
+        const refreshAssistantContent = () => {
+            if (rafId !== null || timeoutId !== null) return;
+
+            const commit = () => {
+                rafId = null;
+                timeoutId = null;
+                setAssistantContentVersion((version) => version + 1);
+            };
+
+            if (typeof window.requestAnimationFrame === "function") {
+                rafId = window.requestAnimationFrame(commit);
+            } else {
+                timeoutId = window.setTimeout(commit, 0);
+            }
+        };
+
+        const events = [
+            EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT,
+            EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT,
+            EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+            EDITOR_BRIDGE_EVENTS.GALLERY_CELL_CHANGE,
+            EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+            EDITOR_BRIDGE_EVENTS.RSVP_CONFIG_CHANGED,
+            EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_CHANGED,
+            EDITOR_BRIDGE_EVENTS.ACTIVE_SECTION_CHANGE,
+            "abrir-borrador",
+        ];
+
+        events.forEach((eventName) => {
+            window.addEventListener(eventName, refreshAssistantContent);
+        });
+
+        return () => {
+            events.forEach((eventName) => {
+                window.removeEventListener(eventName, refreshAssistantContent);
+            });
+            if (rafId !== null && typeof window.cancelAnimationFrame === "function") {
+                window.cancelAnimationFrame(rafId);
+            }
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+            }
+        };
+    }, []);
+
     // Helpers para mostrar/ocultar con pequeno delay seguro
     const openPanel = (tipo) => {
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
@@ -467,6 +527,14 @@ export default function DashboardSidebar({
         }
 
         setAssistantStepIndex(safeStepIndex);
+        if (options.preserveSubstep !== true) {
+            const nextSubstepIndex = Number(options.substepIndex);
+            setAssistantSubstepIndex(
+                Number.isFinite(nextSubstepIndex)
+                    ? Math.max(0, Math.trunc(nextSubstepIndex))
+                    : 0
+            );
+        }
         setAssistantActive(true);
         setAssistantHasStarted(true);
         setBotonActivo(step.id);
@@ -487,11 +555,25 @@ export default function DashboardSidebar({
             currentStepIndex: assistantStepIndex,
             includeStoryText,
         });
+        const resumeStep = getAssistantStep(resumeStepIndex, { includeStoryText });
 
-        openAssistantAtStep(resumeStepIndex, { expandMobilePanel: true });
+        if (
+            assistantActive &&
+            assistantStepIndex === resumeStepIndex &&
+            botonActivo === resumeStep.id
+        ) {
+            return;
+        }
+
+        openAssistantAtStep(resumeStepIndex, {
+            expandMobilePanel: true,
+            preserveSubstep: true,
+        });
     }, [
+        assistantActive,
         assistantHasStarted,
         assistantStepIndex,
+        botonActivo,
         openAssistantAtStep,
         syncAssistantStoryTextStep,
     ]);
@@ -553,10 +635,41 @@ export default function DashboardSidebar({
         const navigation = getAssistantNavigationState(assistantStepIndex, {
             includeStoryText,
         });
+        const currentSubsteps = resolveAssistantSubstepsForStep(
+            navigation.currentStep.id,
+            {
+                objects: readEditorObjects(),
+                sections: readEditorSections(),
+            }
+        );
+        const currentSubstepIndex = clampAssistantSubstepIndex(
+            assistantSubstepIndex,
+            currentSubsteps
+        );
+
+        if (currentSubstepIndex > 0) {
+            setAssistantSubstepIndex(currentSubstepIndex - 1);
+            return;
+        }
+
         if (!navigation.canGoPrevious) return;
-        openAssistantAtStep(navigation.previousStepIndex);
+
+        const previousStep = getAssistantStep(navigation.previousStepIndex, {
+            includeStoryText,
+        });
+        const previousSubsteps = resolveAssistantSubstepsForStep(
+            previousStep.id,
+            {
+                objects: readEditorObjects(),
+                sections: readEditorSections(),
+            }
+        );
+        openAssistantAtStep(navigation.previousStepIndex, {
+            substepIndex: Math.max(0, previousSubsteps.length - 1),
+        });
     }, [
         assistantStepIndex,
+        assistantSubstepIndex,
         openAssistantAtStep,
         syncAssistantStoryTextStep,
     ]);
@@ -566,10 +679,28 @@ export default function DashboardSidebar({
         const navigation = getAssistantNavigationState(assistantStepIndex, {
             includeStoryText,
         });
+        const currentSubsteps = resolveAssistantSubstepsForStep(
+            navigation.currentStep.id,
+            {
+                objects: readEditorObjects(),
+                sections: readEditorSections(),
+            }
+        );
+        const currentSubstepIndex = clampAssistantSubstepIndex(
+            assistantSubstepIndex,
+            currentSubsteps
+        );
+
+        if (currentSubstepIndex < currentSubsteps.length - 1) {
+            setAssistantSubstepIndex(currentSubstepIndex + 1);
+            return;
+        }
+
         if (!navigation.canGoNext) return;
-        openAssistantAtStep(navigation.nextStepIndex);
+        openAssistantAtStep(navigation.nextStepIndex, { substepIndex: 0 });
     }, [
         assistantStepIndex,
+        assistantSubstepIndex,
         openAssistantAtStep,
         syncAssistantStoryTextStep,
     ]);
@@ -987,12 +1118,12 @@ export default function DashboardSidebar({
 
 
 
-    const alternarSidebarConBoton = (boton) => {
+    const alternarSidebarConBoton = (boton, { forceOpen = false } = {}) => {
         setFijadoSidebar((prevFijado) => {
             const mismoBoton = botonActivo === boton;
 
             // Si ya estaba fijado y vuelvo a hacer click en el mismo boton => cierro
-            if (prevFijado && mismoBoton) {
+            if (!forceOpen && prevFijado && mismoBoton) {
                 setHoverSidebar(false);
                 setBotonActivo(null);
                 if (boton === "rsvp") {
@@ -1012,29 +1143,17 @@ export default function DashboardSidebar({
     };
 
     const handleSidebarTabClick = (boton) => {
-        const includeStoryText = syncAssistantStoryTextStep();
-        const flowOptions = { includeStoryText };
-        const assistantTabIndex = getAssistantStepIndexByTabId(
-            boton,
-            flowOptions
-        );
+        const shouldForceOpenNormalTab = assistantActive;
 
         if (assistantActive) {
-            if (assistantTabIndex >= 0) {
-                openAssistantAtStep(assistantTabIndex);
-                return;
-            }
-
             setAssistantActive(false);
-        } else if (assistantHasStarted && assistantTabIndex >= 0) {
-            setAssistantStepIndex(assistantTabIndex);
         }
 
         if (boton === "rsvp") {
             setRsvpForcePresetSelection(false);
         }
 
-        alternarSidebarConBoton(boton);
+        alternarSidebarConBoton(boton, { forceOpen: shouldForceOpenNormalTab });
     };
 
     // Runtime-sensitive shell contract: the header-height variable keeps the
@@ -1062,7 +1181,7 @@ export default function DashboardSidebar({
     };
 
     const getIconButtonClass = (boton, { compact = false } = {}) => {
-        const isActive = fijadoSidebar && botonActivo === boton;
+        const isActive = !assistantActive && fijadoSidebar && botonActivo === boton;
         const gradient = iconGradientByButton[boton] || iconGradientByButton.texto;
         const shapeClass = compact ? "h-11 w-11 rounded-xl" : "h-10 w-10 rounded-xl";
         return `group flex ${shapeClass} items-center justify-center border bg-gradient-to-br ${gradient} cursor-pointer transition-all duration-200 ${isActive
@@ -1071,7 +1190,7 @@ export default function DashboardSidebar({
             }`;
     };
     const getDesktopToolButtonClass = (boton = null, { wide = false } = {}) => {
-        const isActive = boton && fijadoSidebar && botonActivo === boton;
+        const isActive = boton && !assistantActive && fijadoSidebar && botonActivo === boton;
         const widthClass = wide ? "w-[158px]" : "w-[130px]";
         return `inline-flex h-[42px] ${widthClass} items-center gap-2 rounded-[32px] px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[550] leading-[24px] tracking-[0px] text-[#262626] transition hover:bg-[#EFDFFB] ${isActive ? "bg-[#EFDFFB]" : ""}`;
     };
@@ -1094,9 +1213,9 @@ export default function DashboardSidebar({
         "border-[#e5d7fb] bg-white text-[#6f3bc0] shadow-[0_10px_20px_rgba(95,53,150,0.12)] hover:-translate-y-[1px] hover:border-[#d7c4f5] hover:bg-[#faf6ff]";
     const mobileHistoryButtonDisabled =
         "cursor-not-allowed border-[#ece7f7] bg-[#f5f3fa] text-slate-300 shadow-none";
-    const assistantAccessLabel = assistantHasStarted ? "Continuar" : "Asistente";
+    const assistantAccessLabel = "Asistente";
     const assistantAccessTitle = assistantHasStarted
-        ? "Continuar el asistente"
+        ? "Volver al asistente"
         : "Abrir el asistente";
     const assistantNavigation = getAssistantNavigationState(
         assistantStepIndex,
@@ -1109,7 +1228,54 @@ export default function DashboardSidebar({
         isAssistantTabId(botonActivo, assistantFlowOptions) &&
         assistantCurrentStep.id === botonActivo;
     const assistantMode = shouldShowAssistantControls;
-    const assistantNextIsPreview = shouldShowAssistantControls && !assistantNavigation.canGoNext;
+    const assistantSubsteps = useMemo(() => (
+        shouldShowAssistantControls
+            ? resolveAssistantSubstepsForStep(assistantCurrentStep.id, {
+            objects: readEditorObjects(),
+            sections: readEditorSections(),
+        })
+            : []
+    ), [
+        assistantContentVersion,
+        assistantCurrentStep.id,
+        shouldShowAssistantControls,
+    ]);
+    const assistantSubstepSignature = getAssistantSubstepSignature(assistantSubsteps);
+    const assistantSubstepIndexSafe = clampAssistantSubstepIndex(
+        assistantSubstepIndex,
+        assistantSubsteps
+    );
+    const assistantCurrentSubstep = shouldShowAssistantControls
+        ? getAssistantSubstep(assistantSubstepIndexSafe, assistantSubsteps)
+        : null;
+    const assistantHasNextSubstep =
+        shouldShowAssistantControls &&
+        assistantSubstepIndexSafe < assistantSubsteps.length - 1;
+    const assistantCanGoPrevious =
+        shouldShowAssistantControls &&
+        (assistantSubstepIndexSafe > 0 || assistantNavigation.canGoPrevious);
+    const assistantSubstepProgressLabel = getAssistantSubstepProgressLabel(
+        assistantSubstepIndexSafe,
+        assistantSubsteps
+    );
+    const assistantProgressLabel = assistantSubstepProgressLabel
+        ? `${assistantNavigation.progressLabel} - ${assistantSubstepProgressLabel}`
+        : assistantNavigation.progressLabel;
+    const assistantStepLabel = assistantCurrentSubstep?.label
+        ? `${assistantCurrentStep.label} - ${assistantCurrentSubstep.label}`
+        : assistantCurrentStep.label;
+    const assistantNextIsPreview =
+        shouldShowAssistantControls &&
+        !assistantHasNextSubstep &&
+        !assistantNavigation.canGoNext;
+
+    useEffect(() => {
+        if (!shouldShowAssistantControls) return;
+        setAssistantSubstepIndex((currentIndex) =>
+            clampAssistantSubstepIndex(currentIndex, assistantSubsteps)
+        );
+    }, [assistantSubstepSignature, assistantSubsteps, shouldShowAssistantControls]);
+
     const canOpenAssistantPreview = typeof generarVistaPrevia === "function";
     const mobileAssistantButtonClass =
         assistantActive
@@ -1413,7 +1579,7 @@ export default function DashboardSidebar({
                             flex: 1,
                             minHeight: 0,
                             height: "auto",
-                            overflowY: "auto",
+                            overflowY: shouldShowAssistantControls ? "hidden" : "auto",
                             WebkitOverflowScrolling: "touch",
                             overscrollBehaviorY: "contain",
                         }}
@@ -1514,6 +1680,7 @@ export default function DashboardSidebar({
                             rsvpForcePresetSelection={rsvpForcePresetSelection}
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}
                             assistantMode={assistantMode}
+                            assistantSubstep={assistantCurrentSubstep}
                         />
                     </div>
                     {shouldShowAssistantControls && (
@@ -1522,17 +1689,17 @@ export default function DashboardSidebar({
                         >
                             <div className="mb-1 flex items-center justify-between gap-2">
                                 <div className="min-w-0 truncate font-['Source_Sans_Pro',sans-serif] text-[10px] font-semibold uppercase leading-[14px] tracking-[0.06em] text-[#692B9A]">
-                                    Asistente {assistantNavigation.progressLabel}
+                                    Asistente {assistantProgressLabel}
                                 </div>
                                 <div className="shrink-0 truncate font-['Source_Sans_Pro',sans-serif] text-[11px] font-semibold leading-[14px] text-[#262626]">
-                                    {assistantCurrentStep.label}
+                                    {assistantStepLabel}
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-1.5">
                                 <button
                                     type="button"
                                     onClick={handleAssistantPrevious}
-                                    disabled={!assistantNavigation.canGoPrevious}
+                                    disabled={!assistantCanGoPrevious}
                                     className={`${assistantStepButtonBase} ${assistantStepButtonSecondary}`}
                                 >
                                     Anterior
@@ -1547,7 +1714,7 @@ export default function DashboardSidebar({
                                     disabled={
                                         assistantNextIsPreview
                                             ? !canOpenAssistantPreview
-                                            : !assistantNavigation.canGoNext
+                                            : !assistantHasNextSubstep && !assistantNavigation.canGoNext
                                     }
                                     className={`${assistantStepButtonBase} ${assistantStepButtonPrimary}`}
                                 >

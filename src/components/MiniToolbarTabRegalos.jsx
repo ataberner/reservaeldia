@@ -609,7 +609,10 @@ function GiftPreviewModal({ open, config, onClose }) {
   );
 }
 
-export default function MiniToolbarTabRegalos() {
+export default function MiniToolbarTabRegalos({
+  simplifiedForAssistant = false,
+  assistantSubstep = null,
+}) {
   const [config, setConfig] = useState(() => createDefaultGiftConfig());
   const [giftButton, setGiftButton] = useState(null);
   const [buttonText, setButtonText] = useState(DEFAULT_GIFT_BUTTON_TEXT);
@@ -625,6 +628,27 @@ export default function MiniToolbarTabRegalos() {
   const inactiveItems = methodItems.filter((item) => !item.active);
   const giftButtonId = giftButton?.id || null;
   const isGiftActive = Boolean(giftButton && !isFunctionalCtaHidden(giftButton));
+  const assistantScope = simplifiedForAssistant
+    ? String(assistantSubstep?.scope || "").trim()
+    : "";
+  const showActivationBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "activation";
+  const showActiveItemsBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "active";
+  const showInactiveItemsBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "add";
+  const giftsContainerClass = simplifiedForAssistant
+    ? "flex flex-1 min-h-0 flex-col gap-3 overflow-hidden pr-1"
+    : "flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto pr-1";
+  const giftsActivationGroupClass = simplifiedForAssistant
+    ? "min-h-0 flex-1 space-y-2 overflow-y-auto pr-1"
+    : "contents";
+  const giftsScrollableSectionClass = simplifiedForAssistant
+    ? "min-h-0 flex flex-1 flex-col overflow-hidden"
+    : "";
+  const giftsListClass = simplifiedForAssistant
+    ? "min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1"
+    : "space-y-1.5";
 
   const syncButtonState = () => {
     const giftButton = findGiftButton();
@@ -790,7 +814,9 @@ export default function MiniToolbarTabRegalos() {
 
   return (
     <>
-      <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+      <div className={giftsContainerClass}>
+        {showActivationBlock && (
+        <div className={giftsActivationGroupClass}>
         <section className={styles.activationPanel}>
           <div className={styles.activationHeader}>
             <h3 className={styles.activationTitle}>Mostrar opciones de regalos</h3>
@@ -842,13 +868,16 @@ export default function MiniToolbarTabRegalos() {
             </button>
           </div>
         </section>
+        </div>
+        )}
 
-        <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+        {showActiveItemsBlock && (
+        <section className={`space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 ${giftsScrollableSectionClass}`}>
           <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
             Activas
           </h4>
 
-          <div className="space-y-1.5">
+          <div className={giftsListClass}>
             {activeItems.map((item) => (
               <article
                 key={item.key}
@@ -905,13 +934,15 @@ export default function MiniToolbarTabRegalos() {
             ) : null}
           </div>
         </section>
+        )}
 
-        <section className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/55 p-3">
+        {showInactiveItemsBlock && (
+        <section className={`space-y-2 rounded-xl border border-violet-200 bg-violet-50/55 p-3 ${giftsScrollableSectionClass}`}>
           <h4 className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
             Para agregar
           </h4>
 
-          <div className="space-y-1.5">
+          <div className={giftsListClass}>
             {inactiveItems.map((item) => (
               <div
                 key={item.key}
@@ -943,6 +974,7 @@ export default function MiniToolbarTabRegalos() {
             ) : null}
           </div>
         </section>
+        )}
       </div>
 
       <GiftAdvancedSettingsModal

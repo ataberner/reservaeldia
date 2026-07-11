@@ -33,6 +33,7 @@ export default function MiniToolbar({
   rsvpForcePresetSelection,
   onRsvpPresetSelectionComplete,
   assistantMode = false,
+  assistantSubstep = null,
 }) {
 
   // Estado interno sincronizado con 3 fuentes: prop -> evento global -> fallback por selección
@@ -81,7 +82,7 @@ export default function MiniToolbar({
   if (!botonActivo || botonActivo === "forma") return null;
 
   return (
-    <div className="flex flex-col gap-2 h-full min-h-0">
+    <div className={`flex flex-col gap-2 h-full min-h-0 ${assistantMode ? "overflow-hidden" : ""}`}>
 
       {botonActivo === "texto" && (
         <MiniToolbarTabTexto
@@ -90,11 +91,15 @@ export default function MiniToolbar({
           onAgregarParrafo={onAgregarParrafo}
           seccionActivaId={seccionActivaId}
           simplifiedForAssistant={assistantMode}
+          assistantSubstep={assistantSubstep}
         />
       )}
 
       {botonActivo === "detalles" && (
-        <MiniToolbarTabDetallesEvento simplifiedForAssistant={assistantMode} />
+        <MiniToolbarTabDetallesEvento
+          simplifiedForAssistant={assistantMode}
+          assistantSubstep={assistantSubstep}
+        />
       )}
 
       {botonActivo === "imagen" && (
@@ -110,6 +115,7 @@ export default function MiniToolbar({
           setMostrarGaleria={setMostrarGaleria}
           setImagenesSeleccionadas={setImagenesSeleccionadas}
           simplifiedForAssistant={assistantMode}
+          assistantSubstep={assistantSubstep}
           replacementUploadState={imageReplacementUploadState}
           onBeginReplacementUpload={beginImageReplacementUpload}
           onClearReplacementUpload={clearImageReplacementUpload}
@@ -139,10 +145,17 @@ export default function MiniToolbar({
         <MiniToolbarTabRsvp
           forcePresetSelection={rsvpForcePresetSelection}
           onPresetSelectionComplete={onRsvpPresetSelectionComplete}
+          simplifiedForAssistant={assistantMode}
+          assistantSubstep={assistantSubstep}
         />
       )}
 
-      {botonActivo === "regalos" && <MiniToolbarTabRegalos />}
+      {botonActivo === "regalos" && (
+        <MiniToolbarTabRegalos
+          simplifiedForAssistant={assistantMode}
+          assistantSubstep={assistantSubstep}
+        />
+      )}
 
 
     </div>

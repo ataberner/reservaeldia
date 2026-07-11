@@ -15,6 +15,17 @@ export const RSVP_DEFAULT_MODAL = Object.freeze({
   primaryColor: "#773dbe",
 });
 
+export const RSVP_QUESTION_TYPES = Object.freeze([
+  "short_text",
+  "long_text",
+  "number",
+  "single_select",
+  "boolean",
+  "phone",
+]);
+
+const RSVP_QUESTION_TYPE_SET = new Set(RSVP_QUESTION_TYPES);
+
 function sanitizeText(value, fallback = "", maxLength = 120) {
   if (value === null || typeof value === "undefined") return fallback;
   const next = String(value).replace(/\s+/g, " ").trim();
@@ -49,13 +60,22 @@ function toSafeOrder(value, fallback = 0) {
   return Math.max(0, Math.round(parsed));
 }
 
+function sanitizeQuestionType(value, fallback = "short_text") {
+  return RSVP_QUESTION_TYPE_SET.has(value) ? value : fallback;
+}
+
+function sanitizeOptionId(value, fallback) {
+  const next = sanitizeText(value, "", 48).replace(/[^a-zA-Z0-9_-]/g, "_");
+  return next || fallback;
+}
+
 function resolveEnabledFlag(value, fallback) {
   if (typeof value === "boolean") return value;
   return fallback;
 }
 
-function buildOptions(templateOptions = [], incomingOptions = []) {
-  if (!Array.isArray(templateOptions) || templateOptions.length === 0) {
+function buildOptions(templateOptions = [], incomingOptions = [], questionType = "short_text") {
+  if (questionType !== "single_select") {
     return undefined;
   }
 
@@ -65,7 +85,13 @@ function buildOptions(templateOptions = [], incomingOptions = []) {
       .map((option) => [option.id, option])
   );
 
-  return templateOptions.map((templateOption) => {
+  const templateOptionIds = new Set(
+    (Array.isArray(templateOptions) ? templateOptions : [])
+      .filter((option) => option && typeof option.id === "string")
+      .map((option) => option.id)
+  );
+
+  const nextOptions = (Array.isArray(templateOptions) ? templateOptions : []).map((templateOption) => {
     const incoming = incomingById.get(templateOption.id);
     return {
       id: templateOption.id,
@@ -73,6 +99,26 @@ function buildOptions(templateOptions = [], incomingOptions = []) {
       metricTag: templateOption.metricTag,
     };
   });
+
+  (Array.isArray(incomingOptions) ? incomingOptions : []).forEach((option, index) => {
+    if (!option || typeof option !== "object") return;
+    const id = sanitizeOptionId(option.id, `option_${index + 1}`);
+    if (templateOptionIds.has(id) || nextOptions.some((item) => item.id === id)) return;
+    nextOptions.push({
+      id,
+      label: sanitizeText(option.label, `Opcion ${nextOptions.length + 1}`, 80),
+      ...(typeof option.metricTag === "string" && option.metricTag
+        ? { metricTag: option.metricTag }
+        : {}),
+    });
+  });
+
+  return nextOptions.length
+    ? nextOptions
+    : [
+        { id: "option_1", label: "Opcion 1" },
+        { id: "option_2", label: "Opcion 2" },
+      ];
 }
 
 function sanitizeQuestion(incomingQuestion, fallbackQuestion, fallbackOrder = 0) {
@@ -80,11 +126,7 @@ function sanitizeQuestion(incomingQuestion, fallbackQuestion, fallbackOrder = 0)
   const isCustom = isCustomQuestionId(template.id);
 
   const source = isCustom ? "custom" : "catalog";
-  const type = isCustom
-    ? (["short_text", "long_text"].includes(incomingQuestion?.type)
-      ? incomingQuestion.type
-      : fallbackQuestion.type)
-    : fallbackQuestion.type;
+  const type = sanitizeQuestionType(incomingQuestion?.type, fallbackQuestion.type);
 
   const label = sanitizeText(
     incomingQuestion?.label,
@@ -98,7 +140,8 @@ function sanitizeQuestion(incomingQuestion, fallbackQuestion, fallbackOrder = 0)
 
   const options = buildOptions(
     template.options,
-    Array.isArray(incomingQuestion?.options) ? incomingQuestion.options : []
+    Array.isArray(incomingQuestion?.options) ? incomingQuestion.options : [],
+    type
   );
 
   return {

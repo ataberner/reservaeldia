@@ -334,6 +334,7 @@ export default function MiniToolbarTabImagen({
   setMostrarGaleria,
   setImagenesSeleccionadas,
   simplifiedForAssistant = false,
+  assistantSubstep = null,
   replacementUploadState: controlledReplacementUploadState = null,
   onBeginReplacementUpload = null,
   onClearReplacementUpload = null,
@@ -501,6 +502,20 @@ export default function MiniToolbarTabImagen({
   const isCoverReplacementUploading = Boolean(
     coverReplacementUploadKey && replacementUploadState[coverReplacementUploadKey]
   );
+  const assistantScope = simplifiedForAssistant
+    ? String(assistantSubstep?.scope || "").trim()
+    : "";
+  const assistantGalleryId =
+    simplifiedForAssistant && assistantScope === "gallery"
+      ? String(assistantSubstep?.galleryId || "").trim()
+      : "";
+  const shouldRenderCoverBlock =
+    firstSectionCover.hasImage &&
+    (!simplifiedForAssistant || !assistantScope || assistantScope === "cover");
+  const shouldRenderGalleryBlock =
+    !simplifiedForAssistant || !assistantScope || assistantScope === "gallery";
+  const shouldRenderEmptyAssistantPhotos =
+    simplifiedForAssistant && assistantScope === "empty";
 
   const setPanelNoticeSafe = useCallback((message) => {
     if (!isMountedRef.current) return;
@@ -547,17 +562,22 @@ export default function MiniToolbarTabImagen({
     () =>
       resolveGallerySidebarEditingTarget({
         objects: editorObjects,
-        selectedIds: editorSelection.selectedIds,
-        sidebarGalleryId,
+        selectedIds: assistantGalleryId ? [] : editorSelection.selectedIds,
+        sidebarGalleryId: assistantGalleryId || sidebarGalleryId,
       }),
-    [editorObjects, editorSelection.selectedIds, sidebarGalleryId]
+    [assistantGalleryId, editorObjects, editorSelection.selectedIds, sidebarGalleryId]
   );
 
   const galleryCandidates = galleryTargetState.candidates;
   const galeriaSeleccionada = galleryTargetState.gallery;
   const showGalleryBlockSelector = galleryCandidates.length > 1;
-  const shouldShowGalleryBlockSelector =
-    showGalleryBlockSelector && !simplifiedForAssistant;
+  const shouldShowGalleryBlockSelector = showGalleryBlockSelector && !simplifiedForAssistant;
+  const showGalleryCreationControls = canCreateGallery && !simplifiedForAssistant;
+  const showGalleryLayoutControls = !simplifiedForAssistant;
+  const showGalleryStatusBadge = !simplifiedForAssistant;
+  const showGallerySelectedActionBar = !simplifiedForAssistant;
+  const showCanvasActiveCellControls = !simplifiedForAssistant;
+  const showUploadedImageLibrary = !simplifiedForAssistant;
 
   useEffect(() => {
     if (!openGalleryGridSelector) return;
@@ -565,7 +585,7 @@ export default function MiniToolbarTabImagen({
       closeGalleryGridSelector();
       return;
     }
-    if (openGalleryGridSelector === "creation" && !canCreateGallery) {
+    if (openGalleryGridSelector === "creation" && !showGalleryCreationControls) {
       closeGalleryGridSelector();
       return;
     }
@@ -573,10 +593,10 @@ export default function MiniToolbarTabImagen({
       closeGalleryGridSelector();
     }
   }, [
-    canCreateGallery,
     closeGalleryGridSelector,
     galeriaSeleccionada?.id,
     openGalleryGridSelector,
+    showGalleryCreationControls,
     simplifiedForAssistant,
   ]);
 
@@ -1630,7 +1650,7 @@ export default function MiniToolbarTabImagen({
 
   return (
     <div className={`flex flex-col flex-1 min-h-0 ${isMobileViewport ? "gap-2" : "gap-3"}`}>
-      {firstSectionCover.hasImage && (
+      {shouldRenderCoverBlock && (
         <section
           className={`shrink-0 border border-zinc-200 bg-white ${
             isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
@@ -1670,7 +1690,22 @@ export default function MiniToolbarTabImagen({
         </section>
       )}
 
-      {canCreateGallery && !simplifiedForAssistant && (
+      {shouldRenderEmptyAssistantPhotos && (
+        <section
+          className={`shrink-0 border border-dashed border-zinc-200 bg-zinc-50 text-zinc-600 ${
+            isMobileViewport ? "rounded-lg px-2.5 py-3" : "rounded-xl px-3 py-3"
+          }`}
+        >
+          <div className="text-[13px] font-semibold leading-[18px] text-zinc-700">
+            Fotos
+          </div>
+          <p className="mt-1 text-xs leading-relaxed">
+            Este borrador no tiene una portada con imagen ni galerias para administrar.
+          </p>
+        </section>
+      )}
+
+      {showGalleryCreationControls && (
         <section
           ref={galleryCreationSelectorRef}
           className={`shrink-0 border border-zinc-200 bg-white ${
@@ -1706,11 +1741,11 @@ export default function MiniToolbarTabImagen({
         </section>
       )}
 
-      {galleryCandidates.length > 0 && (
+      {shouldRenderGalleryBlock && galleryCandidates.length > 0 && (
         <section
-          className={`shrink-0 border border-zinc-200 bg-white ${
+          className={`${simplifiedForAssistant ? "min-h-0 flex-1 overflow-hidden" : "shrink-0"} border border-zinc-200 bg-white ${
             isMobileViewport ? "rounded-lg px-2.5 py-2" : "rounded-xl px-3 py-2.5"
-          }`}
+          } flex flex-col`}
         >
           {shouldShowGalleryBlockSelector && (
             <div className="flex flex-col gap-1.5">
@@ -1763,7 +1798,7 @@ export default function MiniToolbarTabImagen({
                   {selectedGalleryPhotos.length} foto{selectedGalleryPhotos.length === 1 ? "" : "s"} en este bloque.
                 </p>
               </div>
-              {!simplifiedForAssistant && (
+              {showGalleryStatusBadge && (
                 <span className="shrink-0 rounded bg-purple-50 px-2 py-1 text-[10px] font-medium text-purple-700">
                   Activa
                 </span>
@@ -1773,7 +1808,7 @@ export default function MiniToolbarTabImagen({
 
           {galeriaSeleccionada && (
             <>
-              {!simplifiedForAssistant && (
+              {showGalleryLayoutControls && (
                 <div className="mt-2">
                   <div
                     ref={galleryResizeSelectorRef}
@@ -1813,7 +1848,9 @@ export default function MiniToolbarTabImagen({
               <div
                 ref={galleryPhotoListRef}
                 role="list"
-                className="mt-2 flex flex-col gap-1.5"
+                className={`mt-2 flex flex-col gap-1.5 ${
+                  simplifiedForAssistant ? "min-h-0 flex-1 overflow-y-auto pr-1" : ""
+                }`}
               >
                 {displayedGallerySlotRows.map((slotRow, visualIndex) => {
                   const slot = slotRow?.slot;
@@ -1992,7 +2029,7 @@ export default function MiniToolbarTabImagen({
               </p>
             )}
 
-            {!simplifiedForAssistant && (
+            {showGallerySelectedActionBar && (
               <div className="mt-2 grid grid-cols-4 gap-1.5">
                 <button
                   type="button"
@@ -2048,7 +2085,7 @@ export default function MiniToolbarTabImagen({
         </section>
       )}
 
-      {celdaActiva && !simplifiedForAssistant && (
+      {celdaActiva && showCanvasActiveCellControls && (
         <div
           className={`border border-emerald-200 bg-emerald-50 ${
             isMobileViewport ? "rounded-lg px-2.5 py-1.5" : "rounded-xl px-3 py-2"
@@ -2080,7 +2117,7 @@ export default function MiniToolbarTabImagen({
         </p>
       )}
 
-      {!simplifiedForAssistant && (
+      {showUploadedImageLibrary && (
       <div className="shrink-0">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>

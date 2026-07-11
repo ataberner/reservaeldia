@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Copy, Eye, ExternalLink, Gift, Plus, Settings2, X } from "lucide-react";
+import { Check, Copy, Eye, ExternalLink, Gift, Pencil, Plus, Settings2, X } from "lucide-react";
 import { createDefaultGiftConfig, hasVisibleGiftMethods, normalizeGiftConfig } from "@/domain/gifts/config";
 import {
   getFunctionalCtaDefaultText,
@@ -14,6 +14,8 @@ import {
 import styles from "./MiniToolbarTabRegalos.module.css";
 
 const DEFAULT_GIFT_BUTTON_TEXT = getFunctionalCtaDefaultText("regalo-boton") || "Ver regalos";
+const COMPACT_GIFT_ACTION_BUTTON_CLASS =
+  "inline-flex min-h-[34px] w-full items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300";
 
 const BANK_FIELD_DEFS = Object.freeze([
   {
@@ -52,26 +54,44 @@ const GIFT_METHOD_DEFS = Object.freeze([
   {
     key: "holder",
     label: "Titular",
+    placeholder: "Nombre del titular",
+    description: "Nombre de la persona titular de la cuenta.",
+    inputType: "text",
   },
   {
     key: "bank",
     label: "Banco",
+    placeholder: "Nombre del banco",
+    description: "Banco o billetera donde reciben el regalo.",
+    inputType: "text",
   },
   {
     key: "alias",
     label: "Alias",
+    placeholder: "alias.cuenta",
+    description: "Alias para transferencias.",
+    inputType: "text",
   },
   {
     key: "cbu",
     label: "CBU / CVU",
+    placeholder: "0000000000000000000000",
+    description: "CBU, CVU o numero de cuenta.",
+    inputType: "text",
   },
   {
     key: "cuit",
     label: "CUIT",
+    placeholder: "20-00000000-0",
+    description: "CUIT o identificacion asociada.",
+    inputType: "text",
   },
   {
     key: "giftListLink",
     label: "Lista externa",
+    placeholder: "https://...",
+    description: "Link a una lista de regalos externa.",
+    inputType: "url",
   },
 ]);
 
@@ -212,159 +232,311 @@ function buildGiftMethodItems(config) {
       active,
       complete,
       value,
-      preview: complete ? value : "Sin completar todavia",
+      preview: complete ? value : "Falta completar",
     };
   });
 }
 
-function GiftAdvancedSettingsModal({
+function getGiftMethodByKey(methodKey) {
+  return GIFT_METHOD_DEFS.find((item) => item.key === methodKey) || null;
+}
+
+function getGiftMethodValue(config, methodKey) {
+  if (methodKey === "giftListLink") return String(config?.giftListUrl || "");
+  return String(config?.bank?.[methodKey] || "");
+}
+
+function GiftSettingsModal({
   open,
   config,
   buttonText,
-  giftListDraft,
-  targetFieldKey,
   onClose,
   onChange,
   onButtonTextChange,
-  onBankFieldChange,
-  onGiftListDraftChange,
-  onGiftListCommit,
 }) {
-  const fieldRefs = useRef({});
   const portalTarget = typeof document !== "undefined" ? document.body : null;
   useCloseOnEscape(open, onClose);
-
-  useEffect(() => {
-    if (!open || !targetFieldKey) return;
-
-    const rafId = window.requestAnimationFrame(() => {
-      const targetNode = fieldRefs.current?.[targetFieldKey];
-      if (!targetNode) return;
-      targetNode.scrollIntoView({ block: "center", behavior: "smooth" });
-      targetNode.focus?.();
-    });
-
-    return () => window.cancelAnimationFrame(rafId);
-  }, [open, targetFieldKey]);
 
   if (!open || !portalTarget) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[340] overflow-y-auto bg-slate-950/45 px-4 pb-6 pt-6 sm:flex sm:items-center sm:justify-center sm:px-6"
+      className="fixed inset-0 z-[340] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[1.5px] sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="mx-auto flex max-h-[calc(100vh-3rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-2xl sm:my-0"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gift-settings-title"
+        className="w-full max-h-[82vh] overflow-hidden rounded-t-2xl border border-rose-100 bg-white shadow-2xl sm:max-w-md sm:rounded-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="shrink-0 flex items-center justify-between border-b border-rose-100 bg-gradient-to-r from-rose-50 via-amber-50 to-white px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-rose-100 bg-gradient-to-r from-rose-50 via-amber-50 to-white px-4 py-3">
           <div>
-            <h4 className="text-sm font-semibold text-slate-900">Configuracion avanzada</h4>
+            <h4 id="gift-settings-title" className="text-sm font-semibold text-slate-900">
+              Ajustes de regalos
+            </h4>
             <p className="mt-0.5 text-xs text-slate-600">
-              Edita textos, datos bancarios y el link externo desde un solo lugar.
+              Textos generales del modal y del boton en la invitacion.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-white"
+            className="shrink-0 rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+            aria-label="Cerrar ajustes"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-          <section className="space-y-3 rounded-xl border border-rose-200 p-3">
-            <h5 className="text-xs font-semibold uppercase tracking-wide text-rose-700">
-              General
-            </h5>
+        <div className="max-h-[62vh] space-y-3 overflow-y-auto p-4">
+          <Field label="Texto introductorio">
+            <textarea
+              rows={4}
+              className={`${inputClassName()} min-h-[112px] resize-y`}
+              value={config.introText}
+              onChange={(event) =>
+                onChange({
+                  ...config,
+                  introText: event.target.value,
+                })
+              }
+              placeholder="Texto introductorio para el modal"
+            />
+          </Field>
 
-            <Field label="Texto del boton" hint="Se refleja sobre el elemento del canvas.">
-              <input
-                type="text"
-                className={inputClassName()}
-                value={buttonText}
-                onChange={(event) => onButtonTextChange(event.target.value)}
-                placeholder={DEFAULT_GIFT_BUTTON_TEXT}
-              />
-            </Field>
+          <Field label="Texto del boton" hint="Se refleja sobre el elemento del canvas.">
+            <input
+              type="text"
+              className={inputClassName()}
+              value={buttonText}
+              onChange={(event) => onButtonTextChange(event.target.value)}
+              placeholder={DEFAULT_GIFT_BUTTON_TEXT}
+            />
+          </Field>
+        </div>
 
-            <Field label="Texto introductorio">
-              <textarea
-                rows={4}
-                className={`${inputClassName()} min-h-[112px] resize-y`}
-                value={config.introText}
-                onChange={(event) =>
-                  onChange({
-                    ...config,
-                    introText: event.target.value,
-                  })
-                }
-                placeholder="Texto introductorio para el modal"
-              />
-            </Field>
-          </section>
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[40px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+          >
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>,
+    portalTarget
+  );
+}
 
-          <section className="space-y-3 rounded-xl border border-amber-200 p-3">
-            <div>
-              <h5 className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                Datos bancarios
-              </h5>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                Los campos visibles se activan o desactivan desde el panel principal.
-              </p>
+function GiftMethodSelectorModal({ open, methods, onClose, onSelect }) {
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  useCloseOnEscape(open, onClose);
+
+  if (!open || !portalTarget) return null;
+
+  const hasMethods = methods.length > 0;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[342] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[1.5px] sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gift-method-selector-title"
+        className="w-full max-h-[82vh] overflow-hidden rounded-t-2xl border border-rose-100 bg-white shadow-2xl sm:max-w-md sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-rose-100 bg-gradient-to-r from-rose-50 via-amber-50 to-white px-4 py-3">
+          <div className="min-w-0">
+            <h4 id="gift-method-selector-title" className="text-sm font-semibold text-slate-900">
+              Agregar dato de regalo
+            </h4>
+            <p className="mt-0.5 text-xs text-slate-600">
+              Elegi un dato para mostrar en el modal de regalos.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+            aria-label="Cerrar selector"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="max-h-[min(62vh,420px)] overflow-y-auto p-3 sm:p-4">
+          {!hasMethods ? (
+            <div className="rounded-lg border border-dashed border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-800">
+              Todos los datos disponibles ya fueron agregados.
             </div>
-
-            <div className="space-y-3">
-              {BANK_FIELD_DEFS.map((field) => (
-                <Field
-                  key={field.key}
-                  label={field.label}
-                  hint={config.visibility[field.key] ? "Visible en el modal." : "Oculto en el modal."}
+          ) : (
+            <div className="space-y-2">
+              {methods.map((method) => (
+                <button
+                  key={method.key}
+                  type="button"
+                  onClick={() => onSelect(method)}
+                  className="flex min-h-[54px] w-full items-start rounded-lg border border-rose-100 bg-white px-3 py-2 text-left transition hover:border-rose-200 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
                 >
-                  <input
-                    ref={(node) => {
-                      fieldRefs.current[field.key] = node;
-                    }}
-                    type="text"
-                    className={inputClassName()}
-                    value={config.bank[field.key]}
-                    onChange={(event) => onBankFieldChange(field.key, event.target.value)}
-                    placeholder={field.placeholder}
-                  />
-                </Field>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-medium leading-[1.25] text-slate-800">
+                      {method.label}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                      {method.description}
+                    </span>
+                  </span>
+                </button>
               ))}
             </div>
-          </section>
+          )}
+        </div>
 
-          <section className="space-y-3 rounded-xl border border-slate-200 p-3">
-            <div>
-              <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                Lista externa
-              </h5>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                Si el boton de lista esta activo, este link se abre en una nueva pestana.
-              </p>
-            </div>
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[40px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>,
+    portalTarget
+  );
+}
 
-            <Field
-              label="Link lista regalos"
-              hint={config.visibility.giftListLink ? "Visible en el modal." : "Oculto en el modal."}
-            >
-              <input
-                ref={(node) => {
-                  fieldRefs.current.giftListLink = node;
-                }}
-                type="url"
-                className={inputClassName()}
-                value={giftListDraft}
-                onChange={(event) => onGiftListDraftChange(event.target.value)}
-                onBlur={() => onGiftListCommit(giftListDraft)}
-                placeholder="https://..."
-              />
-            </Field>
-          </section>
+function GiftMethodEditorModal({
+  open,
+  config,
+  method,
+  onClose,
+  onValueChange,
+  onToggleVisible,
+  onRemove,
+}) {
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+  const methodKey = method?.key || "";
+  const [draftValue, setDraftValue] = useState("");
+  useCloseOnEscape(open, () => {
+    if (methodKey) {
+      onValueChange(methodKey, draftValue);
+    }
+    onClose();
+  });
+
+  useEffect(() => {
+    if (!open || !methodKey) return;
+    setDraftValue(getGiftMethodValue(config, methodKey));
+  }, [open, methodKey]);
+
+  if (!open || !portalTarget || !method) return null;
+
+  const isGiftList = method.key === "giftListLink";
+  const visible = Boolean(config?.visibility?.[method.key]);
+  const isComplete = String(draftValue || "").trim().length > 0;
+  const commitDraftValue = () => {
+    onValueChange(method.key, draftValue);
+  };
+  const closeEditor = () => {
+    commitDraftValue();
+    onClose();
+  };
+  const removeAndClose = () => {
+    onRemove(method.key);
+    onClose();
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[344] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[1.5px] sm:items-center sm:p-4"
+      onClick={closeEditor}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gift-method-editor-title"
+        className="w-full max-h-[86vh] overflow-hidden rounded-t-2xl border border-rose-100 bg-white shadow-2xl sm:max-w-md sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-rose-100 bg-gradient-to-r from-rose-50 via-amber-50 to-white px-4 py-3">
+          <div className="min-w-0">
+            <h4 id="gift-method-editor-title" className="text-sm font-semibold text-slate-900">
+              Editar dato
+            </h4>
+            <p className="mt-0.5 truncate text-xs text-slate-600">{method.label}</p>
+          </div>
+          <button
+            type="button"
+            onClick={closeEditor}
+            className="shrink-0 rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+            aria-label="Cerrar editor"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="max-h-[66vh] space-y-3 overflow-y-auto p-4">
+          <label className="flex min-h-[42px] items-center justify-between gap-3 rounded-lg border border-rose-100 bg-rose-50/45 px-3 py-2">
+            <span className="text-xs font-medium text-slate-700">Mostrar en la invitacion</span>
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={(event) => onToggleVisible(method.key, event.target.checked)}
+              className="h-4 w-4 accent-rose-700"
+            />
+          </label>
+
+          <Field
+            label={method.label}
+            hint={
+              isComplete
+                ? method.description
+                : "Falta completar este dato para que aparezca en el modal publico."
+            }
+          >
+            <input
+              type={method.inputType === "url" ? "url" : "text"}
+              className={inputClassName()}
+              value={draftValue}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setDraftValue(nextValue);
+                if (!isGiftList) {
+                  onValueChange(method.key, nextValue);
+                }
+              }}
+              onBlur={commitDraftValue}
+              placeholder={method.placeholder}
+              autoFocus
+            />
+          </Field>
+
+          <button
+            type="button"
+            onClick={removeAndClose}
+            className="min-h-[40px] w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+          >
+            Quitar de datos visibles
+          </button>
+        </div>
+
+        <div className="border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={closeEditor}
+            className="min-h-[40px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+          >
+            Listo
+          </button>
         </div>
       </div>
     </div>,
@@ -611,14 +783,13 @@ function GiftPreviewModal({ open, config, onClose }) {
 
 export default function MiniToolbarTabRegalos({
   simplifiedForAssistant = false,
-  assistantSubstep = null,
 }) {
   const [config, setConfig] = useState(() => createDefaultGiftConfig());
   const [giftButton, setGiftButton] = useState(null);
   const [buttonText, setButtonText] = useState(DEFAULT_GIFT_BUTTON_TEXT);
-  const [giftListDraft, setGiftListDraft] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [advancedTargetKey, setAdvancedTargetKey] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [methodSelectorOpen, setMethodSelectorOpen] = useState(false);
+  const [editingMethodKey, setEditingMethodKey] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const normalizedConfig = useMemo(() => normalizeConfig(config), [config]);
@@ -626,28 +797,20 @@ export default function MiniToolbarTabRegalos({
   const methodItems = useMemo(() => buildGiftMethodItems(normalizedConfig), [normalizedConfig]);
   const activeItems = methodItems.filter((item) => item.active);
   const inactiveItems = methodItems.filter((item) => !item.active);
+  const editingMethod = useMemo(() => getGiftMethodByKey(editingMethodKey), [editingMethodKey]);
   const giftButtonId = giftButton?.id || null;
   const isGiftActive = Boolean(giftButton && !isFunctionalCtaHidden(giftButton));
-  const assistantScope = simplifiedForAssistant
-    ? String(assistantSubstep?.scope || "").trim()
-    : "";
-  const showActivationBlock =
-    !simplifiedForAssistant || !assistantScope || assistantScope === "activation";
-  const showActiveItemsBlock =
-    !simplifiedForAssistant || !assistantScope || assistantScope === "active";
-  const showInactiveItemsBlock =
-    !simplifiedForAssistant || !assistantScope || assistantScope === "add";
   const giftsContainerClass = simplifiedForAssistant
-    ? "flex flex-1 min-h-0 flex-col gap-3 overflow-hidden pr-1"
-    : "flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto pr-1";
+    ? "flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1 md:overflow-hidden"
+    : "flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1";
   const giftsActivationGroupClass = simplifiedForAssistant
-    ? "min-h-0 flex-1 space-y-2 overflow-y-auto pr-1"
+    ? "shrink-0 space-y-2"
     : "contents";
   const giftsScrollableSectionClass = simplifiedForAssistant
-    ? "min-h-0 flex flex-1 flex-col overflow-hidden"
+    ? "min-h-0 flex shrink-0 flex-col overflow-visible md:flex-1 md:shrink md:overflow-hidden"
     : "";
   const giftsListClass = simplifiedForAssistant
-    ? "min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1"
+    ? "space-y-1.5 pr-1 md:min-h-0 md:flex-1 md:overflow-y-auto"
     : "space-y-1.5";
 
   const syncButtonState = () => {
@@ -682,7 +845,6 @@ export default function MiniToolbarTabRegalos({
 
   const updateGiftListUrl = (value) => {
     const nextValue = String(value || "");
-    setGiftListDraft(nextValue);
     updateConfig({
       ...normalizedConfig,
       giftListUrl: nextValue,
@@ -766,11 +928,6 @@ export default function MiniToolbarTabRegalos({
     }
   };
 
-  const openAdvancedAtField = (targetKey = null) => {
-    setAdvancedTargetKey(targetKey);
-    setAdvancedOpen(true);
-  };
-
   const toggleMethodVisibility = (key, nextVisible) => {
     updateConfig({
       ...normalizedConfig,
@@ -781,6 +938,27 @@ export default function MiniToolbarTabRegalos({
     });
   };
 
+  const handleMethodValueChange = (key, value) => {
+    if (key === "giftListLink") {
+      updateGiftListUrl(value);
+      return;
+    }
+    updateBankField(key, value);
+  };
+
+  const handleSelectMethodToAdd = (method) => {
+    if (!method?.key) return;
+    toggleMethodVisibility(method.key, true);
+    setMethodSelectorOpen(false);
+    setEditingMethodKey(method.key);
+  };
+
+  const handleRemoveMethod = (key) => {
+    if (!key) return;
+    toggleMethodVisibility(key, false);
+    setEditingMethodKey((currentKey) => (currentKey === key ? null : currentKey));
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
 
@@ -789,14 +967,12 @@ export default function MiniToolbarTabRegalos({
       if (detailConfig && typeof detailConfig === "object") {
         const nextConfig = normalizeConfig(detailConfig);
         setConfig(nextConfig);
-        setGiftListDraft(nextConfig.giftListUrl || "");
         return;
       }
 
       if (window._giftConfigActual && typeof window._giftConfigActual === "object") {
         const nextConfig = normalizeConfig(window._giftConfigActual);
         setConfig(nextConfig);
-        setGiftListDraft(nextConfig.giftListUrl || "");
       }
     };
 
@@ -815,87 +991,58 @@ export default function MiniToolbarTabRegalos({
   return (
     <>
       <div className={giftsContainerClass}>
-        {showActivationBlock && (
         <div className={giftsActivationGroupClass}>
-        <section className={styles.activationPanel}>
-          <div className={styles.activationHeader}>
-            <h3 className={styles.activationTitle}>Mostrar opciones de regalos</h3>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isGiftActive}
-              aria-label={
-                isGiftActive
-                  ? "Desactivar boton de regalos"
-                  : "Activar boton de regalos"
-              }
-              onClick={handleActivationToggle}
-              className={`${styles.activationSwitch} ${
-                isGiftActive ? styles.activationSwitchOn : ""
-              }`}
-            >
-              <span className={styles.activationSwitchThumb} aria-hidden="true" />
-            </button>
-          </div>
-          <p className={styles.activationCopy}>
-            Activa el boton para que tus invitados puedan ver los datos o la lista de regalos.
-          </p>
-        </section>
+          <section className={styles.activationPanel}>
+            <div className={styles.activationHeader}>
+              <h3 className={styles.activationTitle}>Mostrar opciones de regalos</h3>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isGiftActive}
+                aria-label={
+                  isGiftActive
+                    ? "Desactivar boton de regalos"
+                    : "Activar boton de regalos"
+                }
+                onClick={handleActivationToggle}
+                className={`${styles.activationSwitch} ${
+                  isGiftActive ? styles.activationSwitchOn : ""
+                }`}
+              >
+                <span className={styles.activationSwitchThumb} aria-hidden="true" />
+              </button>
+            </div>
+            
+          </section>
 
-        <section className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50 via-amber-50 to-white p-3 shadow-sm">
-          <h3 className="text-center text-[13px] font-semibold text-slate-900">Regalos</h3>
-
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handlePrimaryAction}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-rose-300 bg-white px-2 py-1.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-100"
-            >
-              <Eye className="h-3.5 w-3.5" />
-              {giftButtonId
-                ? isFunctionalCtaHidden(giftButton)
-                  ? "Mostrar boton"
-                  : "Vista previa"
-                : "Agregar boton"}
-            </button>
-            <button
-              type="button"
-              onClick={() => openAdvancedAtField()}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-100 px-2 py-1.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-200"
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              Avanzado
-            </button>
-          </div>
-        </section>
+          {isGiftActive && !hasVisibleMethods ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/75 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+              Agrega al menos un dato visible y completo para que el boton funcione al publicar.
+            </div>
+          ) : null}
         </div>
-        )}
 
-        {showActiveItemsBlock && (
         <section className={`space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 ${giftsScrollableSectionClass}`}>
           <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
-            Activas
+            Datos visibles
           </h4>
 
           <div className={giftsListClass}>
             {activeItems.map((item) => (
               <article
                 key={item.key}
-                role={item.complete ? undefined : "button"}
-                tabIndex={item.complete ? -1 : 0}
-                onClick={() => {
-                  if (!item.complete) openAdvancedAtField(item.key);
-                }}
+                role="button"
+                tabIndex={0}
+                onClick={() => setEditingMethodKey(item.key)}
                 onKeyDown={(event) => {
-                  if (item.complete) return;
                   if (event.key !== "Enter" && event.key !== " ") return;
                   event.preventDefault();
-                  openAdvancedAtField(item.key);
+                  setEditingMethodKey(item.key);
                 }}
-                className={`flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-2 py-2 ${
+                className={`flex min-h-[54px] items-center gap-2 rounded-lg border bg-white px-2 py-2 transition focus:outline-none focus:ring-2 ${
                   item.complete
-                    ? ""
-                    : "cursor-pointer transition hover:border-amber-300 hover:bg-amber-50/60 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                    ? "border-emerald-200 hover:bg-emerald-50/55 focus:ring-emerald-200"
+                    : "border-amber-200 hover:bg-amber-50/65 focus:ring-amber-200"
                 }`}
               >
                 <div className="min-w-0 flex-1">
@@ -916,82 +1063,105 @@ export default function MiniToolbarTabRegalos({
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    toggleMethodVisibility(item.key, false);
+                    setEditingMethodKey(item.key);
                   }}
-                  className="rounded border border-rose-200 p-1 text-rose-600 hover:bg-rose-50"
-                  title="Ocultar item"
+                  className="rounded border border-rose-200 p-1 text-rose-700 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+                  title="Editar dato"
+                  aria-label={`Editar ${item.label}`}
+                >
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleRemoveMethod(item.key);
+                  }}
+                  className="rounded border border-rose-200 p-1 text-rose-600 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+                  title="Ocultar dato"
                   aria-label={`Ocultar ${item.label}`}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3 w-3" aria-hidden="true" />
                 </button>
               </article>
             ))}
 
             {activeItems.length === 0 ? (
               <div className="rounded-md border border-dashed border-emerald-200 bg-white p-2 text-[11px] text-emerald-700">
-                No hay items visibles.
+                No hay datos visibles.
               </div>
             ) : null}
           </div>
         </section>
-        )}
 
-        {showInactiveItemsBlock && (
-        <section className={`space-y-2 rounded-xl border border-violet-200 bg-violet-50/55 p-3 ${giftsScrollableSectionClass}`}>
-          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
-            Para agregar
-          </h4>
+        <section className="shrink-0 rounded-xl border border-rose-200 bg-rose-50/55 p-2">
+          {inactiveItems.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setMethodSelectorOpen(true)}
+              className={`${COMPACT_GIFT_ACTION_BUTTON_CLASS} border-rose-200 bg-white text-rose-800 hover:bg-rose-100`}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Agregar dato de regalo
+            </button>
+          ) : (
+            <div className="rounded-md border border-dashed border-rose-200 bg-white p-2 text-[11px] text-rose-700">
+              Todos los datos disponibles ya fueron agregados.
+            </div>
+          )}
+        </section>
 
-          <div className={giftsListClass}>
-            {inactiveItems.map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between gap-2 rounded-lg border border-violet-200 bg-white px-2 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-slate-800" title={item.label}>
-                    {item.label}
-                  </div>
-                  <div className="text-[11px] text-slate-500">{item.description}</div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => toggleMethodVisibility(item.key, true)}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-violet-200 text-violet-700 hover:bg-violet-100"
-                  title={`Agregar ${item.label}`}
-                  aria-label={`Agregar ${item.label}`}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-
-            {inactiveItems.length === 0 ? (
-              <div className="rounded-md border border-dashed border-violet-200 bg-white p-2 text-[11px] text-violet-700">
-                Ya activaste todos los items disponibles.
-              </div>
-            ) : null}
+        <section className="shrink-0 rounded-xl border border-slate-200 bg-white p-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={handlePrimaryAction}
+              className={`${COMPACT_GIFT_ACTION_BUTTON_CLASS} border-rose-200 bg-white text-rose-800 hover:bg-rose-50`}
+            >
+              <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+              {giftButtonId
+                ? isFunctionalCtaHidden(giftButton)
+                  ? "Mostrar boton"
+                  : "Vista previa"
+                : "Agregar boton"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className={`${COMPACT_GIFT_ACTION_BUTTON_CLASS} border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100`}
+            >
+              <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Ajustes de regalos
+            </button>
           </div>
         </section>
-        )}
       </div>
 
-      <GiftAdvancedSettingsModal
-        open={advancedOpen}
+      <GiftMethodSelectorModal
+        open={methodSelectorOpen}
+        methods={inactiveItems}
+        onClose={() => setMethodSelectorOpen(false)}
+        onSelect={handleSelectMethodToAdd}
+      />
+
+      <GiftMethodEditorModal
+        open={Boolean(editingMethod)}
+        config={normalizedConfig}
+        method={editingMethod}
+        onClose={() => setEditingMethodKey(null)}
+        onValueChange={handleMethodValueChange}
+        onToggleVisible={toggleMethodVisibility}
+        onRemove={handleRemoveMethod}
+      />
+
+      <GiftSettingsModal
+        open={settingsOpen}
         config={normalizedConfig}
         buttonText={buttonText}
-        giftListDraft={giftListDraft}
-        targetFieldKey={advancedTargetKey}
-        onClose={() => {
-          setAdvancedOpen(false);
-          setAdvancedTargetKey(null);
-        }}
+        onClose={() => setSettingsOpen(false)}
         onChange={updateConfig}
         onButtonTextChange={handleButtonTextChange}
-        onBankFieldChange={updateBankField}
-        onGiftListDraftChange={setGiftListDraft}
-        onGiftListCommit={updateGiftListUrl}
       />
 
       <GiftPreviewModal

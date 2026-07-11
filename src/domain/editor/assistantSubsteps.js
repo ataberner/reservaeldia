@@ -65,9 +65,7 @@ export function resolveAssistantSubstepsForStep(stepId, context = {}) {
 
   if (safeStepId === "regalos") {
     return [
-      createSubstep("gifts-start", "Activar", "activation"),
-      createSubstep("gifts-active", "Datos visibles", "active"),
-      createSubstep("gifts-add", "Agregar datos", "add"),
+      createSubstep("gifts", "Regalos", "main"),
     ];
   }
 

@@ -102,3 +102,16 @@ test("assistant RSVP step keeps activation and active questions together", () =>
     ]
   );
 });
+
+test("assistant gifts step stays as a single compact substep", () => {
+  assert.deepEqual(
+    resolveAssistantSubstepsForStep("regalos").map(({ id, label, scope }) => ({
+      id,
+      label,
+      scope,
+    })),
+    [
+      { id: "gifts", label: "Regalos", scope: "main" },
+    ]
+  );
+});

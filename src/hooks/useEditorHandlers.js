@@ -14,6 +14,9 @@ import {
   createEditorGroupId,
 } from '@/domain/editor/grouping';
 import {
+  setGroupFunctionalAssociation,
+} from '../../shared/functionalAssociations.js';
+import {
   resolveSelectionUnionRect,
 } from '@/components/editor/textSystem/render/konva/selectionBoundsGeometry';
 
@@ -113,7 +116,7 @@ const onEliminar = useCallback(() => {
     setObjetos
   }), [objetos, secciones, elementosSeleccionados]);
 
-  const onAgrupar = useCallback(() => {
+  const onAgrupar = useCallback((options = {}) => {
     const selectionFrame = resolveSelectionUnionRect({
       selectedElements: elementosSeleccionados,
       elementRefs,
@@ -137,7 +140,27 @@ const onEliminar = useCallback(() => {
       clearPreselection: true,
       clearMarquee: true,
     });
-    setObjetos(result.nextObjetos);
+    let nextObjetos = result.nextObjetos;
+    let nextSecciones = secciones;
+    const functionalAssociation =
+      options && typeof options === "object" ? options.functionalAssociation : null;
+    if (functionalAssociation) {
+      const functionalResult = setGroupFunctionalAssociation({
+        secciones,
+        objetos: nextObjetos,
+        groupId: result.group?.id,
+        association: functionalAssociation,
+      });
+      if (functionalResult?.changed) {
+        nextObjetos = functionalResult.objetos;
+        nextSecciones = functionalResult.secciones;
+      }
+    }
+
+    if (nextSecciones !== secciones) {
+      setSecciones(nextSecciones);
+    }
+    setObjetos(nextObjetos);
 
     if (typeof selectionRuntime?.setCommittedSelection === "function") {
       selectionRuntime.setCommittedSelection(result.selectedIds, {
@@ -147,7 +170,11 @@ const onEliminar = useCallback(() => {
       setElementosSeleccionados(result.selectedIds);
     }
 
-    return true;
+    return {
+      ok: true,
+      groupId: result.group?.id || null,
+      selectedIds: result.selectedIds,
+    };
   }, [
     ALTURA_PANTALLA_EDITOR,
     elementRefs,
@@ -158,6 +185,7 @@ const onEliminar = useCallback(() => {
     setElementosSeleccionados,
     setMostrarPanelZ,
     setObjetos,
+    setSecciones,
   ]);
 
   const onDesagrupar = useCallback(() => {

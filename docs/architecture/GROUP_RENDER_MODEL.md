@@ -23,6 +23,7 @@ normal render objects, but their coordinates are local to the group frame.
   yNorm?: number,
   width: number,
   height: number,
+  functionalAssociation?: "rsvp" | "gifts",
   children: RenderObjectChild[],
 }
 ```
@@ -36,6 +37,7 @@ families), with these group-local differences:
 - `anclaje` belongs to the group, not the child.
 - `yNorm` belongs to the group in `altoModo: "pantalla"` sections, not the child.
 - Nested groups are not supported in the v1 contract.
+- `functionalAssociation` is supported only on the group root. Children must not carry their own functional association.
 
 ## 3. Render Invariants
 
@@ -50,6 +52,7 @@ families), with these group-local differences:
 - Full-document collectors must recurse into `children[]` whenever they collect render
   capabilities or document-level dependencies from objects. This includes Google Fonts,
   countdown runtime activation, gallery lightbox activation, and functional CTA presence.
+- Functional RSVP/Gifts visibility is derived before editor/preview/publish render. In a shared section, inactive functional groups are omitted; if only RSVP or only Gifts remains visible and both sides exist in the section, the renderer applies a reversible horizontal offset to the visible groups based on their joint bounding box. This offset is not persisted as group `x`.
 
 ## 4. Typography
 

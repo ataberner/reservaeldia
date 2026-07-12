@@ -5,6 +5,10 @@ import { normalizeGiftConfig } from "../gifts/config.js";
 import { normalizeRenderAssetState } from "../../../shared/renderAssetContract.js";
 import { prepareGroupAwareRenderState } from "../../../shared/groupRenderContract.js";
 import {
+  applyFunctionalAssociationsToRenderState,
+  normalizeFunctionalConfigs,
+} from "../../../shared/functionalAssociations.js";
+import {
   normalizePublicSlug,
   parseSlugFromPublicUrl,
 } from "../../lib/publicSlug.js";
@@ -153,20 +157,38 @@ export function prepareDashboardPreviewRenderState(data) {
     objetos: renderAssetState.objetos,
     secciones: renderAssetState.secciones,
   });
+  const normalizedFunctionalConfigs = normalizeFunctionalConfigs({
+    objetos: groupAwareState.objetos,
+    rsvp: rawRenderState.rsvp,
+    gifts: rawRenderState.gifts,
+  });
+  const functionalRenderState = applyFunctionalAssociationsToRenderState({
+    objetos: groupAwareState.objetos,
+    secciones: groupAwareState.secciones,
+    rsvp: normalizedFunctionalConfigs.rsvp,
+    gifts: normalizedFunctionalConfigs.gifts,
+    materializeOffsets: true,
+  });
+  const finalGroupAwareState = prepareGroupAwareRenderState({
+    objetos: functionalRenderState.objetos,
+    secciones: functionalRenderState.secciones,
+  });
 
   return {
     // Preview stays browser-safe here: canonicalize current asset aliases,
     // but keep publish-only preparation on the backend path.
     renderState: {
       ...rawRenderState,
-      objetos: groupAwareState.objetos,
-      secciones: groupAwareState.secciones,
+      objetos: finalGroupAwareState.objetos,
+      secciones: finalGroupAwareState.secciones,
     },
     rawRsvp: rawRenderState.rsvp || null,
     rawGifts: rawRenderState.gifts || null,
-    preparedRenderContract: groupAwareState.preparedRenderContract,
-    contractIssues: groupAwareState.contractIssues,
-    runtimeSupport: groupAwareState.runtimeSupport,
+    normalizedRsvp: normalizedFunctionalConfigs.rsvp,
+    normalizedGifts: normalizedFunctionalConfigs.gifts,
+    preparedRenderContract: finalGroupAwareState.preparedRenderContract,
+    contractIssues: finalGroupAwareState.contractIssues,
+    runtimeSupport: finalGroupAwareState.runtimeSupport,
   };
 }
 
@@ -175,33 +197,31 @@ export function buildDashboardPreviewRenderPayload(data) {
     renderState,
     rawRsvp,
     rawGifts,
+    normalizedRsvp,
+    normalizedGifts,
     preparedRenderContract,
     contractIssues,
     runtimeSupport,
   } = prepareDashboardPreviewRenderState(data);
 
   const rsvpPreviewConfig =
-    rawRsvp && typeof rawRsvp === "object"
+    normalizedRsvp && typeof normalizedRsvp === "object"
       ? normalizeRsvpConfig(
           {
-            ...rawRsvp,
-            enabled: rawRsvp?.enabled !== false,
-            title: rawRsvp?.title,
-            subtitle: rawRsvp?.subtitle,
-            buttonText: rawRsvp?.buttonText,
-            primaryColor: rawRsvp?.primaryColor,
-            sheetUrl: rawRsvp?.sheetUrl,
+            ...normalizedRsvp,
+            title: normalizedRsvp?.title,
+            subtitle: normalizedRsvp?.subtitle,
+            buttonText: normalizedRsvp?.buttonText,
+            primaryColor: normalizedRsvp?.primaryColor,
+            sheetUrl: normalizedRsvp?.sheetUrl,
           },
           { forceEnabled: false }
         )
       : null;
 
   const giftPreviewConfig =
-    rawGifts && typeof rawGifts === "object"
-      ? normalizeGiftConfig({
-          ...rawGifts,
-          enabled: rawGifts?.enabled !== false,
-        })
+    normalizedGifts && typeof normalizedGifts === "object"
+      ? normalizeGiftConfig(normalizedGifts, { forceEnabled: false })
       : null;
 
   return {
@@ -247,8 +267,8 @@ export function buildDashboardPreviewGeneratorInput({
       slug: slugPreview,
       isPreview: true,
       gifts: safePreviewPayload.giftPreviewConfig || null,
-      rsvpSource: safePreviewPayload.rawRsvp ?? null,
-      giftsSource: safePreviewPayload.rawGifts ?? null,
+      rsvpSource: safePreviewPayload.rsvpPreviewConfig ?? safePreviewPayload.rawRsvp ?? null,
+      giftsSource: safePreviewPayload.giftPreviewConfig ?? safePreviewPayload.rawGifts ?? null,
     },
   };
 }

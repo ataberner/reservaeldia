@@ -72,6 +72,8 @@ Publish and draft-authoritative preview share the same backend prepared payload 
 
 Publish stores final HTML in Firebase Storage and remains the delivery artifact source. Draft-authoritative preview uses the same preparation and validation contract before generating temporary preview HTML.
 
+Render preparation also applies RSVP/Gifts functional associations before validation and HTML generation. `rsvp.enabled` and `gifts.enabled` are the functional switch authority. Section-level associations omit whole sections; group-level associations in shared sections omit inactive groups and may derive a reversible horizontal offset for the remaining active functionality. This derivation is shared by draft-authoritative preview and publish and does not mutate stored `objetos` or `secciones`.
+
 Successful publish also requires the generated social share artifact. The backend
 must capture the first `.inv > .sec` from the generated publish HTML, validate
 `publicadas/{slug}/share.jpg` as a JPEG `1200x630`, inject Open Graph metadata
@@ -168,6 +170,8 @@ Height model markers:
 - `data-msl-height-model="embedded-preview"`: legacy embedded-preview model.
 
 Runtime decisions are intentionally separate from generation decisions. Generation writes section/object HTML and base CSS; the runtime reacts to actual mobile viewport, font/image readiness, and DOM measurements.
+
+Functional group centering is a generation/prepared-payload derivation that runs before mobile smart layout. On mobile, the smart-layout runtime still treats a group wrapper as one layout unit, so the derived horizontal offset becomes the baseline position and does not alter `yNorm` or group-child local coordinates.
 
 `decoracionesBorde` is generated as a section-owned edge layer, not as an object. It stays out of mobile smart layout, uses renderer-owned `--edgezoom` compensation, and sizes the edge band from section height with separate desktop/mobile ratios. This keeps top/bottom ornaments viewport-width and visually balanced in `pantalla` sections during draft-authoritative preview and publish.
 

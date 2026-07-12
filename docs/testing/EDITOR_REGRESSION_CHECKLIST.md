@@ -470,6 +470,22 @@ Resultado esperado:
 - en preview de borrador normal, el resultado es `draft-authoritative`
 - no asumir OK solo porque el boton se ve bien en canvas
 
+### [ ] Asociaciones funcionales RSVP / Regalos
+
+1. En edicion de plantilla como admin/superadmin, asociar una seccion completa a RSVP y otra a Regalos desde el menu de seccion.
+2. En una seccion compartida, agrupar una columna RSVP y otra Regalos desde multiseleccion, y asignar cada grupo desde el engranaje.
+3. Alternar los switches existentes de RSVP y Regalos.
+4. Abrir preview autoritativa y publicar en un entorno de prueba.
+
+Resultado esperado:
+
+- las opciones administrativas no aparecen en borradores normales, usuarios finales, preview ni HTML publico
+- `rsvp.enabled` y `gifts.enabled` controlan CTA, secciones y grupos; no hay switches adicionales
+- una seccion asociada inactiva se omite completa, incluidas decoraciones y objetos compartidos internos
+- en una seccion compartida, el grupo restante se centra horizontalmente como conjunto y vuelve a su posicion original al reactivar ambas funciones
+- repetir activar/desactivar no acumula deriva geometrica
+- preview, publish y mobile mantienen la misma decision visible
+
 ## 7. Senales de alerta
 
 Bloquear validacion si aparece cualquiera de estas:

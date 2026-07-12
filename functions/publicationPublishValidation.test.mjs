@@ -380,6 +380,72 @@ test("prepares grouped image compositions recursively so publish validates the c
   assert.equal(groupedImage.alto, 4);
 });
 
+test("prepared render payload applies functional group visibility and centering before HTML generation", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: createRepresentativeStorageFiles(),
+  });
+  t.after(() => storageMock.restore());
+
+  const prepared = await prepareRenderPayload({
+    secciones: [{ id: "shared", orden: 0, altoModo: "fijo", altura: 420 }],
+    objetos: [
+      {
+        id: "shared-title",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 300,
+        y: 20,
+        width: 200,
+        height: 32,
+        texto: "Detalles",
+      },
+      {
+        id: "rsvp-group",
+        tipo: "grupo",
+        seccionId: "shared",
+        anclaje: "content",
+        x: 80,
+        y: 80,
+        width: 100,
+        height: 100,
+        functionalAssociation: "rsvp",
+        children: [
+          { id: "rsvp-copy", tipo: "texto", x: 0, y: 0, width: 100, height: 30, texto: "Asistencia" },
+          { id: "rsvp-cta", tipo: "rsvp-boton", x: 0, y: 50, width: 100, height: 40 },
+        ],
+      },
+      {
+        id: "gifts-group",
+        tipo: "grupo",
+        seccionId: "shared",
+        anclaje: "content",
+        x: 560,
+        y: 80,
+        width: 120,
+        height: 100,
+        functionalAssociation: "gifts",
+        children: [
+          { id: "gifts-copy", tipo: "texto", x: 0, y: 0, width: 120, height: 30, texto: "Regalos" },
+          { id: "gifts-cta", tipo: "regalo-boton", x: 0, y: 50, width: 120, height: 40 },
+        ],
+      },
+    ],
+    rsvp: { enabled: true },
+    gifts: { enabled: false },
+  });
+
+  assert.deepEqual(prepared.seccionesFinales.map((section) => section.id), ["shared"]);
+  assert.deepEqual(prepared.objetosFinales.map((object) => object.id), ["shared-title", "rsvp-group"]);
+  assert.equal(prepared.objetosFinales.find((object) => object.id === "rsvp-group").x, 350);
+  assert.equal(prepared.functionalCtaContract.rsvp.enabled, true);
+  assert.equal(prepared.functionalCtaContract.gifts.enabled, false);
+
+  const html = generateHtmlFromPreparedRenderPayload(prepared, { isPreview: true });
+  assert.match(html, /data-obj-id="rsvp-group"/);
+  assert.doesNotMatch(html, /data-obj-id="gifts-group"/);
+});
+
 test("canonical prepared render payload preserves the publication wrapper and validation shape", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,
@@ -518,9 +584,8 @@ test("keeps representative compatibility and preview drift branches as warnings 
     "legacy-icono-svg-frozen|icon-legacy|section-details|tipo",
     "pantalla-ynorm-drift|hero-image|section-hero|yNorm",
     "pantalla-ynorm-missing|hero-title|section-hero|yNorm",
-    "rsvp-missing-root-config|rsvp-cta|section-details|rsvp",
   ]);
-  assert.equal(prepared.functionalCtaContract.rsvp.reason, "missing-root");
+  assert.equal(prepared.functionalCtaContract.rsvp.reason, "ready");
   assert.equal(prepared.functionalCtaContract.gifts.reason, "ready");
 });
 

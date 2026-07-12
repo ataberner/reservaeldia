@@ -233,8 +233,8 @@ export function buildPreviewParitySnapshot(draftData, { defaultBucketName = "" }
   const sectionModeById = buildSectionModeById(previewPayload.secciones);
   const functionalCtaContract = resolveFunctionalCtaContract({
     objetos: previewPayload.objetos,
-    rsvpConfig: previewPayload.rawRsvp,
-    giftsConfig: previewPayload.rawGifts,
+    rsvpConfig: previewPayload.rsvpPreviewConfig ?? previewPayload.rawRsvp,
+    giftsConfig: previewPayload.giftPreviewConfig ?? previewPayload.rawGifts,
   });
 
   return {

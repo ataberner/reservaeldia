@@ -5,6 +5,9 @@ import {
   shouldSkipFunctionalCtaDuplicate,
 } from "@/domain/functionalCtaButtons";
 import {
+  stripFunctionalAssociationFromClonedObject,
+} from "../../shared/functionalAssociations.js";
+import {
   buildProtectedSectionObjectSanitizer,
   buildProtectedSectionStateSanitizer,
   canEditObject,
@@ -102,12 +105,15 @@ export function duplicarElemento({ objetos, secciones, elementosSeleccionados, s
 
   if (duplicables.length === 0) return;
 
-  const duplicados = duplicables.map((original, i) => ({
-    ...original,
-    id: `obj-${Date.now()}-${i}`,
-    x: original.x + 20,
-    y: original.y + 20,
-  }));
+  const duplicados = duplicables.map((original, i) => {
+    const cloneSource = stripFunctionalAssociationFromClonedObject(original);
+    return {
+      ...cloneSource,
+      id: `obj-${Date.now()}-${i}`,
+      x: original.x + 20,
+      y: original.y + 20,
+    };
+  });
 
   setObjetos((prev) => [...prev, ...duplicados]);
   setElementosSeleccionados(duplicados.map((d) => d.id));
@@ -160,8 +166,9 @@ export function pegarElemento({ objetos, secciones, setObjetos, setElementosSele
       return;
     }
 
+    const cloneSource = stripFunctionalAssociationFromClonedObject(c);
     nuevos.push({
-      ...c,
+      ...cloneSource,
       id: `obj-${Date.now()}-${i}`,
       x: (c.x || 100) + offset,
       y: (c.y || 100) + offset,

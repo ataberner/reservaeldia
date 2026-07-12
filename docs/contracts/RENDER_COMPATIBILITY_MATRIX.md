@@ -53,8 +53,6 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 - `pantalla-ynorm-missing`
 - `pantalla-ynorm-drift`
 - `fullbleed-editor-drift`
-- `rsvp-missing-root-config`
-- `gift-missing-root-config`
 - `gift-no-usable-methods`
 
 ## Leyenda
@@ -78,8 +76,8 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `countdown` schema v1 | `si` | `soportado` | `soportado` | `soportado` | `parcial` | warning `legacy-countdown-schema-v1-frozen` | congelar contrato |
 | `countdown` schema v2 | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `countdown-frame-unresolved` | usar con restricciones |
 | `mapa-google` | `si` | placeholder | `soportado` | omitido | `alta` en preview/publish, no participa en share image | puede bloquear si falta `placeId` o API key para publish | el iframe real se excluye de `share.jpg` |
-| `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `hidden === true` lo omite sin borrar geometria | warning `rsvp-missing-root-config`, warning `functional-cta-link-ignored` | validar contrato completo |
-| `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `hidden === true` lo omite sin borrar geometria | warning `gift-missing-root-config`, warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, warning `functional-cta-link-ignored` | validar contrato completo |
+| `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `enabled` normalizado desde legacy decide visibilidad funcional | warning `functional-cta-link-ignored`; `rsvp-missing-root-config` queda como compatibilidad solo si no puede normalizarse raiz | validar contrato completo |
+| `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `enabled` normalizado desde legacy decide visibilidad funcional | warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, warning `functional-cta-link-ignored`; `gift-missing-root-config` queda como compatibilidad solo si no puede normalizarse raiz | validar contrato completo |
 | fondo de seccion por color | `si` | `soportado` | `soportado` | `soportado` | `alta` | sin warning especifico | usar con checklist |
 | fondo base de seccion por imagen | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-background-unresolved` | usar con restricciones |
 | decoraciones de fondo | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-decoration-unresolved` | usar con restricciones |
@@ -91,6 +89,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `forma.diamond` / `star` / `heart` / `arrow` / `pentagon` / `hexagon` / `pill` | `si` | `soportado` | `soportado` | `soportado` | `requiere prueba manual` | solo bloquea si `figura` cae fuera del set soportado | soportado, pero validar manualmente |
 | `altoModo: pantalla` + `yNorm` | `si` | `soportado` | `soportado` | `parcial` | `parcial` | warnings `pantalla-ynorm-missing` y `pantalla-ynorm-drift` | usar con restricciones |
 | `mobileLayoutMode: preserve` | `si` | `soportado` | `soportado` | `soportado` | `alta` en generated HTML | sin warning especifico actual | opt-out explicito de smart reflow por seccion; preview/publish comparten `data-mobile-layout-mode="preserve"` |
+| `functionalAssociation` RSVP/Gifts | `si` en seccion o grupo raiz | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled` son la autoridad; secciones/grupos omitidos no mutan geometria |
 | `anclaje: fullbleed` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque el canvas no representa la salida final | warning `fullbleed-editor-drift` | congelar contrato |
 | `enlace` | `si` | `parcial` | `soportado` | `soportado` | `parcial` | CTA funcional ignora `enlace` | usar con restricciones |
 | `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML | no tiene warning especifico actual | validar en HTML |
@@ -109,7 +108,7 @@ Bloqueadores de publish hoy:
 
 - assets sin resolver para `imagen`, `icono` raster, `galeria`, `countdown` v2, fondos de seccion, decoraciones de fondo y decoraciones de borde
 - crop de imagen no materializable
-- CTA funcional visible sin config raiz completa o sin metodos utilizables queda como advertencia/no disponible; un CTA con `hidden === true` no se renderiza ni bloquea por su config raiz
+- CTA funcional visible sin config raiz completa o sin metodos utilizables queda como advertencia/no disponible; `rsvp.enabled` y `gifts.enabled` son la autoridad funcional. El campo CTA `hidden` se conserva solo como compatibilidad y se normaliza desde `enabled` durante preparacion de render.
 - `figura` fuera del set soportado de publish
 - referencia de seccion faltante
 

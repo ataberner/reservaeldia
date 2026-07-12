@@ -14,6 +14,7 @@ import {
   Lock,
   Unlock,
   Smartphone,
+  Tag,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
@@ -23,6 +24,10 @@ import {
   setSectionEdgeDecorationEnabled,
 } from "@/domain/sections/backgrounds";
 import { canMutateSection } from "@/domain/editor/protectedSections";
+import {
+  normalizeFunctionalAssociation,
+  setSectionFunctionalAssociation,
+} from "../../../../shared/functionalAssociations.js";
 
 const DESKTOP_PANEL_WIDTH = 76;
 const DESKTOP_CANVAS_WIDTH = 800;
@@ -133,6 +138,7 @@ export default function SectionActionsOverlay({
   secciones,
   setSecciones,
   objetos,
+  setObjetos,
   canManageSite,
   templateWorkspace,
   refrescarPlantillasDeSeccion,
@@ -163,6 +169,15 @@ export default function SectionActionsOverlay({
       templateWorkspace?.permissions?.readOnly !== true &&
       typeof onToggleSectionLock === "function"
   );
+  const canConfigureFunctionalAssociation = Boolean(
+    canManageSite &&
+      templateWorkspace?.mode === "template_edit" &&
+      templateWorkspace?.readOnly !== true &&
+      templateWorkspace?.permissions?.readOnly !== true &&
+      typeof setSecciones === "function"
+  );
+  const sectionFunctionalAssociation =
+    normalizeFunctionalAssociation(seccion?.functionalAssociation) || "";
   const mobileLayoutMode =
     String(seccion?.mobileLayoutMode || "").trim().toLowerCase() === "preserve"
       ? "preserve"
@@ -217,6 +232,21 @@ export default function SectionActionsOverlay({
   const handleToggleMobileLayoutMode = () => {
     if (!canToggleMobileLayoutMode || seccionProtegida || estaAnimando) return;
     toggleMobileLayoutModeSeccion(seccion.id);
+  };
+
+  const handleSectionFunctionalAssociationChange = (value) => {
+    if (!canConfigureFunctionalAssociation || seccionProtegida || estaAnimando) return;
+    const result = setSectionFunctionalAssociation({
+      secciones,
+      objetos,
+      sectionId: seccion.id,
+      association: normalizeFunctionalAssociation(value),
+    });
+    if (!result?.changed) return;
+    setSecciones(result.secciones);
+    if (typeof setObjetos === "function" && result.objetos !== objetos) {
+      setObjetos(result.objetos);
+    }
   };
 
   const mobileButtonBase =
@@ -298,6 +328,25 @@ export default function SectionActionsOverlay({
 
       {renderMobileEdgeControls("top", "Decoración arriba")}
       {renderMobileEdgeControls("bottom", "Decoración abajo")}
+
+      {canConfigureFunctionalAssociation ? (
+        <label className="flex flex-col gap-1 rounded-xl border border-[#e4d7f6] bg-white/95 px-3 py-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#5f3596]">
+            <Tag className="h-3.5 w-3.5" />
+            Asociacion funcional
+          </span>
+          <select
+            value={sectionFunctionalAssociation}
+            disabled={seccionProtegida || estaAnimando}
+            onChange={(event) => handleSectionFunctionalAssociationChange(event.target.value)}
+            className="rounded-lg border border-[#dac7f7] bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#9d75d8] focus:ring-2 focus:ring-[#eadffd]"
+          >
+            <option value="">Siempre visible</option>
+            <option value="rsvp">Confirmacion de asistencia</option>
+            <option value="gifts">Regalos</option>
+          </select>
+        </label>
+      ) : null}
 
       {canToggleSectionLock ? (
         <button
@@ -685,6 +734,26 @@ export default function SectionActionsOverlay({
             disabled={seccionProtegida || estaAnimando || isDeletingSection}
             onChange={(nextColor) => cambiarColorFondoSeccion(seccion.id, nextColor)}
           />
+
+          {canConfigureFunctionalAssociation ? (
+            <label
+              className="flex w-full flex-col items-center gap-1 border-t border-[#ece3f9] pt-2"
+              title="Asociacion funcional de la seccion"
+              aria-label="Asociacion funcional de la seccion"
+            >
+              <Tag className="h-3.5 w-3.5 text-[#6b41a7]" />
+              <select
+                value={sectionFunctionalAssociation}
+                disabled={seccionProtegida || estaAnimando}
+                onChange={(event) => handleSectionFunctionalAssociationChange(event.target.value)}
+                className="w-[58px] rounded-md border border-[#dac7f7] bg-white px-1 py-1 text-[10px] font-semibold text-[#5f3596] outline-none focus:border-[#9d75d8] focus:ring-1 focus:ring-[#eadffd]"
+              >
+                <option value="">Siempre</option>
+                <option value="rsvp">Asist.</option>
+                <option value="gifts">Regalos</option>
+              </select>
+            </label>
+          ) : null}
 
           {desktopActionGroups.map((group) => (
             <div

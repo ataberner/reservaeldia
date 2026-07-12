@@ -798,7 +798,10 @@ export default function MiniToolbarTabRsvp({
   simplifiedForAssistant = false,
   assistantSubstep = null,
 }) {
-  const [config, setConfig] = useState(() => createDefaultRsvpConfig("minimal"));
+  const [config, setConfig] = useState(() => ({
+    ...createDefaultRsvpConfig("minimal"),
+    enabled: false,
+  }));
   const [rsvpButton, setRsvpButton] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -870,7 +873,7 @@ export default function MiniToolbarTabRsvp({
 
   const canAddMoreQuestions = activeCount < maxQuestions;
   const rsvpButtonId = rsvpButton?.id || null;
-  const isRsvpActive = Boolean(rsvpButton && !isFunctionalCtaHidden(rsvpButton));
+  const isRsvpActive = normalizedConfig.enabled === true;
 
   const updateConfig = (nextConfig) => {
     const normalized = normalizeConfig(nextConfig);
@@ -909,12 +912,10 @@ export default function MiniToolbarTabRsvp({
           },
         })
       );
-      if (nextEnabled) {
-        updateConfig({
-          ...normalizedConfig,
-          enabled: true,
-        });
-      }
+      updateConfig({
+        ...normalizedConfig,
+        enabled: nextEnabled,
+      });
       return;
     }
 

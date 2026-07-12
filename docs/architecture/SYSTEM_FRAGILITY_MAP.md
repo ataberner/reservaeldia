@@ -158,7 +158,7 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Level: HIGH
 - Type: Data Contract, Backend / Infra
 - Revalidates: `D1`, `P2`, `R3`, `R5`
-- Evidence: `normalizeDraftRenderState()` is shallow; backend prepared validation still needs to catch `missing-section-reference`, unsupported shapes, unresolved assets, crop materialization failures, `pantalla` drift, legacy countdown/icon branches, and CTA/root config issues such as `functional-cta-link-ignored`, `gift-missing-root-config`, and `rsvp-missing-root-config`.
+- Evidence: `normalizeDraftRenderState()` is shallow; backend prepared validation still needs to catch `missing-section-reference`, unsupported shapes, unresolved assets, crop materialization failures, `pantalla` drift, legacy countdown/icon branches, `functional-cta-link-ignored`, and residual CTA/root config issues when `enabled` cannot be normalized.
 - Contract Mismatch: the editor lets object-level presence imply behavior, but publish resolves some behavior from root config plus prepared assets plus compatibility policy. Successful publish also now depends on generated share-image readiness, which is intentionally backend-only.
 - Failure mode: editor surface still allows states that backend prepared preview/publish will block or warn about, and a publish attempt can now fail if the generated first-section share image cannot be produced and confirmed.
 - Action: `P1` improve editor-facing surfacing of prepared validation warnings, not only modal/checkout surfacing.

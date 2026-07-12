@@ -329,6 +329,59 @@ test("preview render preparation keeps valid preserved groups renderable in the 
   assert.equal(prepared.preparedRenderContract.objectUnits[0].children.length, 2);
 });
 
+test("preview render payload applies functional associations before generation", () => {
+  const payload = buildDashboardPreviewRenderPayload({
+    secciones: [{ id: "shared", orden: 0, altura: 420 }],
+    objetos: [
+      {
+        id: "shared-title",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 300,
+        y: 20,
+        width: 200,
+        height: 32,
+      },
+      {
+        id: "rsvp-group",
+        tipo: "grupo",
+        seccionId: "shared",
+        x: 80,
+        y: 80,
+        width: 100,
+        height: 100,
+        functionalAssociation: "rsvp",
+        children: [
+          { id: "rsvp-copy", tipo: "texto", x: 0, y: 0, width: 100, height: 30 },
+          { id: "rsvp-cta", tipo: "rsvp-boton", x: 0, y: 50, width: 100, height: 40 },
+        ],
+      },
+      {
+        id: "gifts-group",
+        tipo: "grupo",
+        seccionId: "shared",
+        x: 560,
+        y: 80,
+        width: 120,
+        height: 100,
+        functionalAssociation: "gifts",
+        children: [
+          { id: "gifts-copy", tipo: "texto", x: 0, y: 0, width: 120, height: 30 },
+          { id: "gifts-cta", tipo: "regalo-boton", x: 0, y: 50, width: 120, height: 40 },
+        ],
+      },
+    ],
+    rsvp: { enabled: true },
+    gifts: { enabled: false },
+  });
+
+  assert.deepEqual(payload.secciones.map((section) => section.id), ["shared"]);
+  assert.deepEqual(payload.objetos.map((object) => object.id), ["shared-title", "rsvp-group"]);
+  assert.equal(payload.objetos.find((object) => object.id === "rsvp-group").x, 350);
+  assert.equal(payload.rsvpPreviewConfig.enabled, true);
+  assert.equal(payload.giftPreviewConfig.enabled, false);
+});
+
 test("preview render payload normalizes current draft render contracts for preview generation", () => {
   const payload = buildDashboardPreviewRenderPayload({
     objetos: [
@@ -452,6 +505,7 @@ test("preview generator input prefers the normalized public slug and falls back 
   const explicitPublic = buildDashboardPreviewGeneratorInput({
     previewPayload: {
       giftPreviewConfig: { enabled: true },
+      rsvpPreviewConfig: { enabled: true, normalized: true },
       rawRsvp: { enabled: true },
       rawGifts: { enabled: false },
     },
@@ -472,8 +526,8 @@ test("preview generator input prefers the normalized public slug and falls back 
     slug: "mi-slug-publico",
     isPreview: true,
     gifts: { enabled: true },
-    rsvpSource: { enabled: true },
-    giftsSource: { enabled: false },
+    rsvpSource: { enabled: true, normalized: true },
+    giftsSource: { enabled: true },
   });
   assert.equal(fallbackDraft.slugPreview, "draft-1");
 });

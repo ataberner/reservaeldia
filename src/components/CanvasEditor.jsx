@@ -96,6 +96,9 @@ import {
   isFunctionalCtaButton,
   isFunctionalCtaHidden,
 } from "@/domain/functionalCtaButtons";
+import {
+  applyFunctionalAssociationsToRenderState,
+} from "../../shared/functionalAssociations.js";
 import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { createDefaultGiftConfig, normalizeGiftConfig } from "@/domain/gifts/config";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
@@ -650,6 +653,35 @@ export default function CanvasEditor({
     () => [...secciones].sort((a, b) => a.orden - b.orden),
     [secciones]
   );
+  const functionalRenderState = useMemo(
+    () =>
+      applyFunctionalAssociationsToRenderState({
+        secciones,
+        objetos,
+        rsvp: rsvpConfig,
+        gifts: giftsConfig,
+        materializeOffsets: false,
+      }),
+    [giftsConfig, objetos, rsvpConfig, secciones]
+  );
+  const renderObjetos = functionalRenderState.objetos;
+  const renderSecciones = functionalRenderState.secciones;
+  const renderSeccionesOrdenadas = useMemo(
+    () => [...renderSecciones].sort((a, b) => a.orden - b.orden),
+    [renderSecciones]
+  );
+  const renderAltoCanvas = useMemo(
+    () => renderSeccionesOrdenadas.reduce((acc, section) => acc + Number(section.altura || 0), 0) || 800,
+    [renderSeccionesOrdenadas]
+  );
+  const functionalHiddenObjectIds = useMemo(
+    () => new Set(functionalRenderState.hiddenObjectIds || []),
+    [functionalRenderState.hiddenObjectIds]
+  );
+  const functionalHiddenSectionIds = useMemo(
+    () => new Set(functionalRenderState.hiddenSectionIds || []),
+    [functionalRenderState.hiddenSectionIds]
+  );
   const { handleBackgroundImageStatusChange } = useCanvasEditorStartupStatus({
     slug,
     secciones,
@@ -710,7 +742,7 @@ export default function CanvasEditor({
   // ???Elemento actualmente seleccionado (o null)
   const rawObjetoSeleccionado =
     elementosSeleccionados.length === 1
-      ? objetos.find(o => o.id === elementosSeleccionados[0])
+      ? objetos.find(o => o.id === elementosSeleccionados[0] && !functionalHiddenObjectIds.has(o.id))
       : null;
   const objetoSeleccionado =
     rawObjetoSeleccionado && canEditObject(rawObjetoSeleccionado, { secciones })
@@ -1216,7 +1248,7 @@ export default function CanvasEditor({
     limpiarGuias
   } = useGuiasCentrado({
     anchoCanvas: 800,
-    altoCanvas: altoCanvasDinamico,
+    altoCanvas: renderAltoCanvas,
     // UX: guÃ­a de secciÃ³n solo al centrar, con imÃ¡n sutil.
     margenSensibilidad: 8,
     magnetRadius: 10,
@@ -1344,7 +1376,7 @@ export default function CanvasEditor({
       stageRef,
       elementRefs,
       escalaVisual,
-      objetos,
+      objetos: renderObjetos,
       startEdit,
       updateEdit,
       finishEdit,
@@ -1439,7 +1471,7 @@ export default function CanvasEditor({
   }, [requestInlineEditFinish]);
 
   useEditorWindowBridge({
-    seccionesOrdenadas,
+    seccionesOrdenadas: renderSeccionesOrdenadas,
     secciones,
     setSecciones,
     seccionActivaId,
@@ -1509,7 +1541,24 @@ export default function CanvasEditor({
   })();
 
   useEffect(() => {
-    if (visibleRsvpButton && rsvpConfig?.enabled !== true) {
+    const rsvpHasEnabled =
+      rsvpConfig &&
+      typeof rsvpConfig === "object" &&
+      Object.prototype.hasOwnProperty.call(rsvpConfig, "enabled");
+    const giftsHasEnabled =
+      giftsConfig &&
+      typeof giftsConfig === "object" &&
+      Object.prototype.hasOwnProperty.call(giftsConfig, "enabled");
+
+    if (rsvpConfig && !rsvpHasEnabled) {
+      setRsvpConfig((prev) => ({
+        ...normalizeRsvpConfig(prev, { forceEnabled: false }),
+        enabled: Boolean(visibleRsvpButton),
+      }));
+      return;
+    }
+
+    if (!rsvpConfig && visibleRsvpButton) {
       setRsvpConfig((prev) => ({
         ...(prev
           ? normalizeRsvpConfig(prev, { forceEnabled: false })
@@ -1518,7 +1567,15 @@ export default function CanvasEditor({
       }));
     }
 
-    if (visibleGiftButton && giftsConfig?.enabled !== true) {
+    if (giftsConfig && !giftsHasEnabled) {
+      setGiftsConfig((prev) => ({
+        ...normalizeGiftConfig(prev, { forceEnabled: false }),
+        enabled: Boolean(visibleGiftButton),
+      }));
+      return;
+    }
+
+    if (!giftsConfig && visibleGiftButton) {
       setGiftsConfig((prev) => ({
         ...(prev
           ? normalizeGiftConfig(prev, { forceEnabled: false })
@@ -1527,7 +1584,9 @@ export default function CanvasEditor({
       }));
     }
   }, [
+    giftsConfig,
     giftsConfig?.enabled,
+    rsvpConfig,
     rsvpConfig?.enabled,
     setGiftsConfig,
     setRsvpConfig,
@@ -1540,13 +1599,17 @@ export default function CanvasEditor({
       objetos,
       (item) => isFunctionalCtaButton(item) && isFunctionalCtaHidden(item)
     );
-    if (hiddenFunctionalCtaButtonIds.size === 0) return;
+    const hiddenIds = new Set([
+      ...hiddenFunctionalCtaButtonIds,
+      ...functionalHiddenObjectIds,
+    ]);
+    if (hiddenIds.size === 0) return;
 
-    if (elementosSeleccionados.some((id) => hiddenFunctionalCtaButtonIds.has(id))) {
+    if (elementosSeleccionados.some((id) => hiddenIds.has(id))) {
       clearCanvasSelectionUi();
     }
 
-    if (hiddenFunctionalCtaButtonIds.has(hoverId)) {
+    if (hiddenIds.has(hoverId)) {
       setHoverId(null, {
         source: "functional-cta-toggle",
         reason: "target-hidden",
@@ -1555,9 +1618,20 @@ export default function CanvasEditor({
   }, [
     clearCanvasSelectionUi,
     elementosSeleccionados,
+    functionalHiddenObjectIds,
     hoverId,
     objetos,
     setHoverId,
+  ]);
+
+  useEffect(() => {
+    if (!seccionActivaId || !functionalHiddenSectionIds.has(seccionActivaId)) return;
+    setSeccionActivaId(renderSeccionesOrdenadas[0]?.id || null);
+  }, [
+    functionalHiddenSectionIds,
+    renderSeccionesOrdenadas,
+    seccionActivaId,
+    setSeccionActivaId,
   ]);
 
 
@@ -1569,8 +1643,8 @@ export default function CanvasEditor({
     };
   }, []);
   const stageGestures = useStageGestures({
-    secciones,
-    objetos,
+    secciones: renderSecciones,
+    objetos: renderObjetos,
     elementRefs,
     dragStartPos,
     hasDragged,
@@ -1602,8 +1676,8 @@ export default function CanvasEditor({
 
   const scaledCanvasHeightCompensation = isMobile &&
     Number.isFinite(escalaVisual) &&
-    Number.isFinite(altoCanvasDinamico)
-    ? (escalaVisual - 1) * altoCanvasDinamico
+    Number.isFinite(renderAltoCanvas)
+    ? (escalaVisual - 1) * renderAltoCanvas
     : 0;
 
   const desktopCanvasShiftX =
@@ -1697,8 +1771,8 @@ export default function CanvasEditor({
             {!readOnly && (
               <SectionActionsOverlay
                 seccionActivaId={seccionActivaId}
-                seccionesOrdenadas={seccionesOrdenadas}
-                altoCanvas={altoCanvas}
+                seccionesOrdenadas={renderSeccionesOrdenadas}
+                altoCanvas={renderAltoCanvas}
                 seccionesAnimando={seccionesAnimando}
                 isMobile={isMobile}
                 mobileSectionActionsTop={mobileSectionActionsTop}
@@ -1732,17 +1806,17 @@ export default function CanvasEditor({
               style={{
                 position: "relative",
                 width: 800,
-                height: altoCanvasDinamico,
+                height: renderAltoCanvas,
                 pointerEvents: readOnly ? "none" : "auto",
               }}
             >
 
               <CanvasStageContent
                 stageRef={stageRef}
-                altoCanvasDinamico={altoCanvasDinamico}
+                altoCanvasDinamico={renderAltoCanvas}
                 stageGestures={stageGestures}
-                seccionesOrdenadas={seccionesOrdenadas}
-                altoCanvas={altoCanvas}
+                seccionesOrdenadas={renderSeccionesOrdenadas}
+                altoCanvas={renderAltoCanvas}
                 seccionActivaId={seccionActivaId}
                 seccionesAnimando={seccionesAnimando}
                 onSelectSeccion={onSelectSeccion}
@@ -1757,7 +1831,7 @@ export default function CanvasEditor({
                 supportsPointerEvents={supportsPointerEvents}
                 setGlobalCursor={setGlobalCursor}
                 clearGlobalCursor={clearGlobalCursor}
-                objetos={objetos}
+                objetos={renderObjetos}
                 editing={editing}
                 elementosSeleccionados={elementosSeleccionados}
                 elementosPreSeleccionados={elementosPreSeleccionados}
@@ -1833,14 +1907,14 @@ export default function CanvasEditor({
               <CanvasInlineEditingLayer
                 editing={editing}
                 elementRefs={elementRefs}
-                objetos={objetos}
+                objetos={renderObjetos}
                 escalaVisual={escalaVisual}
                 textEditController={textEditInteractionController}
                 textEditBackendController={textEditBackendController}
                 isMobile={isMobile}
                 zoom={zoom}
-                altoCanvasDinamico={altoCanvasDinamico}
-                seccionesOrdenadas={seccionesOrdenadas}
+                altoCanvasDinamico={renderAltoCanvas}
+                seccionesOrdenadas={renderSeccionesOrdenadas}
               />
             )}
 

@@ -55,6 +55,9 @@ import {
   canMutateSection,
 } from "@/domain/editor/protectedSections";
 import {
+  sanitizeMovedGroupFunctionalAssociation,
+} from "../../../../../../shared/functionalAssociations.js";
+import {
   resolveActiveInlineSessionId,
 } from "@/components/editor/canvasEditor/inlineCriticalBoundary";
 import {
@@ -10671,6 +10674,15 @@ export default function CanvasStageContent({
                     ...applyCanonicalDragFinalization(objOriginal, nuevo),
                   }
                 : { ...updated[index], ...nuevo };
+              if (nuevo.finalizoDrag) {
+                const sanitized = sanitizeMovedGroupFunctionalAssociation({
+                  secciones: seccionesOrdenadas,
+                  objetos: updated,
+                  groupId: id,
+                  previousSectionId: objOriginal.seccionId,
+                });
+                return sanitized.changed ? sanitized.objetos : updated;
+              }
               return updated;
             });
           }}
@@ -10896,7 +10908,13 @@ export default function CanvasStageContent({
                 ...updated[index],
                 ...applyCanonicalDragFinalization(objOriginal, cambios),
               };
-              return updated;
+              const sanitized = sanitizeMovedGroupFunctionalAssociation({
+                secciones: seccionesOrdenadas,
+                objetos: updated,
+                groupId: id,
+                previousSectionId: objOriginal.seccionId,
+              });
+              return sanitized.changed ? sanitized.objetos : updated;
             });
           }}
         />
@@ -11028,7 +11046,13 @@ export default function CanvasStageContent({
 
               const updated = [...prev];
               updated[index] = { ...updated[index], ...coordenadasFinales };
-              return updated;
+              const sanitized = sanitizeMovedGroupFunctionalAssociation({
+                secciones: seccionesOrdenadas,
+                objetos: updated,
+                groupId: id,
+                previousSectionId: objOriginal.seccionId,
+              });
+              return sanitized.changed ? sanitized.objetos : updated;
             });
 
             return;

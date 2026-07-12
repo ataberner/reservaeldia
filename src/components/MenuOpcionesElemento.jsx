@@ -11,6 +11,10 @@ import {
 } from "@/domain/motionEffects";
 import { canEditObject } from "@/domain/editor/protectedSections";
 import { resolveUngroupSelectionCandidate } from "@/domain/editor/grouping";
+import {
+    normalizeFunctionalAssociation,
+    setGroupFunctionalAssociation,
+} from "../../shared/functionalAssociations.js";
 import TemplateDynamicFieldMenuSection from "@/components/editor/templateAuthoring/TemplateDynamicFieldMenuSection";
 import { classifyRenderObjectContract } from "../../shared/renderContractPolicy.js";
 
@@ -155,6 +159,7 @@ export default function MenuOpcionesElemento({
     onConfigurarRsvp,
     onConfigurarRegalos,
     canManageSite = false,
+    templateWorkspace = null,
     templateAuthoring = null,
 }) {
     // Estado local del submenu "Orden de capa"
@@ -207,6 +212,20 @@ export default function MenuOpcionesElemento({
         ? menuContext.selectedObjects.length
         : multiSelectionIds.length;
     const canGroupSelection = menuContext?.canGroupSelection === true;
+    const canConfigureFunctionalAssociation = Boolean(
+        canManageSite &&
+        templateWorkspace?.mode === "template_edit" &&
+        templateWorkspace?.readOnly !== true &&
+        templateWorkspace?.permissions?.readOnly !== true
+    );
+    const currentFunctionalAssociation =
+        normalizeFunctionalAssociation(elementoSeleccionado?.functionalAssociation) || "";
+    const shouldRenderFunctionalAssociationControl =
+        canConfigureFunctionalAssociation &&
+        (
+            (menuKind === "canvas-object" && esGrupo) ||
+            isMultiSelectionMenu
+        );
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
     const shouldRenderTemplateAuthoringSection = canManageSite && Boolean(authoringConfig);
@@ -237,6 +256,50 @@ export default function MenuOpcionesElemento({
         ),
         [elementoSeleccionado, menuKind, secciones]
     );
+
+    const handleFunctionalAssociationChange = useCallback((associationValue) => {
+        const association = normalizeFunctionalAssociation(associationValue);
+
+        if (isMultiSelectionMenu) {
+            if (!association) {
+                onCerrar();
+                return;
+            }
+            if (!canGroupSelection || typeof onAgrupar !== "function") return;
+            const result = onAgrupar({ functionalAssociation: association });
+            if (result) onCerrar();
+            return;
+        }
+
+        if (!esGrupo || !elementoSeleccionado?.id || !canMutateCanvasObject) {
+            onCerrar();
+            return;
+        }
+
+        const result = setGroupFunctionalAssociation({
+            secciones,
+            objetos,
+            groupId: elementoSeleccionado.id,
+            association,
+        });
+        if (result?.changed) {
+            setSecciones?.(result.secciones);
+            setObjetos?.(result.objetos);
+        }
+        onCerrar();
+    }, [
+        canGroupSelection,
+        canMutateCanvasObject,
+        elementoSeleccionado?.id,
+        esGrupo,
+        isMultiSelectionMenu,
+        objetos,
+        onAgrupar,
+        onCerrar,
+        secciones,
+        setObjetos,
+        setSecciones,
+    ]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -676,6 +739,31 @@ export default function MenuOpcionesElemento({
         };
     }, [isOpen, botonOpcionesRef, calcularPosDesdeRect]);
 
+    const functionalAssociationControl = shouldRenderFunctionalAssociationControl ? (
+        <div className="rounded-xl border border-[#eadffd] bg-[#faf6ff] px-3 py-2">
+            <label className="block space-y-1">
+                <span className="text-xs font-semibold text-[#5f3596]">
+                    Asociacion funcional
+                </span>
+                <select
+                    value={isMultiSelectionMenu ? "" : currentFunctionalAssociation}
+                    disabled={isMultiSelectionMenu && !canGroupSelection}
+                    onChange={(event) => handleFunctionalAssociationChange(event.target.value)}
+                    className="w-full rounded-lg border border-[#dac7f7] bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#9d75d8] focus:ring-2 focus:ring-[#eadffd]"
+                >
+                    <option value="">Ninguna</option>
+                    <option value="rsvp">Confirmacion de asistencia</option>
+                    <option value="gifts">Regalos</option>
+                </select>
+            </label>
+            {isMultiSelectionMenu && !canGroupSelection ? (
+                <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                    La seleccion debe poder agruparse en una misma seccion.
+                </p>
+            ) : null}
+        </div>
+    ) : null;
+
     if (!isOpen) return null;
 
     const portalTarget = typeof document !== "undefined" ? document.body : null;
@@ -725,6 +813,8 @@ export default function MenuOpcionesElemento({
                             {multiSelectionCount} elemento{multiSelectionCount === 1 ? "" : "s"} seleccionado{multiSelectionCount === 1 ? "" : "s"}
                         </div>
                     </div>
+
+                    {functionalAssociationControl}
 
                     <button
                         onClick={() => {
@@ -1006,6 +1096,8 @@ export default function MenuOpcionesElemento({
             >
                 <PlusCircle className="w-4 h-4" /> Duplicar
             </button>
+
+            {esGrupo ? functionalAssociationControl : null}
 
             {esGrupo && canUngroupSelection && (
                 <button

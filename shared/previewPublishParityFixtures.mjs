@@ -219,7 +219,7 @@ export const previewPublishWarningParityFixtures = Object.freeze([
     previewDraft: missingRsvpRootPreviewDraft,
     publishDraft: missingRsvpRootBaseDraft,
     expectedMismatchCodes: [],
-    expectedValidationWarningCodes: ["rsvp-missing-root-config"],
+    expectedValidationWarningCodes: [],
   },
   {
     id: "preview-publish-gift-no-usable-methods-parity",

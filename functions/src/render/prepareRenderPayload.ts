@@ -20,6 +20,10 @@ const {
   prepareGroupAwareRenderState,
 } = require("../../shared/groupRenderContract.cjs");
 const {
+  applyFunctionalAssociationsToRenderState,
+  normalizeFunctionalConfigs,
+} = require("../../shared/functionalAssociations.cjs");
+const {
   RENDER_CONTRACT_IDS,
   classifyRenderObjectContract,
   resolveCountdownContract,
@@ -289,22 +293,38 @@ export async function prepareRenderPayload(
     secciones: draftRenderState.secciones,
   });
 
-  const objetosFinales = asRecordList(normalizedAssets.objetos);
-  const seccionesFinales = asRecordList(normalizedAssets.secciones);
+  const assetObjetos = asRecordList(normalizedAssets.objetos);
+  const assetSecciones = asRecordList(normalizedAssets.secciones);
+  const initialGroupAwareState = prepareGroupAwareRenderState({
+    objetos: assetObjetos,
+    secciones: assetSecciones,
+  });
+  const normalizedFunctionalConfigs = normalizeFunctionalConfigs({
+    objetos: initialGroupAwareState.objetos,
+    rsvp: draftRenderState.rsvp,
+    gifts: draftRenderState.gifts,
+  });
+  const functionalRenderState = applyFunctionalAssociationsToRenderState({
+    objetos: initialGroupAwareState.objetos,
+    secciones: initialGroupAwareState.secciones,
+    rsvp: normalizedFunctionalConfigs.rsvp,
+    gifts: normalizedFunctionalConfigs.gifts,
+    materializeOffsets: true,
+  });
   const groupAwareState = prepareGroupAwareRenderState({
-    objetos: objetosFinales,
-    secciones: seccionesFinales,
+    objetos: functionalRenderState.objetos,
+    secciones: functionalRenderState.secciones,
   });
   const functionalCtaContract = resolveFunctionalCtaContract({
-    objetos: draftRenderState.objetos,
-    rsvpConfig: draftRenderState.rsvp,
-    giftsConfig: draftRenderState.gifts,
+    objetos: groupAwareState.objetos,
+    rsvpConfig: normalizedFunctionalConfigs.rsvp,
+    giftsConfig: normalizedFunctionalConfigs.gifts,
   });
 
   return {
     draftRenderState,
-    objetosFinales,
-    seccionesFinales,
+    objetosFinales: asRecordList(groupAwareState.objetos),
+    seccionesFinales: asRecordList(groupAwareState.secciones),
     functionalCtaContract,
     preparedRenderContract: groupAwareState.preparedRenderContract || null,
     contractIssues: Array.isArray(groupAwareState.contractIssues)

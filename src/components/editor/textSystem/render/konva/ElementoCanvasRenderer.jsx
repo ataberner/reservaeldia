@@ -48,6 +48,9 @@ import {
 import useSharedImage from "@/hooks/useSharedImage";
 import { resolveObjectPrimaryAssetUrl } from "../../../../../../shared/renderAssetContract.js";
 import {
+  FUNCTIONAL_RENDER_OFFSET_X_FIELD,
+} from "../../../../../../shared/functionalAssociations.js";
+import {
   buildCanvasDragPerfDiff,
   endCanvasDragPerfSession,
   startCanvasDragPerfSession,
@@ -3337,16 +3340,19 @@ export default function ElementoCanvas({
   const manualGroupPreviewPose = getManualGroupDragPreviewPose(obj.id);
   const manualGroupPreviewSignature = manualGroupPreviewPose?.signature || "";
   const visualRenderObject = obj.tipo === "imagen" ? renderImageObject : obj;
+  const functionalRenderOffsetX = Number(visualRenderObject?.[FUNCTIONAL_RENDER_OFFSET_X_FIELD] || 0);
+  const hasFunctionalRenderOffsetX =
+    Number.isFinite(functionalRenderOffsetX) && Math.abs(functionalRenderOffsetX) > 0.001;
 
 
   // Ã°Å¸â€Â¥ MEMOIZAR PROPIEDADES COMUNES
   const commonProps = useMemo(() => ({
-    x: manualGroupPreviewPose?.x ?? (visualRenderObject.x ?? 0),
+    x: manualGroupPreviewPose?.x ?? ((visualRenderObject.x ?? 0) + (hasFunctionalRenderOffsetX ? functionalRenderOffsetX : 0)),
     y: manualGroupPreviewPose?.y ?? (visualRenderObject.y ?? 0),
     rotation: visualRenderObject.rotation || 0,
     scaleX: visualRenderObject.scaleX || 1,
     scaleY: visualRenderObject.scaleY || 1,
-    draggable: resolveInteractionDraggableEnabled(),
+    draggable: hasFunctionalRenderOffsetX ? false : resolveInteractionDraggableEnabled(),
     listening: resolveInteractionListeningEnabled(),
 
     onMouseDown: !hasPointerEvents
@@ -3935,6 +3941,8 @@ export default function ElementoCanvas({
   }), [
     obj,
     visualRenderObject,
+    functionalRenderOffsetX,
+    hasFunctionalRenderOffsetX,
     editingMode,
     inlineEditPointerActive,
     isInEditMode,

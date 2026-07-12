@@ -201,6 +201,7 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `tipo` | Optional | Section classification used by creation/workflow code. |
 | `altoModo` | Optional but behavior-critical | Section layout mode. Current code uses values such as `pantalla` and `fijo`. |
 | `mobileLayoutMode` | Optional render-control enum | Mobile smart-layout participation. Missing/invalid/`auto` uses current automatic behavior. `preserve` opts the section out of smart reflow while keeping normal mobile viewport/fit-scale behavior. |
+| `functionalAssociation` | Optional render-control enum | Admin/template metadata for whole-section functional visibility. Supported values are `"rsvp"` and `"gifts"`. Missing/null means always visible/shared. When present and the matching root config `enabled` is false, editor, preview, and publish omit the entire section, including section-owned visuals and all objects in it. |
 | `alturaFijoBackup` | Optional | Backup fixed height when toggling section modes. |
 | `fondoTipo` | Optional | Base background kind. Current HTML generator checks `"imagen"` explicitly. |
 | `fondoImagen` | Optional | Base background image URL/path. |
@@ -329,10 +330,12 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
 | `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
 
+`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for `functionalAssociation` render derivation. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
+
 ### `grupo`
 Groups are preserved composition objects. The group root lives in `objetos` with
 `tipo: "grupo"`, owns `seccionId`, `anclaje`, `x`, `y`, optional `yNorm`, `width`,
-`height`, and carries a `children[]` array.
+`height`, optional `functionalAssociation`, and carries a `children[]` array.
 
 Group children use the same object-family contracts as root objects, but with group-local
 geometry:
@@ -346,6 +349,8 @@ rendering back through the normal object renderer. Full-document collectors must
 into `children[]` for dependencies and runtimes such as Google Fonts, countdown scripts,
 gallery lightbox support, and functional CTA detection. The detailed contract lives in
 `docs/architecture/GROUP_RENDER_MODEL.md`.
+
+`functionalAssociation` is supported only on the group root. Supported values are `"rsvp"` and `"gifts"`; missing/null means shared. In shared sections without a section-level `functionalAssociation`, inactive functional groups are omitted at render time. If exactly one functional side remains active and both RSVP and Gifts groups exist in that section, render preparation derives a horizontal offset from the joint bounding box of all visible groups for that active functionality. The offset is reversible and must not be saved as the group's base `x`.
 
 ### `texto`
 Current text objects use these fields:
@@ -588,6 +593,8 @@ Current normalized RSVP config shape on both the client and server is:
 | `questions[].options[]` | Optional | Present for select-like questions. |
 | `sheetUrl` | Optional normalized field | Preserved by both normalizers and exposed to the RSVP modal runtime for the optional secondary sheet/webhook POST. It is not read by `publicRsvpSubmit`. |
 
+`enabled` is the single RSVP functional switch. It controls the RSVP CTA visibility and any section/group render derivation that uses `functionalAssociation: "rsvp"`.
+
 Legacy-compatible RSVP input aliases accepted by both normalizers:
 
 | Legacy Input | Normalized Field |
@@ -643,6 +650,8 @@ Current normalized gifts config shape is:
 | `visibility.cuit` | Required after normalization | Visibility flag. |
 | `visibility.giftListLink` | Required after normalization | Visibility flag. |
 | `giftListUrl` | Required after normalization | Sanitized external URL, may be empty. |
+
+`enabled` is the single Gifts functional switch. It controls the gifts CTA visibility and any section/group render derivation that uses `functionalAssociation: "gifts"`.
 
 ### Template Workspace and Personalization Metadata
 These fields are real Firestore data, but they are not part of the canonical invitation render state:

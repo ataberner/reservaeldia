@@ -218,6 +218,7 @@ export default function CanvasEditorOverlays({
           onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
           onConfigurarRegalos={() => abrirPanelRegalos()}
           canManageSite={canManageSite}
+          templateWorkspace={templateWorkspace}
           templateAuthoring={
             canRenderTemplateAuthoringMenu
               ? {

@@ -784,7 +784,10 @@ function GiftPreviewModal({ open, config, onClose }) {
 export default function MiniToolbarTabRegalos({
   simplifiedForAssistant = false,
 }) {
-  const [config, setConfig] = useState(() => createDefaultGiftConfig());
+  const [config, setConfig] = useState(() => ({
+    ...createDefaultGiftConfig(),
+    enabled: false,
+  }));
   const [giftButton, setGiftButton] = useState(null);
   const [buttonText, setButtonText] = useState(DEFAULT_GIFT_BUTTON_TEXT);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -799,7 +802,7 @@ export default function MiniToolbarTabRegalos({
   const inactiveItems = methodItems.filter((item) => !item.active);
   const editingMethod = useMemo(() => getGiftMethodByKey(editingMethodKey), [editingMethodKey]);
   const giftButtonId = giftButton?.id || null;
-  const isGiftActive = Boolean(giftButton && !isFunctionalCtaHidden(giftButton));
+  const isGiftActive = normalizedConfig.enabled === true;
   const giftsContainerClass = simplifiedForAssistant
     ? "flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1 md:overflow-hidden"
     : "flex flex-1 min-h-0 flex-col gap-2 overflow-y-auto pr-1";
@@ -902,12 +905,10 @@ export default function MiniToolbarTabRegalos({
           },
         })
       );
-      if (nextEnabled) {
-        updateConfig({
-          ...normalizedConfig,
-          enabled: true,
-        });
-      }
+      updateConfig({
+        ...normalizedConfig,
+        enabled: nextEnabled,
+      });
       return;
     }
 

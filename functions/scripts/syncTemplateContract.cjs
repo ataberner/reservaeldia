@@ -59,6 +59,14 @@ const artifacts = [
       path.resolve(__dirname, "../lib/shared/groupRenderContract.cjs"),
     ],
   },
+  {
+    label: "Asociaciones funcionales de render",
+    sourcePath: path.resolve(__dirname, "../../shared/functionalAssociations.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/functionalAssociations.cjs"),
+      path.resolve(__dirname, "../lib/shared/functionalAssociations.cjs"),
+    ],
+  },
 ];
 
 artifacts.forEach(({ label, sourcePath, targetPaths }) => {

@@ -25,6 +25,13 @@ import {
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
 import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
+import {
+  createEditorScrollSnapshot,
+  getEditorScrollDelta,
+  getTouchAwareDragThreshold,
+  isTouchLikePointerType,
+  resolveTouchDragIntent,
+} from "@/lib/editorTouchDragIntent";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
 
 import {
@@ -90,7 +97,9 @@ function resolvePointerType(evt) {
 }
 
 function getDragIntentThreshold(pointerType) {
-  if (pointerType === "touch" || pointerType === "pen") return 4;
+  if (pointerType === "touch" || pointerType === "pen") {
+    return getTouchAwareDragThreshold(pointerType);
+  }
   return 1;
 }
 
@@ -170,6 +179,11 @@ export default function CountdownKonva({
   const pendingPrimarySelectionClickGuardRef = useRef({
     elementId: null,
     expiresAt: 0,
+  });
+  const deferredTouchSelectionRef = useRef({
+    active: false,
+    event: null,
+    allowSameGestureDrag: false,
   });
 
   useEffect(() => {
@@ -553,7 +567,9 @@ export default function CountdownKonva({
     startStageY: 0,
     startNodeX: 0,
     startNodeY: 0,
+    pointerType: "mouse",
     dragThreshold: 3,
+    scrollSnapshot: null,
     // para ignorar click si se convirtió en drag
     suppressClick: false,
   });
@@ -679,7 +695,47 @@ export default function CountdownKonva({
     });
   }, [obj, onSelect]);
 
-  const maybeSelectElementOnPress = useCallback((event) => {
+  const clearDeferredTouchSelection = useCallback(() => {
+    deferredTouchSelectionRef.current = {
+      active: false,
+      event: null,
+      allowSameGestureDrag: false,
+    };
+  }, []);
+
+  const commitDeferredTouchSelection = useCallback((event = null, options = {}) => {
+    const candidate = deferredTouchSelectionRef.current || {};
+    if (!candidate.active || !onSelect) {
+      return {
+        didSelectOnPress: false,
+        allowSameGestureDrag: false,
+        decision: null,
+      };
+    }
+
+    const allowSameGestureDrag =
+      typeof options?.allowSameGestureDrag === "boolean"
+        ? options.allowSameGestureDrag
+        : Boolean(candidate.allowSameGestureDrag);
+    armPrimarySelectionClickGuard();
+    const selectionIntent = emitSelectionGesture("primary", event || candidate.event, {
+      selectionOrigin: "press",
+      allowSameGestureDrag,
+    });
+    clearDeferredTouchSelection();
+    return {
+      didSelectOnPress: Boolean(selectionIntent),
+      allowSameGestureDrag: selectionIntent?.decision === "select_and_drag",
+      decision: selectionIntent?.decision || null,
+    };
+  }, [
+    armPrimarySelectionClickGuard,
+    clearDeferredTouchSelection,
+    emitSelectionGesture,
+    onSelect,
+  ]);
+
+  const maybeSelectElementOnPress = useCallback((event, options = {}) => {
     if (!onSelect) {
       return {
         didSelectOnPress: false,
@@ -724,6 +780,28 @@ export default function CountdownKonva({
       !nativeEvent?.ctrlKey &&
       !nativeEvent?.metaKey;
 
+    const pointerType = resolvePointerType(nativeEvent);
+    if (
+      options?.deferTouchSelection === true &&
+      isTouchLikePointerType(pointerType)
+    ) {
+      deferredTouchSelectionRef.current = {
+        active: true,
+        event,
+        allowSameGestureDrag,
+      };
+      return {
+        didSelectOnPress: false,
+        allowSameGestureDrag,
+        decision: allowSameGestureDrag
+          ? "deferred_select_and_drag"
+          : "deferred_select",
+        runtimeSelectedIds,
+        effectiveSelectionCount,
+      };
+    }
+
+    clearDeferredTouchSelection();
     armPrimarySelectionClickGuard();
 
     const selectionIntent = emitSelectionGesture("primary", event, {
@@ -740,6 +818,7 @@ export default function CountdownKonva({
     };
   }, [
     armPrimarySelectionClickGuard,
+    clearDeferredTouchSelection,
     emitSelectionGesture,
     getEffectiveSelectionState,
     onSelect,
@@ -1150,6 +1229,14 @@ export default function CountdownKonva({
     pressRef.current.movedEnough = false;
     pressRef.current.startedDrag = false;
     pressRef.current.startedAtMs = null;
+    pressRef.current.pointerType = "mouse";
+    pressRef.current.dragThreshold = 3;
+    pressRef.current.scrollSnapshot = null;
+    deferredTouchSelectionRef.current = {
+      active: false,
+      event: null,
+      allowSameGestureDrag: false,
+    };
     return true;
   }, []);
 
@@ -1211,30 +1298,88 @@ export default function CountdownKonva({
     cleanupGlobal();
 
     const onMove = (ev) => {
-      if (pressRef.current.sessionId !== listenerSessionId) return;
-      if (!pressRef.current.active) return;
-      if (pressRef.current.startedDrag) return;
-
-      if (
-        ev?.cancelable &&
-        (ev?.pointerType === "touch" || ev?.touches || ev?.changedTouches)
-      ) {
-        try { ev.preventDefault(); } catch {}
-      }
+      const press = pressRef.current;
+      if (press.sessionId !== listenerSessionId) return;
+      if (!press.active) return;
+      if (press.startedDrag) return;
 
       const point = getClientPoint(ev);
       if (!point) return;
 
-      const dxClient = point.x - pressRef.current.startClientX;
-      const dyClient = point.y - pressRef.current.startClientY;
+      const dxClient = point.x - press.startClientX;
+      const dyClient = point.y - press.startClientY;
       const dist = Math.hypot(dxClient, dyClient);
 
-      if (dist < pressRef.current.dragThreshold) return;
+      if (isTouchLikePointerType(press.pointerType)) {
+        const scrollDelta = getEditorScrollDelta(press.scrollSnapshot);
+        const moveTimeMs =
+          getEventTimeStampMs(ev) ??
+          (typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now());
+        const startTimeMs =
+          Number.isFinite(Number(press.startedAtMs))
+            ? Number(press.startedAtMs)
+            : moveTimeMs;
+        const intent = resolveTouchDragIntent({
+          pointerType: press.pointerType,
+          deltaX: dxClient,
+          deltaY: dyClient,
+          elapsedMs: moveTimeMs - startTimeMs,
+          scrollDeltaX: scrollDelta.x,
+          scrollDeltaY: scrollDelta.y,
+          dragThresholdPx: press.dragThreshold,
+        });
+
+        if (intent.decision === "scroll") {
+          press.active = false;
+          press.movedEnough = true;
+          press.startedDrag = false;
+          press.suppressClick = true;
+          press.scrollSnapshot = null;
+          clearDeferredTouchSelection();
+          onPredragVisualSelectionCancel?.(obj.id);
+          const clearedPredragSelectionLock = clearMatchingPredragSelectionLock({
+            elementId: obj.id,
+            selectionRuntime,
+            source: "countdown:touch-scroll-cancel",
+          });
+          const node = rootRef.current;
+          if (node) {
+            try {
+              node.position({ x: press.startNodeX, y: press.startNodeY });
+              node.getLayer()?.batchDraw();
+            } catch {}
+            setNodeDraggable(node, false, "touch-scroll-cancel", {
+              listenerSessionId,
+              clearedPredragSelectionLock,
+              reason: intent.reason,
+            });
+          }
+          draggingRef.current = false;
+          window._isDragging = false;
+          setTimeout(() => {
+            if (pressRef.current.sessionId === listenerSessionId) {
+              pressRef.current.suppressClick = false;
+            }
+          }, 450);
+          cleanupGlobal(listenerSessionId);
+          return;
+        }
+
+        if (intent.decision === "pending") return;
+      } else if (dist < press.dragThreshold) {
+        return;
+      }
+
+      if (isTouchLikePointerType(press.pointerType) && ev?.cancelable) {
+        try { ev.preventDefault(); } catch {}
+      }
 
       // ✅ Se convirtió en drag intencional
-      pressRef.current.movedEnough = true;
-      pressRef.current.startedDrag = true;
-      pressRef.current.suppressClick = true;
+      press.movedEnough = true;
+      press.startedDrag = true;
+      press.suppressClick = true;
       dragSessionRef.current = {
         sessionId: listenerSessionId,
         startedAtMs: pressRef.current.startedAtMs,
@@ -1244,6 +1389,11 @@ export default function CountdownKonva({
 
       const node = rootRef.current;
       if (!node) return;
+      if (isTouchLikePointerType(press.pointerType)) {
+        commitDeferredTouchSelection(null, {
+          allowSameGestureDrag: true,
+        });
+      }
       const mirroredSelection = getMirroredSelectedIds();
       const selectionSnapshot =
         mirroredSelection.length > 0 ? mirroredSelection : [obj.id];
@@ -1337,6 +1487,9 @@ export default function CountdownKonva({
           listenerSessionId,
           clearedPredragSelectionLock,
         });
+        commitDeferredTouchSelection(null, {
+          allowSameGestureDrag: false,
+        });
         resetPressStateForSession(listenerSessionId);
         setNodeDraggable(node, false, "release-no-drag", {
           listenerSessionId,
@@ -1373,6 +1526,8 @@ export default function CountdownKonva({
       },
     };
   }, [
+    clearDeferredTouchSelection,
+    commitDeferredTouchSelection,
     cleanupGlobal,
     detachTransformerBeforeNativeDrag,
     getMirroredSelectedIds,
@@ -1414,7 +1569,9 @@ export default function CountdownKonva({
 
       const selectionState = getEffectiveSelectionState();
       const pressSelectionResult = !selectionState.effectiveIsSelected
-        ? maybeSelectElementOnPress(e)
+        ? maybeSelectElementOnPress(e, {
+            deferTouchSelection: isTouchLikePointerType(pointerType),
+          })
         : {
             didSelectOnPress: false,
             allowSameGestureDrag: false,
@@ -1448,7 +1605,11 @@ export default function CountdownKonva({
       pressRef.current.movedEnough = false;
       pressRef.current.startedDrag = false;
       pressRef.current.suppressClick = false;
+      pressRef.current.pointerType = pointerType;
       pressRef.current.dragThreshold = dragThreshold;
+      pressRef.current.scrollSnapshot = isTouchLikePointerType(pointerType)
+        ? createEditorScrollSnapshot(node)
+        : null;
 
       // Guardar posición inicial del nodo
       pressRef.current.startNodeX = node.x();
@@ -1795,9 +1956,10 @@ export default function CountdownKonva({
   // Cleanup global por si el componente se desmonta en pleno press
   useEffect(() => {
     return () => {
+      clearDeferredTouchSelection();
       cleanupGlobal();
     };
-  }, [cleanupGlobal]);
+  }, [clearDeferredTouchSelection, cleanupGlobal]);
 
   const liveRenderNode = rootRef.current || null;
   const shouldRenderLiveDragPose = Boolean(

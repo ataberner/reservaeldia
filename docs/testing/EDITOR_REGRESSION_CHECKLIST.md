@@ -127,6 +127,21 @@ Resultado esperado:
 - el marquee real sigue funcionando despues del scroll
 - el rectangulo de seleccion no deriva respecto al puntero
 
+### [ ] Scroll tactil sobre objetos vs drag
+
+1. En mobile o emulacion tactil, iniciar scroll vertical apoyando el dedo sobre texto, imagen, galeria y grupo.
+2. Repetir con un toque breve sobre un objeto.
+3. Repetir con un drag deliberado horizontal, vertical y diagonal.
+4. Interrumpir un gesto candidato con `touchcancel` o `pointercancel`.
+
+Resultado esperado:
+
+- el scroll vertical sobre objetos no selecciona ni mueve el objeto
+- una vez iniciado el scroll, el gesto no se convierte luego en drag
+- el toque breve sigue seleccionando
+- el drag deliberado sigue entrando al flujo normal de predrag, drag overlay y settle
+- no quedan estados residuales de predrag, drag, hover ni overlay
+
 ## 2. Texto inline
 
 ### [ ] Entrada a inline edit sin click extra

@@ -22,6 +22,14 @@ import {
   resolveGalleryLayoutRenderCellLimit,
 } from "@/domain/gallery/galleryLayoutPresets";
 import useSharedImage from "@/hooks/useSharedImage";
+import {
+  createEditorScrollSnapshot,
+  getEditorScrollDelta,
+  getTouchAwareDragThreshold,
+  isTouchLikePointerType,
+  resolvePointerTypeFromNativeEvent,
+  resolveTouchDragIntent,
+} from "@/lib/editorTouchDragIntent";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -99,6 +107,10 @@ export default function GaleriaKonva({
     startClientY: 0,
     startNodeX: 0,
     startNodeY: 0,
+    pointerType: "mouse",
+    dragThreshold: DRAG_THRESHOLD_PX,
+    startedAtMs: 0,
+    scrollSnapshot: null,
   });
 
   const setRootRef = useCallback(
@@ -272,14 +284,63 @@ export default function GaleriaKonva({
 
     const onMove = (ev) => {
       const press = pressRef.current;
-      if (!press.active || press.startedDrag || !press.allowDrag) return;
+      if (!press.active || press.startedDrag) return;
 
       const point = getClientPoint(ev);
       if (!point) return;
 
       const dx = point.x - press.startClientX;
       const dy = point.y - press.startClientY;
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      if (isTouchLikePointerType(press.pointerType)) {
+        const scrollDelta = getEditorScrollDelta(press.scrollSnapshot);
+        const nowMs =
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
+        const intent = resolveTouchDragIntent({
+          pointerType: press.pointerType,
+          deltaX: dx,
+          deltaY: dy,
+          elapsedMs: nowMs - Number(press.startedAtMs || nowMs),
+          scrollDeltaX: scrollDelta.x,
+          scrollDeltaY: scrollDelta.y,
+          dragThresholdPx: press.dragThreshold,
+        });
+
+        if (intent.decision === "scroll") {
+          press.active = false;
+          press.movedEnough = true;
+          press.startedDrag = false;
+          press.suppressClick = true;
+          press.scrollSnapshot = null;
+          try {
+            rootRef.current?.draggable?.(false);
+          } catch {}
+          setTimeout(() => {
+            pressRef.current.suppressClick = false;
+          }, 450);
+          cleanupGlobal();
+          return;
+        }
+
+        if (intent.decision === "pending") return;
+      } else if (Math.hypot(dx, dy) < press.dragThreshold) {
+        return;
+      }
+
+      if (!press.allowDrag) {
+        if (isTouchLikePointerType(press.pointerType)) {
+          press.active = false;
+          press.movedEnough = true;
+          press.suppressClick = true;
+          press.scrollSnapshot = null;
+          setTimeout(() => {
+            pressRef.current.suppressClick = false;
+          }, 450);
+          cleanupGlobal();
+        }
+        return;
+      }
 
       press.movedEnough = true;
       press.startedDrag = true;
@@ -292,6 +353,12 @@ export default function GaleriaKonva({
         node.position({ x: press.startNodeX, y: press.startNodeY });
         node.getLayer()?.batchDraw();
       } catch {}
+
+      if (isTouchLikePointerType(press.pointerType) && ev?.cancelable) {
+        try {
+          ev.preventDefault();
+        } catch {}
+      }
 
       try {
         node.draggable(true);
@@ -327,6 +394,7 @@ export default function GaleriaKonva({
 
       press.movedEnough = false;
       press.startedDrag = false;
+      press.scrollSnapshot = null;
 
       setTimeout(() => {
         pressRef.current.suppressClick = false;
@@ -336,7 +404,7 @@ export default function GaleriaKonva({
     };
 
     window.addEventListener("mousemove", onMove, true);
-    window.addEventListener("touchmove", onMove, { capture: true, passive: true });
+    window.addEventListener("touchmove", onMove, { capture: true, passive: false });
     window.addEventListener("mouseup", onUp, true);
     window.addEventListener("touchend", onUp, true);
     window.addEventListener("touchcancel", onUp, true);
@@ -373,6 +441,17 @@ export default function GaleriaKonva({
       press.startClientY = point.y;
       press.startNodeX = node.x();
       press.startNodeY = node.y();
+      press.pointerType = resolvePointerTypeFromNativeEvent(e?.evt);
+      press.dragThreshold = isTouchLikePointerType(press.pointerType)
+        ? getTouchAwareDragThreshold(press.pointerType)
+        : DRAG_THRESHOLD_PX;
+      press.startedAtMs =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      press.scrollSnapshot = isTouchLikePointerType(press.pointerType)
+        ? createEditorScrollSnapshot(node)
+        : null;
 
       if (
         e?.evt?.shiftKey &&

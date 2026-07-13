@@ -1,16 +1,23 @@
+import {
+  EVENT_DETAIL_FEATURES,
+  getEventDetailFeatureLabel,
+  normalizeEventDetailFeature,
+} from "./features.js";
+
 export const EVENT_LOCATION_ROLES = Object.freeze({
   VENUE_NAME: "venue_name",
   VENUE_ADDRESS: "venue_address",
 });
 
 export const EVENT_LOCATION_FIELD_KEYS = Object.freeze({
-  [EVENT_LOCATION_ROLES.VENUE_NAME]: "event_venue_name",
-  [EVENT_LOCATION_ROLES.VENUE_ADDRESS]: "event_venue_address",
-});
-
-const EVENT_LOCATION_FIELD_LABELS = Object.freeze({
-  [EVENT_LOCATION_ROLES.VENUE_NAME]: "Nombre del lugar",
-  [EVENT_LOCATION_ROLES.VENUE_ADDRESS]: "Direccion del evento",
+  [EVENT_DETAIL_FEATURES.CEREMONY]: Object.freeze({
+    [EVENT_LOCATION_ROLES.VENUE_NAME]: "event_ceremony_venue_name",
+    [EVENT_LOCATION_ROLES.VENUE_ADDRESS]: "event_ceremony_venue_address",
+  }),
+  [EVENT_DETAIL_FEATURES.PARTY]: Object.freeze({
+    [EVENT_LOCATION_ROLES.VENUE_NAME]: "event_party_venue_name",
+    [EVENT_LOCATION_ROLES.VENUE_ADDRESS]: "event_party_venue_address",
+  }),
 });
 
 export const DEFAULT_ADDRESS_TEXT_FORMAT_PRESET = "event_address_full_google";
@@ -211,40 +218,94 @@ export function normalizeEventLocationRole(value) {
   const role = normalizeText(value).toLowerCase();
   if (role === EVENT_LOCATION_ROLES.VENUE_NAME) return role;
   if (role === EVENT_LOCATION_ROLES.VENUE_ADDRESS) return role;
+  if (role === "ceremony_venue_name" || role === "party_venue_name") {
+    return EVENT_LOCATION_ROLES.VENUE_NAME;
+  }
+  if (role === "ceremony_venue_address" || role === "party_venue_address") {
+    return EVENT_LOCATION_ROLES.VENUE_ADDRESS;
+  }
   return "";
 }
 
-export function getEventLocationFieldKey(role) {
-  const safeRole = normalizeEventLocationRole(role);
-  return EVENT_LOCATION_FIELD_KEYS[safeRole] || "";
+function isExplicitEventLocationFieldRole(value) {
+  const role = normalizeText(value).toLowerCase();
+  return (
+    role === "ceremony_venue_name" ||
+    role === "ceremony_venue_address" ||
+    role === "party_venue_name" ||
+    role === "party_venue_address"
+  );
 }
 
-export function isEventLocationField(field) {
-  return Boolean(normalizeEventLocationRole(asObject(field).eventDetailsRole));
+function isExplicitEventVenueAddressFieldRole(value) {
+  const role = normalizeText(value).toLowerCase();
+  return role === "ceremony_venue_address" || role === "party_venue_address";
+}
+
+export function getEventLocationFieldKey(role, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeRole = normalizeEventLocationRole(role);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return EVENT_LOCATION_FIELD_KEYS[safeFeature]?.[safeRole] || "";
+}
+
+export function getEventLocationFieldRole(role, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeRole = normalizeEventLocationRole(role);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return safeRole ? `${safeFeature}_${safeRole}` : "";
+}
+
+export function resolveEventLocationFieldFeature(field) {
+  const safeField = asObject(field);
+  const key = normalizeText(safeField.key);
+  const role = normalizeText(safeField.eventDetailsRole).toLowerCase();
+  if (key.startsWith("event_party_") || role.startsWith("party_")) {
+    return EVENT_DETAIL_FEATURES.PARTY;
+  }
+  return EVENT_DETAIL_FEATURES.CEREMONY;
+}
+
+export function isEventLocationField(field, feature = null) {
+  const safeField = asObject(field);
+  const key = normalizeText(safeField.key);
+  const role = normalizeText(safeField.eventDetailsRole).toLowerCase();
+  const hasRole = isExplicitEventLocationFieldRole(role);
+  const hasKey = Object.values(EVENT_LOCATION_FIELD_KEYS).some((keysByRole) =>
+    Object.values(keysByRole).includes(key)
+  );
+  if (!hasRole && !hasKey) return false;
+  if (!feature) return true;
+  return resolveEventLocationFieldFeature(safeField) === normalizeEventDetailFeature(feature);
 }
 
 export function isEventVenueAddressField(field) {
   const safeField = asObject(field);
   return (
     normalizeText(safeField.key) ===
-      EVENT_LOCATION_FIELD_KEYS[EVENT_LOCATION_ROLES.VENUE_ADDRESS] ||
-    normalizeEventLocationRole(safeField.eventDetailsRole) ===
-      EVENT_LOCATION_ROLES.VENUE_ADDRESS
+      EVENT_LOCATION_FIELD_KEYS[EVENT_DETAIL_FEATURES.CEREMONY][EVENT_LOCATION_ROLES.VENUE_ADDRESS] ||
+    normalizeText(safeField.key) ===
+      EVENT_LOCATION_FIELD_KEYS[EVENT_DETAIL_FEATURES.PARTY][EVENT_LOCATION_ROLES.VENUE_ADDRESS] ||
+    isExplicitEventVenueAddressFieldRole(safeField.eventDetailsRole)
   );
 }
 
-export function buildEventLocationField(role) {
+export function buildEventLocationField(role, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   const safeRole = normalizeEventLocationRole(role);
-  const fieldKey = getEventLocationFieldKey(safeRole);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const fieldKey = getEventLocationFieldKey(safeRole, safeFeature);
   if (!fieldKey) return null;
+  const featureLabel = getEventDetailFeatureLabel(safeFeature).toLowerCase();
+  const roleLabel =
+    safeRole === EVENT_LOCATION_ROLES.VENUE_ADDRESS
+      ? `Direccion de la ${featureLabel}`
+      : `Nombre del lugar de la ${featureLabel}`;
 
   return {
     key: fieldKey,
-    label: EVENT_LOCATION_FIELD_LABELS[safeRole] || "Ubicacion",
+    label: roleLabel,
     type: safeRole === EVENT_LOCATION_ROLES.VENUE_ADDRESS ? "location" : "text",
-    group: "Ubicaciones",
+    group: getEventDetailFeatureLabel(safeFeature),
     optional: safeRole === EVENT_LOCATION_ROLES.VENUE_NAME,
-    eventDetailsRole: safeRole,
+    eventDetailsRole: getEventLocationFieldRole(safeRole, safeFeature),
     ...(safeRole === EVENT_LOCATION_ROLES.VENUE_ADDRESS
       ? { addressTextFormatPreset: DEFAULT_ADDRESS_TEXT_FORMAT_PRESET }
       : {}),
@@ -252,13 +313,18 @@ export function buildEventLocationField(role) {
   };
 }
 
-export function ensureEventLocationFields({ fieldsSchema } = {}) {
+export function ensureEventLocationFields({
+  fieldsSchema,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
+} = {}) {
   const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
   const nextFields = fields.map((field) => ({ ...asObject(field) }));
   let changed = false;
+  const safeFeature = normalizeEventDetailFeature(feature);
 
   Object.values(EVENT_LOCATION_ROLES).forEach((role) => {
-    const templateField = buildEventLocationField(role);
+    const safeRole = normalizeEventLocationRole(role);
+    const templateField = buildEventLocationField(safeRole, safeFeature);
     if (!templateField) return;
 
     const fieldIndex = nextFields.findIndex(
@@ -280,7 +346,7 @@ export function ensureEventLocationFields({ fieldsSchema } = {}) {
           ? current.optional
           : templateField.optional,
       eventDetailsRole: templateField.eventDetailsRole,
-      ...(templateField.eventDetailsRole === EVENT_LOCATION_ROLES.VENUE_ADDRESS
+      ...(safeRole === EVENT_LOCATION_ROLES.VENUE_ADDRESS
         ? {
             addressTextFormatPreset: normalizeAddressTextFormatPreset(
               current.addressTextFormatPreset
@@ -392,15 +458,20 @@ export function formatEventAddressText({
 export function updateEventAddressTextFormatInSchema({
   fieldsSchema,
   preset,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const resolvedPreset = normalizeAddressTextFormatPreset(preset);
   const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
   let changed = false;
   let field = null;
+  const safeFeature = normalizeEventDetailFeature(feature);
 
   const nextFields = fields.map((entry) => {
     const current = asObject(entry);
-    if (normalizeEventLocationRole(current.eventDetailsRole) !== EVENT_LOCATION_ROLES.VENUE_ADDRESS) {
+    if (
+      normalizeEventLocationRole(current.eventDetailsRole) !== EVENT_LOCATION_ROLES.VENUE_ADDRESS ||
+      resolveEventLocationFieldFeature(current) !== safeFeature
+    ) {
       return entry;
     }
     const nextField = {
@@ -426,10 +497,12 @@ export function isGoogleMapObject(objeto) {
   return normalizeText(objeto?.tipo).toLowerCase() === MAP_OBJECT_TYPE;
 }
 
-export function findEventGoogleMapObject(objetos) {
+export function findEventGoogleMapObject(objetos, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeFeature = normalizeEventDetailFeature(feature);
   return (
     (Array.isArray(objetos) ? objetos : []).find((objeto) =>
-      isGoogleMapObject(objeto)
+      isGoogleMapObject(objeto) &&
+        normalizeEventDetailFeature(objeto?.eventDetailsFeature) === safeFeature
     ) || null
   );
 }
@@ -447,12 +520,16 @@ export function resolveEventLocationFromAuthoring({
   fieldsSchema,
   defaults,
   objetos,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const safeDefaults = asObject(defaults);
-  const nameKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME);
-  const addressKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS);
-  const mapObject = findEventGoogleMapObject(objetos);
-  const fields = collectEventLocationFields(fieldsSchema);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const nameKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME, safeFeature);
+  const addressKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS, safeFeature);
+  const mapObject = findEventGoogleMapObject(objetos, safeFeature);
+  const fields = collectEventLocationFields(fieldsSchema).filter(
+    (field) => resolveEventLocationFieldFeature(field) === safeFeature
+  );
   const addressField =
     fields.find(
       (field) =>
@@ -498,11 +575,14 @@ export function buildEventLocationDefaults({
   fieldsSchema,
   defaults,
   location,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const safeDefaults = { ...asObject(defaults) };
   const safeLocation = asObject(location);
+  const safeFeature = normalizeEventDetailFeature(feature);
 
   collectEventLocationFields(fieldsSchema).forEach((field) => {
+    if (resolveEventLocationFieldFeature(field) !== safeFeature) return;
     const fieldKey = normalizeText(field.key);
     if (!fieldKey) return;
     const role = normalizeEventLocationRole(field.eventDetailsRole);
@@ -523,6 +603,7 @@ export function buildEventLocationDefaults({
 
 export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
   const safeLocation = asObject(location);
+  const feature = normalizeEventDetailFeature(options.feature || safeLocation.eventDetailsFeature);
   const googlePlace =
     safeLocation.googlePlace && typeof safeLocation.googlePlace === "object"
       ? normalizeGooglePlaceInput(safeLocation.googlePlace)
@@ -547,6 +628,7 @@ export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
 
   return {
     tipo: MAP_OBJECT_TYPE,
+    eventDetailsFeature: feature,
     googlePlaceId: googlePlace.placeId,
     googleDisplayName: googlePlace.displayName,
     googleFormattedAddress: googlePlace.formattedAddress,
@@ -560,11 +642,15 @@ export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
 }
 
 export function buildEventGoogleMapInsertObject(location = {}, overrides = {}) {
+  const feature = normalizeEventDetailFeature(overrides.feature || location?.eventDetailsFeature);
   return {
-    ...buildEventGoogleMapObjectPatch(location, { showMap: location?.showMap === true }),
+    ...buildEventGoogleMapObjectPatch(location, {
+      showMap: location?.showMap === true,
+      feature,
+    }),
     id:
       normalizeText(overrides.id) ||
-      `mapa-google-${Date.now().toString(36)}`,
+      `mapa-google-${feature}-${Date.now().toString(36)}`,
     x: toFiniteNumber(overrides.x, 220),
     y: toFiniteNumber(overrides.y, 140),
   };

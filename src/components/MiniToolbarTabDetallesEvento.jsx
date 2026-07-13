@@ -39,6 +39,11 @@ import {
   resolveEventTimesState,
 } from "@/domain/eventDetails/time";
 import {
+  EVENT_DETAIL_FEATURES,
+  getEventDetailFeatureLabel,
+  normalizeEventDetailFeature,
+} from "@/domain/eventDetails/features";
+import {
   DASHBOARD_DOCUMENT_NAME_EVENTS,
   readDashboardDocumentNameState,
   requestDashboardDocumentNameUpdate,
@@ -48,6 +53,14 @@ import {
   readCanvasEditorMethod,
   readEditorObjects,
 } from "@/lib/editorRuntimeBridge";
+import {
+  EVENT_DETAILS_MODES,
+  normalizeEventDetailsConfig,
+} from "../../shared/eventDetailsConfig.js";
+import {
+  getDressCodeFieldKey,
+  resolveDressCodeSidebarBinding,
+} from "@/domain/templates/storyText";
 
 const inputClass =
   "mt-2 block h-[38px] w-full max-w-[361px] box-border bg-white px-3 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none placeholder:text-[#9b9b9b] [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
@@ -87,20 +100,23 @@ const EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS = [
   getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY),
   ...EVENT_COUPLE_SCROLL_FIELD_KEYS,
 ];
-const EVENT_DATE_SCROLL_FIELD_KEYS = [getEventDateFieldKey()];
-const EVENT_START_TIME_SCROLL_FIELD_KEYS = [
-  getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME),
-  getEventDateFieldKey(),
-];
-const EVENT_END_TIME_SCROLL_FIELD_KEYS = [
-  getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME),
-];
-const EVENT_VENUE_NAME_SCROLL_FIELD_KEYS = [
-  getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME),
-];
-const EVENT_VENUE_ADDRESS_SCROLL_FIELD_KEYS = [
-  getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS),
-];
+function buildEventScrollFieldKeys(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return {
+    date: [getEventDateFieldKey(safeFeature)],
+    startTime: [
+      getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, safeFeature),
+      getEventDateFieldKey(safeFeature),
+    ],
+    endTime: [getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME, safeFeature)],
+    venueName: [
+      getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME, safeFeature),
+    ],
+    venueAddress: [
+      getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS, safeFeature),
+    ],
+  };
+}
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -121,8 +137,12 @@ function isTemplateAuthoringStateSnapshot(snapshot) {
   return Array.isArray(snapshot.objetos) || isPlainObject(snapshot.defaults);
 }
 
-function resolveCountdownDetailsStateFromSnapshot(authoringSnapshot) {
+function resolveCountdownDetailsStateFromSnapshot(
+  authoringSnapshot,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
   if (!isTemplateAuthoringStateSnapshot(authoringSnapshot)) return null;
+  const safeFeature = normalizeEventDetailFeature(feature);
 
   const objetos = Array.isArray(authoringSnapshot.objetos)
     ? authoringSnapshot.objetos
@@ -134,11 +154,13 @@ function resolveCountdownDetailsStateFromSnapshot(authoringSnapshot) {
     fieldsSchema,
     defaults: authoringSnapshot?.defaults,
     objetos,
+    feature: safeFeature,
   });
   const eventDateCountdownDetails = baseEventDateBinding.field
     ? buildDynamicCountdownEventDetails({
         fieldsSchema: [baseEventDateBinding.field],
         objetos,
+        fieldKey: baseEventDateBinding.fieldKey,
       })
     : null;
   const countdownDetails = eventDateCountdownDetails?.hasBinding
@@ -146,12 +168,14 @@ function resolveCountdownDetailsStateFromSnapshot(authoringSnapshot) {
     : buildDynamicCountdownEventDetails({
         fieldsSchema,
         objetos,
+        fieldKey: getEventDateFieldKey(safeFeature),
       });
   const eventDateBinding = resolveEventDateSidebarBinding({
     fieldsSchema,
     defaults: authoringSnapshot?.defaults,
     countdownDetails,
     objetos,
+    feature: safeFeature,
   });
 
   if (
@@ -211,7 +235,10 @@ function readCountdownDetailsState(targetWindow, options = {}) {
     ...readTemplateAuthoringSnapshot(targetWindow),
     objetos: readEditorObjects(targetWindow),
   };
-  const details = resolveCountdownDetailsStateFromSnapshot(authoringSnapshot);
+  const details = resolveCountdownDetailsStateFromSnapshot(
+    authoringSnapshot,
+    options.feature
+  );
   if (details) return details;
   if (options.requireValidSnapshot) return null;
   return buildDynamicCountdownEventDetails();
@@ -242,21 +269,27 @@ function readEventPersonNamesState(targetWindow, options = {}) {
   };
 }
 
-function readEventLocationState(targetWindow) {
+function readEventLocationState(targetWindow, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
   return resolveEventLocationFromAuthoring({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
     defaults: authoringSnapshot?.defaults,
     objetos: readEditorObjects(targetWindow),
+    feature,
   });
 }
 
-function resolveEventTimesStateFromSnapshot(authoringSnapshot) {
+function resolveEventTimesStateFromSnapshot(
+  authoringSnapshot,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
   const countdownDetails = resolveCountdownDetailsStateFromSnapshot(
-    authoringSnapshot
+    authoringSnapshot,
+    feature
   );
   return resolveEventTimesState(authoringSnapshot, {
     fallbackStartTime: countdownDetails?.time,
+    feature,
   });
 }
 
@@ -265,14 +298,20 @@ function readEventTimesState(targetWindow, options = {}) {
     ...readTemplateAuthoringSnapshot(targetWindow),
     objetos: readEditorObjects(targetWindow),
   };
-  const nextTimes = resolveEventTimesStateFromSnapshot(authoringSnapshot);
+  const nextTimes = resolveEventTimesStateFromSnapshot(
+    authoringSnapshot,
+    options.feature
+  );
   if (nextTimes) return nextTimes;
   if (options.requireValidSnapshot) return null;
-  const countdownDetails = readCountdownDetailsState(targetWindow);
+  const countdownDetails = readCountdownDetailsState(targetWindow, {
+    feature: options.feature,
+  });
   return resolveEventTimesFromAuthoring({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
     defaults: authoringSnapshot?.defaults,
     fallbackStartTime: countdownDetails?.time,
+    feature: options.feature,
   });
 }
 
@@ -288,9 +327,9 @@ function buildCountdownUiState(details = buildDynamicCountdownEventDetails()) {
   };
 }
 
-function readInitialCountdownUiState() {
+function readInitialCountdownUiState(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   if (typeof window === "undefined") return buildCountdownUiState();
-  return buildCountdownUiState(readCountdownDetailsState(window));
+  return buildCountdownUiState(readCountdownDetailsState(window, { feature }));
 }
 
 function readInitialEventPersonNamesState() {
@@ -298,14 +337,72 @@ function readInitialEventPersonNamesState() {
   return readEventPersonNamesState(window);
 }
 
-function readInitialEventLocationState() {
-  if (typeof window === "undefined") return readEventLocationState();
-  return readEventLocationState(window);
+function readInitialEventLocationState(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  if (typeof window === "undefined") return readEventLocationState(undefined, feature);
+  return readEventLocationState(window, feature);
 }
 
-function readInitialEventTimesState() {
-  if (typeof window === "undefined") return readEventTimesState();
-  return readEventTimesState(window);
+function readInitialEventTimesState(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  if (typeof window === "undefined") return readEventTimesState(undefined, { feature });
+  return readEventTimesState(window, { feature });
+}
+
+function readEventDetailsConfigState(targetWindow) {
+  if (typeof window === "undefined" && !targetWindow) {
+    return normalizeEventDetailsConfig(null);
+  }
+  const getEventDetailsConfig = readCanvasEditorMethod(
+    "getEventDetailsConfig",
+    targetWindow
+  );
+  return normalizeEventDetailsConfig(
+    typeof getEventDetailsConfig === "function" ? getEventDetailsConfig() : null
+  );
+}
+
+function readDressCodeBindingState(targetWindow) {
+  const authoringSnapshot = {
+    ...readTemplateAuthoringSnapshot(targetWindow),
+    objetos: readEditorObjects(targetWindow),
+  };
+  return resolveDressCodeSidebarBinding({
+    fieldsSchema: authoringSnapshot?.fieldsSchema,
+    defaults: authoringSnapshot?.defaults,
+    objetos: authoringSnapshot?.objetos,
+  });
+}
+
+function readEventDetailsUiConfigState(targetWindow) {
+  const config = readEventDetailsConfigState(targetWindow);
+  const dressCodeBinding = readDressCodeBindingState(targetWindow);
+  if (!normalizeText(config?.dressCode?.value) && normalizeText(dressCodeBinding?.value)) {
+    return normalizeEventDetailsConfig({
+      ...config,
+      dressCode: {
+        ...config.dressCode,
+        value: dressCodeBinding.value,
+      },
+    });
+  }
+  return config;
+}
+
+function readInitialEventDetailsConfigState() {
+  if (typeof window === "undefined") return normalizeEventDetailsConfig(null);
+  return readEventDetailsUiConfigState(window);
+}
+
+function updateLinkedEventDetailsConfig(patch) {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  const updateEventDetailsConfig = readCanvasEditorMethod("updateEventDetailsConfig");
+  if (typeof updateEventDetailsConfig !== "function") return Promise.resolve(false);
+
+  return Promise.resolve(updateEventDetailsConfig(patch))
+    .then(() => true)
+    .catch((error) => {
+      console.error("No se pudo actualizar la modalidad del evento.", error);
+      return false;
+    });
 }
 
 function buildEventPersonNamesSignature(names) {
@@ -389,9 +486,16 @@ function dispatchElementPatch(objectId, cambios) {
   );
 }
 
-function dispatchMapInsert(location) {
+function dispatchMapInsert(location, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   if (typeof window === "undefined") return null;
-  const mapObject = buildEventGoogleMapInsertObject(location);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const mapObject = buildEventGoogleMapInsertObject(
+    {
+      ...location,
+      eventDetailsFeature: safeFeature,
+    },
+    { feature: safeFeature }
+  );
   window.dispatchEvent(
     new CustomEvent(EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT, {
       detail: mapObject,
@@ -463,12 +567,24 @@ function updateLinkedEventPersonNames(names) {
     });
 }
 
-function updateLinkedEventLocation(location) {
+function updateLinkedEventLocation(
+  location,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
   if (typeof window === "undefined") return Promise.resolve(false);
   const updateLocation = readCanvasEditorMethod("updateTemplateAuthoringEventLocation");
   if (typeof updateLocation !== "function") return Promise.resolve(false);
 
-  return Promise.resolve(updateLocation(location))
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return Promise.resolve(
+    updateLocation(
+      {
+        ...location,
+        eventDetailsFeature: safeFeature,
+      },
+      { feature: safeFeature }
+    )
+  )
     .then(() => true)
     .catch((error) => {
       console.error("No se pudo actualizar la ubicacion del evento.", error);
@@ -476,12 +592,13 @@ function updateLinkedEventLocation(location) {
     });
 }
 
-function updateLinkedEventTimes(times) {
+function updateLinkedEventTimes(times, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   if (typeof window === "undefined") return Promise.resolve(false);
   const updateTimes = readCanvasEditorMethod("updateTemplateAuthoringEventTimes");
   if (typeof updateTimes !== "function") return Promise.resolve(false);
 
-  return Promise.resolve(updateTimes(times))
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return Promise.resolve(updateTimes(times, { feature: safeFeature }))
     .then(() => true)
     .catch((error) => {
       console.error("No se pudieron actualizar las horas del evento.", error);
@@ -606,14 +723,26 @@ export default function MiniToolbarTabDetallesEvento({
   const [eventName, setEventName] = useState(
     () => readInitialDocumentNameState().name
   );
+  const [eventDetailsConfig, setEventDetailsConfig] = useState(
+    readInitialEventDetailsConfigState
+  );
   const [countdownUi, setCountdownUi] = useState(readInitialCountdownUiState);
+  const [partyCountdownUi, setPartyCountdownUi] = useState(() =>
+    readInitialCountdownUiState(EVENT_DETAIL_FEATURES.PARTY)
+  );
   const [eventPersonNames, setEventPersonNames] = useState(
     readInitialEventPersonNamesState
   );
   const [eventLocation, setEventLocation] = useState(
     readInitialEventLocationState
   );
+  const [partyEventLocation, setPartyEventLocation] = useState(() =>
+    readInitialEventLocationState(EVENT_DETAIL_FEATURES.PARTY)
+  );
   const [eventTimes, setEventTimes] = useState(readInitialEventTimesState);
+  const [partyEventTimes, setPartyEventTimes] = useState(() =>
+    readInitialEventTimesState(EVENT_DETAIL_FEATURES.PARTY)
+  );
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [locationSuggestionsOpen, setLocationSuggestionsOpen] = useState(false);
   const [locationSuggestionsLoading, setLocationSuggestionsLoading] = useState(false);
@@ -625,46 +754,238 @@ export default function MiniToolbarTabDetallesEvento({
   const activeLocationSearchFieldRef = useRef("");
   const eventPersonNamesRef = useRef(eventPersonNames);
   const eventLocationRef = useRef(eventLocation);
+  const partyEventLocationRef = useRef(partyEventLocation);
   const eventTimesRef = useRef(eventTimes);
+  const partyEventTimesRef = useRef(partyEventTimes);
   const eventPersonNamesSaveTimerRef = useRef(null);
   const eventLocationSaveTimerRef = useRef(null);
+  const partyEventLocationSaveTimerRef = useRef(null);
   const eventTimesSaveTimerRef = useRef(null);
+  const partyEventTimesSaveTimerRef = useRef(null);
   const pendingEventPersonNamesSignatureRef = useRef("");
   const pendingEventLocationSignatureRef = useRef("");
+  const pendingPartyEventLocationSignatureRef = useRef("");
   const pendingEventTimesSignatureRef = useRef("");
+  const pendingPartyEventTimesSignatureRef = useRef("");
   const googleAutocompleteSessionTokenRef = useRef(null);
   const locationSuggestionTimerRef = useRef(null);
   const countdownDetails = countdownUi.details;
+  const partyCountdownDetails = partyCountdownUi.details;
   const eventDateControlsDisabled = !countdownDetails.fieldKey;
+  const partyEventDateControlsDisabled = !partyCountdownDetails.fieldKey;
   const countdownVisibilityDisabled = !countdownDetails.countdownId;
+  const partyCountdownVisibilityDisabled = !partyCountdownDetails.countdownId;
   const googleMapsApiKey = getGoogleMapsApiKey();
   const hasGoogleMapsApiKey = Boolean(googleMapsApiKey);
   const canShowEventMap = Boolean(eventLocation.googlePlaceId);
+  const canShowPartyEventMap = Boolean(partyEventLocation.googlePlaceId);
+  const eventMode = eventDetailsConfig.mode;
+  const isCeremonyPartyMode = eventMode === "ceremony_party";
+  const dressCodeConfig = eventDetailsConfig.dressCode || {};
+  const isDressCodeEnabled = dressCodeConfig.enabled === true;
+  const dressCodeValue = normalizeText(dressCodeConfig.value);
+  const dressCodeFieldKey = getDressCodeFieldKey();
+  const ceremonyScrollFieldKeys = buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY);
+  const partyScrollFieldKeys = buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY);
 
-  const applySyncedCountdownDetailsState = useCallback((details) => {
+  const applySyncedCountdownDetailsState = useCallback((details, feature) => {
     if (!details) return;
+    if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
+      setPartyCountdownUi(buildCountdownUiState(details));
+      return;
+    }
     setCountdownUi(buildCountdownUiState(details));
   }, []);
 
   const syncCountdownUiState = useCallback(() => {
-    applySyncedCountdownDetailsState(readCountdownDetailsState(window));
+    applySyncedCountdownDetailsState(
+      readCountdownDetailsState(window, { feature: EVENT_DETAIL_FEATURES.CEREMONY }),
+      EVENT_DETAIL_FEATURES.CEREMONY
+    );
+    applySyncedCountdownDetailsState(
+      readCountdownDetailsState(window, { feature: EVENT_DETAIL_FEATURES.PARTY }),
+      EVENT_DETAIL_FEATURES.PARTY
+    );
   }, [applySyncedCountdownDetailsState]);
 
   const handleTemplateAuthoringChangeForCountdown = useCallback(
     (event) => {
-      const details = resolveCountdownDetailsStateFromSnapshot(event?.detail);
-      if (details) {
-        applySyncedCountdownDetailsState(details);
-        return;
-      }
-
       applySyncedCountdownDetailsState(
-        readCountdownDetailsState(window, {
-          requireValidSnapshot: event?.detail != null,
-        })
+        resolveCountdownDetailsStateFromSnapshot(
+          event?.detail,
+          EVENT_DETAIL_FEATURES.CEREMONY
+        ) ||
+          readCountdownDetailsState(window, {
+            requireValidSnapshot: event?.detail != null,
+            feature: EVENT_DETAIL_FEATURES.CEREMONY,
+          }),
+        EVENT_DETAIL_FEATURES.CEREMONY
+      );
+      applySyncedCountdownDetailsState(
+        resolveCountdownDetailsStateFromSnapshot(
+          event?.detail,
+          EVENT_DETAIL_FEATURES.PARTY
+        ) ||
+          readCountdownDetailsState(window, {
+            requireValidSnapshot: event?.detail != null,
+            feature: EVENT_DETAIL_FEATURES.PARTY,
+          }),
+        EVENT_DETAIL_FEATURES.PARTY
       );
     },
     [applySyncedCountdownDetailsState]
+  );
+
+  const syncEventDetailsConfigState = useCallback(() => {
+    setEventDetailsConfig(readEventDetailsUiConfigState(window));
+  }, []);
+
+  const handleEventDetailsModeChange = (event) => {
+    const nextConfig = normalizeEventDetailsConfig({
+      ...eventDetailsConfig,
+      mode: event.target.value,
+    });
+    setEventDetailsConfig(nextConfig);
+    void updateLinkedEventDetailsConfig(nextConfig);
+  };
+
+  const updateDressCodeConfig = useCallback(
+    (patch, { applyTargets = false } = {}) => {
+      const nextConfig = normalizeEventDetailsConfig({
+        ...eventDetailsConfig,
+        dressCode: {
+          ...(eventDetailsConfig.dressCode || {}),
+          ...patch,
+        },
+      });
+      setEventDetailsConfig(nextConfig);
+      void updateLinkedEventDetailsConfig(nextConfig);
+      if (applyTargets) {
+        updateLinkedFieldDefault(dressCodeFieldKey, nextConfig.dressCode.value, {
+          applyTargets: true,
+        });
+      }
+    },
+    [dressCodeFieldKey, eventDetailsConfig]
+  );
+
+  const handleDressCodeEnabledChange = (event) => {
+    updateDressCodeConfig({ enabled: event.target.checked });
+  };
+
+  const handleDressCodeValueChange = (event) => {
+    updateDressCodeConfig(
+      {
+        enabled: true,
+        value: event.target.value,
+      },
+      { applyTargets: true }
+    );
+  };
+
+  const handleDressCodeFocus = (event) => {
+    selectSidebarFieldText(event);
+    scrollToDynamicFieldTarget(dressCodeFieldKey);
+  };
+
+  const syncEventLocationState = useCallback(() => {
+    const nextLocation = readEventLocationState(
+      window,
+      EVENT_DETAIL_FEATURES.CEREMONY
+    );
+    const nextSignature = buildEventLocationSignature(nextLocation);
+    if (!editingEventLocationRef.current) {
+      if (
+        !pendingEventLocationSignatureRef.current ||
+        pendingEventLocationSignatureRef.current === nextSignature
+      ) {
+        pendingEventLocationSignatureRef.current = "";
+        setEventLocation(nextLocation);
+      }
+    }
+
+    const nextPartyLocation = readEventLocationState(
+      window,
+      EVENT_DETAIL_FEATURES.PARTY
+    );
+    const nextPartySignature = buildEventLocationSignature(nextPartyLocation);
+    if (!editingEventLocationRef.current) {
+      if (
+        !pendingPartyEventLocationSignatureRef.current ||
+        pendingPartyEventLocationSignatureRef.current === nextPartySignature
+      ) {
+        pendingPartyEventLocationSignatureRef.current = "";
+        setPartyEventLocation(nextPartyLocation);
+      }
+    }
+  }, []);
+
+  const applySyncedEventTimesState = useCallback((nextTimes, feature) => {
+    if (!nextTimes) return;
+    const nextSignature = buildEventTimesSignature(nextTimes);
+    if (editingEventTimesRef.current) return;
+    if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
+      if (
+        pendingPartyEventTimesSignatureRef.current &&
+        pendingPartyEventTimesSignatureRef.current !== nextSignature
+      ) {
+        return;
+      }
+      if (pendingPartyEventTimesSignatureRef.current === nextSignature) {
+        pendingPartyEventTimesSignatureRef.current = "";
+      }
+      setPartyEventTimes(nextTimes);
+      return;
+    }
+    if (
+      pendingEventTimesSignatureRef.current &&
+      pendingEventTimesSignatureRef.current !== nextSignature
+    ) {
+      return;
+    }
+    if (pendingEventTimesSignatureRef.current === nextSignature) {
+      pendingEventTimesSignatureRef.current = "";
+    }
+    setEventTimes(nextTimes);
+  }, []);
+
+  const syncEventTimesState = useCallback(() => {
+    applySyncedEventTimesState(
+      readEventTimesState(window, { feature: EVENT_DETAIL_FEATURES.CEREMONY }),
+      EVENT_DETAIL_FEATURES.CEREMONY
+    );
+    applySyncedEventTimesState(
+      readEventTimesState(window, { feature: EVENT_DETAIL_FEATURES.PARTY }),
+      EVENT_DETAIL_FEATURES.PARTY
+    );
+  }, [applySyncedEventTimesState]);
+
+  const handleTemplateAuthoringChangeForEventTimes = useCallback(
+    (event) => {
+      applySyncedEventTimesState(
+        resolveEventTimesStateFromSnapshot(
+          event?.detail,
+          EVENT_DETAIL_FEATURES.CEREMONY
+        ) ||
+          readEventTimesState(window, {
+          requireValidSnapshot: event?.detail != null,
+            feature: EVENT_DETAIL_FEATURES.CEREMONY,
+          }),
+        EVENT_DETAIL_FEATURES.CEREMONY
+      );
+      applySyncedEventTimesState(
+        resolveEventTimesStateFromSnapshot(
+          event?.detail,
+          EVENT_DETAIL_FEATURES.PARTY
+        ) ||
+          readEventTimesState(window, {
+            requireValidSnapshot: event?.detail != null,
+            feature: EVENT_DETAIL_FEATURES.PARTY,
+          }),
+        EVENT_DETAIL_FEATURES.PARTY
+      );
+    },
+    [applySyncedEventTimesState]
   );
 
   const applySyncedEventPersonNamesState = useCallback((nextNames) => {
@@ -704,59 +1025,6 @@ export default function MiniToolbarTabDetallesEvento({
     [applySyncedEventPersonNamesState]
   );
 
-  const syncEventLocationState = useCallback(() => {
-    const nextLocation = readEventLocationState(window);
-    const nextSignature = buildEventLocationSignature(nextLocation);
-    if (editingEventLocationRef.current) return;
-    if (
-      pendingEventLocationSignatureRef.current &&
-      pendingEventLocationSignatureRef.current !== nextSignature
-    ) {
-      return;
-    }
-    if (pendingEventLocationSignatureRef.current === nextSignature) {
-      pendingEventLocationSignatureRef.current = "";
-    }
-    setEventLocation(nextLocation);
-  }, []);
-
-  const applySyncedEventTimesState = useCallback((nextTimes) => {
-    if (!nextTimes) return;
-    const nextSignature = buildEventTimesSignature(nextTimes);
-    if (editingEventTimesRef.current) return;
-    if (
-      pendingEventTimesSignatureRef.current &&
-      pendingEventTimesSignatureRef.current !== nextSignature
-    ) {
-      return;
-    }
-    if (pendingEventTimesSignatureRef.current === nextSignature) {
-      pendingEventTimesSignatureRef.current = "";
-    }
-    setEventTimes(nextTimes);
-  }, []);
-
-  const syncEventTimesState = useCallback(() => {
-    applySyncedEventTimesState(readEventTimesState(window));
-  }, [applySyncedEventTimesState]);
-
-  const handleTemplateAuthoringChangeForEventTimes = useCallback(
-    (event) => {
-      const nextTimes = resolveEventTimesStateFromSnapshot(event?.detail);
-      if (nextTimes) {
-        applySyncedEventTimesState(nextTimes);
-        return;
-      }
-
-      applySyncedEventTimesState(
-        readEventTimesState(window, {
-          requireValidSnapshot: event?.detail != null,
-        })
-      );
-    },
-    [applySyncedEventTimesState]
-  );
-
   useEffect(() => {
     eventPersonNamesRef.current = eventPersonNames;
   }, [eventPersonNames]);
@@ -766,8 +1034,16 @@ export default function MiniToolbarTabDetallesEvento({
   }, [eventLocation]);
 
   useEffect(() => {
+    partyEventLocationRef.current = partyEventLocation;
+  }, [partyEventLocation]);
+
+  useEffect(() => {
     eventTimesRef.current = eventTimes;
   }, [eventTimes]);
+
+  useEffect(() => {
+    partyEventTimesRef.current = partyEventTimes;
+  }, [partyEventTimes]);
 
   useEffect(() => {
     return () => {
@@ -777,8 +1053,14 @@ export default function MiniToolbarTabDetallesEvento({
       if (eventLocationSaveTimerRef.current) {
         clearTimeout(eventLocationSaveTimerRef.current);
       }
+      if (partyEventLocationSaveTimerRef.current) {
+        clearTimeout(partyEventLocationSaveTimerRef.current);
+      }
       if (eventTimesSaveTimerRef.current) {
         clearTimeout(eventTimesSaveTimerRef.current);
+      }
+      if (partyEventTimesSaveTimerRef.current) {
+        clearTimeout(partyEventTimesSaveTimerRef.current);
       }
       if (locationSuggestionTimerRef.current) {
         clearTimeout(locationSuggestionTimerRef.current);
@@ -821,6 +1103,7 @@ export default function MiniToolbarTabDetallesEvento({
     if (typeof window === "undefined") return;
 
     syncCountdownUiState();
+    syncEventDetailsConfigState();
     syncEventPersonNamesState();
     syncEventLocationState();
     syncEventTimesState();
@@ -828,6 +1111,14 @@ export default function MiniToolbarTabDetallesEvento({
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
       syncCountdownUiState
+    );
+    window.addEventListener(
+      EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+      syncEventDetailsConfigState
+    );
+    window.addEventListener(
+      EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+      syncEventDetailsConfigState
     );
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
@@ -860,6 +1151,14 @@ export default function MiniToolbarTabDetallesEvento({
         syncCountdownUiState
       );
       window.removeEventListener(
+        EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+        syncEventDetailsConfigState
+      );
+      window.removeEventListener(
+        EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+        syncEventDetailsConfigState
+      );
+      window.removeEventListener(
         EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
         handleTemplateAuthoringChangeForCountdown
       );
@@ -886,6 +1185,7 @@ export default function MiniToolbarTabDetallesEvento({
     };
   }, [
     syncCountdownUiState,
+    syncEventDetailsConfigState,
     handleTemplateAuthoringChangeForCountdown,
     syncEventPersonNamesState,
     handleTemplateAuthoringChangeForPersonNames,
@@ -996,10 +1296,25 @@ export default function MiniToolbarTabDetallesEvento({
     }
     const signature = buildEventTimesSignature(nextTimes);
     pendingEventTimesSignatureRef.current = signature;
-    void updateLinkedEventTimes(nextTimes).then((ok) => {
+    void updateLinkedEventTimes(nextTimes, EVENT_DETAIL_FEATURES.CEREMONY).then((ok) => {
       if (!ok) return;
       if (pendingEventTimesSignatureRef.current === signature) {
         pendingEventTimesSignatureRef.current = "";
+      }
+    });
+  }, []);
+
+  const persistPartyEventTimes = useCallback((nextTimes) => {
+    if (partyEventTimesSaveTimerRef.current) {
+      clearTimeout(partyEventTimesSaveTimerRef.current);
+      partyEventTimesSaveTimerRef.current = null;
+    }
+    const signature = buildEventTimesSignature(nextTimes);
+    pendingPartyEventTimesSignatureRef.current = signature;
+    void updateLinkedEventTimes(nextTimes, EVENT_DETAIL_FEATURES.PARTY).then((ok) => {
+      if (!ok) return;
+      if (pendingPartyEventTimesSignatureRef.current === signature) {
+        pendingPartyEventTimesSignatureRef.current = "";
       }
     });
   }, []);
@@ -1017,21 +1332,52 @@ export default function MiniToolbarTabDetallesEvento({
     [persistEventTimes]
   );
 
+  const schedulePartyEventTimesPersist = useCallback(
+    (nextTimes) => {
+      if (partyEventTimesSaveTimerRef.current) {
+        clearTimeout(partyEventTimesSaveTimerRef.current);
+      }
+      pendingPartyEventTimesSignatureRef.current = buildEventTimesSignature(nextTimes);
+      partyEventTimesSaveTimerRef.current = setTimeout(() => {
+        persistPartyEventTimes(nextTimes);
+      }, EVENT_TIMES_SAVE_DELAY_MS);
+    },
+    [persistPartyEventTimes]
+  );
+
   const flushEventTimes = useCallback(() => {
     persistEventTimes(eventTimesRef.current);
   }, [persistEventTimes]);
 
-  const applyEventTimes = (patch) => {
+  const flushPartyEventTimes = useCallback(() => {
+    persistPartyEventTimes(partyEventTimesRef.current);
+  }, [persistPartyEventTimes]);
+
+  const buildNextEventTimes = (current, patch) => {
+    const nextTimes = {
+      ...current,
+    };
+    if (Object.prototype.hasOwnProperty.call(patch, "startTime")) {
+      nextTimes.startTime = normalizeEventTimeValue(patch.startTime);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "endTime")) {
+      nextTimes.endTime = normalizeEventTimeValue(patch.endTime);
+    }
+    return nextTimes;
+  };
+
+  const applyEventTimes = (patch, feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
+    if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
+      setPartyEventTimes((current) => {
+        const nextTimes = buildNextEventTimes(current, patch);
+        partyEventTimesRef.current = nextTimes;
+        schedulePartyEventTimesPersist(nextTimes);
+        return nextTimes;
+      });
+      return;
+    }
     setEventTimes((current) => {
-      const nextTimes = {
-        ...current,
-      };
-      if (Object.prototype.hasOwnProperty.call(patch, "startTime")) {
-        nextTimes.startTime = normalizeEventTimeValue(patch.startTime);
-      }
-      if (Object.prototype.hasOwnProperty.call(patch, "endTime")) {
-        nextTimes.endTime = normalizeEventTimeValue(patch.endTime);
-      }
+      const nextTimes = buildNextEventTimes(current, patch);
       eventTimesRef.current = nextTimes;
       scheduleEventTimesPersist(nextTimes);
       return nextTimes;
@@ -1044,8 +1390,12 @@ export default function MiniToolbarTabDetallesEvento({
     scrollToDynamicFieldTarget(fieldKeys);
   };
 
-  const handleEventTimeBlur = () => {
+  const handleEventTimeBlur = (feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     editingEventTimesRef.current = false;
+    if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
+      flushPartyEventTimes();
+      return;
+    }
     flushEventTimes();
   };
 
@@ -1055,8 +1405,11 @@ export default function MiniToolbarTabDetallesEvento({
     }
   };
 
-  const handleEventEndTimeChange = (event) => {
-    applyEventTimes({ endTime: event.target.value });
+  const handleEventEndTimeChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    applyEventTimes({ endTime: event.target.value }, feature);
   };
 
   const persistEventLocation = useCallback((nextLocation) => {
@@ -1066,10 +1419,25 @@ export default function MiniToolbarTabDetallesEvento({
     }
     const signature = buildEventLocationSignature(nextLocation);
     pendingEventLocationSignatureRef.current = signature;
-    void updateLinkedEventLocation(nextLocation).then((ok) => {
+    void updateLinkedEventLocation(nextLocation, EVENT_DETAIL_FEATURES.CEREMONY).then((ok) => {
       if (!ok) return;
       if (pendingEventLocationSignatureRef.current === signature) {
         pendingEventLocationSignatureRef.current = "";
+      }
+    });
+  }, []);
+
+  const persistPartyEventLocation = useCallback((nextLocation) => {
+    if (partyEventLocationSaveTimerRef.current) {
+      clearTimeout(partyEventLocationSaveTimerRef.current);
+      partyEventLocationSaveTimerRef.current = null;
+    }
+    const signature = buildEventLocationSignature(nextLocation);
+    pendingPartyEventLocationSignatureRef.current = signature;
+    void updateLinkedEventLocation(nextLocation, EVENT_DETAIL_FEATURES.PARTY).then((ok) => {
+      if (!ok) return;
+      if (pendingPartyEventLocationSignatureRef.current === signature) {
+        pendingPartyEventLocationSignatureRef.current = "";
       }
     });
   }, []);
@@ -1088,15 +1456,50 @@ export default function MiniToolbarTabDetallesEvento({
     [persistEventLocation]
   );
 
+  const schedulePartyEventLocationPersist = useCallback(
+    (nextLocation) => {
+      if (partyEventLocationSaveTimerRef.current) {
+        clearTimeout(partyEventLocationSaveTimerRef.current);
+      }
+      pendingPartyEventLocationSignatureRef.current =
+        buildEventLocationSignature(nextLocation);
+      partyEventLocationSaveTimerRef.current = setTimeout(() => {
+        persistPartyEventLocation(nextLocation);
+      }, EVENT_LOCATION_SAVE_DELAY_MS);
+    },
+    [persistPartyEventLocation]
+  );
+
   const flushEventLocation = useCallback(() => {
     persistEventLocation(eventLocationRef.current);
   }, [persistEventLocation]);
 
-  const applyEventLocation = (patch, { persist = true } = {}) => {
+  const flushPartyEventLocation = useCallback(() => {
+    persistPartyEventLocation(partyEventLocationRef.current);
+  }, [persistPartyEventLocation]);
+
+  const applyEventLocation = (
+    patch,
+    { persist = true, feature = EVENT_DETAIL_FEATURES.CEREMONY } = {}
+  ) => {
+    if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
+      setPartyEventLocation((current) => {
+        const nextLocation = {
+          ...current,
+          ...patch,
+          eventDetailsFeature: EVENT_DETAIL_FEATURES.PARTY,
+        };
+        partyEventLocationRef.current = nextLocation;
+        if (persist) schedulePartyEventLocationPersist(nextLocation);
+        return nextLocation;
+      });
+      return;
+    }
     setEventLocation((current) => {
       const nextLocation = {
         ...current,
         ...patch,
+        eventDetailsFeature: EVENT_DETAIL_FEATURES.CEREMONY,
       };
       eventLocationRef.current = nextLocation;
       if (persist) scheduleEventLocationPersist(nextLocation);
@@ -1158,20 +1561,30 @@ export default function MiniToolbarTabDetallesEvento({
     [hasGoogleMapsApiKey, resolveGoogleAutocompleteSessionToken]
   );
 
-  const handleEventLocationFocus = (event, fieldName, value) => {
+  const handleEventLocationFocus = (
+    event,
+    fieldName,
+    value,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const scrollKeys =
+      fieldName === "venueName"
+        ? buildEventScrollFieldKeys(safeFeature).venueName
+        : buildEventScrollFieldKeys(safeFeature).venueAddress;
     editingEventLocationRef.current = true;
     selectSidebarFieldText(event);
-    scrollToDynamicFieldTarget(
-      fieldName === "venueName"
-        ? EVENT_VENUE_NAME_SCROLL_FIELD_KEYS
-        : EVENT_VENUE_ADDRESS_SCROLL_FIELD_KEYS
-    );
-    scheduleLocationSuggestions(fieldName, value);
+    scrollToDynamicFieldTarget(scrollKeys);
+    scheduleLocationSuggestions(`${safeFeature}:${fieldName}`, value);
   };
 
-  const handleEventLocationBlur = () => {
+  const handleEventLocationBlur = (feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     editingEventLocationRef.current = false;
-    flushEventLocation();
+    if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
+      flushPartyEventLocation();
+    } else {
+      flushEventLocation();
+    }
     window.setTimeout(() => {
       setLocationSuggestionsOpen(false);
     }, 120);
@@ -1183,8 +1596,9 @@ export default function MiniToolbarTabDetallesEvento({
     }
   };
 
-  const clearGoogleMapBinding = () => {
-    const mapObject = findEventGoogleMapObject(readEditorObjects(window));
+  const clearGoogleMapBinding = (feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const mapObject = findEventGoogleMapObject(readEditorObjects(window), safeFeature);
     if (mapObject?.id) {
       dispatchElementPatch(mapObject.id, buildEventGoogleMapClearPatch());
     }
@@ -1201,26 +1615,46 @@ export default function MiniToolbarTabDetallesEvento({
     };
   };
 
-  const handleVenueNameChange = (event) => {
+  const handleVenueNameChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
     const venueName = event.target.value;
-    applyEventLocation({ venueName });
-    scheduleLocationSuggestions("venueName", venueName);
+    applyEventLocation({ venueName }, { feature: safeFeature });
+    scheduleLocationSuggestions(`${safeFeature}:venueName`, venueName);
   };
 
-  const handleVenueAddressChange = (event) => {
+  const handleVenueAddressChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const location =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventLocation
+        : eventLocation;
     const address = event.target.value;
-    const googlePatch = eventLocation.googlePlaceId ? clearGoogleMapBinding() : {};
+    const googlePatch = location.googlePlaceId ? clearGoogleMapBinding(safeFeature) : {};
     applyEventLocation({
       ...googlePatch,
       address,
-    });
-    scheduleLocationSuggestions("address", address);
+    }, { feature: safeFeature });
+    scheduleLocationSuggestions(`${safeFeature}:address`, address);
   };
 
-  const handleAddressTextFormatChange = (event) => {
+  const handleAddressTextFormatChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const locationRef =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventLocationRef
+        : eventLocationRef;
     const addressTextFormatPreset = event.target.value;
     const nextLocationBase = {
-      ...eventLocationRef.current,
+      ...locationRef.current,
       addressTextFormatPreset,
     };
     const address = formatEventAddressText({
@@ -1232,14 +1666,19 @@ export default function MiniToolbarTabDetallesEvento({
     applyEventLocation({
       addressTextFormatPreset,
       address,
-    });
+    }, { feature: safeFeature });
   };
 
-  const ensureGoogleMapObject = (nextLocation) => {
-    const mapObject = findEventGoogleMapObject(readEditorObjects(window));
+  const ensureGoogleMapObject = (
+    nextLocation,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const mapObject = findEventGoogleMapObject(readEditorObjects(window), safeFeature);
     const patch = buildEventGoogleMapObjectPatch(
       {
         ...nextLocation,
+        eventDetailsFeature: safeFeature,
         width: mapObject?.width,
         height: mapObject?.height,
       },
@@ -1251,12 +1690,20 @@ export default function MiniToolbarTabDetallesEvento({
       dispatchElementPatch(mapObject.id, patch);
       return mapObject.id;
     }
-    const inserted = dispatchMapInsert(nextLocation);
+    const inserted = dispatchMapInsert(nextLocation, safeFeature);
     return inserted?.id || "";
   };
 
-  const handleGoogleSuggestionSelect = async (suggestion) => {
+  const handleGoogleSuggestionSelect = async (
+    suggestion,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
     if (!suggestion?.prediction) return;
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const locationRef =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventLocationRef
+        : eventLocationRef;
     setLocationSuggestionsLoading(true);
     setLocationSuggestionsError("");
 
@@ -1269,9 +1716,10 @@ export default function MiniToolbarTabDetallesEvento({
       }
       googleAutocompleteSessionTokenRef.current = null;
       const nextLocation = {
-        ...eventLocationRef.current,
-        venueName: googlePlace.displayName || eventLocationRef.current.venueName,
-        address: googlePlace.formattedAddress || eventLocationRef.current.address,
+        ...locationRef.current,
+        eventDetailsFeature: safeFeature,
+        venueName: googlePlace.displayName || locationRef.current.venueName,
+        address: googlePlace.formattedAddress || locationRef.current.address,
         googlePlaceId: googlePlace.placeId,
         googleDisplayName: googlePlace.displayName,
         googleFormattedAddress: googlePlace.formattedAddress,
@@ -1282,19 +1730,25 @@ export default function MiniToolbarTabDetallesEvento({
         showMap: false,
       };
       nextLocation.address = formatEventAddressText({
-        address: eventLocationRef.current.address,
+        address: locationRef.current.address,
         googleFormattedAddress: nextLocation.googleFormattedAddress,
         googleAddressComponents: nextLocation.googleAddressComponents,
         preset: nextLocation.addressTextFormatPreset,
       });
-      const mapObjectId = ensureGoogleMapObject(nextLocation);
+      const mapObjectId = ensureGoogleMapObject(nextLocation, safeFeature);
       const nextWithMap = {
         ...nextLocation,
         mapObjectId,
       };
-      setEventLocation(nextWithMap);
-      eventLocationRef.current = nextWithMap;
-      persistEventLocation(nextWithMap);
+      if (safeFeature === EVENT_DETAIL_FEATURES.PARTY) {
+        setPartyEventLocation(nextWithMap);
+        partyEventLocationRef.current = nextWithMap;
+        persistPartyEventLocation(nextWithMap);
+      } else {
+        setEventLocation(nextWithMap);
+        eventLocationRef.current = nextWithMap;
+        persistEventLocation(nextWithMap);
+      }
       setLocationSuggestions([]);
       setLocationSuggestionsOpen(false);
     } catch (error) {
@@ -1308,31 +1762,63 @@ export default function MiniToolbarTabDetallesEvento({
     }
   };
 
-  const handleShowMapChange = (event) => {
+  const handleShowMapChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
     const checked = event.target.checked;
-    if (!eventLocation.googlePlaceId) return;
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const location =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventLocation
+        : eventLocation;
+    if (!location.googlePlaceId) return;
     const nextLocation = {
-      ...eventLocation,
+      ...location,
+      eventDetailsFeature: safeFeature,
       showMap: checked,
     };
-    const mapObject = findEventGoogleMapObject(readEditorObjects(window));
+    const mapObject = findEventGoogleMapObject(readEditorObjects(window), safeFeature);
     if (mapObject?.id) {
       dispatchElementPatch(mapObject.id, { mostrarMapa: checked });
     } else if (checked) {
-      ensureGoogleMapObject(nextLocation);
+      ensureGoogleMapObject(nextLocation, safeFeature);
+    }
+    if (safeFeature === EVENT_DETAIL_FEATURES.PARTY) {
+      setPartyEventLocation(nextLocation);
+      partyEventLocationRef.current = nextLocation;
+      return;
     }
     setEventLocation(nextLocation);
     eventLocationRef.current = nextLocation;
   };
 
-  const applyCountdownDateTime = (nextDate, nextTime) => {
-    setCountdownUi((current) => ({
+  const applyCountdownDateTime = (
+    nextDate,
+    nextTime,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const details =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyCountdownDetails
+        : countdownDetails;
+    const controlsDisabled =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventDateControlsDisabled
+        : eventDateControlsDisabled;
+    const setState =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? setPartyCountdownUi
+        : setCountdownUi;
+
+    setState((current) => ({
       ...current,
       date: nextDate,
       time: nextTime,
     }));
 
-    if (eventDateControlsDisabled || !countdownDetails.fieldKey) return;
+    if (controlsDisabled || !details.fieldKey) return;
 
     const targetISO = buildCountdownTargetIsoFromLocalParts({
       date: nextDate,
@@ -1343,57 +1829,99 @@ export default function MiniToolbarTabDetallesEvento({
       buildEventDateTargetValue({
         date: nextDate,
         time: nextTime,
-        fieldType: countdownDetails.fieldType || countdownDetails.field?.type,
+        fieldType: details.fieldType || details.field?.type,
       });
     if (!targetValue) return;
 
-    if (countdownDetails.countdownId && targetISO) {
-      dispatchCountdownPatch(countdownDetails.countdownId, {
+    if (details.countdownId && targetISO) {
+      dispatchCountdownPatch(details.countdownId, {
         fechaObjetivo: targetISO,
       });
     }
-    updateLinkedFieldDefault(countdownDetails.fieldKey, targetValue, {
+    updateLinkedFieldDefault(details.fieldKey, targetValue, {
       applyTargets: true,
     });
   };
 
-  const handleEventDateChange = (event) => {
-    applyCountdownDateTime(event.target.value, countdownUi.time);
+  const handleEventDateChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const ui = safeFeature === EVENT_DETAIL_FEATURES.PARTY ? partyCountdownUi : countdownUi;
+    applyCountdownDateTime(event.target.value, ui.time, safeFeature);
   };
 
-  const handleEventStartTimeChange = (event) => {
+  const handleEventStartTimeChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const ui = safeFeature === EVENT_DETAIL_FEATURES.PARTY ? partyCountdownUi : countdownUi;
     const nextTime = normalizeEventTimeValue(event.target.value);
-    applyCountdownDateTime(countdownUi.date, nextTime);
-    applyEventTimes({ startTime: nextTime });
+    applyCountdownDateTime(ui.date, nextTime, safeFeature);
+    applyEventTimes({ startTime: nextTime }, safeFeature);
   };
 
-  const handleShowCountdownChange = (event) => {
+  const handleShowCountdownChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
     const checked = event.target.checked;
-    setCountdownUi((current) => ({
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const details =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyCountdownDetails
+        : countdownDetails;
+    const visibilityDisabled =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyCountdownVisibilityDisabled
+        : countdownVisibilityDisabled;
+    const setState =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? setPartyCountdownUi
+        : setCountdownUi;
+    setState((current) => ({
       ...current,
       showCountdown: checked,
     }));
 
-    if (countdownVisibilityDisabled || !countdownDetails.countdownId) return;
-    dispatchCountdownPatch(countdownDetails.countdownId, {
+    if (visibilityDisabled || !details.countdownId) return;
+    dispatchCountdownPatch(details.countdownId, {
       mostrarCuentaRegresiva: checked,
     });
   };
 
-  const handleDateTextFormatChange = (event) => {
+  const handleDateTextFormatChange = (
+    event,
+    feature = EVENT_DETAIL_FEATURES.CEREMONY
+  ) => {
     const nextPreset = event.target.value;
-    setCountdownUi((current) => ({
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const details =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyCountdownDetails
+        : countdownDetails;
+    const controlsDisabled =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventDateControlsDisabled
+        : eventDateControlsDisabled;
+    const setState =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? setPartyCountdownUi
+        : setCountdownUi;
+    setState((current) => ({
       ...current,
       dateTextFormatPreset: nextPreset,
     }));
 
-    if (eventDateControlsDisabled || !countdownDetails.fieldKey) return;
-    updateLinkedFieldDateTextFormat(countdownDetails.fieldKey, nextPreset);
+    if (controlsDisabled || !details.fieldKey) return;
+    updateLinkedFieldDateTextFormat(details.fieldKey, nextPreset);
   };
 
-  const renderLocationSuggestions = (fieldName) => {
+  const renderLocationSuggestions = (fieldKey, feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     if (
-      activeLocationSearchFieldRef.current !== fieldName ||
+      activeLocationSearchFieldRef.current !== fieldKey ||
       !locationSuggestionsOpen
     ) {
       return null;
@@ -1408,7 +1936,7 @@ export default function MiniToolbarTabDetallesEvento({
             className="block w-full px-3 py-2 text-left font-['Source_Sans_Pro',sans-serif] text-[12px] leading-[16px] text-[#262626] hover:bg-[#f6f0fb]"
             onMouseDown={(event) => {
               event.preventDefault();
-              void handleGoogleSuggestionSelect(suggestion);
+              void handleGoogleSuggestionSelect(suggestion, feature);
             }}
           >
             {suggestion.label}
@@ -1422,6 +1950,10 @@ export default function MiniToolbarTabDetallesEvento({
     resolveTimeInputValue(eventTimes.startTime) ||
     resolveTimeInputValue(countdownUi.time);
   const eventEndTimeValue = resolveTimeInputValue(eventTimes.endTime);
+  const partyEventStartTimeValue =
+    resolveTimeInputValue(partyEventTimes.startTime) ||
+    resolveTimeInputValue(partyCountdownUi.time);
+  const partyEventEndTimeValue = resolveTimeInputValue(partyEventTimes.endTime);
   const assistantScope = simplifiedForAssistant
     ? normalizeText(assistantSubstep?.scope)
     : "";
@@ -1434,6 +1966,234 @@ export default function MiniToolbarTabDetallesEvento({
   const detailsContainerClass = simplifiedForAssistant
     ? "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-hidden px-0 pb-1 pr-0 text-left"
     : "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-4 pr-0 text-left";
+
+  const renderEventDateSection = ({
+    feature,
+    title,
+    dateInputId,
+    startInputId,
+    endInputId,
+    dateFormatInputId,
+    countdown,
+    times,
+    startTimeValue,
+    endTimeValue,
+    controlsDisabled,
+    visibilityDisabled,
+    scrollKeys,
+  }) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    return (
+      <section className={`${sectionClass} pt-4`}>
+        <h3 className={labelClass}>{title}</h3>
+
+        <div className="mt-3">
+          <label className={subLabelClass} htmlFor={dateInputId}>
+            Fecha
+          </label>
+          <input
+            id={dateInputId}
+            type="date"
+            value={countdown.date}
+            onFocus={(event) => {
+              selectSidebarFieldText(event);
+              scrollToDynamicFieldTarget(scrollKeys.date);
+            }}
+            onChange={(event) => handleEventDateChange(event, safeFeature)}
+            disabled={controlsDisabled}
+            className={`${inputClass} ${disabledControlClass}`}
+          />
+        </div>
+
+        <div className="mt-3 grid w-full grid-cols-2 gap-3">
+          <div className="min-w-0">
+            <label className={subLabelClass} htmlFor={startInputId}>
+              Hora de inicio
+            </label>
+            <input
+              id={startInputId}
+              type="time"
+              value={startTimeValue}
+              onFocus={(event) => handleEventTimeFocus(event, scrollKeys.startTime)}
+              onChange={(event) => handleEventStartTimeChange(event, safeFeature)}
+              onBlur={() => handleEventTimeBlur(safeFeature)}
+              onKeyDown={handleEventTimeKeyDown}
+              className={inputClass}
+            />
+          </div>
+
+          <div className="min-w-0">
+            <label className={subLabelClass} htmlFor={endInputId}>
+              Hora Fin <span className="text-[#777777]">(opcional)</span>
+            </label>
+            <input
+              id={endInputId}
+              type="time"
+              value={endTimeValue}
+              onFocus={(event) => handleEventTimeFocus(event, scrollKeys.endTime)}
+              onChange={(event) => handleEventEndTimeChange(event, safeFeature)}
+              onBlur={() => handleEventTimeBlur(safeFeature)}
+              onKeyDown={handleEventTimeKeyDown}
+              placeholder="Opcional"
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        {!simplifiedForAssistant && (
+          <>
+            <div className="mt-3">
+              <label className={subLabelClass} htmlFor={dateFormatInputId}>
+                Formato de fecha en textos
+              </label>
+              <select
+                id={dateFormatInputId}
+                value={countdown.dateTextFormatPreset}
+                onFocus={() => scrollToDynamicFieldTarget(scrollKeys.date)}
+                onChange={(event) => handleDateTextFormatChange(event, safeFeature)}
+                disabled={controlsDisabled}
+                className={`${inputClass} ${disabledControlClass}`}
+              >
+                {DATE_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} - {option.example}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+              <input
+                type="checkbox"
+                checked={countdown.showCountdown}
+                onChange={(event) => handleShowCountdownChange(event, safeFeature)}
+                disabled={visibilityDisabled}
+                className={`${checkboxClass} disabled:cursor-not-allowed`}
+              />
+              Mostrar contador con cuenta regresiva
+            </label>
+          </>
+        )}
+      </section>
+    );
+  };
+
+  const renderEventLocationSection = ({
+    feature,
+    title,
+    placeInputId,
+    addressInputId,
+    addressFormatInputId,
+    location,
+    canShowMap,
+    scrollKeys,
+  }) => {
+    const safeFeature = normalizeEventDetailFeature(feature);
+    const venueNameKey = `${safeFeature}:venueName`;
+    const addressKey = `${safeFeature}:address`;
+    return (
+      <section className={`${sectionClass} pb-1 pt-4`}>
+        <h3 className={labelClass}>{title}</h3>
+
+        <div className="relative mt-3">
+          <label className={subLabelClass} htmlFor={placeInputId}>
+            Nombre del lugar <span className="text-[#777777]">(opcional)</span>
+          </label>
+          <input
+            id={placeInputId}
+            type="text"
+            value={location.venueName}
+            onFocus={(event) =>
+              handleEventLocationFocus(event, "venueName", location.venueName, safeFeature)
+            }
+            onChange={(event) => handleVenueNameChange(event, safeFeature)}
+            onBlur={() => handleEventLocationBlur(safeFeature)}
+            onKeyDown={handleEventLocationKeyDown}
+            placeholder="Ej: Salon Las Acacias"
+            className={inputClass}
+          />
+          {renderLocationSuggestions(venueNameKey, safeFeature)}
+        </div>
+
+        <div className="relative mt-3">
+          <label className={subLabelClass} htmlFor={addressInputId}>
+            Direccion
+          </label>
+          <input
+            id={addressInputId}
+            type="text"
+            value={location.address}
+            onFocus={(event) =>
+              handleEventLocationFocus(event, "address", location.address, safeFeature)
+            }
+            onChange={(event) => handleVenueAddressChange(event, safeFeature)}
+            onBlur={() => handleEventLocationBlur(safeFeature)}
+            onKeyDown={handleEventLocationKeyDown}
+            placeholder="Ej: Av. Corrientes 1234, CABA"
+            className={inputClass}
+          />
+          {renderLocationSuggestions(addressKey, safeFeature)}
+        </div>
+
+        {!simplifiedForAssistant && (
+          <div className="mt-3">
+            <label className={subLabelClass} htmlFor={addressFormatInputId}>
+              Formato de direccion en textos
+            </label>
+            <select
+              id={addressFormatInputId}
+              value={location.addressTextFormatPreset}
+              onFocus={() => scrollToDynamicFieldTarget(scrollKeys.venueAddress)}
+              onChange={(event) => handleAddressTextFormatChange(event, safeFeature)}
+              className={inputClass}
+            >
+              {ADDRESS_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} - {option.example}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {locationSuggestionsLoading ? (
+          <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
+            Buscando ubicaciones en Google Maps...
+          </p>
+        ) : null}
+        {!hasGoogleMapsApiKey ? (
+          <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
+            La busqueda de Google Maps no esta configurada. Los textos manuales siguen disponibles.
+          </p>
+        ) : null}
+        {locationSuggestionsError ? (
+          <p className="mt-2 rounded-md bg-rose-50 px-2 py-1 font-['Source_Sans_Pro',sans-serif] text-[11px] text-rose-700">
+            {locationSuggestionsError}
+          </p>
+        ) : null}
+
+        {!simplifiedForAssistant && (
+          <>
+            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+              <input
+                type="checkbox"
+                checked={location.showMap}
+                onChange={(event) => handleShowMapChange(event, safeFeature)}
+                disabled={!canShowMap}
+                className={`${checkboxClass} disabled:cursor-not-allowed`}
+              />
+              Mostrar mapa en la invitacion
+            </label>
+            {!canShowMap ? (
+              <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
+                Selecciona una sugerencia de Google Maps para activar el mapa.
+              </p>
+            ) : null}
+          </>
+        )}
+      </section>
+    );
+  };
 
   return (
     <div className={detailsContainerClass}>
@@ -1505,210 +2265,120 @@ export default function MiniToolbarTabDetallesEvento({
 
       {showEventNamesBlock && showEventDateBlock && <div className={dividerClass} />}
 
-      {showEventDateBlock && (
-      <section className={`${sectionClass} pt-4`}>
-        <h3 className={labelClass}>Dia y hora de evento</h3>
-
-        <div className="mt-3">
-          <label className={subLabelClass} htmlFor="event-date">
-            Fecha
+      {!simplifiedForAssistant && (showEventDateBlock || showEventLocationBlock) && (
+        <section className={`${sectionClass} pt-4`}>
+          <label className={labelClass} htmlFor="event-details-mode">
+            Modalidad del evento
           </label>
-          <input
-            id="event-date"
-            type="date"
-            value={countdownUi.date}
-            onFocus={(event) => {
-              selectSidebarFieldText(event);
-              scrollToDynamicFieldTarget(EVENT_DATE_SCROLL_FIELD_KEYS);
-            }}
-            onChange={handleEventDateChange}
-            disabled={eventDateControlsDisabled}
-            className={`${inputClass} ${disabledControlClass}`}
-          />
-        </div>
-
-        <div className="mt-3 grid w-full grid-cols-2 gap-3">
-          <div className="min-w-0">
-            <label className={subLabelClass} htmlFor="event-start-time">
-              Hora de inicio
-            </label>
-            <input
-              id="event-start-time"
-              type="time"
-              value={eventStartTimeValue}
-              onFocus={(event) =>
-                handleEventTimeFocus(event, EVENT_START_TIME_SCROLL_FIELD_KEYS)
-              }
-              onChange={handleEventStartTimeChange}
-              onBlur={handleEventTimeBlur}
-              onKeyDown={handleEventTimeKeyDown}
-              className={inputClass}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <label className={subLabelClass} htmlFor="event-end-time">
-              Hora Fin <span className="text-[#777777]">(opcional)</span>
-            </label>
-            <input
-              id="event-end-time"
-              type="time"
-              value={eventEndTimeValue}
-              onFocus={(event) =>
-                handleEventTimeFocus(event, EVENT_END_TIME_SCROLL_FIELD_KEYS)
-              }
-              onChange={handleEventEndTimeChange}
-              onBlur={handleEventTimeBlur}
-              onKeyDown={handleEventTimeKeyDown}
-              placeholder="Opcional"
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        {!simplifiedForAssistant && (
-          <>
-            <div className="mt-3">
-              <label className={subLabelClass} htmlFor="event-date-text-format">
-                Formato de fecha en textos
-              </label>
-              <select
-                id="event-date-text-format"
-                value={countdownUi.dateTextFormatPreset}
-                onFocus={() => scrollToDynamicFieldTarget(EVENT_DATE_SCROLL_FIELD_KEYS)}
-                onChange={handleDateTextFormatChange}
-                disabled={eventDateControlsDisabled}
-                className={`${inputClass} ${disabledControlClass}`}
-              >
-                {DATE_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label} - {option.example}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-              <input
-                type="checkbox"
-                checked={countdownUi.showCountdown}
-                onChange={handleShowCountdownChange}
-                disabled={countdownVisibilityDisabled}
-                className={`${checkboxClass} disabled:cursor-not-allowed`}
-              />
-              Mostrar contador con cuenta regresiva
-            </label>
-          </>
-        )}
-      </section>
+          <select
+            id="event-details-mode"
+            value={eventMode}
+            onChange={handleEventDetailsModeChange}
+            className={inputClass}
+          >
+            <option value={EVENT_DETAILS_MODES[0]}>Un solo evento</option>
+            <option value={EVENT_DETAILS_MODES[1]}>Ceremonia y fiesta</option>
+          </select>
+        </section>
       )}
+
+      {!simplifiedForAssistant && (
+        <section className={`${sectionClass} pt-4`}>
+          <label className={labelClass} htmlFor="event-dress-code-enabled">
+            Dress Code
+          </label>
+          <label className="mt-3 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+            <input
+              id="event-dress-code-enabled"
+              type="checkbox"
+              checked={isDressCodeEnabled}
+              onChange={handleDressCodeEnabledChange}
+              className={checkboxClass}
+            />
+            Mostrar Dress Code
+          </label>
+          {isDressCodeEnabled ? (
+            <div className="mt-3">
+              <label className={subLabelClass} htmlFor="event-dress-code-value">
+                Texto del Dress Code
+              </label>
+              <input
+                id="event-dress-code-value"
+                type="text"
+                value={dressCodeValue}
+                onFocus={handleDressCodeFocus}
+                onChange={handleDressCodeValueChange}
+                placeholder="Ej: Formal"
+                className={inputClass}
+              />
+            </div>
+          ) : null}
+        </section>
+      )}
+
+      {!simplifiedForAssistant && (showEventDateBlock || showEventLocationBlock) && (
+        <div className={dividerClass} />
+      )}
+
+      {showEventDateBlock &&
+        renderEventDateSection({
+          feature: EVENT_DETAIL_FEATURES.CEREMONY,
+          title: `Dia y hora de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.CEREMONY).toLowerCase()}`,
+          dateInputId: "event-ceremony-date",
+          startInputId: "event-ceremony-start-time",
+          endInputId: "event-ceremony-end-time",
+          dateFormatInputId: "event-ceremony-date-text-format",
+          countdown: countdownUi,
+          times: eventTimes,
+          startTimeValue: eventStartTimeValue,
+          endTimeValue: eventEndTimeValue,
+          controlsDisabled: eventDateControlsDisabled,
+          visibilityDisabled: countdownVisibilityDisabled,
+          scrollKeys: ceremonyScrollFieldKeys,
+        })}
+
+      {showEventDateBlock && isCeremonyPartyMode &&
+        renderEventDateSection({
+          feature: EVENT_DETAIL_FEATURES.PARTY,
+          title: `Dia y hora de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.PARTY).toLowerCase()}`,
+          dateInputId: "event-party-date",
+          startInputId: "event-party-start-time",
+          endInputId: "event-party-end-time",
+          dateFormatInputId: "event-party-date-text-format",
+          countdown: partyCountdownUi,
+          times: partyEventTimes,
+          startTimeValue: partyEventStartTimeValue,
+          endTimeValue: partyEventEndTimeValue,
+          controlsDisabled: partyEventDateControlsDisabled,
+          visibilityDisabled: partyCountdownVisibilityDisabled,
+          scrollKeys: partyScrollFieldKeys,
+        })}
 
       {showEventDateBlock && showEventLocationBlock && <div className={dividerClass} />}
 
-      {showEventLocationBlock && (
-      <section className={`${sectionClass} pb-1 pt-4`}>
-        <h3 className={labelClass}>Ubicacion del evento</h3>
+      {showEventLocationBlock &&
+        renderEventLocationSection({
+          feature: EVENT_DETAIL_FEATURES.CEREMONY,
+          title: `Ubicacion de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.CEREMONY).toLowerCase()}`,
+          placeInputId: "event-ceremony-place",
+          addressInputId: "event-ceremony-address",
+          addressFormatInputId: "event-ceremony-address-text-format",
+          location: eventLocation,
+          canShowMap: canShowEventMap,
+          scrollKeys: ceremonyScrollFieldKeys,
+        })}
 
-        <div className="relative mt-3">
-          <label className={subLabelClass} htmlFor="event-place">
-            Nombre del lugar <span className="text-[#777777]">(opcional)</span>
-          </label>
-          <input
-            id="event-place"
-            type="text"
-            value={eventLocation.venueName}
-            onFocus={(event) =>
-              handleEventLocationFocus(event, "venueName", eventLocation.venueName)
-            }
-            onChange={handleVenueNameChange}
-            onBlur={handleEventLocationBlur}
-            onKeyDown={handleEventLocationKeyDown}
-            placeholder="Ej: Salon Las Acacias"
-            className={inputClass}
-          />
-          {renderLocationSuggestions("venueName")}
-        </div>
-
-        <div className="relative mt-3">
-          <label className={subLabelClass} htmlFor="event-address">
-            Direccion
-          </label>
-          <input
-            id="event-address"
-            type="text"
-            value={eventLocation.address}
-            onFocus={(event) =>
-              handleEventLocationFocus(event, "address", eventLocation.address)
-            }
-            onChange={handleVenueAddressChange}
-            onBlur={handleEventLocationBlur}
-            onKeyDown={handleEventLocationKeyDown}
-            placeholder="Ej: Av. Corrientes 1234, CABA"
-            className={inputClass}
-          />
-          {renderLocationSuggestions("address")}
-        </div>
-
-        {!simplifiedForAssistant && (
-          <div className="mt-3">
-            <label className={subLabelClass} htmlFor="event-address-text-format">
-              Formato de direccion en textos
-            </label>
-            <select
-              id="event-address-text-format"
-              value={eventLocation.addressTextFormatPreset}
-              onFocus={() =>
-                scrollToDynamicFieldTarget(EVENT_VENUE_ADDRESS_SCROLL_FIELD_KEYS)
-              }
-              onChange={handleAddressTextFormatChange}
-              className={inputClass}
-            >
-              {ADDRESS_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label} - {option.example}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {locationSuggestionsLoading ? (
-          <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
-            Buscando ubicaciones en Google Maps...
-          </p>
-        ) : null}
-        {!hasGoogleMapsApiKey ? (
-          <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
-            La busqueda de Google Maps no esta configurada. Los textos manuales siguen disponibles.
-          </p>
-        ) : null}
-        {locationSuggestionsError ? (
-          <p className="mt-2 rounded-md bg-rose-50 px-2 py-1 font-['Source_Sans_Pro',sans-serif] text-[11px] text-rose-700">
-            {locationSuggestionsError}
-          </p>
-        ) : null}
-
-        {!simplifiedForAssistant && (
-          <>
-            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-              <input
-                type="checkbox"
-                checked={eventLocation.showMap}
-                onChange={handleShowMapChange}
-                disabled={!canShowEventMap}
-                className={`${checkboxClass} disabled:cursor-not-allowed`}
-              />
-              Mostrar mapa en la invitacion
-            </label>
-            {!canShowEventMap ? (
-              <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
-                Selecciona una sugerencia de Google Maps para activar el mapa.
-              </p>
-            ) : null}
-          </>
-        )}
-      </section>
-      )}
+      {showEventLocationBlock && isCeremonyPartyMode &&
+        renderEventLocationSection({
+          feature: EVENT_DETAIL_FEATURES.PARTY,
+          title: `Ubicacion de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.PARTY).toLowerCase()}`,
+          placeInputId: "event-party-place",
+          addressInputId: "event-party-address",
+          addressFormatInputId: "event-party-address-text-format",
+          location: partyEventLocation,
+          canShowMap: canShowPartyEventMap,
+          scrollKeys: partyScrollFieldKeys,
+        })}
     </div>
   );
 }

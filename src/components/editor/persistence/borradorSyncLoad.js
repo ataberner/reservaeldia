@@ -6,6 +6,7 @@ import { normalizeGiftConfig } from "../../../domain/gifts/config.js";
 import { normalizeInvitationType } from "../../../domain/invitationTypes.js";
 import { normalizeDraftRenderState } from "../../../domain/drafts/sourceOfTruth.js";
 import { pushEditorBreadcrumb } from "../../../lib/monitoring/editorIssueReporter.js";
+import { normalizeEventDetailsDocumentContract } from "../../../../shared/eventDetailsMigration.js";
 import { buildLoadedEditorRenderState } from "./borradorSyncRenderState.js";
 import {
   persistEditorSessionPatch,
@@ -120,7 +121,9 @@ export async function loadBorradorSyncState({
       injectedData && typeof injectedData === "object" ? injectedData : null,
   });
   exists = readResult.exists;
-  data = exists ? readResult.data || {} : {};
+  data = exists
+    ? normalizeEventDetailsDocumentContract(readResult.data || {})
+    : {};
 
   if (!exists) {
     return {
@@ -138,6 +141,7 @@ export async function loadBorradorSyncState({
         : "";
   const rawRsvp = renderState.rsvp;
   const rawGifts = renderState.gifts;
+  const rawEventDetails = renderState.eventDetails;
   const tipoDraftRaw =
     typeof data?.tipoInvitacion === "string" ? data.tipoInvitacion : "";
   let tipoInvitacion = normalizeInvitationType(tipoDraftRaw);
@@ -206,6 +210,8 @@ export async function loadBorradorSyncState({
         : null,
     rawRsvp: rawRsvp && typeof rawRsvp === "object" ? rawRsvp : null,
     rawGifts: rawGifts && typeof rawGifts === "object" ? rawGifts : null,
+    eventDetailsForSetter: rawEventDetails,
+    rawEventDetails,
     tipoInvitacion,
     templateWorkspace:
       data?.templateWorkspace && typeof data.templateWorkspace === "object"

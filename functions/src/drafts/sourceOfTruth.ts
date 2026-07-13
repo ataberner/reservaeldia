@@ -3,6 +3,10 @@ export const DRAFT_CANONICAL_SOURCE = "draft_render_state" as const;
 // Regla de precedencia de datos:
 // canvas edits > modal-applied initial patch > template defaults.
 
+const {
+  normalizeEventDetailsConfig,
+} = require("../../shared/eventDetailsConfig.cjs");
+
 const DRAFT_WRITERS = new Set(["modal", "canvas", "system", "publish"] as const);
 
 type DraftWriter = "modal" | "canvas" | "system" | "publish";
@@ -43,6 +47,7 @@ export type DraftRenderState = {
   secciones: unknown[];
   rsvp: UnknownRecord | null;
   gifts: UnknownRecord | null;
+  eventDetails: UnknownRecord;
 };
 
 export function normalizeDraftRenderState(rawDraft: unknown): DraftRenderState {
@@ -53,6 +58,7 @@ export function normalizeDraftRenderState(rawDraft: unknown): DraftRenderState {
     secciones: normalizeRenderArray(safeDraft.secciones),
     rsvp: normalizeRsvp(safeDraft.rsvp),
     gifts: normalizeGifts(safeDraft.gifts),
+    eventDetails: normalizeEventDetailsConfig(safeDraft.eventDetails) as UnknownRecord,
   };
 }
 

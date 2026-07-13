@@ -378,9 +378,9 @@ test("date text format update changes textual targets without changing countdown
 
 test("venue address text targets are projected as fixed-width wrapped text boxes", () => {
   const field = {
-    key: "event_venue_address",
+    key: "event_ceremony_venue_address",
     type: "location",
-    eventDetailsRole: "venue_address",
+    eventDetailsRole: "ceremony_venue_address",
     applyTargets: [
       {
         scope: "objeto",
@@ -433,6 +433,48 @@ test("venue address text targets are projected as fixed-width wrapped text boxes
       patch: {
         __autoWidth: false,
         width: 360,
+        textWrapMode: "word",
+      },
+    },
+  ]);
+});
+
+test("party venue address text targets use the same fixed-width projection", () => {
+  const field = {
+    key: "event_party_venue_address",
+    type: "location",
+    eventDetailsRole: "party_venue_address",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "party-address-text",
+        path: "texto",
+        mode: "set",
+      },
+    ],
+  };
+  const address = "Av. Santa Fe 1234, CABA";
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field,
+    value: address,
+    objetos: [
+      {
+        id: "party-address-text",
+        tipo: "texto",
+        texto: "Direccion anterior",
+        width: 260,
+        fontSize: 18,
+      },
+    ],
+  });
+
+  assert.deepEqual(patches, [
+    {
+      objectId: "party-address-text",
+      patch: {
+        texto: address,
+        __autoWidth: false,
         textWrapMode: "word",
       },
     },

@@ -129,13 +129,23 @@ function findObjectById(objetos, id) {
   );
 }
 
-function findDynamicCountdownBinding({ fieldsSchema, objetos } = {}) {
+function normalizeFieldKeyFilter(value) {
+  if (Array.isArray(value)) {
+    return new Set(value.map((entry) => normalizeText(entry)).filter(Boolean));
+  }
+  const single = normalizeText(value);
+  return single ? new Set([single]) : null;
+}
+
+function findDynamicCountdownBinding({ fieldsSchema, objetos, fieldKey, fieldKeys } = {}) {
   const safeFields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const fieldKeyFilter = normalizeFieldKeyFilter(fieldKeys || fieldKey);
 
   for (const field of safeFields) {
     const safeField = asObject(field);
     const fieldKey = normalizeText(safeField.key);
     if (!fieldKey || !isDateLikeFieldType(safeField.type)) continue;
+    if (fieldKeyFilter && !fieldKeyFilter.has(fieldKey)) continue;
 
     const targets = Array.isArray(safeField.applyTargets)
       ? safeField.applyTargets
@@ -166,8 +176,8 @@ function findDynamicCountdownBinding({ fieldsSchema, objetos } = {}) {
   return null;
 }
 
-function buildDynamicCountdownEventDetails({ fieldsSchema, objetos } = {}) {
-  const binding = findDynamicCountdownBinding({ fieldsSchema, objetos });
+function buildDynamicCountdownEventDetails({ fieldsSchema, objetos, fieldKey, fieldKeys } = {}) {
+  const binding = findDynamicCountdownBinding({ fieldsSchema, objetos, fieldKey, fieldKeys });
   if (!binding) {
     return {
       hasBinding: false,

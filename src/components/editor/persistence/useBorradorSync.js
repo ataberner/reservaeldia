@@ -45,6 +45,7 @@ export default function useBorradorSync({
   secciones,
   rsvp,
   gifts,
+  eventDetails,
   cargado,
 
   // setters
@@ -52,6 +53,7 @@ export default function useBorradorSync({
   setSecciones,
   setRsvp,
   setGifts,
+  setEventDetails,
   setCargado,
   setSeccionActivaId,
   onDraftLoaded,
@@ -80,6 +82,7 @@ export default function useBorradorSync({
     secciones: [],
     rsvp: null,
     gifts: null,
+    eventDetails: null,
     cargado: false,
   });
   latestStateRef.current = {
@@ -90,6 +93,7 @@ export default function useBorradorSync({
     secciones,
     rsvp,
     gifts,
+    eventDetails,
     cargado,
   };
   if (!persistSchedulerRef.current) {
@@ -315,6 +319,9 @@ export default function useBorradorSync({
           if (typeof setGifts === "function") {
             setGifts(loadResult.giftsForSetter);
           }
+          if (typeof setEventDetails === "function") {
+            setEventDetails(loadResult.eventDetailsForSetter);
+          }
           if (typeof onDraftLoaded === "function") {
             onDraftLoaded({
               slug: loadResult.session.id,
@@ -325,6 +332,7 @@ export default function useBorradorSync({
               secciones: loadResult.hydratedSecciones,
               rsvp: loadResult.rawRsvp,
               gifts: loadResult.rawGifts,
+              eventDetails: loadResult.rawEventDetails,
               loadedAt: Date.now(),
             });
           }
@@ -358,6 +366,7 @@ export default function useBorradorSync({
               secciones: [],
               rsvp: null,
               gifts: null,
+              eventDetails: null,
               loadedAt: Date.now(),
             });
           }
@@ -419,6 +428,7 @@ export default function useBorradorSync({
     cargado,
     clearScheduledPersist,
     gifts,
+    eventDetails,
     ignoreNextUpdateRef,
     objetos,
     readOnly,

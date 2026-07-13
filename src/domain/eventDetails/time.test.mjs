@@ -27,10 +27,10 @@ test("ensures event start and end time fields", () => {
   assert.equal(result.changed, true);
   assert.deepEqual(
     result.fieldsSchema.map((field) => field.key),
-    ["event_start_time", "event_end_time"]
+    ["event_ceremony_start_time", "event_ceremony_end_time"]
   );
-  assert.equal(result.fieldsSchema[0].eventDetailsRole, EVENT_TIME_ROLES.START_TIME);
-  assert.equal(result.fieldsSchema[1].eventDetailsRole, EVENT_TIME_ROLES.END_TIME);
+  assert.equal(result.fieldsSchema[0].eventDetailsRole, "ceremony_start_time");
+  assert.equal(result.fieldsSchema[1].eventDetailsRole, "ceremony_end_time");
   assert.equal(result.fieldsSchema[0].type, "time");
   assert.equal(result.fieldsSchema[1].optional, true);
 });
@@ -126,7 +126,7 @@ test("resolveEventTimesState treats missing or invalid payloads as non-authorita
 test("linked event time field patches text targets", () => {
   const { fieldsSchema } = ensureEventTimeFields({ fieldsSchema: [] });
   const field = {
-    ...fieldsSchema.find((entry) => entry.key === "event_end_time"),
+    ...fieldsSchema.find((entry) => entry.key === "event_ceremony_end_time"),
     applyTargets: [
       {
         scope: "objeto",

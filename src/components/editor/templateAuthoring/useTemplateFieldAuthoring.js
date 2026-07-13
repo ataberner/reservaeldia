@@ -29,6 +29,7 @@ import {
   ensureEventLocationFields,
   getEventLocationFieldKey,
   normalizeEventLocationRole,
+  resolveEventLocationFieldFeature,
   resolveEventLocationFromAuthoring,
   updateEventAddressTextFormatInSchema,
 } from "@/domain/eventDetails/location.js";
@@ -40,14 +41,19 @@ import {
   getEventTimeFieldKey,
   normalizeEventTimeRole,
   normalizeEventTimeValue,
+  resolveEventTimeFieldFeature,
   resolveEventTimesFromAuthoring,
 } from "@/domain/eventDetails/time.js";
 import {
   ensureEventDateField,
   getEventDateFieldKey,
+  resolveEventDateFieldFeature,
 } from "@/domain/eventDetails/date.js";
+import { normalizeEventDetailFeature } from "@/domain/eventDetails/features.js";
 import {
+  ensureDressCodeField,
   ensureStoryTextField,
+  getDressCodeFieldKey,
   getStoryTextFieldKey,
 } from "@/domain/templates/storyText.js";
 import { validateAuthoringState } from "@/domain/templates/authoring/validation.js";
@@ -533,9 +539,11 @@ export default function useTemplateFieldAuthoring({
   );
 
   const applyEventLocationTargetsToObjects = useCallback(
-    (nextFieldsSchema, nextDefaults) => {
+    (nextFieldsSchema, nextDefaults, feature = "ceremony") => {
       let targetsApplied = false;
+      const safeFeature = normalizeEventDetailFeature(feature);
       collectEventLocationFields(nextFieldsSchema).forEach((field) => {
+        if (resolveEventLocationFieldFeature(field) !== safeFeature) return;
         const fieldKey = normalizeText(field?.key);
         if (!fieldKey) return;
         const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
@@ -547,9 +555,11 @@ export default function useTemplateFieldAuthoring({
   );
 
   const applyEventTimeTargetsToObjects = useCallback(
-    (nextFieldsSchema, nextDefaults) => {
+    (nextFieldsSchema, nextDefaults, feature = "ceremony") => {
       let targetsApplied = false;
+      const safeFeature = normalizeEventDetailFeature(feature);
       collectEventTimeFields(nextFieldsSchema).forEach((field) => {
+        if (resolveEventTimeFieldFeature(field) !== safeFeature) return;
         const fieldKey = normalizeText(field?.key);
         if (!fieldKey) return;
         const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
@@ -739,15 +749,17 @@ export default function useTemplateFieldAuthoring({
   );
 
   const updateEventLocation = useCallback(
-    async (patch = {}) => {
+    async (patch = {}, options = {}) => {
       if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
+      const feature = normalizeEventDetailFeature(options.feature || patch.eventDetailsFeature);
 
       const currentLocation = resolveEventLocationFromAuthoring({
         fieldsSchema,
         defaults,
         objetos: safeObjetos,
+        feature,
       });
       const safePatch = asObject(patch);
       const nextLocation = {
@@ -775,7 +787,7 @@ export default function useTemplateFieldAuthoring({
           : currentLocation.addressTextFormatPreset,
       };
       const ensureResult = canConfigure
-        ? ensureEventLocationFields({ fieldsSchema })
+        ? ensureEventLocationFields({ fieldsSchema, feature })
         : {
             fieldsSchema,
             changed: false,
@@ -787,6 +799,7 @@ export default function useTemplateFieldAuthoring({
         ? updateEventAddressTextFormatInSchema({
             fieldsSchema: ensureResult.fieldsSchema,
             preset: safePatch.addressTextFormatPreset,
+            feature,
           })
         : {
             fieldsSchema: ensureResult.fieldsSchema,
@@ -799,11 +812,13 @@ export default function useTemplateFieldAuthoring({
           fieldsSchema: nextFieldsSchema,
           defaults,
           location: nextLocation,
+          feature,
         })
       );
       const targetsApplied = applyEventLocationTargetsToObjects(
         nextFieldsSchema,
-        nextDefaults
+        nextDefaults,
+        feature
       );
 
       if (
@@ -836,7 +851,7 @@ export default function useTemplateFieldAuthoring({
   );
 
   const linkSelectionToEventLocation = useCallback(
-    async (role) => {
+    async (role, options = {}) => {
       if (!canConfigure) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
@@ -845,6 +860,7 @@ export default function useTemplateFieldAuthoring({
       }
 
       const safeRole = normalizeEventLocationRole(role);
+      const feature = normalizeEventDetailFeature(options.feature);
       if (!safeRole) {
         throw new Error("Campo de ubicacion invalido.");
       }
@@ -854,6 +870,7 @@ export default function useTemplateFieldAuthoring({
         fieldsSchema,
         defaults,
         objetos: safeObjetos,
+        feature,
       });
       const nextLocation = { ...currentLocation };
       if (
@@ -871,8 +888,8 @@ export default function useTemplateFieldAuthoring({
         nextLocation.address = selectedText;
       }
 
-      const targetFieldKey = getEventLocationFieldKey(safeRole);
-      const ensureResult = ensureEventLocationFields({ fieldsSchema });
+      const targetFieldKey = getEventLocationFieldKey(safeRole, feature);
+      const ensureResult = ensureEventLocationFields({ fieldsSchema, feature });
       const linkResult = linkElementToField({
         fieldsSchema: ensureResult.fieldsSchema,
         fieldKey: targetFieldKey,
@@ -886,6 +903,7 @@ export default function useTemplateFieldAuthoring({
           fieldsSchema: nextFieldsSchema,
           defaults,
           location: nextLocation,
+          feature,
         })
       );
 
@@ -900,7 +918,7 @@ export default function useTemplateFieldAuthoring({
         defaults: nextDefaults,
       });
 
-      applyEventLocationTargetsToObjects(nextFieldsSchema, nextDefaults);
+      applyEventLocationTargetsToObjects(nextFieldsSchema, nextDefaults, feature);
       return true;
     },
     [
@@ -920,14 +938,16 @@ export default function useTemplateFieldAuthoring({
   );
 
   const updateEventTimes = useCallback(
-    async (patch = {}) => {
+    async (patch = {}, options = {}) => {
       if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
+      const feature = normalizeEventDetailFeature(options.feature);
 
       const currentTimes = resolveEventTimesFromAuthoring({
         fieldsSchema,
         defaults,
+        feature,
       });
       const safePatch = asObject(patch);
       const nextTimes = {
@@ -939,7 +959,7 @@ export default function useTemplateFieldAuthoring({
           : currentTimes.endTime,
       };
       const ensureResult = canConfigure
-        ? ensureEventTimeFields({ fieldsSchema })
+        ? ensureEventTimeFields({ fieldsSchema, feature })
         : {
             fieldsSchema,
             changed: false,
@@ -951,11 +971,13 @@ export default function useTemplateFieldAuthoring({
           fieldsSchema: nextFieldsSchema,
           defaults,
           times: nextTimes,
+          feature,
         })
       );
       const targetsApplied = applyEventTimeTargetsToObjects(
         nextFieldsSchema,
-        nextDefaults
+        nextDefaults,
+        feature
       );
 
       if (
@@ -986,7 +1008,7 @@ export default function useTemplateFieldAuthoring({
   );
 
   const linkSelectionToEventTime = useCallback(
-    async (role) => {
+    async (role, options = {}) => {
       if (!canConfigure) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
@@ -995,6 +1017,7 @@ export default function useTemplateFieldAuthoring({
       }
 
       const safeRole = normalizeEventTimeRole(role);
+      const feature = normalizeEventDetailFeature(options.feature);
       if (!safeRole) {
         throw new Error("Campo de hora invalido.");
       }
@@ -1003,6 +1026,7 @@ export default function useTemplateFieldAuthoring({
       const currentTimes = resolveEventTimesFromAuthoring({
         fieldsSchema,
         defaults,
+        feature,
       });
       const nextTimes = { ...currentTimes };
       if (
@@ -1020,8 +1044,8 @@ export default function useTemplateFieldAuthoring({
         nextTimes.endTime = normalizeEventTimeValue(selectedText);
       }
 
-      const targetFieldKey = getEventTimeFieldKey(safeRole);
-      const ensureResult = ensureEventTimeFields({ fieldsSchema });
+      const targetFieldKey = getEventTimeFieldKey(safeRole, feature);
+      const ensureResult = ensureEventTimeFields({ fieldsSchema, feature });
       const linkResult = linkElementToField({
         fieldsSchema: ensureResult.fieldsSchema,
         fieldKey: targetFieldKey,
@@ -1035,6 +1059,7 @@ export default function useTemplateFieldAuthoring({
           fieldsSchema: nextFieldsSchema,
           defaults,
           times: nextTimes,
+          feature,
         })
       );
 
@@ -1049,7 +1074,7 @@ export default function useTemplateFieldAuthoring({
         defaults: nextDefaults,
       });
 
-      applyEventTimeTargetsToObjects(nextFieldsSchema, nextDefaults);
+      applyEventTimeTargetsToObjects(nextFieldsSchema, nextDefaults, feature);
       return true;
     },
     [
@@ -1068,7 +1093,7 @@ export default function useTemplateFieldAuthoring({
   );
 
   const linkSelectionToEventDate = useCallback(
-    async () => {
+    async (options = {}) => {
       if (!canConfigure) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
@@ -1079,8 +1104,9 @@ export default function useTemplateFieldAuthoring({
         throw new Error("Selecciona un elemento para vincular la fecha del evento.");
       }
 
-      const fieldKey = getEventDateFieldKey();
-      const ensureResult = ensureEventDateField({ fieldsSchema });
+      const feature = normalizeEventDetailFeature(options.feature);
+      const fieldKey = getEventDateFieldKey(feature);
+      const ensureResult = ensureEventDateField({ fieldsSchema, feature });
       const linkResult = linkElementToField({
         fieldsSchema: ensureResult.fieldsSchema,
         fieldKey,
@@ -1151,6 +1177,71 @@ export default function useTemplateFieldAuthoring({
 
       const fieldKey = getStoryTextFieldKey();
       const ensureResult = ensureStoryTextField({ fieldsSchema });
+      const linkResult = linkElementToField({
+        fieldsSchema: ensureResult.fieldsSchema,
+        fieldKey,
+        elementId: selectedElementId,
+        path: selectedElementFieldPath || "texto",
+      });
+      const nextFieldsSchema = linkResult.fieldsSchema;
+      const selectedText =
+        typeof selectedElement?.texto === "string"
+          ? selectedElement.texto
+          : selectedElementDefaultValue;
+      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, {
+        ...defaults,
+        [fieldKey]: selectedText,
+      });
+
+      if (
+        !ensureResult.changed &&
+        !linkResult.changed &&
+        areValuesMapsEqual(nextDefaults, defaults)
+      ) {
+        return false;
+      }
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: nextDefaults,
+      });
+
+      const linkedField = nextFieldsSchema.find(
+        (field) => normalizeText(field?.key) === fieldKey
+      );
+      applyFieldTargetsToObjects(linkedField, selectedText);
+
+      return true;
+    },
+    [
+      applyFieldTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      selectedElement,
+      selectedElementDefaultValue,
+      selectedElementFieldPath,
+      selectedElementId,
+      selectedElementType,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
+  const linkSelectionToDressCode = useCallback(
+    async () => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+      if (selectedElementType !== "texto" || !selectedElementId) {
+        throw new Error("Selecciona un texto para vincular Dress Code.");
+      }
+
+      const fieldKey = getDressCodeFieldKey();
+      const ensureResult = ensureDressCodeField({ fieldsSchema });
       const linkResult = linkElementToField({
         fieldsSchema: ensureResult.fieldsSchema,
         fieldKey,
@@ -1695,6 +1786,7 @@ export default function useTemplateFieldAuthoring({
     linkSelectionToEventTime,
     linkSelectionToEventDate,
     linkSelectionToStoryText,
+    linkSelectionToDressCode,
     getFieldUsage,
     repairSnapshot,
     reloadAvailableFields,

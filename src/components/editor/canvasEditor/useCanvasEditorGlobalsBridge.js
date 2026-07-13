@@ -18,6 +18,7 @@ export default function useCanvasEditorGlobalsBridge({
   secciones,
   rsvpConfig,
   giftsConfig,
+  eventDetailsConfig,
   altoCanvas,
   seccionActivaId,
   celdaGaleriaActiva,
@@ -39,6 +40,7 @@ export default function useCanvasEditorGlobalsBridge({
       secciones: seccionesOrdenadas,
       rsvp: rsvpConfig,
       gifts: giftsConfig,
+      eventDetails: eventDetailsConfig,
     });
     window.dispatchEvent(
       new CustomEvent(EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE, {
@@ -55,6 +57,7 @@ export default function useCanvasEditorGlobalsBridge({
     secciones,
     rsvpConfig,
     giftsConfig,
+    eventDetailsConfig,
     altoCanvas,
     seccionActivaId,
     celdaGaleriaActiva,

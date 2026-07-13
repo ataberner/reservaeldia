@@ -188,6 +188,160 @@ test("legacy configs normalize to enabled from visible CTA when enabled is missi
   assert.equal(normalized.gifts, null);
 });
 
+test("event details mode drives ceremony and party section visibility", () => {
+  const single = applyFunctionalAssociationsToRenderState({
+    secciones: [
+      { id: "ceremony", orden: 0, altura: 400, functionalAssociation: "ceremony" },
+      { id: "party", orden: 1, altura: 400, functionalAssociation: "party" },
+    ],
+    objetos: [
+      { id: "ceremony-text", tipo: "texto", seccionId: "ceremony" },
+      { id: "party-text", tipo: "texto", seccionId: "party" },
+    ],
+    eventDetails: { mode: "single" },
+  });
+  const double = applyFunctionalAssociationsToRenderState({
+    secciones: [
+      { id: "ceremony", orden: 0, altura: 400, functionalAssociation: "ceremony" },
+      { id: "party", orden: 1, altura: 400, functionalAssociation: "party" },
+    ],
+    objetos: [
+      { id: "ceremony-text", tipo: "texto", seccionId: "ceremony" },
+      { id: "party-text", tipo: "texto", seccionId: "party" },
+    ],
+    eventDetails: { mode: "ceremony_party" },
+  });
+
+  assert.deepEqual(single.secciones.map((section) => section.id), ["ceremony"]);
+  assert.deepEqual(single.objetos.map((object) => object.id), ["ceremony-text"]);
+  assert.deepEqual(double.secciones.map((section) => section.id), ["ceremony", "party"]);
+});
+
+test("dress code enabled state drives complete section visibility", () => {
+  const hidden = applyFunctionalAssociationsToRenderState({
+    secciones: [
+      { id: "dress", orden: 0, altura: 400, functionalAssociation: "dress_code" },
+      { id: "shared", orden: 1, altura: 400 },
+    ],
+    objetos: [
+      { id: "dress-title", tipo: "texto", seccionId: "dress" },
+      { id: "shared-title", tipo: "texto", seccionId: "shared" },
+    ],
+    eventDetails: {
+      mode: "single",
+      dressCode: { enabled: false, value: "Formal" },
+    },
+  });
+  const visible = applyFunctionalAssociationsToRenderState({
+    secciones: [
+      { id: "dress", orden: 0, altura: 400, functionalAssociation: "dress_code" },
+      { id: "shared", orden: 1, altura: 400 },
+    ],
+    objetos: [
+      { id: "dress-title", tipo: "texto", seccionId: "dress" },
+      { id: "shared-title", tipo: "texto", seccionId: "shared" },
+    ],
+    eventDetails: {
+      mode: "single",
+      dressCode: { enabled: true, value: "Formal" },
+    },
+  });
+
+  assert.deepEqual(hidden.secciones.map((section) => section.id), ["shared"]);
+  assert.deepEqual(hidden.objetos.map((object) => object.id), ["shared-title"]);
+  assert.deepEqual(visible.secciones.map((section) => section.id), ["dress", "shared"]);
+});
+
+test("shared section centers all visible dress code groups when it is the only active functionality", () => {
+  const result = applyFunctionalAssociationsToRenderState({
+    secciones: sections,
+    objetos: [
+      { id: "shared-title", tipo: "texto", seccionId: "shared", x: 300, y: 10, width: 200, height: 30 },
+      group({ id: "dress-left", association: "dress_code", x: 80, width: 100 }),
+      group({ id: "dress-right", association: "dress_code", x: 240, width: 100 }),
+      group({ id: "party-group", association: "party", x: 560, width: 120 }),
+    ],
+    eventDetails: {
+      mode: "single",
+      dressCode: { enabled: true, value: "Elegante sport" },
+    },
+  });
+
+  assert.deepEqual(result.objetos.map((object) => object.id), ["shared-title", "dress-left", "dress-right"]);
+  assert.equal(result.centeredGroupDeltas["dress-left"], 190);
+  assert.equal(result.centeredGroupDeltas["dress-right"], 190);
+  assert.equal(result.objetos.find((object) => object.id === "dress-left").x, 270);
+  assert.equal(result.objetos.find((object) => object.id === "dress-right").x, 430);
+});
+
+test("shared ceremony party section centers visible ceremony groups in single-event mode", () => {
+  const result = applyFunctionalAssociationsToRenderState({
+    secciones: sections,
+    objetos: [
+      { id: "shared-title", tipo: "texto", seccionId: "shared", x: 300, y: 10, width: 200, height: 30 },
+      group({ id: "ceremony-group", association: "ceremony", x: 80, width: 100 }),
+      group({ id: "party-group", association: "party", x: 560, width: 120 }),
+    ],
+    eventDetails: { mode: "single" },
+  });
+
+  assert.deepEqual(result.objetos.map((object) => object.id), ["shared-title", "ceremony-group"]);
+  assert.equal(result.centeredGroupDeltas["ceremony-group"], 270);
+  assert.equal(result.objetos.find((object) => object.id === "ceremony-group").x, 350);
+});
+
+test("shared ceremony party section keeps original positions when both event parts are active", () => {
+  const result = applyFunctionalAssociationsToRenderState({
+    secciones: sections,
+    objetos: [
+      group({ id: "ceremony-group", association: "ceremony", x: 80, width: 100 }),
+      group({ id: "party-group", association: "party", x: 560, width: 120 }),
+    ],
+    eventDetails: { mode: "ceremony_party" },
+  });
+
+  assert.deepEqual(result.hiddenSectionIds, []);
+  assert.deepEqual(result.centeredGroupDeltas, {});
+  assert.equal(result.objetos.find((object) => object.id === "ceremony-group").x, 80);
+  assert.equal(result.objetos.find((object) => object.id === "party-group").x, 560);
+});
+
+test("party and ceremony allow multiple groups for the same functionality", () => {
+  const baseSections = [{ id: "shared", orden: 0, altura: 400 }];
+  const baseObjects = [
+    group({ id: "party-a", association: "party", x: 80 }),
+    group({ id: "party-b", association: "party", x: 240 }),
+    group({ id: "party-c", x: 420 }),
+  ];
+
+  const assigned = setGroupFunctionalAssociation({
+    secciones: baseSections,
+    objetos: baseObjects,
+    groupId: "party-c",
+    association: "party",
+  });
+  assert.equal(assigned.objetos.find((object) => object.id === "party-a").functionalAssociation, "party");
+  assert.equal(assigned.objetos.find((object) => object.id === "party-b").functionalAssociation, "party");
+  assert.equal(assigned.objetos.find((object) => object.id === "party-c").functionalAssociation, "party");
+
+  const moved = sanitizeMovedGroupFunctionalAssociation({
+    secciones: [
+      { id: "source", orden: 0, altura: 400 },
+      { id: "target", orden: 1, altura: 400 },
+    ],
+    objetos: [
+      group({ id: "moved-party", seccionId: "target", association: "party", x: 80 }),
+      group({ id: "existing-party", seccionId: "target", association: "party", x: 300 }),
+    ],
+    groupId: "moved-party",
+    previousSectionId: "source",
+  });
+
+  assert.equal(moved.changed, false);
+  assert.equal(moved.objetos[0].functionalAssociation, "party");
+  assert.equal(moved.objetos[1].functionalAssociation, "party");
+});
+
 test("rotated child bounds are included in group bounds", () => {
   const bounds = resolveGroupAbsoluteBounds(
     group({

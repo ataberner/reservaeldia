@@ -46,10 +46,17 @@ export type TemplateEventDetailsRole =
   | "primary_person_name"
   | "secondary_person_name"
   | "couple_names"
-  | "venue_name"
-  | "venue_address"
-  | "event_start_time"
-  | "event_end_time";
+  | "ceremony_date"
+  | "ceremony_start_time"
+  | "ceremony_end_time"
+  | "ceremony_venue_name"
+  | "ceremony_venue_address"
+  | "party_date"
+  | "party_start_time"
+  | "party_end_time"
+  | "party_venue_name"
+  | "party_venue_address"
+  | "dress_code";
 
 export type TemplateEventDetailsFormat =
   | "and"

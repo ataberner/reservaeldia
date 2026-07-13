@@ -1,5 +1,11 @@
-const FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze(["rsvp", "gifts"]);
+const {
+  normalizeEventDetailsConfig,
+  resolveEventDetailsEnabledState,
+} = require("./eventDetailsConfig.cjs");
+
+const FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze(["rsvp", "gifts", "ceremony", "party", "dress_code"]);
 const FUNCTIONAL_ASSOCIATION_SET = new Set(FUNCTIONAL_ASSOCIATION_VALUES);
+const SINGLETON_FUNCTIONAL_ASSOCIATION_VALUES = new Set(["rsvp", "gifts"]);
 const FUNCTIONAL_ASSOCIATION_FIELD = "functionalAssociation";
 const FUNCTIONAL_RENDER_OFFSET_X_FIELD = "__functionalRenderOffsetX";
 const DEFAULT_CANVAS_WIDTH = 800;
@@ -46,11 +52,26 @@ function roundMetric(value, precision = 3) {
 
 function normalizeFunctionalAssociation(value) {
   const normalized = normalizeLowerText(value);
+  const normalizedToken = normalized.replace(/[\s-]+/g, "_");
   if (normalized === "rsvp" || normalized === "confirmacion" || normalized === "confirmacion-asistencia") {
     return "rsvp";
   }
   if (normalized === "gifts" || normalized === "gift" || normalized === "regalo" || normalized === "regalos") {
     return "gifts";
+  }
+  if (normalized === "ceremony" || normalized === "ceremonia") {
+    return "ceremony";
+  }
+  if (normalized === "party" || normalized === "fiesta") {
+    return "party";
+  }
+  if (
+    normalizedToken === "dress_code" ||
+    normalizedToken === "dresscode" ||
+    normalizedToken === "codigo_vestimenta" ||
+    normalizedToken === "codigo_de_vestimenta"
+  ) {
+    return "dress_code";
   }
   return null;
 }
@@ -137,8 +158,9 @@ function resolveFeatureEnabled({ config, fallbackVisible }) {
   return Boolean(config && typeof config === "object" && !Array.isArray(config));
 }
 
-function resolveFunctionalEnabledState({ objetos, rsvp, gifts } = {}) {
+function resolveFunctionalEnabledState({ objetos, rsvp, gifts, eventDetails } = {}) {
   const safeObjetos = Array.isArray(objetos) ? objetos : [];
+  const eventEnabled = resolveEventDetailsEnabledState(eventDetails);
   return {
     rsvp: resolveFeatureEnabled({
       config: rsvp,
@@ -148,13 +170,17 @@ function resolveFunctionalEnabledState({ objetos, rsvp, gifts } = {}) {
       config: gifts,
       fallbackVisible: findVisibleFunctionalCta(safeObjetos, isGiftCta),
     }),
+    ceremony: eventEnabled.ceremony,
+    party: eventEnabled.party,
+    dress_code: eventEnabled.dress_code,
   };
 }
 
-function normalizeFunctionalConfigs({ objetos, rsvp, gifts } = {}) {
+function normalizeFunctionalConfigs({ objetos, rsvp, gifts, eventDetails } = {}) {
   const safeObjetos = Array.isArray(objetos) ? objetos : [];
   const rsvpFallbackVisible = findVisibleFunctionalCta(safeObjetos, isRsvpCta);
   const giftsFallbackVisible = findVisibleFunctionalCta(safeObjetos, isGiftCta);
+  const normalizedEventDetails = normalizeEventDetailsConfig(eventDetails);
   const enabled = {
     rsvp: resolveFeatureEnabled({
       config: rsvp,
@@ -164,6 +190,7 @@ function normalizeFunctionalConfigs({ objetos, rsvp, gifts } = {}) {
       config: gifts,
       fallbackVisible: giftsFallbackVisible,
     }),
+    ...resolveEventDetailsEnabledState(normalizedEventDetails),
   };
   const hasRsvpSource = Boolean(rsvp && typeof rsvp === "object" && !Array.isArray(rsvp));
   const hasGiftsSource = Boolean(gifts && typeof gifts === "object" && !Array.isArray(gifts));
@@ -183,6 +210,7 @@ function normalizeFunctionalConfigs({ objetos, rsvp, gifts } = {}) {
   return {
     rsvp: normalizedRsvp,
     gifts: normalizedGifts,
+    eventDetails: normalizedEventDetails,
     enabled,
   };
 }
@@ -384,10 +412,10 @@ function collectFunctionalGroupsBySection(objetos, visibleSectionIds) {
     const association = normalizeFunctionalAssociation(safeObject[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (!association) return;
     if (!groupsBySection.has(sectionId)) {
-      groupsBySection.set(sectionId, {
-        rsvp: [],
-        gifts: [],
-      });
+      groupsBySection.set(
+        sectionId,
+        Object.fromEntries(FUNCTIONAL_ASSOCIATION_VALUES.map((value) => [value, []]))
+      );
     }
     groupsBySection.get(sectionId)[association].push(safeObject);
   });
@@ -415,12 +443,13 @@ function applyFunctionalAssociationsToRenderState({
   objetos,
   rsvp = null,
   gifts = null,
+  eventDetails = null,
   canvasWidth = DEFAULT_CANVAS_WIDTH,
   materializeOffsets = true,
 } = {}) {
   const safeSecciones = Array.isArray(secciones) ? secciones.map((section) => deepClone(section)) : [];
   const sourceObjetos = Array.isArray(objetos) ? objetos.map((object) => deepClone(object)) : [];
-  const enabled = resolveFunctionalEnabledState({ objetos: sourceObjetos, rsvp, gifts });
+  const enabled = resolveFunctionalEnabledState({ objetos: sourceObjetos, rsvp, gifts, eventDetails });
   const sectionLookup = buildSectionLookup(safeSecciones);
   const hiddenSectionIds = new Set();
   const hiddenObjectIds = new Set();
@@ -445,9 +474,11 @@ function applyFunctionalAssociationsToRenderState({
     const sectionAssociation = normalizeFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (sectionAssociation) return;
 
-    const activeGroupCount =
-      groupSet.rsvp.filter(() => enabled.rsvp === true).length +
-      groupSet.gifts.filter(() => enabled.gifts === true).length;
+    const activeGroupCount = FUNCTIONAL_ASSOCIATION_VALUES.reduce(
+      (count, association) =>
+        count + (enabled[association] === true ? groupSet[association].length : 0),
+      0
+    );
 
     if (activeGroupCount === 0) {
       hiddenSectionIds.add(sectionId);
@@ -587,6 +618,7 @@ function setGroupFunctionalAssociation({ secciones, objetos, groupId, associatio
 
     if (
       normalized &&
+      SINGLETON_FUNCTIONAL_ASSOCIATION_VALUES.has(normalized) &&
       normalizeFunctionalAssociation(safeObject[FUNCTIONAL_ASSOCIATION_FIELD]) === normalized
     ) {
       changed = true;
@@ -642,6 +674,7 @@ function sanitizeMovedGroupFunctionalAssociation({
   const conflictsWithGroup = objetos.some((object) => {
     const safeObject = asObject(object);
     return (
+      SINGLETON_FUNCTIONAL_ASSOCIATION_VALUES.has(association) &&
       isGroupObject(safeObject) &&
       normalizeText(safeObject.id) !== safeGroupId &&
       normalizeText(safeObject.seccionId) === targetSectionId &&

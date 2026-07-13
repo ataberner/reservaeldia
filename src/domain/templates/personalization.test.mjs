@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 
 import { preparePostCopyTemplatePersonalizationPatch } from "./personalization.js";
 import { resolveTemplatePersonalizationInput } from "./personalizationContract.js";
-import { getStoryTextFieldKey } from "./storyText.js";
+import {
+  getDressCodeFieldKey,
+  getStoryTextFieldKey,
+} from "./storyText.js";
 import {
   createRepresentativeDraftFixture,
   createRepresentativePersonalizationInput,
@@ -39,7 +42,7 @@ test("post-copy personalization patch keeps shared field mappings and preview te
 
   assert.deepEqual(patch.changedKeys, [
     "event_name",
-    "event_date",
+    "event_ceremony_date",
     "welcome_copy",
     "gallery_images",
     "rsvp_title",
@@ -129,11 +132,11 @@ test("post-copy personalization patch projects venue address targets as fixed wr
   const template = {
     fieldsSchema: [
       {
-        key: "event_venue_address",
+        key: "event_ceremony_venue_address",
         label: "Direccion del evento",
         type: "location",
         group: "Ubicaciones",
-        eventDetailsRole: "venue_address",
+        eventDetailsRole: "ceremony_venue_address",
         applyTargets: [
           {
             scope: "objeto",
@@ -145,7 +148,7 @@ test("post-copy personalization patch projects venue address targets as fixed wr
       },
     ],
     defaults: {
-      event_venue_address: "Av. Corrientes 1234",
+      event_ceremony_venue_address: "Av. Corrientes 1234",
     },
   };
   const draftData = {
@@ -166,7 +169,7 @@ test("post-copy personalization patch projects venue address targets as fixed wr
     template,
     draftData,
     resolvedValues: {
-      event_venue_address: longAddress,
+      event_ceremony_venue_address: longAddress,
     },
   });
 
@@ -230,4 +233,64 @@ test("post-copy personalization patch keeps story text inside the linked text bo
   assert.equal(storyObject.align, "center");
   assert.equal(storyObject.__autoWidth, false);
   assert.equal(storyObject.textWrapMode, "word");
+});
+
+test("post-copy personalization patch syncs dress code field to event details and canvas text", () => {
+  const fieldKey = getDressCodeFieldKey();
+  const template = {
+    fieldsSchema: [
+      {
+        key: fieldKey,
+        label: "Dress Code",
+        type: "text",
+        group: "Detalles del evento",
+        eventDetailsRole: "dress_code",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "dress-code-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      },
+    ],
+    defaults: {
+      [fieldKey]: "Formal",
+    },
+  };
+  const draftData = {
+    eventDetails: {
+      mode: "single",
+      dressCode: { enabled: true, value: "Formal" },
+    },
+    objetos: [
+      {
+        id: "dress-code-text",
+        tipo: "texto",
+        texto: "Formal",
+        width: 180,
+        fontSize: 18,
+      },
+    ],
+    secciones: [{ id: "hero", orden: 0, altura: 500 }],
+  };
+
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template,
+    draftData,
+    resolvedValues: {
+      [fieldKey]: "Elegante sport",
+    },
+  });
+
+  const dressCodeObject = patch.objetos.find((entry) => entry.id === "dress-code-text");
+  assert.equal(dressCodeObject.texto, "Elegante sport");
+  assert.equal(dressCodeObject.width, 180);
+  assert.equal(dressCodeObject.__autoWidth, false);
+  assert.equal(dressCodeObject.textWrapMode, "word");
+  assert.deepEqual(patch.eventDetails, {
+    mode: "single",
+    dressCode: { enabled: true, value: "Elegante sport" },
+  });
 });

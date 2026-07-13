@@ -344,6 +344,9 @@ export default function SectionActionsOverlay({
             <option value="">Siempre visible</option>
             <option value="rsvp">Confirmacion de asistencia</option>
             <option value="gifts">Regalos</option>
+            <option value="ceremony">Ceremonia</option>
+            <option value="party">Fiesta</option>
+            <option value="dress_code">Dress Code</option>
           </select>
         </label>
       ) : null}
@@ -751,6 +754,9 @@ export default function SectionActionsOverlay({
                 <option value="">Siempre</option>
                 <option value="rsvp">Asist.</option>
                 <option value="gifts">Regalos</option>
+                <option value="ceremony">Ceremonia</option>
+                <option value="party">Fiesta</option>
+                <option value="dress_code">Dress</option>
               </select>
             </label>
           ) : null}

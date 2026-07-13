@@ -59,12 +59,43 @@ test("ensureEventLocationFields creates stable venue name and address fields", (
   assert.equal(result.changed, true);
   assert.deepEqual(
     result.fieldsSchema.map((field) => field.key),
-    ["event_venue_name", "event_venue_address"]
+    ["event_ceremony_venue_name", "event_ceremony_venue_address"]
   );
-  assert.equal(result.fieldsSchema[0].eventDetailsRole, EVENT_LOCATION_ROLES.VENUE_NAME);
-  assert.equal(result.fieldsSchema[1].eventDetailsRole, EVENT_LOCATION_ROLES.VENUE_ADDRESS);
+  assert.equal(result.fieldsSchema[0].eventDetailsRole, "ceremony_venue_name");
+  assert.equal(result.fieldsSchema[1].eventDetailsRole, "ceremony_venue_address");
   assert.equal(result.fieldsSchema[1].type, "location");
   assert.equal(result.fieldsSchema[1].addressTextFormatPreset, "event_address_full_google");
+});
+
+test("ensureEventLocationFields keeps party address fields idempotent", () => {
+  const first = ensureEventLocationFields({ fieldsSchema: [], feature: "party" });
+  const linkedAddress = first.fieldsSchema.map((field) =>
+    field.key === "event_party_venue_address"
+      ? {
+          ...field,
+          addressTextFormatPreset: "event_address_street_locality",
+          applyTargets: [{ scope: "objeto", id: "party-address", path: "texto" }],
+        }
+      : field
+  );
+  const second = ensureEventLocationFields({
+    fieldsSchema: linkedAddress,
+    feature: "party",
+  });
+
+  assert.equal(second.changed, false);
+  assert.deepEqual(
+    second.fieldsSchema.map((field) => field.key),
+    ["event_party_venue_name", "event_party_venue_address"]
+  );
+  assert.equal(second.fieldsSchema[1].eventDetailsRole, "party_venue_address");
+  assert.equal(
+    second.fieldsSchema[1].addressTextFormatPreset,
+    "event_address_street_locality"
+  );
+  assert.deepEqual(second.fieldsSchema[1].applyTargets, [
+    { scope: "objeto", id: "party-address", path: "texto" },
+  ]);
 });
 
 test("buildEventLocationDefaults updates manual venue name and address", () => {
@@ -93,8 +124,8 @@ test("resolveEventLocationFromAuthoring combines defaults and google map metadat
   const location = resolveEventLocationFromAuthoring({
     fieldsSchema,
     defaults: {
-      event_venue_name: "Salon Las Acacias",
-      event_venue_address: "Av. Corrientes 1234",
+      event_ceremony_venue_name: "Salon Las Acacias",
+      event_ceremony_venue_address: "Av. Corrientes 1234",
     },
     objetos: [
       {
@@ -200,7 +231,7 @@ test("address text format is stored in venue address field", () => {
 
   assert.equal(result.changed, true);
   assert.equal(result.preset, "event_address_street_number");
-  assert.equal(result.field.key, "event_venue_address");
+  assert.equal(result.field.key, "event_ceremony_venue_address");
   assert.equal(result.field.addressTextFormatPreset, "event_address_street_number");
   assert.equal(
     normalizeAddressTextFormatPreset("no_existe"),
@@ -226,7 +257,7 @@ test("buildEventLocationDefaults writes formatted address default from selected 
     },
   });
 
-  assert.equal(defaults.event_venue_address, "Avenida Corrientes 1234, CABA");
+  assert.equal(defaults.event_ceremony_venue_address, "Avenida Corrientes 1234, CABA");
 });
 
 test("google place patch stays hidden unless show map is explicit", () => {

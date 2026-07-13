@@ -1,16 +1,23 @@
+import {
+  EVENT_DETAIL_FEATURES,
+  getEventDetailFeatureLabel,
+  normalizeEventDetailFeature,
+} from "./features.js";
+
 export const EVENT_TIME_ROLES = Object.freeze({
-  START_TIME: "event_start_time",
-  END_TIME: "event_end_time",
+  START_TIME: "start_time",
+  END_TIME: "end_time",
 });
 
-export const EVENT_TIME_FIELD_KEYS = Object.freeze({
-  [EVENT_TIME_ROLES.START_TIME]: "event_start_time",
-  [EVENT_TIME_ROLES.END_TIME]: "event_end_time",
-});
-
-const EVENT_TIME_FIELD_LABELS = Object.freeze({
-  [EVENT_TIME_ROLES.START_TIME]: "Hora inicio",
-  [EVENT_TIME_ROLES.END_TIME]: "Hora fin",
+const EVENT_TIME_FIELD_KEYS = Object.freeze({
+  [EVENT_DETAIL_FEATURES.CEREMONY]: Object.freeze({
+    [EVENT_TIME_ROLES.START_TIME]: "event_ceremony_start_time",
+    [EVENT_TIME_ROLES.END_TIME]: "event_ceremony_end_time",
+  }),
+  [EVENT_DETAIL_FEATURES.PARTY]: Object.freeze({
+    [EVENT_TIME_ROLES.START_TIME]: "event_party_start_time",
+    [EVENT_TIME_ROLES.END_TIME]: "event_party_end_time",
+  }),
 });
 
 function normalizeText(value) {
@@ -52,41 +59,90 @@ export function normalizeEventTimeRole(value) {
   const role = normalizeText(value).toLowerCase();
   if (role === EVENT_TIME_ROLES.START_TIME) return role;
   if (role === EVENT_TIME_ROLES.END_TIME) return role;
+  if (role === "ceremony_start_time" || role === "party_start_time") {
+    return EVENT_TIME_ROLES.START_TIME;
+  }
+  if (role === "ceremony_end_time" || role === "party_end_time") {
+    return EVENT_TIME_ROLES.END_TIME;
+  }
   return "";
 }
 
-export function getEventTimeFieldKey(role) {
-  const safeRole = normalizeEventTimeRole(role);
-  return EVENT_TIME_FIELD_KEYS[safeRole] || "";
+function isExplicitEventTimeFieldRole(value) {
+  const role = normalizeText(value).toLowerCase();
+  return (
+    role === "ceremony_start_time" ||
+    role === "ceremony_end_time" ||
+    role === "party_start_time" ||
+    role === "party_end_time"
+  );
 }
 
-export function isEventTimeField(field) {
-  return Boolean(normalizeEventTimeRole(asObject(field).eventDetailsRole));
+export function getEventTimeFieldKey(role, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeRole = normalizeEventTimeRole(role);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return EVENT_TIME_FIELD_KEYS[safeFeature]?.[safeRole] || "";
 }
 
-export function buildEventTimeField(role) {
+export function getEventTimeFieldRole(role, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   const safeRole = normalizeEventTimeRole(role);
-  const fieldKey = getEventTimeFieldKey(safeRole);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return safeRole ? `${safeFeature}_${safeRole}` : "";
+}
+
+export function resolveEventTimeFieldFeature(field) {
+  const safeField = asObject(field);
+  const key = normalizeText(safeField.key);
+  const role = normalizeText(safeField.eventDetailsRole).toLowerCase();
+  if (key.startsWith("event_party_") || role.startsWith("party_")) {
+    return EVENT_DETAIL_FEATURES.PARTY;
+  }
+  return EVENT_DETAIL_FEATURES.CEREMONY;
+}
+
+export function isEventTimeField(field, feature = null) {
+  const safeField = asObject(field);
+  const key = normalizeText(safeField.key);
+  const role = normalizeText(safeField.eventDetailsRole).toLowerCase();
+  const hasRole = isExplicitEventTimeFieldRole(role);
+  const hasKey = Object.values(EVENT_TIME_FIELD_KEYS).some((keysByRole) =>
+    Object.values(keysByRole).includes(key)
+  );
+  if (!hasRole && !hasKey) return false;
+  if (!feature) return true;
+  return resolveEventTimeFieldFeature(safeField) === normalizeEventDetailFeature(feature);
+}
+
+export function buildEventTimeField(role, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeRole = normalizeEventTimeRole(role);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const fieldKey = getEventTimeFieldKey(safeRole, safeFeature);
   if (!fieldKey) return null;
+  const featureLabel = getEventDetailFeatureLabel(safeFeature).toLowerCase();
+  const roleLabel = safeRole === EVENT_TIME_ROLES.END_TIME ? "Hora fin" : "Hora inicio";
 
   return {
     key: fieldKey,
-    label: EVENT_TIME_FIELD_LABELS[safeRole] || "Hora",
+    label: `${roleLabel} de la ${featureLabel}`,
     type: "time",
-    group: "Datos principales",
+    group: getEventDetailFeatureLabel(safeFeature),
     optional: safeRole === EVENT_TIME_ROLES.END_TIME,
-    eventDetailsRole: safeRole,
+    eventDetailsRole: getEventTimeFieldRole(safeRole, safeFeature),
     applyTargets: [],
   };
 }
 
-export function ensureEventTimeFields({ fieldsSchema } = {}) {
+export function ensureEventTimeFields({
+  fieldsSchema,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
+} = {}) {
   const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
   const nextFields = fields.map((field) => ({ ...asObject(field) }));
   let changed = false;
+  const safeFeature = normalizeEventDetailFeature(feature);
 
   Object.values(EVENT_TIME_ROLES).forEach((role) => {
-    const templateField = buildEventTimeField(role);
+    const templateField = buildEventTimeField(role, safeFeature);
     if (!templateField) return;
 
     const fieldIndex = nextFields.findIndex(
@@ -132,17 +188,21 @@ export function resolveEventTimesFromAuthoring({
   fieldsSchema,
   defaults,
   fallbackStartTime = "",
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const safeDefaults = asObject(defaults);
-  const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME);
-  const endKey = getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, safeFeature);
+  const endKey = getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME, safeFeature);
 
   return {
     startTime:
       normalizeEventTimeValue(safeDefaults[startKey]) ||
       normalizeEventTimeValue(fallbackStartTime),
     endTime: normalizeEventTimeValue(safeDefaults[endKey]),
-    fields: collectEventTimeFields(fieldsSchema),
+    fields: collectEventTimeFields(fieldsSchema).filter(
+      (field) => resolveEventTimeFieldFeature(field) === safeFeature
+    ),
   };
 }
 
@@ -161,6 +221,7 @@ export function resolveEventTimesState(snapshot, options = {}) {
     fieldsSchema: source.fieldsSchema,
     defaults: source.defaults,
     fallbackStartTime: options.fallbackStartTime,
+    feature: options.feature,
   });
 }
 
@@ -168,11 +229,14 @@ export function buildEventTimeDefaults({
   fieldsSchema,
   defaults,
   times,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const safeDefaults = { ...asObject(defaults) };
   const safeTimes = asObject(times);
+  const safeFeature = normalizeEventDetailFeature(feature);
 
   collectEventTimeFields(fieldsSchema).forEach((field) => {
+    if (resolveEventTimeFieldFeature(field) !== safeFeature) return;
     const fieldKey = normalizeText(field.key);
     if (!fieldKey) return;
     const role = normalizeEventTimeRole(field.eventDetailsRole);

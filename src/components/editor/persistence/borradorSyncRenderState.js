@@ -6,6 +6,7 @@ import {
   buildSectionEdgeDecorationsPayload,
 } from "../../../domain/sections/backgrounds.js";
 import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
+import { normalizeEventDetailsConfig } from "../../../../shared/eventDetailsConfig.js";
 
 function normalizeCountdownObjectGeometry(obj) {
   if (!obj || obj.tipo !== "countdown") return obj;
@@ -124,6 +125,7 @@ export function buildPersistableRenderState({
   secciones,
   rsvp,
   gifts,
+  eventDetails,
   validarPuntosLinea,
   ALTURA_PANTALLA_EDITOR,
 }) {
@@ -131,6 +133,7 @@ export function buildPersistableRenderState({
   const rawSecciones = Array.isArray(secciones) ? secciones : [];
   const rawRsvp = rsvp && typeof rsvp === "object" ? rsvp : null;
   const rawGifts = gifts && typeof gifts === "object" ? gifts : null;
+  const normalizedEventDetails = normalizeEventDetailsConfig(eventDetails);
 
   const objetosValidados = rawObjetos.map((obj) =>
     normalizePersistableObject(obj, { validarPuntosLinea })
@@ -166,6 +169,7 @@ export function buildPersistableRenderState({
     gifts: rawGifts
       ? cleanUndefinedDeep(normalizeGiftConfig(rawGifts, { forceEnabled: false }))
       : null,
+    eventDetails: cleanUndefinedDeep(normalizedEventDetails),
     countdownForAudit,
   };
 }

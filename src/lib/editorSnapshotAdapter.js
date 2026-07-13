@@ -120,6 +120,7 @@ function createEditorSnapshotController() {
       secciones: null,
       rsvp: null,
       gifts: null,
+      eventDetails: null,
     },
     resolvers: {
       getSectionInfo: null,
@@ -130,7 +131,7 @@ function createEditorSnapshotController() {
   const api = Object.freeze({
     version: EDITOR_SNAPSHOT_ADAPTER_VERSION,
     getRenderSnapshot() {
-      const { objetos, secciones, rsvp, gifts } = state.renderState;
+      const { objetos, secciones, rsvp, gifts, eventDetails } = state.renderState;
       if (!Array.isArray(objetos) || !Array.isArray(secciones)) return null;
 
       return cloneSnapshotValue({
@@ -138,6 +139,7 @@ function createEditorSnapshotController() {
         secciones,
         rsvp: isRecord(rsvp) ? rsvp : null,
         gifts: isRecord(gifts) ? gifts : null,
+        eventDetails: isRecord(eventDetails) ? eventDetails : null,
       });
     },
     getSectionInfo(id) {
@@ -171,6 +173,7 @@ function createEditorSnapshotController() {
           : null,
         rsvp: isRecord(nextState.rsvp) ? nextState.rsvp : null,
         gifts: isRecord(nextState.gifts) ? nextState.gifts : null,
+        eventDetails: isRecord(nextState.eventDetails) ? nextState.eventDetails : null,
       };
     },
     clearRenderState() {
@@ -179,6 +182,7 @@ function createEditorSnapshotController() {
         secciones: null,
         rsvp: null,
         gifts: null,
+        eventDetails: null,
       };
     },
     setResolvers(nextResolvers = {}) {

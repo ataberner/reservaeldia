@@ -140,11 +140,15 @@ export function overlayLiveEditorSnapshot(data, liveEditorSnapshot) {
     return data && typeof data === "object" ? data : {};
   }
 
-  return {
+  const overlaid = {
     ...(data && typeof data === "object" ? data : {}),
     objetos: liveEditorSnapshot.objetos,
     secciones: liveEditorSnapshot.secciones,
   };
+  if (liveEditorSnapshot.eventDetails && typeof liveEditorSnapshot.eventDetails === "object") {
+    overlaid.eventDetails = liveEditorSnapshot.eventDetails;
+  }
+  return overlaid;
 }
 
 export function prepareDashboardPreviewRenderState(data) {
@@ -161,12 +165,14 @@ export function prepareDashboardPreviewRenderState(data) {
     objetos: groupAwareState.objetos,
     rsvp: rawRenderState.rsvp,
     gifts: rawRenderState.gifts,
+    eventDetails: rawRenderState.eventDetails,
   });
   const functionalRenderState = applyFunctionalAssociationsToRenderState({
     objetos: groupAwareState.objetos,
     secciones: groupAwareState.secciones,
     rsvp: normalizedFunctionalConfigs.rsvp,
     gifts: normalizedFunctionalConfigs.gifts,
+    eventDetails: normalizedFunctionalConfigs.eventDetails,
     materializeOffsets: true,
   });
   const finalGroupAwareState = prepareGroupAwareRenderState({
@@ -204,8 +210,10 @@ export function buildDashboardPreviewRenderPayload(data) {
     runtimeSupport,
   } = prepareDashboardPreviewRenderState(data);
 
+  const hasRawRsvp = rawRsvp && typeof rawRsvp === "object";
+  const hasRawGifts = rawGifts && typeof rawGifts === "object";
   const rsvpPreviewConfig =
-    normalizedRsvp && typeof normalizedRsvp === "object"
+    hasRawRsvp && normalizedRsvp && typeof normalizedRsvp === "object"
       ? normalizeRsvpConfig(
           {
             ...normalizedRsvp,
@@ -220,7 +228,7 @@ export function buildDashboardPreviewRenderPayload(data) {
       : null;
 
   const giftPreviewConfig =
-    normalizedGifts && typeof normalizedGifts === "object"
+    hasRawGifts && normalizedGifts && typeof normalizedGifts === "object"
       ? normalizeGiftConfig(normalizedGifts, { forceEnabled: false })
       : null;
 

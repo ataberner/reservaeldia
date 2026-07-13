@@ -2,8 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DRESS_CODE_FIELD_LABEL,
+  ensureDressCodeField,
   ensureStoryTextField,
+  getDressCodeFieldKey,
   getStoryTextFieldKey,
+  resolveDressCodeSidebarBinding,
+  resolveDressCodeTargetOptions,
   resolveStoryTextTargetOptions,
   resolveStoryTextSidebarBinding,
   STORY_TEXT_FIELD_LABEL,
@@ -124,4 +129,71 @@ test("story text sidebar binding stays hidden when no text object is linked", ()
       hasBinding: false,
     }
   );
+});
+
+test("dress code field is created with event details metadata", () => {
+  const result = ensureDressCodeField({ fieldsSchema: [] });
+  const fieldKey = getDressCodeFieldKey();
+
+  assert.equal(result.changed, true);
+  assert.equal(result.field.key, fieldKey);
+  assert.equal(result.field.label, DRESS_CODE_FIELD_LABEL);
+  assert.equal(result.field.type, "text");
+  assert.equal(result.field.group, "Detalles del evento");
+  assert.equal(result.field.optional, true);
+  assert.equal(result.field.eventDetailsRole, "dress_code");
+  assert.deepEqual(result.field.applyTargets, []);
+});
+
+test("dress code targets request fixed width word wrapping for text paths", () => {
+  const fieldKey = getDressCodeFieldKey();
+  assert.deepEqual(
+    resolveDressCodeTargetOptions({ key: fieldKey }, "texto"),
+    {
+      fixedTextBox: true,
+      wrapMode: "word",
+      defaultToMeasuredWidth: true,
+    }
+  );
+  assert.equal(resolveDressCodeTargetOptions({ eventDetailsRole: "dress_code" }, "src"), null);
+  assert.equal(resolveDressCodeTargetOptions({ key: "otra" }, "texto"), null);
+});
+
+test("dress code binding uses the linked canvas text and validates as a regular dynamic field", () => {
+  const fieldKey = getDressCodeFieldKey();
+  const ensured = ensureDressCodeField({ fieldsSchema: [] });
+  const linked = linkElementToField({
+    fieldsSchema: ensured.fieldsSchema,
+    fieldKey,
+    elementId: "dress-code-copy",
+    path: "texto",
+  });
+  const defaults = {
+    [fieldKey]: "Formal",
+  };
+  const objetos = [
+    {
+      id: "dress-code-copy",
+      tipo: "texto",
+      texto: "Elegante sport",
+    },
+  ];
+
+  const binding = resolveDressCodeSidebarBinding({
+    fieldsSchema: linked.fieldsSchema,
+    defaults,
+    objetos,
+  });
+  const status = validateAuthoringState({
+    fieldsSchema: linked.fieldsSchema,
+    defaults,
+    objetos,
+  });
+
+  assert.equal(binding.hasBinding, true);
+  assert.equal(binding.fieldKey, fieldKey);
+  assert.equal(binding.objectId, "dress-code-copy");
+  assert.equal(binding.value, "Elegante sport");
+  assert.equal(status.isReady, true);
+  assert.deepEqual(status.issues, []);
 });

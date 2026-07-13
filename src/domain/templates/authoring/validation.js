@@ -7,6 +7,7 @@ import {
 import { isEventPersonNameField } from "../../eventDetails/personNames.js";
 import { isEventLocationField } from "../../eventDetails/location.js";
 import { isEventTimeField } from "../../eventDetails/time.js";
+import { isEventDateField } from "../../eventDetails/date.js";
 import { collectRenderObjectIds } from "../../editor/renderObjectTree.js";
 
 const ALLOWED_FIELD_TYPES = new Set([
@@ -105,7 +106,8 @@ export function validateAuthoringState({
       !applyTargets.length &&
       !isEventPersonNameField(safeField) &&
       !isEventLocationField(safeField) &&
-      !isEventTimeField(safeField)
+      !isEventTimeField(safeField) &&
+      !isEventDateField(safeField)
     ) {
       issues.push(`Campo '${key}': sin applyTargets.`);
       return;

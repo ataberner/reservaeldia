@@ -754,6 +754,9 @@ export default function MenuOpcionesElemento({
                     <option value="">Ninguna</option>
                     <option value="rsvp">Confirmacion de asistencia</option>
                     <option value="gifts">Regalos</option>
+                    <option value="ceremony">Ceremonia</option>
+                    <option value="party">Fiesta</option>
+                    <option value="dress_code">Dress Code</option>
                 </select>
             </label>
             {isMultiSelectionMenu && !canGroupSelection ? (
@@ -1132,6 +1135,7 @@ export default function MenuOpcionesElemento({
                     onLinkEventTime={authoringConfig?.onLinkEventTime}
                     onLinkEventDate={authoringConfig?.onLinkEventDate}
                     onLinkStoryText={authoringConfig?.onLinkStoryText}
+                    onLinkDressCode={authoringConfig?.onLinkDressCode}
                     onUnlinkField={authoringConfig?.onUnlinkField}
                     onViewUsage={authoringConfig?.onViewUsage}
                 />

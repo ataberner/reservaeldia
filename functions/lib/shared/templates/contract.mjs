@@ -1,3 +1,5 @@
+import { normalizeEventDetailsDocumentContract } from "../eventDetailsMigration.js";
+
 const TEMPLATE_TYPES = new Set([
   "boda",
   "bautismo",
@@ -42,10 +44,17 @@ const EVENT_DETAILS_ROLES = new Set([
   "primary_person_name",
   "secondary_person_name",
   "couple_names",
-  "venue_name",
-  "venue_address",
-  "event_start_time",
-  "event_end_time",
+  "ceremony_date",
+  "ceremony_start_time",
+  "ceremony_end_time",
+  "ceremony_venue_name",
+  "ceremony_venue_address",
+  "party_date",
+  "party_start_time",
+  "party_end_time",
+  "party_venue_name",
+  "party_venue_address",
+  "dress_code",
 ]);
 const EVENT_DETAILS_FORMATS = new Set(["and", "ampersand", "linebreak"]);
 const APPLY_TARGET_SCOPES = new Set(["objeto", "seccion", "rsvp"]);
@@ -606,7 +615,7 @@ export function ensureDefaultsForSchema(fieldsSchema, defaults) {
 }
 
 export function normalizeTemplateDocument(raw, idOverride = "") {
-  const source = asObject(raw);
+  const source = normalizeEventDetailsDocumentContract(asObject(raw));
   const id = normalizeText(idOverride || source.id) || "plantilla";
   const slug = toSlug(source.slug || source.nombre || id);
   const nombre = normalizeText(source.nombre) || "Plantilla";
@@ -630,6 +639,10 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
   const trash = normalizeTemplateTrashMetadata(source.trash, source);
   const rsvp = source.rsvp && typeof source.rsvp === "object" ? source.rsvp : null;
   const gifts = source.gifts && typeof source.gifts === "object" ? source.gifts : null;
+  const eventDetails =
+    source.eventDetails && typeof source.eventDetails === "object"
+      ? source.eventDetails
+      : null;
   const templateAuthoringDraft = normalizeTemplateAuthoringDraft(
     source.templateAuthoringDraft,
     id
@@ -660,6 +673,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
     ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
     ...(rsvp ? { rsvp } : {}),
     ...(gifts ? { gifts } : {}),
+    ...(eventDetails ? { eventDetails } : {}),
   };
 }
 

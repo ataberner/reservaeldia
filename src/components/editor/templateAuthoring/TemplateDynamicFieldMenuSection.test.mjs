@@ -15,12 +15,14 @@ test("dynamic field menu exposes only guided event detail bindings", () => {
   assert.doesNotMatch(source, />\s*Tipo\s*</);
   assert.doesNotMatch(source, /Campo opcional/);
 
-  assert.match(source, /Vincular a fecha del evento/);
+  assert.match(source, /Vincular a fecha de la ceremonia/);
+  assert.match(source, /Vincular a fecha de la fiesta/);
   assert.match(source, /Vincular a primera persona/);
   assert.match(source, /Vincular a segunda persona/);
   assert.match(source, /Vincular a nombres juntos/);
-  assert.match(source, /Vincular a nombre del lugar/);
-  assert.match(source, /Vincular a direccion/);
-  assert.match(source, /Vincular a Hora inicio/);
-  assert.match(source, /Vincular a Hora fin/);
+  assert.match(source, /Vincular a lugar de la ceremonia/);
+  assert.match(source, /Vincular a direccion de la fiesta/);
+  assert.match(source, /Vincular a hora inicio de la ceremonia/);
+  assert.match(source, /Vincular a hora fin de la fiesta/);
+  assert.match(source, />\s*Dress Code\s*</);
 });

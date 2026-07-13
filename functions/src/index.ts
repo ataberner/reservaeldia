@@ -142,6 +142,10 @@ import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import * as logger from "firebase-functions/logger";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
 const { prepareGroupAwareRenderState } = require("../shared/groupRenderContract.cjs");
+const {
+  applyFunctionalAssociationsToRenderState,
+  normalizeFunctionalConfigs,
+} = require("../shared/functionalAssociations.cjs");
 
 function loadJSDOM() {
   // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
@@ -1431,15 +1435,37 @@ export const preparePublicTemplatePreview = onCall(
       normalizedTemplate.gifts && typeof normalizedTemplate.gifts === "object"
         ? (normalizedTemplate.gifts as Record<string, unknown>)
         : null;
+    const eventDetails =
+      normalizedTemplate.eventDetails && typeof normalizedTemplate.eventDetails === "object"
+        ? (normalizedTemplate.eventDetails as Record<string, unknown>)
+        : { mode: "single" };
+    const normalizedFunctionalConfigs = normalizeFunctionalConfigs({
+      objetos: groupAwareState.objetos,
+      rsvp,
+      gifts,
+      eventDetails,
+    });
+    const functionalRenderState = applyFunctionalAssociationsToRenderState({
+      objetos: groupAwareState.objetos,
+      secciones: groupAwareState.secciones,
+      rsvp: normalizedFunctionalConfigs.rsvp,
+      gifts: normalizedFunctionalConfigs.gifts,
+      eventDetails: normalizedFunctionalConfigs.eventDetails,
+      materializeOffsets: true,
+    });
+    const finalGroupAwareState = prepareGroupAwareRenderState({
+      objetos: functionalRenderState.objetos,
+      secciones: functionalRenderState.secciones,
+    });
 
     const previewHtml = generarHTMLDesdeSecciones(
-      groupAwareState.secciones,
-      groupAwareState.objetos,
-      rsvp as any,
+      finalGroupAwareState.secciones,
+      finalGroupAwareState.objetos,
+      (rsvp ? normalizedFunctionalConfigs.rsvp : null) as any,
       {
         slug: templateId,
         isPreview: true,
-        gifts: gifts as any,
+        gifts: (gifts ? normalizedFunctionalConfigs.gifts : null) as any,
         rsvpSource: rsvp as any,
         giftsSource: gifts as any,
       }
@@ -1824,6 +1850,10 @@ export const copiarPlantilla = onCall(
       plantillaNormalizada.gifts && typeof plantillaNormalizada.gifts === "object"
         ? plantillaNormalizada.gifts
         : null;
+    const eventDetails =
+      plantillaNormalizada.eventDetails && typeof plantillaNormalizada.eventDetails === "object"
+        ? plantillaNormalizada.eventDetails
+        : { mode: "single" };
 
     await db.collection("borradores").doc(slug).set({
       slug,
@@ -1845,6 +1875,7 @@ export const copiarPlantilla = onCall(
       ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
       ...(rsvp ? { rsvp } : {}),
       ...(gifts ? { gifts } : {}),
+      eventDetails,
       ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
       creado: admin.firestore.FieldValue.serverTimestamp(),
     });

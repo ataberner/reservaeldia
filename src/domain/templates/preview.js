@@ -36,6 +36,7 @@ export async function generateTemplatePreviewHtml(template) {
       secciones,
       rsvp: safeTemplate.rsvp ?? null,
       gifts: safeTemplate.gifts ?? null,
+      eventDetails: safeTemplate.eventDetails ?? null,
     },
     slugInvitacion: slugPreview,
   });

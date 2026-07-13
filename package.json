@@ -15,6 +15,8 @@
       "templates:editorial:backfill:dry": "node scripts/backfillTemplateEditorialWorkflow.cjs --dry-run",
       "templates:editorial:backfill:apply": "node scripts/backfillTemplateEditorialWorkflow.cjs --apply",
       "templates:editorial:audit:legacy": "node scripts/auditLegacyTemplateWorkspaceDrafts.cjs",
+      "event-details:migrate:dry": "node scripts/migrateEventDetailsCeremonyParty.cjs --dry-run",
+      "event-details:migrate:apply": "node scripts/migrateEventDetailsCeremonyParty.cjs --apply",
       "templates:validate:mapping": "node scripts/validateTemplateMapping.cjs",
       "pricing:seed:dry": "node scripts/seedPricingConfig.cjs --dry-run",
       "pricing:seed:apply": "node scripts/seedPricingConfig.cjs --apply",

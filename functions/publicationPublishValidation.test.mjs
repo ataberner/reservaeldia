@@ -584,8 +584,9 @@ test("keeps representative compatibility and preview drift branches as warnings 
     "legacy-icono-svg-frozen|icon-legacy|section-details|tipo",
     "pantalla-ynorm-drift|hero-image|section-hero|yNorm",
     "pantalla-ynorm-missing|hero-title|section-hero|yNorm",
+    "rsvp-missing-root-config|rsvp-cta|section-details|rsvp",
   ]);
-  assert.equal(prepared.functionalCtaContract.rsvp.reason, "ready");
+  assert.equal(prepared.functionalCtaContract.rsvp.reason, "missing-root");
   assert.equal(prepared.functionalCtaContract.gifts.reason, "ready");
 });
 

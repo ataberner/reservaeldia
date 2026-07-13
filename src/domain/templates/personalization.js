@@ -12,7 +12,11 @@ import {
 } from "../../../shared/renderAssetContract.js";
 import { buildTemplatePersonalizationPlan } from "./personalizationContract.js";
 import { buildFixedTextBoxLayoutPatch } from "./objectTargetPatch.js";
-import { resolveStoryTextTargetOptions } from "./storyText.js";
+import {
+  getDressCodeFieldKey,
+  resolveDressCodeTargetOptions,
+  resolveStoryTextTargetOptions,
+} from "./storyText.js";
 import { isEventVenueAddressField } from "../eventDetails/location.js";
 import {
   findRenderObjectById,
@@ -433,8 +437,10 @@ function applyTarget({
   }
 
   const storyTextTargetOptions = resolveStoryTextTargetOptions(field, safePath);
+  const dressCodeTargetOptions = resolveDressCodeTargetOptions(field, safePath);
   const textTargetOptions =
     storyTextTargetOptions ||
+    dressCodeTargetOptions ||
     (
       isEventVenueAddressField(field) && isDirectTextContentPath(safePath)
       ? {
@@ -556,6 +562,17 @@ export function buildDraftPersonalizationPatch({
   const secciones = deepClone(normalizedRenderState.secciones);
   let rsvp = renderState.rsvp ? deepClone(renderState.rsvp) : null;
   let gifts = renderState.gifts ? deepClone(renderState.gifts) : null;
+  const eventDetails = renderState.eventDetails
+    ? deepClone(renderState.eventDetails)
+    : { mode: "single" };
+  const dressCodeFieldKey = getDressCodeFieldKey();
+  if (Object.prototype.hasOwnProperty.call(safeResolvedValues, dressCodeFieldKey)) {
+    const currentDressCode = asObject(eventDetails.dressCode);
+    eventDetails.dressCode = {
+      ...currentDressCode,
+      value: normalizeText(safeResolvedValues[dressCodeFieldKey]),
+    };
+  }
   const defaults = asObject(personalizationPlan.defaults);
   const changedKeys = Array.isArray(personalizationPlan.changedKeys)
     ? personalizationPlan.changedKeys
@@ -704,6 +721,7 @@ export function buildDraftPersonalizationPatch({
     secciones,
     rsvp: rsvp || null,
     gifts: gifts || null,
+    eventDetails,
     applyReport: {
       ...report,
       skippedFields: normalizedSkippedFields,

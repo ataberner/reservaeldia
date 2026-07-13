@@ -19,6 +19,7 @@ import {
   isEventVenueAddressField,
 } from "../../eventDetails/location.js";
 import {
+  resolveDressCodeTargetOptions,
   resolveStoryTextTargetOptions,
 } from "../storyText.js";
 import {
@@ -218,8 +219,13 @@ export function buildTemplateAuthoringTargetPatches({
       safeField,
       target?.path
     );
+    const dressCodeTargetOptions = resolveDressCodeTargetOptions(
+      safeField,
+      target?.path
+    );
     const textTargetOptions =
       storyTextTargetOptions ||
+      dressCodeTargetOptions ||
       (
         isEventVenueAddressField(safeField) &&
         isTextualTemplateTargetPath(target?.path)

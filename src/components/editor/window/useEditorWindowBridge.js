@@ -51,6 +51,8 @@ export default function useEditorWindowBridge({
   updateTemplateAuthoringEventPersonNames,
   updateTemplateAuthoringEventLocation,
   updateTemplateAuthoringEventTimes,
+  eventDetailsConfig,
+  updateEventDetailsConfig,
   repairTemplateAuthoringState,
   ensureInlineEditSettledBeforeCriticalAction,
   flushPersistenceNow,
@@ -383,6 +385,11 @@ export default function useEditorWindowBridge({
         typeof updateTemplateAuthoringEventTimes === "function"
           ? updateTemplateAuthoringEventTimes
           : undefined,
+      getEventDetailsConfig: () => eventDetailsConfig || null,
+      updateEventDetailsConfig:
+        typeof updateEventDetailsConfig === "function"
+          ? updateEventDetailsConfig
+          : undefined,
       getTemplateAuthoringStatus:
         typeof getTemplateAuthoringStatus === "function"
           ? getTemplateAuthoringStatus
@@ -447,6 +454,8 @@ export default function useEditorWindowBridge({
     updateTemplateAuthoringEventPersonNames,
     updateTemplateAuthoringEventLocation,
     updateTemplateAuthoringEventTimes,
+    eventDetailsConfig,
+    updateEventDetailsConfig,
     repairTemplateAuthoringState,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow,

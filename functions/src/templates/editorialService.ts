@@ -779,6 +779,10 @@ function buildTemplateEditorDocument(
     estadoBorrador: "active",
     rsvp: template.rsvp && typeof template.rsvp === "object" ? template.rsvp : null,
     gifts: template.gifts && typeof template.gifts === "object" ? template.gifts : null,
+    eventDetails:
+      template.eventDetails && typeof template.eventDetails === "object"
+        ? template.eventDetails
+        : { mode: "single" },
     templateAuthoringDraft: buildTemplateAuthoringDraft(
       template.templateAuthoringDraft,
       template,
@@ -844,6 +848,7 @@ function buildTemplatePayloadFromDraft(
     defaults,
     rsvp: renderState.rsvp,
     gifts: renderState.gifts,
+    eventDetails: renderState.eventDetails,
   };
 }
 
@@ -926,6 +931,14 @@ function buildTemplatePayloadFromEditorDocument(
         : currentTemplate.gifts && typeof currentTemplate.gifts === "object"
           ? currentTemplate.gifts
           : null,
+    eventDetails:
+      "eventDetails" in source
+        ? source.eventDetails && typeof source.eventDetails === "object"
+          ? source.eventDetails
+          : { mode: "single" }
+        : currentTemplate.eventDetails && typeof currentTemplate.eventDetails === "object"
+          ? currentTemplate.eventDetails
+          : { mode: "single" },
   };
 }
 
@@ -1512,6 +1525,10 @@ export const adminOpenTemplateWorkspaceV1 = onCall(
         loaded.normalized.gifts && typeof loaded.normalized.gifts === "object"
           ? loaded.normalized.gifts
           : null,
+      eventDetails:
+        loaded.normalized.eventDetails && typeof loaded.normalized.eventDetails === "object"
+          ? loaded.normalized.eventDetails
+          : { mode: "single" },
       templateAuthoringDraft: buildWorkspaceTemplateAuthoringDraft(
         loaded.normalized,
         templateId,

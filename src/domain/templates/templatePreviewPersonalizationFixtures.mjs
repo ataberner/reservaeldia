@@ -10,7 +10,7 @@ export function createRepresentativeTemplateFixture({ previewUrl = null } = {}) 
     preview: previewUrl ? { previewUrl } : {},
     defaults: {
       event_name: "Ana y Luis",
-      event_date: "2026-12-20",
+      event_ceremony_date: "2026-12-20",
       welcome_copy: "Nos vemos pronto",
       gallery_images: [],
       rsvp_title: "Confirma asistencia",
@@ -30,7 +30,7 @@ export function createRepresentativeTemplateFixture({ previewUrl = null } = {}) 
         ],
       },
       {
-        key: "event_date",
+        key: "event_ceremony_date",
         label: "Fecha del evento",
         type: "date",
         applyTargets: [
@@ -183,14 +183,14 @@ export function createRepresentativePersonalizationInput() {
   return {
     rawValues: {
       event_name: "Mara y Nico",
-      event_date: "2027-01-05",
+      event_ceremony_date: "2027-01-05",
       welcome_copy: "Celebremos juntos",
       gallery_images: [],
       rsvp_title: "Avisanos si venis",
     },
     touchedKeys: [
       "event_name",
-      "event_date",
+      "event_ceremony_date",
       "welcome_copy",
       "gallery_images",
       "rsvp_title",

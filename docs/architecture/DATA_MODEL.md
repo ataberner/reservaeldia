@@ -9,14 +9,15 @@ The data model is the contract that keeps three different runtimes aligned:
 2. Editor-session persistence: Firestore `borradores` for drafts and template editor documents for template sessions.
 3. HTML generation for preview and publication.
 
-In the current codebase, the canonical draft invitation render state is a Firestore draft document with four render fields. Template editor sessions carry the same render fields in template editor documents and must be accessed through the session-aware editor persistence boundary:
+In the current codebase, the canonical draft invitation render state is a Firestore draft document with five render fields. Template editor sessions carry the same render fields in template editor documents and must be accessed through the session-aware editor persistence boundary:
 
 - `objetos`
 - `secciones`
 - `rsvp`
 - `gifts`
+- `eventDetails`
 
-Everything else on the same draft document is auxiliary metadata. This distinction is critical because `normalizeDraftRenderState` explicitly discards non-render fields and returns only those four keys for editor, preview, and publish flows.
+Everything else on the same draft document is auxiliary metadata. This distinction is critical because `normalizeDraftRenderState` explicitly discards non-render fields and returns only those render keys for editor, preview, and publish flows.
 
 The system is only compatible with the modern array-based model. Legacy drafts based on `contenido` are still present in the repository, but the current dashboard editor treats them as incompatible.
 
@@ -36,6 +37,7 @@ This is the only part of the draft or template editor document that `normalizeDr
 | `secciones` | `borradores/{slug}` | editor, preview, publish | Canonical render array. Required for modern draft compatibility. |
 | `rsvp` | `borradores/{slug}` | editor, preview, publish | Optional root config. Normalized before save and before publish. |
 | `gifts` | `borradores/{slug}` | editor, preview, publish | Optional root config. Normalized before save and before publish. |
+| `eventDetails` | `borradores/{slug}` | editor, preview, publish | Optional root config. Normalized to `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`. |
 
 Normalized render shape:
 
@@ -45,6 +47,10 @@ Normalized render shape:
   secciones: any[],
   rsvp: object | null,
   gifts: object | null,
+  eventDetails: {
+    mode: "single" | "ceremony_party",
+    dressCode: { enabled: boolean, value: string },
+  },
 }
 ```
 
@@ -201,7 +207,7 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `tipo` | Optional | Section classification used by creation/workflow code. |
 | `altoModo` | Optional but behavior-critical | Section layout mode. Current code uses values such as `pantalla` and `fijo`. |
 | `mobileLayoutMode` | Optional render-control enum | Mobile smart-layout participation. Missing/invalid/`auto` uses current automatic behavior. `preserve` opts the section out of smart reflow while keeping normal mobile viewport/fit-scale behavior. |
-| `functionalAssociation` | Optional render-control enum | Admin/template metadata for whole-section functional visibility. Supported values are `"rsvp"` and `"gifts"`. Missing/null means always visible/shared. When present and the matching root config `enabled` is false, editor, preview, and publish omit the entire section, including section-owned visuals and all objects in it. |
+| `functionalAssociation` | Optional render-control enum | Admin/template metadata for whole-section functional visibility. Supported values are `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, and `"dress_code"`. Missing/null means always visible/shared. When present and the matching functional state is inactive, editor, preview, and publish omit the entire section, including section-owned visuals and all objects in it. RSVP/Gifts use their root `enabled` switches; Ceremony/Party are derived from `eventDetails.mode`; Dress Code is derived from `eventDetails.dressCode.enabled`. |
 | `alturaFijoBackup` | Optional | Backup fixed height when toggling section modes. |
 | `fondoTipo` | Optional | Base background kind. Current HTML generator checks `"imagen"` explicitly. |
 | `fondoImagen` | Optional | Base background image URL/path. |
@@ -330,7 +336,7 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
 | `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
 
-`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for `functionalAssociation` render derivation. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
+`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority and `eventDetails.dressCode.value` is the dynamic text source for the Dress Code field. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
 
 ### `grupo`
 Groups are preserved composition objects. The group root lives in `objetos` with
@@ -350,7 +356,7 @@ into `children[]` for dependencies and runtimes such as Google Fonts, countdown 
 gallery lightbox support, and functional CTA detection. The detailed contract lives in
 `docs/architecture/GROUP_RENDER_MODEL.md`.
 
-`functionalAssociation` is supported only on the group root. Supported values are `"rsvp"` and `"gifts"`; missing/null means shared. In shared sections without a section-level `functionalAssociation`, inactive functional groups are omitted at render time. If exactly one functional side remains active and both RSVP and Gifts groups exist in that section, render preparation derives a horizontal offset from the joint bounding box of all visible groups for that active functionality. The offset is reversible and must not be saved as the group's base `x`.
+`functionalAssociation` is supported only on the group root. Supported values are `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, and `"dress_code"`; missing/null means shared. In shared sections without a section-level `functionalAssociation`, inactive functional groups are omitted at render time. If exactly one functional side remains active among the functional groups in that section, render preparation derives a horizontal offset from the joint bounding box of all visible groups for that active functionality. The offset is reversible and must not be saved as the group's base `x`. Admin assignment keeps RSVP/Gifts as singleton associations per section and allows multiple Ceremony/Party/Dress Code groups in the same section.
 
 ### `texto`
 Current text objects use these fields:
@@ -661,16 +667,30 @@ These fields are real Firestore data, but they are not part of the canonical inv
 | `templateWorkspace` | Template editor session metadata. Observed fields include `templateId`, `mode`, `readOnly`, `openedByUid`, `openedAt`, `lastCommittedAt`, `estadoEditorial`, `tags`, `templateName`, `permissions`. |
 | `templateAuthoringDraft` | Template-authoring payload. Current workspace creation writes `version`, `sourceTemplateId`, `fieldsSchema`, `defaults`, `status`, `updatedAt`, `updatedByUid`. |
 | `templateInput` | Template-personalization snapshot. Current modal flow writes `initialValues`, `values`, `defaults`, `changedKeys`, `applyReport`, `appliedAt`, `updatedAt`, `policyVersion`. |
+| `eventDetails` | Render-state configuration for the Detalles del evento flow. Normalized shape is `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`; missing/invalid values normalize to `"single"` and disabled Dress Code with empty value. |
 
-`templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current story-content field is:
+`templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current standardized fields are:
 
 | Key | Label | Type | Group | Render authority |
 | --- | --- | --- | --- | --- |
 | `texto_historia` | `Texto historia` | `textarea` | `Datos principales` | Linked `objeto.texto` targets remain the visible/canonical canvas text. |
+| `event_ceremony_date` | `Fecha de la ceremonia` | `date` | `Ceremonia` | Linked text/countdown targets remain the visible/canonical canvas objects. |
+| `event_ceremony_start_time` | `Horario de inicio de la ceremonia` | `time` | `Ceremonia` | Linked text targets remain the visible/canonical canvas objects. |
+| `event_ceremony_end_time` | `Horario de fin de la ceremonia` | `time` | `Ceremonia` | Linked text targets remain the visible/canonical canvas objects. |
+| `event_ceremony_venue_name` | `Lugar de la ceremonia` | `text` | `Ceremonia` | Linked text/map targets remain the visible/canonical canvas objects. |
+| `event_ceremony_venue_address` | `Direccion de la ceremonia` | `text` | `Ceremonia` | Linked text/map targets remain the visible/canonical canvas objects. |
+| `event_party_date` | `Fecha de la fiesta` | `date` | `Fiesta` | Linked text/countdown targets remain the visible/canonical canvas objects. |
+| `event_party_start_time` | `Horario de inicio de la fiesta` | `time` | `Fiesta` | Linked text targets remain the visible/canonical canvas objects. |
+| `event_party_end_time` | `Horario de fin de la fiesta` | `time` | `Fiesta` | Linked text targets remain the visible/canonical canvas objects. |
+| `event_party_venue_name` | `Lugar de la fiesta` | `text` | `Fiesta` | Linked text/map targets remain the visible/canonical canvas objects. |
+| `event_party_venue_address` | `Direccion de la fiesta` | `text` | `Fiesta` | Linked text/map targets remain the visible/canonical canvas objects. |
+| `event_dress_code` | `Dress Code` | `text` | `Detalles del evento` | Linked text targets read/write `eventDetails.dressCode.value`; section/group visibility reads `eventDetails.dressCode.enabled`. |
 
 `templateAuthoringDraft.defaults.texto_historia` is authoring metadata for the dynamic-field flow. It must not become a second render authority: preview, publish, and canvas rendering continue to read the linked text object through the normal `objetos` model. Older templates or drafts without `texto_historia` are valid; editor UI should hide story-specific controls until the field has a linked text object target.
 
 When `texto_historia` is applied to a text object through template authoring or personalization, the linked text object keeps ownership of layout. The object stores the text box width and alignment (`width`, `align`) and dynamic updates set `__autoWidth: false` with word wrapping so longer story text wraps inside the existing box. Canvas transformer edits may still change that box width directly on the object.
+
+Event-detail dynamic fields use explicit `eventDetailsRole` values such as `ceremony_date`, `party_start_time`, `party_venue_address`, and `dress_code`; runtime code must not infer Ceremony/Party/Dress Code permanently from legacy keys. Legacy fields (`event_date`, `event_start_time`, `event_end_time`, `event_venue_name`, `event_venue_address`) are migrated idempotently to their Ceremony equivalents and the document is normalized to `eventDetails.mode: "single"`. Party defaults and targets are preserved when switching back to single-event mode, but Party render associations are inactive until `eventDetails.mode` is `"ceremony_party"`. Dress Code text is preserved when disabled; only visibility is derived from `eventDetails.dressCode.enabled`.
 
 Assumption: older template-authoring documents may carry extra nested fields. The table above describes the currently written workspace shape.
 
@@ -703,11 +723,12 @@ The modern draft schema is embedded in a single Firestore document:
 - no per-section child documents
 - `objetos` and `secciones` stored inline as arrays
 - `rsvp` and `gifts` stored inline as root objects
+- `eventDetails` stored inline as root configuration
 
 Current editor persistence behavior:
 
 - Editor-session writes go through `src/components/editor/persistence/editorSessionPersistence.js`.
-- Draft sessions write `objetos`, `secciones`, `rsvp`, `gifts`, `draftContentMeta`, and `ultimaEdicion` to `borradores/{slug}`.
+- Draft sessions write `objetos`, `secciones`, `rsvp`, `gifts`, `eventDetails`, `draftContentMeta`, and `ultimaEdicion` to `borradores/{slug}`.
 - Template sessions write the same editor render fields through the template editor callable surface; they do not write `borradores/{templateId}`.
 - It strips `undefined` recursively before writing.
 - It normalizes section decoration payloads before writing.
@@ -845,10 +866,10 @@ Input:
 
 Transformation:
 
-- `normalizeDraftRenderState` keeps only `objetos`, `secciones`, `rsvp`, `gifts`
+- `normalizeDraftRenderState` keeps only `objetos`, `secciones`, `rsvp`, `gifts`, and `eventDetails`
 - Storage-backed URLs are refreshed recursively on load
 - section decoration payloads are normalized
-- `rsvp` and `gifts` are normalized through dedicated config normalizers
+- `rsvp`, `gifts`, and `eventDetails` are normalized through dedicated config normalizers
 - missing `yNorm` values are backfilled for `altoModo: "pantalla"` sections
 
 Output:
@@ -858,7 +879,7 @@ Output:
 #### 2. Editor Save
 Input:
 
-- live editor state: `objetos`, `secciones`, `rsvp`, `gifts`
+- live editor state: `objetos`, `secciones`, `rsvp`, `gifts`, `eventDetails`
 
 Transformation:
 
@@ -887,7 +908,7 @@ Transformation:
 - preview re-reads through `readEditorSessionDocument`, which routes by `editorSession.kind`
 - publishable draft preview calls `prepareDraftPreviewRender`, which uses `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`
 - if backend validation has blockers, preview receives validation without trusted HTML
-- template/fallback preview can still overlay a compatible editor boundary snapshot and call `generarHTMLDesdeSecciones(secciones, objetos, rsvp, opciones)` locally
+- template/fallback preview can still overlay a compatible editor boundary snapshot and call the shared section/object HTML generator locally
 - preview results carry explicit authority:
   - `draft-authoritative`: backend prepared draft preview, publish-faithful
   - `template-visual`: pre-draft template preview, visual-only

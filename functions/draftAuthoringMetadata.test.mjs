@@ -69,23 +69,23 @@ test("draft authoring metadata falls back to template fieldsSchema and defaults"
     template: {
       fieldsSchema: [
         {
-          key: "event_venue_name",
+          key: "event_ceremony_venue_name",
           type: "text",
           eventDetailsRole: "venue_name",
         },
       ],
       defaults: {
-        event_venue_name: "Salon Central",
+        event_ceremony_venue_name: "Salon Central",
       },
     },
   });
 
   assert.equal(metadata.sourceTemplateId, "tpl-boda");
   assert.deepEqual(metadata.fieldsSchema.map((field) => field.key), [
-    "event_venue_name",
+    "event_ceremony_venue_name",
   ]);
   assert.deepEqual(metadata.defaults, {
-    event_venue_name: "Salon Central",
+    event_ceremony_venue_name: "Salon Central",
   });
 });
 

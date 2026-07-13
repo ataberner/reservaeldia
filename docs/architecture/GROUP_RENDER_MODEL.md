@@ -23,7 +23,7 @@ normal render objects, but their coordinates are local to the group frame.
   yNorm?: number,
   width: number,
   height: number,
-  functionalAssociation?: "rsvp" | "gifts",
+  functionalAssociation?: "rsvp" | "gifts" | "ceremony" | "party" | "dress_code",
   children: RenderObjectChild[],
 }
 ```
@@ -52,7 +52,8 @@ families), with these group-local differences:
 - Full-document collectors must recurse into `children[]` whenever they collect render
   capabilities or document-level dependencies from objects. This includes Google Fonts,
   countdown runtime activation, gallery lightbox activation, and functional CTA presence.
-- Functional RSVP/Gifts visibility is derived before editor/preview/publish render. In a shared section, inactive functional groups are omitted; if only RSVP or only Gifts remains visible and both sides exist in the section, the renderer applies a reversible horizontal offset to the visible groups based on their joint bounding box. This offset is not persisted as group `x`.
+- Functional visibility is derived before editor/preview/publish render from `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode`, and `eventDetails.dressCode.enabled`. In a shared section, inactive functional groups are omitted; if only one associated functionality remains visible among the section's functional groups, the renderer applies a reversible horizontal offset to all visible groups for that functionality based on their joint bounding box. This offset is not persisted as group `x`.
+- Admin assignment keeps RSVP/Gifts singleton per section and allows multiple Ceremony/Party/Dress Code groups per section. Group children must not carry `functionalAssociation`.
 
 ## 4. Typography
 

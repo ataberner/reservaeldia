@@ -7,8 +7,8 @@ import {
 
 test("dynamic field scroll target returns null when the field has no targets", () => {
   const result = resolveDynamicFieldScrollTarget({
-    fieldsSchema: [{ key: "event_date", applyTargets: [] }],
-    fieldKeys: "event_date",
+    fieldsSchema: [{ key: "event_ceremony_date", applyTargets: [] }],
+    fieldKeys: "event_ceremony_date",
     objetos: [{ id: "date-text", tipo: "texto" }],
   });
 
@@ -19,14 +19,14 @@ test("dynamic field scroll target prefers textual targets over functional target
   const result = resolveDynamicFieldScrollTarget({
     fieldsSchema: [
       {
-        key: "event_date",
+        key: "event_ceremony_date",
         applyTargets: [
           { scope: "objeto", id: "countdown-1", path: "fechaObjetivo" },
           { scope: "objeto", id: "date-text", path: "texto" },
         ],
       },
     ],
-    fieldKeys: "event_date",
+    fieldKeys: "event_ceremony_date",
     objetos: [
       { id: "countdown-1", tipo: "countdown" },
       { id: "date-text", tipo: "texto" },
@@ -41,14 +41,14 @@ test("dynamic field scroll target uses the first canvas object when there are mu
   const result = resolveDynamicFieldScrollTarget({
     fieldsSchema: [
       {
-        key: "event_venue_address",
+        key: "event_ceremony_venue_address",
         applyTargets: [
           { scope: "objeto", id: "address-late", path: "texto" },
           { scope: "objeto", id: "address-early", path: "texto" },
         ],
       },
     ],
-    fieldKeys: "event_venue_address",
+    fieldKeys: "event_ceremony_venue_address",
     objetos: [
       { id: "address-early", tipo: "texto" },
       { id: "address-late", tipo: "texto" },

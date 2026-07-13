@@ -235,6 +235,7 @@ export default function CanvasEditorOverlays({
                   onLinkEventTime: templateAuthoring.linkSelectionToEventTime,
                   onLinkEventDate: templateAuthoring.linkSelectionToEventDate,
                   onLinkStoryText: templateAuthoring.linkSelectionToStoryText,
+                  onLinkDressCode: templateAuthoring.linkSelectionToDressCode,
                   onUnlinkField: templateAuthoring.unlinkSelection,
                   onViewUsage: handleViewTemplateFieldUsage,
                 }

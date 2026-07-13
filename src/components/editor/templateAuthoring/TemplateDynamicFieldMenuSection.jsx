@@ -9,6 +9,9 @@ import {
   EVENT_TIME_ROLES,
 } from "@/domain/eventDetails/time.js";
 import {
+  EVENT_DETAIL_FEATURES,
+} from "@/domain/eventDetails/features.js";
+import {
   resolveCountdownContract,
   resolveCountdownTargetIso,
 } from "../../../../shared/renderContractPolicy.js";
@@ -28,6 +31,7 @@ export default function TemplateDynamicFieldMenuSection({
   onLinkEventTime,
   onLinkEventDate,
   onLinkStoryText,
+  onLinkDressCode,
   onUnlinkField,
   onViewUsage,
 }) {
@@ -61,6 +65,8 @@ export default function TemplateDynamicFieldMenuSection({
     typeof onLinkEventDate === "function";
   const canUseStoryTextLink =
     selectedElementType === "texto" && typeof onLinkStoryText === "function";
+  const canUseDressCodeLink =
+    selectedElementType === "texto" && typeof onLinkDressCode === "function";
 
   const sectionButtonBase =
     "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] transition";
@@ -134,12 +140,12 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
-  const handleLinkEventLocation = async (role) => {
+  const handleLinkEventLocation = async (role, feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     if (typeof onLinkEventLocation !== "function") return;
     setSubmitError("");
 
     try {
-      await onLinkEventLocation(role);
+      await onLinkEventLocation(role, { feature });
     } catch (linkError) {
       setSubmitError(
         linkError instanceof Error
@@ -149,12 +155,12 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
-  const handleLinkEventTime = async (role) => {
+  const handleLinkEventTime = async (role, feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     if (typeof onLinkEventTime !== "function") return;
     setSubmitError("");
 
     try {
-      await onLinkEventTime(role);
+      await onLinkEventTime(role, { feature });
     } catch (linkError) {
       setSubmitError(
         linkError instanceof Error
@@ -164,12 +170,12 @@ export default function TemplateDynamicFieldMenuSection({
     }
   };
 
-  const handleLinkEventDate = async () => {
+  const handleLinkEventDate = async (feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     if (typeof onLinkEventDate !== "function") return;
     setSubmitError("");
 
     try {
-      await onLinkEventDate();
+      await onLinkEventDate({ feature });
     } catch (linkError) {
       setSubmitError(
         linkError instanceof Error
@@ -190,6 +196,21 @@ export default function TemplateDynamicFieldMenuSection({
         linkError instanceof Error
           ? linkError.message
           : "No se pudo vincular el texto a Texto historia."
+      );
+    }
+  };
+
+  const handleLinkDressCode = async () => {
+    if (typeof onLinkDressCode !== "function") return;
+    setSubmitError("");
+
+    try {
+      await onLinkDressCode();
+    } catch (linkError) {
+      setSubmitError(
+        linkError instanceof Error
+          ? linkError.message
+          : "No se pudo vincular el texto a Dress Code."
       );
     }
   };
@@ -218,20 +239,32 @@ export default function TemplateDynamicFieldMenuSection({
         </div>
       ) : null}
 
-      {canUseStoryTextLink ? (
+      {canUseStoryTextLink || canUseDressCodeLink ? (
         <div className="mt-2 rounded-md border border-violet-200 bg-white p-2">
           <p className="mb-1 text-[11px] font-semibold text-violet-700">
             Contenido
           </p>
           <div className="space-y-1.5">
-            <button
-              type="button"
-              className={sectionButtonNeutral}
-              disabled={!canConfigure || saving}
-              onClick={handleLinkStoryText}
-            >
-              Texto historia
-            </button>
+            {canUseStoryTextLink ? (
+              <button
+                type="button"
+                className={sectionButtonNeutral}
+                disabled={!canConfigure || saving}
+                onClick={handleLinkStoryText}
+              >
+                Texto historia
+              </button>
+            ) : null}
+            {canUseDressCodeLink ? (
+              <button
+                type="button"
+                className={sectionButtonNeutral}
+                disabled={!canConfigure || saving}
+                onClick={handleLinkDressCode}
+              >
+                Dress Code
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -243,14 +276,24 @@ export default function TemplateDynamicFieldMenuSection({
           </p>
           <div className="space-y-1.5">
             {canUseEventDateLinks ? (
-              <button
-                type="button"
-                className={sectionButtonNeutral}
-                disabled={!canConfigure || saving}
-                onClick={handleLinkEventDate}
-              >
-                Vincular a fecha del evento
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventDate(EVENT_DETAIL_FEATURES.CEREMONY)}
+                >
+                  Vincular a fecha de la ceremonia
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventDate(EVENT_DETAIL_FEATURES.PARTY)}
+                >
+                  Vincular a fecha de la fiesta
+                </button>
+              </>
             ) : null}
             {canUseEventPersonNameLinks ? (
               <>
@@ -286,17 +329,33 @@ export default function TemplateDynamicFieldMenuSection({
                   type="button"
                   className={sectionButtonNeutral}
                   disabled={!canConfigure || saving}
-                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_NAME)}
+                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_NAME, EVENT_DETAIL_FEATURES.CEREMONY)}
                 >
-                  Vincular a nombre del lugar
+                  Vincular a lugar de la ceremonia
                 </button>
                 <button
                   type="button"
                   className={sectionButtonNeutral}
                   disabled={!canConfigure || saving}
-                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_ADDRESS)}
+                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_ADDRESS, EVENT_DETAIL_FEATURES.CEREMONY)}
                 >
-                  Vincular a direccion
+                  Vincular a direccion de la ceremonia
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_NAME, EVENT_DETAIL_FEATURES.PARTY)}
+                >
+                  Vincular a lugar de la fiesta
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventLocation(EVENT_LOCATION_ROLES.VENUE_ADDRESS, EVENT_DETAIL_FEATURES.PARTY)}
+                >
+                  Vincular a direccion de la fiesta
                 </button>
               </>
             ) : null}
@@ -306,17 +365,33 @@ export default function TemplateDynamicFieldMenuSection({
                   type="button"
                   className={sectionButtonNeutral}
                   disabled={!canConfigure || saving}
-                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.START_TIME)}
+                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.START_TIME, EVENT_DETAIL_FEATURES.CEREMONY)}
                 >
-                  Vincular a Hora inicio
+                  Vincular a hora inicio de la ceremonia
                 </button>
                 <button
                   type="button"
                   className={sectionButtonNeutral}
                   disabled={!canConfigure || saving}
-                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.END_TIME)}
+                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.END_TIME, EVENT_DETAIL_FEATURES.CEREMONY)}
                 >
-                  Vincular a Hora fin
+                  Vincular a hora fin de la ceremonia
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.START_TIME, EVENT_DETAIL_FEATURES.PARTY)}
+                >
+                  Vincular a hora inicio de la fiesta
+                </button>
+                <button
+                  type="button"
+                  className={sectionButtonNeutral}
+                  disabled={!canConfigure || saving}
+                  onClick={() => handleLinkEventTime(EVENT_TIME_ROLES.END_TIME, EVENT_DETAIL_FEATURES.PARTY)}
+                >
+                  Vincular a hora fin de la fiesta
                 </button>
               </>
             ) : null}

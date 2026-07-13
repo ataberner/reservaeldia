@@ -470,19 +470,40 @@ Resultado esperado:
 - en preview de borrador normal, el resultado es `draft-authoritative`
 - no asumir OK solo porque el boton se ve bien en canvas
 
-### [ ] Asociaciones funcionales RSVP / Regalos
+### [ ] Detalles del evento: Ceremonia / Fiesta
+
+1. En un borrador basado en plantilla, abrir el tab Detalles del evento.
+2. Cambiar entre `Un solo evento` y `Ceremonia y fiesta`.
+3. Editar fecha, horario, lugar, direccion, mapa y countdown de Ceremonia.
+4. En modalidad doble, editar los mismos datos para Fiesta.
+5. Volver a `Un solo evento` y luego a `Ceremonia y fiesta`.
+6. Activar `Mostrar Dress Code`, editar el texto y verificar que el canvas vinculado se actualiza.
+7. Desactivar `Mostrar Dress Code` y volver a activarlo.
+
+Resultado esperado:
+
+- `Un solo evento` mantiene Ceremonia activa y Fiesta inactiva
+- `Ceremonia y fiesta` mantiene ambas funcionalidades activas
+- los datos de Fiesta se conservan aunque el bloque no se muestre
+- `eventDetails.dressCode.value` se conserva aunque Dress Code este desactivado
+- los campos dinamicos `event_ceremony_*` y `event_party_*` sincronizan tab, canvas, preview y HTML publico
+- el campo dinamico `event_dress_code` sincroniza tab, canvas, preview y HTML publico
+- los campos legacy `event_date`, `event_start_time`, `event_end_time`, `event_venue_name` y `event_venue_address` aparecen migrados a Ceremonia al cargar
+
+### [ ] Asociaciones funcionales RSVP / Regalos / Ceremonia / Fiesta / Dress Code
 
 1. En edicion de plantilla como admin/superadmin, asociar una seccion completa a RSVP y otra a Regalos desde el menu de seccion.
-2. En una seccion compartida, agrupar una columna RSVP y otra Regalos desde multiseleccion, y asignar cada grupo desde el engranaje.
-3. Alternar los switches existentes de RSVP y Regalos.
-4. Abrir preview autoritativa y publicar en un entorno de prueba.
+2. Asociar secciones completas a Ceremonia, Fiesta y Dress Code desde el mismo menu.
+3. En una seccion compartida, agrupar columnas RSVP, Regalos, Ceremonia, Fiesta y Dress Code desde multiseleccion, y asignar cada grupo desde el engranaje.
+4. Alternar los switches existentes de RSVP y Regalos, la modalidad del evento para Ceremonia/Fiesta, y `Mostrar Dress Code`.
+5. Abrir preview autoritativa y publicar en un entorno de prueba.
 
 Resultado esperado:
 
 - las opciones administrativas no aparecen en borradores normales, usuarios finales, preview ni HTML publico
-- `rsvp.enabled` y `gifts.enabled` controlan CTA, secciones y grupos; no hay switches adicionales
+- `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode` y `eventDetails.dressCode.enabled` controlan CTA, secciones y grupos; no hay switches adicionales
 - una seccion asociada inactiva se omite completa, incluidas decoraciones y objetos compartidos internos
-- en una seccion compartida, el grupo restante se centra horizontalmente como conjunto y vuelve a su posicion original al reactivar ambas funciones
+- en una seccion compartida, los grupos de la unica funcionalidad restante se centran horizontalmente como conjunto y vuelven a su posicion original al reactivar las demas funciones
 - repetir activar/desactivar no acumula deriva geometrica
 - preview, publish y mobile mantienen la misma decision visible
 

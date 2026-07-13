@@ -99,6 +99,7 @@ import {
 import {
   applyFunctionalAssociationsToRenderState,
 } from "../../shared/functionalAssociations.js";
+import { normalizeEventDetailsConfig } from "../../shared/eventDetailsConfig.js";
 import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
 import { createDefaultGiftConfig, normalizeGiftConfig } from "@/domain/gifts/config";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
@@ -315,6 +316,9 @@ export default function CanvasEditor({
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const [giftsConfig, setGiftsConfig] = useState(null);
+  const [eventDetailsConfig, setEventDetailsConfig] = useState(() =>
+    normalizeEventDetailsConfig(null)
+  );
   const [sectionDecorationEdit, setSectionDecorationEdit] = useState(null);
   const {
     registerPersistenceBridge,
@@ -575,12 +579,14 @@ export default function CanvasEditor({
     secciones,
     rsvp: rsvpConfig,
     gifts: giftsConfig,
+    eventDetails: eventDetailsConfig,
     cargado,
 
     setObjetos,
     setSecciones,
     setRsvp: setRsvpConfig,
     setGifts: setGiftsConfig,
+    setEventDetails: setEventDetailsConfig,
     setCargado,
     setSeccionActivaId,
     onDraftLoaded: handleDraftLoaded,
@@ -660,9 +666,10 @@ export default function CanvasEditor({
         objetos,
         rsvp: rsvpConfig,
         gifts: giftsConfig,
+        eventDetails: eventDetailsConfig,
         materializeOffsets: false,
       }),
-    [giftsConfig, objetos, rsvpConfig, secciones]
+    [eventDetailsConfig, giftsConfig, objetos, rsvpConfig, secciones]
   );
   const renderObjetos = functionalRenderState.objetos;
   const renderSecciones = functionalRenderState.secciones;
@@ -1470,6 +1477,15 @@ export default function CanvasEditor({
     requestInlineEditFinishRef.current = requestInlineEditFinish;
   }, [requestInlineEditFinish]);
 
+  const updateEventDetailsConfig = useCallback((patch = {}) => {
+    setEventDetailsConfig((current) =>
+      normalizeEventDetailsConfig({
+        ...(current && typeof current === "object" ? current : {}),
+        ...(patch && typeof patch === "object" ? patch : {}),
+      })
+    );
+  }, []);
+
   useEditorWindowBridge({
     seccionesOrdenadas: renderSeccionesOrdenadas,
     secciones,
@@ -1496,6 +1512,8 @@ export default function CanvasEditor({
     updateTemplateAuthoringEventPersonNames: templateAuthoring.updateEventPersonNames,
     updateTemplateAuthoringEventLocation: templateAuthoring.updateEventLocation,
     updateTemplateAuthoringEventTimes: templateAuthoring.updateEventTimes,
+    eventDetailsConfig,
+    updateEventDetailsConfig,
     repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow: flushEditorPersistence,
@@ -1525,6 +1543,7 @@ export default function CanvasEditor({
     secciones,
     rsvpConfig,
     giftsConfig,
+    eventDetailsConfig,
     altoCanvas,
     seccionActivaId,
     celdaGaleriaActiva,

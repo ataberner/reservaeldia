@@ -36,6 +36,38 @@ const artifacts = [
     ],
   },
   {
+    label: "Configuracion de modalidad de evento",
+    sourcePath: path.resolve(__dirname, "../../shared/eventDetailsConfig.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/eventDetailsConfig.cjs"),
+      path.resolve(__dirname, "../lib/shared/eventDetailsConfig.cjs"),
+    ],
+  },
+  {
+    label: "Wrapper ESM de modalidad de evento",
+    sourcePath: path.resolve(__dirname, "../../shared/eventDetailsConfig.js"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/eventDetailsConfig.js"),
+      path.resolve(__dirname, "../lib/shared/eventDetailsConfig.js"),
+    ],
+  },
+  {
+    label: "Migracion de detalles de evento",
+    sourcePath: path.resolve(__dirname, "../../shared/eventDetailsMigration.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/eventDetailsMigration.cjs"),
+      path.resolve(__dirname, "../lib/shared/eventDetailsMigration.cjs"),
+    ],
+  },
+  {
+    label: "Wrapper ESM de migracion de detalles de evento",
+    sourcePath: path.resolve(__dirname, "../../shared/eventDetailsMigration.js"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/eventDetailsMigration.js"),
+      path.resolve(__dirname, "../lib/shared/eventDetailsMigration.js"),
+    ],
+  },
+  {
     label: "Contrato de assets de render",
     sourcePath: path.resolve(__dirname, "../../shared/renderAssetContract.cjs"),
     targetPaths: [

@@ -2,13 +2,21 @@ import {
   findRenderObjectById,
 } from "../editor/renderObjectTree.js";
 import {
+  EVENT_DETAIL_FEATURES,
+  getEventDetailFeatureLabel,
+  normalizeEventDetailFeature,
+} from "./features.js";
+import {
   DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
   isDateLikeTemplateFieldType,
   isTextualTemplateTargetPath,
   normalizeDateTextFormatPreset,
 } from "../templates/fieldValueResolver.js";
 
-export const EVENT_DATE_FIELD_KEY = "event_date";
+export const EVENT_DATE_FIELD_KEYS = Object.freeze({
+  [EVENT_DETAIL_FEATURES.CEREMONY]: "event_ceremony_date",
+  [EVENT_DETAIL_FEATURES.PARTY]: "event_party_date",
+});
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -214,49 +222,109 @@ function isEventDateNamedField(field) {
   );
   return (
     isEventDateField(safeField) ||
-    signature.includes("event date") ||
-    signature.includes("fecha evento") ||
-    signature.includes("fecha del evento")
+    signature.includes("ceremony date") ||
+    signature.includes("party date") ||
+    signature.includes("fecha ceremonia") ||
+    signature.includes("fecha de la ceremonia") ||
+    signature.includes("fecha fiesta") ||
+    signature.includes("fecha de la fiesta")
   );
 }
 
-export function getEventDateFieldKey() {
-  return EVENT_DATE_FIELD_KEY;
+function isEventDateNamedFieldForFeature(
+  field,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
+  if (!isEventDateNamedField(field)) return false;
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const safeField = asObject(field);
+  const signature = normalizeComparableText(
+    `${safeField.key || ""} ${safeField.label || ""} ${safeField.eventDetailsRole || ""}`
+  );
+  if (safeFeature === EVENT_DETAIL_FEATURES.PARTY) {
+    return (
+      signature.includes("party date") ||
+      signature.includes("fecha fiesta") ||
+      signature.includes("fecha de la fiesta")
+    );
+  }
+  return (
+    signature.includes("ceremony date") ||
+    signature.includes("fecha ceremonia") ||
+    signature.includes("fecha de la ceremonia")
+  );
 }
 
-export function isEventDateField(field) {
-  return normalizeText(asObject(field).key) === EVENT_DATE_FIELD_KEY;
+export function getEventDateFieldKey(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  return EVENT_DATE_FIELD_KEYS[normalizeEventDetailFeature(feature)] || EVENT_DATE_FIELD_KEYS.ceremony;
 }
 
-export function buildEventDateField() {
+export function getEventDateFieldRole(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  return `${normalizeEventDetailFeature(feature)}_date`;
+}
+
+export function resolveEventDateFieldFeature(field) {
+  const safeField = asObject(field);
+  const key = normalizeText(safeField.key);
+  const role = normalizeText(safeField.eventDetailsRole).toLowerCase();
+  if (key === EVENT_DATE_FIELD_KEYS.party || role === "party_date") {
+    return EVENT_DETAIL_FEATURES.PARTY;
+  }
+  return EVENT_DETAIL_FEATURES.CEREMONY;
+}
+
+export function isEventDateField(field, feature = null) {
+  const safeField = asObject(field);
+  const key = normalizeText(safeField.key);
+  const role = normalizeText(safeField.eventDetailsRole).toLowerCase();
+  const isKnown =
+    Object.values(EVENT_DATE_FIELD_KEYS).includes(key) ||
+    role === "ceremony_date" ||
+    role === "party_date";
+  if (!isKnown) return false;
+  if (!feature) return true;
+  return resolveEventDateFieldFeature(safeField) === normalizeEventDetailFeature(feature);
+}
+
+export function buildEventDateField(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const featureLabel = getEventDetailFeatureLabel(safeFeature).toLowerCase();
   return {
-    key: EVENT_DATE_FIELD_KEY,
-    label: "Fecha del evento",
+    key: getEventDateFieldKey(safeFeature),
+    label: `Fecha de la ${featureLabel}`,
     type: "date",
-    group: "Datos principales",
+    group: getEventDetailFeatureLabel(safeFeature),
     optional: false,
+    eventDetailsRole: getEventDateFieldRole(safeFeature),
     dateTextFormatPreset: DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
     applyTargets: [],
   };
 }
 
-export function ensureEventDateField({ fieldsSchema } = {}) {
+export function ensureEventDateField({
+  fieldsSchema,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
+} = {}) {
   const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
-  const templateField = buildEventDateField();
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const templateField = buildEventDateField(safeFeature);
   let changed = false;
   let field = null;
   const nextFields = fields.map((entry) => {
     const current = asObject(entry);
-    if (!isEventDateField(current)) return entry;
+    if (!isEventDateField(current, safeFeature)) return entry;
 
     const patched = {
       ...current,
+      key: templateField.key,
+      label: normalizeText(current.label) || templateField.label,
       type: "date",
       group: normalizeText(current.group) || templateField.group,
       optional:
         typeof current.optional === "boolean"
           ? current.optional
           : templateField.optional,
+      eventDetailsRole: templateField.eventDetailsRole,
       dateTextFormatPreset: normalizeDateTextFormatPreset(
         current.dateTextFormatPreset,
         "date"
@@ -300,21 +368,45 @@ export function findEventDateSidebarField(fieldsSchema) {
   );
 }
 
+export function findEventDateSidebarFieldForFeature(
+  fieldsSchema,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const dateLikeTextFields = fields.filter((field) => {
+    const safeField = asObject(field);
+    return isDateLikeTemplateFieldType(safeField.type) && hasTextualTarget(safeField);
+  });
+  return (
+    fields.find((field) => isEventDateField(field, safeFeature) && hasTextualTarget(field)) ||
+    dateLikeTextFields.find((field) => isEventDateNamedFieldForFeature(field, safeFeature)) ||
+    fields.find((field) => isEventDateField(field, safeFeature)) ||
+    null
+  );
+}
+
 export function resolveEventDateSidebarBinding({
   fieldsSchema,
   defaults,
   countdownDetails,
   objetos,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const safeDefaults = asObject(defaults);
-  const eventDateField = findEventDateSidebarField(fieldsSchema);
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const eventDateField = findEventDateSidebarFieldForFeature(fieldsSchema, safeFeature);
   const countdownField =
     countdownDetails?.field &&
     typeof countdownDetails.field === "object" &&
     !Array.isArray(countdownDetails.field)
       ? countdownDetails.field
       : null;
-  const field = eventDateField || countdownField || null;
+  const field =
+    eventDateField ||
+    (countdownField && isEventDateField(countdownField, safeFeature)
+      ? countdownField
+      : null);
   const fieldKey =
     normalizeText(field?.key) ||
     normalizeText(countdownDetails?.fieldKey);

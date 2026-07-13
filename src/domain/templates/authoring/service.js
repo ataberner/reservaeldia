@@ -295,5 +295,6 @@ export function buildTemplatePayloadFromAuthoring({
     defaults,
     ...(renderState.rsvp ? { rsvp: renderState.rsvp } : {}),
     ...(renderState.gifts ? { gifts: renderState.gifts } : {}),
+    eventDetails: renderState.eventDetails || { mode: "single" },
   };
 }

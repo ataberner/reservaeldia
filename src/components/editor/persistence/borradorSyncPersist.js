@@ -68,6 +68,7 @@ export async function persistBorradorSyncState({
     secciones: safeState.secciones,
     rsvp: safeState.rsvp,
     gifts: safeState.gifts,
+    eventDetails: safeState.eventDetails,
     validarPuntosLinea,
     ALTURA_PANTALLA_EDITOR,
   });
@@ -75,6 +76,7 @@ export async function persistBorradorSyncState({
   const objetosLimpios = persistedRenderState.objetos;
   const rsvpLimpio = persistedRenderState.rsvp;
   const giftsLimpios = persistedRenderState.gifts;
+  const eventDetailsLimpio = persistedRenderState.eventDetails;
   const countdownForAudit = persistedRenderState.countdownForAudit;
 
   await persistEditorSessionSnapshot({
@@ -93,6 +95,7 @@ export async function persistBorradorSyncState({
       secciones: seccionesLimpias,
       rsvp: rsvpLimpio,
       gifts: giftsLimpios,
+      eventDetails: eventDetailsLimpio,
     },
   });
 

@@ -30,8 +30,8 @@ test("event date predefined field links countdown and text targets", () => {
   });
   const field = linkedText.fieldsSchema.find((entry) => entry.key === fieldKey);
 
-  assert.equal(field.key, "event_date");
-  assert.equal(field.label, "Fecha del evento");
+  assert.equal(field.key, "event_ceremony_date");
+  assert.equal(field.label, "Fecha de la ceremonia");
   assert.equal(field.type, "date");
   assert.deepEqual(
     field.applyTargets.map((target) => [target.id, target.path, target.transform?.kind]),
@@ -70,7 +70,7 @@ test("event date predefined field links countdown and text targets", () => {
   );
 });
 
-test("event date sidebar binding prefers event_date text targets over legacy countdown fields", () => {
+test("event date sidebar binding prefers ceremony date text targets over legacy countdown fields", () => {
   const fieldsSchema = [
     {
       key: "legacy_countdown_date",
@@ -84,8 +84,8 @@ test("event date sidebar binding prefers event_date text targets over legacy cou
       ],
     },
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -105,7 +105,7 @@ test("event date sidebar binding prefers event_date text targets over legacy cou
   const binding = resolveEventDateSidebarBinding({
     fieldsSchema,
     defaults: {
-      event_date: "2027-01-05T21:00:00.000Z",
+      event_ceremony_date: "2027-01-05T21:00:00.000Z",
       legacy_countdown_date: "2026-12-13T21:00:00.000Z",
     },
     countdownDetails: {
@@ -116,8 +116,8 @@ test("event date sidebar binding prefers event_date text targets over legacy cou
     },
   });
 
-  assert.equal(binding.fieldKey, "event_date");
-  assert.equal(binding.field.key, "event_date");
+  assert.equal(binding.fieldKey, "event_ceremony_date");
+  assert.equal(binding.field.key, "event_ceremony_date");
   assert.equal(binding.targetISO, "2027-01-05T21:00:00.000Z");
   assert.equal(binding.hasEventDateField, true);
 });
@@ -125,8 +125,8 @@ test("event date sidebar binding prefers event_date text targets over legacy cou
 test("event date sidebar binding keeps existing named text field when canonical field only targets countdown", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -137,8 +137,8 @@ test("event date sidebar binding keeps existing named text field when canonical 
       ],
     },
     {
-      key: "fecha_del_evento",
-      label: "Fecha del evento",
+      key: "fecha_de_la_ceremonia",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -153,27 +153,27 @@ test("event date sidebar binding keeps existing named text field when canonical 
   const binding = resolveEventDateSidebarBinding({
     fieldsSchema,
     defaults: {
-      event_date: "2026-12-13T21:00:00.000Z",
-      fecha_del_evento: "2027-01-05T21:00:00.000Z",
+      event_ceremony_date: "2026-12-13T21:00:00.000Z",
+      fecha_de_la_ceremonia: "2027-01-05T21:00:00.000Z",
     },
     countdownDetails: {
       hasBinding: true,
       field: fieldsSchema[0],
-      fieldKey: "event_date",
+      fieldKey: "event_ceremony_date",
       targetISO: "2026-12-13T21:00:00.000Z",
     },
   });
 
-  assert.equal(binding.fieldKey, "fecha_del_evento");
-  assert.equal(binding.field.key, "fecha_del_evento");
+  assert.equal(binding.fieldKey, "fecha_de_la_ceremonia");
+  assert.equal(binding.field.key, "fecha_de_la_ceremonia");
   assert.equal(binding.targetISO, "2027-01-05T21:00:00.000Z");
 });
 
 test("event date sidebar binding reads long visible text target when defaults are empty", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -197,15 +197,15 @@ test("event date sidebar binding reads long visible text target when defaults ar
     ],
   });
 
-  assert.equal(binding.fieldKey, "event_date");
+  assert.equal(binding.fieldKey, "event_ceremony_date");
   assert.equal(binding.targetISO, "2026-12-13");
 });
 
 test("event date sidebar binding uses a fresh payload before a stale bridge", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -234,17 +234,17 @@ test("event date sidebar binding uses a fresh payload before a stale bridge", ()
     ],
   });
 
-  assert.equal(staleBinding.fieldKey, "event_date");
+  assert.equal(staleBinding.fieldKey, "event_ceremony_date");
   assert.equal(staleBinding.targetISO, "");
-  assert.equal(freshBinding.fieldKey, "event_date");
+  assert.equal(freshBinding.fieldKey, "event_ceremony_date");
   assert.equal(freshBinding.targetISO, "2026-12-13");
 });
 
 test("event date sidebar binding reads short visible text target when defaults are empty", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -268,15 +268,15 @@ test("event date sidebar binding reads short visible text target when defaults a
     ],
   });
 
-  assert.equal(binding.fieldKey, "event_date");
+  assert.equal(binding.fieldKey, "event_ceremony_date");
   assert.equal(binding.targetISO, "2026-12-13");
 });
 
 test("event date sidebar binding reads dotted visible text target when defaults are empty", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -300,15 +300,15 @@ test("event date sidebar binding reads dotted visible text target when defaults 
     ],
   });
 
-  assert.equal(binding.fieldKey, "event_date");
+  assert.equal(binding.fieldKey, "event_ceremony_date");
   assert.equal(binding.targetISO, "2026-04-27");
 });
 
 test("event date sidebar binding reads pipe short year visible text target when defaults are empty", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -332,15 +332,15 @@ test("event date sidebar binding reads pipe short year visible text target when 
     ],
   });
 
-  assert.equal(binding.fieldKey, "event_date");
+  assert.equal(binding.fieldKey, "event_ceremony_date");
   assert.equal(binding.targetISO, "2027-08-26");
 });
 
 test("event date sidebar binding does not infer missing year from visible text", () => {
   const fieldsSchema = [
     {
-      key: "event_date",
-      label: "Fecha del evento",
+      key: "event_ceremony_date",
+      label: "Fecha de la ceremonia",
       type: "date",
       applyTargets: [
         {
@@ -355,7 +355,7 @@ test("event date sidebar binding does not infer missing year from visible text",
   const binding = resolveEventDateSidebarBinding({
     fieldsSchema,
     defaults: {
-      event_date: "2027-01-05",
+      event_ceremony_date: "2027-01-05",
     },
     objetos: [
       {
@@ -366,14 +366,14 @@ test("event date sidebar binding does not infer missing year from visible text",
     ],
   });
 
-  assert.equal(binding.fieldKey, "event_date");
+  assert.equal(binding.fieldKey, "event_ceremony_date");
   assert.equal(binding.targetISO, "2027-01-05");
 });
 
 test("event date target patches apply date-only values to visible text targets", () => {
   const field = {
-    key: "event_date",
-    label: "Fecha del evento",
+    key: "event_ceremony_date",
+    label: "Fecha de la ceremonia",
     type: "date",
     applyTargets: [
       {
@@ -412,8 +412,8 @@ test("event date target patches apply date-only values to visible text targets",
 
 test("event date target patches apply dotted date preset to visible text targets", () => {
   const field = {
-    key: "event_date",
-    label: "Fecha del evento",
+    key: "event_ceremony_date",
+    label: "Fecha de la ceremonia",
     type: "date",
     applyTargets: [
       {
@@ -452,8 +452,8 @@ test("event date target patches apply dotted date preset to visible text targets
 
 test("event date target patches apply pipe short year preset to visible text targets", () => {
   const field = {
-    key: "event_date",
-    label: "Fecha del evento",
+    key: "event_ceremony_date",
+    label: "Fecha de la ceremonia",
     type: "date",
     applyTargets: [
       {

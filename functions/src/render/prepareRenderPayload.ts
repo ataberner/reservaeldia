@@ -303,22 +303,32 @@ export async function prepareRenderPayload(
     objetos: initialGroupAwareState.objetos,
     rsvp: draftRenderState.rsvp,
     gifts: draftRenderState.gifts,
+    eventDetails: draftRenderState.eventDetails,
   });
   const functionalRenderState = applyFunctionalAssociationsToRenderState({
     objetos: initialGroupAwareState.objetos,
     secciones: initialGroupAwareState.secciones,
     rsvp: normalizedFunctionalConfigs.rsvp,
     gifts: normalizedFunctionalConfigs.gifts,
+    eventDetails: normalizedFunctionalConfigs.eventDetails,
     materializeOffsets: true,
   });
   const groupAwareState = prepareGroupAwareRenderState({
     objetos: functionalRenderState.objetos,
     secciones: functionalRenderState.secciones,
   });
+  const hasRawRsvpRoot =
+    draftRenderState.rsvp &&
+    typeof draftRenderState.rsvp === "object" &&
+    !Array.isArray(draftRenderState.rsvp);
+  const hasRawGiftsRoot =
+    draftRenderState.gifts &&
+    typeof draftRenderState.gifts === "object" &&
+    !Array.isArray(draftRenderState.gifts);
   const functionalCtaContract = resolveFunctionalCtaContract({
     objetos: groupAwareState.objetos,
-    rsvpConfig: normalizedFunctionalConfigs.rsvp,
-    giftsConfig: normalizedFunctionalConfigs.gifts,
+    rsvpConfig: hasRawRsvpRoot ? normalizedFunctionalConfigs.rsvp : null,
+    giftsConfig: hasRawGiftsRoot ? normalizedFunctionalConfigs.gifts : null,
   });
 
   return {

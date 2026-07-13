@@ -1,3 +1,5 @@
+import { normalizeEventDetailsConfig } from "../../../shared/eventDetailsConfig.js";
+
 export const DRAFT_SOURCE_OF_TRUTH_VERSION = 1;
 export const DRAFT_CANONICAL_SOURCE = "draft_render_state";
 // Regla de precedencia de datos:
@@ -41,6 +43,7 @@ export function normalizeDraftRenderState(rawDraft) {
     secciones: normalizeRenderArray(safeDraft.secciones),
     rsvp: normalizeRsvp(safeDraft.rsvp),
     gifts: normalizeGifts(safeDraft.gifts),
+    eventDetails: normalizeEventDetailsConfig(safeDraft.eventDetails),
   };
 }
 

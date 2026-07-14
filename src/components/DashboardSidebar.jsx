@@ -52,6 +52,7 @@ import {
     createDashboardSidebarPanelLayout,
     resolveEditorSidebarAutoOpenDraftKey,
 } from "@/domain/dashboard/editorCanvasLayout";
+import { shouldPreventMobileScrollChain } from "@/domain/dashboard/mobileScrollContainment";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
     readCanvasEditorMethod,
@@ -81,6 +82,7 @@ const MOBILE_PANEL_DEFAULT_HEIGHT_RATIO = 0.52;
 const MOBILE_PANEL_DEFAULT_MAX_HEIGHT_PX = 440;
 const MOBILE_PANEL_MAX_HEIGHT_RATIO = 0.72;
 const MOBILE_PANEL_TOP_GAP_PX = 12;
+const MOBILE_PANEL_SCROLL_GESTURE_TOLERANCE_PX = 4;
 const TABS_WITH_AUTO_CLOSE_ON_INSERT = new Set(["texto", "imagen", "gallery-builder", "contador", "efectos"]);
 const SIDEBAR_TOOL_TABS = Object.freeze([
     {
@@ -270,6 +272,47 @@ function readStoryTextAssistantStepState(targetWindow) {
     }).hasBinding === true;
 
     return { ready: true, hasBinding };
+}
+
+function isScrollableOverflowY(value) {
+    const normalized = String(value || "").toLowerCase();
+    return normalized === "auto" || normalized === "scroll" || normalized === "overlay";
+}
+
+function getElementFromEventTarget(target) {
+    if (!target) return null;
+    if (target.nodeType === 1) return target;
+    return target.parentElement || null;
+}
+
+function canScrollWithinBoundaryY(target, boundary, deltaY) {
+    if (!boundary || !target || typeof window === "undefined") return false;
+
+    let current = getElementFromEventTarget(target);
+    while (current && boundary.contains(current)) {
+        const style = window.getComputedStyle?.(current);
+        const overflowY = style?.overflowY || style?.overflow || "";
+        const canScrollY =
+            isScrollableOverflowY(overflowY) &&
+            Number(current.scrollHeight || 0) > Number(current.clientHeight || 0) + 1;
+
+        if (
+            canScrollY &&
+            !shouldPreventMobileScrollChain({
+                deltaY,
+                scrollTop: current.scrollTop,
+                scrollHeight: current.scrollHeight,
+                clientHeight: current.clientHeight,
+            })
+        ) {
+            return true;
+        }
+
+        if (current === boundary) break;
+        current = current.parentElement;
+    }
+
+    return false;
 }
 
 
@@ -900,6 +943,104 @@ export default function DashboardSidebar({
         if (!panelEl) return;
         panelEl.scrollTop = 0;
     }, [isMobileViewport, hoverSidebar, fijadoSidebar, botonActivo]);
+
+    useEffect(() => {
+        if (!isMobileViewport) return undefined;
+        if (!(hoverSidebar || fijadoSidebar)) return undefined;
+
+        const panelEl = panelRef.current;
+        if (!panelEl) return undefined;
+
+        const touchState = {
+            active: false,
+            startX: 0,
+            startY: 0,
+            lastY: 0,
+        };
+
+        const handleTouchStart = (event) => {
+            if (event.touches?.length !== 1) {
+                touchState.active = false;
+                return;
+            }
+
+            const touch = event.touches[0];
+            touchState.active = true;
+            touchState.startX = Number(touch.clientX) || 0;
+            touchState.startY = Number(touch.clientY) || 0;
+            touchState.lastY = touchState.startY;
+            event.stopPropagation();
+        };
+
+        const handleTouchMove = (event) => {
+            if (!touchState.active || event.touches?.length !== 1) return;
+
+            const touch = event.touches[0];
+            const currentX = Number(touch.clientX) || touchState.startX;
+            const currentY = Number(touch.clientY) || touchState.lastY;
+            const totalX = currentX - touchState.startX;
+            const totalY = currentY - touchState.startY;
+            const deltaY = touchState.lastY - currentY;
+            touchState.lastY = currentY;
+
+            event.stopPropagation();
+
+            const verticalGesture =
+                Math.abs(totalY) > MOBILE_PANEL_SCROLL_GESTURE_TOLERANCE_PX &&
+                Math.abs(totalY) > Math.abs(totalX);
+            if (!verticalGesture) return;
+
+            const canScrollInPanel = canScrollWithinBoundaryY(
+                event.target,
+                panelEl,
+                deltaY
+            );
+
+            if (!canScrollInPanel && event.cancelable) {
+                event.preventDefault();
+            }
+        };
+
+        const handleTouchEnd = () => {
+            touchState.active = false;
+        };
+
+        const handleWheel = (event) => {
+            if (event.ctrlKey || event.metaKey) return;
+
+            const deltaY = Number(event.deltaY) || 0;
+            const verticalWheel =
+                Math.abs(deltaY) > Math.abs(Number(event.deltaX) || 0) &&
+                Math.abs(deltaY) > 0;
+            if (!verticalWheel) return;
+
+            event.stopPropagation();
+
+            const canScrollInPanel = canScrollWithinBoundaryY(
+                event.target,
+                panelEl,
+                deltaY
+            );
+
+            if (!canScrollInPanel && event.cancelable) {
+                event.preventDefault();
+            }
+        };
+
+        panelEl.addEventListener("touchstart", handleTouchStart, { passive: true });
+        panelEl.addEventListener("touchmove", handleTouchMove, { passive: false });
+        panelEl.addEventListener("touchend", handleTouchEnd);
+        panelEl.addEventListener("touchcancel", handleTouchEnd);
+        panelEl.addEventListener("wheel", handleWheel, { passive: false });
+
+        return () => {
+            panelEl.removeEventListener("touchstart", handleTouchStart);
+            panelEl.removeEventListener("touchmove", handleTouchMove);
+            panelEl.removeEventListener("touchend", handleTouchEnd);
+            panelEl.removeEventListener("touchcancel", handleTouchEnd);
+            panelEl.removeEventListener("wheel", handleWheel);
+        };
+    }, [isMobileViewport, hoverSidebar, fijadoSidebar]);
 
     useEffect(() => {
         syncMobileScrollHint();

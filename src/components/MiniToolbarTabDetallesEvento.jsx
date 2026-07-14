@@ -1964,7 +1964,7 @@ export default function MiniToolbarTabDetallesEvento({
   const showEventLocationBlock =
     !simplifiedForAssistant || !assistantScope || assistantScope === "event-location";
   const detailsContainerClass = simplifiedForAssistant
-    ? "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-hidden px-0 pb-1 pr-0 text-left"
+    ? "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-1 pr-1 text-left md:overflow-hidden md:pr-0"
     : "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-4 pr-0 text-left";
 
   const renderEventDateSection = ({

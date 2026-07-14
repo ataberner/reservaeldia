@@ -54,11 +54,34 @@ test("assistant flow inserts story text after Evento only when available", () =>
   assert.equal(isAssistantTabId("texto", storyOptions), true);
 });
 
+test("assistant flow skips photos when there is no photo content", () => {
+  const noPhotoOptions = { includePhotos: false };
+  const noPhotoStoryOptions = { includeStoryText: true, includePhotos: false };
+
+  assert.deepEqual(getAssistantStepIds(noPhotoOptions), [
+    "detalles",
+    "rsvp",
+    "regalos",
+  ]);
+  assert.deepEqual(getAssistantStepIds(noPhotoStoryOptions), [
+    "detalles",
+    "texto",
+    "rsvp",
+    "regalos",
+  ]);
+
+  assert.equal(getAssistantStepIndexByTabId("imagen", noPhotoOptions), -1);
+  assert.equal(isAssistantTabId("imagen", noPhotoOptions), false);
+  assert.equal(getAssistantNavigationState(0, noPhotoOptions).nextStepIndex, 1);
+  assert.equal(getAssistantStep(1, noPhotoOptions).id, "rsvp");
+});
+
 test("assistant step index clamps to the flow boundaries", () => {
   assert.equal(clampAssistantStepIndex(-3), 0);
   assert.equal(clampAssistantStepIndex("2"), 2);
   assert.equal(clampAssistantStepIndex(99), 3);
   assert.equal(clampAssistantStepIndex(99, { includeStoryText: true }), 4);
+  assert.equal(clampAssistantStepIndex(99, { includePhotos: false }), 2);
   assert.equal(clampAssistantStepIndex(Number.NaN), 0);
 });
 
@@ -75,6 +98,7 @@ test("assistant navigation respects first and last step limits", () => {
 
   assert.equal(canGoToPreviousAssistantStep(4, { includeStoryText: true }), true);
   assert.equal(canGoToNextAssistantStep(4, { includeStoryText: true }), false);
+  assert.equal(canGoToNextAssistantStep(2, { includePhotos: false }), false);
 });
 
 test("assistant maps only the guided tabs to step indexes", () => {
@@ -119,6 +143,14 @@ test("assistant resume starts at Evento first and keeps current step after start
       includeStoryText: true,
     }),
     4
+  );
+  assert.equal(
+    resolveAssistantResumeStepIndex({
+      hasStarted: true,
+      currentStepIndex: 12,
+      includePhotos: false,
+    }),
+    2
   );
 });
 

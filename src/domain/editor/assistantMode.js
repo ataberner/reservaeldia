@@ -1,11 +1,15 @@
-const BASE_ASSISTANT_STEPS = Object.freeze([
-  Object.freeze({ id: "detalles", label: "Evento" }),
-  Object.freeze({ id: "imagen", label: "Fotos" }),
-  Object.freeze({ id: "rsvp", label: "Asistencia" }),
-  Object.freeze({ id: "regalos", label: "Regalos" }),
-]);
-
+const EVENT_ASSISTANT_STEP = Object.freeze({ id: "detalles", label: "Evento" });
+const PHOTOS_ASSISTANT_STEP = Object.freeze({ id: "imagen", label: "Fotos" });
 const STORY_TEXT_ASSISTANT_STEP = Object.freeze({ id: "texto", label: "Texto" });
+const RSVP_ASSISTANT_STEP = Object.freeze({ id: "rsvp", label: "Asistencia" });
+const GIFTS_ASSISTANT_STEP = Object.freeze({ id: "regalos", label: "Regalos" });
+
+const BASE_ASSISTANT_STEPS = Object.freeze([
+  EVENT_ASSISTANT_STEP,
+  PHOTOS_ASSISTANT_STEP,
+  RSVP_ASSISTANT_STEP,
+  GIFTS_ASSISTANT_STEP,
+]);
 
 export const EDITOR_ASSISTANT_STEPS = BASE_ASSISTANT_STEPS;
 
@@ -21,13 +25,26 @@ function shouldIncludeStoryTextStep(options = {}) {
   return options?.includeStoryText === true;
 }
 
+function shouldIncludePhotosStep(options = {}) {
+  return options?.includePhotos !== false;
+}
+
 export function getAssistantSteps(options = {}) {
-  if (!shouldIncludeStoryTextStep(options)) return EDITOR_ASSISTANT_STEPS;
-  return Object.freeze([
-    EDITOR_ASSISTANT_STEPS[0],
-    STORY_TEXT_ASSISTANT_STEP,
-    ...EDITOR_ASSISTANT_STEPS.slice(1),
-  ]);
+  const steps = [
+    EVENT_ASSISTANT_STEP,
+  ];
+
+  if (shouldIncludeStoryTextStep(options)) {
+    steps.push(STORY_TEXT_ASSISTANT_STEP);
+  }
+
+  if (shouldIncludePhotosStep(options)) {
+    steps.push(PHOTOS_ASSISTANT_STEP);
+  }
+
+  steps.push(RSVP_ASSISTANT_STEP, GIFTS_ASSISTANT_STEP);
+
+  return Object.freeze(steps);
 }
 
 export function getAssistantStepIds(options = {}) {
@@ -70,9 +87,10 @@ export function resolveAssistantResumeStepIndex({
   hasStarted = false,
   currentStepIndex = EDITOR_ASSISTANT_FIRST_STEP_INDEX,
   includeStoryText = false,
+  includePhotos = true,
 } = {}) {
   return hasStarted
-    ? clampAssistantStepIndex(currentStepIndex, { includeStoryText })
+    ? clampAssistantStepIndex(currentStepIndex, { includeStoryText, includePhotos })
     : EDITOR_ASSISTANT_FIRST_STEP_INDEX;
 }
 

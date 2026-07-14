@@ -61,6 +61,7 @@ import {
   getDressCodeFieldKey,
   resolveDressCodeSidebarBinding,
 } from "@/domain/templates/storyText";
+import activationStyles from "./MiniToolbarTabRegalos.module.css";
 
 const inputClass =
   "mt-2 block h-[38px] w-full max-w-[361px] box-border bg-white px-3 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none placeholder:text-[#9b9b9b] [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
@@ -869,8 +870,8 @@ export default function MiniToolbarTabDetallesEvento({
     [dressCodeFieldKey, eventDetailsConfig]
   );
 
-  const handleDressCodeEnabledChange = (event) => {
-    updateDressCodeConfig({ enabled: event.target.checked });
+  const handleDressCodeEnabledToggle = () => {
+    updateDressCodeConfig({ enabled: !isDressCodeEnabled });
   };
 
   const handleDressCodeValueChange = (event) => {
@@ -1963,6 +1964,19 @@ export default function MiniToolbarTabDetallesEvento({
     !simplifiedForAssistant || !assistantScope || assistantScope === "event-date";
   const showEventLocationBlock =
     !simplifiedForAssistant || !assistantScope || assistantScope === "event-location";
+  const showEventConfigBlock = showEventDateBlock || showEventLocationBlock;
+  const showEventModeBlock = simplifiedForAssistant
+    ? showEventDateBlock
+    : showEventConfigBlock;
+  const showDressCodeBlock = !simplifiedForAssistant || showEventLocationBlock;
+  const ceremonyDateTitle =
+    simplifiedForAssistant && !isCeremonyPartyMode
+      ? "Dia y hora del evento"
+      : `Dia y hora de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.CEREMONY).toLowerCase()}`;
+  const ceremonyLocationTitle =
+    simplifiedForAssistant && !isCeremonyPartyMode
+      ? "Ubicacion del evento"
+      : `Ubicacion de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.CEREMONY).toLowerCase()}`;
   const detailsContainerClass = simplifiedForAssistant
     ? "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-1 pr-1 text-left md:overflow-hidden md:pr-0"
     : "flex flex-1 min-h-0 w-full max-w-full flex-col items-center gap-0 overflow-y-auto overflow-x-hidden px-0 pb-4 pr-0 text-left";
@@ -2265,7 +2279,7 @@ export default function MiniToolbarTabDetallesEvento({
 
       {showEventNamesBlock && showEventDateBlock && <div className={dividerClass} />}
 
-      {!simplifiedForAssistant && (showEventDateBlock || showEventLocationBlock) && (
+      {showEventModeBlock && (
         <section className={`${sectionClass} pt-4`}>
           <label className={labelClass} htmlFor="event-details-mode">
             Modalidad del evento
@@ -2282,21 +2296,28 @@ export default function MiniToolbarTabDetallesEvento({
         </section>
       )}
 
-      {!simplifiedForAssistant && (
+      {showDressCodeBlock && (
         <section className={`${sectionClass} pt-4`}>
-          <label className={labelClass} htmlFor="event-dress-code-enabled">
-            Dress Code
-          </label>
-          <label className="mt-3 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-            <input
+          <div className={activationStyles.activationHeader}>
+            <h3 className={activationStyles.activationTitle}>Dress Code</h3>
+            <button
               id="event-dress-code-enabled"
-              type="checkbox"
-              checked={isDressCodeEnabled}
-              onChange={handleDressCodeEnabledChange}
-              className={checkboxClass}
-            />
-            Mostrar Dress Code
-          </label>
+              type="button"
+              role="switch"
+              aria-checked={isDressCodeEnabled}
+              aria-label={
+                isDressCodeEnabled
+                  ? "Ocultar Dress Code"
+                  : "Mostrar Dress Code"
+              }
+              onClick={handleDressCodeEnabledToggle}
+              className={`${activationStyles.activationSwitch} ${
+                isDressCodeEnabled ? activationStyles.activationSwitchOn : ""
+              }`}
+            >
+              <span className={activationStyles.activationSwitchThumb} aria-hidden="true" />
+            </button>
+          </div>
           {isDressCodeEnabled ? (
             <div className="mt-3">
               <label className={subLabelClass} htmlFor="event-dress-code-value">
@@ -2316,14 +2337,14 @@ export default function MiniToolbarTabDetallesEvento({
         </section>
       )}
 
-      {!simplifiedForAssistant && (showEventDateBlock || showEventLocationBlock) && (
+      {(showEventModeBlock || showDressCodeBlock) && showEventConfigBlock && (
         <div className={dividerClass} />
       )}
 
       {showEventDateBlock &&
         renderEventDateSection({
           feature: EVENT_DETAIL_FEATURES.CEREMONY,
-          title: `Dia y hora de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.CEREMONY).toLowerCase()}`,
+          title: ceremonyDateTitle,
           dateInputId: "event-ceremony-date",
           startInputId: "event-ceremony-start-time",
           endInputId: "event-ceremony-end-time",
@@ -2359,7 +2380,7 @@ export default function MiniToolbarTabDetallesEvento({
       {showEventLocationBlock &&
         renderEventLocationSection({
           feature: EVENT_DETAIL_FEATURES.CEREMONY,
-          title: `Ubicacion de ${getEventDetailFeatureLabel(EVENT_DETAIL_FEATURES.CEREMONY).toLowerCase()}`,
+          title: ceremonyLocationTitle,
           placeInputId: "event-ceremony-place",
           addressInputId: "event-ceremony-address",
           addressFormatInputId: "event-ceremony-address-text-format",

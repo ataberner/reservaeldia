@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   clampAssistantSubstepIndex,
+  getAssistantLinearProgressLabel,
   getAssistantSubstep,
   getAssistantSubstepProgressLabel,
   getAssistantSubstepSignature,
+  hasAssistantPhotoStepContent,
   resolveAssistantSubstepsForStep,
 } from "./assistantSubsteps.js";
 
@@ -32,6 +34,7 @@ test("assistant photo step splits cover and existing galleries into semantic sub
 
   const substeps = resolveAssistantSubstepsForStep("imagen", { objects, sections });
 
+  assert.equal(hasAssistantPhotoStepContent({ objects, sections }), true);
   assert.deepEqual(
     substeps.map(({ id, label, scope, galleryId }) => ({
       id,
@@ -62,14 +65,9 @@ test("assistant photo step splits cover and existing galleries into semantic sub
   );
 });
 
-test("assistant photo step exposes an empty state when there is no cover or gallery", () => {
-  assert.deepEqual(resolveAssistantSubstepsForStep("imagen", {}), [
-    {
-      id: "photos-empty",
-      label: "Fotos",
-      scope: "empty",
-    },
-  ]);
+test("assistant photo step has no substeps when there is no cover or gallery", () => {
+  assert.deepEqual(resolveAssistantSubstepsForStep("imagen", {}), []);
+  assert.equal(hasAssistantPhotoStepContent({}), false);
 });
 
 test("assistant substep helpers clamp indices and expose progress only for split steps", () => {
@@ -91,6 +89,35 @@ test("assistant substep helpers clamp indices and expose progress only for split
   assert.equal(
     getAssistantSubstepSignature(substeps),
     "event-names|event-date|event-location"
+  );
+});
+
+test("assistant linear progress helper counts steps and substeps", () => {
+  const counts = [3, 2, 1, 1];
+
+  assert.equal(
+    getAssistantLinearProgressLabel({
+      stepSubstepCounts: counts,
+      currentStepIndex: 0,
+      currentSubstepIndex: 0,
+    }),
+    "1/7"
+  );
+  assert.equal(
+    getAssistantLinearProgressLabel({
+      stepSubstepCounts: counts,
+      currentStepIndex: 0,
+      currentSubstepIndex: 2,
+    }),
+    "3/7"
+  );
+  assert.equal(
+    getAssistantLinearProgressLabel({
+      stepSubstepCounts: counts,
+      currentStepIndex: 3,
+      currentSubstepIndex: 0,
+    }),
+    "7/7"
   );
 });
 

@@ -514,8 +514,6 @@ export default function MiniToolbarTabImagen({
     (!simplifiedForAssistant || !assistantScope || assistantScope === "cover");
   const shouldRenderGalleryBlock =
     !simplifiedForAssistant || !assistantScope || assistantScope === "gallery";
-  const shouldRenderEmptyAssistantPhotos =
-    simplifiedForAssistant && assistantScope === "empty";
 
   const setPanelNoticeSafe = useCallback((message) => {
     if (!isMountedRef.current) return;
@@ -1687,21 +1685,6 @@ export default function MiniToolbarTabImagen({
               )}
             </span>
           </button>
-        </section>
-      )}
-
-      {shouldRenderEmptyAssistantPhotos && (
-        <section
-          className={`shrink-0 border border-dashed border-zinc-200 bg-zinc-50 text-zinc-600 ${
-            isMobileViewport ? "rounded-lg px-2.5 py-3" : "rounded-xl px-3 py-3"
-          }`}
-        >
-          <div className="text-[13px] font-semibold leading-[18px] text-zinc-700">
-            Fotos
-          </div>
-          <p className="mt-1 text-xs leading-relaxed">
-            Este borrador no tiene una portada con imagen ni galerias para administrar.
-          </p>
         </section>
       )}
 

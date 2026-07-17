@@ -963,6 +963,17 @@ test("renders section mobile layout mode preserve as a smart reflow opt-out", ()
   assert.match(preserveHtml, /skip:mobileLayoutPreserve/);
 });
 
+test("preview mobile scroll runtime avoids synthetic double-scroll", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+
+  assert.match(html, /window\.addEventListener\("preview:mobile-scroll:enable", boot\)/);
+  assert.match(html, /if \(!nativeEvent\.cancelable\) return false;/);
+  assert.match(html, /var rootDeltaAlreadyApplied = Math\.max\(0, rootTop - lastKnownRootScrollTop\);/);
+  assert.match(html, /var bodyTopToTransfer = Math\.max\(0, bodyTop - rootDeltaAlreadyApplied\);/);
+});
+
 test("keeps grouped text plus icon compositions nested under one authored object id", () => {
   const html = generarHTMLDesdeObjetos(
     [createPreservedTextIconGroup()],

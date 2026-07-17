@@ -87,9 +87,10 @@ Gallery preview/publish viewer behavior is governed by [`GALLERY_VIEWER_RENDER_C
 
 `ModalVistaPrevia` renders the generated HTML into iframe `srcDoc` views:
 
-- desktop logical viewport: `1280 x 820`
-- mobile logical viewport: `390 x 844`
-- fullscreen preview: one full-window iframe using the current viewport kind
+- desktop dashboard viewport: embedded desktop and mobile frames, with logical viewports `1280 x 820` and `390 x 844`
+- mobile dashboard viewport: a single embedded active frame that opens on the mobile logical viewport `390 x 844`
+- mobile dashboard viewport can temporarily switch the active embedded frame to the desktop logical viewport `1280 x 820` through the modal viewport control
+- fullscreen preview: one full-window iframe using the active viewport kind
 
 The modal does not request separate HTML for desktop and mobile. It uses the same HTML and changes the iframe viewport, wrapper scale, and preview metadata.
 
@@ -142,6 +143,8 @@ Constraints:
 - scroll must work inside mobile preview
 - the preview shell must not distort invitation layout to make scroll work
 - body-level scroll leakage should be redirected to the root
+- synthetic wheel redirection must run only for cancelable wheel events, so native scroll is not doubled
+- body scroll leakage must not be added again when the document root already consumed the same gesture
 - hiding scrollbar chrome is allowed; disabling scroll is not
 
 ## 8. Mobile Height Model

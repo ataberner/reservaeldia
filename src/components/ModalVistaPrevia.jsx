@@ -3,17 +3,21 @@ import {
   ExternalLink,
   Link2,
   Maximize2,
+  Monitor,
   RefreshCw,
+  Smartphone,
   X,
 } from "lucide-react";
 import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
 import { buildPreviewPublishNoticePresentation } from "@/domain/dashboard/previewValidationPresentation";
 import {
   computeModalVistaPreviaLayout,
+  computeModalVistaPreviaSingleViewportLayout,
   DESKTOP_VIEWPORT_HEIGHT,
   DESKTOP_VIEWPORT_WIDTH,
   MOBILE_VIEWPORT_HEIGHT,
   MOBILE_VIEWPORT_WIDTH,
+  PREVIEW_MODAL_VIEWPORTS,
 } from "@/components/preview/modalVistaPreviaLayout";
 import {
   applyPreviewFrameScale,
@@ -27,6 +31,19 @@ const SECONDARY_TOOLBAR_BUTTON_CLASS =
 
 const ICON_TOOLBAR_BUTTON_CLASS =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd2f5] bg-white/92 text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
+
+const MOBILE_VIEWPORT_TOGGLE_OPTIONS = [
+  {
+    value: PREVIEW_MODAL_VIEWPORTS.MOBILE,
+    label: "Movil",
+    Icon: Smartphone,
+  },
+  {
+    value: PREVIEW_MODAL_VIEWPORTS.DESKTOP,
+    label: "Desktop",
+    Icon: Monitor,
+  },
+];
 
 function PreviewFrame({
   htmlContent,
@@ -129,6 +146,38 @@ function PreviewLinkChip({
         </span>
       ) : null}
     </Component>
+  );
+}
+
+function MobileViewportToggle({ value, onChange }) {
+  return (
+    <div
+      className="inline-flex shrink-0 items-center rounded-full border border-[#e1d5f4] bg-white/84 p-0.5 shadow-[0_8px_20px_rgba(15,23,42,0.05)]"
+      aria-label="Cambiar viewport de vista previa"
+      role="group"
+    >
+      {MOBILE_VIEWPORT_TOGGLE_OPTIONS.map(({ value: optionValue, label, Icon }) => {
+        const selected = value === optionValue;
+
+        return (
+          <button
+            key={optionValue}
+            type="button"
+            onClick={() => onChange?.(optionValue)}
+            aria-pressed={selected}
+            aria-label={`Mostrar vista ${label.toLowerCase()}`}
+            className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-2.5 text-[12px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8] ${
+              selected
+                ? "bg-[#6f3bc0] text-white shadow-[0_8px_16px_rgba(111,59,192,0.22)]"
+                : "bg-transparent text-[#6f3bc0] hover:bg-[#f4ecff]"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            <span>{label}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -262,9 +311,16 @@ export default function ModalVistaPrevia({
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const [fullscreenIframeKey, setFullscreenIframeKey] = useState(0);
   const [noticePosition, setNoticePosition] = useState(null);
-  const [windowHeight, setWindowHeight] = useState(820);
-  const [windowWidth, setWindowWidth] = useState(0);
+  const [windowHeight, setWindowHeight] = useState(() =>
+    typeof window === "undefined" ? 820 : window.innerHeight || 820
+  );
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window === "undefined" ? 0 : window.innerWidth || 0
+  );
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [mobilePreviewViewport, setMobilePreviewViewport] = useState(
+    PREVIEW_MODAL_VIEWPORTS.MOBILE
+  );
   const modalPanelRef = useRef(null);
   const publishActionsRef = useRef(null);
   const stageRef = useRef(null);
@@ -274,12 +330,29 @@ export default function ModalVistaPrevia({
   const confirmedPublicUrl = String(publishedUrl || publicUrl || "").trim();
   const yaPublicada = Boolean(confirmedPublicUrl);
   const isMobileViewport = windowWidth > 0 ? windowWidth < 768 : false;
-  const fullscreenViewport = isMobileViewport ? "mobile" : "desktop";
+  const activePreviewViewport = isMobileViewport
+    ? mobilePreviewViewport
+    : PREVIEW_MODAL_VIEWPORTS.DESKTOP;
+  const fullscreenViewport = activePreviewViewport;
   const layout = computeModalVistaPreviaLayout({
     stageWidth: stageSize.width,
     stageHeight: stageSize.height,
     fallbackWidth: Math.max(windowWidth - 32, 320),
     fallbackHeight: Math.max(windowHeight - 180, 380),
+  });
+  const mobileFocusedLayout = computeModalVistaPreviaSingleViewportLayout({
+    stageWidth: stageSize.width,
+    stageHeight: stageSize.height,
+    fallbackWidth: Math.max(windowWidth - 32, 320),
+    fallbackHeight: Math.max(windowHeight - 180, 380),
+    viewport: PREVIEW_MODAL_VIEWPORTS.MOBILE,
+  });
+  const desktopFocusedLayout = computeModalVistaPreviaSingleViewportLayout({
+    stageWidth: stageSize.width,
+    stageHeight: stageSize.height,
+    fallbackWidth: Math.max(windowWidth - 32, 320),
+    fallbackHeight: Math.max(windowHeight - 180, 380),
+    viewport: PREVIEW_MODAL_VIEWPORTS.DESKTOP,
   });
   const toolbarInline = layout.toolbarMode === "inline";
   const desktopVariant =
@@ -310,7 +383,13 @@ export default function ModalVistaPrevia({
   useEffect(() => {
     if (visible) return;
     setFullscreenPreview(false);
+    setMobilePreviewViewport(PREVIEW_MODAL_VIEWPORTS.MOBILE);
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !isMobileViewport) return;
+    setMobilePreviewViewport(PREVIEW_MODAL_VIEWPORTS.MOBILE);
+  }, [visible, isMobileViewport]);
 
   useEffect(() => {
     if (!fullscreenPreview) return;
@@ -529,6 +608,46 @@ export default function ModalVistaPrevia({
     />
   );
 
+  const mobileFocusedPreview = (
+    <MobilePreviewShell
+      cardWidth={mobileFocusedLayout.cardWidth}
+      cardHeight={mobileFocusedLayout.cardHeight}
+      frameWidth={mobileFocusedLayout.frame.scaledWidth}
+      frameHeight={mobileFocusedLayout.frame.scaledHeight}
+      htmlContent={htmlContent}
+      iframeKey={`mobile-focused-${iframeKey}`}
+      scale={mobileFocusedLayout.frame.scale}
+      previewLayoutMode={previewLayoutMode}
+      variant="showcase"
+      onLoad={handleMobileLoad}
+    />
+  );
+
+  const desktopFocusedPreview = (
+    <DesktopPreviewShell
+      cardWidth={desktopFocusedLayout.cardWidth}
+      cardHeight={desktopFocusedLayout.cardHeight}
+      frameWidth={desktopFocusedLayout.frame.scaledWidth}
+      frameHeight={desktopFocusedLayout.frame.scaledHeight}
+      htmlContent={htmlContent}
+      iframeKey={`desktop-focused-${iframeKey}`}
+      scale={desktopFocusedLayout.frame.scale}
+      previewLayoutMode={previewLayoutMode}
+      variant="stacked"
+      showFrameLabel
+      onLoad={handleDesktopLoad}
+    />
+  );
+
+  const activeMobileModalPreview =
+    mobilePreviewViewport === PREVIEW_MODAL_VIEWPORTS.DESKTOP
+      ? desktopFocusedPreview
+      : mobileFocusedPreview;
+  const activeMobileModalLayout =
+    mobilePreviewViewport === PREVIEW_MODAL_VIEWPORTS.DESKTOP
+      ? desktopFocusedLayout
+      : mobileFocusedLayout;
+
   if (!visible) return null;
   if (fullscreenPreview) {
     return (
@@ -552,7 +671,7 @@ export default function ModalVistaPrevia({
             })}
             sandbox="allow-scripts allow-same-origin"
             title={
-              isMobileViewport
+              fullscreenViewport === PREVIEW_MODAL_VIEWPORTS.MOBILE
                 ? "Vista previa movil en pantalla completa"
                 : "Vista previa escritorio en pantalla completa"
             }
@@ -655,6 +774,13 @@ export default function ModalVistaPrevia({
                       </button>
                     ) : null}
 
+                    {isMobileViewport ? (
+                      <MobileViewportToggle
+                        value={mobilePreviewViewport}
+                        onChange={setMobilePreviewViewport}
+                      />
+                    ) : null}
+
                     <button
                       type="button"
                       onClick={abrirPantallaCompleta}
@@ -665,7 +791,11 @@ export default function ModalVistaPrevia({
                           : "cursor-not-allowed border-[#ece4fb] bg-[#fbf9ff] text-[#ab93d2] shadow-none hover:bg-[#fbf9ff]"
                       }`}
                       aria-label="Abrir vista previa en pantalla completa"
-                      title={`Abrir vista previa en pantalla completa (${isMobileViewport ? "movil" : "escritorio"})`}
+                      title={`Abrir vista previa en pantalla completa (${
+                        activePreviewViewport === PREVIEW_MODAL_VIEWPORTS.MOBILE
+                          ? "movil"
+                          : "escritorio"
+                      })`}
                     >
                       <Maximize2 className="h-4 w-4" />
                       <span>Pantalla completa</span>
@@ -709,6 +839,13 @@ export default function ModalVistaPrevia({
                     ) : null}
 
                     <div className="flex items-center justify-end gap-2">
+                      {isMobileViewport ? (
+                        <MobileViewportToggle
+                          value={mobilePreviewViewport}
+                          onChange={setMobilePreviewViewport}
+                        />
+                      ) : null}
+
                       <button
                         type="button"
                         onClick={abrirPantallaCompleta}
@@ -719,7 +856,11 @@ export default function ModalVistaPrevia({
                             : "cursor-not-allowed border-[#ece4fb] bg-[#fbf9ff] text-[#ab93d2] shadow-none hover:bg-[#fbf9ff]"
                         }`}
                         aria-label="Abrir vista previa en pantalla completa"
-                        title={`Abrir vista previa en pantalla completa (${isMobileViewport ? "movil" : "escritorio"})`}
+                        title={`Abrir vista previa en pantalla completa (${
+                          activePreviewViewport === PREVIEW_MODAL_VIEWPORTS.MOBILE
+                            ? "movil"
+                            : "escritorio"
+                        })`}
                       >
                         <Maximize2 className="h-4 w-4" />
                         {!layout.isCompactToolbar ? (
@@ -754,7 +895,18 @@ export default function ModalVistaPrevia({
             <div className="absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.9)_0%,rgba(251,247,255,0.72)_46%,rgba(244,248,255,0.78)_100%)]" />
             <div className="absolute inset-x-[12%] bottom-[6%] h-[32%] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.7),rgba(255,255,255,0)_72%)] blur-3xl" />
 
-            {layout.mode === "showcase-overlap" ? (
+            {isMobileViewport ? (
+              <div
+                className="relative flex h-full min-h-0 items-center justify-center"
+                style={{
+                  padding: `${activeMobileModalLayout.stagePaddingY}px ${activeMobileModalLayout.stagePaddingX}px`,
+                }}
+              >
+                <div className="flex h-full min-h-0 w-full items-center justify-center">
+                  {activeMobileModalPreview}
+                </div>
+              </div>
+            ) : layout.mode === "showcase-overlap" ? (
               <div
                 className="relative flex h-full items-center justify-center"
                 style={{

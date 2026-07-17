@@ -1,8 +1,13 @@
 import '../../styles/globals.css';
 import '../../styles/styles.css';
 import Head from 'next/head';
+import { GoogleAnalytics } from '@next/third-parties/google';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import {
+  googleAnalyticsMeasurementId,
+  isGoogleAnalyticsEnabled,
+} from '@/config/googleAnalytics';
 import { initializeCountdownAuditRuntime } from "@/domain/countdownAudit/runtime";
 
 const VIEWPORT_CONTENT = 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover';
@@ -106,6 +111,9 @@ export default function MyApp({ Component, pageProps }) {
         <link rel="dns-prefetch" href="//reservaeldia.com.ar" />
       </Head>
       <Component {...pageProps} />
+      {isGoogleAnalyticsEnabled && (
+        <GoogleAnalytics gaId={googleAnalyticsMeasurementId} />
+      )}
     </>
   );
 }

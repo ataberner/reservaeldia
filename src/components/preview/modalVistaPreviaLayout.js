@@ -2,6 +2,10 @@ export const MOBILE_VIEWPORT_WIDTH = 390;
 export const MOBILE_VIEWPORT_HEIGHT = 844;
 export const DESKTOP_VIEWPORT_WIDTH = 1280;
 export const DESKTOP_VIEWPORT_HEIGHT = 820;
+export const PREVIEW_MODAL_VIEWPORTS = Object.freeze({
+  DESKTOP: "desktop",
+  MOBILE: "mobile",
+});
 
 const SHOWCASE_MIN_STAGE_WIDTH = 1400;
 const DUAL_COLUMN_MIN_STAGE_WIDTH = 980;
@@ -232,5 +236,53 @@ export function computeModalVistaPreviaLayout({
     safeStageWidth,
     safeStageHeight,
     isCompactToolbar: baseLayout.toolbarMode !== "inline",
+  };
+}
+
+export function computeModalVistaPreviaSingleViewportLayout({
+  stageWidth,
+  stageHeight,
+  fallbackWidth = 320,
+  fallbackHeight = 320,
+  viewport = PREVIEW_MODAL_VIEWPORTS.MOBILE,
+} = {}) {
+  const safeStageWidth = Math.max(
+    320,
+    Number(stageWidth) || Number(fallbackWidth) || 0
+  );
+  const safeStageHeight = Math.max(
+    320,
+    Number(stageHeight) || Number(fallbackHeight) || 0
+  );
+  const normalizedViewport =
+    viewport === PREVIEW_MODAL_VIEWPORTS.DESKTOP
+      ? PREVIEW_MODAL_VIEWPORTS.DESKTOP
+      : PREVIEW_MODAL_VIEWPORTS.MOBILE;
+  const isDesktop = normalizedViewport === PREVIEW_MODAL_VIEWPORTS.DESKTOP;
+  const stagePaddingX = safeStageWidth >= 420 ? 12 : 8;
+  const stagePaddingY = safeStageHeight >= 640 ? 14 : 10;
+  const availableWidth = Math.max(220, safeStageWidth - stagePaddingX * 2);
+  const availableHeight = Math.max(260, safeStageHeight - stagePaddingY * 2);
+  const chromeX = isDesktop ? DESKTOP_CARD_CHROME_X : MOBILE_CARD_CHROME_X;
+  const chromeY = isDesktop ? DESKTOP_CARD_CHROME_Y : MOBILE_CARD_CHROME_Y;
+  const frame = buildScaledFrameMetrics({
+    viewportWidth: isDesktop ? DESKTOP_VIEWPORT_WIDTH : MOBILE_VIEWPORT_WIDTH,
+    viewportHeight: isDesktop ? DESKTOP_VIEWPORT_HEIGHT : MOBILE_VIEWPORT_HEIGHT,
+    widthBudget: availableWidth - chromeX,
+    heightBudget: availableHeight - chromeY,
+    minScale: isDesktop ? 0.18 : 0.32,
+  });
+
+  return {
+    mode: "single-viewport",
+    viewport: normalizedViewport,
+    toolbarMode: "stacked",
+    stagePaddingX,
+    stagePaddingY,
+    frame,
+    cardWidth: frame.scaledWidth + chromeX,
+    cardHeight: frame.scaledHeight + chromeY,
+    safeStageWidth,
+    safeStageHeight,
   };
 }

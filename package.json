@@ -28,6 +28,7 @@
       "deploy:hosting": "npm run build && firebase deploy --only hosting"
    },
    "dependencies": {
+      "@next/third-parties": "^15.3.2",
       "@types/uuid": "^10.0.0",
       "browser-image-compression": "^2.0.2",
       "firebase": "^11.7.3",

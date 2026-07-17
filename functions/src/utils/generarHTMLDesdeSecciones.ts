@@ -1456,6 +1456,8 @@ export function generarHTMLDesdeSecciones(
 
   var started = false;
   var normalizingScrollRoot = false;
+  var rootScrollRememberRaf = 0;
+  var lastKnownRootScrollTop = 0;
 
   function shouldStart(){
     return isPreviewDocument() && detectEmbeddedContext() && getPreviewViewportKind() === "mobile";
@@ -1515,7 +1517,21 @@ export function generarHTMLDesdeSecciones(
     if (body && body !== scrollingElement) {
       body.scrollTop = 0;
     }
+    lastKnownRootScrollTop = targetTop;
     return targetTop;
+  }
+
+  function rememberRootScrollTopSoon(){
+    if (rootScrollRememberRaf) return;
+    var raf = window.requestAnimationFrame || function(cb){
+      return window.setTimeout(cb, 16);
+    };
+    rootScrollRememberRaf = raf(function(){
+      rootScrollRememberRaf = 0;
+      if (!normalizingScrollRoot) {
+        lastKnownRootScrollTop = getRootScrollTop();
+      }
+    });
   }
 
   function normalizeWheelDelta(delta, deltaMode){
@@ -1578,6 +1594,7 @@ export function generarHTMLDesdeSecciones(
   function redirectWheelToRoot(nativeEvent){
     if (!shouldStart() || !nativeEvent || nativeEvent.defaultPrevented) return false;
     if (nativeEvent.ctrlKey || nativeEvent.metaKey) return false;
+    if (!nativeEvent.cancelable) return false;
 
     var deltaY = normalizeWheelDelta(nativeEvent.deltaY, nativeEvent.deltaMode);
     var deltaX = normalizeWheelDelta(nativeEvent.deltaX, nativeEvent.deltaMode);
@@ -1608,10 +1625,15 @@ export function generarHTMLDesdeSecciones(
     if (body === scrollingElement || body === docEl) return false;
 
     var bodyTop = toPositiveNumber(body.scrollTop);
-    if (bodyTop <= 0.5) return false;
+    if (bodyTop <= 0.5) {
+      rememberRootScrollTopSoon();
+      return false;
+    }
 
     var rootTop = getRootScrollTop();
-    var targetTop = Math.max(rootTop, rootTop + bodyTop);
+    var rootDeltaAlreadyApplied = Math.max(0, rootTop - lastKnownRootScrollTop);
+    var bodyTopToTransfer = Math.max(0, bodyTop - rootDeltaAlreadyApplied);
+    var targetTop = Math.max(rootTop, rootTop + bodyTopToTransfer);
 
     normalizingScrollRoot = true;
     try {
@@ -1623,6 +1645,7 @@ export function generarHTMLDesdeSecciones(
       }
       docEl.scrollTop = targetTop;
       body.scrollTop = 0;
+      lastKnownRootScrollTop = targetTop;
     } catch(_error) {
       normalizingScrollRoot = false;
       return false;
@@ -1640,6 +1663,7 @@ export function generarHTMLDesdeSecciones(
   function boot(){
     if (started || !shouldStart()) return;
     started = true;
+    lastKnownRootScrollTop = getRootScrollTop();
 
     document.addEventListener("wheel", function(nativeEvent){
       redirectWheelToRoot(nativeEvent);

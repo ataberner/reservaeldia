@@ -106,7 +106,7 @@ Supported selected-Gallery operations:
 
 **Current:** Inserted Galleries use only shared known presets. Their `allowedLayouts` contains the grid-size preset ids exposed by the normal Fotos-tab matrix (`grid_1x1` through `grid_4x3`), and `defaultLayout` / `currentLayout` are set to the chosen preset.
 
-**Current:** The newly inserted Gallery becomes the active sidebar target immediately and is selected by the existing canvas insertion flow. Uploading or choosing an available image can add it to the first empty visible cell of that active Gallery.
+**Current:** The newly inserted Gallery becomes the active sidebar target immediately and is selected by the existing canvas insertion flow. Uploading or choosing an available image assigns it to a Gallery only when a concrete Gallery cell/position is validly selected; otherwise the image is inserted as a normal `tipo: "imagen"` canvas object through the existing insertion flow.
 
 **Current:** The creation flow must not add a new persistence model, new object type, direct `window.*` mutation API, or separate preview/publish path.
 

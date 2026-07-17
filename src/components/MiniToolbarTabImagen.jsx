@@ -20,9 +20,9 @@ import {
   getSelectedGalleryPhotoUsages,
   resolveAvailableImageGalleryAction,
   resolveGallerySidebarEditingTarget,
+  resolveValidGalleryCellSelection,
 } from "@/domain/gallery/sidebarModel";
 import {
-  addGalleryPhotos,
   configureGalleryLayout,
   getGallerySlots,
   moveGalleryPhotoToSlot,
@@ -802,16 +802,20 @@ export default function MiniToolbarTabImagen({
     return rows * cols;
   }, [galeriaSeleccionada?.cells, galeriaSeleccionada?.cols, galeriaSeleccionada?.galleryLayoutMode, galeriaSeleccionada?.rows]);
 
+  const activeGalleryCellSelection = useMemo(
+    () =>
+      resolveValidGalleryCellSelection({
+        objects: editorObjects,
+        galleryCell: editorSelection.galleryCell,
+      }),
+    [editorObjects, editorSelection.galleryCell]
+  );
+
   const celdaActiva = useMemo(() => {
-    const cell = editorSelection.galleryCell;
-    if (!cell || !galeriaSeleccionada) return null;
-    if (cell.objId !== galeriaSeleccionada.id) return null;
-
-    const idx = Number(cell.index);
-    if (!Number.isFinite(idx) || idx < 0 || idx >= totalCeldasGaleria) return null;
-
-    return { ...cell, index: idx };
-  }, [editorSelection.galleryCell, galeriaSeleccionada, totalCeldasGaleria]);
+    if (!activeGalleryCellSelection || !galeriaSeleccionada) return null;
+    if (activeGalleryCellSelection.gallery.id !== galeriaSeleccionada.id) return null;
+    return activeGalleryCellSelection.cell;
+  }, [activeGalleryCellSelection, galeriaSeleccionada]);
 
   useEffect(() => {
     setPanelNotice("");
@@ -918,24 +922,6 @@ export default function MiniToolbarTabImagen({
 
     return galeriaSeleccionada?.id === safeGalleryId ? galeriaSeleccionada : null;
   }, [galeriaSeleccionada]);
-
-  const addUploadedImageToActiveGallery = useCallback((galleryId, uploadedUrl) => {
-    const targetGallery = resolveLatestGalleryById(galleryId);
-    if (!targetGallery) {
-      setPanelNoticeSafe("Selecciona una galeria para usar la imagen.");
-      return false;
-    }
-    if (typeof uploadedUrl !== "string" || !uploadedUrl) {
-      setPanelNoticeSafe("No se encontro una imagen valida para aplicar.");
-      return false;
-    }
-
-    return commitGalleryMutation(
-      addGalleryPhotos(targetGallery, uploadedUrl),
-      "Foto agregada a esta galeria.",
-      targetGallery
-    );
-  }, [commitGalleryMutation, resolveLatestGalleryById, setPanelNoticeSafe]);
 
   const replaceGalleryPhotoTargetWithUpload = useCallback((galleryId, target, uploadedUrl) => {
     const targetGallery = resolveLatestGalleryById(galleryId);
@@ -1421,6 +1407,47 @@ export default function MiniToolbarTabImagen({
     return true;
   }, [seccionActivaId, setMostrarGaleria]);
 
+  const resolveCurrentValidGalleryCellSelection = useCallback(() => {
+    const selectionSnapshot = readEditorSelectionSnapshot();
+    return resolveValidGalleryCellSelection({
+      objects: readEditorObjects(),
+      galleryCell: selectionSnapshot.galleryCell,
+    });
+  }, []);
+
+  const applyUploadedImageToDefaultDestination = useCallback((uploadedUrl) => {
+    if (typeof uploadedUrl !== "string" || !uploadedUrl) {
+      setPanelNoticeSafe("No se encontro una imagen valida para insertar.");
+      return false;
+    }
+
+    const validCellSelection = resolveCurrentValidGalleryCellSelection();
+    if (validCellSelection) {
+      if (typeof window === "undefined" || typeof window.asignarImagenACelda !== "function") {
+        setPanelNoticeSafe("No se pudo asignar la imagen. Conservamos la galeria sin cambios.");
+        return false;
+      }
+
+      const ok = window.asignarImagenACelda(
+        { mediaUrl: uploadedUrl, fit: "cover" },
+        "cover"
+      );
+      if (ok) {
+        setPanelNoticeSafe("Imagen asignada a la celda activa.");
+        return true;
+      }
+
+      setPanelNoticeSafe("No se pudo asignar la imagen. Conservamos la galeria sin cambios.");
+      return false;
+    }
+
+    return insertAvailableImageIntoCanvas(uploadedUrl);
+  }, [
+    insertAvailableImageIntoCanvas,
+    resolveCurrentValidGalleryCellSelection,
+    setPanelNoticeSafe,
+  ]);
+
   const handleAvailableImageCoverAction = useCallback((img) => {
     replaceFirstSectionCoverImage(img);
   }, [replaceFirstSectionCoverImage]);
@@ -1453,6 +1480,10 @@ export default function MiniToolbarTabImagen({
       const ok = window.asignarImagenACelda(photo, "cover");
       if (ok) {
         setPanelNotice("Imagen asignada a la celda activa.");
+        return;
+      }
+      if (!resolveCurrentValidGalleryCellSelection()) {
+        insertAvailableImageIntoCanvas(img);
       }
       return;
     }
@@ -1471,17 +1502,13 @@ export default function MiniToolbarTabImagen({
       return;
     }
 
-    if (galleryAction.action === "add-to-gallery") {
-      commitGalleryMutation(
-        addGalleryPhotos(galeriaSeleccionada, photo),
-        "Foto agregada a esta galeria."
-      );
-    }
   }, [
     celdaActiva,
     commitGalleryMutation,
     galeriaSeleccionada,
     galleryTargetState.needsSidebarChoice,
+    insertAvailableImageIntoCanvas,
+    resolveCurrentValidGalleryCellSelection,
     selectedPhotoTarget,
   ]);
 
@@ -1548,26 +1575,12 @@ export default function MiniToolbarTabImagen({
       return;
     }
 
-    if (
-      galeriaSeleccionada &&
-      celdaActiva &&
-      typeof window !== "undefined" &&
-      typeof window.asignarImagenACelda === "function"
-    ) {
+    if (celdaActiva) {
       abrirSelector({
         onUploadStart: () => {
           setPanelNoticeSafe("Subiendo imagen...");
         },
-        onUploadedImage: (uploadedUrl) => {
-          const ok = window.asignarImagenACelda(
-            { mediaUrl: uploadedUrl, fit: "cover" },
-            "cover"
-          );
-          if (ok) {
-            setPanelNoticeSafe("Imagen asignada a la celda activa.");
-          }
-          return ok;
-        },
+        onUploadedImage: applyUploadedImageToDefaultDestination,
         onUploadError: () => {
           setPanelNoticeSafe("No se pudo asignar la imagen. Conservamos la galeria sin cambios.");
         },
@@ -1580,24 +1593,17 @@ export default function MiniToolbarTabImagen({
       return;
     }
 
-    if (galeriaSeleccionada?.id) {
-      const targetGalleryId = galeriaSeleccionada.id;
-      abrirSelector({
-        onUploadStart: () => {
-          setPanelNoticeSafe("Subiendo imagen...");
-        },
-        onUploadedImage: (uploadedUrl) =>
-          addUploadedImageToActiveGallery(targetGalleryId, uploadedUrl),
-        onUploadError: () => {
-          setPanelNoticeSafe("No se pudo agregar esa imagen a la galeria.");
-        },
-      });
-      return;
-    }
-
-    abrirSelector();
+    abrirSelector({
+      onUploadStart: () => {
+        setPanelNoticeSafe("Subiendo imagen...");
+      },
+      onUploadedImage: applyUploadedImageToDefaultDestination,
+      onUploadError: () => {
+        setPanelNoticeSafe("No se pudo insertar esa imagen en el lienzo.");
+      },
+    });
   }, [
-    addUploadedImageToActiveGallery,
+    applyUploadedImageToDefaultDestination,
     abrirSelector,
     celdaActiva,
     galeriaSeleccionada,
@@ -2117,7 +2123,7 @@ export default function MiniToolbarTabImagen({
           className={`mb-2 flex w-full shrink-0 items-center gap-2 font-medium shadow-sm transition-all ${
             isMobileViewport ? "py-1.5 px-3 rounded-lg text-sm" : "py-2 px-4 rounded-xl"
           } ${
-            celdaActiva || galeriaSeleccionada
+            celdaActiva || (galleryEditMode === "replace" && selectedPhotoTarget)
               ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
               : "bg-purple-100 hover:bg-purple-200 text-purple-800"
           }`}
@@ -2125,12 +2131,10 @@ export default function MiniToolbarTabImagen({
           <span>
             {celdaActiva
               ? "Subir y asignar"
-              : galeriaSeleccionada
-                ? galleryEditMode === "replace" && selectedPhotoTarget
-                  ? selectedPhotoTarget.isEmpty
-                    ? "Subir a celda"
-                    : "Subir reemplazo"
-                  : "Subir a galeria"
+              : galleryEditMode === "replace" && selectedPhotoTarget
+                ? selectedPhotoTarget.isEmpty
+                  ? "Subir a celda"
+                  : "Subir reemplazo"
                 : "Subir imagen"}
           </span>
         </button>

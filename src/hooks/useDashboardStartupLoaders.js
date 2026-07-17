@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GOOGLE_FONTS } from "@/config/fonts";
 import { getErrorMessage } from "@/domain/dashboard/helpers";
+import { handleDashboardStartupError } from "@/domain/dashboard/startupRecovery";
 import { pushEditorBreadcrumb } from "@/lib/monitoring/editorIssueReporter";
 import { readEditorSessionDocument } from "@/components/editor/persistence/editorSessionPersistence";
 
@@ -608,6 +609,14 @@ export function useDashboardStartupLoaders({
           message: getErrorMessage(error, "editor-preload-error"),
         });
         console.warn("No se pudo completar la precarga del editor:", error);
+        handleDashboardStartupError({
+          error,
+          operation: "preload-editor-assets",
+          module: "useDashboardStartupLoaders",
+          phase: "editor-preload",
+          slug: currentSlug,
+          captureNonStorage: false,
+        });
         pushEditorBreadcrumb("editor-preload-error", {
           slug: currentSlug,
           message: getErrorMessage(error, "editor-preload-error"),

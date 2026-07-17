@@ -6,6 +6,7 @@ import {
   getErrorMessage,
   splitDisplayName,
 } from "@/domain/dashboard/helpers";
+import { handleDashboardStartupError } from "@/domain/dashboard/startupRecovery";
 
 const PROFILE_INITIAL_VALUES = Object.freeze({
   nombre: "",
@@ -57,8 +58,38 @@ export function useDashboardAuthGate({ router }) {
     const auth = getAuth();
     let mounted = true;
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      void (async () => {
+    const handleAuthFailure = (error, context = {}) =>
+      handleDashboardStartupError({
+        error,
+        operation: context.operation || "dashboard-auth-gate",
+        module: "useDashboardAuthGate",
+        phase: context.phase || "auth-state",
+        authState: {
+          hasUser: Boolean(context.user || auth.currentUser),
+          checkingAuth: true,
+          loadingAdminAccess: false,
+        },
+      });
+
+    const signOutSafely = async (reason, user = null) => {
+      try {
+        await signOut(auth);
+        return true;
+      } catch (error) {
+        handleAuthFailure(error, {
+          operation: "auth-sign-out",
+          phase: reason,
+          user,
+        });
+        return false;
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        void (async () => {
+          try {
         if (!mounted) return;
         setCheckingAuth(true);
 
@@ -78,12 +109,18 @@ export function useDashboardAuthGate({ router }) {
         const hasOnlyPasswordProvider = hasPasswordProvider && !hasGoogleProvider;
 
         if (hasOnlyPasswordProvider && user.emailVerified !== true) {
-          await signOut(auth);
+          await signOutSafely("email-not-verified", user);
           if (!mounted) return;
           setShowProfileCompletion(false);
           setUsuario(null);
           setCheckingAuth(false);
-          router.replace("/?authNotice=email-not-verified");
+          void router.replace("/?authNotice=email-not-verified").catch((error) => {
+            handleAuthFailure(error, {
+              operation: "auth-router-replace",
+              phase: "email-not-verified",
+              user,
+            });
+          });
           return;
         }
 
@@ -122,18 +159,56 @@ export function useDashboardAuthGate({ router }) {
           setUsuario(user);
         } catch (error) {
           console.error("Error validando estado de perfil:", error);
-          await signOut(auth);
+          const handled = handleAuthFailure(error, {
+            operation: "profile-status-check",
+            phase: "profile-validation",
+            user,
+          });
+          if (handled.isRecoverableStorageError) {
+            if (!mounted) return;
+            setShowProfileCompletion(false);
+            setUsuario(user || auth.currentUser || null);
+            setCheckingAuth(false);
+            return;
+          }
+
+          await signOutSafely("profile-check-failed", user);
           if (!mounted) return;
           setShowProfileCompletion(false);
           setUsuario(null);
-          router.replace("/?authNotice=profile-check-failed");
+          void router.replace("/?authNotice=profile-check-failed").catch((error) => {
+            handleAuthFailure(error, {
+              operation: "auth-router-replace",
+              phase: "profile-check-failed",
+              user,
+            });
+          });
         } finally {
           if (mounted) {
             setCheckingAuth(false);
           }
         }
-      })();
-    });
+          } catch (error) {
+            handleAuthFailure(error, {
+              operation: "auth-state-callback",
+              phase: "auth-callback",
+              user,
+            });
+            if (!mounted) return;
+            setCheckingAuth(false);
+          }
+        })();
+      },
+      (error) => {
+        handleAuthFailure(error, {
+          operation: "auth-state-listener",
+          phase: "auth-listener-error",
+          user: auth.currentUser,
+        });
+        if (!mounted) return;
+        setCheckingAuth(false);
+      }
+    );
 
     return () => {
       mounted = false;

@@ -1517,6 +1517,7 @@ export default function CanvasEditor({
     repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow: flushEditorPersistence,
+    hasPendingDraftWrites: draftWriteCoordinator.hasPendingDraftWrites,
     selectionRuntime,
   });
 

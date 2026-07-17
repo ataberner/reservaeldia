@@ -56,6 +56,7 @@ export default function useEditorWindowBridge({
   repairTemplateAuthoringState,
   ensureInlineEditSettledBeforeCriticalAction,
   flushPersistenceNow,
+  hasPendingDraftWrites,
   selectionRuntime,
 }) {
   const EXTRA_CANVAS_EDITOR_COMPATIBILITY_KEYS = [
@@ -406,6 +407,10 @@ export default function useEditorWindowBridge({
         typeof flushPersistenceNow === "function"
           ? flushPersistenceNow
           : undefined,
+      hasPendingDraftWrites:
+        typeof hasPendingDraftWrites === "function"
+          ? hasPendingDraftWrites
+          : undefined,
     });
 
     if (!templateAuthoringSnapshotReader) {
@@ -459,6 +464,7 @@ export default function useEditorWindowBridge({
     repairTemplateAuthoringState,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow,
+    hasPendingDraftWrites,
     selectionRuntime,
   ]);
 

@@ -9,6 +9,7 @@ import {
   installGlobalEditorIssueHandlers,
   pushEditorBreadcrumb,
   readPendingEditorIssue,
+  runWithEditorIssueReporterSuppressed,
   startEditorSessionWatchdog,
 } from "@/lib/monitoring/editorIssueReporter";
 
@@ -57,9 +58,11 @@ export function useDashboardEditorIssues({
       setIssueSendError("");
 
       try {
-        const result = await reportClientIssueCallable({
-          report: buildEditorIssueTransportPayload(reportToSend),
-        });
+        const result = await runWithEditorIssueReporterSuppressed(() =>
+          reportClientIssueCallable({
+            report: buildEditorIssueTransportPayload(reportToSend),
+          })
+        );
         const issueId = result?.data?.issueId || null;
         if (issueId) {
           setSentIssueId(issueId);

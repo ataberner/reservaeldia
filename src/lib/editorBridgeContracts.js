@@ -16,6 +16,7 @@ export const CANVAS_EDITOR_COMPATIBILITY_KEYS = Object.freeze([
   "rehacer",
   "ensureInlineEditSettledBeforeCriticalAction",
   "flushPersistenceNow",
+  "hasPendingDraftWrites",
   "getTemplateAuthoringStatus",
   "getTemplateAuthoringSnapshot",
   "updateTemplateAuthoringDefault",

@@ -1,4 +1,4 @@
-import { getGalleryPhotos } from "./galleryMutations.js";
+import { getGalleryPhotos, getGallerySlots } from "./galleryMutations.js";
 import { getGalleryLayoutPreset, resolveGalleryLayoutSelectionForEditor } from "./galleryLayoutPresets.js";
 
 function normalizeText(value) {
@@ -190,6 +190,34 @@ export function buildCanvasImageElementFromLibraryImage(image, options = {}) {
   };
 }
 
+export function resolveValidGalleryCellSelection({
+  objects = [],
+  galleryCell = null,
+} = {}) {
+  const objId = normalizeText(galleryCell?.objId);
+  const index = Number(galleryCell?.index);
+  if (!objId || !Number.isInteger(index) || index < 0) return null;
+
+  const gallery = (Array.isArray(objects) ? objects : []).find(
+    (object) => object?.id === objId && object?.tipo === "galeria"
+  );
+  if (!gallery) return null;
+
+  const slot = getGallerySlots(gallery, { visibleOnly: true }).find(
+    (candidate) => Number(candidate?.sourceIndex) === index
+  );
+  if (!slot) return null;
+
+  return {
+    gallery,
+    cell: {
+      objId: gallery.id,
+      index,
+    },
+    slot,
+  };
+}
+
 export function resolveAvailableImageGalleryAction({
   gallery = null,
   activeCell = null,
@@ -220,8 +248,8 @@ export function resolveAvailableImageGalleryAction({
   }
 
   return {
-    action: "add-to-gallery",
-    label: "Agregar a gal.",
-    reason: "active-gallery",
+    action: "none",
+    label: "",
+    reason: "no-cell-selected",
   };
 }

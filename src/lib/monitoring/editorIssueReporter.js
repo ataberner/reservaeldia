@@ -1,4 +1,7 @@
 ﻿const BREADCRUMBS_KEY = "editor_issue_breadcrumbs_v1";
+import { classifyBrowserStorageError } from "../storage/browserStorageErrors.js";
+import { markBrowserStorageFailure } from "../storage/browserStorageRecovery.js";
+
 const PENDING_ISSUE_KEY = "editor_issue_pending_v1";
 const EDITOR_SESSION_KEY = "editor_issue_editor_session_v1";
 const EDITOR_SESSION_EXIT_KEY = "editor_issue_editor_exit_v1";
@@ -6,7 +9,12 @@ const MAX_BREADCRUMBS = 60;
 const MAX_MESSAGE_LEN = 600;
 const MAX_STACK_LEN = 6000;
 const MAX_DETAIL_LEN = 8000;
+const ISSUE_DEDUPE_WINDOW_MS = 30000;
 let activeWatchdogSessionId = null;
+let reporterSuppressionDepth = 0;
+let globalIssueHandlersRefCount = 0;
+let globalIssueHandlersTeardown = null;
+const recentIssueDedupe = new Map();
 
 function getStorage(kind) {
   if (typeof window === "undefined") return null;
@@ -61,6 +69,61 @@ function getRuntimeSnapshot() {
           jsHeapSizeLimit: Number(mem.jsHeapSizeLimit || 0),
         }
       : null,
+  };
+}
+
+function getCurrentQuerySlug() {
+  if (typeof window === "undefined") return null;
+  try {
+    const params = new URLSearchParams(window.location?.search || "");
+    const slug = params.get("slug") || params.get("templateId") || "";
+    return slug ? truncate(slug, 180) : null;
+  } catch {
+    return null;
+  }
+}
+
+function summarizeBrowserStorageClassification(classification) {
+  if (!classification?.isBrowserStorageError) return null;
+  return {
+    kind: classification.isIndexedDbError ? "indexeddb" : "browser-storage",
+    reason: classification.reason || null,
+    recoverable: classification.recoverable === true,
+    normalizedName: truncate(classification.normalized?.name, 120),
+    normalizedMessage: truncate(classification.normalized?.message, MAX_MESSAGE_LEN),
+    evidence: classification.evidence || null,
+  };
+}
+
+function withCaptureStack(errorLike, label) {
+  if (errorLike instanceof Error && errorLike.stack) return errorLike;
+  const captureStack = new Error(label || "Captured browser error").stack || "";
+
+  if (errorLike instanceof Error) {
+    try {
+      errorLike.stack = errorLike.stack || captureStack;
+    } catch {
+      // Some browser errors expose readonly stacks.
+    }
+    return errorLike;
+  }
+
+  if (errorLike && typeof errorLike === "object") {
+    return {
+      ...errorLike,
+      name: errorLike.name || errorLike.reason?.name || "UnknownError",
+      message:
+        errorLike.message ||
+        errorLike.reason?.message ||
+        String(errorLike.reason || "Error desconocido"),
+      stack: errorLike.stack || errorLike.reason?.stack || captureStack,
+    };
+  }
+
+  return {
+    name: "NonErrorThrown",
+    message: String(errorLike || "Error desconocido"),
+    stack: captureStack,
   };
 }
 
@@ -224,7 +287,7 @@ export function buildEditorIssueReport({
   const normalized = normalizeError(error);
   const runtime = getRuntimeSnapshot();
   const breadcrumbs = getEditorBreadcrumbs();
-  const slug = detail?.slug || null;
+  const slug = detail?.slug || detail?.querySlug || getCurrentQuerySlug() || null;
 
   return {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -239,6 +302,7 @@ export function buildEditorIssueReport({
     runtime,
     breadcrumbs,
     fingerprint: createFingerprint(source, normalized.message, runtime?.path),
+    repetitions: Number(detail?.repetitions || 1),
   };
 }
 
@@ -280,6 +344,7 @@ export function buildEditorIssueTransportPayload(report) {
     runtime,
     breadcrumbs,
     fingerprint: truncate(report.fingerprint, 180),
+    repetitions: Number(report.repetitions || 1),
   };
 }
 
@@ -306,7 +371,76 @@ export function clearPendingEditorIssue() {
 }
 
 export function captureEditorIssue(payload) {
-  const report = buildEditorIssueReport(payload || {});
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const rawDetail =
+    safePayload.detail && typeof safePayload.detail === "object"
+      ? safePayload.detail
+      : {};
+  const { storageRecoveryMarked, ...publicRawDetail } = rawDetail;
+  const classification = classifyBrowserStorageError(safePayload.error, {
+    ...publicRawDetail,
+    source: safePayload.source || "unknown",
+  });
+  const storageSummary = summarizeBrowserStorageClassification(classification);
+  const detail = storageSummary
+    ? {
+        ...publicRawDetail,
+        operation: publicRawDetail.operation || safePayload.source || "unknown",
+        module: publicRawDetail.module || "editorIssueReporter",
+        phase: publicRawDetail.phase || "global-capture",
+        storage: storageSummary,
+      }
+    : publicRawDetail;
+  const severity =
+    storageSummary && safePayload.severity === "fatal"
+      ? "recoverable"
+      : safePayload.severity || "error";
+
+  if (storageSummary && storageRecoveryMarked !== true) {
+    markBrowserStorageFailure(safePayload.error, detail);
+  }
+
+  const report = buildEditorIssueReport({
+    ...safePayload,
+    detail,
+    severity,
+  });
+  const nowMs = Date.now();
+  const existing = recentIssueDedupe.get(report.fingerprint);
+  if (existing && nowMs - existing.firstSeenMs <= ISSUE_DEDUPE_WINDOW_MS) {
+    existing.repetitions += 1;
+    existing.lastSeenMs = nowMs;
+    existing.report.repetitions = existing.repetitions;
+    existing.report.detail = safeJson(
+      {
+        ...detail,
+        repetitions: existing.repetitions,
+        deduped: true,
+      },
+      MAX_DETAIL_LEN
+    );
+    pushEditorBreadcrumb("issue-deduped", {
+      source: report.source,
+      fingerprint: report.fingerprint,
+      repetitions: existing.repetitions,
+    });
+    persistPendingEditorIssue(existing.report);
+    return existing.report;
+  }
+
+  recentIssueDedupe.set(report.fingerprint, {
+    firstSeenMs: nowMs,
+    lastSeenMs: nowMs,
+    repetitions: 1,
+    report,
+  });
+
+  for (const [fingerprint, entry] of recentIssueDedupe.entries()) {
+    if (nowMs - entry.firstSeenMs > ISSUE_DEDUPE_WINDOW_MS) {
+      recentIssueDedupe.delete(fingerprint);
+    }
+  }
+
   pushEditorBreadcrumb("issue-captured", {
     source: report.source,
     fingerprint: report.fingerprint,
@@ -326,10 +460,44 @@ export function captureEditorIssue(payload) {
   return report;
 }
 
+function isEditorIssueReporterSuppressed() {
+  return reporterSuppressionDepth > 0;
+}
+
+export async function runWithEditorIssueReporterSuppressed(task) {
+  reporterSuppressionDepth += 1;
+  try {
+    return typeof task === "function" ? await task() : undefined;
+  } finally {
+    reporterSuppressionDepth = Math.max(0, reporterSuppressionDepth - 1);
+  }
+}
+
 export function installGlobalEditorIssueHandlers() {
   if (typeof window === "undefined") return () => {};
+  globalIssueHandlersRefCount += 1;
+
+  if (globalIssueHandlersTeardown) {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      globalIssueHandlersRefCount = Math.max(0, globalIssueHandlersRefCount - 1);
+      if (globalIssueHandlersRefCount === 0 && globalIssueHandlersTeardown) {
+        globalIssueHandlersTeardown();
+        globalIssueHandlersTeardown = null;
+      }
+    };
+  }
 
   const onWindowError = (event) => {
+    if (isEditorIssueReporterSuppressed()) {
+      pushEditorBreadcrumb("ignored-reporter-self-issue", {
+        source: "window.onerror",
+      });
+      return;
+    }
+
     if (isExternalExtensionIssue(event)) {
       pushEditorBreadcrumb("ignored-global-browser-extension-issue", {
         source: "window.onerror",
@@ -350,6 +518,14 @@ export function installGlobalEditorIssueHandlers() {
   };
 
   const onUnhandledRejection = (event) => {
+    if (isEditorIssueReporterSuppressed()) {
+      event?.preventDefault?.();
+      pushEditorBreadcrumb("ignored-reporter-self-issue", {
+        source: "window.unhandledrejection",
+      });
+      return;
+    }
+
     if (isExternalExtensionIssue(event)) {
       pushEditorBreadcrumb("ignored-global-browser-extension-issue", {
         source: "window.unhandledrejection",
@@ -357,21 +533,57 @@ export function installGlobalEditorIssueHandlers() {
       return;
     }
 
+    const reason = event?.reason || event;
+    const classification = classifyBrowserStorageError(reason, {
+      source: "window.unhandledrejection",
+      operation: "global-unhandledrejection",
+      module: "editorIssueReporter",
+      phase: "runtime",
+    });
+    if (classification.isBrowserStorageError) {
+      event?.preventDefault?.();
+    }
+
     captureEditorIssue({
       source: "window.unhandledrejection",
-      error: event?.reason || event,
-      detail: {},
-      severity: "fatal",
+      error: withCaptureStack(reason, "window.unhandledrejection"),
+      detail: {
+        operation: "global-unhandledrejection",
+        module: "editorIssueReporter",
+        phase: "runtime",
+        slug: getCurrentQuerySlug(),
+        storage: summarizeBrowserStorageClassification(classification),
+      },
+      severity: classification.isBrowserStorageError ? "recoverable" : "fatal",
     });
   };
 
   window.addEventListener("error", onWindowError);
   window.addEventListener("unhandledrejection", onUnhandledRejection);
 
-  return () => {
+  globalIssueHandlersTeardown = () => {
     window.removeEventListener("error", onWindowError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);
   };
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    globalIssueHandlersRefCount = Math.max(0, globalIssueHandlersRefCount - 1);
+    if (globalIssueHandlersRefCount === 0 && globalIssueHandlersTeardown) {
+      globalIssueHandlersTeardown();
+      globalIssueHandlersTeardown = null;
+    }
+  };
+}
+
+export function __resetEditorIssueReporterForTests() {
+  reporterSuppressionDepth = 0;
+  globalIssueHandlersRefCount = 0;
+  globalIssueHandlersTeardown = null;
+  recentIssueDedupe.clear();
+  activeWatchdogSessionId = null;
 }
 
 function readEditorSessionMarker() {

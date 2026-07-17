@@ -381,11 +381,14 @@ Resultado esperado:
 6. En un borrador con dos o mas galerias sin seleccion de canvas, elegir una desde el selector/listado del panel.
 7. Usar `Agregar galeria`, elegir una celda del selector visual `1x1` a `4x4` y confirmar que la galeria se inserta inmediatamente en el canvas.
 8. Crear al menos dos galerias simples con distintos presets, por ejemplo 5 fotos y 16 fotos.
-9. Agregar, reemplazar, quitar y reordenar una foto.
-10. Reemplazar una foto de galeria subiendo una imagen pesada desde el dispositivo.
-11. Cambiar de seleccion o de tab mientras esa subida sigue en curso.
-12. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
-13. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
+9. Con una celda valida de galeria seleccionada, elegir una miniatura subida y subir una imagen desde dispositivo; confirmar que se asignan solo a esa celda.
+10. Sin celda de galeria seleccionada, elegir una miniatura subida y subir una imagen desde dispositivo; confirmar que se insertan como objetos `imagen` normales en el canvas.
+11. Repetir con una referencia residual a una galeria eliminada o a un indice de celda invalido.
+12. Agregar, reemplazar, quitar y reordenar una foto usando los controles explicitos de la galeria.
+13. Reemplazar una foto de galeria subiendo una imagen pesada desde el dispositivo.
+14. Cambiar de seleccion o de tab mientras esa subida sigue en curso.
+15. Cambiar entre layouts permitidos desde el selector visual: `1x4`, `2x2`, `2x3` y `Collage` cuando esten permitidos. Confirmar que `Ancho completo` / `Full width` no aparece como opcion seleccionable.
+16. Abrir preview y hacer click en una foto de cualquiera de dos galerias.
 
 Resultado esperado:
 
@@ -394,7 +397,8 @@ Resultado esperado:
 - con una sola galeria, el panel la usa automaticamente aunque no este seleccionada en canvas
 - con varias galerias, el panel permite elegir cual editar sin seleccionar en canvas
 - las miniaturas subidas permanecen visibles debajo de la galeria y se desplazan con el scroll unico del panel
-- las operaciones afectan solo la galeria seleccionada en canvas o la galeria elegida en el panel
+- las operaciones explicitas de galeria afectan solo la galeria seleccionada en canvas o la galeria elegida en el panel
+- las imagenes disponibles o subidas desde dispositivo se asignan a galeria solo con una celda/posicion valida seleccionada; sin celda valida se insertan como objetos `imagen` normales en el canvas
 - las galerias creadas desde Fotos quedan seleccionadas/activas y tienen imagenes, layout, reemplazos y persistencia independientes
 - durante el reemplazo desde dispositivo, solo la fila/foto afectada muestra `Subiendo imagen...`
 - la foto anterior permanece visible hasta que la nueva URL se aplica

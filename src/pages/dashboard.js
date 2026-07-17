@@ -30,6 +30,7 @@ import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
 import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
+import BrowserStorageRecoveryBanner from "@/components/dashboard/BrowserStorageRecoveryBanner";
 import { pushEditorBreadcrumb } from "@/lib/monitoring/editorIssueReporter";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
@@ -340,11 +341,12 @@ export default function Dashboard() {
   ]);
 
 
-  if (checkingAuth) return null;
-  if (!usuario) return null; // Seguridad por si no se redirige
+  if (checkingAuth) return <BrowserStorageRecoveryBanner />;
+  if (!usuario) return <BrowserStorageRecoveryBanner />; // Seguridad por si no se redirige
 
   return (
     <>
+      <BrowserStorageRecoveryBanner />
       <DashboardLayout {...layoutProps}>
       {editorIssueReport && (
         <EditorIssueBanner

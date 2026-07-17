@@ -25,7 +25,11 @@ import {
     triggerEditorRedo,
     triggerEditorUndo,
 } from "@/utils/editorHistoryControls";
-import { canAccessGalleryBuilder } from "@/domain/gallery/sidebarModel";
+import {
+    buildCanvasImageElementFromLibraryImage,
+    canAccessGalleryBuilder,
+    resolveValidGalleryCellSelection,
+} from "@/domain/gallery/sidebarModel";
 import { normalizeGalleryLayoutIds } from "@/domain/gallery/galleryLayoutPresets";
 import { resolveStoryTextSidebarBinding } from "@/domain/templates/storyText";
 import {
@@ -60,6 +64,7 @@ import {
     readCanvasEditorMethod,
     readEditorObjects,
     readEditorSections,
+    readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 
 
@@ -1516,9 +1521,34 @@ export default function DashboardSidebar({
                                 return;
                             }
 
-                            if (typeof window.asignarImagenACelda === "function") {
-                                window.asignarImagenACelda(uploadedUrl, "cover");
+                            const validGalleryCellSelection = resolveValidGalleryCellSelection({
+                                objects: readEditorObjects(),
+                                galleryCell: readEditorSelectionSnapshot().galleryCell,
+                            });
+                            if (validGalleryCellSelection) {
+                                const assignedToGalleryCell =
+                                    typeof window.asignarImagenACelda === "function" &&
+                                    window.asignarImagenACelda(uploadedUrl, "cover") === true;
+                                if (assignedToGalleryCell) {
+                                    return;
+                                }
+
+                                throw new Error("No se pudo asignar la imagen a la celda seleccionada.");
                             }
+
+                            const imageElement = buildCanvasImageElementFromLibraryImage(uploadedUrl, {
+                                id: `img-${Date.now()}`,
+                                seccionActivaId,
+                            });
+                            if (!imageElement) {
+                                throw new Error("No se pudo crear el objeto de imagen.");
+                            }
+
+                            window.dispatchEvent(
+                                new CustomEvent(EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT, {
+                                    detail: imageElement,
+                                })
+                            );
                         } catch (error) {
                             console.error("Error al subir imagen desde el sidebar:", error);
                             uploadRequest?.onUploadError?.(error, { file: selectedFile });

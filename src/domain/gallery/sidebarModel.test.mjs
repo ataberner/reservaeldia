@@ -10,6 +10,7 @@ import {
   isTemplateGalleryAuthoringSession,
   resolveAvailableImageGalleryAction,
   resolveGallerySidebarEditingTarget,
+  resolveValidGalleryCellSelection,
 } from "./sidebarModel.js";
 
 test("template authoring session is detected from editor session or template metadata", () => {
@@ -296,6 +297,54 @@ test("uploaded library image primary action builds a normal canvas image object"
   });
 });
 
+test("valid gallery cell selection requires an existing Gallery and visible cell", () => {
+  const gallery = {
+    id: "gal-cell",
+    tipo: "galeria",
+    rows: 2,
+    cols: 2,
+    cells: [
+      { id: "cell-1", mediaUrl: null },
+      { id: "cell-2", mediaUrl: "https://cdn.test/photo.jpg" },
+      { id: "cell-3", mediaUrl: null },
+      { id: "cell-4", mediaUrl: null },
+    ],
+  };
+
+  const valid = resolveValidGalleryCellSelection({
+    objects: [textObject, gallery],
+    galleryCell: { objId: "gal-cell", index: 1 },
+  });
+
+  assert.equal(valid.gallery, gallery);
+  assert.deepEqual(valid.cell, { objId: "gal-cell", index: 1 });
+  assert.equal(valid.slot.sourceIndex, 1);
+
+  assert.equal(
+    resolveValidGalleryCellSelection({
+      objects: [textObject],
+      galleryCell: { objId: "gal-cell", index: 1 },
+    }),
+    null
+  );
+
+  assert.equal(
+    resolveValidGalleryCellSelection({
+      objects: [gallery],
+      galleryCell: { objId: "gal-cell", index: 99 },
+    }),
+    null
+  );
+
+  assert.equal(
+    resolveValidGalleryCellSelection({
+      objects: [gallery],
+      galleryCell: { objId: "gal-cell", index: -1 },
+    }),
+    null
+  );
+});
+
 test("available image gallery action requires an explicit gallery target state", () => {
   assert.equal(
     resolveAvailableImageGalleryAction({ gallery: null }).action,
@@ -304,7 +353,7 @@ test("available image gallery action requires an explicit gallery target state",
 
   assert.equal(
     resolveAvailableImageGalleryAction({ gallery: galleryA }).action,
-    "add-to-gallery"
+    "none"
   );
 
   assert.equal(

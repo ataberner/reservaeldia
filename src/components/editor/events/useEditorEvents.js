@@ -41,6 +41,7 @@ import {
 import {
   assignGalleryPhotoToCell,
   getGalleryPhotos,
+  getGallerySlots,
   resolveGalleryPhotoMediaUrl,
 } from "@/domain/gallery/galleryMutations";
 import {
@@ -246,6 +247,18 @@ export default function useEditorEvents({
       const galeriaActual = readEditorObjectById(objId);
       if (!galeriaActual || galeriaActual.tipo !== "galeria") return false;
       if (!canEditObject(galeriaActual, { secciones })) return false;
+      const hasValidTargetCell = getGallerySlots(galeriaActual, { visibleOnly: true }).some(
+        (slot) => Number(slot?.sourceIndex) === indexActual
+      );
+      if (!hasValidTargetCell) return false;
+
+      const previewMutation = assignGalleryPhotoToCell(
+        galeriaActual,
+        { index: indexActual },
+        photoInput,
+        { clear: !photoInput }
+      );
+      if (!previewMutation.changed) return false;
 
       const nextActiveCell = resolveNextActiveCell(galeriaActual, indexActual, photoInput);
 
@@ -256,6 +269,10 @@ export default function useEditorEvents({
         const obj = prev[i];
         if (obj.tipo !== "galeria") return prev;
         if (!canEditObject(obj, { secciones })) return prev;
+        const targetCellStillValid = getGallerySlots(obj, { visibleOnly: true }).some(
+          (slot) => Number(slot?.sourceIndex) === indexActual
+        );
+        if (!targetCellStillValid) return prev;
 
         const mutation = assignGalleryPhotoToCell(
           obj,

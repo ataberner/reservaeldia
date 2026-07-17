@@ -11,6 +11,10 @@ import {
   getFirstQueryValue,
 } from "@/domain/dashboard/helpers";
 import {
+  handleDashboardStartupError,
+  runDashboardStartupOperation,
+} from "@/domain/dashboard/startupRecovery";
+import {
   buildDashboardAsPathFromQuery,
   buildLegacyDraftNotice,
   createAdminDraftViewState,
@@ -113,10 +117,22 @@ export function useDashboardEditorRoute({
           if (message.includes("attempted to hard navigate to the same URL")) {
             return false;
           }
-          throw error;
+          handleDashboardStartupError({
+            error,
+            operation: "replace-dashboard-query",
+            module: "useDashboardEditorRoute",
+            phase: "router-replace",
+            querySlug: getFirstQueryValue(router.query?.slug),
+            authState: {
+              hasUser: Boolean(usuarioUid),
+              checkingAuth,
+              loadingAdminAccess,
+            },
+          });
+          return false;
         });
     },
-    [router]
+    [checkingAuth, loadingAdminAccess, router, usuarioUid]
   );
 
   const handleOpenTemplateSession = useCallback(
@@ -195,6 +211,7 @@ export function useDashboardEditorRoute({
       const safeSlug = sanitizeDraftSlug(slug);
       if (!safeSlug) return;
 
+      try {
       let compatibleDraft = usuarioUid
         ? await resolveCompatibleDraft({
             slug: safeSlug,
@@ -354,9 +371,32 @@ export function useDashboardEditorRoute({
       }
 
       void replaceDashboardQuerySafely(nextQuery, { shallow: true });
+      } catch (error) {
+        handleDashboardStartupError({
+          error,
+          operation: "open-draft-editor",
+          module: "useDashboardEditorRoute",
+          phase: "open-draft",
+          slug: safeSlug,
+          authState: {
+            hasUser: Boolean(usuarioUid),
+            checkingAuth,
+            loadingAdminAccess,
+          },
+        });
+        resetAdminDraftView();
+        resetTemplateWorkspaceView();
+        resetEditorSession();
+        setSlugInvitacionState(null);
+        setModoEditor(null);
+        setVista("home");
+      }
     },
     [
+      checkingAuth,
+      loadingAdminAccess,
       replaceDashboardQuerySafely,
+      resetAdminDraftView,
       resetEditorSession,
       resetTemplateWorkspaceView,
       resolveCompatibleDraft,
@@ -754,11 +794,50 @@ export function useDashboardEditorRoute({
       setVista((prev) => (prev === "editor" ? "home" : prev));
     };
 
-    void syncEditorSlugFromQuery().finally(() => {
-      if (!cancelled) {
-        setHasSyncedEditorRoute(true);
+    void (async () => {
+      const result = await runDashboardStartupOperation({
+        task: syncEditorSlugFromQuery,
+        operation: "sync-editor-slug-from-query",
+        module: "useDashboardEditorRoute",
+        phase: "route-sync",
+        slug: slugURL,
+        querySlug: rawSlugParam,
+        authState: {
+          hasUser: Boolean(usuarioUid),
+          checkingAuth,
+          loadingAdminAccess,
+        },
+      });
+
+      if (!cancelled && result?.ok === false) {
+        resetAdminDraftView();
+        resetTemplateWorkspaceView();
+        resetEditorSession();
+        setSlugInvitacionState(null);
+        setModoEditor(null);
+        setVista((prev) => (prev === "editor" ? "home" : prev));
       }
-    });
+    })()
+      .catch((error) => {
+        handleDashboardStartupError({
+          error,
+          operation: "sync-editor-slug-handler",
+          module: "useDashboardEditorRoute",
+          phase: "route-sync-handler",
+          slug: slugURL,
+          querySlug: rawSlugParam,
+          authState: {
+            hasUser: Boolean(usuarioUid),
+            checkingAuth,
+            loadingAdminAccess,
+          },
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHasSyncedEditorRoute(true);
+        }
+      });
 
     return () => {
       cancelled = true;

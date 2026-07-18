@@ -15,6 +15,7 @@ export const DATE_TEXT_FORMAT_PRESETS = Object.freeze([
   "event_date_long_es_ar",
   "event_date_short_es_ar",
   "event_date_dotted_es_ar",
+  "event_date_slash_short_year_es_ar",
   "event_date_pipe_short_year_es_ar",
   "event_date_day_month_es_ar",
   "event_datetime_long_es_ar",
@@ -35,6 +36,11 @@ export const DATE_TEXT_FORMAT_PRESET_OPTIONS = Object.freeze([
     value: "event_date_dotted_es_ar",
     label: "Dia.mes.anio",
     example: "27.4.2026",
+  },
+  {
+    value: "event_date_slash_short_year_es_ar",
+    label: "D/M/AA",
+    example: "2/7/26",
   },
   {
     value: "event_date_pipe_short_year_es_ar",
@@ -104,6 +110,11 @@ function formatDottedDateText(date) {
 function formatPipeShortYearDateText(date) {
   const shortYear = String(date.getFullYear()).slice(-2);
   return `${padDateSegment(date.getDate())}|${padDateSegment(date.getMonth() + 1)}|${shortYear}`;
+}
+
+function formatSlashShortYearDateText(date) {
+  const shortYear = String(date.getFullYear()).slice(-2);
+  return `${date.getDate()}/${date.getMonth() + 1}/${shortYear}`;
 }
 
 function formatTimeText(date) {
@@ -188,6 +199,10 @@ export function normalizeDateTextFormatPreset(preset, fieldType = "") {
     : DEFAULT_DATE_TEXT_TRANSFORM_PRESET;
 }
 
+export function isDateTextFormatPreset(preset) {
+  return DATE_TEXT_FORMAT_PRESET_SET.has(normalizeText(preset));
+}
+
 function formatDateTextPreset(date, preset, fieldType = "") {
   const safePreset = normalizeDateTextFormatPreset(preset, fieldType);
   const includeTime = shouldIncludeTimeInDateText(safePreset);
@@ -204,6 +219,10 @@ function formatDateTextPreset(date, preset, fieldType = "") {
 
   if (safePreset === "event_date_dotted_es_ar") {
     return formatDottedDateText(date);
+  }
+
+  if (safePreset === "event_date_slash_short_year_es_ar") {
+    return formatSlashShortYearDateText(date);
   }
 
   if (safePreset === "event_date_pipe_short_year_es_ar") {
@@ -255,6 +274,27 @@ export function normalizeTemplateTargetTransform(rawTransform, fieldType = "") {
   return { kind };
 }
 
+export function normalizeTemplateTargetTransformWithFallback(
+  rawTransform,
+  fieldType = "",
+  fallbackPreset = ""
+) {
+  const source = asObject(rawTransform);
+  const kind = normalizeText(source.kind).toLowerCase();
+  if (!kind || !TARGET_TRANSFORM_KINDS.has(kind)) return undefined;
+
+  if (kind === "date_to_text") {
+    return {
+      kind,
+      preset: isDateTextFormatPreset(source.preset)
+        ? normalizeText(source.preset)
+        : normalizeDateTextFormatPreset(fallbackPreset, fieldType),
+    };
+  }
+
+  return { kind };
+}
+
 export function resolveFieldDateTextFormatPreset(field) {
   const safeField = asObject(field);
   const ownPreset = normalizeText(safeField.dateTextFormatPreset);
@@ -280,7 +320,7 @@ export function buildDateTextTransformForField(field, preset = "") {
   return {
     kind: "date_to_text",
     preset: normalizeDateTextFormatPreset(
-      preset || resolveFieldDateTextFormatPreset(field),
+      preset || field?.dateTextFormatPreset,
       field?.type
     ),
   };
@@ -316,7 +356,11 @@ export function buildSuggestedTemplateTargetTransform({ field, fieldType, path }
 }
 
 export function resolveEffectiveTemplateTargetTransform({ field, target } = {}) {
-  const explicitTransform = normalizeTemplateTargetTransform(target?.transform, field?.type);
+  const explicitTransform = normalizeTemplateTargetTransformWithFallback(
+    target?.transform,
+    field?.type,
+    field?.dateTextFormatPreset
+  );
   if (explicitTransform) return explicitTransform;
 
   const safePath = normalizeText(target?.path).toLowerCase();
@@ -328,6 +372,12 @@ export function resolveEffectiveTemplateTargetTransform({ field, target } = {}) 
   if (safePath === "fechaobjetivo") {
     return {
       kind: "date_to_countdown_iso",
+    };
+  }
+  if (isDateLikeTemplateFieldType(field?.type) && isTextualTemplateTargetPath(safePath)) {
+    return {
+      kind: "date_to_text",
+      preset: normalizeDateTextFormatPreset(field?.dateTextFormatPreset, field?.type),
     };
   }
 

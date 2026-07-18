@@ -48,6 +48,7 @@ export default function useEditorWindowBridge({
   getTemplateAuthoringStatus,
   updateTemplateAuthoringDefault,
   updateTemplateAuthoringDateTextFormat,
+  updateTemplateAuthoringSelectedDateTextFormat,
   updateTemplateAuthoringEventPersonNames,
   updateTemplateAuthoringEventLocation,
   updateTemplateAuthoringEventTimes,
@@ -374,6 +375,10 @@ export default function useEditorWindowBridge({
         typeof updateTemplateAuthoringDateTextFormat === "function"
           ? updateTemplateAuthoringDateTextFormat
           : undefined,
+      updateTemplateAuthoringSelectedDateTextFormat:
+        typeof updateTemplateAuthoringSelectedDateTextFormat === "function"
+          ? updateTemplateAuthoringSelectedDateTextFormat
+          : undefined,
       updateTemplateAuthoringEventPersonNames:
         typeof updateTemplateAuthoringEventPersonNames === "function"
           ? updateTemplateAuthoringEventPersonNames
@@ -456,6 +461,7 @@ export default function useEditorWindowBridge({
     getTemplateAuthoringStatus,
     updateTemplateAuthoringDefault,
     updateTemplateAuthoringDateTextFormat,
+    updateTemplateAuthoringSelectedDateTextFormat,
     updateTemplateAuthoringEventPersonNames,
     updateTemplateAuthoringEventLocation,
     updateTemplateAuthoringEventTimes,

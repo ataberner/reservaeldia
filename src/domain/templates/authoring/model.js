@@ -2,7 +2,7 @@ import {
   buildSuggestedTemplateTargetTransform,
   isDateLikeTemplateFieldType,
   normalizeDateTextFormatPreset,
-  normalizeTemplateTargetTransform,
+  normalizeTemplateTargetTransformWithFallback,
   resolveFieldDateTextFormatPreset,
 } from "../fieldValueResolver.js";
 import {
@@ -212,13 +212,39 @@ function resolveSuggestedTransformForTarget({ field, fieldType, path } = {}) {
   });
 }
 
-function normalizeApplyTarget(rawTarget, fieldType = "") {
+function resolveTargetTransformPreservingPreset({
+  target,
+  field,
+  fieldType,
+  path,
+} = {}) {
+  const resolvedFieldType = normalizeText(fieldType || field?.type);
+  const fieldDefaultPreset = normalizeText(field?.dateTextFormatPreset);
+  return (
+    normalizeTemplateTargetTransformWithFallback(
+      target?.transform,
+      resolvedFieldType,
+      fieldDefaultPreset
+    ) ||
+    resolveSuggestedTransformForTarget({
+      field,
+      fieldType: resolvedFieldType,
+      path,
+    })
+  );
+}
+
+function normalizeApplyTarget(rawTarget, fieldType = "", fallbackDateTextFormatPreset = "") {
   const source = asObject(rawTarget);
   const scope = normalizeText(source.scope).toLowerCase();
   const id = normalizeText(source.id);
   const path = normalizeText(source.path);
   const mode = normalizeText(source.mode).toLowerCase() === "replace" ? "replace" : "set";
-  const transform = normalizeTemplateTargetTransform(source.transform, fieldType);
+  const transform = normalizeTemplateTargetTransformWithFallback(
+    source.transform,
+    fieldType,
+    fallbackDateTextFormatPreset
+  );
 
   if (!scope || !path) return null;
   if ((scope === "objeto" || scope === "seccion") && !id) return null;
@@ -241,11 +267,7 @@ function normalizeField(field, index = 0) {
   const optional = normalizeBoolean(source.optional, false);
   const helperText = normalizeFieldHelperText(source.helperText);
   const validation = normalizeFieldValidation(source.validation, type);
-  const applyTargets = Array.isArray(source.applyTargets)
-    ? source.applyTargets
-        .map((target) => normalizeApplyTarget(target, type))
-        .filter(Boolean)
-    : [];
+  const rawApplyTargets = Array.isArray(source.applyTargets) ? source.applyTargets : [];
   const dateTextFormatPreset = isDateLikeTemplateFieldType(type)
     ? (
         normalizeText(source.dateTextFormatPreset)
@@ -253,10 +275,13 @@ function normalizeField(field, index = 0) {
           : resolveFieldDateTextFormatPreset({
               ...source,
               type,
-              applyTargets,
+              applyTargets: rawApplyTargets,
             })
       )
     : undefined;
+  const applyTargets = rawApplyTargets
+    .map((target) => normalizeApplyTarget(target, type, dateTextFormatPreset))
+    .filter(Boolean);
 
   const {
     helperText: _unusedHelperText,
@@ -282,20 +307,15 @@ function normalizeField(field, index = 0) {
     ...(validation ? { validation } : {}),
     applyTargets: applyTargets
       .map((target) => {
-        const resolvedTransform =
-          normalizeTemplateTargetTransform(target.transform, type) ||
-          resolveSuggestedTransformForTarget({
-            field: fieldForTransforms,
-            fieldType: type,
-            path: target.path,
-          });
-        const suggestedTransform =
-          resolvedTransform?.kind === "date_to_text" && dateTextFormatPreset
-            ? { ...resolvedTransform, preset: dateTextFormatPreset }
-            : resolvedTransform;
+        const resolvedTransform = resolveTargetTransformPreservingPreset({
+          target,
+          field: fieldForTransforms,
+          fieldType: type,
+          path: target.path,
+        });
         return stripUndefinedTransform({
           ...target,
-          ...(suggestedTransform ? { transform: suggestedTransform } : {}),
+          ...(resolvedTransform ? { transform: resolvedTransform } : {}),
         });
       }),
   };
@@ -513,6 +533,9 @@ export function linkElementToField({
     const nextTargets = normalized.applyTargets.filter((target) => {
       if (target.scope !== "objeto") return true;
       if (target.id !== safeElementId) return true;
+      if (normalized.key === safeFieldKey && normalizeText(target.path) === safePath) {
+        return true;
+      }
       if (normalized.key !== safeFieldKey) {
         previousFieldKey = normalized.key;
       }
@@ -573,19 +596,28 @@ export function linkElementToField({
         return target;
       }
 
-      const normalizedTransform = normalizeTemplateTargetTransform(
+      const normalizedTransform = normalizeTemplateTargetTransformWithFallback(
         target.transform,
-        targetField.type
+        targetField.type,
+        targetField.dateTextFormatPreset
       );
-      const sameTransform =
-        (normalizedTransform?.kind || "") === (suggestedTransform?.kind || "") &&
-        (normalizedTransform?.preset || "") === (suggestedTransform?.preset || "");
-      if (sameTransform) return target;
+      if (normalizedTransform) {
+        const normalizedTarget = {
+          ...target,
+          transform: normalizedTransform,
+        };
+        if (JSON.stringify(normalizedTarget) === JSON.stringify(target)) return target;
+
+        changed = true;
+        return normalizedTarget;
+      }
+
+      if (!suggestedTransform) return target;
 
       changed = true;
       return stripUndefinedTransform({
         ...target,
-        ...(suggestedTransform ? { transform: suggestedTransform } : {}),
+        transform: suggestedTransform,
       });
     });
 
@@ -703,24 +735,19 @@ export function updateFieldConfig({
       type: nextType,
       ...(nextDateTextFormatPreset ? { dateTextFormatPreset: nextDateTextFormatPreset } : {}),
     };
-    const nextTargets = normalized.applyTargets.map((target) =>
-      stripUndefinedTransform({
+    const nextTargets = normalized.applyTargets.map((target) => {
+      const nextTransform = resolveTargetTransformPreservingPreset({
+        target,
+        field: fieldForTransforms,
+        fieldType: nextType,
+        path: target.path,
+      });
+
+      return stripUndefinedTransform({
         ...target,
-        ...(resolveSuggestedTransformForTarget({
-          field: fieldForTransforms,
-          fieldType: nextType,
-          path: target.path,
-        })
-          ? {
-              transform: resolveSuggestedTransformForTarget({
-                field: fieldForTransforms,
-                fieldType: nextType,
-                path: target.path,
-              }),
-            }
-          : {}),
-      })
-    );
+        ...(nextTransform ? { transform: nextTransform } : {}),
+      });
+    });
 
     if (
       nextLabel !== normalized.label ||

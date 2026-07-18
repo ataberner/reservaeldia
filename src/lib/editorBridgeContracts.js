@@ -21,6 +21,7 @@ export const CANVAS_EDITOR_COMPATIBILITY_KEYS = Object.freeze([
   "getTemplateAuthoringSnapshot",
   "updateTemplateAuthoringDefault",
   "updateTemplateAuthoringDateTextFormat",
+  "updateTemplateAuthoringSelectedDateTextFormat",
   "updateTemplateAuthoringEventPersonNames",
   "updateTemplateAuthoringEventLocation",
   "updateTemplateAuthoringEventTimes",

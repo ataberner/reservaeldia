@@ -6,6 +6,7 @@ import {
   resolveFieldValueFromLinkedCountdown,
   resolveFieldValueFromLinkedDateTargets,
   updateFieldDateTextFormatInSchema,
+  updateFieldTargetDateTextFormatInSchema,
 } from "./targetApplication.js";
 import {
   ensureEventDateField,
@@ -13,6 +14,7 @@ import {
 } from "../../eventDetails/date.js";
 import {
   linkElementToField,
+  sanitizeAuthoringSchema,
 } from "./model.js";
 import {
   getStoryTextFieldKey,
@@ -59,6 +61,10 @@ test("date text presets format event dates in supported display styles", () => {
   assert.equal(
     formatTemplateDateTextValue(iso, "event_date_dotted_es_ar", "date"),
     "13.12.2026"
+  );
+  assert.equal(
+    formatTemplateDateTextValue(iso, "event_date_slash_short_year_es_ar", "date"),
+    "13/12/26"
   );
   assert.equal(
     formatTemplateDateTextValue(iso, "event_date_pipe_short_year_es_ar", "date"),
@@ -249,6 +255,177 @@ test("authoring target patches update countdown and linked text for a new event 
   );
 });
 
+test("authoring target patches preserve different date text presets per target", () => {
+  const field = {
+    key: "event_date",
+    type: "date",
+    dateTextFormatPreset: "event_date_long_es_ar",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "date-short",
+        path: "texto",
+        mode: "set",
+        transform: {
+          kind: "date_to_text",
+          preset: "event_date_slash_short_year_es_ar",
+        },
+      },
+      {
+        scope: "objeto",
+        id: "date-long",
+        path: "texto",
+        mode: "set",
+        transform: {
+          kind: "date_to_text",
+          preset: "event_date_long_es_ar",
+        },
+      },
+    ],
+  };
+  const objetos = [
+    {
+      id: "date-short",
+      tipo: "texto",
+      texto: "1/1/25",
+      x: 100,
+      y: 100,
+      fontSize: 24,
+    },
+    {
+      id: "date-long",
+      tipo: "texto",
+      texto: "1 de enero de 2025",
+      x: 100,
+      y: 130,
+      fontSize: 24,
+    },
+  ];
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field,
+    value: "2026-07-02",
+    objetos,
+  });
+
+  assert.deepEqual(
+    patches.map((entry) => [entry.objectId, entry.patch.texto]),
+    [
+      ["date-short", "2/7/26"],
+      ["date-long", "2 de julio de 2026"],
+    ]
+  );
+});
+
+test("date target format falls back from target preset to field preset", () => {
+  const field = {
+    key: "event_date",
+    type: "date",
+    dateTextFormatPreset: "event_date_day_month_es_ar",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "date-fallback",
+        path: "texto",
+        mode: "set",
+      },
+    ],
+  };
+
+  assert.equal(
+    resolveTemplateTargetValue({
+      field,
+      target: field.applyTargets[0],
+      value: "2026-07-02",
+    }),
+    "2 de julio"
+  );
+});
+
+test("relinking an existing date target keeps its own text preset", () => {
+  const fieldsSchema = [
+    {
+      key: "event_date",
+      type: "date",
+      dateTextFormatPreset: "event_date_long_es_ar",
+      applyTargets: [
+        {
+          scope: "objeto",
+          id: "date-short",
+          path: "texto",
+          mode: "set",
+          transform: {
+            kind: "date_to_text",
+            preset: "event_date_slash_short_year_es_ar",
+          },
+        },
+      ],
+    },
+  ];
+
+  const result = linkElementToField({
+    fieldsSchema,
+    fieldKey: "event_date",
+    elementId: "date-short",
+    path: "texto",
+  });
+
+  const linkedField = result.fieldsSchema.find((field) => field.key === "event_date");
+  assert.equal(result.changed, false);
+  assert.deepEqual(linkedField.applyTargets[0].transform, {
+    kind: "date_to_text",
+    preset: "event_date_slash_short_year_es_ar",
+  });
+});
+
+test("authoring schema normalization keeps date text presets per target", () => {
+  const result = sanitizeAuthoringSchema({
+    fieldsSchema: [
+      {
+        key: "event_date",
+        label: "Fecha",
+        type: "date",
+        dateTextFormatPreset: "event_date_long_es_ar",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "date-short",
+            path: "texto",
+            mode: "set",
+            transform: {
+              kind: "date_to_text",
+              preset: "event_date_slash_short_year_es_ar",
+            },
+          },
+          {
+            scope: "objeto",
+            id: "date-long",
+            path: "texto",
+            mode: "set",
+            transform: {
+              kind: "date_to_text",
+              preset: "event_date_long_es_ar",
+            },
+          },
+        ],
+      },
+    ],
+    defaults: {
+      event_date: "2026-07-02",
+    },
+    objetos: [
+      { id: "date-short", tipo: "texto", texto: "2/7/26" },
+      { id: "date-long", tipo: "texto", texto: "2 de julio de 2026" },
+    ],
+  });
+
+  assert.equal(result.changed, false);
+  assert.deepEqual(
+    result.fieldsSchema[0].applyTargets.map((target) => target.transform?.preset),
+    ["event_date_slash_short_year_es_ar", "event_date_long_es_ar"]
+  );
+});
+
 test("authoring target patches resolve targets nested in preserved groups", () => {
   const field = {
     key: "event_names",
@@ -302,7 +479,7 @@ test("authoring target patches resolve targets nested in preserved groups", () =
   ]);
 });
 
-test("date text format update changes textual targets without changing countdown target", () => {
+test("date text format update keeps target presets and only reapplies fallback text targets", () => {
   const fieldsSchema = [
     {
       key: "event_date",
@@ -329,6 +506,12 @@ test("date text format update changes textual targets without changing countdown
             preset: "event_date_long_es_ar",
           },
         },
+        {
+          scope: "objeto",
+          id: "text-fallback",
+          path: "texto",
+          mode: "set",
+        },
       ],
     },
   ];
@@ -345,9 +528,10 @@ test("date text format update changes textual targets without changing countdown
   });
   assert.deepEqual(result.field.applyTargets[1].transform, {
     kind: "date_to_text",
-    preset: "event_datetime_short_es_ar",
+    preset: "event_date_long_es_ar",
   });
-  assert.deepEqual(result.targetObjectIds, ["text-date"]);
+  assert.equal(result.field.applyTargets[2].transform, undefined);
+  assert.deepEqual(result.targetObjectIds, ["text-fallback"]);
 
   const patches = buildTemplateAuthoringTargetPatches({
     field: result.field,
@@ -362,9 +546,17 @@ test("date text format update changes textual targets without changing countdown
       {
         id: "text-date",
         tipo: "texto",
-        texto: "Fecha anterior",
+        texto: "13 de diciembre de 2026",
         x: 100,
         y: 100,
+        fontSize: 24,
+      },
+      {
+        id: "text-fallback",
+        tipo: "texto",
+        texto: "Fecha anterior",
+        x: 100,
+        y: 130,
         fontSize: 24,
       },
     ],
@@ -372,7 +564,114 @@ test("date text format update changes textual targets without changing countdown
 
   assert.deepEqual(
     patches.map((entry) => [entry.objectId, entry.patch.texto || entry.patch.fechaObjetivo]),
-    [["text-date", "13/12/2026, 18:00"]]
+    [["text-fallback", "13/12/2026, 18:00"]]
+  );
+});
+
+test("date text target format update changes only the selected target", () => {
+  const fieldsSchema = [
+    {
+      key: "event_date",
+      type: "date",
+      dateTextFormatPreset: "event_date_long_es_ar",
+      applyTargets: [
+        {
+          scope: "objeto",
+          id: "date-short",
+          path: "texto",
+          mode: "set",
+          transform: {
+            kind: "date_to_text",
+            preset: "event_date_slash_short_year_es_ar",
+          },
+        },
+        {
+          scope: "objeto",
+          id: "date-long",
+          path: "texto",
+          mode: "set",
+          transform: {
+            kind: "date_to_text",
+            preset: "event_date_long_es_ar",
+          },
+        },
+      ],
+    },
+  ];
+
+  const result = updateFieldTargetDateTextFormatInSchema({
+    fieldsSchema,
+    fieldKey: "event_date",
+    targetObjectId: "date-long",
+    path: "texto",
+    preset: "event_date_short_es_ar",
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.field.dateTextFormatPreset, "event_date_long_es_ar");
+  assert.deepEqual(
+    result.field.applyTargets.map((target) => target.transform?.preset),
+    ["event_date_slash_short_year_es_ar", "event_date_short_es_ar"]
+  );
+  assert.deepEqual(result.targetObjectIds, ["date-long"]);
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field: result.field,
+    value: "2026-07-02",
+    targetObjectIds: result.targetObjectIds,
+    objetos: [
+      { id: "date-short", tipo: "texto", texto: "2/7/26", x: 0, y: 0, fontSize: 24 },
+      {
+        id: "date-long",
+        tipo: "texto",
+        texto: "2 de julio de 2026",
+        x: 0,
+        y: 30,
+        fontSize: 24,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    patches.map((entry) => [entry.objectId, entry.patch.texto]),
+    [["date-long", "02/07/2026"]]
+  );
+});
+
+test("date text target format update ignores objects outside the field", () => {
+  const fieldsSchema = [
+    {
+      key: "event_date",
+      type: "date",
+      dateTextFormatPreset: "event_date_long_es_ar",
+      applyTargets: [
+        {
+          scope: "objeto",
+          id: "date-short",
+          path: "texto",
+          mode: "set",
+          transform: {
+            kind: "date_to_text",
+            preset: "event_date_slash_short_year_es_ar",
+          },
+        },
+      ],
+    },
+  ];
+
+  const result = updateFieldTargetDateTextFormatInSchema({
+    fieldsSchema,
+    fieldKey: "event_date",
+    targetObjectId: "other-text",
+    path: "texto",
+    preset: "event_date_short_es_ar",
+  });
+
+  assert.equal(result.changed, false);
+  assert.deepEqual(result.targetObjectIds, []);
+  assert.deepEqual(
+    result.field.applyTargets.map((target) => target.transform?.preset),
+    ["event_date_slash_short_year_es_ar"]
   );
 });
 

@@ -70,6 +70,9 @@ const DEFAULT_DATETIME_TEXT_TRANSFORM_PRESET = "event_datetime_long_es_ar";
 const DATE_TEXT_FORMAT_PRESETS = new Set([
   "event_date_long_es_ar",
   "event_date_short_es_ar",
+  "event_date_dotted_es_ar",
+  "event_date_slash_short_year_es_ar",
+  "event_date_pipe_short_year_es_ar",
   "event_date_day_month_es_ar",
   "event_datetime_long_es_ar",
   "event_datetime_short_es_ar",

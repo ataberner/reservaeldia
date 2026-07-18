@@ -1,5 +1,5 @@
 import {
-  buildDateTextTransformForField,
+  isDateTextFormatPreset,
   isDateLikeTemplateFieldType,
   isTextualTemplateTargetPath,
   normalizeDateTextFormatPreset,
@@ -110,6 +110,33 @@ export function collectTextualTargetObjectIds(field) {
   );
 }
 
+function isFieldFallbackDateTextTarget(field, target) {
+  if (!isDateLikeTemplateFieldType(field?.type)) return false;
+  if (!isTextualTemplateTargetPath(target?.path)) return false;
+
+  const transform = asObject(target?.transform);
+  const kind = normalizeText(transform.kind).toLowerCase();
+  if (kind && kind !== "date_to_text") return false;
+
+  return !isDateTextFormatPreset(transform.preset);
+}
+
+export function collectFieldFallbackDateTextTargetObjectIds(field) {
+  const targets = Array.isArray(field?.applyTargets) ? field.applyTargets : [];
+  return Array.from(
+    new Set(
+      targets
+        .filter(
+          (target) =>
+            normalizeText(target?.scope).toLowerCase() === "objeto" &&
+            isFieldFallbackDateTextTarget(field, target)
+        )
+        .map((target) => normalizeText(target?.id))
+        .filter(Boolean)
+    )
+  );
+}
+
 export function updateFieldDateTextFormatInSchema({
   fieldsSchema,
   fieldKey,
@@ -140,23 +167,9 @@ export function updateFieldDateTextFormatInSchema({
     }
 
     resolvedPreset = normalizeDateTextFormatPreset(preset, safeField.type);
-    const fieldWithPreset = {
-      ...safeField,
-      dateTextFormatPreset: resolvedPreset,
-    };
-    const nextTransform = buildDateTextTransformForField(fieldWithPreset, resolvedPreset);
-    const targets = Array.isArray(safeField.applyTargets) ? safeField.applyTargets : [];
-    const nextTargets = targets.map((target) => {
-      if (!isTextualTemplateTargetPath(target?.path)) return target;
-      return {
-        ...target,
-        transform: nextTransform,
-      };
-    });
     const nextField = {
       ...safeField,
       dateTextFormatPreset: resolvedPreset,
-      applyTargets: nextTargets,
     };
 
     if (!areValuesEqual(nextField, safeField)) {
@@ -172,7 +185,86 @@ export function updateFieldDateTextFormatInSchema({
     changed,
     field: updatedField,
     preset: resolvedPreset,
-    targetObjectIds: updatedField ? collectTextualTargetObjectIds(updatedField) : [],
+    targetObjectIds: updatedField ? collectFieldFallbackDateTextTargetObjectIds(updatedField) : [],
+  };
+}
+
+export function updateFieldTargetDateTextFormatInSchema({
+  fieldsSchema,
+  fieldKey,
+  targetObjectId,
+  path = "",
+  preset,
+} = {}) {
+  const safeFieldKey = normalizeText(fieldKey);
+  const safeTargetObjectId = normalizeText(targetObjectId);
+  const safePath = normalizeText(path);
+  const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  if (!safeFieldKey || !safeTargetObjectId) {
+    return {
+      fieldsSchema: fields,
+      changed: false,
+      field: null,
+      preset: "",
+      targetObjectIds: [],
+    };
+  }
+
+  let changed = false;
+  let updatedField = null;
+  let resolvedPreset = "";
+  let matchedTarget = false;
+  const nextFields = fields.map((field) => {
+    const safeField = asObject(field);
+    if (normalizeText(safeField.key) !== safeFieldKey) return field;
+
+    if (!isDateLikeTemplateFieldType(safeField.type)) {
+      updatedField = safeField;
+      return field;
+    }
+
+    resolvedPreset = normalizeDateTextFormatPreset(preset, safeField.type);
+    const targets = Array.isArray(safeField.applyTargets) ? safeField.applyTargets : [];
+    const nextTargets = targets.map((target) => {
+      if (normalizeText(target?.scope).toLowerCase() !== "objeto") return target;
+      if (normalizeText(target?.id) !== safeTargetObjectId) return target;
+      if (!isTextualTemplateTargetPath(target?.path)) return target;
+      if (safePath && normalizeText(target?.path) !== safePath) return target;
+
+      const transform = asObject(target?.transform);
+      const kind = normalizeText(transform.kind).toLowerCase();
+      if (kind && kind !== "date_to_text") return target;
+
+      matchedTarget = true;
+      const nextTarget = {
+        ...target,
+        transform: {
+          kind: "date_to_text",
+          preset: resolvedPreset,
+        },
+      };
+      if (!areValuesEqual(nextTarget, target)) {
+        changed = true;
+      }
+      return nextTarget;
+    });
+
+    const nextField = matchedTarget
+      ? {
+          ...safeField,
+          applyTargets: nextTargets,
+        }
+      : safeField;
+    updatedField = nextField;
+    return nextField;
+  });
+
+  return {
+    fieldsSchema: nextFields,
+    changed,
+    field: updatedField,
+    preset: resolvedPreset,
+    targetObjectIds: matchedTarget ? [safeTargetObjectId] : [],
   };
 }
 

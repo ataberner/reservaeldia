@@ -70,6 +70,7 @@ import {
   resolveFieldValueFromLinkedCountdown,
   resolveFieldValueFromLinkedDateTargets,
   updateFieldDateTextFormatInSchema,
+  updateFieldTargetDateTextFormatInSchema,
 } from "@/domain/templates/authoring/targetApplication.js";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
@@ -1625,6 +1626,59 @@ export default function useTemplateFieldAuthoring({
     ]
   );
 
+  const updateSelectedFieldDateTextFormat = useCallback(
+    async (fieldKey, preset) => {
+      if (!canConfigure) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const safeFieldKey = normalizeText(fieldKey);
+      if (!safeFieldKey || !selectedElementId) return false;
+
+      const updateResult = updateFieldTargetDateTextFormatInSchema({
+        fieldsSchema,
+        fieldKey: safeFieldKey,
+        targetObjectId: selectedElementId,
+        path: selectedElementFieldPath || "texto",
+        preset,
+      });
+      if (!updateResult.field || updateResult.targetObjectIds.length === 0) {
+        return false;
+      }
+
+      const linkedValue = resolveFieldValueFromLinkedDateTargets({
+        field: updateResult.field,
+        objetos: safeObjetos,
+        fallbackValue: defaults[safeFieldKey],
+      });
+      const targetsApplied = applyFieldTargetsToObjects(updateResult.field, linkedValue, {
+        targetObjectIds: updateResult.targetObjectIds,
+      });
+
+      if (!updateResult.changed) return targetsApplied;
+
+      await commitSnapshot({
+        ...snapshot,
+        sourceTemplateId,
+        fieldsSchema: updateResult.fieldsSchema,
+        defaults: ensureDefaultsForSchema(updateResult.fieldsSchema, defaults),
+      });
+      return true;
+    },
+    [
+      applyFieldTargetsToObjects,
+      canConfigure,
+      commitSnapshot,
+      defaults,
+      fieldsSchema,
+      safeObjetos,
+      selectedElementFieldPath,
+      selectedElementId,
+      snapshot,
+      sourceTemplateId,
+    ]
+  );
+
   const getFieldUsage = useCallback(
     (fieldKey) => {
       const safeFieldKey = normalizeText(fieldKey);
@@ -1778,6 +1832,7 @@ export default function useTemplateFieldAuthoring({
     deleteField,
     updateFieldDefaultValue,
     updateFieldDateTextFormat,
+    updateSelectedFieldDateTextFormat,
     updateEventPersonNames,
     linkSelectionToEventPersonName,
     updateEventLocation,

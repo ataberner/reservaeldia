@@ -1509,6 +1509,8 @@ export default function CanvasEditor({
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
     updateTemplateAuthoringDefault: templateAuthoring.updateFieldDefaultValue,
     updateTemplateAuthoringDateTextFormat: templateAuthoring.updateFieldDateTextFormat,
+    updateTemplateAuthoringSelectedDateTextFormat:
+      templateAuthoring.updateSelectedFieldDateTextFormat,
     updateTemplateAuthoringEventPersonNames: templateAuthoring.updateEventPersonNames,
     updateTemplateAuthoringEventLocation: templateAuthoring.updateEventLocation,
     updateTemplateAuthoringEventTimes: templateAuthoring.updateEventTimes,

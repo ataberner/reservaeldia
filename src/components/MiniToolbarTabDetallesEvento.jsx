@@ -7,6 +7,8 @@ import {
 import {
   DATE_TEXT_FORMAT_PRESET_OPTIONS,
   DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
+  isDateTextFormatPreset,
+  isTextualTemplateTargetPath,
   resolveFieldDateTextFormatPreset,
 } from "@/domain/templates/fieldValueResolver";
 import {
@@ -53,6 +55,7 @@ import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
   readCanvasEditorMethod,
   readEditorObjects,
+  readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 import {
   EVENT_DETAILS_MODES,
@@ -262,6 +265,34 @@ function readTemplateAuthoringSnapshot(targetWindow) {
     : {};
 }
 
+function resolveSelectedDateTextFormatTarget(field, targetWindow) {
+  const selectedIds = readEditorSelectionSnapshot(targetWindow).selectedIds;
+  if (!Array.isArray(selectedIds) || selectedIds.length !== 1) return null;
+
+  const selectedId = normalizeText(selectedIds[0]);
+  if (!selectedId) return null;
+
+  const targets = Array.isArray(field?.applyTargets) ? field.applyTargets : [];
+  const target = targets.find((entry) => {
+    if (normalizeText(entry?.scope).toLowerCase() !== "objeto") return false;
+    if (normalizeText(entry?.id) !== selectedId) return false;
+    if (!isTextualTemplateTargetPath(entry?.path)) return false;
+
+    const kind = normalizeText(entry?.transform?.kind).toLowerCase();
+    return !kind || kind === "date_to_text";
+  });
+  if (!target) return null;
+
+  const targetPreset = normalizeText(target?.transform?.preset);
+  return {
+    objectId: selectedId,
+    target,
+    preset: isDateTextFormatPreset(targetPreset)
+      ? targetPreset
+      : resolveFieldDateTextFormatPreset(field),
+  };
+}
+
 function readEventPersonNamesState(targetWindow, options = {}) {
   const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
   const nextNames = resolveEventPersonNamesState({
@@ -322,21 +353,30 @@ function readEventTimesState(targetWindow, options = {}) {
   });
 }
 
-function buildCountdownUiState(details = buildDynamicCountdownEventDetails()) {
+function buildCountdownUiState(
+  details = buildDynamicCountdownEventDetails(),
+  options = {}
+) {
+  const selectedDateTextTarget = details.hasBinding
+    ? resolveSelectedDateTextFormatTarget(details.field, options.targetWindow)
+    : null;
   return {
     details,
     date: details.date || "",
     time: details.time || "",
     showCountdown: details.hasBinding ? details.visible !== false : false,
     dateTextFormatPreset: details.hasBinding
-      ? resolveFieldDateTextFormatPreset(details.field)
+      ? selectedDateTextTarget?.preset || resolveFieldDateTextFormatPreset(details.field)
       : DEFAULT_DATE_TEXT_TRANSFORM_PRESET,
+    selectedDateTextTargetId: selectedDateTextTarget?.objectId || "",
   };
 }
 
 function readInitialCountdownUiState(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
   if (typeof window === "undefined") return buildCountdownUiState();
-  return buildCountdownUiState(readCountdownDetailsState(window, { feature }));
+  return buildCountdownUiState(readCountdownDetailsState(window, { feature }), {
+    targetWindow: window,
+  });
 }
 
 function readInitialEventPersonNamesState() {
@@ -528,15 +568,15 @@ function updateLinkedFieldDefault(fieldKey, value, options = {}) {
   });
 }
 
-function updateLinkedFieldDateTextFormat(fieldKey, preset) {
+function updateLinkedSelectedFieldDateTextFormat(fieldKey, preset) {
   if (typeof window === "undefined" || !fieldKey) return;
   const updateDateTextFormat = readCanvasEditorMethod(
-    "updateTemplateAuthoringDateTextFormat"
+    "updateTemplateAuthoringSelectedDateTextFormat"
   );
   if (typeof updateDateTextFormat !== "function") return;
 
   void Promise.resolve(updateDateTextFormat(fieldKey, preset)).catch((error) => {
-    console.error("No se pudo actualizar el formato de fecha del campo dinamico.", error);
+    console.error("No se pudo actualizar el formato de fecha del texto seleccionado.", error);
   });
 }
 
@@ -809,11 +849,12 @@ export default function MiniToolbarTabDetallesEvento({
 
   const applySyncedCountdownDetailsState = useCallback((details, feature) => {
     if (!details) return;
+    const targetWindow = typeof window !== "undefined" ? window : undefined;
     if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
-      setPartyCountdownUi(buildCountdownUiState(details));
+      setPartyCountdownUi(buildCountdownUiState(details, { targetWindow }));
       return;
     }
-    setCountdownUi(buildCountdownUiState(details));
+    setCountdownUi(buildCountdownUiState(details, { targetWindow }));
   }, []);
 
   const syncCountdownUiState = useCallback(() => {
@@ -2081,13 +2122,19 @@ export default function MiniToolbarTabDetallesEvento({
       safeFeature === EVENT_DETAIL_FEATURES.PARTY
         ? setPartyCountdownUi
         : setCountdownUi;
+    const selectedDateTextTarget = resolveSelectedDateTextFormatTarget(
+      details.field,
+      typeof window !== "undefined" ? window : undefined
+    );
+    if (controlsDisabled || !details.fieldKey || !selectedDateTextTarget) return;
+
     setState((current) => ({
       ...current,
       dateTextFormatPreset: nextPreset,
+      selectedDateTextTargetId: selectedDateTextTarget.objectId,
     }));
 
-    if (controlsDisabled || !details.fieldKey) return;
-    updateLinkedFieldDateTextFormat(details.fieldKey, nextPreset);
+    updateLinkedSelectedFieldDateTextFormat(details.fieldKey, nextPreset);
   };
 
   const renderLocationSuggestions = (fieldKey, feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
@@ -2235,7 +2282,7 @@ export default function MiniToolbarTabDetallesEvento({
                 value={countdown.dateTextFormatPreset}
                 onFocus={() => scrollToDynamicFieldTarget(scrollKeys.date)}
                 onChange={(event) => handleDateTextFormatChange(event, safeFeature)}
-                disabled={controlsDisabled}
+                disabled={controlsDisabled || !countdown.selectedDateTextTargetId}
                 className={`${inputClass} ${disabledControlClass}`}
               >
                 {DATE_TEXT_FORMAT_PRESET_OPTIONS.map((option) => (

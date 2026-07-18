@@ -3,6 +3,7 @@ import React, { forwardRef, useEffect, useRef } from "react";
 import { Layer } from "react-konva";
 import { trackCanvasDragPerf } from "@/components/editor/canvasEditor/canvasDragPerf";
 import { recordImageRotationLayerDraw } from "@/components/editor/canvasEditor/imageRotationDebug";
+import { dashboardExportExcludeProps } from "@/utils/dashboardCanvasExport";
 
 function getCanvasElementsLayerPerfNow() {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -16,6 +17,7 @@ const CanvasElementsLayer = forwardRef(function CanvasElementsLayer(
     children,
     perfLabel = "elements-layer",
     listening = true,
+    dashboardExportExcluded = false,
   },
   ref
 ) {
@@ -141,6 +143,7 @@ const CanvasElementsLayer = forwardRef(function CanvasElementsLayer(
   return (
     <Layer
       listening={listening}
+      {...(dashboardExportExcluded ? dashboardExportExcludeProps(perfLabel) : {})}
       ref={(node) => {
         layerRef.current = node;
         if (typeof ref === "function") {

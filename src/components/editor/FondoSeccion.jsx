@@ -8,6 +8,7 @@ import {
   resolveSectionBaseImageLayout,
 } from "@/domain/sections/backgrounds";
 import useSharedImage from "@/hooks/useSharedImage";
+import { getDashboardExportExcludedName } from "@/utils/dashboardCanvasExport";
 
 function SectionDecorationImage({
   sectionId,
@@ -451,6 +452,7 @@ export default function FondoSeccion({
 
       {isEditing && hasBaseImage ? (
         <Transformer
+          name={getDashboardExportExcludedName("section-background-transformer")}
           ref={transformerRef}
           enabledAnchors={["bottom-right"]}
           rotateEnabled={false}

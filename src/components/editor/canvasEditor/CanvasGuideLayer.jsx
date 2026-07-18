@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Layer, Line } from "react-konva";
 import { trackCanvasDragPerf } from "@/components/editor/canvasEditor/canvasDragPerf";
+import { dashboardExportExcludeProps } from "@/utils/dashboardCanvasExport";
 
 function getGuideLayerPerfNow() {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -116,7 +117,11 @@ const CanvasGuideLayer = forwardRef(function CanvasGuideLayer(_props, ref) {
   }, []);
 
   return (
-    <Layer ref={layerRef} listening={false}>
+    <Layer
+      ref={layerRef}
+      listening={false}
+      {...dashboardExportExcludeProps("canvas-guide-layer")}
+    >
       {guideLines.map((linea, index) => {
         const esLineaSeccion = linea?.priority === "seccion";
         return (

@@ -511,6 +511,25 @@ Resultado esperado:
 - repetir activar/desactivar no acumula deriva geometrica
 - preview, publish y mobile mantienen la misma decision visible
 
+### [ ] Imagenes limpias del dashboard
+
+1. Guardar un borrador sin seleccion activa y esperar el autosave diferido.
+2. Guardar un borrador con un objeto seleccionado.
+3. Guardar un borrador con una seccion seleccionada.
+4. Guardar durante o inmediatamente despues de drag, resize y hover.
+5. Repetir con edicion inline activa o recien cerrada.
+6. Guardar una plantilla y convertir un borrador en plantilla con objeto y seccion seleccionados.
+7. Repetir el recorrido en desktop y mobile cuando el flujo de guardado aplique.
+8. Abrir preview, publicar en entorno de prueba y verificar share image.
+
+Resultado esperado:
+
+- las tarjetas del dashboard usan la imagen persistida esperada (`thumbnailUrl` para borradores, `portada` para plantillas)
+- no aparecen Transformer, selection bounds, hover, drag overlay, guias, indicadores de resize, decoraciones inline ni borde de seccion activa en las imagenes del dashboard
+- todas las ayudas visuales siguen apareciendo normalmente dentro del editor
+- preview, publicacion y share image no cambian
+- no hay parpadeos visibles durante la exportacion
+
 ## 7. Senales de alerta
 
 Bloquear validacion si aparece cualquiera de estas:

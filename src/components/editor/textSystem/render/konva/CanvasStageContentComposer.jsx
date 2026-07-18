@@ -17,6 +17,7 @@ import InlineTextEditDecorationsLayer from "@/components/editor/textSystem/rende
 import HoverIndicator from "@/components/HoverIndicator";
 import LineControls from "@/components/LineControls";
 import CanvasGuideLayer from "@/components/editor/canvasEditor/CanvasGuideLayer";
+import { getDashboardExportExcludedName } from "@/utils/dashboardCanvasExport";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import {
@@ -11484,6 +11485,7 @@ export default function CanvasStageContent({
                     return (
                       <Rect
                         key={`base-border-seccion-${seccion.id}`}
+                        name={getDashboardExportExcludedName("section-active-indicator")}
                         x={0}
                         y={offsetY}
                         width={800}
@@ -11731,6 +11733,7 @@ export default function CanvasStageContent({
                 <CanvasElementsLayer
                   perfLabel="ui-overlay"
                   listening={!isAnyCanvasDragActive && !isImageRotateInteractionActive}
+                  dashboardExportExcluded
                 >
                   {editing.id && (
                     <InlineTextEditDecorationsLayer
@@ -12629,6 +12632,7 @@ export default function CanvasStageContent({
                 <CanvasElementsLayer
                   ref={dragLayerRef}
                   perfLabel="drag-overlay"
+                  dashboardExportExcluded
                 >
                   {(() => {
                     // Este overlay existe para mantener visible la seleccion durante drag

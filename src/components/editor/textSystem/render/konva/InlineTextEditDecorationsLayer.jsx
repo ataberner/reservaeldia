@@ -8,6 +8,7 @@ import {
   getSelectionFrameStrokeWidth,
   SELECTION_FRAME_STROKE,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
+import { getDashboardExportExcludedName } from "@/utils/dashboardCanvasExport";
 
 export default function InlineTextEditDecorationsLayer({
   decorations = null,
@@ -43,7 +44,7 @@ export default function InlineTextEditDecorationsLayer({
   }
 
   return (
-    <Group name="inline-text-edit-decorations" listening={false}>
+    <Group name={getDashboardExportExcludedName("inline-text-edit-decorations")} listening={false}>
       {hasOutlinePoints && (
         <Line
           points={outlinePoints}

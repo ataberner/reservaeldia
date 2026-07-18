@@ -514,7 +514,13 @@ export default function DashboardHeader(props) {
                 return;
             }
 
-            const dataURL = stage.toDataURL({ pixelRatio: 2 });
+            const { exportDashboardImageFromStage } = await import(
+                "@/utils/dashboardCanvasExport"
+            );
+            const dataURL = await exportDashboardImageFromStage(stage, {
+                pixelRatio: 2,
+                mimeType: "image/png",
+            });
             const res = await fetch(dataURL);
             const blob = await res.blob();
 

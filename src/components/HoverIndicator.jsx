@@ -21,6 +21,7 @@ import {
   logCanvasBoxFlow,
   recordCanvasBoxFlowSummary,
 } from "@/components/editor/canvasEditor/canvasBoxFlowDebug";
+import { getDashboardExportExcludedName } from "@/utils/dashboardCanvasExport";
 
 function areBoundsDigestsEqual(left, right) {
   if (!left || !right) return left === right;
@@ -440,7 +441,7 @@ const HoverIndicator = forwardRef(function HoverIndicator({
   }
 
   return (
-    <Group ref={groupRef} name="ui-hover-indicator">
+    <Group ref={groupRef} name={getDashboardExportExcludedName("ui-hover-indicator")}>
       {renderBounds?.kind === "polygon" ? (
         <Line
           ref={lineRef}

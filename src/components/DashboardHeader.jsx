@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/appHeader/AppHeader";
 import CanvasEditorHeader from "@/components/editor/header/CanvasEditorHeader";
+import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 import { normalizeEditorSession } from "@/domain/drafts/session";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
@@ -160,6 +161,10 @@ export default function DashboardHeader(props) {
     const menuRef = useRef(null);
     const headerRef = useRef(null);
     const [nombreBorrador, setNombreBorrador] = useState("");
+    const [documentNameHydration, setDocumentNameHydration] = useState({
+        documentId: "",
+        hydrated: false,
+    });
     const [templateWorkspaceMeta, setTemplateWorkspaceMeta] = useState(() =>
         normalizeTemplateWorkspaceMeta(null)
     );
@@ -238,14 +243,62 @@ export default function DashboardHeader(props) {
     }, []);
 
     useEffect(() => {
+        let cancelled = false;
+        const currentDocumentId = normalizeText(slugInvitacion);
+        logAssistantTourDebug("header-document-name-load-start", () => ({
+            slugInvitacion,
+            currentDocumentId,
+            draftDisplayName,
+            editorReadOnly,
+            isTemplateSession,
+            normalizedEditorSession: {
+                id: normalizedEditorSession?.id || "",
+                slug: normalizedEditorSession?.slug || "",
+                kind: normalizedEditorSession?.kind || "",
+            },
+            templateSessionMeta,
+        }));
+        setDocumentNameHydration({
+            documentId: currentDocumentId,
+            hydrated: false,
+        });
+
+        const markDocumentNameHydrated = () => {
+            if (cancelled) return;
+            logAssistantTourDebug("header-document-name-hydrated", () => ({
+                currentDocumentId,
+                slugInvitacion,
+                nombreBorrador,
+            }));
+            setDocumentNameHydration({
+                documentId: currentDocumentId,
+                hydrated: true,
+            });
+        };
+
         const cargarNombre = async () => {
             if (!slugInvitacion) {
+                if (cancelled) return;
+                logAssistantTourDebug("header-document-name-load-empty", () => ({
+                    reason: "missing-slug",
+                    currentDocumentId,
+                    draftDisplayName,
+                }));
                 setNombreBorrador("");
                 setTemplateWorkspaceMeta(normalizeTemplateWorkspaceMeta(null));
                 return;
             }
 
             if (isTemplateSession) {
+                if (cancelled) return;
+                logAssistantTourDebug("header-document-name-load-template", () => ({
+                    currentDocumentId,
+                    resolvedName:
+                        normalizeText(templateSessionMeta?.templateName) ||
+                        normalizeText(draftDisplayName) ||
+                        "Plantilla",
+                    templateSessionMeta,
+                }));
                 setNombreBorrador(
                     normalizeText(templateSessionMeta?.templateName) ||
                         normalizeText(draftDisplayName) ||
@@ -254,6 +307,7 @@ export default function DashboardHeader(props) {
                 setTemplateWorkspaceMeta(
                     normalizeTemplateWorkspaceMeta(templateSessionMeta)
                 );
+                markDocumentNameHydrated();
                 return;
             }
 
@@ -264,22 +318,40 @@ export default function DashboardHeader(props) {
                 });
 
                 if (result.exists) {
+                    if (cancelled) return;
                     const data = result.data || {};
-                    setNombreBorrador(data?.nombre || draftDisplayName || "Sin nombre");
+                    logAssistantTourDebug("header-document-name-load-result", () => ({
+                        currentDocumentId,
+                        exists: true,
+                        name: typeof data?.nombre === "string" ? data.nombre : "",
+                    }));
+                    setNombreBorrador(
+                        typeof data?.nombre === "string" ? data.nombre : ""
+                    );
                     setTemplateWorkspaceMeta(
                         normalizeTemplateWorkspaceMeta(data?.templateWorkspace)
                     );
+                    markDocumentNameHydrated();
                     return;
                 }
             } catch (error) {
                 console.error("Error cargando nombre del borrador:", error);
             }
 
-            setNombreBorrador(draftDisplayName || "Sin nombre");
+            if (cancelled) return;
+            logAssistantTourDebug("header-document-name-load-fallback", () => ({
+                currentDocumentId,
+                draftDisplayName,
+            }));
+            setNombreBorrador(normalizeText(draftDisplayName));
             setTemplateWorkspaceMeta(normalizeTemplateWorkspaceMeta(null));
+            markDocumentNameHydrated();
         };
 
-        cargarNombre();
+        void cargarNombre();
+        return () => {
+            cancelled = true;
+        };
     }, [
         draftDisplayName,
         editorReadOnly,
@@ -290,13 +362,34 @@ export default function DashboardHeader(props) {
     ]);
 
     useEffect(() => {
+        const safeDocumentId = normalizeText(slugInvitacion);
+        const documentNameHydrated =
+            documentNameHydration.hydrated === true &&
+            normalizeText(documentNameHydration.documentId) === safeDocumentId;
+        logAssistantTourDebug("header-document-name-publish", () => ({
+            name: nombreBorrador,
+            documentId: slugInvitacion,
+            documentKind: isTemplateSession ? "template" : "draft",
+            editable: Boolean(slugInvitacion) && !editorReadOnly,
+            hydrated: documentNameHydrated,
+            documentNameHydration,
+            safeDocumentId,
+        }));
+
         publishDashboardDocumentNameState({
             name: nombreBorrador,
             documentId: slugInvitacion,
             documentKind: isTemplateSession ? "template" : "draft",
             editable: Boolean(slugInvitacion) && !editorReadOnly,
+            hydrated: documentNameHydrated,
         });
-    }, [editorReadOnly, isTemplateSession, nombreBorrador, slugInvitacion]);
+    }, [
+        documentNameHydration,
+        editorReadOnly,
+        isTemplateSession,
+        nombreBorrador,
+        slugInvitacion,
+    ]);
 
     useEffect(() => {
         const handlePointerDownOutside = (event) => {
@@ -587,6 +680,14 @@ export default function DashboardHeader(props) {
             if (editorReadOnly || !slugInvitacion) return;
 
             const nextName = String(event?.detail?.name ?? "");
+            logAssistantTourDebug("header-document-name-update-request", () => ({
+                eventType: event?.type || "",
+                eventIsTrusted: event?.isTrusted === true,
+                detail: event?.detail || null,
+                nextName,
+                slugInvitacion,
+                persist: event?.detail?.persist !== false,
+            }));
             setNombreBorrador(nextName);
 
             if (event?.detail?.persist === false) return;

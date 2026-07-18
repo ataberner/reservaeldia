@@ -19,7 +19,12 @@ function resolveImageAssistantSubsteps({ objects = [], sections = [] } = {}) {
   const firstSectionCover = resolveFirstSectionBaseImage(sections);
 
   if (firstSectionCover.hasImage) {
-    substeps.push(createSubstep("cover", "Portada", "cover"));
+    substeps.push(
+      createSubstep("cover", "Portada", "cover", {
+        tourNextMessage:
+          "Cuando termines de configurar las fotos, presioná Siguiente.",
+      })
+    );
   }
 
   getGallerySidebarCandidates(objects).forEach((gallery, index) => {
@@ -28,7 +33,11 @@ function resolveImageAssistantSubsteps({ objects = [], sections = [] } = {}) {
         `gallery:${gallery.id}`,
         `Galeria ${index + 1}`,
         "gallery",
-        { galleryId: gallery.id }
+        {
+          galleryId: gallery.id,
+          tourNextMessage:
+            "Cuando termines de configurar las fotos, presioná Siguiente.",
+        }
       )
     );
   });
@@ -46,8 +55,14 @@ export function resolveAssistantSubstepsForStep(stepId, context = {}) {
   if (safeStepId === "detalles") {
     return [
       createSubstep("event-names", "Nombres", "event-names"),
-      createSubstep("event-date", "Fecha y hora", "event-date"),
-      createSubstep("event-location", "Ubicacion", "event-location"),
+      createSubstep("event-date", "Fecha y hora", "event-date", {
+        tourNextMessage:
+          "Cuando termines de configurar la fecha y el horario, presioná Siguiente.",
+      }),
+      createSubstep("event-location", "Ubicacion", "event-location", {
+        tourNextMessage:
+          "Cuando termines de configurar la ubicación, presioná Siguiente.",
+      }),
     ];
   }
 
@@ -61,13 +76,19 @@ export function resolveAssistantSubstepsForStep(stepId, context = {}) {
 
   if (safeStepId === "rsvp") {
     return [
-      createSubstep("rsvp-start", "Activar", "activation"),
+      createSubstep("rsvp-start", "Activar", "activation", {
+        tourNextMessage:
+          "Cuando termines de configurar el formulario de asistencia, presioná Siguiente.",
+      }),
     ];
   }
 
   if (safeStepId === "regalos") {
     return [
-      createSubstep("gifts", "Regalos", "main"),
+      createSubstep("gifts", "Regalos", "main", {
+        tourNextMessage:
+          "Cuando termines de configurar la sección de regalos, presioná Siguiente.",
+      }),
     ];
   }
 

@@ -1,5 +1,7 @@
 // src/components/DashboardSidebar.jsx
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import AssistantGuidedTour from "@/components/editor/assistantTour/AssistantGuidedTour";
+import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
 import ModalCrearSeccion from "./ModalCrearSeccion";
@@ -49,6 +51,11 @@ import {
     hasAssistantPhotoStepContent,
     resolveAssistantSubstepsForStep,
 } from "@/domain/editor/assistantSubsteps";
+import {
+    ASSISTANT_GUIDED_TOUR_CONTROLS_ATTR,
+    ASSISTANT_GUIDED_TOUR_TARGET_ATTR,
+    ASSISTANT_GUIDED_TOUR_TARGETS,
+} from "@/domain/editor/assistantGuidedTour";
 import {
     DASHBOARD_EDITOR_CANVAS_GAP_PX as DESKTOP_PANEL_GAP_PX,
     DASHBOARD_SIDEBAR_DESKTOP_PANEL_LEFT_PX as DESKTOP_PANEL_LEFT_PX,
@@ -334,6 +341,14 @@ export default function DashboardSidebar({
     canManageSite = false,
     editorSession = null,
     templateSessionMeta = null,
+    userUid = "",
+    assistantTourEditorReady = false,
+    assistantTourPreferencesLoaded = false,
+    assistantTourOptOut = false,
+    assistantTourSaving = false,
+    onAssistantTourPreferenceChange = null,
+    assistantTourPreviewOpen = false,
+    assistantTourOpeningKey = "",
 }) {
     // --------------------------
     // Estados internos del sidebar
@@ -373,6 +388,22 @@ export default function DashboardSidebar({
     const [assistantContentVersion, setAssistantContentVersion] = useState(0);
     const [assistantHasStoryTextStep, setAssistantHasStoryTextStep] = useState(false);
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
+    const [assistantTourFieldEditSignal, setAssistantTourFieldEditSignal] =
+        useState(null);
+    const assistantTourFieldEditSignalIdRef = useRef(0);
+    const sidebarDebugStateRef = useRef({});
+    sidebarDebugStateRef.current = {
+        assistantTourOpeningKey,
+        draftKey: resolveEditorSidebarAutoOpenDraftKey({
+            slugInvitacion,
+            editorSession,
+            modoSelector,
+        }),
+        assistantActive,
+        botonActivo,
+        assistantStepIndex,
+        assistantSubstepIndex,
+    };
     const {
         imagenes,
         imagenesEnProceso,
@@ -383,6 +414,24 @@ export default function DashboardSidebar({
         cargando
     } = useMisImagenes();
     const { abrirSelector, componenteInput, handleSeleccion } = useUploaderDeImagen(subirImagen);
+    const handleAssistantTourFieldEdit = useCallback((detail = {}) => {
+        const targetId = String(detail?.targetId || "").trim();
+        if (!targetId) return;
+        assistantTourFieldEditSignalIdRef.current += 1;
+        logAssistantTourDebug("owner-field-edit-signal", () => ({
+            source: "DashboardSidebar.handleAssistantTourFieldEdit",
+            signalId: assistantTourFieldEditSignalIdRef.current,
+            targetId,
+            value: String(detail?.value ?? ""),
+            rawDetail: detail,
+            ...sidebarDebugStateRef.current,
+        }));
+        setAssistantTourFieldEditSignal({
+            id: assistantTourFieldEditSignalIdRef.current,
+            targetId,
+            value: String(detail?.value ?? ""),
+        });
+    }, []);
     const pendingUploadedImageHandlerRef = useRef(null);
     const abrirSelectorImagen = useCallback((onUploadedImage, options = {}) => {
         const request =
@@ -588,6 +637,30 @@ export default function DashboardSidebar({
         const flowOptions = resolveAssistantFlowOptions();
         const safeStepIndex = clampAssistantStepIndex(stepIndex, flowOptions);
         const step = getAssistantStep(safeStepIndex, flowOptions);
+        logAssistantTourDebug("assistant-open-at-step", () => ({
+            source: "DashboardSidebar.openAssistantAtStep",
+            requestedStepIndex: stepIndex,
+            safeStepIndex,
+            options,
+            step: {
+                id: step?.id || "",
+                label: step?.label || "",
+            },
+            previousState: {
+                assistantActive: sidebarDebugStateRef.current.assistantActive,
+                botonActivo: sidebarDebugStateRef.current.botonActivo,
+                assistantStepIndex:
+                    sidebarDebugStateRef.current.assistantStepIndex,
+                assistantSubstepIndex:
+                    sidebarDebugStateRef.current.assistantSubstepIndex,
+            },
+            flowOptions,
+            isMobileViewport,
+            assistantTourOpeningKey:
+                sidebarDebugStateRef.current.assistantTourOpeningKey,
+            draftKey: sidebarDebugStateRef.current.draftKey,
+            stack: new Error("assistant-open-at-step").stack,
+        }));
 
         if (closeTimerRef.current) {
             clearTimeout(closeTimerRef.current);
@@ -679,6 +752,11 @@ export default function DashboardSidebar({
 
     useEffect(() => {
         if (modoSelector) {
+            logAssistantTourDebug("sidebar-auto-assistant-skip", () => ({
+                reason: "selector-mode",
+                previousAutoDraftKey: autoAssistantDraftKeyRef.current,
+                ...sidebarDebugStateRef.current,
+            }));
             autoAssistantDraftKeyRef.current = null;
             return;
         }
@@ -689,14 +767,65 @@ export default function DashboardSidebar({
             modoSelector,
         });
         if (!draftKey) {
+            logAssistantTourDebug("sidebar-auto-assistant-skip", () => ({
+                reason: "missing-draft-key",
+                previousAutoDraftKey: autoAssistantDraftKeyRef.current,
+                ...sidebarDebugStateRef.current,
+            }));
             autoAssistantDraftKeyRef.current = null;
             return;
         }
-        if (autoAssistantDraftKeyRef.current === draftKey) return;
+        if (autoAssistantDraftKeyRef.current === draftKey) {
+            logAssistantTourDebug("sidebar-auto-assistant-skip", () => ({
+                reason: "same-draft-key",
+                autoDraftKey: autoAssistantDraftKeyRef.current,
+                ...sidebarDebugStateRef.current,
+            }));
+            return;
+        }
 
+        logAssistantTourDebug("sidebar-auto-assistant-open", () => ({
+            reason: "draft-opened",
+            previousAutoDraftKey: autoAssistantDraftKeyRef.current,
+            nextDraftKey: draftKey,
+            ...sidebarDebugStateRef.current,
+        }));
         autoAssistantDraftKeyRef.current = draftKey;
-        openAssistantAtStep(0, { expandMobilePanel: true });
+        openAssistantAtStep(0, {
+            expandMobilePanel: true,
+            debugReason: "sidebar-auto-open-draft",
+        });
     }, [editorSession, modoSelector, openAssistantAtStep, slugInvitacion]);
+
+    const assistantTourDraftKey = resolveEditorSidebarAutoOpenDraftKey({
+        slugInvitacion,
+        editorSession,
+        modoSelector,
+    });
+    useEffect(() => {
+        logAssistantTourDebug("sidebar-mount", () => ({
+            source: "DashboardSidebar",
+            assistantTourDraftKey,
+            ...sidebarDebugStateRef.current,
+        }));
+        return () => {
+            logAssistantTourDebug("sidebar-unmount", () => ({
+                source: "DashboardSidebar",
+                ...sidebarDebugStateRef.current,
+            }));
+        };
+    }, []);
+
+    const handleAssistantTourRequestAssistantMode = useCallback(() => {
+        logAssistantTourDebug("assistant-tour-request-assistant-mode", () => ({
+            source: "DashboardSidebar.handleAssistantTourRequestAssistantMode",
+            ...sidebarDebugStateRef.current,
+        }));
+        openAssistantAtStep(0, {
+            expandMobilePanel: true,
+            debugReason: "tour-request-assistant-mode",
+        });
+    }, [openAssistantAtStep]);
 
     const handleAssistantPrevious = useCallback(() => {
         const flowOptions = resolveAssistantFlowOptions();
@@ -712,6 +841,13 @@ export default function DashboardSidebar({
             assistantSubstepIndex,
             currentSubsteps
         );
+        logAssistantTourDebug("assistant-previous-click", () => ({
+            source: "DashboardSidebar.handleAssistantPrevious",
+            currentSubstepIndex,
+            currentSubstepsCount: currentSubsteps.length,
+            navigation,
+            ...sidebarDebugStateRef.current,
+        }));
 
         if (currentSubstepIndex > 0) {
             setAssistantSubstepIndex(currentSubstepIndex - 1);
@@ -752,6 +888,13 @@ export default function DashboardSidebar({
             assistantSubstepIndex,
             currentSubsteps
         );
+        logAssistantTourDebug("assistant-next-click", () => ({
+            source: "DashboardSidebar.handleAssistantNext",
+            currentSubstepIndex,
+            currentSubstepsCount: currentSubsteps.length,
+            navigation,
+            ...sidebarDebugStateRef.current,
+        }));
 
         if (currentSubstepIndex < currentSubsteps.length - 1) {
             setAssistantSubstepIndex(currentSubstepIndex + 1);
@@ -1440,6 +1583,51 @@ export default function DashboardSidebar({
         shouldShowAssistantControls &&
         !assistantHasNextSubstep &&
         !assistantNavigation.canGoNext;
+    const assistantTourState = useMemo(() => ({
+        active: assistantActive,
+        mounted: shouldShowAssistantControls,
+        currentStep: assistantCurrentStep,
+        currentSubstep: assistantCurrentSubstep,
+        currentStepIndex: assistantNavigation.currentStepIndex,
+        currentSubstepIndex: assistantSubstepIndexSafe,
+        progressLabel: assistantLinearProgressLabel,
+        nextIsPreview: assistantNextIsPreview,
+    }), [
+        assistantActive,
+        assistantCurrentStep,
+        assistantCurrentSubstep,
+        assistantLinearProgressLabel,
+        assistantNavigation.currentStepIndex,
+        assistantNextIsPreview,
+        assistantSubstepIndexSafe,
+        shouldShowAssistantControls,
+    ]);
+
+    useEffect(() => {
+        logAssistantTourDebug("sidebar-assistant-tour-state", () => ({
+            ...sidebarDebugStateRef.current,
+            assistantTourState: {
+                active: assistantTourState.active,
+                mounted: assistantTourState.mounted,
+                currentStepId: assistantTourState.currentStep?.id || "",
+                currentStepLabel: assistantTourState.currentStep?.label || "",
+                currentSubstepId: assistantTourState.currentSubstep?.id || "",
+                currentSubstepLabel: assistantTourState.currentSubstep?.label || "",
+                currentStepIndex: assistantTourState.currentStepIndex,
+                currentSubstepIndex: assistantTourState.currentSubstepIndex,
+                progressLabel: assistantTourState.progressLabel,
+                nextIsPreview: assistantTourState.nextIsPreview,
+            },
+            assistantStepSubstepCounts,
+            assistantSubstepSignature,
+            assistantFlowOptions,
+        }));
+    }, [
+        assistantFlowOptions,
+        assistantStepSubstepCounts,
+        assistantSubstepSignature,
+        assistantTourState,
+    ]);
 
     useEffect(() => {
         if (!shouldShowAssistantControls) return;
@@ -1765,6 +1953,15 @@ export default function DashboardSidebar({
                         </button>
                     ) : null}
                     <div
+                        {...(shouldShowAssistantControls
+                            ? {
+                                [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                                    ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_CONTENT,
+                                "data-assistant-tour-step-id": assistantCurrentStep.id,
+                                "data-assistant-tour-substep-id":
+                                    assistantCurrentSubstep?.id || "",
+                            }
+                            : {})}
                         className={`relative w-full min-h-0 flex flex-1 flex-col text-slate-700 ${
                             botonActivo === "forma"
                                 ? "gap-0 px-2.5 pb-0.5 pt-8"
@@ -1878,11 +2075,15 @@ export default function DashboardSidebar({
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}
                             assistantMode={assistantMode}
                             assistantSubstep={assistantCurrentSubstep}
+                            onAssistantTourFieldEdit={handleAssistantTourFieldEdit}
                         />
                     </div>
                     {shouldShowAssistantControls && (
                         <div
                             className="shrink-0 border-t border-[#eadff8] bg-white/96 px-2.5 py-2 shadow-[0_-8px_18px_rgba(95,53,150,0.06)]"
+                            {...{
+                                [ASSISTANT_GUIDED_TOUR_CONTROLS_ATTR]: "true",
+                            }}
                         >
                             <div className="mb-1 flex items-center justify-between gap-2">
                                 <div className="min-w-0 truncate font-['Source_Sans_Pro',sans-serif] text-[10px] font-semibold uppercase leading-[14px] tracking-[0.06em] text-[#692B9A]">
@@ -1908,6 +2109,12 @@ export default function DashboardSidebar({
                                             ? generarVistaPrevia
                                             : handleAssistantNext
                                     }
+                                    {...{
+                                        [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                                            assistantNextIsPreview
+                                                ? ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_PREVIEW
+                                                : ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_NEXT,
+                                    }}
                                     disabled={
                                         assistantNextIsPreview
                                             ? !canOpenAssistantPreview
@@ -1924,6 +2131,22 @@ export default function DashboardSidebar({
             )}
 
 
+
+            <AssistantGuidedTour
+                draftKey={assistantTourDraftKey}
+                userUid={userUid}
+                editorReady={assistantTourEditorReady}
+                editorReadOnly={editorReadOnly}
+                preferencesLoaded={assistantTourPreferencesLoaded}
+                assistantTourOptOut={assistantTourOptOut}
+                assistantTourSaving={assistantTourSaving}
+                onAssistantTourPreferenceChange={onAssistantTourPreferenceChange}
+                onRequestAssistantMode={handleAssistantTourRequestAssistantMode}
+                isPreviewOpen={assistantTourPreviewOpen}
+                assistantState={assistantTourState}
+                fieldEditSignal={assistantTourFieldEditSignal}
+                openingKey={assistantTourOpeningKey}
+            />
 
             <ModalCrearSeccion
                 visible={modalCrear.visible}

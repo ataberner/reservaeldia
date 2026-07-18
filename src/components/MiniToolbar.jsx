@@ -34,6 +34,7 @@ export default function MiniToolbar({
   onRsvpPresetSelectionComplete,
   assistantMode = false,
   assistantSubstep = null,
+  onAssistantTourFieldEdit = null,
 }) {
 
   // Estado interno sincronizado con 3 fuentes: prop -> evento global -> fallback por selección
@@ -99,6 +100,7 @@ export default function MiniToolbar({
         <MiniToolbarTabDetallesEvento
           simplifiedForAssistant={assistantMode}
           assistantSubstep={assistantSubstep}
+          onAssistantTourFieldEdit={onAssistantTourFieldEdit}
         />
       )}
 

@@ -85,6 +85,7 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
   const setVista = () => {};
   const ensureDraftFlushBeforeCriticalAction = () => {};
   const handleOpenTemplateSession = () => {};
+  const onAssistantTourPreferenceChange = () => {};
 
   const props = buildDashboardLayoutProps({
     slugInvitacion: null,
@@ -120,6 +121,12 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     ensureDraftFlushBeforeCriticalAction,
     handleOpenTemplateSession,
     seccionActivaId: null,
+    assistantTourEditorReady: true,
+    assistantTourPreferencesLoaded: true,
+    assistantTourOptOut: false,
+    assistantTourSaving: true,
+    onAssistantTourPreferenceChange,
+    assistantTourPreviewOpen: true,
   });
 
   assert.deepEqual(props, {
@@ -155,6 +162,12 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     },
     ensureEditorFlushBeforeAction: ensureDraftFlushBeforeCriticalAction,
     onOpenTemplateSession: handleOpenTemplateSession,
+    assistantTourEditorReady: true,
+    assistantTourPreferencesLoaded: true,
+    assistantTourOptOut: false,
+    assistantTourSaving: true,
+    onAssistantTourPreferenceChange,
+    assistantTourPreviewOpen: true,
   });
 
   assert.equal(

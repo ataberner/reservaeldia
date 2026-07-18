@@ -1,7 +1,8 @@
 // src/components/DashboardLayout.jsx
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import DashboardHeader from "./DashboardHeader";
 import DashboardSidebar from "./DashboardSidebar";
+import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import { corregirURLsInvalidas } from "@/utils/corregirImagenes";
 
 export default function DashboardLayout({
@@ -31,10 +32,38 @@ export default function DashboardLayout({
   templateSessionMeta = null,
   ensureEditorFlushBeforeAction = null,
   onOpenTemplateSession = null,
+  assistantTourEditorReady = false,
+  assistantTourPreferencesLoaded = false,
+  assistantTourOptOut = false,
+  assistantTourSaving = false,
+  onAssistantTourPreferenceChange = null,
+  assistantTourPreviewOpen = false,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
   }, []);
+
+  const assistantTourOpeningRef = useRef({
+    draftKey: "",
+    openingIndex: 0,
+    openingKey: "",
+  });
+  const assistantTourDraftKey = String(
+    slugInvitacion ||
+      editorSession?.slug ||
+      editorSession?.id ||
+      ""
+  ).trim();
+
+  if (assistantTourOpeningRef.current.draftKey !== assistantTourDraftKey) {
+    assistantTourOpeningRef.current = {
+      draftKey: assistantTourDraftKey,
+      openingIndex: assistantTourOpeningRef.current.openingIndex + 1,
+      openingKey: assistantTourDraftKey
+        ? `${assistantTourDraftKey}:${assistantTourOpeningRef.current.openingIndex + 1}`
+        : "",
+    };
+  }
 
   // Runtime-sensitive shell contract: header/sidebar/editor overlays consume
   // this CSS variable, so keep it in sync with DashboardHeader.
@@ -65,6 +94,36 @@ export default function DashboardLayout({
   const sidebarInstanceKey = slugInvitacion
     ? `editor-sidebar:${slugInvitacion}`
     : "dashboard-sidebar";
+
+  useEffect(() => {
+    logAssistantTourDebug("layout-opening-state", () => ({
+      slugInvitacion,
+      assistantTourDraftKey,
+      sidebarInstanceKey,
+      openingKey: assistantTourOpeningRef.current.openingKey,
+      openingIndex: assistantTourOpeningRef.current.openingIndex,
+      editorSession: {
+        id: editorSession?.id || "",
+        slug: editorSession?.slug || "",
+        kind: editorSession?.kind || "",
+      },
+      assistantTourEditorReady,
+      assistantTourPreferencesLoaded,
+      assistantTourOptOut,
+      assistantTourPreviewOpen,
+    }));
+  }, [
+    assistantTourDraftKey,
+    assistantTourEditorReady,
+    assistantTourOptOut,
+    assistantTourPreferencesLoaded,
+    assistantTourPreviewOpen,
+    editorSession?.id,
+    editorSession?.kind,
+    editorSession?.slug,
+    sidebarInstanceKey,
+    slugInvitacion,
+  ]);
 
   return (
     <div className={`relative flex h-screen overflow-hidden ${shellBackgroundClass}`}>
@@ -107,6 +166,14 @@ export default function DashboardLayout({
           canManageSite={canManageSite}
           editorSession={editorSession}
           templateSessionMeta={templateSessionMeta}
+          userUid={usuario?.uid || ""}
+          assistantTourEditorReady={assistantTourEditorReady}
+          assistantTourPreferencesLoaded={assistantTourPreferencesLoaded}
+          assistantTourOptOut={assistantTourOptOut}
+          assistantTourSaving={assistantTourSaving}
+          onAssistantTourPreferenceChange={onAssistantTourPreferenceChange}
+          assistantTourPreviewOpen={assistantTourPreviewOpen}
+          assistantTourOpeningKey={assistantTourOpeningRef.current.openingKey}
         />
       )}
 

@@ -48,6 +48,7 @@ import {
   readDashboardDocumentNameState,
   requestDashboardDocumentNameUpdate,
 } from "@/lib/dashboardDocumentNameBridge";
+import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
   readCanvasEditorMethod,
@@ -57,6 +58,11 @@ import {
   EVENT_DETAILS_MODES,
   normalizeEventDetailsConfig,
 } from "../../shared/eventDetailsConfig.js";
+import {
+  ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR,
+  ASSISTANT_GUIDED_TOUR_TARGET_ATTR,
+  ASSISTANT_GUIDED_TOUR_TARGETS,
+} from "@/domain/editor/assistantGuidedTour";
 import {
   getDressCodeFieldKey,
   resolveDressCodeSidebarBinding,
@@ -336,6 +342,13 @@ function readInitialCountdownUiState(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
 function readInitialEventPersonNamesState() {
   if (typeof window === "undefined") return readEventPersonNamesState();
   return readEventPersonNamesState(window);
+}
+
+function readInitialEventPersonNamesHydrated() {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    readEventPersonNamesState(window, { requireValidSnapshot: true })
+  );
 }
 
 function readInitialEventLocationState(feature = EVENT_DETAIL_FEATURES.CEREMONY) {
@@ -717,6 +730,7 @@ async function fetchGooglePlaceDetailsFromPrediction(prediction) {
 export default function MiniToolbarTabDetallesEvento({
   simplifiedForAssistant = false,
   assistantSubstep = null,
+  onAssistantTourFieldEdit = null,
 }) {
   const [documentNameState, setDocumentNameState] = useState(
     readInitialDocumentNameState
@@ -733,6 +747,9 @@ export default function MiniToolbarTabDetallesEvento({
   );
   const [eventPersonNames, setEventPersonNames] = useState(
     readInitialEventPersonNamesState
+  );
+  const [eventPersonNamesHydrated, setEventPersonNamesHydrated] = useState(
+    readInitialEventPersonNamesHydrated
   );
   const [eventLocation, setEventLocation] = useState(
     readInitialEventLocationState
@@ -753,6 +770,7 @@ export default function MiniToolbarTabDetallesEvento({
   const editingEventLocationRef = useRef(false);
   const editingEventTimesRef = useRef(false);
   const activeLocationSearchFieldRef = useRef("");
+  const eventNameRef = useRef(eventName);
   const eventPersonNamesRef = useRef(eventPersonNames);
   const eventLocationRef = useRef(eventLocation);
   const partyEventLocationRef = useRef(partyEventLocation);
@@ -1006,25 +1024,95 @@ export default function MiniToolbarTabDetallesEvento({
   }, []);
 
   const syncEventPersonNamesState = useCallback(() => {
-    applySyncedEventPersonNamesState(readEventPersonNamesState(window));
+    const hydratedNames = readEventPersonNamesState(window, {
+      requireValidSnapshot: true,
+    });
+    const fallbackNames = hydratedNames ? null : readEventPersonNamesState(window);
+    logAssistantTourDebug("details-person-names-sync", () => ({
+      source: "syncEventPersonNamesState",
+      hydrated: Boolean(hydratedNames),
+      hydratedNames,
+      fallbackNames,
+      editingPersonNames: editingEventPersonNamesRef.current,
+      currentNames: eventPersonNamesRef.current,
+      pendingEventPersonNamesSignature:
+        pendingEventPersonNamesSignatureRef.current,
+    }));
+    setEventPersonNamesHydrated(Boolean(hydratedNames));
+    applySyncedEventPersonNamesState(
+      hydratedNames || fallbackNames
+    );
   }, [applySyncedEventPersonNamesState]);
 
   const handleTemplateAuthoringChangeForPersonNames = useCallback(
     (event) => {
       const nextNames = resolveEventPersonNamesState(event?.detail);
       if (nextNames) {
+        logAssistantTourDebug("details-person-names-sync", () => ({
+          source: "handleTemplateAuthoringChangeForPersonNames",
+          hydrated: true,
+          eventType: event?.type || "",
+          nextNames,
+          editingPersonNames: editingEventPersonNamesRef.current,
+          currentNames: eventPersonNamesRef.current,
+          pendingEventPersonNamesSignature:
+            pendingEventPersonNamesSignatureRef.current,
+        }));
+        setEventPersonNamesHydrated(true);
         applySyncedEventPersonNamesState(nextNames);
         return;
       }
 
-      applySyncedEventPersonNamesState(
-        readEventPersonNamesState(window, {
-          requireValidSnapshot: event?.detail != null,
-        })
-      );
+      const syncedNames = readEventPersonNamesState(window, {
+        requireValidSnapshot: true,
+      });
+      logAssistantTourDebug("details-person-names-sync", () => ({
+        source: "handleTemplateAuthoringChangeForPersonNames:fallback",
+        hydrated: Boolean(syncedNames),
+        eventType: event?.type || "",
+        syncedNames,
+        editingPersonNames: editingEventPersonNamesRef.current,
+        currentNames: eventPersonNamesRef.current,
+        pendingEventPersonNamesSignature:
+          pendingEventPersonNamesSignatureRef.current,
+      }));
+      setEventPersonNamesHydrated(Boolean(syncedNames));
+      applySyncedEventPersonNamesState(syncedNames);
     },
     [applySyncedEventPersonNamesState]
   );
+
+  useEffect(() => {
+    eventNameRef.current = eventName;
+  }, [eventName]);
+
+  useEffect(() => {
+    logAssistantTourDebug("details-fields-state", () => ({
+      source: "MiniToolbarTabDetallesEvento.state",
+      simplifiedForAssistant,
+      assistantSubstep: {
+        id: assistantSubstep?.id || "",
+        label: assistantSubstep?.label || "",
+      },
+      documentNameState,
+      documentName: eventName,
+      eventPersonNames,
+      eventPersonNamesHydrated,
+      editing: {
+        eventName: editingNameRef.current,
+        personNames: editingEventPersonNamesRef.current,
+      },
+      pendingEventPersonNamesSignature:
+        pendingEventPersonNamesSignatureRef.current,
+    }));
+  }, [
+    assistantSubstep,
+    documentNameState,
+    eventName,
+    eventPersonNames,
+    eventPersonNamesHydrated,
+    simplifiedForAssistant,
+  ]);
 
   useEffect(() => {
     eventPersonNamesRef.current = eventPersonNames;
@@ -1072,18 +1160,28 @@ export default function MiniToolbarTabDetallesEvento({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const applyDocumentNameState = (nextState) => {
+    const applyDocumentNameState = (nextState, source) => {
+      logAssistantTourDebug("details-document-name-sync", () => ({
+        source,
+        nextState,
+        previousEventName: eventNameRef.current,
+        editingName: editingNameRef.current,
+      }));
       setDocumentNameState(nextState);
       if (!editingNameRef.current) {
         setEventName(nextState.name);
       }
     };
 
-    applyDocumentNameState(readDashboardDocumentNameState(window));
+    applyDocumentNameState(
+      readDashboardDocumentNameState(window),
+      "initial-effect"
+    );
 
     const handleDocumentNameStateChange = (event) => {
       applyDocumentNameState(
-        event?.detail || readDashboardDocumentNameState(window)
+        event?.detail || readDashboardDocumentNameState(window),
+        event?.type || DASHBOARD_DOCUMENT_NAME_EVENTS.STATE_CHANGE
       );
     };
 
@@ -1197,10 +1295,48 @@ export default function MiniToolbarTabDetallesEvento({
 
   const canEditEventName = documentNameState.editable;
 
+  const notifyAssistantTourFieldEdit = useCallback(
+    ({ targetId, value }) => {
+      logAssistantTourDebug("details-field-edit-notify", () => ({
+        source: "MiniToolbarTabDetallesEvento.notifyAssistantTourFieldEdit",
+        targetId,
+        value,
+        hasListener: typeof onAssistantTourFieldEdit === "function",
+        documentNameState,
+        documentName: eventNameRef.current,
+        eventPersonNames: eventPersonNamesRef.current,
+        eventPersonNamesHydrated,
+        editing: {
+          eventName: editingNameRef.current,
+          personNames: editingEventPersonNamesRef.current,
+        },
+      }));
+      if (typeof onAssistantTourFieldEdit !== "function") return;
+      onAssistantTourFieldEdit({ targetId, value });
+    },
+    [documentNameState, eventPersonNamesHydrated, onAssistantTourFieldEdit]
+  );
+
   const handleEventNameChange = (event) => {
     const nextName = event.target.value;
+    logAssistantTourDebug("details-input-change", () => ({
+      source: "handleEventNameChange",
+      targetId: ASSISTANT_GUIDED_TOUR_TARGETS.EVENT_NAME,
+      value: nextName,
+      eventType: event?.type || "",
+      eventIsTrusted:
+        event?.nativeEvent?.isTrusted === true || event?.isTrusted === true,
+      documentNameState,
+      documentName: eventNameRef.current,
+      eventPersonNames: eventPersonNamesRef.current,
+      eventPersonNamesHydrated,
+    }));
     setEventName(nextName);
     requestDashboardDocumentNameUpdate({ name: nextName, persist: false });
+    notifyAssistantTourFieldEdit({
+      targetId: ASSISTANT_GUIDED_TOUR_TARGETS.EVENT_NAME,
+      value: nextName,
+    });
   };
 
   const commitEventName = () => {
@@ -1283,11 +1419,45 @@ export default function MiniToolbarTabDetallesEvento({
   };
 
   const handlePrimaryPersonNameChange = (event) => {
-    applyEventPersonNames({ primaryName: event.target.value });
+    const primaryName = event.target.value;
+    logAssistantTourDebug("details-input-change", () => ({
+      source: "handlePrimaryPersonNameChange",
+      targetId: ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_PRIMARY,
+      value: primaryName,
+      eventType: event?.type || "",
+      eventIsTrusted:
+        event?.nativeEvent?.isTrusted === true || event?.isTrusted === true,
+      documentNameState,
+      documentName: eventNameRef.current,
+      eventPersonNames: eventPersonNamesRef.current,
+      eventPersonNamesHydrated,
+    }));
+    applyEventPersonNames({ primaryName });
+    notifyAssistantTourFieldEdit({
+      targetId: ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_PRIMARY,
+      value: primaryName,
+    });
   };
 
   const handleSecondaryPersonNameChange = (event) => {
-    applyEventPersonNames({ secondaryName: event.target.value });
+    const secondaryName = event.target.value;
+    logAssistantTourDebug("details-input-change", () => ({
+      source: "handleSecondaryPersonNameChange",
+      targetId: ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_SECONDARY,
+      value: secondaryName,
+      eventType: event?.type || "",
+      eventIsTrusted:
+        event?.nativeEvent?.isTrusted === true || event?.isTrusted === true,
+      documentNameState,
+      documentName: eventNameRef.current,
+      eventPersonNames: eventPersonNamesRef.current,
+      eventPersonNamesHydrated,
+    }));
+    applyEventPersonNames({ secondaryName });
+    notifyAssistantTourFieldEdit({
+      targetId: ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_SECONDARY,
+      value: secondaryName,
+    });
   };
 
   const persistEventTimes = useCallback((nextTimes) => {
@@ -2219,6 +2389,12 @@ export default function MiniToolbarTabDetallesEvento({
             </label>
             <input
               id="event-name"
+              {...{
+                [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                  ASSISTANT_GUIDED_TOUR_TARGETS.EVENT_NAME,
+                [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
+                  documentNameState.hydrated === true ? "true" : "false",
+              }}
               type="text"
               value={eventName}
               onFocus={handleEventNameFocus}
@@ -2233,7 +2409,13 @@ export default function MiniToolbarTabDetallesEvento({
 
           <div className={dividerClass} />
 
-          <section className={`${sectionClass} pt-4`}>
+          <section
+            className={`${sectionClass} pt-4`}
+            {...{
+              [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_NAMES,
+            }}
+          >
             <h3 className={labelClass}>Nombre de los casados</h3>
 
             <div className="mt-3">
@@ -2242,6 +2424,12 @@ export default function MiniToolbarTabDetallesEvento({
               </label>
               <input
                 id="first-person-name"
+                {...{
+                  [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                    ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_PRIMARY,
+                  [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
+                    eventPersonNamesHydrated === true ? "true" : "false",
+                }}
                 type="text"
                 value={eventPersonNames.primaryName}
                 onFocus={(event) =>
@@ -2261,6 +2449,12 @@ export default function MiniToolbarTabDetallesEvento({
               </label>
               <input
                 id="second-person-name"
+                {...{
+                  [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                    ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_SECONDARY,
+                  [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
+                    eventPersonNamesHydrated === true ? "true" : "false",
+                }}
                 type="text"
                 value={eventPersonNames.secondaryName}
                 onFocus={(event) =>

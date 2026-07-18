@@ -44,6 +44,7 @@ export function buildDashboardDocumentNameState({
   documentId = "",
   documentKind = "draft",
   editable = false,
+  hydrated = false,
 } = {}) {
   const normalizedKind = normalizeText(documentKind).toLowerCase();
 
@@ -52,6 +53,7 @@ export function buildDashboardDocumentNameState({
     documentId: normalizeText(documentId) || null,
     documentKind: normalizedKind === "template" ? "template" : "draft",
     editable: editable === true,
+    hydrated: hydrated === true,
   };
 }
 

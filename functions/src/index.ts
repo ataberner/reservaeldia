@@ -247,6 +247,10 @@ type UserProfileData = {
   profileComplete: boolean;
 };
 
+type UserUiPreferences = {
+  assistantTourOptOut: boolean;
+};
+
 type UserDirectoryMetrics = {
   drafts: number;
   publishedActive: number;
@@ -447,6 +451,41 @@ function extractProfileFromDocData(data: unknown): UserProfileData {
       fechaNacimiento
     ),
   };
+}
+
+function extractUserUiPreferencesFromDocData(data: unknown): UserUiPreferences {
+  const raw = (data && typeof data === "object"
+    ? (data as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+  const uiPreferences =
+    raw.uiPreferences &&
+    typeof raw.uiPreferences === "object" &&
+    !Array.isArray(raw.uiPreferences)
+      ? (raw.uiPreferences as Record<string, unknown>)
+      : {};
+
+  return {
+    assistantTourOptOut: uiPreferences.assistantTourOptOut === true,
+  };
+}
+
+function normalizeUserUiPreferencesPatch(data: unknown): Partial<UserUiPreferences> {
+  const raw = (data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+  const patch: Partial<UserUiPreferences> = {};
+
+  if (Object.prototype.hasOwnProperty.call(raw, "assistantTourOptOut")) {
+    if (typeof raw.assistantTourOptOut !== "boolean") {
+      throw new HttpsError(
+        "invalid-argument",
+        "assistantTourOptOut debe ser booleano"
+      );
+    }
+    patch.assistantTourOptOut = raw.assistantTourOptOut;
+  }
+
+  return patch;
 }
 
 type TimestampLike = {
@@ -2456,6 +2495,92 @@ export const getMyProfileStatus = onCall(
         fechaNacimiento: profileData.fechaNacimiento,
       },
       profileComplete,
+    };
+  }
+);
+
+/**
+ * ================================
+ * Preferencias de interfaz del usuario autenticado
+ * ================================
+ */
+export const getMyUiPreferences = onCall(
+  {
+    region: "us-central1",
+    cpu: "gcf_gen1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = requireAuth(request);
+    const preferencesSnap = await db.collection("usuarios").doc(uid).get();
+    const preferencesData = preferencesSnap.exists
+      ? preferencesSnap.data()
+      : null;
+    const uiPreferences =
+      extractUserUiPreferencesFromDocData(preferencesData);
+    const rawUiPreferences =
+      preferencesData?.uiPreferences &&
+      typeof preferencesData.uiPreferences === "object" &&
+      !Array.isArray(preferencesData.uiPreferences)
+        ? (preferencesData.uiPreferences as Record<string, unknown>)
+        : {};
+
+    return {
+      uiPreferences,
+      assistantTourOptOut: uiPreferences.assistantTourOptOut,
+      updatedAt: toISODateTime(rawUiPreferences.updatedAt),
+    };
+  }
+);
+
+export const updateMyUiPreferences = onCall(
+  {
+    region: "us-central1",
+    cpu: "gcf_gen1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (
+    request: CallableRequest<{
+      assistantTourOptOut?: boolean;
+    }>
+  ) => {
+    const uid = requireAuth(request);
+    const patch = normalizeUserUiPreferencesPatch(request.data);
+    const userRef = db.collection("usuarios").doc(uid);
+    const existingSnap = await userRef.get();
+
+    const payload: Record<string, unknown> = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      "uiPreferences.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (patch.assistantTourOptOut !== undefined) {
+      payload["uiPreferences.assistantTourOptOut"] =
+        patch.assistantTourOptOut;
+    }
+
+    if (!existingSnap.exists) {
+      payload.uid = uid;
+      payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    await userRef.set(payload, { merge: true });
+
+    const updatedSnap = await userRef.get();
+    const updatedData = updatedSnap.data() || {};
+    const uiPreferences = extractUserUiPreferencesFromDocData(updatedData);
+    const rawUiPreferences =
+      updatedData.uiPreferences &&
+      typeof updatedData.uiPreferences === "object" &&
+      !Array.isArray(updatedData.uiPreferences)
+        ? (updatedData.uiPreferences as Record<string, unknown>)
+        : {};
+
+    return {
+      success: true,
+      uiPreferences,
+      assistantTourOptOut: uiPreferences.assistantTourOptOut,
+      updatedAt: toISODateTime(rawUiPreferences.updatedAt),
     };
   }
 );

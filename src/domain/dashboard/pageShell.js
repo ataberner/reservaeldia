@@ -57,6 +57,12 @@ export function buildDashboardLayoutProps({
   ensureDraftFlushBeforeCriticalAction,
   handleOpenTemplateSession,
   seccionActivaId = null,
+  assistantTourEditorReady = false,
+  assistantTourPreferencesLoaded = false,
+  assistantTourOptOut = false,
+  assistantTourSaving = false,
+  onAssistantTourPreferenceChange = null,
+  assistantTourPreviewOpen = false,
 } = {}) {
   return {
     mostrarMiniToolbar: Boolean(slugInvitacion) && !isEditorReadOnly,
@@ -100,6 +106,12 @@ export function buildDashboardLayoutProps({
         : null,
     ensureEditorFlushBeforeAction: ensureDraftFlushBeforeCriticalAction,
     onOpenTemplateSession: handleOpenTemplateSession,
+    assistantTourEditorReady: assistantTourEditorReady === true,
+    assistantTourPreferencesLoaded: assistantTourPreferencesLoaded === true,
+    assistantTourOptOut: assistantTourOptOut === true,
+    assistantTourSaving: assistantTourSaving === true,
+    onAssistantTourPreferenceChange,
+    assistantTourPreviewOpen: assistantTourPreviewOpen === true,
   };
 }
 

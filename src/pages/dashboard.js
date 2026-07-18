@@ -16,6 +16,7 @@ import { useDashboardEditorRoute } from "@/hooks/useDashboardEditorRoute";
 import { useDashboardPreviewController } from "@/hooks/useDashboardPreviewController";
 import { useDashboardStartupLoaders } from "@/hooks/useDashboardStartupLoaders";
 import { useDashboardTemplateModal } from "@/hooks/useDashboardTemplateModal";
+import { useUserUiPreferences } from "@/hooks/useUserUiPreferences";
 import {
   consumePendingLandingTemplateSelection,
 } from "@/domain/templates/pendingLandingTemplateSelection";
@@ -129,6 +130,7 @@ export default function Dashboard() {
     modoEditor,
     editorSession,
   });
+  const userUiPreferences = useUserUiPreferences(usuario?.uid);
   const tipoSeleccionado = DEFAULT_TIPO_INVITACION;
   const [zoom, setZoom] = useState(0.8);
   const [historialExternos, setHistorialExternos] = useState([]);
@@ -241,6 +243,13 @@ export default function Dashboard() {
     ensureDraftFlushBeforeCriticalAction,
     handleOpenTemplateSession,
     seccionActivaId: null,
+    assistantTourEditorReady: editorRuntimeState?.status === "ready",
+    assistantTourPreferencesLoaded: userUiPreferences.loaded,
+    assistantTourOptOut:
+      userUiPreferences.preferences?.assistantTourOptOut === true,
+    assistantTourSaving: userUiPreferences.saving,
+    onAssistantTourPreferenceChange: userUiPreferences.updatePreferences,
+    assistantTourPreviewOpen: mostrarVistaPrevia,
   });
   const canvasEditorProps = buildDashboardCanvasEditorProps({
     slugInvitacion,

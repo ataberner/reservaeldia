@@ -92,6 +92,49 @@ test("assistant substep helpers clamp indices and expose progress only for split
   );
 });
 
+test("assistant substeps own contextual guided-tour Next copy", () => {
+  const detalles = resolveAssistantSubstepsForStep("detalles");
+  const imagen = resolveAssistantSubstepsForStep("imagen", {
+    sections: [
+      {
+        id: "cover-section",
+        orden: 1,
+        fondoTipo: "imagen",
+        fondoImagen: "https://example.test/cover.jpg",
+      },
+    ],
+    objects: [{ id: "gallery-one", tipo: "galeria" }],
+  });
+  const rsvp = resolveAssistantSubstepsForStep("rsvp");
+  const regalos = resolveAssistantSubstepsForStep("regalos");
+
+  assert.equal(detalles[0].tourNextMessage, undefined);
+  assert.equal(
+    detalles[1].tourNextMessage,
+    "Cuando termines de configurar la fecha y el horario, presioná Siguiente."
+  );
+  assert.equal(
+    detalles[2].tourNextMessage,
+    "Cuando termines de configurar la ubicación, presioná Siguiente."
+  );
+  assert.equal(
+    imagen[0].tourNextMessage,
+    "Cuando termines de configurar las fotos, presioná Siguiente."
+  );
+  assert.equal(
+    imagen[1].tourNextMessage,
+    "Cuando termines de configurar las fotos, presioná Siguiente."
+  );
+  assert.equal(
+    rsvp[0].tourNextMessage,
+    "Cuando termines de configurar el formulario de asistencia, presioná Siguiente."
+  );
+  assert.equal(
+    regalos[0].tourNextMessage,
+    "Cuando termines de configurar la sección de regalos, presioná Siguiente."
+  );
+});
+
 test("assistant linear progress helper counts steps and substeps", () => {
   const counts = [3, 2, 1, 1];
 

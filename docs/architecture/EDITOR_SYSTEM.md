@@ -91,6 +91,14 @@ The editor currently uses three coordinated visual surfaces:
 2. Konva overlay layers for selection, hover, line controls, guides, and drag-overlay visuals
 3. DOM overlay surfaces for inline text editing
 
+### 3.3.1 Assistant Guided Tour Layer
+
+The Assistant guided tour is an editor/dashboard overlay, not a second Assistant flow. It is mounted from `DashboardSidebar.jsx` through `src/components/editor/assistantTour/AssistantGuidedTour.jsx` and observes the existing Assistant state (`assistantStepIndex`, `assistantSubstepIndex`, current step/substep, and the real footer action button).
+
+Stable targets are exposed with `data-assistant-tour-target` on the existing Assistant controls and first-step form fields. First-step field targets also expose `data-assistant-tour-hydrated` so the tour can skip only values that belong to the hydrated draft state, not fallback UI text or transient bridge state. The tour must use those semantic targets rather than visible text selectors. It may highlight, scroll within `#sidebar-panel`, and listen for user `input`/`change`/`click` events, but it must not call Assistant navigation handlers except for the one initial activation through the existing `openAssistantAtStep` mechanism when a draft opens without Assistant active.
+
+The opt-out preference is user-scoped under `usuarios/{uid}.uiPreferences.assistantTourOptOut` and is read/written via callable functions. Closing the tour is session-only and must not persist this preference.
+
 Section-owned visuals are authored through `secciones`, not `objetos`. The editor renders base backgrounds, `decoracionesFondo`, and `decoracionesBorde` in the section background surface. `decoracionesBorde` can be assigned from an existing image asset into the top or bottom slot; sizing follows the same bounded edge-decoration model documented in `DATA_MODEL.md`. A double click opens the section-owned decoration edit/settings flow for users with `canManageSite` access. The edge overlay commits `offsetDesktopPx`; it does not make the edge decoration a normal selectable object, and it does not enter resize, rotation, grouping, z-index, or smart-layout object flows.
 
 The normative role and conversion contract for image/content, free decorations, section backgrounds, and top/bottom decorations lives in `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`. That contract requires any conversion from a normal image object into a section-owned visual role to remove the original object from `objetos`; current top/bottom edge conversion follows that rule and clears stale object selection.

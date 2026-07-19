@@ -9,6 +9,7 @@
 
 .spotlight {
   position: fixed;
+  z-index: 0;
   border-radius: 8px;
   box-shadow:
     0 0 0 2px rgba(105, 43, 154, 0.52),
@@ -24,6 +25,7 @@
 
 .tooltip {
   position: fixed;
+  z-index: 1;
   width: min(320px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
   overflow: auto;

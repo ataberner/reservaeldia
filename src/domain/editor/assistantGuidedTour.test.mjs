@@ -21,6 +21,7 @@ import {
   resolveAssistantGuidedTourOverlayRect,
   resolveAssistantGuidedTourTargetId,
   resolveAssistantGuidedTourTooltipPosition,
+  resolveAssistantGuidedTourUsableViewport,
   resolveInitialAssistantGuidedTourPhase,
   resolveNextAssistantGuidedTourFieldPhase,
   shouldAdvanceAssistantGuidedTourField,
@@ -33,10 +34,23 @@ import { getAssistantSteps } from "./assistantMode.js";
 import { resolveAssistantSubstepsForStep } from "./assistantSubsteps.js";
 
 function assertInsideViewport(rect, viewport, margin = 12) {
-  assert.ok(rect.left >= margin);
-  assert.ok(rect.top >= margin);
-  assert.ok(rect.right <= viewport.width - margin);
-  assert.ok(rect.bottom <= viewport.height - margin);
+  const left = Number(viewport?.left) || 0;
+  const top = Number(viewport?.top) || 0;
+  const width = Number(viewport?.width) || 0;
+  const height = Number(viewport?.height) || 0;
+  assert.ok(rect.left >= left + margin);
+  assert.ok(rect.top >= top + margin);
+  assert.ok(rect.right <= left + width - margin);
+  assert.ok(rect.bottom <= top + height - margin);
+}
+
+function assertDoesNotOverlapAny(rect, obstructionRects = []) {
+  obstructionRects.forEach((obstructionRect) => {
+    assert.equal(
+      doAssistantGuidedTourRectsOverlap(rect, obstructionRect),
+      false
+    );
+  });
 }
 
 test("guided tour starts only when the draft, editor, Assistant and targets are ready", () => {
@@ -575,6 +589,19 @@ test("guided tour tooltip remains inside a desktop viewport", () => {
   assertInsideViewport(position.rect, viewport);
 });
 
+test("guided tour usable viewport keeps the desktop/no-obstruction viewport unchanged", () => {
+  const viewport = { left: 0, top: 52, width: 1024, height: 716 };
+
+  assert.deepEqual(
+    resolveAssistantGuidedTourUsableViewport({
+      viewport,
+      bottomObstructionRects: [],
+      gap: 12,
+    }),
+    viewport
+  );
+});
+
 test("guided tour tooltip remains inside a mobile viewport", () => {
   const viewport = { width: 390, height: 620 };
   const targetRect = {
@@ -823,6 +850,490 @@ test("guided tour mobile action tooltip avoids lower controls before choosing a 
   );
 });
 
+test("guided tour mobile usable viewport excludes lower Assistant controls and navigation", () => {
+  const viewport = { width: 390, height: 700 };
+  const lowerControlsRect = {
+    left: 8,
+    top: 570,
+    width: 374,
+    height: 72,
+    right: 382,
+    bottom: 642,
+  };
+  const mobileNavigationRect = {
+    left: 0,
+    top: 604,
+    width: 390,
+    height: 96,
+    right: 390,
+    bottom: 700,
+  };
+  const usableViewport = resolveAssistantGuidedTourUsableViewport({
+    viewport,
+    bottomObstructionRects: [lowerControlsRect, mobileNavigationRect],
+    gap: 12,
+  });
+  const targetRect = {
+    left: 26,
+    top: 518,
+    width: 338,
+    height: 38,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 204, height: 84 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    avoidRects: [lowerControlsRect, mobileNavigationRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(usableViewport.height, 558);
+  assert.notEqual(position.placement, "bottom");
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [
+    targetRect,
+    lowerControlsRect,
+    mobileNavigationRect,
+  ]);
+});
+
+test("guided tour mobile field tooltip stays above lower surfaces at min and max panel heights", () => {
+  const viewport = { width: 390, height: 700 };
+  const panelCases = [
+    { label: "min-panel", controlsTop: 612 },
+    { label: "max-panel", controlsTop: 420 },
+  ];
+
+  panelCases.forEach(({ label, controlsTop }) => {
+    const lowerControlsRect = {
+      left: 8,
+      top: controlsTop,
+      width: 374,
+      height: 68,
+      right: 382,
+      bottom: controlsTop + 68,
+    };
+    const usableViewport = resolveAssistantGuidedTourUsableViewport({
+      viewport,
+      bottomObstructionRects: [lowerControlsRect],
+      gap: 12,
+    });
+    const targetRect = {
+      left: 28,
+      top: controlsTop - 56,
+      width: 334,
+      height: 38,
+    };
+    const position = resolveAssistantGuidedTourTooltipPosition({
+      targetRect,
+      tooltipSize: { width: 204, height: 76 },
+      viewport: usableViewport,
+      margin: 8,
+      gap: 8,
+      placementPriority: [
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ],
+      avoidRects: [lowerControlsRect],
+      minWidth: 144,
+      minHeight: 58,
+    });
+
+    assert.equal(position.placement, "top", label);
+    assertInsideViewport(position.rect, usableViewport, 8);
+    assertDoesNotOverlapAny(position.rect, [targetRect, lowerControlsRect]);
+  });
+});
+
+test("guided tour mobile action tooltip stays inside the usable viewport above footer controls", () => {
+  const viewport = { width: 390, height: 700 };
+  const controlsRect = {
+    left: 8,
+    top: 568,
+    width: 374,
+    height: 82,
+    right: 382,
+    bottom: 650,
+  };
+  const navigationRect = {
+    left: 0,
+    top: 604,
+    width: 390,
+    height: 96,
+    right: 390,
+    bottom: 700,
+  };
+  const usableViewport = resolveAssistantGuidedTourUsableViewport({
+    viewport,
+    bottomObstructionRects: [controlsRect, navigationRect],
+    gap: 12,
+  });
+  const targetRect = {
+    left: 206,
+    top: 606,
+    width: 160,
+    height: 40,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 164, height: 72 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+    ],
+    avoidRects: [controlsRect, navigationRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [
+    targetRect,
+    controlsRect,
+    navigationRect,
+  ]);
+});
+
+test("guided tour mobile NEXT action searches free space before overlapping hard controls", () => {
+  let diagnostics = null;
+  const usefulViewport = { left: 0, top: 57, width: 400, height: 425 };
+  const targetRect = {
+    left: 199,
+    top: 517,
+    width: 186,
+    height: 48,
+    right: 385,
+    bottom: 565,
+  };
+  const hardAvoidRects = [
+    { left: 19, top: 521, width: 178, height: 40, right: 197, bottom: 561 },
+    { left: 351, top: 118, width: 32, height: 32, right: 383, bottom: 150 },
+    { left: 20, top: 206, width: 361, height: 38, right: 381, bottom: 244 },
+    { left: 20, top: 365, width: 361, height: 38, right: 381, bottom: 403 },
+    { left: 20, top: 451, width: 173, height: 38, right: 192, bottom: 489 },
+    { left: 208, top: 451, width: 173, height: 38, right: 381, bottom: 489 },
+    { left: 9, top: 494, width: 382, height: 75, right: 391, bottom: 569 },
+    { left: 0, top: 572, width: 400, height: 96, right: 400, bottom: 668 },
+  ];
+
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 164, height: 137 },
+    viewport: usefulViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+    ],
+    preferredPlacement: ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+    avoidRects: hardAvoidRects,
+    minWidth: 144,
+    minHeight: 58,
+    enforceHardAvoidRects: true,
+    debugCandidates: (payload) => {
+      diagnostics = payload;
+    },
+  });
+
+  assert.equal(position.reason, "hard-avoid-free-space");
+  assert.equal(position.constraintMode, "hard-avoid-free-space");
+  assert.equal(position.height, 137);
+  assert.equal(position.hardAvoidOverlapArea, 0);
+  assert.ok(position.rect.bottom <= 206);
+  assertInsideViewport(position.rect, usefulViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [targetRect, ...hardAvoidRects]);
+  assert.ok(
+    diagnostics.candidates.some(
+      (candidate) => candidate.stage === "hard-avoid-free-space"
+    )
+  );
+  assert.notEqual(diagnostics.reason, "hard-avoid-overlap-fallback");
+});
+
+test("guided tour mobile PREVIEW action avoids footer controls when preferred placement is blocked", () => {
+  const usefulViewport = { left: 0, top: 57, width: 430, height: 430 };
+  const previewTargetRect = {
+    left: 215,
+    top: 522,
+    width: 192,
+    height: 42,
+    right: 407,
+    bottom: 564,
+  };
+  const hardAvoidRects = [
+    { left: 24, top: 522, width: 176, height: 42, right: 200, bottom: 564 },
+    { left: 24, top: 202, width: 382, height: 40, right: 406, bottom: 242 },
+    { left: 24, top: 360, width: 382, height: 40, right: 406, bottom: 400 },
+    { left: 24, top: 452, width: 182, height: 40, right: 206, bottom: 492 },
+    { left: 224, top: 452, width: 182, height: 40, right: 406, bottom: 492 },
+    { left: 12, top: 496, width: 406, height: 76, right: 418, bottom: 572 },
+  ];
+
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: previewTargetRect,
+    tooltipSize: { width: 164, height: 132 },
+    viewport: usefulViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+    ],
+    preferredPlacement: ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    avoidRects: hardAvoidRects,
+    minWidth: 144,
+    minHeight: 58,
+    enforceHardAvoidRects: true,
+  });
+
+  assert.equal(position.hardAvoidOverlapArea, 0);
+  assert.ok(position.height >= 58);
+  assert.ok(position.rect.bottom <= 360);
+  assertInsideViewport(position.rect, usefulViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [previewTargetRect, ...hardAvoidRects]);
+});
+
+test("guided tour mobile action can constrain height without covering hard controls", () => {
+  const usefulViewport = { left: 0, top: 57, width: 390, height: 390 };
+  const targetRect = {
+    left: 204,
+    top: 492,
+    width: 164,
+    height: 42,
+    right: 368,
+    bottom: 534,
+  };
+  const hardAvoidRects = [
+    { left: 18, top: 492, width: 170, height: 42, right: 188, bottom: 534 },
+    { left: 20, top: 200, width: 350, height: 42, right: 370, bottom: 242 },
+    { left: 20, top: 360, width: 350, height: 42, right: 370, bottom: 402 },
+    { left: 8, top: 448, width: 374, height: 86, right: 382, bottom: 534 },
+  ];
+
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 164, height: 180 },
+    viewport: usefulViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+    ],
+    avoidRects: hardAvoidRects,
+    minWidth: 144,
+    minHeight: 58,
+    enforceHardAvoidRects: true,
+  });
+
+  assert.equal(position.reason, "hard-avoid-constrained");
+  assert.equal(position.constraintMode, "hard-avoid-free-space");
+  assert.ok(position.height >= 58);
+  assert.ok(position.maxHeight >= 58);
+  assert.equal(position.hardAvoidOverlapArea, 0);
+  assertInsideViewport(position.rect, usefulViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [targetRect, ...hardAvoidRects]);
+});
+
+test("guided tour mobile action identifies the physical last fallback when controls fill the viewport", () => {
+  const usefulViewport = { left: 0, top: 57, width: 360, height: 240 };
+  const targetRect = {
+    left: 190,
+    top: 316,
+    width: 148,
+    height: 40,
+    right: 338,
+    bottom: 356,
+  };
+  const hardAvoidRects = [
+    { left: 8, top: 65, width: 344, height: 84, right: 352, bottom: 149 },
+    { left: 8, top: 149, width: 344, height: 84, right: 352, bottom: 233 },
+    { left: 8, top: 233, width: 344, height: 72, right: 352, bottom: 305 },
+  ];
+
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 164, height: 120 },
+    viewport: usefulViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+    ],
+    avoidRects: hardAvoidRects,
+    minWidth: 144,
+    minHeight: 58,
+    enforceHardAvoidRects: true,
+  });
+
+  assert.equal(position.reason, "hard-avoid-overlap-fallback");
+  assert.equal(position.constraintMode, "hard-avoid-overlap-fallback");
+  assert.ok(position.hardAvoidOverlapArea > 0);
+  assertInsideViewport(position.rect, usefulViewport, 8);
+});
+
+test("guided tour mobile tooltip recomputes when the lower panel surface changes height", () => {
+  const viewport = { width: 390, height: 700 };
+  const targetRect = {
+    left: 28,
+    top: 456,
+    width: 334,
+    height: 40,
+  };
+  const expandedControlsRect = {
+    left: 8,
+    top: 620,
+    width: 374,
+    height: 64,
+    right: 382,
+    bottom: 684,
+  };
+  const reducedControlsRect = {
+    left: 8,
+    top: 540,
+    width: 374,
+    height: 64,
+    right: 382,
+    bottom: 604,
+  };
+  const resolvePosition = (controlsRect) => {
+    const usableViewport = resolveAssistantGuidedTourUsableViewport({
+      viewport,
+      bottomObstructionRects: [controlsRect],
+      gap: 12,
+    });
+    return {
+      usableViewport,
+      position: resolveAssistantGuidedTourTooltipPosition({
+        targetRect,
+        tooltipSize: { width: 204, height: 84 },
+        viewport: usableViewport,
+        margin: 8,
+        gap: 8,
+        placementPriority: [
+          ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+          ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+          ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+          ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+        ],
+        preferredPlacement: ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+        avoidRects: [controlsRect],
+        minWidth: 144,
+        minHeight: 58,
+      }),
+    };
+  };
+  const expanded = resolvePosition(expandedControlsRect);
+  const reduced = resolvePosition(reducedControlsRect);
+
+  assert.equal(expanded.position.placement, "bottom");
+  assert.notEqual(reduced.position.placement, "bottom");
+  assertInsideViewport(expanded.position.rect, expanded.usableViewport, 8);
+  assertInsideViewport(reduced.position.rect, reduced.usableViewport, 8);
+  assertDoesNotOverlapAny(reduced.position.rect, [
+    targetRect,
+    reducedControlsRect,
+  ]);
+});
+
+test("guided tour mobile tooltip stays visible when visual viewport is reduced by keyboard", () => {
+  const visualViewport = { width: 390, height: 430 };
+  const keyboardControlsRect = {
+    left: 8,
+    top: 392,
+    width: 374,
+    height: 54,
+    right: 382,
+    bottom: 446,
+  };
+  const usableViewport = resolveAssistantGuidedTourUsableViewport({
+    viewport: visualViewport,
+    bottomObstructionRects: [keyboardControlsRect],
+    gap: 12,
+  });
+  const targetRect = {
+    left: 28,
+    top: 348,
+    width: 334,
+    height: 36,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 204, height: 74 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    avoidRects: [keyboardControlsRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.placement, "top");
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [targetRect, keyboardControlsRect]);
+});
+
+test("guided tour mobile tooltip constrains max height when the useful viewport is short", () => {
+  const viewport = { width: 390, height: 260 };
+  const targetRect = {
+    left: 28,
+    top: 176,
+    width: 334,
+    height: 36,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 204, height: 180 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assertInsideViewport(position.rect, viewport, 8);
+  assert.ok(Number(position.maxHeight) <= 244);
+  assert.ok(Number(position.maxHeight) < 180);
+});
+
 test("guided tour mobile tooltip keeps a preferred placement while it remains safe", () => {
   const viewport = { width: 390, height: 640 };
   const targetRect = {
@@ -895,6 +1406,696 @@ test("guided tour mobile tooltip changes preferred placement when it is unsafe",
   );
 });
 
+test("guided tour mobile content spotlight is avoided when there is room outside it", () => {
+  const viewport = { width: 390, height: 700 };
+  const controlsRect = {
+    left: 8,
+    top: 612,
+    width: 374,
+    height: 68,
+    right: 382,
+    bottom: 680,
+  };
+  const usableViewport = resolveAssistantGuidedTourUsableViewport({
+    viewport,
+    bottomObstructionRects: [controlsRect],
+    gap: 12,
+  });
+  const contentSpotlightRect = {
+    left: 8,
+    top: 132,
+    width: 374,
+    height: 316,
+    right: 382,
+    bottom: 448,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 84 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    avoidRects: [controlsRect],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.placement, "top");
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [contentSpotlightRect, controlsRect]);
+});
+
+test("guided tour mobile content spotlight stays avoided at min and max panel heights", () => {
+  const viewport = { width: 390, height: 700 };
+  const panelCases = [
+    { label: "min-panel", controlsTop: 612, contentTop: 220 },
+    { label: "max-panel", controlsTop: 420, contentTop: 96 },
+  ];
+
+  panelCases.forEach(({ label, controlsTop, contentTop }) => {
+    const controlsRect = {
+      left: 8,
+      top: controlsTop,
+      width: 374,
+      height: 68,
+      right: 382,
+      bottom: controlsTop + 68,
+    };
+    const usableViewport = resolveAssistantGuidedTourUsableViewport({
+      viewport,
+      bottomObstructionRects: [controlsRect],
+      gap: 12,
+    });
+    const contentSpotlightRect = {
+      left: 8,
+      top: contentTop,
+      width: 374,
+      height: controlsTop - contentTop - 18,
+      right: 382,
+      bottom: controlsTop - 18,
+    };
+    const position = resolveAssistantGuidedTourTooltipPosition({
+      targetRect: contentSpotlightRect,
+      tooltipSize: { width: 204, height: 76 },
+      viewport: usableViewport,
+      margin: 8,
+      gap: 8,
+      placementPriority: [
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+        ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ],
+      avoidRects: [controlsRect],
+      spotlightAvoidRects: [contentSpotlightRect],
+      minWidth: 144,
+      minHeight: 58,
+    });
+
+    assert.equal(position.placement, "top", label);
+    assertInsideViewport(position.rect, usableViewport, 8);
+    assertDoesNotOverlapAny(position.rect, [contentSpotlightRect, controlsRect]);
+  });
+});
+
+test("guided tour mobile content spotlight with long tooltip uses max height outside the spotlight", () => {
+  const viewport = { width: 390, height: 430 };
+  const controlsRect = {
+    left: 8,
+    top: 392,
+    width: 374,
+    height: 54,
+    right: 382,
+    bottom: 446,
+  };
+  const usableViewport = resolveAssistantGuidedTourUsableViewport({
+    viewport,
+    bottomObstructionRects: [controlsRect],
+    gap: 12,
+  });
+  const contentSpotlightRect = {
+    left: 8,
+    top: 176,
+    width: 374,
+    height: 204,
+    right: 382,
+    bottom: 380,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 220 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    avoidRects: [controlsRect],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.placement, "top");
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [contentSpotlightRect, controlsRect]);
+  assert.ok(Number(position.maxHeight) < 220);
+  assert.ok(Number(position.maxHeight) >= 58);
+});
+
+test("guided tour content spotlight preserves readability when only 33px are free above it", () => {
+  let diagnostics = null;
+  const usableViewport = {
+    left: 0,
+    top: 57,
+    width: 375.20001220703125,
+    height: 425,
+  };
+  const contentSpotlightRect = {
+    left: 5,
+    top: 106,
+    width: 366,
+    height: 392,
+    right: 371,
+    bottom: 498,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 123 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+    debugCandidates: (payload) => {
+      diagnostics = payload;
+    },
+  });
+
+  assert.equal(position.placement, "top");
+  assert.equal(position.height, 123);
+  assert.equal(position.maxHeight, undefined);
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.equal(position.constraintMode, "readability-over-spotlight");
+  assert.equal(position.overlapsSpotlight, true);
+  assert.equal(position.spotlightEdge, "top-edge");
+  assert.equal(position.spotlightCoreOverlapArea, 0);
+  assert.ok(position.spotlightPenetrationDepth > 0);
+  assert.equal(typeof position.spotlightScore, "number");
+  assert.ok(position.spotlightOverlapArea > 0);
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assert.equal(diagnostics.reason, "readability-over-spotlight");
+  assert.equal(diagnostics.constraintMode, "readability-over-spotlight");
+  assert.equal(diagnostics.chosenCandidate.height, 123);
+  assert.notEqual(diagnostics.chosenCandidate.reason, "below-min-size");
+  assert.ok(
+    diagnostics.candidates.some(
+      (candidate) =>
+        candidate.stage === "readability-fallback" &&
+        candidate.result === "scored"
+    )
+  );
+});
+
+test("guided tour content spotlight falls back with controlled overlap when no minimum-size outside space exists", () => {
+  const viewport = { width: 390, height: 300 };
+  const contentSpotlightRect = {
+    left: 8,
+    top: 32,
+    width: 374,
+    height: 238,
+    right: 382,
+    bottom: 270,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 120 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assertInsideViewport(position.rect, viewport, 8);
+  assert.equal(
+    doAssistantGuidedTourRectsOverlap(position.rect, contentSpotlightRect),
+    true
+  );
+  assert.ok(position.height >= 58);
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.equal(position.constraintMode, "readability-over-spotlight");
+  assert.equal(position.overlapsSpotlight, true);
+  assert.notEqual(position.spotlightEdge, "center-fallback");
+  assert.ok(position.spotlightOverlapArea > 0);
+});
+
+test("guided tour content spotlight readability fallback chooses the least-overlap edge", () => {
+  const viewport = {
+    left: 0,
+    top: 57,
+    width: 375.20001220703125,
+    height: 425,
+  };
+  const contentSpotlightRect = {
+    left: 5,
+    top: 106,
+    width: 366,
+    height: 392,
+    right: 371,
+    bottom: 498,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 123 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+  const bottomCandidate = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 123 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.placement, "top");
+  assert.equal(position.spotlightEdge, "top-edge");
+  assert.ok(position.spotlightOverlapArea < bottomCandidate.spotlightOverlapArea);
+});
+
+test("guided tour content spotlight readability fallback can choose the bottom edge", () => {
+  const viewport = { width: 390, height: 440 };
+  const contentSpotlightRect = {
+    left: 8,
+    top: 20,
+    width: 374,
+    height: 370,
+    right: 382,
+    bottom: 390,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 120 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.equal(position.placement, "bottom");
+  assert.equal(position.spotlightEdge, "bottom-edge");
+  assert.equal(position.spotlightCoreOverlapArea, 0);
+  assertInsideViewport(position.rect, viewport, 8);
+});
+
+test("guided tour content spotlight readability fallback favors edge over central overlap", () => {
+  let diagnostics = null;
+  const viewport = { width: 390, height: 440 };
+  const contentSpotlightRect = {
+    left: 20,
+    top: 20,
+    width: 260,
+    height: 380,
+    right: 280,
+    bottom: 400,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 180, height: 80 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+    debugCandidates: (payload) => {
+      diagnostics = payload;
+    },
+  });
+  const centerCandidate = diagnostics.candidates.find(
+    (candidate) =>
+      candidate.stage === "readability-fallback" &&
+      candidate.result === "scored" &&
+      candidate.diagnostics?.spotlightEdge === "center-fallback" &&
+      candidate.diagnostics?.spotlightOverlapArea < position.spotlightOverlapArea
+  );
+
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.equal(position.spotlightEdge, "bottom-edge");
+  assert.equal(position.spotlightCoreOverlapArea, 0);
+  assert.ok(centerCandidate);
+  assert.ok(centerCandidate.diagnostics.spotlightCoreOverlapArea > 0);
+});
+
+test("guided tour content spotlight readability fallback uses center only when edges are blocked", () => {
+  let diagnostics = null;
+  const viewport = { width: 390, height: 440 };
+  const contentSpotlightRect = {
+    left: 20,
+    top: 20,
+    width: 260,
+    height: 380,
+    right: 280,
+    bottom: 400,
+  };
+  const topHardRect = {
+    left: 0,
+    top: 0,
+    width: 390,
+    height: 104,
+    right: 390,
+    bottom: 104,
+  };
+  const bottomHardRect = {
+    left: 0,
+    top: 336,
+    width: 390,
+    height: 104,
+    right: 390,
+    bottom: 440,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 180, height: 80 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    avoidRects: [topHardRect, bottomHardRect],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+    debugCandidates: (payload) => {
+      diagnostics = payload;
+    },
+  });
+
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.equal(position.spotlightEdge, "center-fallback");
+  assert.equal(position.hardAvoidOverlapArea, 0);
+  assertDoesNotOverlapAny(position.rect, [topHardRect, bottomHardRect]);
+  assert.ok(
+    diagnostics.candidates.some(
+      (candidate) =>
+        candidate.stage === "readability-fallback" &&
+        candidate.diagnostics?.spotlightEdge === "top-edge" &&
+        candidate.reason === "avoid-rect-overlap"
+    )
+  );
+  assert.ok(
+    diagnostics.candidates.some(
+      (candidate) =>
+        candidate.stage === "readability-fallback" &&
+        candidate.diagnostics?.spotlightEdge === "bottom-edge" &&
+        candidate.reason === "avoid-rect-overlap"
+    )
+  );
+});
+
+test("guided tour content spotlight readability fallback keeps the previous edge for minor changes", () => {
+  const viewport = { width: 390, height: 440 };
+  const contentSpotlightRect = {
+    left: 20,
+    top: 20,
+    width: 260,
+    height: 401,
+    right: 280,
+    bottom: 421,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 180, height: 80 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    preferredPlacement: ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.equal(position.placement, "bottom");
+  assert.equal(position.spotlightEdge, "bottom-edge");
+});
+
+test("guided tour content spotlight max height never drops below minimum unless the useful viewport is smaller", () => {
+  const viewport = { width: 390, height: 220 };
+  const contentSpotlightRect = {
+    left: 8,
+    top: 32,
+    width: 374,
+    height: 160,
+    right: 382,
+    bottom: 192,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 360 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assertInsideViewport(position.rect, viewport, 8);
+  assert.equal(position.reason, "readability-over-spotlight");
+  assert.ok(position.height >= 58);
+  assert.ok(Number(position.maxHeight) >= 58);
+});
+
+test("guided tour content spotlight uses exceptional fallback when useful viewport is smaller than minimum", () => {
+  const viewport = { width: 390, height: 72 };
+  const contentSpotlightRect = {
+    left: 8,
+    top: 10,
+    width: 374,
+    height: 52,
+    right: 382,
+    bottom: 62,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 120 },
+    viewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assertInsideViewport(position.rect, viewport, 8);
+  assert.equal(position.reason, "viewport-smaller-than-minimum");
+  assert.ok(position.height < 58);
+  assert.ok(Number(position.maxHeight) < 58);
+});
+
+test("guided tour content spotlight readability fallback keeps footer and mobile bar hard", () => {
+  const viewport = {
+    left: 0,
+    top: 57,
+    width: 375.20001220703125,
+    height: 610.2000122070312,
+  };
+  const footerRect = {
+    left: 9,
+    top: 494,
+    width: 358,
+    height: 75,
+    right: 366,
+    bottom: 568,
+  };
+  const mobileBarRect = {
+    left: 0,
+    top: 571,
+    width: 375,
+    height: 96,
+    right: 375,
+    bottom: 667,
+  };
+  const usableViewport = resolveAssistantGuidedTourUsableViewport({
+    viewport,
+    bottomObstructionRects: [footerRect, mobileBarRect],
+    gap: 12,
+  });
+  const contentSpotlightRect = {
+    left: 5,
+    top: 106,
+    width: 366,
+    height: 392,
+    right: 371,
+    bottom: 498,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: contentSpotlightRect,
+    tooltipSize: { width: 204, height: 123 },
+    viewport: usableViewport,
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+    ],
+    avoidRects: [footerRect, mobileBarRect],
+    spotlightAvoidRects: [contentSpotlightRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.equal(position.reason, "readability-over-spotlight");
+  assertInsideViewport(position.rect, usableViewport, 8);
+  assertDoesNotOverlapAny(position.rect, [footerRect, mobileBarRect]);
+});
+
+test("guided tour spotlight avoid rect can reject a geometrically open placement", () => {
+  const targetRect = {
+    left: 140,
+    top: 220,
+    width: 40,
+    height: 40,
+  };
+  const spotlightAvoidRect = {
+    left: 188,
+    top: 214,
+    width: 240,
+    height: 80,
+    right: 428,
+    bottom: 294,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect,
+    tooltipSize: { width: 180, height: 84 },
+    viewport: { width: 640, height: 520 },
+    margin: 8,
+    gap: 8,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+    ],
+    spotlightAvoidRects: [spotlightAvoidRect],
+    minWidth: 144,
+    minHeight: 58,
+  });
+
+  assert.notEqual(position.placement, "right");
+  assertDoesNotOverlapAny(position.rect, [targetRect, spotlightAvoidRect]);
+});
+
+test("guided tour tooltip positioning can report placement candidate diagnostics", () => {
+  let diagnostics = null;
+  const avoidRect = {
+    left: 356,
+    top: 116,
+    width: 200,
+    height: 160,
+    right: 556,
+    bottom: 276,
+  };
+  const position = resolveAssistantGuidedTourTooltipPosition({
+    targetRect: {
+      left: 220,
+      top: 160,
+      width: 120,
+      height: 50,
+    },
+    tooltipSize: { width: 180, height: 84 },
+    viewport: { width: 720, height: 520 },
+    margin: 8,
+    gap: 10,
+    placementPriority: [
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.RIGHT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.LEFT,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
+      ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
+    ],
+    avoidRects: [avoidRect],
+    minWidth: 144,
+    minHeight: 58,
+    debugCandidates: (payload) => {
+      diagnostics = payload;
+    },
+  });
+
+  assert.equal(position.placement, "left");
+  assert.equal(diagnostics.chosenPlacement, "left");
+  assert.ok(diagnostics.candidates.length > 0);
+  assert.ok(
+    diagnostics.candidates.some(
+      (candidate) =>
+        candidate.placement === "right" &&
+        candidate.reason === "avoid-rect-overlap"
+    )
+  );
+});
+
 test("guided tour CSS has the brand tooltip color and no dark overlay mask", () => {
   const css = readFileSync(
     new URL("../../components/editor/assistantTour/AssistantGuidedTour.module.css", import.meta.url),
@@ -922,14 +2123,65 @@ test("guided tour CSS keeps mobile tooltip styles compact and scoped", () => {
   assert.match(css, /font-size:\s*11px/);
   assert.match(css, /width:\s*32px/);
   assert.match(css, /width:\s*8px/);
+  assert.match(css, /\.spotlight\s*{[\s\S]*?z-index:\s*0/);
+  assert.match(css, /\.tooltip\s*{[\s\S]*?z-index:\s*1/);
   assert.match(source, /MOBILE_FIELD_TOOLTIP_WIDTH_PX = 204/);
   assert.match(source, /MOBILE_ACTION_TOOLTIP_WIDTH_PX = 164/);
   assert.match(source, /MOBILE_BOTTOM_CONTROLS_GAP_PX = 12/);
   assert.match(source, /resolveMobileTourPositioningViewport/);
+  assert.match(source, /resolveAssistantGuidedTourUsableViewport/);
+  assert.match(source, /readMobileTourBottomSurfaceRects/);
+  assert.match(source, /contentSpotlightActive/);
+  assert.match(source, /spotlightAvoidRects/);
+  assert.match(source, /DASHBOARD_SIDEBAR_SELECTOR/);
+  assert.match(source, /observedResizeElements/);
   assert.match(source, /lastMobileTooltipPlacementRef/);
-  assert.match(source, /preferredPlacement: mobileTourViewport/);
+  assert.match(source, /const preferredPlacement = mobileTourViewport/);
+  assert.match(source, /preferredPlacement,/);
   assert.match(source, /areSizesEqual/);
   assert.match(source, /readAssistantControlsRoot/);
+  assert.match(source, /enforceHardAvoidRects:\s*mobileTourViewport && actionTarget/);
+});
+
+test("guided tour debug instrumentation is opt-in and exposes capture history", () => {
+  const debugSource = readFileSync(
+    new URL("../../components/editor/assistantTour/assistantTourDebug.js", import.meta.url),
+    "utf8"
+  );
+  const componentSource = readFileSync(
+    new URL("../../components/editor/assistantTour/AssistantGuidedTour.jsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(debugSource, /reservaeldia:assistant-tour-debug/);
+  assert.match(debugSource, /reservaeldia:assistant-tour-debug-visual/);
+  assert.match(debugSource, /DEBUG_SNAPSHOT_LIMIT = 100/);
+  assert.match(debugSource, /installAssistantTourDebugApi/);
+  assert.match(debugSource, /capture\(options = {}\)/);
+  assert.match(debugSource, /get history\(\)/);
+  assert.match(componentSource, /readAncestorDebugChain/);
+  assert.match(componentSource, /document\.elementFromPoint/);
+  assert.match(componentSource, /spotlightAvoidRects/);
+  assert.match(componentSource, /debugCandidates/);
+  assert.match(componentSource, /shouldShowAssistantTourDebugVisual/);
+});
+
+test("guided tour debug instrumentation avoids logging input values", () => {
+  const componentSource = readFileSync(
+    new URL("../../components/editor/assistantTour/AssistantGuidedTour.jsx", import.meta.url),
+    "utf8"
+  );
+  const sidebarSource = readFileSync(
+    new URL("../../components/DashboardSidebar.jsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(componentSource, /readInputDebugMeta/);
+  assert.doesNotMatch(componentSource, /value:\s*readInputValue/);
+  assert.doesNotMatch(componentSource, /signal:\s*fieldEditSignal/);
+  assert.doesNotMatch(sidebarSource, /rawDetail/);
+  assert.match(sidebarSource, /hasValue/);
+  assert.match(sidebarSource, /trimmedLength/);
 });
 
 test("guided tour exposes semantic target and hydration attributes", () => {
@@ -973,7 +2225,8 @@ test("guided tour component cleans observers and input listeners", () => {
   assert.match(source, /resolveTargetScrollOwner/);
   assert.match(source, /previousEditedTargetIdRef/);
   assert.match(source, /previousTargetId: previousEditedTargetIdRef\.current/);
-  assert.match(source, /resizeObserver\?\.observe\(controlsRoot\)/);
+  assert.match(source, /observedResizeElements\.add\(controlsRoot\)/);
+  assert.match(source, /readMobileTourBottomSurfaceElements\(\{ targetElement \}\)/);
   assert.match(source, /ASSISTANT_GUIDED_TOUR_CONTROLS_ATTR/);
   assert.match(source, /readTooltipNaturalSize/);
   assert.match(source, /element\.scrollHeight/);
@@ -984,8 +2237,10 @@ test("guided tour component cleans observers and input listeners", () => {
   assert.doesNotMatch(source, /recordTrustedIntent/);
   assert.doesNotMatch(source, /input\.addEventListener\("input", handleInput\)/);
   assert.doesNotMatch(source, /input\.addEventListener\("change", handleInput\)/);
+  assert.match(source, /handleVisualViewportResize/);
+  assert.match(source, /handleVisualViewportScroll/);
   assert.match(
     source,
-    /visualViewport\?\.removeEventListener\?\.\("scroll", scheduleUpdate\)/
+    /visualViewport\?\.removeEventListener\?\.\(\s*"scroll",\s*handleVisualViewportScroll/
   );
 });

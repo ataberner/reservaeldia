@@ -530,7 +530,40 @@ Resultado esperado:
 - preview, publicacion y share image no cambian
 - no hay parpadeos visibles durante la exportacion
 
-## 7. Senales de alerta
+## 7. Visita guiada del Asistente
+
+Aplicar cuando el cambio toque `AssistantGuidedTour`, `DashboardSidebar`, geometría del Sidebar mobile, footer del Asistente, barra mobile del editor o targets `data-assistant-tour-*`.
+
+### [ ] Mobile: tooltip dentro del viewport útil
+
+1. Abrir un borrador writable en modo mobile con anchos aproximados de 360 px, 390 px y 430 px.
+2. Iniciar la visita guiada del Asistente.
+3. Verificar los tooltips de campos iniciales cerca del borde inferior del panel.
+4. Avanzar a varios pasos en fase `content` y verificar el content spotlight sobre `assistant-tour-content`.
+5. Avanzar hasta un tooltip de acción `Siguiente` y hasta `Vista previa`.
+6. Repetir con el panel mobile en altura mínima y máxima usando el handle.
+7. Repetir con el teclado virtual abierto o un `visualViewport` reducido.
+8. Cambiar altura/orientación del viewport mientras el tooltip está visible.
+9. Forzar o buscar un caso donde el content spotlight ocupe casi todo el panel mobile.
+10. Verificar un caso donde el tooltip legible deba superponerse al spotlight y quede anclado cerca del borde superior o inferior, no sobre el centro del contenido.
+11. Forzar o buscar un caso donde `Siguiente` o `Vista previa` estén en el footer y varios controles ocupen el panel; el tooltip debe ubicarse en una franja libre superior sin tapar esos controles.
+12. Repetir una pasada desktop.
+
+Resultado esperado:
+
+- el tooltip completo queda dentro del viewport útil visible
+- no queda detrás del footer del Asistente, los controles, la barra mobile ni el panel inferior cuando el target está fuera del panel
+- en fase `content`, el tooltip queda visualmente por encima del content spotlight y fuera de su rectángulo cuando hay espacio válido
+- si el content spotlight ocupa casi todo el panel mobile, el tooltip conserva altura legible y puede superponerse parcialmente al spotlight
+- cuando debe superponerse al content spotlight, el tooltip se apoya preferentemente en el borde superior o inferior y evita cubrir el núcleo central del contenido
+- en `Siguiente` y `Vista previa` mobile, `hardAvoidOverlapArea` queda en `0` siempre que exista una franja legible dentro del viewport útil
+- el content spotlight sigue visible y el contenido real del Asistente sigue interactuable
+- si falta espacio vertical, la caja del tooltip se limita con scroll interno en vez de desbordar
+- el target real sigue visible y clickeable
+- el Asistente sigue siendo la autoridad de navegación
+- desktop no cambia visual ni funcionalmente
+
+## 8. Senales de alerta
 
 Bloquear validacion si aparece cualquiera de estas:
 
@@ -543,3 +576,4 @@ Bloquear validacion si aparece cualquiera de estas:
 - transformer, bounds indicator o line controls quedan desfasados tras drag, settle o scroll
 - publish usa un estado distinto del confirmado por flush
 - `pantalla` y `yNorm` cambian la posicion vertical inesperadamente al recargar o previsualizar
+- en mobile, un tooltip de la visita guiada queda detras del footer del Asistente, la barra inferior o fuera del viewport visible

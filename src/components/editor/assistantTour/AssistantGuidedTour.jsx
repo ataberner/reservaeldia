@@ -18,6 +18,7 @@ import {
   closeAssistantGuidedTourSession,
   createAssistantGuidedTourPreferencePatch,
   createAssistantGuidedTourSessionKey,
+  doAssistantGuidedTourRectsOverlap,
   isAssistantGuidedTourFirstNamesSubstep,
   getAssistantGuidedTourMessage,
   getAssistantGuidedTourPositionKey,
@@ -25,14 +26,18 @@ import {
   resolveAssistantGuidedTourOverlayRect,
   resolveAssistantGuidedTourTargetId,
   resolveAssistantGuidedTourTooltipPosition,
+  resolveAssistantGuidedTourUsableViewport,
   resolveInitialAssistantGuidedTourPhase,
   resolveNextAssistantGuidedTourFieldPhase,
   shouldAdvanceAssistantGuidedTourFieldEditSignal,
   shouldAutoStartAssistantGuidedTour,
 } from "@/domain/editor/assistantGuidedTour";
 import {
+  installAssistantTourDebugApi,
   logAssistantTourDebug,
+  recordAssistantTourDebugSnapshot,
   shouldDebugAssistantTour,
+  shouldShowAssistantTourDebugVisual,
 } from "./assistantTourDebug";
 import styles from "./AssistantGuidedTour.module.css";
 
@@ -63,6 +68,7 @@ const MOBILE_ACTION_PLACEMENT_PRIORITY = Object.freeze([
   ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
   ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
 ]);
+const DASHBOARD_SIDEBAR_SELECTOR = '[data-dashboard-sidebar="true"]';
 
 function buildTourTargetSelector(targetId) {
   return `[${ASSISTANT_GUIDED_TOUR_TARGET_ATTR}="${targetId}"]`;
@@ -119,6 +125,41 @@ function readAssistantControlsRoot(targetElement = null) {
   if (isElementUsable(localRoot)) return localRoot;
   const root = document.querySelector(selector);
   return isElementUsable(root) ? root : null;
+}
+
+function readDashboardSidebarRoot() {
+  if (typeof document === "undefined") return null;
+  const root = document.querySelector(DASHBOARD_SIDEBAR_SELECTOR);
+  return isElementUsable(root) ? root : null;
+}
+
+function readMobileTourBottomSurfaceElements({ targetElement } = {}) {
+  if (typeof document === "undefined") return [];
+
+  const elements = new Set();
+  const addElement = (element) => {
+    if (!element || !isElementUsable(element)) return;
+    elements.add(element);
+  };
+
+  const controlsRoot = readAssistantControlsRoot(targetElement);
+  addElement(controlsRoot);
+
+  const sidebarRoot = readDashboardSidebarRoot();
+  addElement(sidebarRoot);
+
+  const panel = document.getElementById("sidebar-panel");
+  if (panel && (!targetElement || !panel.contains(targetElement))) {
+    addElement(panel);
+  }
+
+  return [...elements];
+}
+
+function readMobileTourBottomSurfaceRects({ targetElement } = {}) {
+  return readMobileTourBottomSurfaceElements({ targetElement })
+    .map(readElementRect)
+    .filter(Boolean);
 }
 
 function readMobileTourAvoidRects({
@@ -191,55 +232,22 @@ function readMobileTourAvoidRects({
   return [...avoidElements].map(readElementRect).filter(Boolean);
 }
 
-function readAssistantActionTargetElement() {
-  if (typeof document === "undefined") return null;
-  const nextTarget = document.querySelector(
-    buildTourTargetSelector(ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_NEXT)
-  );
-  if (isElementUsable(nextTarget)) return nextTarget;
-
-  const previewTarget = document.querySelector(
-    buildTourTargetSelector(ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_PREVIEW)
-  );
-  return isElementUsable(previewTarget) ? previewTarget : null;
-}
-
 function resolveMobileTourPositioningViewport({
   viewport,
-  targetId,
   targetElement,
+  bottomSurfaceRects = [],
 } = {}) {
   if (!isMobileTourViewport(viewport)) return viewport;
-  if (isAssistantTourActionTarget(targetId)) return viewport;
 
-  const controlsRoot = readAssistantControlsRoot(targetElement);
-  const actionTarget = readAssistantActionTargetElement();
-  const lowerBoundaryElement =
-    controlsRoot && (!targetElement || !controlsRoot.contains(targetElement))
-      ? controlsRoot
-      : actionTarget;
-  if (!lowerBoundaryElement || lowerBoundaryElement === targetElement) {
-    return viewport;
-  }
-  if (targetElement?.contains?.(actionTarget)) return viewport;
-
-  const actionRect = readElementRect(lowerBoundaryElement);
-  const viewportTop = Number(viewport?.top);
-  const viewportHeight = Number(viewport?.height);
-  if (!Number.isFinite(viewportTop) || !Number.isFinite(viewportHeight)) {
-    return viewport;
-  }
-  const viewportBottom = viewportTop + viewportHeight;
-  const safeBottom = Number(actionRect?.top) - MOBILE_BOTTOM_CONTROLS_GAP_PX;
-  if (!Number.isFinite(safeBottom) || safeBottom <= viewportTop) {
-    return viewport;
-  }
-  if (safeBottom >= viewportBottom) return viewport;
-
-  return {
-    ...viewport,
-    height: Math.max(0, safeBottom - viewportTop),
-  };
+  const resolvedBottomSurfaceRects =
+    bottomSurfaceRects.length > 0
+      ? bottomSurfaceRects
+      : readMobileTourBottomSurfaceRects({ targetElement });
+  return resolveAssistantGuidedTourUsableViewport({
+    viewport,
+    bottomObstructionRects: resolvedBottomSurfaceRects,
+    gap: MOBILE_BOTTOM_CONTROLS_GAP_PX,
+  });
 }
 
 function areNumbersClose(first, second, tolerance = TOUR_MEASUREMENT_TOLERANCE_PX) {
@@ -368,6 +376,305 @@ function readTourViewport() {
   };
 }
 
+function roundDebugNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.round(numericValue * 100) / 100 : null;
+}
+
+function readClientRect(element) {
+  const rect = element?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return {
+    left: roundDebugNumber(rect.left),
+    top: roundDebugNumber(rect.top),
+    width: roundDebugNumber(rect.width),
+    height: roundDebugNumber(rect.height),
+    right: roundDebugNumber(rect.right),
+    bottom: roundDebugNumber(rect.bottom),
+  };
+}
+
+function readVisualViewportDebugState() {
+  if (typeof window === "undefined") return null;
+  const viewport = window.visualViewport;
+  if (!viewport) return null;
+  return {
+    width: roundDebugNumber(viewport.width),
+    height: roundDebugNumber(viewport.height),
+    offsetLeft: roundDebugNumber(viewport.offsetLeft),
+    offsetTop: roundDebugNumber(viewport.offsetTop),
+    pageLeft: roundDebugNumber(viewport.pageLeft),
+    pageTop: roundDebugNumber(viewport.pageTop),
+    scale: roundDebugNumber(viewport.scale),
+  };
+}
+
+function readWindowDebugState() {
+  if (typeof window === "undefined") return null;
+  return {
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    outerWidth: window.outerWidth,
+    outerHeight: window.outerHeight,
+    scrollX: roundDebugNumber(window.scrollX),
+    scrollY: roundDebugNumber(window.scrollY),
+    devicePixelRatio: roundDebugNumber(window.devicePixelRatio),
+  };
+}
+
+function readElementDebugDescriptor(element) {
+  if (!element) return null;
+  return {
+    tagName: element.tagName || "",
+    id: element.id || "",
+    className:
+      typeof element.className === "string"
+        ? element.className
+        : element.className?.baseVal || "",
+    role: element.getAttribute?.("role") || "",
+    tourTarget: element.getAttribute?.(ASSISTANT_GUIDED_TOUR_TARGET_ATTR) || "",
+    tourControls:
+      element.getAttribute?.(ASSISTANT_GUIDED_TOUR_CONTROLS_ATTR) || "",
+  };
+}
+
+function readCssValue(style, propertyName) {
+  return style?.getPropertyValue?.(propertyName) || style?.[propertyName] || "";
+}
+
+function readComputedStyleDebug(element) {
+  if (!element || typeof window === "undefined") return null;
+  const style = window.getComputedStyle(element);
+  const before = window.getComputedStyle(element, "::before");
+  const after = window.getComputedStyle(element, "::after");
+  const readPseudo = (pseudoStyle) => ({
+    content: readCssValue(pseudoStyle, "content"),
+    display: readCssValue(pseudoStyle, "display"),
+    position: readCssValue(pseudoStyle, "position"),
+    zIndex: readCssValue(pseudoStyle, "z-index"),
+    opacity: readCssValue(pseudoStyle, "opacity"),
+    transform: readCssValue(pseudoStyle, "transform"),
+    background: readCssValue(pseudoStyle, "background"),
+    boxShadow: readCssValue(pseudoStyle, "box-shadow"),
+    pointerEvents: readCssValue(pseudoStyle, "pointer-events"),
+  });
+
+  return {
+    position: readCssValue(style, "position"),
+    zIndex: readCssValue(style, "z-index"),
+    overflow: readCssValue(style, "overflow"),
+    overflowX: readCssValue(style, "overflow-x"),
+    overflowY: readCssValue(style, "overflow-y"),
+    opacity: readCssValue(style, "opacity"),
+    transform: readCssValue(style, "transform"),
+    filter: readCssValue(style, "filter"),
+    backdropFilter: readCssValue(style, "backdrop-filter"),
+    isolation: readCssValue(style, "isolation"),
+    contain: readCssValue(style, "contain"),
+    clipPath: readCssValue(style, "clip-path"),
+    mask: readCssValue(style, "mask"),
+    webkitMask: readCssValue(style, "-webkit-mask"),
+    mixBlendMode: readCssValue(style, "mix-blend-mode"),
+    perspective: readCssValue(style, "perspective"),
+    willChange: readCssValue(style, "will-change"),
+    pointerEvents: readCssValue(style, "pointer-events"),
+    background: readCssValue(style, "background"),
+    boxShadow: readCssValue(style, "box-shadow"),
+    before: readPseudo(before),
+    after: readPseudo(after),
+  };
+}
+
+function valueIsActiveCss(value) {
+  return Boolean(value && value !== "none" && value !== "auto" && value !== "normal");
+}
+
+function readElementLayoutDiagnostics(element) {
+  const style = readComputedStyleDebug(element);
+  if (!style) {
+    return {
+      createsStackingContext: false,
+      createsClipping: false,
+      createsScrollContainer: false,
+      createsFixedContainingBlock: false,
+      createsProbableCompositingLayer: false,
+      reasons: [],
+    };
+  }
+
+  const reasons = [];
+  const position = style.position;
+  const zIndex = style.zIndex;
+  const opacity = Number.parseFloat(style.opacity);
+  const contain = style.contain || "";
+  const willChange = style.willChange || "";
+  const hasPositionedZIndex =
+    zIndex !== "auto" && ["absolute", "relative", "fixed", "sticky"].includes(position);
+  if (element === document.documentElement) reasons.push("document-element");
+  if (hasPositionedZIndex) reasons.push("positioned-z-index");
+  if (position === "fixed" || position === "sticky") reasons.push(position);
+  if (Number.isFinite(opacity) && opacity < 1) reasons.push("opacity");
+  if (valueIsActiveCss(style.transform)) reasons.push("transform");
+  if (valueIsActiveCss(style.filter)) reasons.push("filter");
+  if (valueIsActiveCss(style.backdropFilter)) reasons.push("backdrop-filter");
+  if (valueIsActiveCss(style.perspective)) reasons.push("perspective");
+  if (valueIsActiveCss(style.clipPath)) reasons.push("clip-path");
+  if (valueIsActiveCss(style.mask) || valueIsActiveCss(style.webkitMask)) {
+    reasons.push("mask");
+  }
+  if (style.mixBlendMode && style.mixBlendMode !== "normal") reasons.push("mix-blend-mode");
+  if (style.isolation === "isolate") reasons.push("isolation");
+  if (/(layout|paint|strict|content)/.test(contain)) reasons.push("contain");
+  if (/(transform|filter|perspective|opacity|contents|left|top)/.test(willChange)) {
+    reasons.push("will-change");
+  }
+
+  const clippingReasons = [];
+  if (/(hidden|clip|scroll|auto|overlay)/.test(`${style.overflow} ${style.overflowX} ${style.overflowY}`)) {
+    clippingReasons.push("overflow");
+  }
+  if (valueIsActiveCss(style.clipPath)) clippingReasons.push("clip-path");
+  if (valueIsActiveCss(style.mask) || valueIsActiveCss(style.webkitMask)) {
+    clippingReasons.push("mask");
+  }
+  if (/(paint|strict|content)/.test(contain)) clippingReasons.push("contain");
+
+  const fixedContainingBlockReasons = [];
+  if (valueIsActiveCss(style.transform)) fixedContainingBlockReasons.push("transform");
+  if (valueIsActiveCss(style.filter)) fixedContainingBlockReasons.push("filter");
+  if (valueIsActiveCss(style.backdropFilter)) fixedContainingBlockReasons.push("backdrop-filter");
+  if (valueIsActiveCss(style.perspective)) fixedContainingBlockReasons.push("perspective");
+  if (/(layout|paint|strict|content)/.test(contain)) fixedContainingBlockReasons.push("contain");
+  if (/(transform|filter|perspective)/.test(willChange)) {
+    fixedContainingBlockReasons.push("will-change");
+  }
+
+  return {
+    createsStackingContext: reasons.length > 0,
+    createsClipping: clippingReasons.length > 0,
+    createsScrollContainer: isScrollableElement(element),
+    createsFixedContainingBlock: fixedContainingBlockReasons.length > 0,
+    createsProbableCompositingLayer:
+      reasons.some((reason) =>
+        ["transform", "filter", "backdrop-filter", "opacity", "will-change"].includes(reason)
+      ) || position === "fixed",
+    reasons,
+    clippingReasons,
+    fixedContainingBlockReasons,
+  };
+}
+
+function readAncestorDebugChain(element, limit = 20) {
+  const chain = [];
+  let current = element;
+  while (current && chain.length < limit) {
+    chain.push({
+      descriptor: readElementDebugDescriptor(current),
+      rect: readElementRect(current),
+      clientRect: readClientRect(current),
+      computedStyle: readComputedStyleDebug(current),
+      diagnostics: readElementLayoutDiagnostics(current),
+    });
+    current = current.parentElement;
+  }
+  return chain;
+}
+
+function readElementDebugSnapshot(name, element) {
+  return {
+    name,
+    descriptor: readElementDebugDescriptor(element),
+    rect: readElementRect(element),
+    clientRect: readClientRect(element),
+    computedStyle: readComputedStyleDebug(element),
+    diagnostics: readElementLayoutDiagnostics(element),
+    ancestors: readAncestorDebugChain(element),
+  };
+}
+
+function readElementFromPointSnapshot(label, point) {
+  if (typeof document === "undefined" || !point) return null;
+  const x = Number(point.x);
+  const y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const element = document.elementFromPoint(x, y);
+  return {
+    label,
+    point: {
+      x: roundDebugNumber(x),
+      y: roundDebugNumber(y),
+    },
+    element: readElementDebugDescriptor(element),
+    rect: readElementRect(element),
+    clientRect: readClientRect(element),
+    computedStyle: readComputedStyleDebug(element),
+  };
+}
+
+function readTooltipHitTestSnapshots(tooltipElement, manualPoint = null) {
+  const rect = tooltipElement?.getBoundingClientRect?.();
+  if (!rect) return [];
+  const inset = Math.min(6, Math.max(1, rect.width / 8, rect.height / 8));
+  const points = [
+    {
+      label: "tooltip-center",
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    },
+    { label: "tooltip-top-left", x: rect.left + inset, y: rect.top + inset },
+    { label: "tooltip-top-right", x: rect.right - inset, y: rect.top + inset },
+    { label: "tooltip-bottom-left", x: rect.left + inset, y: rect.bottom - inset },
+    { label: "tooltip-bottom-right", x: rect.right - inset, y: rect.bottom - inset },
+  ];
+  const manualX = Number(manualPoint?.x);
+  const manualY = Number(manualPoint?.y);
+  if (Number.isFinite(manualX) && Number.isFinite(manualY)) {
+    points.push({ label: "manual-problem-point", x: manualX, y: manualY });
+  }
+  return points.map((point) => readElementFromPointSnapshot(point.label, point));
+}
+
+function rectContainsRect(containerRect, childRect) {
+  if (!containerRect || !childRect) return false;
+  return (
+    childRect.left >= containerRect.left &&
+    childRect.top >= containerRect.top &&
+    childRect.right <= containerRect.right &&
+    childRect.bottom <= containerRect.bottom
+  );
+}
+
+function completeDebugRect(rect) {
+  if (!rect) return null;
+  const left = roundDebugNumber(rect.left);
+  const top = roundDebugNumber(rect.top);
+  const width = roundDebugNumber(rect.width);
+  const height = roundDebugNumber(rect.height);
+  if ([left, top, width, height].some((value) => value === null)) {
+    return null;
+  }
+  return {
+    left,
+    top,
+    width,
+    height,
+    right: roundDebugNumber(rect.right ?? left + width),
+    bottom: roundDebugNumber(rect.bottom ?? top + height),
+  };
+}
+
+function readDomOrderDebug(spotlightElement, tooltipElement) {
+  if (!spotlightElement || !tooltipElement) return null;
+  const domNode = typeof window !== "undefined" ? window.Node : null;
+  if (!domNode) return null;
+  const position = spotlightElement.compareDocumentPosition(tooltipElement);
+  return {
+    spotlightBeforeTooltip: Boolean(position & domNode.DOCUMENT_POSITION_FOLLOWING),
+    spotlightAfterTooltip: Boolean(position & domNode.DOCUMENT_POSITION_PRECEDING),
+    sameNode: spotlightElement === tooltipElement,
+  };
+}
+
 function scrollTargetIntoView(target, { reducedMotion = false } = {}) {
   if (!target || typeof window === "undefined") return;
   const rect = target.getBoundingClientRect();
@@ -418,21 +725,36 @@ function resolveArrowClass(placement) {
   return styles.arrowRight;
 }
 
-function readInputValue(element) {
-  if (!element) return "";
-  return typeof element.value === "string" ? element.value : "";
-}
-
 function resolveInputElement(element) {
   if (!element) return null;
   if (element.matches?.("input, textarea, select")) return element;
   return element.querySelector?.("input, textarea, select") || null;
 }
 
-function readTargetInputValue(targetId) {
-  if (typeof document === "undefined") return "";
-  const target = document.querySelector(buildTourTargetSelector(targetId));
-  return readInputValue(resolveInputElement(target));
+function readInputDebugMeta(element) {
+  const value = typeof element?.value === "string" ? element.value : "";
+  const trimmedLength = value.trim().length;
+  return {
+    inputTagName: element?.tagName || "",
+    inputId: element?.id || "",
+    inputName: element?.getAttribute?.("name") || "",
+    inputType: element?.getAttribute?.("type") || "",
+    hasValue: trimmedLength > 0,
+    valueLength: value.length,
+    trimmedLength,
+  };
+}
+
+function readFieldEditSignalDebug(signal) {
+  const value = String(signal?.value ?? "");
+  const trimmedLength = value.trim().length;
+  return {
+    id: signal?.id,
+    targetId: signal?.targetId || "",
+    hasValue: trimmedLength > 0,
+    valueLength: value.length,
+    trimmedLength,
+  };
 }
 
 function readTargetHydrated(targetId) {
@@ -471,7 +793,7 @@ function readActiveElementDebugState() {
       activeElement.getAttribute?.(ASSISTANT_GUIDED_TOUR_TARGET_ATTR) ||
       tourTarget?.getAttribute?.(ASSISTANT_GUIDED_TOUR_TARGET_ATTR) ||
       "",
-    value: readInputValue(resolveInputElement(activeElement)),
+    input: readInputDebugMeta(resolveInputElement(activeElement)),
   };
 }
 
@@ -485,7 +807,7 @@ function readTargetDebugState(targetId) {
 
   const target = document.querySelector(buildTourTargetSelector(targetId));
   const input = resolveInputElement(target);
-  const value = readInputValue(input);
+  const inputDebug = readInputDebugMeta(input);
 
   return {
     targetId,
@@ -496,10 +818,8 @@ function readTargetDebugState(targetId) {
       target?.getAttribute?.(ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR) === "true",
     tagName: target?.tagName || "",
     id: target?.id || "",
-    inputTagName: input?.tagName || "",
-    inputId: input?.id || "",
-    value,
-    trimmedValid: value.trim() !== "",
+    input: inputDebug,
+    trimmedValid: inputDebug.hasValue,
     isActive:
       Boolean(input && input === document.activeElement) ||
       Boolean(target && target === document.activeElement) ||
@@ -591,6 +911,7 @@ export default function AssistantGuidedTour({
   const [firstNamesHydrationReadyKey, setFirstNamesHydrationReadyKey] =
     useState("");
   const tooltipRef = useRef(null);
+  const spotlightRef = useRef(null);
   const positionKeyRef = useRef("");
   const assistantActivationSessionRef = useRef("");
   const fieldAdvancedByTransitionRef = useRef({});
@@ -602,6 +923,9 @@ export default function AssistantGuidedTour({
   const previousCanRenderTourRef = useRef(null);
   const measureDebugSignatureRef = useRef("");
   const latestDebugStateRef = useRef({});
+  const latestLayoutDebugRef = useRef(null);
+  const latestPlacementDebugRef = useRef(null);
+  const initialRenderDebugSnapshotRef = useRef(false);
   const lastMobileTooltipPlacementRef = useRef("");
 
   const sessionKey = useMemo(
@@ -700,6 +1024,188 @@ export default function AssistantGuidedTour({
     );
   }, []);
 
+  const captureTourDebugSnapshot = useCallback(
+    ({ reason = "snapshot", manualPoint = null, extra = null } = {}) => {
+      if (typeof document === "undefined" || typeof window === "undefined") {
+        return { reason, unavailable: true };
+      }
+
+      const layoutDebug = latestLayoutDebugRef.current || {};
+      const rootElement = tooltipRef.current?.closest?.(`.${styles.root}`) || null;
+      const spotlightElement = spotlightRef.current;
+      const tooltipElement = tooltipRef.current;
+      const panelElement = document.getElementById("sidebar-panel");
+      const contentElement = document.querySelector(
+        buildTourTargetSelector(ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_CONTENT)
+      );
+      const footerElement = readAssistantControlsRoot(targetElement);
+      const mobileBarElement = readDashboardSidebarRoot();
+      const targetElementForSnapshot =
+        targetElement || document.querySelector(buildTourTargetSelector(targetId));
+
+      const tooltipRect = readElementRect(tooltipElement);
+      const spotlightRect = readElementRect(spotlightElement);
+      const panelRect = readElementRect(panelElement);
+      const footerRect = readElementRect(footerElement);
+      const mobileBarRect = readElementRect(mobileBarElement);
+      const usefulViewport = layoutDebug.positioningViewport || null;
+      const usefulViewportRect = usefulViewport
+        ? {
+            left: usefulViewport.left,
+            top: usefulViewport.top,
+            width: usefulViewport.width,
+            height: usefulViewport.height,
+            right: usefulViewport.left + usefulViewport.width,
+            bottom: usefulViewport.top + usefulViewport.height,
+          }
+        : null;
+
+      return {
+        reason,
+        extra,
+        sessionKey,
+        assistantPositionKey,
+        phase,
+        targetId,
+        breakpoint: layoutDebug.mobileTourViewport ? "mobile" : "desktop",
+        window: readWindowDebugState(),
+        visualViewport: readVisualViewportDebugState(),
+        baseViewport: viewportSnapshot,
+        liveBaseViewport: readTourViewport(),
+        usefulViewport,
+        currentStepId: currentStep?.id || "",
+        currentSubstepId: currentSubstep?.id || "",
+        assistantState: {
+          active: assistantActive,
+          mounted: assistantMounted,
+          nextIsPreview: assistantNextIsPreview,
+          currentStepIndex: assistantState?.currentStepIndex,
+          currentSubstepIndex: assistantState?.currentSubstepIndex,
+        },
+        targetRect,
+        paddedRect: layoutDebug.paddedRect || null,
+        tooltip: {
+          naturalSize: tooltipSize,
+          effectiveSize: layoutDebug.effectiveTooltipSize || null,
+          constrainedMaxHeight: layoutDebug.constrainedTooltipMaxHeight ?? null,
+          hasConstrainedMaxHeight:
+            layoutDebug.hasConstrainedTooltipMaxHeight === true,
+          position: layoutDebug.tooltipPosition || null,
+          style: layoutDebug.tooltipStyle || null,
+          realRect: tooltipRect,
+          clientRect: readClientRect(tooltipElement),
+        },
+        spotlight: {
+          style: layoutDebug.spotlightStyle || null,
+          realRect: spotlightRect,
+          clientRect: readClientRect(spotlightElement),
+        },
+        placement: {
+          chosen: layoutDebug.tooltipPosition?.placement || "",
+          priority: layoutDebug.placementPriority || null,
+          preferredPlacement: layoutDebug.preferredPlacement || "",
+          candidates: latestPlacementDebugRef.current?.candidates || [],
+          reason: latestPlacementDebugRef.current?.reason || "",
+          constraintMode:
+            layoutDebug.tooltipPosition?.constraintMode ||
+            latestPlacementDebugRef.current?.constraintMode ||
+            "",
+          chosenCandidate: latestPlacementDebugRef.current?.chosenCandidate || null,
+          overlapsSpotlight:
+            layoutDebug.tooltipPosition?.overlapsSpotlight === true,
+          spotlightOverlapArea:
+            layoutDebug.tooltipPosition?.spotlightOverlapArea ?? 0,
+          spotlightCoreOverlapArea:
+            layoutDebug.tooltipPosition?.spotlightCoreOverlapArea ?? 0,
+          spotlightPenetrationDepth:
+            layoutDebug.tooltipPosition?.spotlightPenetrationDepth ?? 0,
+          spotlightEdgeDistance:
+            layoutDebug.tooltipPosition?.spotlightEdgeDistance ?? 0,
+          spotlightEdge: layoutDebug.tooltipPosition?.spotlightEdge || "",
+          spotlightScore: layoutDebug.tooltipPosition?.spotlightScore ?? null,
+          hardAvoidScore: layoutDebug.tooltipPosition?.hardAvoidScore ?? null,
+          hardAvoidOverlapArea:
+            layoutDebug.tooltipPosition?.hardAvoidOverlapArea ?? 0,
+        },
+        rects: {
+          panel: panelRect,
+          assistantContent: readElementRect(contentElement),
+          footer: footerRect,
+          mobileBar: mobileBarRect,
+          target: readElementRect(targetElementForSnapshot),
+          tooltip: tooltipRect,
+          spotlight: spotlightRect,
+        },
+        avoidRects: layoutDebug.avoidRects || [],
+        spotlightAvoidRects: layoutDebug.spotlightAvoidRects || [],
+        checks: {
+          tooltipVsSpotlight: doAssistantGuidedTourRectsOverlap(
+            tooltipRect,
+            spotlightRect
+          ),
+          tooltipVsPanel: doAssistantGuidedTourRectsOverlap(tooltipRect, panelRect),
+          tooltipVsFooter: doAssistantGuidedTourRectsOverlap(tooltipRect, footerRect),
+          tooltipVsMobileBar: doAssistantGuidedTourRectsOverlap(
+            tooltipRect,
+            mobileBarRect
+          ),
+          tooltipInsideUsefulViewport: rectContainsRect(
+            usefulViewportRect,
+            tooltipRect
+          ),
+        },
+        css: {
+          root: readElementDebugSnapshot("root", rootElement),
+          spotlight: readElementDebugSnapshot("spotlight", spotlightElement),
+          tooltip: readElementDebugSnapshot("tooltip", tooltipElement),
+          panel: readElementDebugSnapshot("panel", panelElement),
+          target: readElementDebugSnapshot("target", targetElementForSnapshot),
+          footer: readElementDebugSnapshot("footer", footerElement),
+          mobileBar: readElementDebugSnapshot("mobileBar", mobileBarElement),
+        },
+        domOrder: readDomOrderDebug(spotlightElement, tooltipElement),
+        elementFromPoint: readTooltipHitTestSnapshots(tooltipElement, manualPoint),
+      };
+    },
+    [
+      assistantActive,
+      assistantMounted,
+      assistantNextIsPreview,
+      assistantPositionKey,
+      assistantState?.currentStepIndex,
+      assistantState?.currentSubstepIndex,
+      currentStep,
+      currentSubstep,
+      phase,
+      sessionKey,
+      targetElement,
+      targetId,
+      targetRect,
+      tooltipSize,
+      viewportSnapshot,
+    ]
+  );
+
+  const recordTourDebugSnapshot = useCallback(
+    (reason, extra = null) => {
+      if (!shouldDebugAssistantTour() || typeof window === "undefined") return;
+      window.requestAnimationFrame(() => {
+        recordAssistantTourDebugSnapshot(
+          captureTourDebugSnapshot({
+            reason,
+            extra,
+          })
+        );
+      });
+    },
+    [captureTourDebugSnapshot]
+  );
+
+  useEffect(() => {
+    if (!mounted || !shouldDebugAssistantTour()) return;
+    installAssistantTourDebugApi(captureTourDebugSnapshot);
+  }, [captureTourDebugSnapshot, mounted]);
+
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -746,6 +1252,10 @@ export default function AssistantGuidedTour({
       firstNames: readFirstNamesDebugSnapshot(),
       activeElement: readActiveElementDebugState(),
     }));
+    recordTourDebugSnapshot("phase-change", {
+      previousPhase: previousPhaseRef.current,
+      nextPhase: phase,
+    });
     previousPhaseRef.current = phase;
   }, [
     assistantPositionKey,
@@ -754,6 +1264,7 @@ export default function AssistantGuidedTour({
     draftKey,
     openingKey,
     phase,
+    recordTourDebugSnapshot,
     sessionKey,
     targetId,
   ]);
@@ -928,7 +1439,7 @@ export default function AssistantGuidedTour({
     sessionKey,
   ]);
 
-  const measureTarget = useCallback(() => {
+  const measureTarget = useCallback((measurementReason = "target-measure") => {
     if (!mounted || typeof document === "undefined") return;
     updateViewportSnapshot();
     const nextFirstNamesTargetsHydrated = firstNamesSubstep
@@ -965,6 +1476,11 @@ export default function AssistantGuidedTour({
         }));
       }
     }
+    recordTourDebugSnapshot(measurementReason, {
+      source: "measureTarget",
+      targetExists: Boolean(nextElement),
+      targetUsable: nextElementUsable,
+    });
     if (!nextElementUsable) {
       setTargetElement(null);
       setTargetRect(null);
@@ -977,7 +1493,13 @@ export default function AssistantGuidedTour({
     setTargetRect((currentRect) =>
       areRectsEqual(currentRect, nextRect) ? currentRect : nextRect
     );
-  }, [firstNamesSubstep, mounted, targetId, updateViewportSnapshot]);
+  }, [
+    firstNamesSubstep,
+    mounted,
+    recordTourDebugSnapshot,
+    targetId,
+    updateViewportSnapshot,
+  ]);
 
   useEffect(() => {
     if (!mounted || typeof document === "undefined") return undefined;
@@ -999,8 +1521,10 @@ export default function AssistantGuidedTour({
       firstNames: readFirstNamesDebugSnapshot(),
       activeElement: readActiveElementDebugState(),
     }));
-    measureTarget();
-    const observer = new MutationObserver(measureTarget);
+    measureTarget("render-initial");
+    const observer = new MutationObserver(() => {
+      measureTarget("MutationObserver");
+    });
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -1052,36 +1576,71 @@ export default function AssistantGuidedTour({
       activeElement: readActiveElementDebugState(),
     }));
     let updateFrame = 0;
-    const update = () => {
+    const update = (measurementReason = "target-layout-update") => {
       updateViewportSnapshot();
       const nextRect = readElementRect(targetElement);
       setTargetRect((currentRect) =>
         areRectsEqual(currentRect, nextRect) ? currentRect : nextRect
       );
+      recordTourDebugSnapshot(measurementReason, {
+        source: "target-layout-update",
+        targetRect: nextRect,
+      });
     };
-    const scheduleUpdate = () => {
+    const scheduleUpdate = (measurementReason = "target-layout-update") => {
       if (updateFrame) return;
       updateFrame = window.requestAnimationFrame(() => {
         updateFrame = 0;
-        update();
+        update(measurementReason);
       });
     };
 
-    update();
+    update("target-observer-initial");
     const resizeObserver =
       typeof ResizeObserver === "function"
-        ? new ResizeObserver(scheduleUpdate)
+        ? new ResizeObserver((entries = []) => {
+            const resizedTargets = Array.from(entries).map((entry) => entry.target);
+            let reason = "ResizeObserver";
+            if (resizedTargets.some((element) => element?.id === "sidebar-panel")) {
+              reason = "panel-height-change";
+            } else if (
+              resizedTargets.some((element) =>
+                element?.matches?.(buildTourControlsSelector())
+              )
+            ) {
+              reason = "footer-resize";
+            } else if (
+              resizedTargets.some((element) =>
+                element?.matches?.(DASHBOARD_SIDEBAR_SELECTOR)
+              )
+            ) {
+              reason = "mobile-bar-resize";
+            }
+            scheduleUpdate(reason);
+          })
         : null;
-    resizeObserver?.observe(targetElement);
+    const observedResizeElements = new Set([targetElement]);
     const panel = document.getElementById("sidebar-panel");
-    if (panel) resizeObserver?.observe(panel);
+    if (panel) observedResizeElements.add(panel);
     const controlsRoot = readAssistantControlsRoot(targetElement);
-    if (controlsRoot) resizeObserver?.observe(controlsRoot);
+    if (controlsRoot) observedResizeElements.add(controlsRoot);
+    readMobileTourBottomSurfaceElements({ targetElement }).forEach((element) => {
+      observedResizeElements.add(element);
+    });
+    observedResizeElements.forEach((element) => {
+      if (element) resizeObserver?.observe(element);
+    });
     const scrollOwner = resolveTargetScrollOwner(targetElement);
-    window.addEventListener("resize", scheduleUpdate);
-    scrollOwner?.addEventListener?.("scroll", scheduleUpdate, { passive: true });
-    window.visualViewport?.addEventListener?.("resize", scheduleUpdate);
-    window.visualViewport?.addEventListener?.("scroll", scheduleUpdate);
+    const handleWindowResize = () => scheduleUpdate("resize");
+    const handleScroll = () => scheduleUpdate("scroll");
+    const handleVisualViewportResize = () =>
+      scheduleUpdate("visualViewport.resize");
+    const handleVisualViewportScroll = () =>
+      scheduleUpdate("visualViewport.scroll");
+    window.addEventListener("resize", handleWindowResize);
+    scrollOwner?.addEventListener?.("scroll", handleScroll, { passive: true });
+    window.visualViewport?.addEventListener?.("resize", handleVisualViewportResize);
+    window.visualViewport?.addEventListener?.("scroll", handleVisualViewportScroll);
 
     return () => {
       logAssistantTourDebug("target-observers-cleanup", () => ({
@@ -1097,12 +1656,18 @@ export default function AssistantGuidedTour({
         updateFrame = 0;
       }
       resizeObserver?.disconnect();
-      window.removeEventListener("resize", scheduleUpdate);
-      scrollOwner?.removeEventListener?.("scroll", scheduleUpdate);
-      window.visualViewport?.removeEventListener?.("resize", scheduleUpdate);
-      window.visualViewport?.removeEventListener?.("scroll", scheduleUpdate);
+      window.removeEventListener("resize", handleWindowResize);
+      scrollOwner?.removeEventListener?.("scroll", handleScroll);
+      window.visualViewport?.removeEventListener?.(
+        "resize",
+        handleVisualViewportResize
+      );
+      window.visualViewport?.removeEventListener?.(
+        "scroll",
+        handleVisualViewportScroll
+      );
     };
-  }, [targetElement, updateViewportSnapshot]);
+  }, [recordTourDebugSnapshot, targetElement, updateViewportSnapshot]);
 
   useEffect(() => {
     if (!tooltipRef.current || typeof ResizeObserver !== "function") return undefined;
@@ -1113,24 +1678,28 @@ export default function AssistantGuidedTour({
       firstNames: readFirstNamesDebugSnapshot(),
     }));
     let updateFrame = 0;
-    const update = () => {
+    const update = (measurementReason = "tooltip-resize") => {
       updateViewportSnapshot();
       const nextSize = readTooltipNaturalSize(tooltipRef.current);
       if (!nextSize) return;
       setTooltipSize((currentSize) =>
         areSizesEqual(currentSize, nextSize) ? currentSize : nextSize
       );
+      recordTourDebugSnapshot(measurementReason, {
+        source: "tooltip-resize-observer",
+        tooltipNaturalSize: nextSize,
+      });
     };
     const scheduleUpdate = () => {
       if (typeof window === "undefined") return;
       if (updateFrame) return;
       updateFrame = window.requestAnimationFrame(() => {
         updateFrame = 0;
-        update();
+        update("ResizeObserver");
       });
     };
 
-    update();
+    update("tooltip-observer-initial");
     const observer = new ResizeObserver(scheduleUpdate);
     observer.observe(tooltipRef.current);
     return () => {
@@ -1146,7 +1715,7 @@ export default function AssistantGuidedTour({
       }
       observer.disconnect();
     };
-  }, [targetElement, updateViewportSnapshot]);
+  }, [recordTourDebugSnapshot, targetElement, updateViewportSnapshot]);
 
   const targetReadyForCurrentPhase = Boolean(
     targetElement &&
@@ -1311,7 +1880,7 @@ export default function AssistantGuidedTour({
     if (fieldEditSignalConsumedRef.current[signalKey] === true) {
       logAssistantTourDebug("field-edit-signal-ignored", () => ({
         reason: "already-consumed",
-        signal: fieldEditSignal,
+        signal: readFieldEditSignalDebug(fieldEditSignal),
         currentPhase: phase,
         expectedTargetId: resolveAssistantGuidedTourTargetId({
           phase,
@@ -1340,7 +1909,7 @@ export default function AssistantGuidedTour({
       alreadyAdvanced: fieldAdvancedByTransitionRef.current[transitionKey] === true,
     });
     logAssistantTourDebug("field-edit-signal-evaluated", () => ({
-      signal: fieldEditSignal,
+      signal: readFieldEditSignalDebug(fieldEditSignal),
       signalKey,
       expectedTargetId,
       transitionKey,
@@ -1367,7 +1936,7 @@ export default function AssistantGuidedTour({
       source: "field-edit-signal",
       fromPhase: phase,
       toPhase: nextPhase,
-      signal: fieldEditSignal,
+      signal: readFieldEditSignalDebug(fieldEditSignal),
       expectedTargetId,
       transitionKey,
       draftKey,
@@ -1436,7 +2005,7 @@ export default function AssistantGuidedTour({
               ?.closest?.(`[${ASSISTANT_GUIDED_TOUR_TARGET_ATTR}]`)
               ?.getAttribute?.(ASSISTANT_GUIDED_TOUR_TARGET_ATTR) ||
             "",
-          value: readInputValue(resolveInputElement(eventTarget)),
+          input: readInputDebugMeta(resolveInputElement(eventTarget)),
         },
         ...latestDebugStateRef.current,
         firstNames: readFirstNamesDebugSnapshot(),
@@ -1609,6 +2178,27 @@ export default function AssistantGuidedTour({
     ]
   );
 
+  useEffect(() => {
+    if (!mounted || !canRenderTour || !targetRect) return;
+    const reason = initialRenderDebugSnapshotRef.current
+      ? "post-render"
+      : "render-initial";
+    initialRenderDebugSnapshotRef.current = true;
+    recordTourDebugSnapshot(reason, {
+      source: "post-render-effect",
+    });
+  }, [
+    assistantPositionKey,
+    canRenderTour,
+    mounted,
+    phase,
+    recordTourDebugSnapshot,
+    targetId,
+    targetRect,
+    tooltipSize,
+    viewportSnapshot,
+  ]);
+
   if (!mounted || !canRenderTour || !targetRect) return null;
 
   const mobileTourViewport = isMobileTourViewport(viewportSnapshot);
@@ -1639,18 +2229,24 @@ export default function AssistantGuidedTour({
       ? MOBILE_ACTION_PLACEMENT_PRIORITY
       : MOBILE_FIELD_PLACEMENT_PRIORITY
     : undefined;
+  const mobileBottomSurfaceRects = mobileTourViewport
+    ? readMobileTourBottomSurfaceRects({ targetElement })
+    : [];
   const avoidRects = mobileTourViewport
-    ? readMobileTourAvoidRects({
-        targetId,
-        targetElement,
-        previousTargetId: previousEditedTargetIdRef.current,
-      })
+    ? [
+        ...readMobileTourAvoidRects({
+          targetId,
+          targetElement,
+          previousTargetId: previousEditedTargetIdRef.current,
+        }),
+        ...mobileBottomSurfaceRects,
+      ]
     : [];
   const positioningViewport = mobileTourViewport
     ? resolveMobileTourPositioningViewport({
         viewport: viewportSnapshot,
-        targetId,
         targetElement,
+        bottomSurfaceRects: mobileBottomSurfaceRects,
       })
     : viewportSnapshot;
 
@@ -1660,6 +2256,14 @@ export default function AssistantGuidedTour({
     width: targetRect.width + targetPadding * 2,
     height: targetRect.height + targetPadding * 2,
   };
+  const contentSpotlightActive =
+    mobileTourViewport &&
+    targetId === ASSISTANT_GUIDED_TOUR_TARGETS.ASSISTANT_CONTENT;
+  const spotlightAvoidRects = contentSpotlightActive ? [paddedRect] : [];
+  let placementDebug = null;
+  const preferredPlacement = mobileTourViewport
+    ? lastMobileTooltipPlacementRef.current
+    : "";
   const tooltipPosition = resolveAssistantGuidedTourTooltipPosition({
     targetRect: paddedRect,
     tooltipSize: effectiveTooltipSize,
@@ -1667,27 +2271,36 @@ export default function AssistantGuidedTour({
     margin: viewportMargin,
     gap: tooltipGap,
     placementPriority,
-    preferredPlacement: mobileTourViewport
-      ? lastMobileTooltipPlacementRef.current
-      : "",
+    preferredPlacement,
     avoidRects,
+    spotlightAvoidRects,
+    debugCandidates: shouldDebugAssistantTour()
+      ? (debugPayload) => {
+          placementDebug = debugPayload;
+        }
+      : null,
     minWidth: mobileTourViewport ? MOBILE_TOOLTIP_MIN_WIDTH_PX : undefined,
     minHeight: mobileTourViewport ? MOBILE_TOOLTIP_MIN_HEIGHT_PX : undefined,
+    enforceHardAvoidRects: mobileTourViewport && actionTarget,
   });
+  latestPlacementDebugRef.current = placementDebug;
   if (mobileTourViewport) {
     lastMobileTooltipPlacementRef.current = tooltipPosition.placement || "";
   } else {
     lastMobileTooltipPlacementRef.current = "";
   }
+  const constrainedTooltipMaxHeight = Number(tooltipPosition.maxHeight);
+  const hasConstrainedTooltipMaxHeight =
+    Number.isFinite(constrainedTooltipMaxHeight) &&
+    constrainedTooltipMaxHeight >= 0 &&
+    constrainedTooltipMaxHeight <
+      effectiveTooltipSize.height - TOUR_MEASUREMENT_TOLERANCE_PX;
   const tooltipStyle = {
     left: `${tooltipPosition.left}px`,
     top: `${tooltipPosition.top}px`,
     width: `${tooltipPosition.width}px`,
-    maxHeight:
-      tooltipPosition.maxHeight &&
-      tooltipPosition.maxHeight <
-        effectiveTooltipSize.height - TOUR_MEASUREMENT_TOLERANCE_PX
-      ? `${tooltipPosition.maxHeight}px`
+    maxHeight: hasConstrainedTooltipMaxHeight
+      ? `${Math.max(0, constrainedTooltipMaxHeight)}px`
       : undefined,
     "--tour-arrow-offset": `${tooltipPosition.arrowOffset}px`,
   };
@@ -1697,10 +2310,83 @@ export default function AssistantGuidedTour({
     width: `${paddedRect.width}px`,
     height: `${paddedRect.height}px`,
   };
+  latestLayoutDebugRef.current = {
+    mobileTourViewport,
+    actionTarget,
+    targetPadding,
+    tooltipGap,
+    viewportMargin,
+    effectiveTooltipSize,
+    placementPriority,
+    preferredPlacement,
+    mobileBottomSurfaceRects,
+    avoidRects,
+    positioningViewport,
+    paddedRect: completeDebugRect(paddedRect),
+    contentSpotlightActive,
+    spotlightAvoidRects,
+    tooltipPosition,
+    constrainedTooltipMaxHeight,
+    hasConstrainedTooltipMaxHeight,
+    tooltipStyle,
+    spotlightStyle,
+    canRenderTour,
+  };
+  const debugVisualEnabled = shouldShowAssistantTourDebugVisual();
+  const debugUsefulViewportRect = completeDebugRect({
+    left: positioningViewport.left,
+    top: positioningViewport.top,
+    width: positioningViewport.width,
+    height: positioningViewport.height,
+  });
+  const debugVisualRects = debugVisualEnabled
+    ? [
+        {
+          label: "target",
+          rect: completeDebugRect(targetRect),
+          color: "#2f80ed",
+        },
+        {
+          label: "spotlight",
+          rect: completeDebugRect(paddedRect),
+          color: "#f2994a",
+        },
+        {
+          label: "tooltip",
+          rect: completeDebugRect(tooltipPosition.rect),
+          color: "#27ae60",
+        },
+        {
+          label: "usable-viewport",
+          rect: debugUsefulViewportRect,
+          color: "#eb5757",
+        },
+        {
+          label: "panel",
+          rect: readElementRect(document.getElementById("sidebar-panel")),
+          color: "#9b51e0",
+        },
+        {
+          label: "footer",
+          rect: readElementRect(readAssistantControlsRoot(targetElement)),
+          color: "#f2c94c",
+        },
+        {
+          label: "mobile-bar",
+          rect: readElementRect(readDashboardSidebarRoot()),
+          color: "#56ccf2",
+        },
+        ...avoidRects.map((rect, index) => ({
+          label: `avoid-${index + 1}`,
+          rect: completeDebugRect(rect),
+          color: "#bb6bd9",
+        })),
+      ].filter((item) => item.rect)
+    : [];
 
   return createPortal(
     <div className={styles.root} aria-live="polite">
-      <div className={styles.spotlight} style={spotlightStyle} />
+      <div ref={spotlightRef} className={styles.spotlight} style={spotlightStyle} />
       <section
         ref={tooltipRef}
         className={styles.tooltip}
@@ -1742,6 +2428,54 @@ export default function AssistantGuidedTour({
           </p>
         ) : null}
       </section>
+      {debugVisualEnabled ? (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 3,
+            pointerEvents: "none",
+            fontFamily:
+              '"Source Sans 3", "Source Sans Pro", Arial, sans-serif',
+          }}
+        >
+          {debugVisualRects.map((item) => (
+            <div
+              key={`${item.label}:${item.rect.left}:${item.rect.top}`}
+              style={{
+                position: "fixed",
+                left: `${item.rect.left}px`,
+                top: `${item.rect.top}px`,
+                width: `${item.rect.width}px`,
+                height: `${item.rect.height}px`,
+                border: `2px dashed ${item.color}`,
+                boxSizing: "border-box",
+                pointerEvents: "none",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  transform: "translateY(-100%)",
+                  background: item.color,
+                  color: "#111827",
+                  padding: "1px 4px",
+                  borderRadius: "3px",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  lineHeight: "13px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>,
     document.body
   );

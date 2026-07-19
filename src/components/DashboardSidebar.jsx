@@ -422,8 +422,9 @@ export default function DashboardSidebar({
             source: "DashboardSidebar.handleAssistantTourFieldEdit",
             signalId: assistantTourFieldEditSignalIdRef.current,
             targetId,
-            value: String(detail?.value ?? ""),
-            rawDetail: detail,
+            hasValue: String(detail?.value ?? "").trim().length > 0,
+            valueLength: String(detail?.value ?? "").length,
+            trimmedLength: String(detail?.value ?? "").trim().length,
             ...sidebarDebugStateRef.current,
         }));
         setAssistantTourFieldEditSignal({

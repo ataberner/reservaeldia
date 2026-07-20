@@ -757,6 +757,17 @@
   outline: none;
 }
 
+.menuItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.menuItem:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+  color: #475467;
+}
+
 .menuItemDanger {
   color: #b42318;
 }

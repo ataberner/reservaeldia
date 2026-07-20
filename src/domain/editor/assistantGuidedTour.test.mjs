@@ -19,6 +19,7 @@ import {
   getAssistantGuidedTourPositionKey,
   reconcileAssistantGuidedTourPosition,
   resolveAssistantGuidedTourOverlayRect,
+  resolveAssistantGuidedTourRestoreMenuItemState,
   resolveAssistantGuidedTourTargetId,
   resolveAssistantGuidedTourTooltipPosition,
   resolveAssistantGuidedTourUsableViewport,
@@ -29,6 +30,7 @@ import {
   shouldAdvanceEventNameTour,
   shouldAdvancePersonNamesTour,
   shouldAutoStartAssistantGuidedTour,
+  shouldRestartAssistantGuidedTourSession,
 } from "./assistantGuidedTour.js";
 import { getAssistantSteps } from "./assistantMode.js";
 import { resolveAssistantSubstepsForStep } from "./assistantSubsteps.js";
@@ -113,6 +115,198 @@ test("guided tour respects the No volver a mostrar preference", () => {
   );
 });
 
+test("the authenticated opt-out remains global across drafts, reload hydration and template sessions", () => {
+  const readyState = {
+    editorReady: true,
+    assistantMounted: true,
+    targetsReady: true,
+    preferencesLoaded: true,
+    assistantTourOptOut: true,
+  };
+
+  for (const draftKey of ["draft-a", "draft-b", "template-editor-1"]) {
+    const sessionKey = createAssistantGuidedTourSessionKey({
+      userUid: "user-1",
+      draftKey,
+    });
+
+    assert.equal(
+      shouldAutoStartAssistantGuidedTour({
+        ...readyState,
+        draftKey: sessionKey,
+      }),
+      false
+    );
+  }
+
+  assert.equal(
+    shouldAutoStartAssistantGuidedTour({
+      ...readyState,
+      draftKey: "user-1:draft-a",
+      preferencesLoaded: false,
+      assistantTourOptOut: false,
+    }),
+    false
+  );
+});
+
+test("the restore row stays actionable after hydration so it can restart a closed active session", () => {
+  assert.deepEqual(
+    resolveAssistantGuidedTourRestoreMenuItemState({
+      hasActiveEditor: false,
+      preferencesLoaded: true,
+      assistantTourOptOut: true,
+    }),
+    {
+      visible: true,
+      canRestore: true,
+      disabled: false,
+      label: "Volver a mostrar visita guiada",
+    }
+  );
+  assert.deepEqual(
+    resolveAssistantGuidedTourRestoreMenuItemState({
+      hasActiveEditor: false,
+      preferencesLoaded: true,
+      assistantTourOptOut: false,
+    }),
+    {
+      visible: true,
+      canRestore: true,
+      disabled: false,
+      label: "Volver a mostrar visita guiada",
+    }
+  );
+  assert.deepEqual(
+    resolveAssistantGuidedTourRestoreMenuItemState({
+      hasActiveEditor: true,
+      preferencesLoaded: true,
+      assistantTourOptOut: true,
+    }),
+    {
+      visible: true,
+      canRestore: true,
+      disabled: false,
+      label: "Volver a mostrar visita guiada",
+    }
+  );
+  assert.deepEqual(
+    resolveAssistantGuidedTourRestoreMenuItemState({
+      hasActiveEditor: false,
+      preferencesLoaded: false,
+      assistantTourOptOut: true,
+    }),
+    {
+      visible: true,
+      canRestore: false,
+      disabled: true,
+      label: "Cargando visita guiada...",
+    }
+  );
+  assert.deepEqual(
+    resolveAssistantGuidedTourRestoreMenuItemState({
+      preferencesLoaded: true,
+      assistantTourSaving: true,
+    }),
+    {
+      visible: true,
+      canRestore: false,
+      disabled: true,
+      label: "Restaurando visita guiada...",
+    }
+  );
+
+  const restorePatch = createAssistantGuidedTourPreferencePatch({
+    assistantTourOptOut: false,
+  });
+  assert.deepEqual(restorePatch, { assistantTourOptOut: false });
+  assert.equal(
+    shouldAutoStartAssistantGuidedTour({
+      draftKey: "user-1:future-draft",
+      editorReady: true,
+      assistantMounted: true,
+      targetsReady: true,
+      preferencesLoaded: true,
+      assistantTourOptOut: restorePatch.assistantTourOptOut,
+    }),
+    true
+  );
+});
+
+test("a confirmed restoration creates one restart opportunity in draft and template sessions", () => {
+  const readyRestart = {
+    restartKey: 1,
+    lastHandledRestartKey: 0,
+    preferencesLoaded: true,
+    assistantTourOptOut: false,
+    editorReadOnly: false,
+  };
+
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:draft-a",
+    }),
+    true
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:template-editor-1",
+    }),
+    true
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:draft-a",
+      lastHandledRestartKey: 1,
+    }),
+    false
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:draft-a",
+      preferencesLoaded: false,
+    }),
+    false
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:draft-a",
+      assistantTourOptOut: true,
+    }),
+    false
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:draft-a",
+      lastHandledRestartKey: readyRestart.restartKey,
+    }),
+    false
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      restartKey: 2,
+      lastHandledRestartKey: 1,
+      sessionKey: "user-1:draft-a",
+    }),
+    true
+  );
+  assert.equal(
+    shouldRestartAssistantGuidedTourSession({
+      ...readyRestart,
+      sessionKey: "user-1:draft-a",
+      editorReadOnly: true,
+    }),
+    false
+  );
+});
+
 test("closing the guided tour does not save the opt-out preference", () => {
   assert.deepEqual(
     closeAssistantGuidedTourSession({
@@ -125,6 +319,18 @@ test("closing the guided tour does not save the opt-out preference", () => {
       preferencePatch: null,
       navigationCommand: null,
     }
+  );
+
+  assert.equal(
+    shouldAutoStartAssistantGuidedTour({
+      draftKey: "user-1:another-opening",
+      editorReady: true,
+      assistantMounted: true,
+      targetsReady: true,
+      preferencesLoaded: true,
+      assistantTourOptOut: false,
+    }),
+    true
   );
 });
 

@@ -534,6 +534,28 @@ Resultado esperado:
 
 Aplicar cuando el cambio toque `AssistantGuidedTour`, `DashboardSidebar`, geometría del Sidebar mobile, footer del Asistente, barra mobile del editor o targets `data-assistant-tour-*`.
 
+### [ ] Preferencia autenticada, cierre de sesión y restauración
+
+1. Con un usuario sin opt-out, abrir un borrador writable y confirmar que la visita puede iniciarse después de cargar preferencias, editor y targets hidratados.
+2. Cerrar la visita con X, salir del editor y abrir otro borrador.
+3. Seleccionar `No volver a mostrar`, recargar y abrir otro borrador.
+4. Con el mismo usuario, abrir una sesión writable de edición de plantilla.
+5. Sin salir del borrador, abrir el menú de usuario del header y confirmar que ofrece `Volver a mostrar visita guiada` después de hidratar la preferencia. Repetir en mobile desde la sección `Cuenta` de `Opciones del editor` y en el dashboard, donde la fila queda inmediatamente antes de `Papelera`.
+6. Seleccionar `No volver a mostrar` y confirmar que la casilla queda marcada, aparece el mensaje verde `Marcado correctamente` después de la respuesta remota y recién entonces se cierra el overlay.
+7. Usar `Volver a mostrar visita guiada` desde el menú del editor y confirmar que el tour reaparece una sola vez en esa misma edición, sin reload. Repetir después de un cierre normal con X.
+8. Intentar doble click/repetición de efectos y confirmar que no hay dos overlays ni dos escrituras. Luego abrir otro borrador y una plantilla.
+
+Resultado esperado:
+
+- cerrar con X solo bloquea la sesión montada y no escribe el opt-out
+- el opt-out autenticado sobrevive recarga, cambio de borrador y nueva sesión, y se aplica igual a plantillas
+- `No volver a mostrar` mantiene visible el estado actual mientras guarda, muestra feedback verde solo cuando el callable confirma `assistantTourOptOut: true` y cierra el overlay después de ese feedback
+- el tour no evalúa mientras las preferencias o los targets iniciales siguen hidratando
+- el menú permite restaurar tanto fuera como dentro del editor; una restauración confirmada durante una edición writable crea una sola nueva oportunidad de inicio en esa misma edición
+- restaurar escribe `assistantTourOptOut: false` por el handler existente, sin localStorage ni estado paralelo
+- la acción queda bloqueada durante el guardado; la sesión activa y las siguientes aperturas de borrador o plantilla vuelven a poder mostrar el tour
+- remounts y doble ejecución de efectos no duplican aperturas, listeners ni escrituras
+
 ### [ ] Mobile: tooltip dentro del viewport útil
 
 1. Abrir un borrador writable en modo mobile con anchos aproximados de 360 px, 390 px y 430 px.

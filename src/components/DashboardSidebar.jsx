@@ -349,6 +349,7 @@ export default function DashboardSidebar({
     onAssistantTourPreferenceChange = null,
     assistantTourPreviewOpen = false,
     assistantTourOpeningKey = "",
+    assistantTourRestartKey = 0,
 }) {
     // --------------------------
     // Estados internos del sidebar
@@ -394,6 +395,7 @@ export default function DashboardSidebar({
     const sidebarDebugStateRef = useRef({});
     sidebarDebugStateRef.current = {
         assistantTourOpeningKey,
+        assistantTourRestartKey,
         draftKey: resolveEditorSidebarAutoOpenDraftKey({
             slugInvitacion,
             editorSession,
@@ -2147,6 +2149,7 @@ export default function DashboardSidebar({
                 assistantState={assistantTourState}
                 fieldEditSignal={assistantTourFieldEditSignal}
                 openingKey={assistantTourOpeningKey}
+                restartKey={assistantTourRestartKey}
             />
 
             <ModalCrearSeccion

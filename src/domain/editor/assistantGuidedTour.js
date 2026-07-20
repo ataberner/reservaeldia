@@ -1834,6 +1834,52 @@ export function createAssistantGuidedTourPreferencePatch({
   };
 }
 
+export function shouldRestartAssistantGuidedTourSession({
+  restartKey = 0,
+  lastHandledRestartKey = 0,
+  sessionKey = "",
+  preferencesLoaded = false,
+  assistantTourOptOut = false,
+  editorReadOnly = false,
+} = {}) {
+  const normalizedRestartKey = Number(restartKey);
+  const normalizedLastHandledRestartKey = Number(lastHandledRestartKey);
+
+  return (
+    Number.isFinite(normalizedRestartKey) &&
+    normalizedRestartKey > 0 &&
+    normalizedRestartKey !== normalizedLastHandledRestartKey &&
+    Boolean(normalizeTourText(sessionKey)) &&
+    preferencesLoaded === true &&
+    assistantTourOptOut !== true &&
+    editorReadOnly !== true
+  );
+}
+
+export function resolveAssistantGuidedTourRestoreMenuItemState({
+  preferencesLoaded = false,
+  assistantTourSaving = false,
+} = {}) {
+  if (preferencesLoaded !== true) {
+    return {
+      visible: true,
+      canRestore: false,
+      disabled: true,
+      label: "Cargando visita guiada...",
+    };
+  }
+
+  return {
+    visible: true,
+    canRestore: assistantTourSaving !== true,
+    disabled: assistantTourSaving === true,
+    label:
+      assistantTourSaving === true
+        ? "Restaurando visita guiada..."
+        : "Volver a mostrar visita guiada",
+  };
+}
+
 export function reconcileAssistantGuidedTourPosition({
   previousPositionKey,
   nextPositionKey,

@@ -410,9 +410,12 @@ export default function AppHeader({
                           item.tone === "danger" ? styles.menuItemDanger : ""
                         )}
                         onClick={() => {
+                          if (item.disabled) return;
                           item.onClick?.();
                           closeTransientMenus();
                         }}
+                        disabled={item.disabled === true}
+                        title={item.title || item.label}
                         role="menuitem"
                       >
                         {item.icon ? <span className={styles.menuItemIcon}>{item.icon}</span> : null}

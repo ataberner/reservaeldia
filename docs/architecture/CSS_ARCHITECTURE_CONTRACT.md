@@ -207,6 +207,7 @@ Allowed inline styles:
 - Preview iframe or generated document runtime patches.
 - Performance-sensitive canvas/Konva overlay positioning.
 - Dashboard shell measured geometry, including `DashboardLayout` main sizing, `DashboardSidebar` mobile/desktop panel sizing, and the `--dashboard-header-height` bridge maintained by `DashboardHeader`.
+- `DashboardHeader` may measure its shell immediately, but `ResizeObserver` notifications must schedule writes to `--dashboard-header-height` outside the observer delivery. The variable resizes sibling sidebar/editor surfaces that can be observed independently, so synchronous writes can create undelivered same-frame notifications.
 
 Not allowed inline styles:
 - Static app chrome styling that could be a Tailwind class or scoped CSS rule.

@@ -1,5 +1,5 @@
 // src/components/DashboardLayout.jsx
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardHeader from "./DashboardHeader";
 import DashboardSidebar from "./DashboardSidebar";
 import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
@@ -48,6 +48,9 @@ export default function DashboardLayout({
     openingIndex: 0,
     openingKey: "",
   });
+  const assistantTourRestoreRequestRef = useRef(null);
+  const assistantTourRestartSequenceRef = useRef(0);
+  const [assistantTourRestartKey, setAssistantTourRestartKey] = useState(0);
   const assistantTourDraftKey = String(
     slugInvitacion ||
       editorSession?.slug ||
@@ -64,6 +67,52 @@ export default function DashboardLayout({
         : "",
     };
   }
+
+  const handleAssistantTourPreferenceChange = useCallback(
+    (patch) => {
+      if (typeof onAssistantTourPreferenceChange !== "function") {
+        return Promise.reject(
+          new Error("assistant-tour-preference-handler-unavailable")
+        );
+      }
+
+      if (patch?.assistantTourOptOut !== false) {
+        return onAssistantTourPreferenceChange(patch);
+      }
+
+      if (assistantTourRestoreRequestRef.current) {
+        return assistantTourRestoreRequestRef.current;
+      }
+
+      const restoreRequest = Promise.resolve(
+        onAssistantTourPreferenceChange(patch)
+      )
+        .then((savedPreferences) => {
+          if (savedPreferences?.assistantTourOptOut !== false) {
+            throw new Error("assistant-tour-restore-not-confirmed");
+          }
+
+          assistantTourRestartSequenceRef.current += 1;
+          setAssistantTourRestartKey(
+            assistantTourRestartSequenceRef.current
+          );
+          return savedPreferences;
+        })
+        .finally(() => {
+          if (assistantTourRestoreRequestRef.current === restoreRequest) {
+            assistantTourRestoreRequestRef.current = null;
+          }
+        });
+
+      assistantTourRestoreRequestRef.current = restoreRequest;
+      return restoreRequest;
+    },
+    [onAssistantTourPreferenceChange]
+  );
+  const resolvedAssistantTourPreferenceChange =
+    typeof onAssistantTourPreferenceChange === "function"
+      ? handleAssistantTourPreferenceChange
+      : null;
 
   // Runtime-sensitive shell contract: header/sidebar/editor overlays consume
   // this CSS variable, so keep it in sync with DashboardHeader.
@@ -110,6 +159,7 @@ export default function DashboardLayout({
       assistantTourEditorReady,
       assistantTourPreferencesLoaded,
       assistantTourOptOut,
+      assistantTourRestartKey,
       assistantTourPreviewOpen,
     }));
   }, [
@@ -117,6 +167,7 @@ export default function DashboardLayout({
     assistantTourEditorReady,
     assistantTourOptOut,
     assistantTourPreferencesLoaded,
+    assistantTourRestartKey,
     assistantTourPreviewOpen,
     editorSession?.id,
     editorSession?.kind,
@@ -149,6 +200,10 @@ export default function DashboardLayout({
         templateSessionMeta={templateSessionMeta}
         ensureEditorFlushBeforeAction={ensureEditorFlushBeforeAction}
         onOpenTemplateSession={onOpenTemplateSession}
+        assistantTourPreferencesLoaded={assistantTourPreferencesLoaded}
+        assistantTourOptOut={assistantTourOptOut}
+        assistantTourSaving={assistantTourSaving}
+        onAssistantTourPreferenceChange={resolvedAssistantTourPreferenceChange}
       />
 
       {/* Sidebar */}
@@ -171,9 +226,10 @@ export default function DashboardLayout({
           assistantTourPreferencesLoaded={assistantTourPreferencesLoaded}
           assistantTourOptOut={assistantTourOptOut}
           assistantTourSaving={assistantTourSaving}
-          onAssistantTourPreferenceChange={onAssistantTourPreferenceChange}
+          onAssistantTourPreferenceChange={resolvedAssistantTourPreferenceChange}
           assistantTourPreviewOpen={assistantTourPreviewOpen}
           assistantTourOpeningKey={assistantTourOpeningRef.current.openingKey}
+          assistantTourRestartKey={assistantTourRestartKey}
         />
       )}
 

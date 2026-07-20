@@ -53,7 +53,8 @@ El contrato arquitectónico ya aparece resumido en [EDITOR_SYSTEM.md](EDITOR_SYS
 | Módulo | Responsabilidad actual | No posee |
 | --- | --- | --- |
 | `Dashboard` (`src/pages/dashboard.js`) | Carga preferencias de UI del usuario, expone `assistantTourEditorReady`, `assistantTourPreferencesLoaded`, `assistantTourOptOut`, `assistantTourSaving`, `assistantTourPreviewOpen` y `onAssistantTourPreferenceChange`. | No calcula pasos, targets ni fases del tour. |
-| `DashboardLayout` | Calcula `assistantTourOpeningKey` a partir del draft/template activo y remonta `DashboardSidebar` con `key` por slug cuando corresponde. | No abre ni cierra el tour. |
+| `DashboardHeader` | Muestra `Volver a mostrar visita guiada` en el menú de cuenta tanto en el dashboard como durante la edición de un borrador o plantilla. La fila queda deshabilitada durante hidratación/guardado y reutiliza `onAssistantTourPreferenceChange` con `assistantTourOptOut: false`. | No mantiene otra preferencia ni reinicia por sí mismo el runtime del tour. |
+| `DashboardLayout` | Calcula `assistantTourOpeningKey`, remonta `DashboardSidebar` con `key` por slug cuando corresponde y, solo después de confirmar una escritura de restauración en `false`, emite una clave incremental de reinicio de sesión. Deduplica una restauración pendiente. | No persiste preferencias ni mantiene fase, target o geometría. |
 | `useDashboardEditorRoute` | Gestiona `slugInvitacion`, `editorSession`, modo editor y apertura de borradores. | No conoce preferencias del tour ni tooltip. |
 | `useDashboardStartupLoaders` | Marca el runtime del editor como `ready` cuando el canvas/editor reporta startup listo. | No decide si mostrar tour. |
 | `DashboardSidebar` | Autoridad del Asistente: autoapertura, pasos, subpasos, estado de panel, handlers Previous/Next/Preview y targets DOM principales. Monta `AssistantGuidedTour`. | No calcula geometría ni persistencia de opt-out. |
@@ -496,11 +497,15 @@ Persistido:
 - `usuarios/{uid}.uiPreferences.updatedAt`
 - `usuarios/{uid}.updatedAt`
 
+La fila de preferencia del menú de cuenta se construye tanto en el dashboard como en el menú de usuario del header con un borrador o una plantilla abiertos. En el dashboard queda inmediatamente antes de `Papelera`; en el editor desktop aparece como la primera acción después del resumen de cuenta y en mobile se reutiliza dentro de la sección `Cuenta` de `Opciones del editor`. Durante hidratación muestra `Cargando visita guiada...`; después ofrece `Volver a mostrar visita guiada`, incluso si el cierre anterior fue solo de sesión. Restaurar escribe `assistantTourOptOut: false` por el mismo callable. Solo cuando la respuesta confirma ese valor, `DashboardLayout` incrementa una clave runtime de restauración y el tour consume esa oportunidad una vez. En un editor writable activo limpia los latches de cierre, completado y activación, vuelve a su fase inicial para la posición actual del Asistente y reevalúa targets; fuera de un editor, la preferencia restaurada habilita la próxima apertura normal.
+
 La lectura/escritura pasa por:
 
 - `useUserUiPreferences`
 - callable `getMyUiPreferences`
 - callable `updateMyUiPreferences`
+
+`updateMyUiPreferences` construye `uiPreferences` como mapa anidado y lo combina con `set(..., { merge: true })`. La forma plana con claves `"uiPreferences.assistantTourOptOut"` no coincide con el mapa que consume `extractUserUiPreferencesFromDocData` y no debe reutilizarse en este `set`. El hook mantiene la preferencia previa mientras la escritura está pendiente y solo refleja el nuevo valor confirmado por la respuesta del callable; así el overlay no desaparece como si el opt-out hubiera quedado guardado cuando la escritura remota falla.
 
 No persistido:
 
@@ -695,6 +700,10 @@ Si el usuario usa Previous en el Asistente, cambia `assistantPositionKey`. El to
 
 Si el componente no se desmonta, `closedSessionKey` y `completedSessionKey` siguen bloqueando esa sesión. Si hay reload o remount real que destruya el estado local, esos flags se pierden. El opt-out es la única protección persistida.
 
+### Restaurar la visita guiada
+
+El menú de cuenta siempre muestra una fila de visita guiada, tanto en el dashboard como en el header de una edición activa. Tras hidratar, `Volver a mostrar visita guiada` guarda `false` mediante el handler existente. La confirmación remota crea una nueva oportunidad de inicio: durante una edición writable activa se limpian `closedSessionKey`, `completedSessionKey`, el guard de activación y el estado visual transitorio, por lo que el overlay puede reaparecer sin reload; sin editor activo, la próxima apertura evalúa normalmente la preferencia restaurada. La clave incremental es una señal efímera de la acción confirmada, no otra preferencia. Cada valor se consume una sola vez, y una restauración pendiente se deduplica para evitar aperturas o escrituras dobles.
+
 ### Restauración de estado
 
 No se observa restauración persistida de fase, target ni paso del guided tour. Al montar, el tour reconstruye su estado desde:
@@ -819,6 +828,7 @@ flowchart LR
 - La fase visual debe reconciliarse contra `assistantPositionKey`, no contra labels visibles.
 - El cierre con X no debe persistir opt-out.
 - El checkbox "No volver a mostrar" sí debe persistir `assistantTourOptOut`.
+- La restauración debe escribir `assistantTourOptOut: false` por la misma autoridad autenticada. Si se confirma durante una edición writable activa, debe crear exactamente una nueva oportunidad de inicio y limpiar los latches de la sesión anterior; también debe aplicar a aperturas futuras.
 - El overlay no debe bloquear el target real. El usuario debe interactuar con los controles reales.
 - La geometría debe considerar `visualViewport`, especialmente en mobile.
 - En mobile, el tooltip debe quedar dentro del viewport útil recortado por las superficies inferiores medidas.
@@ -876,6 +886,7 @@ flowchart LR
 - Acoplamiento a preferencia de usuario:
   - el gate espera `preferencesLoaded`.
   - si falla la carga, `useUserUiPreferences` normaliza a default y marca loaded en su flujo actual.
+  - la escritura y la lectura deben conservar la misma forma anidada `uiPreferences.assistantTourOptOut`; una respuesta 200 no prueba persistencia si el payload se escribió en otra ruta de campo.
 
 Estos puntos deben leerse junto con [SYSTEM_FRAGILITY_MAP.md](SYSTEM_FRAGILITY_MAP.md), especialmente las advertencias sobre runtime del editor, carga/persistencia de borradores y límites entre preview/publicación.
 

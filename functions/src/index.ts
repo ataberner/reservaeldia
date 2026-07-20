@@ -137,6 +137,7 @@ import {
   adminUpdatePricingConfigV1 as adminUpdatePricingConfigV1Handler,
   getPricingConfigV1 as getPricingConfigV1Handler,
 } from "./siteSettings/pricing";
+import { buildUserUiPreferencesMergePayload } from "./userUiPreferencesPersistence";
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 
 import * as logger from "firebase-functions/logger";
@@ -2549,15 +2550,11 @@ export const updateMyUiPreferences = onCall(
     const userRef = db.collection("usuarios").doc(uid);
     const existingSnap = await userRef.get();
 
-    const payload: Record<string, unknown> = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      "uiPreferences.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
-    };
-
-    if (patch.assistantTourOptOut !== undefined) {
-      payload["uiPreferences.assistantTourOptOut"] =
-        patch.assistantTourOptOut;
-    }
+    const updatedAtValue = admin.firestore.FieldValue.serverTimestamp();
+    const payload = buildUserUiPreferencesMergePayload({
+      patch,
+      updatedAtValue,
+    });
 
     if (!existingSnap.exists) {
       payload.uid = uid;

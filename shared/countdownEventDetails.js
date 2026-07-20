@@ -7,6 +7,8 @@ export const buildDynamicCountdownEventDetails =
 export const findDynamicCountdownBinding =
   runtime.findDynamicCountdownBinding;
 export const isCountdownVisible = runtime.isCountdownVisible;
+export const mergeCountdownTargetLocalParts =
+  runtime.mergeCountdownTargetLocalParts;
 export const resolveCountdownTargetValue = runtime.resolveCountdownTargetValue;
 export const splitCountdownTargetIso = runtime.splitCountdownTargetIso;
 

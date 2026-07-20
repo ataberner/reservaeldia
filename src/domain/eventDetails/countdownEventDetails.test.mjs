@@ -5,6 +5,7 @@ import {
   buildCountdownTargetIsoFromLocalParts,
   findDynamicCountdownBinding,
   isCountdownVisible,
+  mergeCountdownTargetLocalParts,
   splitCountdownTargetIso,
 } from "./countdownEventDetails.js";
 
@@ -81,6 +82,55 @@ test("converts local date and time to ISO and splits it back", () => {
   assert.deepEqual(splitCountdownTargetIso(iso), {
     date: "2027-03-18",
     time: "19:45",
+  });
+});
+
+test("date-only edits preserve the explicit hydrated start time for ceremony and party", () => {
+  for (const scenario of [
+    { feature: "ceremony", date: "2027-03-18", time: "19:45" },
+    { feature: "party", date: "2027-03-19", time: "23:30" },
+  ]) {
+    const merged = mergeCountdownTargetLocalParts({
+      currentTargetValue: `${scenario.date}T00:00:00.000Z`,
+      currentDate: scenario.date,
+      currentTime: scenario.time,
+      patch: { date: "2027-04-12" },
+    });
+
+    assert.deepEqual(
+      splitCountdownTargetIso(merged.targetISO),
+      { date: "2027-04-12", time: scenario.time },
+      scenario.feature
+    );
+  }
+});
+
+test("time-only edits and consecutive edits preserve the complementary local part", () => {
+  const timeOnly = mergeCountdownTargetLocalParts({
+    currentDate: "2027-03-18",
+    currentTime: "19:45",
+    patch: { time: "20:15" },
+  });
+  assert.deepEqual(splitCountdownTargetIso(timeOnly.targetISO), {
+    date: "2027-03-18",
+    time: "20:15",
+  });
+
+  const dateOnly = mergeCountdownTargetLocalParts({
+    currentTargetValue: timeOnly.targetISO,
+    currentDate: timeOnly.date,
+    currentTime: timeOnly.time,
+    patch: { date: "2027-04-12" },
+  });
+  const dateThenTime = mergeCountdownTargetLocalParts({
+    currentTargetValue: dateOnly.targetISO,
+    currentDate: dateOnly.date,
+    currentTime: dateOnly.time,
+    patch: { time: "21:30" },
+  });
+  assert.deepEqual(splitCountdownTargetIso(dateThenTime.targetISO), {
+    date: "2027-04-12",
+    time: "21:30",
   });
 });
 

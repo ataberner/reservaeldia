@@ -24,6 +24,10 @@ import {
   formatTemplateDateTextValue,
   resolveTemplateTargetValue,
 } from "../fieldValueResolver.js";
+import {
+  buildCountdownTargetIsoFromLocalParts,
+  splitCountdownTargetIso,
+} from "../../eventDetails/countdownEventDetails.js";
 
 test("formats date and datetime fields for textual targets", () => {
   const iso = "2026-12-13T21:00:00.000Z";
@@ -253,6 +257,85 @@ test("authoring target patches update countdown and linked text for a new event 
       ["text-date", "5 de enero de 2027"],
     ]
   );
+});
+
+test("ceremony and party date targets keep the combined start time across date formats", () => {
+  for (const scenario of [
+    {
+      role: "ceremony_date",
+      key: "event_ceremony_date",
+      countdownId: "ceremony-countdown",
+      textId: "ceremony-date",
+      preset: "event_date_long_es_ar",
+      expectedText: "12 de abril de 2027",
+      time: "19:45",
+    },
+    {
+      role: "party_date",
+      key: "event_party_date",
+      countdownId: "party-countdown",
+      textId: "party-date",
+      preset: "event_date_slash_short_year_es_ar",
+      expectedText: "12/4/27",
+      time: "23:30",
+    },
+  ]) {
+    const field = {
+      key: scenario.key,
+      type: "date",
+      eventDetailsRole: scenario.role,
+      applyTargets: [
+        {
+          scope: "objeto",
+          id: scenario.countdownId,
+          path: "fechaObjetivo",
+          mode: "set",
+          transform: { kind: "date_to_countdown_iso" },
+        },
+        {
+          scope: "objeto",
+          id: scenario.textId,
+          path: "texto",
+          mode: "set",
+          transform: { kind: "date_to_text", preset: scenario.preset },
+        },
+      ],
+    };
+    const value = buildCountdownTargetIsoFromLocalParts({
+      date: "2027-04-12",
+      time: scenario.time,
+    });
+    const patches = buildTemplateAuthoringTargetPatches({
+      field,
+      value,
+      objetos: [
+        {
+          id: scenario.countdownId,
+          tipo: "countdown",
+          fechaObjetivo: buildCountdownTargetIsoFromLocalParts({
+            date: "2027-03-18",
+            time: scenario.time,
+          }),
+        },
+        {
+          id: scenario.textId,
+          tipo: "texto",
+          texto: "Fecha anterior",
+          fontSize: 24,
+        },
+      ],
+    });
+
+    const countdownPatch = patches.find(
+      (entry) => entry.objectId === scenario.countdownId
+    );
+    const textPatch = patches.find((entry) => entry.objectId === scenario.textId);
+    assert.deepEqual(splitCountdownTargetIso(countdownPatch.patch.fechaObjetivo), {
+      date: "2027-04-12",
+      time: scenario.time,
+    });
+    assert.equal(textPatch.patch.texto, scenario.expectedText);
+  }
 });
 
 test("authoring target patches preserve different date text presets per target", () => {

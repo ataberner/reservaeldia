@@ -31,6 +31,7 @@ import {
   resolveNextAssistantGuidedTourFieldPhase,
   shouldAdvanceAssistantGuidedTourFieldEditSignal,
   shouldAutoStartAssistantGuidedTour,
+  shouldRestartAssistantGuidedTourSession,
 } from "@/domain/editor/assistantGuidedTour";
 import {
   installAssistantTourDebugApi,
@@ -56,6 +57,7 @@ const MOBILE_ACTION_TOOLTIP_WIDTH_PX = 164;
 const MOBILE_TOOLTIP_MIN_WIDTH_PX = 144;
 const MOBILE_TOOLTIP_MIN_HEIGHT_PX = 58;
 const TOUR_MEASUREMENT_TOLERANCE_PX = 1;
+const OPT_OUT_SUCCESS_FEEDBACK_MS = 900;
 const MOBILE_FIELD_PLACEMENT_PRIORITY = Object.freeze([
   ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.TOP,
   ASSISTANT_GUIDED_TOUR_TOOLTIP_PLACEMENTS.BOTTOM,
@@ -887,6 +889,7 @@ export default function AssistantGuidedTour({
   assistantState = null,
   fieldEditSignal = null,
   openingKey = "",
+  restartKey = 0,
 }) {
   const [mounted, setMounted] = useState(false);
   const [phase, setPhase] = useState(ASSISTANT_GUIDED_TOUR_PHASES.CONTENT);
@@ -907,6 +910,7 @@ export default function AssistantGuidedTour({
   const [closedSessionKey, setClosedSessionKey] = useState("");
   const [completedSessionKey, setCompletedSessionKey] = useState("");
   const [preferenceError, setPreferenceError] = useState("");
+  const [preferenceFeedbackState, setPreferenceFeedbackState] = useState("idle");
   const [reducedMotion, setReducedMotion] = useState(false);
   const [firstNamesHydrationReadyKey, setFirstNamesHydrationReadyKey] =
     useState("");
@@ -927,11 +931,17 @@ export default function AssistantGuidedTour({
   const latestPlacementDebugRef = useRef(null);
   const initialRenderDebugSnapshotRef = useRef(false);
   const lastMobileTooltipPlacementRef = useRef("");
+  const preferenceFeedbackTimerRef = useRef(null);
+  const preferenceRequestIdRef = useRef(0);
+  const preferenceOpeningKeyRef = useRef("");
+  const handledRestartKeyRef = useRef(Number(restartKey) || 0);
 
   const sessionKey = useMemo(
     () => createAssistantGuidedTourSessionKey({ draftKey, userUid }),
     [draftKey, userUid]
   );
+  const preferenceOpeningKey = String(openingKey || sessionKey || "").trim();
+  preferenceOpeningKeyRef.current = preferenceOpeningKey;
   const currentStep = assistantState?.currentStep || null;
   const currentSubstep = assistantState?.currentSubstep || null;
   const assistantActive = assistantState?.active === true;
@@ -997,6 +1007,19 @@ export default function AssistantGuidedTour({
         currentSubstep,
       }),
     [assistantNextIsPreview, currentStep, currentSubstep, phase]
+  );
+  const clearPreferenceFeedbackTimer = useCallback(() => {
+    if (preferenceFeedbackTimerRef.current === null) return;
+    clearTimeout(preferenceFeedbackTimerRef.current);
+    preferenceFeedbackTimerRef.current = null;
+  }, []);
+
+  useEffect(
+    () => () => {
+      preferenceRequestIdRef.current += 1;
+      clearPreferenceFeedbackTimer();
+    },
+    [clearPreferenceFeedbackTimer]
   );
 
   useEffect(() => {
@@ -1306,7 +1329,77 @@ export default function AssistantGuidedTour({
     setFirstNamesTargetsHydrated(false);
     setFirstNamesHydrationReadyKey("");
     setPreferenceError("");
-  }, [sessionKey]);
+    setPreferenceFeedbackState("idle");
+    preferenceRequestIdRef.current += 1;
+    clearPreferenceFeedbackTimer();
+  }, [clearPreferenceFeedbackTimer, sessionKey]);
+
+  useEffect(() => {
+    if (
+      !shouldRestartAssistantGuidedTourSession({
+        restartKey,
+        lastHandledRestartKey: handledRestartKeyRef.current,
+        sessionKey,
+        preferencesLoaded,
+        assistantTourOptOut,
+        editorReadOnly,
+      })
+    ) {
+      return;
+    }
+
+    handledRestartKeyRef.current = Number(restartKey);
+    preferenceRequestIdRef.current += 1;
+    clearPreferenceFeedbackTimer();
+    positionKeyRef.current = "";
+    assistantActivationSessionRef.current = "";
+    fieldAdvancedByTransitionRef.current = {};
+    fieldEditSignalConsumedRef.current = {};
+    contentAdvancedRef.current = "";
+    scrolledTargetRef.current = "";
+    previousEditedTargetIdRef.current = "";
+    previousPhaseRef.current = "";
+    previousCanRenderTourRef.current = null;
+    initialRenderDebugSnapshotRef.current = false;
+    lastMobileTooltipPlacementRef.current = "";
+    setClosedSessionKey("");
+    setCompletedSessionKey("");
+    setPhase(initialPhase);
+    setTargetElement(null);
+    setTargetRect(null);
+    setFirstNamesTargetsHydrated(false);
+    setFirstNamesHydrationReadyKey("");
+    setPreferenceError("");
+    setPreferenceFeedbackState("idle");
+
+    logAssistantTourDebug("session-restart", () => ({
+      reason: "confirmed-user-restoration",
+      restartKey,
+      draftKey,
+      sessionKey,
+      openingKey,
+      phase,
+      targetId,
+      assistantPositionKey,
+      assistantActive,
+      assistantMounted,
+    }));
+  }, [
+    assistantActive,
+    assistantMounted,
+    assistantPositionKey,
+    assistantTourOptOut,
+    clearPreferenceFeedbackTimer,
+    draftKey,
+    editorReadOnly,
+    initialPhase,
+    openingKey,
+    phase,
+    preferencesLoaded,
+    restartKey,
+    sessionKey,
+    targetId,
+  ]);
 
   useEffect(() => {
     setFirstNamesHydrationReadyKey("");
@@ -1401,7 +1494,9 @@ export default function AssistantGuidedTour({
   useEffect(() => {
     if (!sessionKey) return;
     if (!editorReady || editorReadOnly) return;
-    if (!preferencesLoaded || assistantTourOptOut === true) return;
+    if (!preferencesLoaded || assistantTourOptOut === true) {
+      return;
+    }
     if (closedSessionKey === sessionKey || completedSessionKey === sessionKey) return;
     if (assistantActive) return;
     if (assistantActivationSessionRef.current === sessionKey) return;
@@ -1507,7 +1602,9 @@ export default function AssistantGuidedTour({
     if (closedSessionKey === sessionKey || completedSessionKey === sessionKey) {
       return undefined;
     }
-    if (assistantTourOptOut === true || editorReadOnly) return undefined;
+    if (assistantTourOptOut === true || editorReadOnly) {
+      return undefined;
+    }
 
     logAssistantTourDebug("dom-observer-subscribe", () => ({
       source: "mutation-observer",
@@ -1740,7 +1837,16 @@ export default function AssistantGuidedTour({
     closedSessionKey !== sessionKey &&
     completedSessionKey !== sessionKey &&
     phase !== ASSISTANT_GUIDED_TOUR_PHASES.COMPLETE;
-  const canRenderTour = canEvaluateTour && !waitingForFirstNamesInitialization;
+  const canRenderPreferenceFeedback =
+    preferenceFeedbackState !== "idle" &&
+    Boolean(sessionKey) &&
+    mounted &&
+    targetReadyForCurrentPhase &&
+    closedSessionKey !== sessionKey &&
+    completedSessionKey !== sessionKey;
+  const canRenderTour =
+    (canEvaluateTour && !waitingForFirstNamesInitialization) ||
+    canRenderPreferenceFeedback;
 
   useEffect(() => {
     if (previousCanRenderTourRef.current === canRenderTour) return;
@@ -2157,22 +2263,74 @@ export default function AssistantGuidedTour({
         firstNames: readFirstNamesDebugSnapshot(),
         activeElement: readActiveElementDebugState(),
       }));
-      if (typeof onAssistantTourPreferenceChange !== "function") return;
+      if (
+        !checked ||
+        preferenceFeedbackState !== "idle" ||
+        assistantTourSaving === true
+      ) {
+        return;
+      }
+      if (typeof onAssistantTourPreferenceChange !== "function") {
+        setPreferenceError("No se pudo guardar la preferencia.");
+        return;
+      }
 
+      clearPreferenceFeedbackTimer();
+      const requestId = preferenceRequestIdRef.current + 1;
+      const requestOpeningKey = preferenceOpeningKey;
+      const requestSessionKey = sessionKey;
+      preferenceRequestIdRef.current = requestId;
+      setPreferenceFeedbackState("saving");
       void onAssistantTourPreferenceChange(
         createAssistantGuidedTourPreferencePatch({
           assistantTourOptOut: checked,
         })
-      ).catch(() => {
-        setPreferenceError("No se pudo guardar la preferencia.");
-      });
+      )
+        .then((savedPreferences) => {
+          if (
+            preferenceRequestIdRef.current !== requestId ||
+            preferenceOpeningKeyRef.current !== requestOpeningKey
+          ) {
+            return;
+          }
+          if (savedPreferences?.assistantTourOptOut !== true) {
+            throw new Error("assistant-tour-opt-out-not-confirmed");
+          }
+
+          setPreferenceFeedbackState("confirmed");
+          preferenceFeedbackTimerRef.current = setTimeout(() => {
+            preferenceFeedbackTimerRef.current = null;
+            if (
+              preferenceRequestIdRef.current !== requestId ||
+              preferenceOpeningKeyRef.current !== requestOpeningKey
+            ) {
+              return;
+            }
+            setClosedSessionKey(requestSessionKey);
+            setPreferenceFeedbackState("idle");
+          }, OPT_OUT_SUCCESS_FEEDBACK_MS);
+        })
+        .catch(() => {
+          if (
+            preferenceRequestIdRef.current !== requestId ||
+            preferenceOpeningKeyRef.current !== requestOpeningKey
+          ) {
+            return;
+          }
+          setPreferenceFeedbackState("idle");
+          setPreferenceError("No se pudo guardar la preferencia.");
+        });
     },
     [
       assistantPositionKey,
+      assistantTourSaving,
+      clearPreferenceFeedbackTimer,
       draftKey,
       onAssistantTourPreferenceChange,
       openingKey,
       phase,
+      preferenceFeedbackState,
+      preferenceOpeningKey,
       sessionKey,
       targetId,
     ]
@@ -2406,6 +2564,7 @@ export default function AssistantGuidedTour({
             type="button"
             className={styles.closeButton}
             onClick={handleClose}
+            disabled={preferenceFeedbackState !== "idle"}
             aria-label="Cerrar visita guiada"
             title="Cerrar"
           >
@@ -2413,14 +2572,31 @@ export default function AssistantGuidedTour({
           </button>
         </div>
         <p className={styles.message}>{message}</p>
-        <label className={styles.preference}>
+        <label
+          className={`${styles.preference} ${
+            preferenceFeedbackState === "confirmed"
+              ? styles.preferenceConfirmed
+              : ""
+          }`}
+          data-state={preferenceFeedbackState}
+        >
           <input
             type="checkbox"
-            checked={assistantTourOptOut === true}
-            disabled={assistantTourSaving === true}
+            checked={
+              assistantTourOptOut === true || preferenceFeedbackState !== "idle"
+            }
+            disabled={
+              assistantTourSaving === true || preferenceFeedbackState !== "idle"
+            }
             onChange={handlePreferenceChange}
           />
-          <span>No volver a mostrar</span>
+          <span role={preferenceFeedbackState === "confirmed" ? "status" : undefined}>
+            {preferenceFeedbackState === "saving"
+              ? "Guardando preferencia..."
+              : preferenceFeedbackState === "confirmed"
+                ? "Marcado correctamente"
+                : "No volver a mostrar"}
+          </span>
         </label>
         {preferenceError ? (
           <p className={styles.message} role="alert">

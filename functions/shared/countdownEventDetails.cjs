@@ -118,6 +118,30 @@ function buildCountdownTargetIsoFromLocalParts({ date, time } = {}) {
   return localDate.toISOString();
 }
 
+function mergeCountdownTargetLocalParts({
+  currentTargetValue,
+  currentDate,
+  currentTime,
+  patch,
+} = {}) {
+  const safePatch = asObject(patch);
+  const currentTargetParts = splitCountdownTargetIso(currentTargetValue);
+  const hasDatePatch = Object.prototype.hasOwnProperty.call(safePatch, "date");
+  const hasTimePatch = Object.prototype.hasOwnProperty.call(safePatch, "time");
+  const date = hasDatePatch
+    ? normalizeText(safePatch.date)
+    : normalizeText(currentDate) || currentTargetParts.date;
+  const time = hasTimePatch
+    ? normalizeText(safePatch.time)
+    : normalizeText(currentTime) || currentTargetParts.time;
+
+  return {
+    date,
+    time,
+    targetISO: buildCountdownTargetIsoFromLocalParts({ date, time }),
+  };
+}
+
 function findObjectById(objetos, id) {
   const safeId = normalizeText(id);
   if (!safeId) return null;
@@ -217,6 +241,7 @@ module.exports = {
   buildDynamicCountdownEventDetails,
   findDynamicCountdownBinding,
   isCountdownVisible,
+  mergeCountdownTargetLocalParts,
   resolveCountdownTargetValue,
   splitCountdownTargetIso,
 };

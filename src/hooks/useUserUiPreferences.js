@@ -77,13 +77,6 @@ export function useUserUiPreferences(userUid) {
       setSaving(true);
       setError(null);
 
-      const previousPreferences = preferences;
-      const nextPreferences = {
-        ...preferences,
-        ...normalizedPatch,
-      };
-      setPreferences(nextPreferences);
-
       try {
         const result = await updateMyUiPreferencesCallable(normalizedPatch);
         const savedPreferences = normalizeUserUiPreferences(result?.data);
@@ -91,14 +84,13 @@ export function useUserUiPreferences(userUid) {
         return savedPreferences;
       } catch (updateError) {
         console.error("Error guardando preferencias de interfaz:", updateError);
-        setPreferences(previousPreferences);
         setError(updateError);
         throw updateError;
       } finally {
         setSaving(false);
       }
     },
-    [preferences, updateMyUiPreferencesCallable]
+    [updateMyUiPreferencesCallable]
   );
 
   return {

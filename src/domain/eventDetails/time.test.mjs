@@ -58,6 +58,46 @@ test("buildEventTimeDefaults and resolveEventTimesFromAuthoring keep event times
   );
 });
 
+test("hydrated ceremony and party time defaults remain independent", () => {
+  const ceremonyFields = ensureEventTimeFields({ fieldsSchema: [] }).fieldsSchema;
+  const fieldsSchema = ensureEventTimeFields({
+    fieldsSchema: ceremonyFields,
+    feature: "party",
+  }).fieldsSchema;
+  const hydratedDefaults = {
+    event_ceremony_start_time: "19:45",
+    event_ceremony_end_time: "21:00",
+    event_party_start_time: "23:30",
+    event_party_end_time: "04:00",
+  };
+
+  assert.equal(
+    resolveEventTimesFromAuthoring({
+      fieldsSchema,
+      defaults: hydratedDefaults,
+      feature: "ceremony",
+    }).startTime,
+    "19:45"
+  );
+  assert.equal(
+    resolveEventTimesFromAuthoring({
+      fieldsSchema,
+      defaults: hydratedDefaults,
+      feature: "party",
+    }).startTime,
+    "23:30"
+  );
+
+  const nextPartyDefaults = buildEventTimeDefaults({
+    fieldsSchema,
+    defaults: hydratedDefaults,
+    times: { startTime: "00:15", endTime: "04:30" },
+    feature: "party",
+  });
+  assert.equal(nextPartyDefaults.event_ceremony_start_time, "19:45");
+  assert.equal(nextPartyDefaults.event_party_start_time, "00:15");
+});
+
 test("resolveEventTimesState uses a fresh payload before a stale bridge", () => {
   const { fieldsSchema } = ensureEventTimeFields({ fieldsSchema: [] });
   const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME);

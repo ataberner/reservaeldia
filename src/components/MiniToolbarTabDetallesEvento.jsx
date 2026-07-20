@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildCountdownTargetIsoFromLocalParts,
   buildDynamicCountdownEventDetails,
+  mergeCountdownTargetLocalParts,
   splitCountdownTargetIso,
 } from "@/domain/eventDetails/countdownEventDetails";
 import {
@@ -816,6 +817,8 @@ export default function MiniToolbarTabDetallesEvento({
   const partyEventLocationRef = useRef(partyEventLocation);
   const eventTimesRef = useRef(eventTimes);
   const partyEventTimesRef = useRef(partyEventTimes);
+  const countdownUiRef = useRef(countdownUi);
+  const partyCountdownUiRef = useRef(partyCountdownUi);
   const eventPersonNamesSaveTimerRef = useRef(null);
   const eventLocationSaveTimerRef = useRef(null);
   const partyEventLocationSaveTimerRef = useRef(null);
@@ -850,11 +853,14 @@ export default function MiniToolbarTabDetallesEvento({
   const applySyncedCountdownDetailsState = useCallback((details, feature) => {
     if (!details) return;
     const targetWindow = typeof window !== "undefined" ? window : undefined;
+    const nextUi = buildCountdownUiState(details, { targetWindow });
     if (normalizeEventDetailFeature(feature) === EVENT_DETAIL_FEATURES.PARTY) {
-      setPartyCountdownUi(buildCountdownUiState(details, { targetWindow }));
+      partyCountdownUiRef.current = nextUi;
+      setPartyCountdownUi(nextUi);
       return;
     }
-    setCountdownUi(buildCountdownUiState(details, { targetWindow }));
+    countdownUiRef.current = nextUi;
+    setCountdownUi(nextUi);
   }, []);
 
   const syncCountdownUiState = useCallback(() => {
@@ -994,6 +1000,7 @@ export default function MiniToolbarTabDetallesEvento({
       if (pendingPartyEventTimesSignatureRef.current === nextSignature) {
         pendingPartyEventTimesSignatureRef.current = "";
       }
+      partyEventTimesRef.current = nextTimes;
       setPartyEventTimes(nextTimes);
       return;
     }
@@ -1006,6 +1013,7 @@ export default function MiniToolbarTabDetallesEvento({
     if (pendingEventTimesSignatureRef.current === nextSignature) {
       pendingEventTimesSignatureRef.current = "";
     }
+    eventTimesRef.current = nextTimes;
     setEventTimes(nextTimes);
   }, []);
 
@@ -1174,6 +1182,14 @@ export default function MiniToolbarTabDetallesEvento({
   useEffect(() => {
     partyEventTimesRef.current = partyEventTimes;
   }, [partyEventTimes]);
+
+  useEffect(() => {
+    countdownUiRef.current = countdownUi;
+  }, [countdownUi]);
+
+  useEffect(() => {
+    partyCountdownUiRef.current = partyCountdownUi;
+  }, [partyCountdownUi]);
 
   useEffect(() => {
     return () => {
@@ -2006,15 +2022,20 @@ export default function MiniToolbarTabDetallesEvento({
   };
 
   const applyCountdownDateTime = (
-    nextDate,
-    nextTime,
+    patch,
     feature = EVENT_DETAIL_FEATURES.CEREMONY
   ) => {
     const safeFeature = normalizeEventDetailFeature(feature);
-    const details =
+    const uiRef =
       safeFeature === EVENT_DETAIL_FEATURES.PARTY
-        ? partyCountdownDetails
-        : countdownDetails;
+        ? partyCountdownUiRef
+        : countdownUiRef;
+    const timesRef =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyEventTimesRef
+        : eventTimesRef;
+    const currentUi = uiRef.current;
+    const details = currentUi.details;
     const controlsDisabled =
       safeFeature === EVENT_DETAIL_FEATURES.PARTY
         ? partyEventDateControlsDisabled
@@ -2023,24 +2044,30 @@ export default function MiniToolbarTabDetallesEvento({
       safeFeature === EVENT_DETAIL_FEATURES.PARTY
         ? setPartyCountdownUi
         : setCountdownUi;
+    const nextParts = mergeCountdownTargetLocalParts({
+      currentTargetValue: details.targetISO,
+      currentDate: currentUi.date,
+      currentTime:
+        resolveTimeInputValue(timesRef.current?.startTime) || currentUi.time,
+      patch,
+    });
+    const nextUi = {
+      ...currentUi,
+      date: nextParts.date,
+      time: nextParts.time,
+    };
 
-    setState((current) => ({
-      ...current,
-      date: nextDate,
-      time: nextTime,
-    }));
+    uiRef.current = nextUi;
+    setState(nextUi);
 
     if (controlsDisabled || !details.fieldKey) return;
 
-    const targetISO = buildCountdownTargetIsoFromLocalParts({
-      date: nextDate,
-      time: normalizeEventTimeValue(nextTime),
-    });
+    const targetISO = nextParts.targetISO;
     const targetValue =
       targetISO ||
       buildEventDateTargetValue({
-        date: nextDate,
-        time: nextTime,
+        date: nextParts.date,
+        time: nextParts.time,
         fieldType: details.fieldType || details.field?.type,
       });
     if (!targetValue) return;
@@ -2059,9 +2086,7 @@ export default function MiniToolbarTabDetallesEvento({
     event,
     feature = EVENT_DETAIL_FEATURES.CEREMONY
   ) => {
-    const safeFeature = normalizeEventDetailFeature(feature);
-    const ui = safeFeature === EVENT_DETAIL_FEATURES.PARTY ? partyCountdownUi : countdownUi;
-    applyCountdownDateTime(event.target.value, ui.time, safeFeature);
+    applyCountdownDateTime({ date: event.target.value }, feature);
   };
 
   const handleEventStartTimeChange = (
@@ -2069,9 +2094,8 @@ export default function MiniToolbarTabDetallesEvento({
     feature = EVENT_DETAIL_FEATURES.CEREMONY
   ) => {
     const safeFeature = normalizeEventDetailFeature(feature);
-    const ui = safeFeature === EVENT_DETAIL_FEATURES.PARTY ? partyCountdownUi : countdownUi;
     const nextTime = normalizeEventTimeValue(event.target.value);
-    applyCountdownDateTime(ui.date, nextTime, safeFeature);
+    applyCountdownDateTime({ time: nextTime }, safeFeature);
     applyEventTimes({ startTime: nextTime }, safeFeature);
   };
 

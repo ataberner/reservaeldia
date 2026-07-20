@@ -5,6 +5,7 @@ import {
     ChevronDown,
     LogOut,
     Plus,
+    RotateCcw,
     Sparkles,
     Settings,
     Trash2,
@@ -33,6 +34,10 @@ import {
     DASHBOARD_DOCUMENT_NAME_EVENTS,
     publishDashboardDocumentNameState,
 } from "@/lib/dashboardDocumentNameBridge";
+import {
+    createAssistantGuidedTourPreferencePatch,
+    resolveAssistantGuidedTourRestoreMenuItemState,
+} from "@/domain/editor/assistantGuidedTour";
 
 const MOBILE_EDITOR_BREAKPOINT_PX = 768;
 
@@ -155,6 +160,10 @@ export default function DashboardHeader(props) {
         templateSessionMeta = null,
         ensureEditorFlushBeforeAction = null,
         onOpenTemplateSession = null,
+        assistantTourPreferencesLoaded = false,
+        assistantTourOptOut = false,
+        assistantTourSaving = false,
+        onAssistantTourPreferenceChange = null,
     } = props;
 
     const [menuAbierto, setMenuAbierto] = useState(false);
@@ -219,27 +228,55 @@ export default function DashboardHeader(props) {
         if (typeof window === "undefined" || typeof document === "undefined") return;
         const node = headerRef.current;
         if (!node) return;
+        let updateFrame = null;
 
         const updateHeaderHeightVar = () => {
             const nextHeight = Math.round(node.getBoundingClientRect().height || 52);
+            const nextValue = `${nextHeight}px`;
+            if (
+                document.documentElement.style.getPropertyValue(
+                    "--dashboard-header-height"
+                ) === nextValue
+            ) {
+                return;
+            }
             // Runtime-sensitive shell contract: layout, sidebar, and editor
             // overlays consume this CSS variable for fixed-header offsets.
             document.documentElement.style.setProperty(
                 "--dashboard-header-height",
-                `${nextHeight}px`
+                nextValue
             );
+        };
+        const scheduleHeaderHeightVarUpdate = () => {
+            if (updateFrame !== null) return;
+            updateFrame = window.requestAnimationFrame(() => {
+                updateFrame = null;
+                updateHeaderHeightVar();
+            });
         };
 
         updateHeaderHeightVar();
 
         if (typeof ResizeObserver !== "undefined") {
-            const observer = new ResizeObserver(() => updateHeaderHeightVar());
+            const observer = new ResizeObserver(scheduleHeaderHeightVarUpdate);
             observer.observe(node);
-            return () => observer.disconnect();
+            return () => {
+                observer.disconnect();
+                if (updateFrame !== null) {
+                    window.cancelAnimationFrame(updateFrame);
+                    updateFrame = null;
+                }
+            };
         }
 
-        window.addEventListener("resize", updateHeaderHeightVar);
-        return () => window.removeEventListener("resize", updateHeaderHeightVar);
+        window.addEventListener("resize", scheduleHeaderHeightVarUpdate);
+        return () => {
+            window.removeEventListener("resize", scheduleHeaderHeightVarUpdate);
+            if (updateFrame !== null) {
+                window.cancelAnimationFrame(updateFrame);
+                updateFrame = null;
+            }
+        };
     }, []);
 
     useEffect(() => {
@@ -754,7 +791,7 @@ export default function DashboardHeader(props) {
     const showEditorAdminMenuActions =
         Boolean(slugInvitacion) && !loadingAdminAccess && canManageSite && !editorReadOnly;
     const userMenuActionButton =
-        "group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300";
+        "group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60";
 
     const handleEditorBack = () => {
         markEditorSessionIntentionalExit({
@@ -778,6 +815,28 @@ export default function DashboardHeader(props) {
         vistaActual === "publicadas" || vistaActual === "papelera";
     const canShowCreativePanelAction = !loadingAdminAccess && canManageSite;
     const canShowSiteManagementAction = !loadingAdminAccess && isSuperAdmin;
+    const assistantTourRestoreMenuItemState =
+        resolveAssistantGuidedTourRestoreMenuItemState({
+            preferencesLoaded: assistantTourPreferencesLoaded,
+            assistantTourOptOut,
+            assistantTourSaving,
+        });
+    const handleRestoreAssistantTour = () => {
+        if (
+            !assistantTourRestoreMenuItemState.canRestore ||
+            typeof onAssistantTourPreferenceChange !== "function"
+        ) {
+            return;
+        }
+
+        void onAssistantTourPreferenceChange(
+            createAssistantGuidedTourPreferencePatch({
+                assistantTourOptOut: false,
+            })
+        ).catch(() => {
+            // useUserUiPreferences restores the previous value and owns the error.
+        });
+    };
     const dashboardActions = !slugInvitacion
         ? [
               {
@@ -802,6 +861,17 @@ export default function DashboardHeader(props) {
               name: nombreCompletoUsuario,
               email: emailUsuario,
               items: [
+                  ...(assistantTourRestoreMenuItemState.visible
+                      ? [
+                            {
+                                key: "assistant-tour-restore",
+                                label: assistantTourRestoreMenuItemState.label,
+                                icon: <RotateCcw size={14} />,
+                                disabled: assistantTourRestoreMenuItemState.disabled,
+                                onClick: handleRestoreAssistantTour,
+                            },
+                        ]
+                      : []),
                   {
                       key: "trash",
                       label: "Papelera",
@@ -882,6 +952,10 @@ export default function DashboardHeader(props) {
                     inicialUsuario={inicialUsuario}
                     nombreCompletoUsuario={nombreCompletoUsuario}
                     emailUsuario={emailUsuario}
+                    assistantTourRestoreMenuItemState={
+                        assistantTourRestoreMenuItemState
+                    }
+                    handleRestoreAssistantTour={handleRestoreAssistantTour}
                 />
             ) : (
                 <AppHeader
@@ -953,6 +1027,25 @@ export default function DashboardHeader(props) {
                                     emailUsuario={emailUsuario}
                                 />
                             </div>
+
+                            {assistantTourRestoreMenuItemState.visible ? (
+                                <button
+                                    type="button"
+                                    data-assistant-tour-restore-action="editor"
+                                    onClick={() => {
+                                        if (!assistantTourRestoreMenuItemState.canRestore) return;
+                                        handleRestoreAssistantTour();
+                                        setMenuAbierto(false);
+                                    }}
+                                    disabled={assistantTourRestoreMenuItemState.disabled}
+                                    className={userMenuActionButton}
+                                >
+                                    <RotateCcw size={14} className="shrink-0" />
+                                    <span className="truncate">
+                                        {assistantTourRestoreMenuItemState.label}
+                                    </span>
+                                </button>
+                            ) : null}
 
                             {!slugInvitacion ? (
                                 <button

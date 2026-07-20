@@ -3,6 +3,7 @@ import {
     LogOut,
     MoreHorizontal,
     Redo2,
+    RotateCcw,
     Undo2,
     X,
 } from "lucide-react";
@@ -53,6 +54,8 @@ export default function CanvasEditorHeader({
     inicialUsuario,
     nombreCompletoUsuario,
     emailUsuario,
+    assistantTourRestoreMenuItemState,
+    handleRestoreAssistantTour,
 }) {
     const accionesMobileRef = useRef(null);
     const [accionesMobileAbiertas, setAccionesMobileAbiertas] = useState(false);
@@ -249,6 +252,24 @@ export default function CanvasEditorHeader({
                                 avatarSizeClass="h-11 w-11"
                                 textClass="text-sm"
                             />
+                            {assistantTourRestoreMenuItemState?.visible ? (
+                                <button
+                                    type="button"
+                                    data-assistant-tour-restore-action="mobile-editor"
+                                    onClick={() => {
+                                        if (!assistantTourRestoreMenuItemState.canRestore) {
+                                            return;
+                                        }
+                                        handleRestoreAssistantTour?.();
+                                        setAccionesMobileAbiertas(false);
+                                    }}
+                                    disabled={assistantTourRestoreMenuItemState.disabled}
+                                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#e1d5f5] bg-white px-3 py-3 text-sm font-semibold text-[#692b9a] transition hover:border-[#cdb9ed] hover:bg-[#faf6ff] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c3f5] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <RotateCcw className="h-4 w-4" />
+                                    {assistantTourRestoreMenuItemState.label}
+                                </button>
+                            ) : null}
                             <button
                                 type="button"
                                 onClick={() => void handleLogout()}

@@ -265,6 +265,7 @@ export default function useBorradorSync({
   useEffect(() => {
     const session = normalizeEditorSession(editorSession, slug);
     if (!session.id) return;
+    let cancelled = false;
 
     if (
       session.kind === "draft" &&
@@ -293,6 +294,7 @@ export default function useBorradorSync({
           initialEditorData,
           ALTURA_PANTALLA_EDITOR,
         });
+        if (cancelled) return;
 
         if (loadResult.exists) {
           setObjetos(loadResult.hydratedObjetos);
@@ -372,6 +374,7 @@ export default function useBorradorSync({
           }
         }
       } catch (error) {
+        if (cancelled) return;
         captureEditorIssue({
           source: "useBorradorSync.load",
           error,
@@ -384,6 +387,9 @@ export default function useBorradorSync({
     };
 
     void cargar();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     ALTURA_PANTALLA_EDITOR,

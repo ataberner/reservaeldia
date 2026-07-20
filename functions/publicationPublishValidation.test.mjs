@@ -446,6 +446,47 @@ test("prepared render payload applies functional group visibility and centering 
   assert.doesNotMatch(html, /data-obj-id="gifts-group"/);
 });
 
+test("validation ignores a disabled functional section and its omitted objects", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {},
+  });
+  t.after(() => storageMock.restore());
+
+  const prepared = await prepareRenderPayload({
+    secciones: [
+      { id: "hero", orden: 0, altura: 500 },
+      {
+        id: "dress",
+        orden: 1,
+        altura: 500,
+        functionalAssociation: "dress_code",
+      },
+    ],
+    objetos: [
+      { id: "hero-title", tipo: "texto", texto: "Nos casamos", seccionId: "hero" },
+      { id: "dress-title", tipo: "texto", texto: "Elegante", seccionId: "dress" },
+      {
+        id: "dress-image",
+        tipo: "imagen",
+        src: buildGsUrl("decoraciones/private-dress-image.png"),
+        seccionId: "dress",
+      },
+    ],
+    eventDetails: {
+      mode: "ceremony_party",
+      dressCode: { enabled: false, value: "Elegante" },
+    },
+  });
+
+  assert.deepEqual(prepared.seccionesFinales.map((section) => section.id), ["hero"]);
+  assert.deepEqual(prepared.objetosFinales.map((object) => object.id), ["hero-title"]);
+
+  const validation = validatePreparedRenderPayload(prepared);
+  assert.equal(validation.canPublish, true);
+  assert.deepEqual(validation.blockers, []);
+});
+
 test("canonical prepared render payload preserves the publication wrapper and validation shape", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,

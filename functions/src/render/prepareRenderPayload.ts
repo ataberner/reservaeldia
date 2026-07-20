@@ -990,6 +990,18 @@ export function validatePreparedPublicationRenderState(params: {
   }
 
   rawObjetos.forEach((rawObject, index) => {
+    const rawSectionId = getString(rawObject.seccionId);
+    const rawObjectId = getString(rawObject.id);
+    if (
+      rawObjectId &&
+      !finalObjectLookup.has(rawObjectId) &&
+      rawSectionId &&
+      rawSectionLookup.has(rawSectionId) &&
+      !finalSectionLookup.has(rawSectionId)
+    ) {
+      return;
+    }
+
     const finalObject = findFinalRecordByIdOrIndex(
       rawObject,
       index,
@@ -1005,6 +1017,9 @@ export function validatePreparedPublicationRenderState(params: {
   });
 
   rawSecciones.forEach((rawSection, index) => {
+    const rawSectionId = getString(rawSection.id);
+    if (rawSectionId && !finalSectionLookup.has(rawSectionId)) return;
+
     const finalSection = findFinalRecordByIdOrIndex(
       rawSection,
       index,

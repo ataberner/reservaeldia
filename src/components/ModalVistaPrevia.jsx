@@ -430,36 +430,47 @@ export default function ModalVistaPrevia({
     if (!visible || typeof window === "undefined") return;
     const target = stageRef.current;
     if (!target) return;
+    let frameId = null;
 
-    const measure = () => {
-      setStageSize({
-        width: target.clientWidth || 0,
-        height: target.clientHeight || 0,
+    const commitMeasurement = (width, height) => {
+      const nextWidth = width || target.clientWidth || 0;
+      const nextHeight = height || target.clientHeight || 0;
+      setStageSize((current) =>
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight }
+      );
+    };
+
+    const scheduleMeasurement = (width, height) => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        commitMeasurement(width, height);
       });
     };
 
-    measure();
+    commitMeasurement();
 
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
+      const onResize = () => scheduleMeasurement();
+      window.addEventListener("resize", onResize);
+      return () => {
+        window.removeEventListener("resize", onResize);
+        if (frameId !== null) window.cancelAnimationFrame(frameId);
+      };
     }
 
     const observer = new ResizeObserver((entries) => {
       const rect = entries?.[0]?.contentRect;
-      if (!rect) {
-        measure();
-        return;
-      }
-
-      setStageSize({
-        width: rect.width || target.clientWidth || 0,
-        height: rect.height || target.clientHeight || 0,
-      });
+      scheduleMeasurement(rect?.width, rect?.height);
     });
     observer.observe(target);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -475,6 +486,7 @@ export default function ModalVistaPrevia({
       return;
     }
 
+    let frameId = null;
     const measure = () => {
       const modalRect = modalNode.getBoundingClientRect();
       const actionsRect = actionsNode.getBoundingClientRect();
@@ -502,27 +514,31 @@ export default function ModalVistaPrevia({
       });
     };
 
-    const frameId = window.requestAnimationFrame(measure);
-    const onResize = () => measure();
+    const scheduleMeasurement = () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        measure();
+      });
+    };
+
+    scheduleMeasurement();
+    const onResize = scheduleMeasurement;
     window.addEventListener("resize", onResize);
 
     if (typeof ResizeObserver === "undefined") {
-      measure();
       return () => {
-        window.cancelAnimationFrame(frameId);
+        if (frameId !== null) window.cancelAnimationFrame(frameId);
         window.removeEventListener("resize", onResize);
       };
     }
 
-    const observer = new ResizeObserver(() => {
-      measure();
-    });
+    const observer = new ResizeObserver(scheduleMeasurement);
     observer.observe(modalNode);
     observer.observe(actionsNode);
-    measure();
 
     return () => {
-      window.cancelAnimationFrame(frameId);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
       window.removeEventListener("resize", onResize);
       observer.disconnect();
     };

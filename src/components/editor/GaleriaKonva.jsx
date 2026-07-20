@@ -30,6 +30,11 @@ import {
   resolvePointerTypeFromNativeEvent,
   resolveTouchDragIntent,
 } from "@/lib/editorTouchDragIntent";
+import {
+  endDragGrupal,
+  previewDragGrupal,
+  startDragGrupalLider,
+} from "@/drag/dragGrupal";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -97,6 +102,11 @@ export default function GaleriaKonva({
   const [hoveredCell, setHoveredCell] = useState(null);
   const rootRef = useRef(null);
   const cleanupGlobalRef = useRef(null);
+  const dragLifecycleRef = useRef({
+    mode: "idle",
+    sessionId: null,
+    leaderId: null,
+  });
   const pressRef = useRef({
     active: false,
     movedEnough: false,
@@ -552,6 +562,41 @@ export default function GaleriaKonva({
           e.target.stopDrag();
           return;
         }
+
+        const groupDragResult = startDragGrupalLider(e, obj);
+        if (groupDragResult.mode === "follower-ignored") {
+          try {
+            e.target.stopDrag?.();
+            if (groupDragResult.restorePose) {
+              e.target.position?.(groupDragResult.restorePose);
+            }
+            e.target.draggable?.(false);
+          } catch {}
+          return;
+        }
+        if (groupDragResult.mode === "duplicate-leader-ignored") {
+          return;
+        }
+
+        if (groupDragResult.mode === "started") {
+          dragLifecycleRef.current = {
+            mode: "group",
+            sessionId: groupDragResult.sessionId || null,
+            leaderId: groupDragResult.leaderId || obj.id,
+          };
+          onDragStartPersonalizado?.(obj.id, e, {
+            pipeline: "group",
+            sessionId: groupDragResult.sessionId || null,
+            leaderId: groupDragResult.leaderId || obj.id,
+          });
+          return;
+        }
+
+        dragLifecycleRef.current = {
+          mode: "individual",
+          sessionId: null,
+          leaderId: null,
+        };
         window._isDragging = true;
         if (typeof window !== "undefined") {
           window.dispatchEvent(
@@ -570,6 +615,23 @@ export default function GaleriaKonva({
         });
       }}
       onDragMove={isPassiveRender ? undefined : (e) => {
+        const dragLifecycle = dragLifecycleRef.current;
+        if (dragLifecycle.mode === "group") {
+          if (dragLifecycle.leaderId === obj.id) {
+            previewDragGrupal(e, obj, onChange);
+            onDragMovePersonalizado?.(
+              { x: e.target.x(), y: e.target.y() },
+              obj.id,
+              {
+                pipeline: "group",
+                sessionId: dragLifecycle.sessionId,
+                leaderId: dragLifecycle.leaderId,
+              }
+            );
+          }
+          return;
+        }
+
         onDragMovePersonalizado?.(
           { x: e.target.x(), y: e.target.y() },
           obj.id,
@@ -581,6 +643,60 @@ export default function GaleriaKonva({
         );
       }}
       onDragEnd={isPassiveRender ? undefined : (e) => {
+        const dragLifecycle = dragLifecycleRef.current;
+        const groupDragResult = endDragGrupal(e, obj, onChange, null);
+        if (groupDragResult.role === "follower") {
+          return;
+        }
+        if (groupDragResult.role === "leader" && groupDragResult.completed) {
+          notePostDragSelectionGuard();
+          window._isDragging = false;
+          if (typeof window !== "undefined" && groupDragResult.shouldDispatchDraggingEnd) {
+            window.dispatchEvent(
+              new CustomEvent(EDITOR_BRIDGE_EVENTS.DRAGGING_END, {
+                detail: buildEditorDragLifecycleDetail({
+                  id: obj.id,
+                  tipo: obj.tipo || null,
+                  group: true,
+                  sessionId: groupDragResult.sessionId || null,
+                  leaderId: groupDragResult.leaderId || null,
+                }),
+              })
+            );
+          }
+          if (groupDragResult.shouldRunPersonalizedEnd) {
+            onDragEndPersonalizado?.(obj.id, {
+              pipeline: "group",
+              sessionId: groupDragResult.sessionId || null,
+              leaderId: groupDragResult.leaderId || obj.id,
+            });
+          }
+          dragLifecycleRef.current = {
+            mode: "idle",
+            sessionId: null,
+            leaderId: null,
+          };
+          e.target.draggable(false);
+          pressRef.current.active = false;
+          pressRef.current.movedEnough = false;
+          pressRef.current.startedDrag = false;
+          setTimeout(() => {
+            pressRef.current.suppressClick = false;
+          }, 0);
+          cleanupGlobal();
+          return;
+        }
+        if (dragLifecycle.mode === "group") {
+          dragLifecycleRef.current = {
+            mode: "idle",
+            sessionId: null,
+            leaderId: null,
+          };
+          e.target.draggable(false);
+          cleanupGlobal();
+          return;
+        }
+
         notePostDragSelectionGuard();
         onDragMovePersonalizado?.(
           { x: e.target.x(), y: e.target.y() },
@@ -612,6 +728,11 @@ export default function GaleriaKonva({
           sessionId: null,
           leaderId: null,
         });
+        dragLifecycleRef.current = {
+          mode: "idle",
+          sessionId: null,
+          leaderId: null,
+        };
         e.target.draggable(false);
         pressRef.current.active = false;
         pressRef.current.movedEnough = false;

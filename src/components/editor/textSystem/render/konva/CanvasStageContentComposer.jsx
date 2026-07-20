@@ -10530,6 +10530,7 @@ export default function CanvasStageContent({
           ALTURA_PANTALLA_EDITOR={ALTURA_PANTALLA_EDITOR}
           onSelect={objectEditable ? (id, e) => handleSpecialElementSelectIntent(id, obj, e) : null}
           onDragMovePersonalizado={(pos, id, meta = null) => {
+            const isGroupPipeline = meta?.pipeline === "group";
             window._isDragging = true;
             const guideRequest = buildGuideEvaluationRequest(
               pos,
@@ -10552,11 +10553,12 @@ export default function CanvasStageContent({
                   ? runtimeSelectedIds
                   : elementosSeleccionados
               ),
-              pipeline: "individual",
+              pipeline: isGroupPipeline ? "group" : "individual",
               source: "gallery-drag-move",
             });
           }}
           onDragStartPersonalizado={(dragId = obj.id, _event = null, meta = null) => {
+            const isGroupPipeline = meta?.pipeline === "group";
             clearInlineIntent("drag-start", { dragId, tipo: "galeria" });
             const overlaySelectionSnapshot = resolveDragVisualSelectionIds(
               dragId,
@@ -10593,7 +10595,7 @@ export default function CanvasStageContent({
               dragId,
               tipo: "galeria",
               selectedIds: overlaySelectionSnapshot,
-              pipeline: "individual",
+              pipeline: isGroupPipeline ? "group" : "individual",
               source: "gallery-drag-start",
               queueStartupControlledSync: true,
             });
@@ -10611,7 +10613,7 @@ export default function CanvasStageContent({
               dragId,
               tipo: "galeria",
               selectedIds: overlaySelectionSnapshot,
-              pipeline: "individual",
+              pipeline: isGroupPipeline ? "group" : "individual",
               source: "gallery-drag-start",
             });
           }}

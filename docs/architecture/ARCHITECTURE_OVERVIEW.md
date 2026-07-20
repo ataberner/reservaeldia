@@ -212,7 +212,7 @@ Section visuals now have three distinct primitives:
 
 `decoracionesBorde` is included in the prepared render payload, so draft-authoritative preview and publish share the same contract. Its responsive sizing is generated in HTML/CSS, not in the preview shell. Template preview remains visual-only and must not be treated as authoritative for this primitive.
 
-The UX/render contract for image roles, including the normative rule that converting a normal image into any section-owned visual must remove the original image object, lives in [docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md).
+The UX/render contract for image roles, including the normative rule that converting a normal image into any section-owned visual must remove the original image object, lives in [docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](../contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md).
 
 ## 9. Key Architectural Decisions
 - Draft render state in `borradores` is the editable source of truth for invitations.
@@ -239,7 +239,7 @@ Model summary:
 - Startup authority is singular: the first visible drag frame must come from the composer-owned `controlled-sync` path for the active session.
 - Fallback paths still exist, but they are subordinate resilience or compatibility paths, not independent visible authority.
 
-The detailed current-state interaction model lives in [docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md](docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md).
+The detailed current-state interaction model lives in [docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md](INTERACTION_SYSTEM_CURRENT_STATE.md).
 
 ## 10. Known Complexity Areas
 - `src/pages/dashboard.js`: large orchestration surface that mixes auth flow, dashboard home, editor route resolution, preview generation, publish gating, admin draft sessions, and template sessions.

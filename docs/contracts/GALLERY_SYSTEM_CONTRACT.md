@@ -67,7 +67,7 @@ These invariants apply to current behavior and future implementation:
 
 **Current:** Writable normal editor sessions expose a simple Fotos-tab creation flow for new independent Galleries. This flow inserts a normal `tipo: "galeria"` object through the existing object insertion path, uses known preset ids only, and creates empty local `cells[]` slots for the chosen grid-size layout.
 
-**Current:** Normal users do not access the Gallery Builder. They can edit photos inside selected or sidebar-chosen Galleries, create simple `1x1` through `4x4` Galleries from the Fotos tab, and switch only among layouts allowed by each Gallery configuration.
+**Current:** Normal users do not access the Gallery Builder. They can edit photos inside selected or sidebar-chosen Galleries, create simple `1x1` through `4x3` Galleries from the current Fotos-tab matrix, and switch only among layouts allowed by each Gallery configuration.
 
 **Current:** Gallery layout presets are predefined. End users must not edit arbitrary `galleryLayoutBlueprint` data or create new layouts.
 
@@ -85,7 +85,7 @@ These invariants apply to current behavior and future implementation:
 
 **Current:** The primary visual layout selector labels are `1x4`, `2x2`, `2x3`, and `Collage`. These labels map to stable preset ids in [GALLERY_LAYOUT_PRESETS_CONTRACT.md](GALLERY_LAYOUT_PRESETS_CONTRACT.md). `2x3` is a UI label for the existing internal `three_by_n` id, and `Collage` is a UI label for the existing internal `squares` id. `full_width` remains a legacy render-compatible id but is no longer a selectable option.
 
-**Current:** The simple Fotos-tab creation selector uses exact grid-size presets `grid_1x1` through `grid_4x4`. Legacy/simple photo-count presets `grid_count_1` through `grid_count_16` remain known shared presets for compatibility. Both preset families map to the current fixed `canvas_preserve` renderer.
+**Current:** The simple Fotos-tab creation selector exposes exact grid-size presets from `grid_1x1` through `grid_4x3`. The shared catalog also knows fourth-row presets through `grid_4x4`, and legacy/simple photo-count presets `grid_count_1` through `grid_count_16` remain available for compatibility. All of these preset families map to the current fixed `canvas_preserve` renderer.
 
 **Current:** Preview and published invitations use one generated-HTML viewer runtime that collects clickable Gallery cells globally from the generated invitation DOM.
 

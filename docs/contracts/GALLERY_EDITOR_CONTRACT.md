@@ -54,7 +54,7 @@ Status: Canonical Contract. This document owns Gallery behavior in the canvas ed
 
 **Current:** Normal users must not create new layout definitions, edit layout blueprints, bypass `allowedLayouts`, or access the Gallery Builder.
 
-**Current:** Normal sidebar Gallery insertion is intentionally limited to the simple Fotos-tab flow: choose a grid from `1x1` through `4x4` and insert an empty independent Gallery into the canvas.
+**Current:** Normal sidebar Gallery insertion is intentionally limited to the simple Fotos-tab flow: choose a grid from `1x1` through `4x3` and insert an empty independent Gallery into the canvas.
 
 ## Selected-Gallery Sidebar Behavior
 

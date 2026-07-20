@@ -102,9 +102,9 @@ The current Fotos-tab creation UI uses a compact visual rows/columns grid. That 
 | --- | --- | --- | --- |
 | `1x1` | `grid_1x1` | `1x1` | 1 |
 | `2x3` | `grid_2x3` | `2x3` | 6 |
-| `4x4` | `grid_4x4` | `4x4` | 16 |
+| `4x3` | `grid_4x3` | `4x3` | 12 |
 
-All `grid_{cols}x{rows}` combinations from `1x1` through `4x4` are known shared presets. They use the same fixed `canvas_preserve` renderer with `ratio: "1:1"` and a visible-cell limit equal to `cols * rows`. They do not create a second Gallery object model or public renderer.
+The current Fotos-tab matrix exposes combinations from `1x1` through `4x3`. All `grid_{cols}x{rows}` combinations from `1x1` through `4x4` remain known shared presets. They use the same fixed `canvas_preserve` renderer with `ratio: "1:1"` and a visible-cell limit equal to `cols * rows`. They do not create a second Gallery object model or public renderer.
 
 Legacy ids such as `banner`, `side_by_side`, `single_page`, and `full_width` remain readable/renderable for existing Galleries. `full_width` is no longer selectable in the normal Gallery tab or the admin/superadmin Builder selector. Existing Gallery data that references only `full_width` should fall back to a current selectable layout rather than crashing or exposing `full_width` again. New default Builder configuration should prefer the primary visual selector options above.
 
@@ -214,7 +214,7 @@ Recommended additive Gallery object fields:
 
 **Current:** Normal users can switch among allowed layouts only.
 
-**Current:** Normal users cannot create layout definitions. The simple Fotos-tab creation flow may instantiate a Gallery using known `grid_1x1` through `grid_4x4` presets. Existing Galleries that use `grid_count_1` through `grid_count_16` remain valid.
+**Current:** Normal users cannot create layout definitions. The simple Fotos-tab creation flow may instantiate a Gallery using the currently exposed `grid_1x1` through `grid_4x3` matrix. Shared `grid_*` presets through `grid_4x4` and existing Galleries that use `grid_count_1` through `grid_count_16` remain valid.
 
 **Current:** Normal users cannot edit `galleryLayoutBlueprint` directly.
 

@@ -85,6 +85,7 @@ Current implementation maps describe observed behavior and known compatibility p
 
 - [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md)
 - [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md)
+- [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md)
 - [INTERACTION_SYSTEM_CURRENT_STATE.md](architecture/INTERACTION_SYSTEM_CURRENT_STATE.md)
 - [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md)
 - [CSS_INVENTORY.md](architecture/CSS_INVENTORY.md)
@@ -117,6 +118,7 @@ Audits and historical records must not be treated as current contracts:
 
 Add focused contracts when the editor change touches those surfaces:
 
+- Assistant/guided tour: [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) as a current implementation map, plus `src/domain/editor/assistantGuidedTour.test.mjs` and `src/domain/editor/assistantSubsteps.test.mjs` as code-level anchors
 - image roles/decorations: [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md)
 - grouping: [GROUP_RENDER_MODEL.md](architecture/GROUP_RENDER_MODEL.md)
 - Gallery: [GALLERY_SYSTEM_CONTRACT.md](contracts/GALLERY_SYSTEM_CONTRACT.md) and [GALLERY_EDITOR_CONTRACT.md](contracts/GALLERY_EDITOR_CONTRACT.md)

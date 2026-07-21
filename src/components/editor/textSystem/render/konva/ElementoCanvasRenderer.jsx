@@ -107,10 +107,13 @@ import {
 } from "@/lib/editorBridgeContracts";
 import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
 import {
+  allowNativeTouchScrollOnKonvaPress,
+  claimNativeTouchDrag,
   createEditorScrollSnapshot,
   getEditorScrollDelta,
   getTouchAwareDragThreshold,
   isTouchLikePointerType,
+  releaseNativeTouchScrollOnKonvaPress,
   resolveTouchDragIntent,
 } from "@/lib/editorTouchDragIntent";
 import {
@@ -729,6 +732,7 @@ export default function ElementoCanvas({
     cancelledForScroll: false,
     pointerType: null,
     scrollSnapshot: null,
+    nativeScrollLease: null,
     releaseDetach: null,
   });
   const deferredTouchSelectionRef = useRef({
@@ -1420,16 +1424,24 @@ export default function ElementoCanvas({
     touchDragIntentRef.current.releaseDetach = null;
   }, []);
 
+  const releaseTouchDragIntentResources = useCallback((current = null) => {
+    const touchIntent = current || touchDragIntentRef.current || {};
+    releaseNativeTouchScrollOnKonvaPress(touchIntent.nativeScrollLease || null);
+    touchIntent.nativeScrollLease = null;
+  }, []);
+
   const resetTouchDragIntent = useCallback(() => {
+    releaseTouchDragIntentResources();
     detachTouchDragRestoreListener();
     touchDragIntentRef.current = {
       active: false,
       cancelledForScroll: false,
       pointerType: null,
       scrollSnapshot: null,
+      nativeScrollLease: null,
       releaseDetach: null,
     };
-  }, [detachTouchDragRestoreListener]);
+  }, [detachTouchDragRestoreListener, releaseTouchDragIntentResources]);
 
   const restoreTouchDraggableOnRelease = useCallback((node) => {
     if (typeof window === "undefined" || !node) return;
@@ -1438,11 +1450,13 @@ export default function ElementoCanvas({
     const restore = () => {
       detachTouchDragRestoreListener();
       syncInteractionDraggableState(node);
+      releaseTouchDragIntentResources();
       touchDragIntentRef.current = {
         active: false,
         cancelledForScroll: false,
         pointerType: null,
         scrollSnapshot: null,
+        nativeScrollLease: null,
         releaseDetach: null,
       };
       try {
@@ -1466,6 +1480,7 @@ export default function ElementoCanvas({
     };
   }, [
     detachTouchDragRestoreListener,
+    releaseTouchDragIntentResources,
     syncInteractionDraggableState,
   ]);
 
@@ -1486,15 +1501,16 @@ export default function ElementoCanvas({
   }, [logInlineIntentEmitter, obj.id, obj.tipo]);
 
   const suppressTouchScrollSelectionClick = useCallback(() => {
-    const nowMs =
-      typeof performance !== "undefined" && typeof performance.now === "function"
-        ? performance.now()
-        : Date.now();
-    touchScrollSelectionSuppressUntilRef.current = nowMs + 450;
+    // Keep scroll ownership sticky until the next real press. Native mobile
+    // pans may emit pointercancel well before touchend (or no compatible
+    // touch terminal event at all), so terminal listeners are both racy and
+    // leak-prone for pointer-only inputs such as pen.
+    touchScrollSelectionSuppressUntilRef.current = Number.POSITIVE_INFINITY;
   }, []);
 
   const cancelTouchCandidateForScroll = useCallback((node, nativeEvent, reason) => {
     touchDragIntentRef.current.cancelledForScroll = true;
+    releaseTouchDragIntentResources(touchDragIntentRef.current);
     clearDeferredTouchSelection(reason || "touch-scroll-cancel");
     suppressTouchScrollSelectionClick();
     try {
@@ -1517,6 +1533,7 @@ export default function ElementoCanvas({
     clearDeferredTouchSelection,
     obj.id,
     obj.tipo,
+    releaseTouchDragIntentResources,
     restoreTouchDraggableOnRelease,
     suppressTouchScrollSelectionClick,
   ]);
@@ -2010,6 +2027,21 @@ export default function ElementoCanvas({
     };
   }, []);
 
+  const cleanupManualGroupTouchIntent = useCallback((session) => {
+    const touchIntent = session?.touchDragIntent || null;
+    if (!touchIntent) return;
+    releaseNativeTouchScrollOnKonvaPress(touchIntent.nativeScrollLease || null);
+    if (touchIntent.content) {
+      try {
+        touchIntent.content.style.touchAction =
+          touchIntent.previousTouchAction || "pan-y";
+      } catch {}
+    }
+    touchIntent.nativeScrollLease = null;
+    touchIntent.content = null;
+    touchIntent.previousTouchAction = "";
+  }, []);
+
   const restoreSelectAndDragPredragTouchAction = useCallback((restore = true) => {
     const current = selectAndDragTouchActionRef.current;
     if (current?.active && current.content && restore) {
@@ -2046,7 +2078,12 @@ export default function ElementoCanvas({
     onPredragVisualSelectionCancel?.(obj.id);
 
     const node = explicitNode || elementNodeRef.current;
-    if (!node) return;
+    if (!node) {
+      if (!isTouchScrollCancellation) {
+        resetTouchDragIntent();
+      }
+      return;
+    }
 
     try {
       node.stopDrag?.();
@@ -2143,6 +2180,8 @@ export default function ElementoCanvas({
       detachManualGroupWindowListeners();
       return null;
     }
+
+    cleanupManualGroupTouchIntent(session);
 
     const forceFinish = options?.force === true;
     const leaderNodeBeforeFinish = resolveSessionLeaderNode(session);
@@ -2317,6 +2356,7 @@ export default function ElementoCanvas({
   }, [
     cancelPendingTransformerRestore,
     cancelManualGroupFinishRetry,
+    cleanupManualGroupTouchIntent,
     detachManualGroupWindowListeners,
     hasDragged,
     queueTransformerRestoreAfterPredragCancel,
@@ -2330,6 +2370,7 @@ export default function ElementoCanvas({
 
     const handlePointerMove = (nativeEvent) => {
       const session = getAnyGroupDragSession();
+      let claimedTouchDrag = false;
       if (!session?.active || session.engine !== "manual-pointer" || session.sessionId !== sessionId) {
         detachManualGroupWindowListeners();
         return;
@@ -2353,15 +2394,12 @@ export default function ElementoCanvas({
           const scrollDelta = getEditorScrollDelta(
             session.touchDragIntent?.scrollSnapshot || null
           );
-          const nowMs =
-            typeof performance !== "undefined" && typeof performance.now === "function"
-              ? performance.now()
-              : Date.now();
+          const deltaX = currentClientPoint.x - Number(startClientPoint.clientX || 0);
+          const deltaY = currentClientPoint.y - Number(startClientPoint.clientY || 0);
           const intent = resolveTouchDragIntent({
             pointerType: session.pointerType,
-            deltaX: currentClientPoint.x - Number(startClientPoint.clientX || 0),
-            deltaY: currentClientPoint.y - Number(startClientPoint.clientY || 0),
-            elapsedMs: nowMs - Number(session.startedAt || nowMs),
+            deltaX,
+            deltaY,
             scrollDeltaX: scrollDelta.x,
             scrollDeltaY: scrollDelta.y,
             dragThresholdPx: getTouchAwareDragThreshold(session.pointerType),
@@ -2372,17 +2410,47 @@ export default function ElementoCanvas({
               ...(session.touchDragIntent || {}),
               cancelledForScroll: true,
             };
+            suppressTouchScrollSelectionClick();
             finishManualGroupPointerSession(nativeEvent, intent.reason);
             return;
           }
           if (intent.decision === "pending") {
             return;
           }
+
+          const leaderNode = resolveSessionLeaderNode(session) || elementNodeRef.current;
+          claimNativeTouchDrag({
+            lease: session.touchDragIntent?.nativeScrollLease || null,
+            dragNode: leaderNode,
+            nativeEvent,
+          });
+          claimedTouchDrag = true;
+          if (session.touchDragIntent) {
+            session.touchDragIntent.nativeScrollLease = null;
+            const content = getStageContentNode(leaderNode);
+            if (content) {
+              session.touchDragIntent.content = content;
+              session.touchDragIntent.previousTouchAction =
+                content.style.touchAction || "";
+              try {
+                content.style.touchAction = "none";
+              } catch {}
+            }
+          }
         }
       }
 
       const updateResult = updateManualGroupDragSession(nativeEvent);
-      if (!updateResult?.handled) return;
+      if (!updateResult?.handled) {
+        if (claimedTouchDrag) {
+          finishManualGroupPointerSession(
+            nativeEvent,
+            "touch-drag-activation-failed",
+            { force: true }
+          );
+        }
+        return;
+      }
 
       if (updateResult.activatedNow && !manualGroupListenersRef.current.startHandled) {
         const latestObj = latestObjRef.current;
@@ -2459,9 +2527,11 @@ export default function ElementoCanvas({
       const onPointerMoveWindow = (event) => handlePointerMove(event);
       const onPointerUpWindow = (event) => handlePointerEnd(event, "pointerup");
       const onPointerCancelWindow = (event) => handlePointerEnd(event, "pointercancel");
+      const onBlurWindow = () => handlePointerEnd(null, "window-blur");
       window.addEventListener("pointermove", onPointerMoveWindow);
       window.addEventListener("pointerup", onPointerUpWindow);
       window.addEventListener("pointercancel", onPointerCancelWindow);
+      window.addEventListener("blur", onBlurWindow);
       manualGroupListenersRef.current = {
         sessionId,
         startHandled: false,
@@ -2469,6 +2539,7 @@ export default function ElementoCanvas({
           window.removeEventListener("pointermove", onPointerMoveWindow);
           window.removeEventListener("pointerup", onPointerUpWindow);
           window.removeEventListener("pointercancel", onPointerCancelWindow);
+          window.removeEventListener("blur", onBlurWindow);
         },
       };
       return;
@@ -2479,11 +2550,13 @@ export default function ElementoCanvas({
     const onTouchMoveWindow = (event) => handlePointerMove(event);
     const onTouchEndWindow = (event) => handlePointerEnd(event, "touchend");
     const onTouchCancelWindow = (event) => handlePointerEnd(event, "touchcancel");
+    const onBlurWindow = () => handlePointerEnd(null, "window-blur");
     window.addEventListener("mousemove", onMouseMoveWindow);
     window.addEventListener("mouseup", onMouseUpWindow);
     window.addEventListener("touchmove", onTouchMoveWindow, { passive: false });
     window.addEventListener("touchend", onTouchEndWindow);
     window.addEventListener("touchcancel", onTouchCancelWindow);
+    window.addEventListener("blur", onBlurWindow);
     manualGroupListenersRef.current = {
       sessionId,
       startHandled: false,
@@ -2493,6 +2566,7 @@ export default function ElementoCanvas({
         window.removeEventListener("touchmove", onTouchMoveWindow);
         window.removeEventListener("touchend", onTouchEndWindow);
         window.removeEventListener("touchcancel", onTouchCancelWindow);
+        window.removeEventListener("blur", onBlurWindow);
       },
     };
   }, [
@@ -2502,21 +2576,24 @@ export default function ElementoCanvas({
     hasDragged,
     hasPointerEvents,
     logElementGestureDebug,
+    suppressTouchScrollSelectionClick,
   ]);
 
   const armPredragReleaseListeners = useCallback((event, options = {}) => {
     if (typeof window === "undefined") return;
     const assumeSingleSelection = options?.assumeSingleSelection === true;
     const fastStartSelectAndDrag = options?.fastStartSelectAndDrag === true;
+    const pointerType = resolvePointerType(event?.evt);
+    const pointerLooksTouchLike = isTouchLikePointerType(pointerType);
     const manualGroupDragEligible = shouldUseManualGroupDrag();
-    if (
-      !shouldArmPredragRelease({
+    const dragEligible = shouldArmPredragRelease({
         assumeSingleSelection,
         isSelected,
         selectionCount,
         manualGroupDragEligible,
-      })
-    ) {
+      });
+    const touchGuardOnly = pointerLooksTouchLike && !dragEligible;
+    if (!dragEligible && !touchGuardOnly) {
       return;
     }
 
@@ -2525,7 +2602,6 @@ export default function ElementoCanvas({
     const node = event?.currentTarget || event?.target || elementNodeRef.current || null;
     if (!node) return;
 
-    const pointerType = resolvePointerType(event?.evt);
     const pressPointerSynced = syncStagePointerFromNativeEvent(node, event?.evt);
     const pressStagePoint = pressPointerSynced ? getStagePointerPoint(node) : null;
     const pressClientPoint = getClientPoint(event?.evt);
@@ -2536,7 +2612,7 @@ export default function ElementoCanvas({
         ? performance.now()
         : Date.now();
     const fastStartThresholdPx =
-      fastStartSelectAndDrag && pressPoint
+      dragEligible && fastStartSelectAndDrag && pressPoint
         ? getSelectAndDragIntentThreshold(pointerType)
         : null;
     selectAndDragFastStartRef.current = {
@@ -2547,7 +2623,7 @@ export default function ElementoCanvas({
       pointSpace,
       pressPoint,
     };
-    const pointerLooksTouchLike = isTouchLikePointerType(pointerType);
+    releaseTouchDragIntentResources();
     touchDragIntentRef.current = {
       active: pointerLooksTouchLike,
       cancelledForScroll: false,
@@ -2555,6 +2631,9 @@ export default function ElementoCanvas({
       scrollSnapshot: pointerLooksTouchLike
         ? createEditorScrollSnapshot(node)
         : null,
+      nativeScrollLease:
+        options?.nativeScrollLease ||
+        allowNativeTouchScrollOnKonvaPress(event),
       releaseDetach: null,
     };
 
@@ -2568,6 +2647,7 @@ export default function ElementoCanvas({
     }
 
     const selectedPredragVisualThresholdPx =
+      dragEligible &&
       !fastStartSelectAndDrag &&
       isSelected &&
       selectionCount === 1 &&
@@ -2577,6 +2657,9 @@ export default function ElementoCanvas({
     let selectedPredragVisualPrimed = false;
 
     const cancel = (nativeEvent = null, reason = "pointerup") => {
+      if (/cancel|blur|implicit/i.test(String(reason || ""))) {
+        clearDeferredTouchSelection(reason);
+      }
       cancelPendingNativePredrag(nativeEvent, reason, node);
     };
 
@@ -2604,15 +2687,12 @@ export default function ElementoCanvas({
       }
 
       const scrollDelta = getEditorScrollDelta(activeTouchIntent.scrollSnapshot);
-      const nowMs =
-        typeof performance !== "undefined" && typeof performance.now === "function"
-          ? performance.now()
-          : Date.now();
+      const deltaX = currentClientPoint.x - pressClientPoint.x;
+      const deltaY = currentClientPoint.y - pressClientPoint.y;
       return resolveTouchDragIntent({
         pointerType: movePointerType,
-        deltaX: currentClientPoint.x - pressClientPoint.x,
-        deltaY: currentClientPoint.y - pressClientPoint.y,
-        elapsedMs: nowMs - pressAtMs,
+        deltaX,
+        deltaY,
         scrollDeltaX: scrollDelta.x,
         scrollDeltaY: scrollDelta.y,
         dragThresholdPx: Number.isFinite(Number(thresholdPx))
@@ -2625,6 +2705,14 @@ export default function ElementoCanvas({
       const movePointerType = resolvePointerType(nativeEvent) || pointerType;
       if (!isTouchLikePointerType(movePointerType)) return;
 
+      const activeTouchIntent = touchDragIntentRef.current || {};
+      claimNativeTouchDrag({
+        lease: activeTouchIntent.nativeScrollLease || null,
+        dragNode: node,
+        nativeEvent,
+      });
+      activeTouchIntent.nativeScrollLease = null;
+
       const content = getStageContentNode(node);
       if (content) {
         selectAndDragTouchActionRef.current = {
@@ -2636,11 +2724,23 @@ export default function ElementoCanvas({
           content.style.touchAction = "none";
         } catch {}
       }
-      if (nativeEvent?.cancelable) {
-        try {
-          nativeEvent.preventDefault();
-        } catch {}
-      }
+    };
+
+    const handleTouchGuardOnlyMove = (nativeEvent = null) => {
+      if (!touchGuardOnly) return false;
+      const touchIntent = resolveTouchIntentForMove(
+        nativeEvent,
+        getTouchAwareDragThreshold(pointerType)
+      );
+      if (touchIntent.decision === "pending") return true;
+
+      const reason =
+        touchIntent.decision === "scroll"
+          ? touchIntent.reason
+          : "touch-scroll-drag-ineligible";
+      cancelTouchCandidateForScroll(node, nativeEvent, reason);
+      cancel(nativeEvent, reason);
+      return true;
     };
 
     const maybePrimeSelectedPredragVisual = (nativeEvent = null) => {
@@ -2743,6 +2843,7 @@ export default function ElementoCanvas({
         if (!startedDrag) {
           onPredragVisualSelectionCancel?.(obj.id);
           queueTransformerRestoreAfterPredragCancel();
+          cancel(nativeEvent, "touch-drag-start-failed");
           return false;
         }
 
@@ -2862,6 +2963,7 @@ export default function ElementoCanvas({
       if (!startedDrag) {
         onPredragVisualSelectionCancel?.(obj.id);
         queueTransformerRestoreAfterPredragCancel();
+        cancel(nativeEvent, "touch-drag-start-failed");
         return false;
       }
 
@@ -2907,6 +3009,7 @@ export default function ElementoCanvas({
           detachPredragReleaseListeners();
           return;
         }
+        if (handleTouchGuardOnlyMove(nativeEvent)) return;
         maybePrimeSelectedPredragVisual(nativeEvent);
         if (maybeFastStartDrag(nativeEvent)) {
           return;
@@ -2931,7 +3034,7 @@ export default function ElementoCanvas({
           window.removeEventListener("blur", onBlurWindow);
         },
       };
-      return;
+      return true;
     }
 
     const onMouseMoveWindow = (nativeEvent) => {
@@ -2953,6 +3056,7 @@ export default function ElementoCanvas({
         detachPredragReleaseListeners();
         return;
       }
+      if (handleTouchGuardOnlyMove(nativeEvent)) return;
       maybePrimeSelectedPredragVisual(nativeEvent);
       if (maybeFastStartDrag(nativeEvent)) {
         return;
@@ -2981,9 +3085,11 @@ export default function ElementoCanvas({
         window.removeEventListener("blur", onBlurWindow);
       },
     };
+    return true;
   }, [
     cancelPendingNativePredrag,
     cancelTouchCandidateForScroll,
+    clearDeferredTouchSelection,
     commitDeferredTouchSelection,
     detachPredragReleaseListeners,
     hasDragged,
@@ -2994,6 +3100,7 @@ export default function ElementoCanvas({
     obj.id,
     obj.tipo,
     queueTransformerRestoreAfterPredragCancel,
+    releaseTouchDragIntentResources,
     restoreSelectAndDragPredragTouchAction,
     resetTouchDragIntent,
     selectionCount,
@@ -3001,7 +3108,7 @@ export default function ElementoCanvas({
     shouldUseManualGroupDrag,
   ]);
 
-  const tryArmManualGroupDrag = useCallback((e) => {
+  const tryArmManualGroupDrag = useCallback((e, options = {}) => {
     if (!shouldUseManualGroupDrag()) return null;
     const result = armManualGroupDragSession(e, obj);
     if (result?.mode !== "armed") return result;
@@ -3024,6 +3131,11 @@ export default function ElementoCanvas({
       result.session.touchDragIntent = {
         scrollSnapshot: createEditorScrollSnapshot(e?.currentTarget || e?.target || null),
         cancelledForScroll: false,
+        nativeScrollLease:
+          options?.nativeScrollLease ||
+          allowNativeTouchScrollOnKonvaPress(e),
+        content: null,
+        previousTouchAction: "",
       };
     }
     attachManualGroupWindowListeners(result.sessionId);
@@ -3064,26 +3176,29 @@ export default function ElementoCanvas({
   const prepareSelectedElementForPossibleDrag = useCallback((e, options = {}) => {
     const assumeSingleSelection = options?.assumeSingleSelection === true;
     const fastStartSelectAndDrag = options?.fastStartSelectAndDrag === true;
-    if (
-      !shouldArmPredragRelease({
+    const pointerType = resolvePointerType(e?.evt);
+    const dragEligible = shouldArmPredragRelease({
         assumeSingleSelection,
         isSelected,
         selectionCount,
         manualGroupDragEligible: false,
-      })
-    ) {
-      return;
+      });
+    if (!dragEligible && !isTouchLikePointerType(pointerType)) {
+      return false;
     }
 
     const node = e?.currentTarget || e?.target || elementNodeRef.current;
-    if (!node) return;
+    if (!node) return false;
 
-    cancelPendingTransformerRestore();
+    if (dragEligible) {
+      cancelPendingTransformerRestore();
+    }
     // Keep the visible selection frame on press; detach only when drag truly starts.
     preDetachedSelectionTransformerRef.current = false;
-    armPredragReleaseListeners(e, {
+    return armPredragReleaseListeners(e, {
       assumeSingleSelection,
       fastStartSelectAndDrag,
+      nativeScrollLease: options?.nativeScrollLease || null,
     });
   }, [
     armPredragReleaseListeners,
@@ -3225,9 +3340,20 @@ export default function ElementoCanvas({
 
   const handlePressStart = useCallback((event, source = "pointerdown") => {
     event.cancelBubble = true;
+    const pressPointerType = resolvePointerType(event?.evt);
+    touchScrollSelectionSuppressUntilRef.current = 0;
+    resetTouchDragIntent();
+    const nativeScrollLease = allowNativeTouchScrollOnKonvaPress(event);
+    const releaseLeaseAfterPressDispatch = () => {
+      if (!nativeScrollLease) return;
+      setTimeout(() => {
+        releaseNativeTouchScrollOnKonvaPress(nativeScrollLease);
+      }, 0);
+    };
     if (isActiveGroupFollowerInteractionSuppressed()) {
       event.currentTarget?.draggable?.(false);
       event.currentTarget?.listening?.(false);
+      releaseLeaseAfterPressDispatch();
       return;
     }
 
@@ -3235,26 +3361,35 @@ export default function ElementoCanvas({
     logElementGestureDebug(`element:${source}`, event);
     if (inlineEditPointerActive) {
       onInlineEditPointer(event, obj);
+      releaseLeaseAfterPressDispatch();
       return;
     }
 
-    const manualGroupResult = tryArmManualGroupDrag(event);
+    const manualGroupResult = tryArmManualGroupDrag(event, {
+      nativeScrollLease,
+    });
     if (manualGroupResult?.handled) {
+      if (manualGroupResult?.mode !== "armed") {
+        releaseLeaseAfterPressDispatch();
+      }
       return;
     }
 
     armSelectedTextPrimaryOnRelease(event, source);
-    const pressPointerType = resolvePointerType(event?.evt);
     const pressSelectionResult = maybeSelectElementOnPress(event, {
       deferTouchSelection: isTouchLikePointerType(pressPointerType),
     });
 
     event.currentTarget?.draggable(resolveInteractionDraggableEnabled());
     event.currentTarget?.listening?.(resolveInteractionListeningEnabled());
-    prepareSelectedElementForPossibleDrag(event, {
+    const didPreparePredrag = prepareSelectedElementForPossibleDrag(event, {
       assumeSingleSelection: pressSelectionResult?.allowSameGestureDrag === true,
       fastStartSelectAndDrag: pressSelectionResult?.allowSameGestureDrag === true,
+      nativeScrollLease,
     });
+    if (!didPreparePredrag) {
+      releaseLeaseAfterPressDispatch();
+    }
   }, [
     armSelectedTextPrimaryOnRelease,
     hasDragged,
@@ -3265,6 +3400,7 @@ export default function ElementoCanvas({
     obj,
     onInlineEditPointer,
     prepareSelectedElementForPossibleDrag,
+    resetTouchDragIntent,
     resolveInteractionDraggableEnabled,
     resolveInteractionListeningEnabled,
     tryArmManualGroupDrag,

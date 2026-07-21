@@ -129,18 +129,27 @@ Resultado esperado:
 
 ### [ ] Scroll tactil sobre objetos vs drag
 
-1. En mobile o emulacion tactil, iniciar scroll vertical apoyando el dedo sobre texto, imagen, galeria y grupo.
-2. Repetir con un toque breve sobre un objeto.
-3. Repetir con un drag deliberado horizontal, vertical y diagonal.
-4. Interrumpir un gesto candidato con `touchcancel` o `pointercancel`.
+Ejecutar la siguiente matriz en dispositivos reales; la emulacion tactil sirve solo como smoke check:
+
+| Dimension | Cobertura minima |
+| --- | --- |
+| Navegador | Chrome Android y Safari iOS |
+| Estado de seleccion | elemento no seleccionado y elemento ya seleccionado |
+| Objetivo | texto, imagen, galeria, countdown, grupo persistido `tipo: "grupo"` y lider de una multiseleccion |
+| Gesto | scroll vertical inmediato, scroll vertical iniciado despues de una pausa, toque breve, movimiento menor al umbral, drag con inicio horizontal y continuacion vertical o diagonal |
+| Limites | cerca de anchors de resize/rotacion, controles de seleccion y sobre canvas vacio |
+| Interrupcion | release dentro y fuera del canvas, `touchcancel`, `pointercancel`, perdida de foco y desmontaje del editor |
 
 Resultado esperado:
 
-- el scroll vertical sobre objetos no selecciona ni mueve el objeto
-- una vez iniciado el scroll, el gesto no se convierte luego en drag
-- el toque breve sigue seleccionando
-- el drag deliberado sigue entrando al flujo normal de predrag, drag overlay y settle
-- no quedan estados residuales de predrag, drag, hover ni overlay
+- el scroll vertical sobre objetos no selecciona ni mueve el objeto, aunque empiece despues de una pausa; la posicion permanece exacta mientras la intencion esta pendiente
+- una vez que el gesto pertenece al scroll, nunca se convierte luego en drag
+- ni el tiempo transcurrido ni una pausa estacionaria habilitan drag: el movimiento inicial vertical sigue siendo scroll
+- un movimiento inicial horizontal claramente intencional entra al flujo normal de predrag, drag overlay y settle; una vez confirmado puede continuar vertical o diagonalmente con precision
+- el toque breve y el movimiento menor al umbral seleccionan cuando corresponde sin desplazar el elemento
+- antes de confirmar drag se conserva el scroll nativo; no se observa bloqueo causado por `preventDefault` o `touch-action: none` prematuros
+- los anchors y controles conservan resize, rotacion y seleccion sin iniciar drag del objeto subyacente; el canvas vacio conserva scroll y tap sin marquee accidental
+- release, cancelacion, perdida de foco y unmount limpian listeners, seleccion diferida, lease de Konva, draggable temporal, touch action, predrag, hover y overlay
 
 ## 2. Texto inline
 

@@ -23,10 +23,13 @@ import {
 } from "@/domain/gallery/galleryLayoutPresets";
 import useSharedImage from "@/hooks/useSharedImage";
 import {
+  allowNativeTouchScrollOnKonvaPress,
+  claimNativeTouchDrag,
   createEditorScrollSnapshot,
   getEditorScrollDelta,
   getTouchAwareDragThreshold,
   isTouchLikePointerType,
+  releaseNativeTouchScrollOnKonvaPress,
   resolvePointerTypeFromNativeEvent,
   resolveTouchDragIntent,
 } from "@/lib/editorTouchDragIntent";
@@ -119,8 +122,8 @@ export default function GaleriaKonva({
     startNodeY: 0,
     pointerType: "mouse",
     dragThreshold: DRAG_THRESHOLD_PX,
-    startedAtMs: 0,
     scrollSnapshot: null,
+    nativeScrollLease: null,
   });
 
   const setRootRef = useCallback(
@@ -289,6 +292,13 @@ export default function GaleriaKonva({
     }
   }, []);
 
+  const releasePressTouchResources = useCallback((press = pressRef.current) => {
+    releaseNativeTouchScrollOnKonvaPress(press?.nativeScrollLease || null);
+    if (press) {
+      press.nativeScrollLease = null;
+    }
+  }, []);
+
   const attachGlobalListeners = useCallback(() => {
     cleanupGlobal();
 
@@ -303,15 +313,10 @@ export default function GaleriaKonva({
       const dy = point.y - press.startClientY;
       if (isTouchLikePointerType(press.pointerType)) {
         const scrollDelta = getEditorScrollDelta(press.scrollSnapshot);
-        const nowMs =
-          typeof performance !== "undefined" && typeof performance.now === "function"
-            ? performance.now()
-            : Date.now();
         const intent = resolveTouchDragIntent({
           pointerType: press.pointerType,
           deltaX: dx,
           deltaY: dy,
-          elapsedMs: nowMs - Number(press.startedAtMs || nowMs),
           scrollDeltaX: scrollDelta.x,
           scrollDeltaY: scrollDelta.y,
           dragThresholdPx: press.dragThreshold,
@@ -323,13 +328,10 @@ export default function GaleriaKonva({
           press.startedDrag = false;
           press.suppressClick = true;
           press.scrollSnapshot = null;
+          releasePressTouchResources(press);
           try {
             rootRef.current?.draggable?.(false);
           } catch {}
-          setTimeout(() => {
-            pressRef.current.suppressClick = false;
-          }, 450);
-          cleanupGlobal();
           return;
         }
 
@@ -344,10 +346,7 @@ export default function GaleriaKonva({
           press.movedEnough = true;
           press.suppressClick = true;
           press.scrollSnapshot = null;
-          setTimeout(() => {
-            pressRef.current.suppressClick = false;
-          }, 450);
-          cleanupGlobal();
+          releasePressTouchResources(press);
         }
         return;
       }
@@ -364,21 +363,42 @@ export default function GaleriaKonva({
         node.getLayer()?.batchDraw();
       } catch {}
 
-      if (isTouchLikePointerType(press.pointerType) && ev?.cancelable) {
-        try {
-          ev.preventDefault();
-        } catch {}
+      if (isTouchLikePointerType(press.pointerType)) {
+        claimNativeTouchDrag({
+          lease: press.nativeScrollLease || null,
+          dragNode: node,
+          nativeEvent: ev,
+        });
+        press.nativeScrollLease = null;
       }
 
+      let startedDrag = false;
       try {
         node.draggable(true);
         node.startDrag();
-      } catch {}
+        startedDrag =
+          typeof node.isDragging === "function" ? Boolean(node.isDragging()) : true;
+      } catch {
+        startedDrag = false;
+      }
+      if (!startedDrag) {
+        press.active = false;
+        press.startedDrag = false;
+        press.movedEnough = true;
+        try {
+          node.position({ x: press.startNodeX, y: press.startNodeY });
+          node.draggable(false);
+          node.getLayer()?.batchDraw();
+        } catch {}
+        releasePressTouchResources(press);
+        cleanupGlobal();
+      }
     };
 
     const onUp = () => {
       const press = pressRef.current;
       if (!press.active) {
+        releasePressTouchResources(press);
         cleanupGlobal();
         return;
       }
@@ -405,6 +425,7 @@ export default function GaleriaKonva({
       press.movedEnough = false;
       press.startedDrag = false;
       press.scrollSnapshot = null;
+      releasePressTouchResources(press);
 
       setTimeout(() => {
         pressRef.current.suppressClick = false;
@@ -430,16 +451,23 @@ export default function GaleriaKonva({
       window.removeEventListener("pointercancel", onUp, true);
       window.removeEventListener("blur", onUp, true);
     };
-  }, [cleanupGlobal]);
+  }, [cleanupGlobal, releasePressTouchResources]);
 
   const handlePressStart = useCallback(
     (e) => {
+      releasePressTouchResources();
+      const nativeScrollLease = allowNativeTouchScrollOnKonvaPress(e);
       if (e) e.cancelBubble = true;
       if (e?.evt) e.evt.cancelBubble = true;
 
       const node = rootRef.current || e.currentTarget;
       const point = getClientPoint(e?.evt);
-      if (!node || !point) return;
+      if (!node || !point) {
+        setTimeout(() => {
+          releaseNativeTouchScrollOnKonvaPress(nativeScrollLease);
+        }, 0);
+        return;
+      }
 
       const press = pressRef.current;
       press.active = true;
@@ -455,13 +483,10 @@ export default function GaleriaKonva({
       press.dragThreshold = isTouchLikePointerType(press.pointerType)
         ? getTouchAwareDragThreshold(press.pointerType)
         : DRAG_THRESHOLD_PX;
-      press.startedAtMs =
-        typeof performance !== "undefined" && typeof performance.now === "function"
-          ? performance.now()
-          : Date.now();
       press.scrollSnapshot = isTouchLikePointerType(press.pointerType)
         ? createEditorScrollSnapshot(node)
         : null;
+      press.nativeScrollLease = nativeScrollLease;
 
       if (
         e?.evt?.shiftKey &&
@@ -481,7 +506,14 @@ export default function GaleriaKonva({
 
       attachGlobalListeners();
     },
-    [attachGlobalListeners, isRemoveButtonTarget, isSelected, obj.id, onSelect]
+    [
+      attachGlobalListeners,
+      isRemoveButtonTarget,
+      isSelected,
+      obj.id,
+      onSelect,
+      releasePressTouchResources,
+    ]
   );
 
   const handleRootClick = useCallback(
@@ -524,7 +556,10 @@ export default function GaleriaKonva({
     }
   };
 
-  useEffect(() => () => cleanupGlobal(), [cleanupGlobal]);
+  useEffect(() => () => {
+    releasePressTouchResources();
+    cleanupGlobal();
+  }, [cleanupGlobal, releasePressTouchResources]);
 
   return (
     <Group

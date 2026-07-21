@@ -4,11 +4,13 @@ export const TOUCH_DRAG_INTENT_DEFAULTS = Object.freeze({
   mouseDragThresholdPx: 1,
   diagonalDragThresholdPx: 18,
   verticalScrollThresholdPx: 7,
-  verticalDominanceRatio: 1.25,
+  verticalDominanceRatio: 1,
   horizontalDominanceRatio: 1.05,
-  verticalDragHoldMs: 180,
   scrollDeltaThresholdPx: 2,
 });
+
+const activeNativeTouchScrollLeases = new WeakMap();
+let nativeTouchScrollLeaseSequence = 0;
 
 export function resolvePointerTypeFromNativeEvent(nativeEvent = null) {
   if (nativeEvent?.pointerType) {
@@ -36,6 +38,128 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function resolveNativeEvent(event = null) {
+  return event?.evt || event?.nativeEvent || event || null;
+}
+
+/**
+ * Temporarily disables Konva's per-hit-node touchstart preventDefault. Konva
+ * checks the hit Shape after bubbling, so a press handler can safely acquire
+ * this lease before Stage performs that check.
+ */
+export function allowNativeTouchScrollOnKonvaPress(event = null) {
+  const nativeEvent = resolveNativeEvent(event);
+  const pointerType = resolvePointerTypeFromNativeEvent(nativeEvent);
+  if (!isTouchLikePointerType(pointerType)) return null;
+
+  const target = event?.target || null;
+  if (!target || typeof target.preventDefault !== "function") return null;
+
+  const activeLease = activeNativeTouchScrollLeases.get(target);
+  if (activeLease && !activeLease.released) return activeLease;
+
+  let previousPreventDefault;
+  try {
+    previousPreventDefault = Boolean(target.preventDefault());
+    target.preventDefault(false);
+  } catch {
+    return null;
+  }
+
+  nativeTouchScrollLeaseSequence += 1;
+  const lease = {
+    id: nativeTouchScrollLeaseSequence,
+    pointerType,
+    target,
+    previousPreventDefault,
+    released: false,
+  };
+  activeNativeTouchScrollLeases.set(target, lease);
+  return lease;
+}
+
+export function releaseNativeTouchScrollOnKonvaPress(lease = null) {
+  if (!lease || lease.released || !lease.target) return false;
+
+  const { target } = lease;
+  if (activeNativeTouchScrollLeases.get(target) !== lease) {
+    lease.released = true;
+    return false;
+  }
+
+  lease.released = true;
+  activeNativeTouchScrollLeases.delete(target);
+  try {
+    target.preventDefault(Boolean(lease.previousPreventDefault));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Transfers ownership from native scrolling to an intentional Konva drag.
+ * Restoration and node ownership happen before cancelling the confirming move.
+ */
+export function claimNativeTouchDrag(
+  leaseOrInput = null,
+  dragNodeArgument = null,
+  nativeEventArgument = null
+) {
+  const usesObjectInput = Boolean(
+    leaseOrInput &&
+      typeof leaseOrInput === "object" &&
+      (
+        Object.prototype.hasOwnProperty.call(leaseOrInput, "lease") ||
+        Object.prototype.hasOwnProperty.call(leaseOrInput, "dragNode") ||
+        Object.prototype.hasOwnProperty.call(leaseOrInput, "nativeEvent")
+      )
+  );
+  const lease = usesObjectInput ? leaseOrInput.lease || null : leaseOrInput;
+  const dragNode = usesObjectInput
+    ? leaseOrInput.dragNode || null
+    : dragNodeArgument;
+  const nativeEvent = resolveNativeEvent(
+    usesObjectInput ? leaseOrInput.nativeEvent || null : nativeEventArgument
+  );
+  const pointerType = String(
+    lease?.pointerType || resolvePointerTypeFromNativeEvent(nativeEvent) || ""
+  ).toLowerCase();
+
+  if (!isTouchLikePointerType(pointerType)) {
+    return {
+      claimed: false,
+      leaseReleased: false,
+      dragNodeClaimed: false,
+      nativeDefaultPrevented: false,
+    };
+  }
+
+  const leaseReleased = releaseNativeTouchScrollOnKonvaPress(lease);
+  let dragNodeClaimed = false;
+  if (typeof dragNode?.preventDefault === "function") {
+    try {
+      dragNode.preventDefault(true);
+      dragNodeClaimed = true;
+    } catch {}
+  }
+
+  let nativeDefaultPrevented = false;
+  if (nativeEvent?.cancelable && typeof nativeEvent.preventDefault === "function") {
+    try {
+      nativeEvent.preventDefault();
+      nativeDefaultPrevented = true;
+    } catch {}
+  }
+
+  return {
+    claimed: true,
+    leaseReleased,
+    dragNodeClaimed,
+    nativeDefaultPrevented,
+  };
+}
+
 export function resolveTouchDragIntent(input = {}) {
   const pointerType = String(input.pointerType || "").toLowerCase();
   const touchLike = isTouchLikePointerType(pointerType);
@@ -44,7 +168,6 @@ export function resolveTouchDragIntent(input = {}) {
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
   const distancePx = Math.hypot(dx, dy);
-  const elapsedMs = Math.max(0, toFiniteNumber(input.elapsedMs, 0));
   const scrollDeltaX = Math.abs(toFiniteNumber(input.scrollDeltaX, 0));
   const scrollDeltaY = Math.abs(toFiniteNumber(input.scrollDeltaY, 0));
   const dragThresholdPx = Math.max(
@@ -80,13 +203,6 @@ export function resolveTouchDragIntent(input = {}) {
     toFiniteNumber(
       input.diagonalDragThresholdPx,
       TOUCH_DRAG_INTENT_DEFAULTS.diagonalDragThresholdPx
-    )
-  );
-  const verticalDragHoldMs = Math.max(
-    0,
-    toFiniteNumber(
-      input.verticalDragHoldMs,
-      TOUCH_DRAG_INTENT_DEFAULTS.verticalDragHoldMs
     )
   );
   const scrollDeltaThresholdPx = Math.max(
@@ -136,18 +252,6 @@ export function resolveTouchDragIntent(input = {}) {
     absDy >= verticalScrollThresholdPx &&
     absDy >= absDx * verticalDominanceRatio;
   if (verticalDominant) {
-    if (elapsedMs >= verticalDragHoldMs) {
-      return {
-        decision: "drag",
-        reason: "vertical-drag-after-hold",
-        distancePx,
-        absDx,
-        absDy,
-        dragThresholdPx,
-        elapsedMs,
-      };
-    }
-
     return {
       decision: "scroll",
       reason: "vertical-scroll-dominant",
@@ -155,7 +259,6 @@ export function resolveTouchDragIntent(input = {}) {
       absDx,
       absDy,
       dragThresholdPx,
-      elapsedMs,
     };
   }
 
@@ -170,7 +273,6 @@ export function resolveTouchDragIntent(input = {}) {
       absDx,
       absDy,
       dragThresholdPx,
-      elapsedMs,
     };
   }
 
@@ -182,7 +284,6 @@ export function resolveTouchDragIntent(input = {}) {
       absDx,
       absDy,
       dragThresholdPx,
-      elapsedMs,
     };
   }
 
@@ -193,7 +294,6 @@ export function resolveTouchDragIntent(input = {}) {
     absDx,
     absDy,
     dragThresholdPx,
-    elapsedMs,
   };
 }
 

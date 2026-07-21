@@ -2,7 +2,7 @@
 
 > Status: Canonical Contract.
 >
-> Updated from code inspection and architecture documentation on 2026-04-07.
+> Updated from code inspection and architecture documentation on 2026-07-20.
 >
 > This document is the enforceable interaction contract for the dashboard editor subsystem.
 > `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md` remains the baseline description of current behavior.
@@ -217,6 +217,22 @@ Forbidden at drag start:
 - replay frame visibility
 - selected-phase visible ownership after drag-overlay has taken authority
 - hover visibility after predrag has begun
+
+#### 5.1.1 Touch Intent Gate
+
+For touch-like pointers, `src/lib/editorTouchDragIntent.js` is the single authority allowed to classify a pending gesture as scroll, tap/pending, or drag. Renderers MAY adapt their local listener lifecycle to that decision, but MUST NOT implement a second direction, distance, or elapsed-time policy.
+
+Before that authority returns `drag`:
+
+- the draggable root MUST remain non-draggable and MUST NOT change position
+- the actual Konva hit leaf MUST hold a restorable native-scroll lease that disables Konva default prevention for the pending press
+- `preventDefault()` and `touch-action: none` MUST NOT be applied by the drag path while intent is pending or scroll-owned
+- vertical scroll intent is terminal for the gesture and MUST NOT later be promoted to drag
+- post-scroll tap/selection suppression MAY remain sticky until the next real press, but MUST NOT retain per-element terminal listeners while waiting
+
+Elapsed time or a stationary pause MUST NOT authorize drag. While the editor surface declares native `pan-y`, an initial vertical-dominant touch movement MUST remain scroll-owned. Intentional touch drag MUST begin with horizontal-led movement beyond the shared thresholds; after ownership is confirmed, normal drag geometry is unconstrained and MAY continue vertically or diagonally.
+
+Only after the shared authority returns `drag` MAY the interaction release the hit-leaf lease, claim Konva default prevention on the draggable root, enable dragging, apply `touch-action: none`, and prevent the confirming native move. That late claim MUST NOT be used to steal an initial vertical gesture already permitted by `pan-y`; it is valid because the confirmed gesture was horizontal-led. Release, cancel, blur, or unmount MUST clear global listeners, deferred touch selection, temporary draggable state, touch-action claim, and native-scroll lease without resurrecting stale gesture state.
 
 ### 5.2 Drag Move
 

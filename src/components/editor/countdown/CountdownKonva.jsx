@@ -26,10 +26,13 @@ import {
 } from "@/lib/editorBridgeContracts";
 import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
 import {
+  allowNativeTouchScrollOnKonvaPress,
+  claimNativeTouchDrag,
   createEditorScrollSnapshot,
   getEditorScrollDelta,
   getTouchAwareDragThreshold,
   isTouchLikePointerType,
+  releaseNativeTouchScrollOnKonvaPress,
   resolveTouchDragIntent,
 } from "@/lib/editorTouchDragIntent";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
@@ -130,7 +133,7 @@ function buildKonvaTextFillProps(fillMeta, fallback = "#111827") {
  * ✅ Implementación pro:
  * - El nodo está draggable=false siempre.
  * - En mousedown/touchstart: empezamos un "press".
- * - En pointer/mouse/touch move global: si supera umbral => habilitamos draggable y llamamos startDrag()
+ * - En move global: mouse usa umbral; touch usa la decisión compartida de intención.
  * - En mouseup/touchend global: si no llegó a umbral => no hubo drag; si hubo => cerramos y deshabilitamos.
  */
 export default function CountdownKonva({
@@ -559,6 +562,7 @@ export default function CountdownKonva({
     sessionId: 0,
     startedAtMs: null,
     active: false,
+    cancelledForScroll: false,
     movedEnough: false,
     startedDrag: false,
     startClientX: 0,
@@ -570,6 +574,7 @@ export default function CountdownKonva({
     pointerType: "mouse",
     dragThreshold: 3,
     scrollSnapshot: null,
+    nativeScrollLease: null,
     // para ignorar click si se convirtió en drag
     suppressClick: false,
   });
@@ -1214,6 +1219,13 @@ export default function CountdownKonva({
     return true;
   }, []);
 
+  const releasePressTouchResources = useCallback((press = pressRef.current) => {
+    releaseNativeTouchScrollOnKonvaPress(press?.nativeScrollLease || null);
+    if (press) {
+      press.nativeScrollLease = null;
+    }
+  }, []);
+
   const scheduleHasDraggedReset = useCallback(() => {
     setTimeout(() => {
       if (hasDragged?.current != null) hasDragged.current = false;
@@ -1225,7 +1237,9 @@ export default function CountdownKonva({
       return false;
     }
 
+    releasePressTouchResources(pressRef.current);
     pressRef.current.active = false;
+    pressRef.current.cancelledForScroll = false;
     pressRef.current.movedEnough = false;
     pressRef.current.startedDrag = false;
     pressRef.current.startedAtMs = null;
@@ -1238,7 +1252,7 @@ export default function CountdownKonva({
       allowSameGestureDrag: false,
     };
     return true;
-  }, []);
+  }, [releasePressTouchResources]);
 
   const clearDragSession = useCallback((sessionId = null) => {
     const currentDragSessionId = dragSessionRef.current?.sessionId ?? null;
@@ -1312,20 +1326,10 @@ export default function CountdownKonva({
 
       if (isTouchLikePointerType(press.pointerType)) {
         const scrollDelta = getEditorScrollDelta(press.scrollSnapshot);
-        const moveTimeMs =
-          getEventTimeStampMs(ev) ??
-          (typeof performance !== "undefined" && typeof performance.now === "function"
-            ? performance.now()
-            : Date.now());
-        const startTimeMs =
-          Number.isFinite(Number(press.startedAtMs))
-            ? Number(press.startedAtMs)
-            : moveTimeMs;
         const intent = resolveTouchDragIntent({
           pointerType: press.pointerType,
           deltaX: dxClient,
           deltaY: dyClient,
-          elapsedMs: moveTimeMs - startTimeMs,
           scrollDeltaX: scrollDelta.x,
           scrollDeltaY: scrollDelta.y,
           dragThresholdPx: press.dragThreshold,
@@ -1333,10 +1337,12 @@ export default function CountdownKonva({
 
         if (intent.decision === "scroll") {
           press.active = false;
+          press.cancelledForScroll = true;
           press.movedEnough = true;
           press.startedDrag = false;
           press.suppressClick = true;
           press.scrollSnapshot = null;
+          releasePressTouchResources(press);
           clearDeferredTouchSelection();
           onPredragVisualSelectionCancel?.(obj.id);
           const clearedPredragSelectionLock = clearMatchingPredragSelectionLock({
@@ -1358,22 +1364,12 @@ export default function CountdownKonva({
           }
           draggingRef.current = false;
           window._isDragging = false;
-          setTimeout(() => {
-            if (pressRef.current.sessionId === listenerSessionId) {
-              pressRef.current.suppressClick = false;
-            }
-          }, 450);
-          cleanupGlobal(listenerSessionId);
           return;
         }
 
         if (intent.decision === "pending") return;
       } else if (dist < press.dragThreshold) {
         return;
-      }
-
-      if (isTouchLikePointerType(press.pointerType) && ev?.cancelable) {
-        try { ev.preventDefault(); } catch {}
       }
 
       // ✅ Se convirtió en drag intencional
@@ -1388,8 +1384,17 @@ export default function CountdownKonva({
       completedDragSessionIdRef.current = null;
 
       const node = rootRef.current;
-      if (!node) return;
+      if (!node) {
+        finalizeLocalDragCleanup(listenerSessionId, null);
+        return;
+      }
       if (isTouchLikePointerType(press.pointerType)) {
+        claimNativeTouchDrag({
+          lease: press.nativeScrollLease || null,
+          dragNode: node,
+          nativeEvent: ev,
+        });
+        press.nativeScrollLease = null;
         commitDeferredTouchSelection(null, {
           allowSameGestureDrag: true,
         });
@@ -1426,10 +1431,26 @@ export default function CountdownKonva({
         nodeDragging: Boolean(node?.isDragging?.()),
         nodeDraggable: Boolean(node?.draggable?.()),
       });
-      try { node.startDrag(); } catch {}
+      let startedDrag = false;
+      try {
+        node.startDrag();
+        startedDrag =
+          typeof node.isDragging === "function" ? Boolean(node.isDragging()) : true;
+      } catch {
+        startedDrag = false;
+      }
+      if (!startedDrag) {
+        onPredragVisualSelectionCancel?.(obj.id);
+        clearMatchingPredragSelectionLock({
+          elementId: obj.id,
+          selectionRuntime,
+          source: "countdown:touch-drag-start-failed",
+        });
+        finalizeLocalDragCleanup(listenerSessionId, node);
+      }
     };
 
-    const onUp = () => {
+    const onUp = (reason = "pointerup") => {
       const currentPressSessionId = pressRef.current.sessionId ?? null;
       const dragSessionId = dragSessionRef.current.sessionId ?? null;
       const completedDragSessionId = completedDragSessionIdRef.current ?? null;
@@ -1462,9 +1483,26 @@ export default function CountdownKonva({
       }
 
       pressRef.current.active = false;
+      const cancelledGesture =
+        reason === "pointercancel" ||
+        reason === "touchcancel" ||
+        reason === "window-blur";
+
+      if (pressRef.current.cancelledForScroll && !ownsActiveDragSession) {
+        resetPressStateForSession(listenerSessionId);
+        setNodeDraggable(node, false, "touch-scroll-release", {
+          listenerSessionId,
+          reason,
+        });
+        draggingRef.current = false;
+        window._isDragging = false;
+        cleanupGlobal(listenerSessionId);
+        return;
+      }
 
       if (!node) {
         if (!ownsActiveDragSession) {
+          if (cancelledGesture) clearDeferredTouchSelection();
           resetPressStateForSession(listenerSessionId);
           cleanupGlobal(listenerSessionId);
         }
@@ -1487,9 +1525,13 @@ export default function CountdownKonva({
           listenerSessionId,
           clearedPredragSelectionLock,
         });
-        commitDeferredTouchSelection(null, {
-          allowSameGestureDrag: false,
-        });
+        if (cancelledGesture) {
+          clearDeferredTouchSelection();
+        } else {
+          commitDeferredTouchSelection(null, {
+            allowSameGestureDrag: false,
+          });
+        }
         resetPressStateForSession(listenerSessionId);
         setNodeDraggable(node, false, "release-no-drag", {
           listenerSessionId,
@@ -1507,22 +1549,27 @@ export default function CountdownKonva({
 
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("touchmove", onMove, { capture: true, passive: false });
-    window.addEventListener("pointerup", onUp, true);
-    window.addEventListener("touchend", onUp, true);
-    window.addEventListener("touchcancel", onUp, true);
-    window.addEventListener("pointercancel", onUp, true);
-    window.addEventListener("blur", onUp, true);
+    const onPointerUp = () => onUp("pointerup");
+    const onTouchEnd = () => onUp("touchend");
+    const onTouchCancel = () => onUp("touchcancel");
+    const onPointerCancel = () => onUp("pointercancel");
+    const onBlur = () => onUp("window-blur");
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("touchend", onTouchEnd, true);
+    window.addEventListener("touchcancel", onTouchCancel, true);
+    window.addEventListener("pointercancel", onPointerCancel, true);
+    window.addEventListener("blur", onBlur, true);
 
     cleanupGlobalRef.current = {
       sessionId: listenerSessionId,
       cleanup: () => {
         window.removeEventListener("pointermove", onMove, true);
         window.removeEventListener("touchmove", onMove, true);
-        window.removeEventListener("pointerup", onUp, true);
-        window.removeEventListener("touchend", onUp, true);
-        window.removeEventListener("touchcancel", onUp, true);
-        window.removeEventListener("pointercancel", onUp, true);
-        window.removeEventListener("blur", onUp, true);
+        window.removeEventListener("pointerup", onPointerUp, true);
+        window.removeEventListener("touchend", onTouchEnd, true);
+        window.removeEventListener("touchcancel", onTouchCancel, true);
+        window.removeEventListener("pointercancel", onPointerCancel, true);
+        window.removeEventListener("blur", onBlur, true);
       },
     };
   }, [
@@ -1530,6 +1577,7 @@ export default function CountdownKonva({
     commitDeferredTouchSelection,
     cleanupGlobal,
     detachTransformerBeforeNativeDrag,
+    finalizeLocalDragCleanup,
     getMirroredSelectedIds,
     hasDragged,
     logCountdownRepeatDragDiag,
@@ -1537,6 +1585,7 @@ export default function CountdownKonva({
     obj.id,
     onPredragVisualSelectionCancel,
     onPredragVisualSelectionStart,
+    releasePressTouchResources,
     resetPressStateForSession,
     selectionRuntime,
     setNodeDraggable,
@@ -1547,9 +1596,21 @@ export default function CountdownKonva({
   // ---------------------------
   const handleDown = useCallback(
     (e) => {
+      const nativeScrollLease = allowNativeTouchScrollOnKonvaPress(e);
       e.cancelBubble = true;
       if (e?.evt) e.evt.cancelBubble = true;
-      if (pressRef.current.active) return;
+      if (pressRef.current.active) {
+        if (
+          nativeScrollLease &&
+          nativeScrollLease !== pressRef.current.nativeScrollLease
+        ) {
+          setTimeout(() => {
+            releaseNativeTouchScrollOnKonvaPress(nativeScrollLease);
+          }, 0);
+        }
+        return;
+      }
+      pressRef.current.suppressClick = false;
 
       if (typeof onHover === "function") {
         flushSync(() => {
@@ -1588,6 +1649,9 @@ export default function CountdownKonva({
           effectiveSelectionCount: selectionState.effectiveSelectionCount,
           runtimeSelectedIds: selectionState.runtimeSelectedIds || [],
         });
+        setTimeout(() => {
+          releaseNativeTouchScrollOnKonvaPress(nativeScrollLease);
+        }, 0);
         return;
       }
 
@@ -1602,6 +1666,7 @@ export default function CountdownKonva({
       pressRef.current.sessionId = nextSessionId;
       pressRef.current.startedAtMs = getEventTimeStampMs(ev);
       pressRef.current.active = true;
+      pressRef.current.cancelledForScroll = false;
       pressRef.current.movedEnough = false;
       pressRef.current.startedDrag = false;
       pressRef.current.suppressClick = false;
@@ -1610,6 +1675,7 @@ export default function CountdownKonva({
       pressRef.current.scrollSnapshot = isTouchLikePointerType(pointerType)
         ? createEditorScrollSnapshot(node)
         : null;
+      pressRef.current.nativeScrollLease = nativeScrollLease;
 
       // Guardar posición inicial del nodo
       pressRef.current.startNodeX = node.x();
@@ -1957,9 +2023,10 @@ export default function CountdownKonva({
   useEffect(() => {
     return () => {
       clearDeferredTouchSelection();
+      releasePressTouchResources();
       cleanupGlobal();
     };
-  }, [clearDeferredTouchSelection, cleanupGlobal]);
+  }, [clearDeferredTouchSelection, cleanupGlobal, releasePressTouchResources]);
 
   const liveRenderNode = rootRef.current || null;
   const shouldRenderLiveDragPose = Boolean(

@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-04-07.
+> Updated from code inspection on 2026-07-20.
 >
 > Documentation routing corrected on 2026-05-19.
 >
@@ -369,7 +369,7 @@ Observed startup flow:
 1. `ElementoCanvasRenderer.handlePressStart(...)` receives the pointer start.
 2. Press logic may select the element immediately.
 3. If the dragged element was not already selected, the renderer may arm same-gesture drag.
-4. When movement crosses threshold, `maybeFastStartDrag(...)` calls `onPredragVisualSelectionStart(...)`.
+4. For touch-like pointers, the shared `editorTouchDragIntent` gate must confirm drag before `maybeFastStartDrag(...)`, Gallery, Countdown, or manual-group activation may enable movement.
 5. `CanvasStageContentComposer.beginPredragVisualSelection(...)`:
    - clears hover
    - allocates drag-overlay session identity
@@ -378,6 +378,17 @@ Observed startup flow:
 6. `beginCanvasDragGesture(...)` starts the coordinated drag interaction and marks the interaction coordinator active.
 7. Drag samples call `syncControlledDragOverlayBounds(...)` from live-node geometry.
 8. The first eligible visible drag-overlay frame comes from `controlled-sync`, not from seeds.
+
+Current touch-intent gate:
+
+- `src/lib/editorTouchDragIntent.js` owns the shared direction/distance classification used by normal objects, preserved-group roots, manual multi-selection drag, Gallery, and Countdown; those renderers retain lifecycle adapters but do not own another gesture policy
+- `allowNativeTouchScrollOnKonvaPress(...)` leases the actual Konva hit leaf during the pending press by temporarily disabling that leaf's default prevention; the draggable root remains non-draggable and its position stays unchanged
+- touch selection for an unselected same-gesture candidate remains deferred while intent is pending
+- `resolveTouchDragIntent(...)` never promotes elapsed time or a stationary pause to drag: initial vertical-dominant movement stays scroll-owned, while horizontal-led movement beyond the shared thresholds can claim drag; once claimed, normal drag movement is unconstrained
+- a vertical or native-scroll decision cancels the candidate and remains sticky for the rest of the gesture
+- the generic renderer keeps post-scroll primary-selection suppression sticky until the next real press, without retaining terminal listeners per element; Gallery and Countdown likewise retain scroll ownership until their next press
+- only a confirmed horizontal-led drag calls `claimNativeTouchDrag(...)`, which restores the hit leaf's previous default-prevention value, claims the draggable root, and then prevents the confirming native move; the Stage keeps native `pan-y`, and the implementation does not rely on a late `touch-action` change to reclaim an initial vertical pan
+- release, `touchcancel`, `pointercancel`, blur, and unmount clear listeners and restore the leaf lease, draggable state, touch action, and deferred-selection state for the owning gesture only
 
 Current move behavior:
 
@@ -621,7 +632,7 @@ Current execution order for same-gesture drag startup is:
 
 1. pointer press enters `ElementoCanvasRenderer.handlePressStart(...)`
 2. press-time selection decision runs
-3. movement crosses threshold
+3. for touch-like pointers, the shared intent gate confirms drag; mouse remains threshold-based
 4. `maybeFastStartDrag(...)` requests predrag visual selection
 5. `beginPredragVisualSelection(...)` allocates drag-overlay session state and clears hover
 6. React commit mounts or updates the drag-overlay session state
@@ -772,7 +783,6 @@ This audit reduces ambiguity substantially, but the repo still lacks a few usefu
 
 - a bridge/event glossary listing producers and consumers of each custom event and `window.canvasEditor` method
 - a focused geometry/projection reference for stage-space to viewport-space conversion utilities
-- a current mobile/touch interaction note covering stage tap, scroll, marquee, and post-drag guards
 - a debug instrumentation guide for BOXFLOW and inline focus traces
 
 ## 15. Document Cleanup Plan

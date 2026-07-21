@@ -35,6 +35,7 @@ export default function useCanvasEditorStageInteraction({
     stage.on("pointerup", stopDragging);
     stage.on("mouseup", stopDragging);
     stage.on("touchcancel", stopDragging);
+    stage.on("pointercancel", stopDragging);
 
     return () => {
       stage.off("dragstart", setEditMode);
@@ -44,6 +45,7 @@ export default function useCanvasEditorStageInteraction({
       stage.off("pointerup", stopDragging);
       stage.off("mouseup", stopDragging);
       stage.off("touchcancel", stopDragging);
+      stage.off("pointercancel", stopDragging);
     };
   }, [stageRef]);
 

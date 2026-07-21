@@ -68,6 +68,7 @@ function SectionDecorationImage({
       offsetY={height / 2}
       rotation={Number(decoration?.rotation) || 0}
       listening={!hidden}
+      preventDefault={false}
       opacity={hidden ? 0 : 1}
       onClick={() => {
         onSelect?.();
@@ -169,6 +170,7 @@ function SectionEdgeDecorationImage({
         width={renderBox.bandWidth}
         height={renderBox.bandHeight}
         fill="rgba(255,255,255,0.001)"
+        preventDefault={false}
       />
       <KonvaImage
         image={image}
@@ -176,6 +178,7 @@ function SectionEdgeDecorationImage({
         y={renderBox.imageY}
         width={renderBox.imageWidth}
         height={renderBox.imageHeight}
+        preventDefault={false}
       />
     </Group>
   );

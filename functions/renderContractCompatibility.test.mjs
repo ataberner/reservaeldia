@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { JSDOM } from "jsdom";
 import {
   createRepresentativeCompatibilityWarningDraftFixture,
@@ -35,6 +36,124 @@ const { resolveFunctionalCtaContract } = requireBuiltModule(
 const FIXED_SECTION = [{ id: "section-1", orden: 1, altoModo: "fijo", altura: 600 }];
 const CTA_SECTION = [{ id: "section-details", orden: 1, altoModo: "fijo", altura: 600 }];
 const PANTALLA_SECTION = [{ id: "section-hero", orden: 1, altoModo: "pantalla", altura: 600 }];
+
+function createPreviewMobileScrollRuntimeHarness(html) {
+  const runtimeSource = [...String(html || "").matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((match) => match[1])
+    .find((source) => source.includes('preview:mobile-scroll:enable'));
+  assert.ok(runtimeSource, "generated preview HTML must include the native-root marker runtime");
+
+  const animationFrames = [];
+  const documentListeners = {};
+  const bodyListeners = {};
+  const windowListeners = {};
+  const scrollToCalls = [];
+  const documentElement = {
+    dataset: {
+      preview: "1",
+      previewViewport: "mobile",
+      previewLayoutMode: "parity",
+    },
+    scrollTop: 0,
+    scrollHeight: 1400,
+    clientHeight: 300,
+  };
+  const body = {
+    dataset: {
+      preview: "1",
+      previewViewport: "mobile",
+      previewLayoutMode: "parity",
+    },
+    scrollTop: 0,
+    scrollHeight: 1400,
+    clientHeight: 300,
+    addEventListener(type, listener) {
+      (bodyListeners[type] ??= []).push(listener);
+    },
+  };
+  const frameDocument = {
+    documentElement,
+    body,
+    scrollingElement: documentElement,
+    readyState: "complete",
+    addEventListener(type, listener) {
+      (documentListeners[type] ??= []).push(listener);
+    },
+  };
+  const frameWindow = {
+    self: {},
+    top: {},
+    __previewViewportKind: "mobile",
+    innerHeight: 300,
+    scrollY: 0,
+    pageYOffset: 0,
+    addEventListener(type, listener) {
+      (windowListeners[type] ??= []).push(listener);
+    },
+    requestAnimationFrame(listener) {
+      animationFrames.push(listener);
+      return animationFrames.length;
+    },
+    setTimeout(listener) {
+      listener();
+      return 1;
+    },
+    scrollTo(_x, y) {
+      const nextTop = Number(y) || 0;
+      scrollToCalls.push(nextTop);
+      this.scrollY = nextTop;
+      this.pageYOffset = nextTop;
+      documentElement.scrollTop = nextTop;
+    },
+    getComputedStyle() {
+      return { overflowY: "visible" };
+    },
+  };
+
+  runInNewContext(runtimeSource, {
+    window: frameWindow,
+    document: frameDocument,
+    isFinite,
+    Number,
+    Math,
+    String,
+    RegExp,
+  });
+
+  return {
+    body,
+    bodyListeners,
+    documentElement,
+    documentListeners,
+    frameDocument,
+    frameWindow,
+    scrollToCalls,
+    dispatchWindowEvent(type, event = {}) {
+      (windowListeners[type] || []).forEach((listener) => listener(event));
+    },
+    emitScroll(target = frameDocument) {
+      const event = { target };
+      (documentListeners.scroll || []).forEach((listener) => listener(event));
+      if (target === body) {
+        (bodyListeners.scroll || []).forEach((listener) => listener(event));
+      }
+    },
+    emitWheel(event) {
+      (documentListeners.wheel || []).forEach((listener) => listener(event));
+    },
+    flushAnimationFrames() {
+      while (animationFrames.length) {
+        animationFrames.shift()();
+      }
+    },
+    setNativeRootScrollTop(value) {
+      const nextTop = Number(value) || 0;
+      documentElement.scrollTop = nextTop;
+      frameWindow.scrollY = nextTop;
+      frameWindow.pageYOffset = nextTop;
+    },
+  };
+}
 
 function createPreservedTextDecorationGroup(overrides = {}) {
   return {
@@ -963,15 +1082,145 @@ test("renders section mobile layout mode preserve as a smart reflow opt-out", ()
   assert.match(preserveHtml, /skip:mobileLayoutPreserve/);
 });
 
-test("preview mobile scroll runtime avoids synthetic double-scroll", () => {
+test("preview mobile scroll runtime leaves touch and pointer scrolling native to the iframe root", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+  const harness = createPreviewMobileScrollRuntimeHarness(html);
+
+  assert.match(html, /window\.addEventListener\("preview:mobile-scroll:enable", boot\)/);
+  assert.match(html, /__previewMobileScrollAuthority = "document\.scrollingElement"/);
+  assert.doesNotMatch(html, /redirectWheelToRoot/);
+  assert.doesNotMatch(html, /setRootScrollTop/);
+  assert.equal(harness.documentListeners.wheel?.length || 0, 0);
+  assert.equal(harness.documentListeners.touchstart?.length || 0, 0);
+  assert.equal(harness.documentListeners.touchmove?.length || 0, 0);
+  assert.equal(harness.documentListeners.pointerdown?.length || 0, 0);
+  assert.equal(harness.documentListeners.pointermove?.length || 0, 0);
+  assert.equal(harness.documentListeners.scroll?.length || 0, 0);
+  assert.equal(harness.bodyListeners.scroll?.length || 0, 0);
+
+  harness.dispatchWindowEvent("preview:mobile-scroll:enable");
+  assert.equal(
+    harness.documentListeners.wheel?.length,
+    undefined,
+    "repeated shell enable signals must not register a wheel handler"
+  );
+
+  harness.setNativeRootScrollTop(12);
+  harness.emitScroll(harness.frameDocument);
+  harness.flushAnimationFrames();
+  harness.body.scrollTop = 12;
+  harness.emitScroll(harness.body);
+  harness.flushAnimationFrames();
+
+  assert.equal(
+    harness.documentElement.scrollTop,
+    12,
+    "a delayed body mirror must not add the first native touch delta again"
+  );
+  assert.deepEqual(
+    harness.scrollToCalls,
+    [],
+    "touch scroll events must not trigger programmatic root writes"
+  );
+
+  harness.setNativeRootScrollTop(4);
+  harness.emitScroll(harness.frameDocument);
+  harness.body.scrollTop = 4;
+  harness.emitScroll(harness.body);
+  harness.flushAnimationFrames();
+  assert.equal(
+    harness.documentElement.scrollTop,
+    4,
+    "changing direction must keep the native root position"
+  );
+});
+
+test("preview mobile scroll runtime leaves wheel native and never writes root position", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+  const harness = createPreviewMobileScrollRuntimeHarness(html);
+  let preventDefaultCalls = 0;
+  const wheelEvent = {
+    target: harness.body,
+    defaultPrevented: false,
+    cancelable: true,
+    ctrlKey: false,
+    metaKey: false,
+    deltaX: 0,
+    deltaY: 24,
+    deltaMode: 0,
+    isTrusted: true,
+    sourceCapabilities: { firesTouchEvents: true },
+    preventDefault() {
+      preventDefaultCalls += 1;
+    },
+  };
+
+  harness.emitWheel(wheelEvent);
+  harness.emitWheel(wheelEvent);
+  harness.setNativeRootScrollTop(24);
+
+  assert.equal(preventDefaultCalls, 0);
+  assert.equal(harness.documentElement.scrollTop, 24);
+  assert.deepEqual(harness.scrollToCalls, []);
+
+  harness.documentElement.scrollHeight = 900;
+  harness.dispatchWindowEvent("resize");
+  harness.dispatchWindowEvent("preview:mobile-scroll:enable");
+  assert.equal(harness.documentElement.scrollTop, 24);
+  assert.deepEqual(
+    harness.scrollToCalls,
+    [],
+    "range changes and repeated events must not create programmatic scroll writes"
+  );
+
+  harness.setNativeRootScrollTop(8);
+  harness.emitWheel({ ...wheelEvent, deltaY: -16 });
+  assert.equal(harness.documentElement.scrollTop, 8);
+  assert.deepEqual(
+    harness.scrollToCalls,
+    [],
+    "the runtime must not reverse position without native user scroll"
+  );
+});
+
+test("generated geometry establishes section heights before deferred mobile layout", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+  const smartLayoutSource = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((match) => match[1])
+    .find((source) => source.includes("setTimeout(runOnce, 1800)"));
+
+  assert.match(
+    html,
+    /Establish section heights[\s\S]*?compute\(\);[\s\S]*?<\/script>/
+  );
+  assert.match(
+    html,
+    /html, body\s*\{[\s\S]*?height:\s*auto;[\s\S]*?min-height:\s*100%;/
+  );
+  assert.ok(smartLayoutSource, "generated HTML must include Mobile Smart Layout");
+  assert.match(smartLayoutSource, /var booted = false;/);
+  assert.match(smartLayoutSource, /if \(booted\) return;/);
+  assert.doesNotMatch(smartLayoutSource, /scrollTop\s*=/);
+  assert.doesNotMatch(smartLayoutSource, /scrollTo\s*\(/);
+  assert.doesNotMatch(smartLayoutSource, /scrollBy\s*\(/);
+});
+
+test("mobile smart layout exposes logs only to explicit preview diagnostics or MSL flags", () => {
   const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
     isPreview: true,
   });
 
-  assert.match(html, /window\.addEventListener\("preview:mobile-scroll:enable", boot\)/);
-  assert.match(html, /if \(!nativeEvent\.cancelable\) return false;/);
-  assert.match(html, /var rootDeltaAlreadyApplied = Math\.max\(0, rootTop - lastKnownRootScrollTop\);/);
-  assert.match(html, /var bodyTopToTransfer = Math\.max\(0, bodyTop - rootDeltaAlreadyApplied\);/);
+  assert.match(
+    html,
+    /var MSL_DEBUG = Boolean\(window\.__PREVIEW_SCROLL_DIAG_ACTIVE\) \|\| readDebugFlag\("mslDebug"\);/
+  );
+  assert.match(html, /if \(!MSL_DEBUG\) return;/);
 });
 
 test("keeps grouped text plus icon compositions nested under one authored object id", () => {

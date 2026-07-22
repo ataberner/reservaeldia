@@ -1449,235 +1449,16 @@ export function generarHTMLDesdeSecciones(
     return runtimeViewport || htmlViewport || bodyViewport;
   }
 
-  function toPositiveNumber(value){
-    var numeric = Number(value);
-    return isFinite(numeric) && numeric > 0 ? numeric : 0;
-  }
-
   var started = false;
-  var normalizingScrollRoot = false;
-  var rootScrollRememberRaf = 0;
-  var lastKnownRootScrollTop = 0;
 
   function shouldStart(){
     return isPreviewDocument() && detectEmbeddedContext() && getPreviewViewportKind() === "mobile";
   }
 
-  function getRootScrollTop(){
-    var docEl = document.documentElement;
-    var scrollingElement = document.scrollingElement;
-    return Math.max(
-      toPositiveNumber(window.scrollY),
-      toPositiveNumber(window.pageYOffset),
-      toPositiveNumber(docEl && docEl.scrollTop),
-      toPositiveNumber(scrollingElement && scrollingElement.scrollTop)
-    );
-  }
-
-  function clamp(value, min, max){
-    return Math.max(min, Math.min(max, value));
-  }
-
-  function getRootScrollingElement(){
-    return document.scrollingElement || document.documentElement || document.body || null;
-  }
-
-  function getMaxRootScrollTop(){
-    var docEl = document.documentElement;
-    var body = document.body;
-    var scrollingElement = getRootScrollingElement();
-    var scrollHeight = Math.max(
-      toPositiveNumber(scrollingElement && scrollingElement.scrollHeight),
-      toPositiveNumber(docEl && docEl.scrollHeight),
-      toPositiveNumber(body && body.scrollHeight)
-    );
-    var clientHeight = Math.max(
-      toPositiveNumber(window.innerHeight),
-      toPositiveNumber(docEl && docEl.clientHeight),
-      toPositiveNumber(scrollingElement && scrollingElement.clientHeight)
-    );
-    return Math.max(0, scrollHeight - clientHeight);
-  }
-
-  function setRootScrollTop(nextTop){
-    var targetTop = Math.max(0, toPositiveNumber(nextTop));
-    var docEl = document.documentElement;
-    var body = document.body;
-    var scrollingElement = getRootScrollingElement();
-
-    if (typeof window.scrollTo === "function") {
-      window.scrollTo(0, targetTop);
-    }
-    if (scrollingElement && scrollingElement !== body) {
-      scrollingElement.scrollTop = targetTop;
-    }
-    if (docEl) {
-      docEl.scrollTop = targetTop;
-    }
-    if (body && body !== scrollingElement) {
-      body.scrollTop = 0;
-    }
-    lastKnownRootScrollTop = targetTop;
-    return targetTop;
-  }
-
-  function rememberRootScrollTopSoon(){
-    if (rootScrollRememberRaf) return;
-    var raf = window.requestAnimationFrame || function(cb){
-      return window.setTimeout(cb, 16);
-    };
-    rootScrollRememberRaf = raf(function(){
-      rootScrollRememberRaf = 0;
-      if (!normalizingScrollRoot) {
-        lastKnownRootScrollTop = getRootScrollTop();
-      }
-    });
-  }
-
-  function normalizeWheelDelta(delta, deltaMode){
-    var value = Number(delta);
-    if (!isFinite(value) || value === 0) return 0;
-    if (Number(deltaMode) === 1) {
-      return value * 16;
-    }
-    if (Number(deltaMode) === 2) {
-      return value * Math.max(
-        1,
-        toPositiveNumber(window.innerHeight),
-        toPositiveNumber(document.documentElement && document.documentElement.clientHeight)
-      );
-    }
-    return value;
-  }
-
-  function canElementConsumeWheel(element, deltaY){
-    if (!element) return false;
-    if (
-      element === document.body ||
-      element === document.documentElement ||
-      element === document.scrollingElement
-    ) {
-      return false;
-    }
-
-    var computedStyle = null;
-    try {
-      computedStyle = window.getComputedStyle ? window.getComputedStyle(element) : null;
-    } catch(_error) {
-      computedStyle = null;
-    }
-
-    var overflowY = String(computedStyle && computedStyle.overflowY || "").toLowerCase();
-    if (!/(auto|scroll|overlay)/.test(overflowY)) return false;
-
-    var scrollHeight = toPositiveNumber(element.scrollHeight);
-    var clientHeight = toPositiveNumber(element.clientHeight);
-    if (scrollHeight <= clientHeight + 1) return false;
-
-    var scrollTop = toPositiveNumber(element.scrollTop);
-    if (deltaY < 0) return scrollTop > 0.5;
-    if (deltaY > 0) return scrollTop + clientHeight < scrollHeight - 0.5;
-    return true;
-  }
-
-  function findWheelScrollableAncestor(target, deltaY){
-    var current = target;
-    while (current && current !== document.body && current !== document.documentElement) {
-      if (current.nodeType === 1 && canElementConsumeWheel(current, deltaY)) {
-        return current;
-      }
-      current = current.parentElement || current.parentNode || null;
-    }
-    return null;
-  }
-
-  function redirectWheelToRoot(nativeEvent){
-    if (!shouldStart() || !nativeEvent || nativeEvent.defaultPrevented) return false;
-    if (nativeEvent.ctrlKey || nativeEvent.metaKey) return false;
-    if (!nativeEvent.cancelable) return false;
-
-    var deltaY = normalizeWheelDelta(nativeEvent.deltaY, nativeEvent.deltaMode);
-    var deltaX = normalizeWheelDelta(nativeEvent.deltaX, nativeEvent.deltaMode);
-    if (Math.abs(deltaY) < 0.5 && Math.abs(deltaX) < 0.5) return false;
-
-    if (findWheelScrollableAncestor(nativeEvent.target, deltaY)) {
-      return false;
-    }
-
-    var rootBefore = getRootScrollTop();
-    var rootTarget = clamp(rootBefore + deltaY, 0, getMaxRootScrollTop());
-    if (Math.abs(rootTarget - rootBefore) < 0.5) return false;
-
-    if (nativeEvent.cancelable) {
-      nativeEvent.preventDefault();
-    }
-    setRootScrollTop(rootTarget);
-    return true;
-  }
-
-  function normalizeBodyScrollToRoot(){
-    if (!shouldStart() || normalizingScrollRoot) return false;
-
-    var body = document.body;
-    var docEl = document.documentElement;
-    var scrollingElement = document.scrollingElement;
-    if (!body || !docEl) return false;
-    if (body === scrollingElement || body === docEl) return false;
-
-    var bodyTop = toPositiveNumber(body.scrollTop);
-    if (bodyTop <= 0.5) {
-      rememberRootScrollTopSoon();
-      return false;
-    }
-
-    var rootTop = getRootScrollTop();
-    var rootDeltaAlreadyApplied = Math.max(0, rootTop - lastKnownRootScrollTop);
-    var bodyTopToTransfer = Math.max(0, bodyTop - rootDeltaAlreadyApplied);
-    var targetTop = Math.max(rootTop, rootTop + bodyTopToTransfer);
-
-    normalizingScrollRoot = true;
-    try {
-      if (typeof window.scrollTo === "function") {
-        window.scrollTo(0, targetTop);
-      }
-      if (scrollingElement && scrollingElement !== body) {
-        scrollingElement.scrollTop = targetTop;
-      }
-      docEl.scrollTop = targetTop;
-      body.scrollTop = 0;
-      lastKnownRootScrollTop = targetTop;
-    } catch(_error) {
-      normalizingScrollRoot = false;
-      return false;
-    }
-
-    var raf = window.requestAnimationFrame || function(cb){
-      return window.setTimeout(cb, 16);
-    };
-    raf(function(){
-      normalizingScrollRoot = false;
-    });
-    return true;
-  }
-
   function boot(){
     if (started || !shouldStart()) return;
     started = true;
-    lastKnownRootScrollTop = getRootScrollTop();
-
-    document.addEventListener("wheel", function(nativeEvent){
-      redirectWheelToRoot(nativeEvent);
-    }, { passive: false, capture: true });
-
-    document.addEventListener("scroll", function(){
-      normalizeBodyScrollToRoot();
-    }, { passive: true, capture: true });
-
-    if (document.body && document.body.addEventListener) {
-      document.body.addEventListener("scroll", function(){
-        normalizeBodyScrollToRoot();
-      }, { passive: true });
-    }
+    window.__previewMobileScrollAuthority = "document.scrollingElement";
   }
 
   window.addEventListener("preview:mobile-scroll:enable", boot);
@@ -1706,7 +1487,8 @@ export function generarHTMLDesdeSecciones(
 
     html, body {
       width: 100%;
-      height: 100%;
+      height: auto;
+      min-height: 100%;
       background: white;
       overflow-x: hidden;
       font-family: sans-serif;
@@ -2822,7 +2604,9 @@ export function generarHTMLDesdeSecciones(
         setTimeout(scheduleCompute, 250);
       });
 
-      scheduleCompute();
+      // The invitation DOM is complete at this point. Establish section heights
+      // in the current task so the root has its native range before interaction.
+      compute();
     })();
   </script>
 

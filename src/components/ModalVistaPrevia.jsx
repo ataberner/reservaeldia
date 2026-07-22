@@ -22,6 +22,7 @@ import {
 import {
   applyPreviewFrameScale,
   buildPreviewFrameSrcDoc,
+  PREVIEW_FRAME_SCROLL_AUTHORITIES,
   resolvePreviewFrameLayoutMode,
 } from "@/components/preview/previewFrameRuntime";
 import PreviewPublishNoticeLayer from "@/components/preview/PreviewPublishNoticeLayer";
@@ -45,9 +46,34 @@ const MOBILE_VIEWPORT_TOGGLE_OPTIONS = [
   },
 ];
 
+function PreviewIframeDocument({
+  htmlContent,
+  iframeTitle,
+  previewViewport,
+  previewLayoutMode,
+  previewSurface = "",
+  scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
+  onLoad,
+  style,
+}) {
+  return (
+    <iframe
+      srcDoc={buildPreviewFrameSrcDoc(htmlContent, {
+        previewViewport,
+        layoutMode: previewLayoutMode,
+        previewSurface,
+        scrollAuthority,
+      })}
+      sandbox="allow-scripts allow-same-origin"
+      title={iframeTitle}
+      onLoad={onLoad}
+      style={style}
+    />
+  );
+}
+
 function PreviewFrame({
   htmlContent,
-  iframeKey,
   iframeTitle,
   scale,
   previewViewport,
@@ -57,13 +83,16 @@ function PreviewFrame({
   scaledWidth,
   scaledHeight,
   onLoad,
+  previewSurface = "",
+  scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
 }) {
   return (
     <div
-      className="overflow-hidden bg-white"
+      className="bg-white"
       style={{
         width: scaledWidth,
         height: scaledHeight,
+        overflow: "hidden",
       }}
     >
       <div
@@ -75,18 +104,20 @@ function PreviewFrame({
         }}
       >
         {htmlContent ? (
-          <iframe
-            key={iframeKey}
-            srcDoc={buildPreviewFrameSrcDoc(htmlContent, {
-              previewViewport,
-              layoutMode: previewLayoutMode,
-            })}
-            sandbox="allow-scripts allow-same-origin"
-            title={iframeTitle}
+          // srcDoc owns iframe navigation. A post-commit key change would discard native scroll.
+          <PreviewIframeDocument
+            htmlContent={htmlContent}
+            iframeTitle={iframeTitle}
+            previewViewport={previewViewport}
+            previewLayoutMode={previewLayoutMode}
+            previewSurface={previewSurface}
+            scrollAuthority={scrollAuthority}
             onLoad={(event) => {
               onLoad?.({
                 event,
                 scale,
+                previewSurface,
+                scrollAuthority,
               });
             }}
             style={{
@@ -187,7 +218,6 @@ function DesktopPreviewShell({
   frameWidth,
   frameHeight,
   htmlContent,
-  iframeKey,
   onLoad,
   scale,
   previewLayoutMode,
@@ -224,7 +254,6 @@ function DesktopPreviewShell({
         >
           <PreviewFrame
             htmlContent={htmlContent}
-            iframeKey={iframeKey}
             iframeTitle="Vista previa escritorio"
             scale={scale}
             previewViewport="desktop"
@@ -247,10 +276,11 @@ function MobilePreviewShell({
   frameWidth,
   frameHeight,
   htmlContent,
-  iframeKey,
   onLoad,
   scale,
   previewLayoutMode,
+  previewSurface = "",
+  scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
   variant = "compact",
 }) {
   const shellClass =
@@ -261,7 +291,10 @@ function MobilePreviewShell({
         : "shadow-[0_18px_38px_rgba(111,59,192,0.16)]";
 
   return (
-    <div className="relative max-w-full" style={{ width: cardWidth, height: cardHeight }}>
+    <div
+      className="relative max-w-full"
+      style={{ width: cardWidth, height: cardHeight }}
+    >
       <div
         className={`absolute inset-0 overflow-hidden rounded-[34px] border border-[#d9cbed] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,242,255,0.96))] ${shellClass}`}
         style={{ borderWidth: 6 }}
@@ -274,7 +307,6 @@ function MobilePreviewShell({
         >
           <PreviewFrame
             htmlContent={htmlContent}
-            iframeKey={iframeKey}
             iframeTitle="Vista previa movil"
             scale={scale}
             previewViewport="mobile"
@@ -284,6 +316,8 @@ function MobilePreviewShell({
             scaledWidth={frameWidth}
             scaledHeight={frameHeight}
             onLoad={onLoad}
+            previewSurface={previewSurface}
+            scrollAuthority={scrollAuthority}
           />
         </div>
       </div>
@@ -307,9 +341,7 @@ export default function ModalVistaPrevia({
   publishValidation = null,
   publishValidationPending = false,
 }) {
-  const [iframeKey, setIframeKey] = useState(0);
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
-  const [fullscreenIframeKey, setFullscreenIframeKey] = useState(0);
   const [noticePosition, setNoticePosition] = useState(null);
   const [windowHeight, setWindowHeight] = useState(() =>
     typeof window === "undefined" ? 820 : window.innerHeight || 820
@@ -375,12 +407,6 @@ export default function ModalVistaPrevia({
   });
 
   useEffect(() => {
-    if (!visible) return;
-    setIframeKey((k) => k + 1);
-    setFullscreenIframeKey((k) => k + 1);
-  }, [visible, htmlContent]);
-
-  useEffect(() => {
     if (visible) return;
     setFullscreenPreview(false);
     setMobilePreviewViewport(PREVIEW_MODAL_VIEWPORTS.MOBILE);
@@ -390,11 +416,6 @@ export default function ModalVistaPrevia({
     if (!visible || !isMobileViewport) return;
     setMobilePreviewViewport(PREVIEW_MODAL_VIEWPORTS.MOBILE);
   }, [visible, isMobileViewport]);
-
-  useEffect(() => {
-    if (!fullscreenPreview) return;
-    setFullscreenIframeKey((k) => k + 1);
-  }, [fullscreenPreview]);
 
   useEffect(() => {
     if (!visible || typeof document === "undefined" || typeof window === "undefined") return;
@@ -576,10 +597,17 @@ export default function ModalVistaPrevia({
     });
   };
 
-  const handleMobileLoad = ({ event, scale }) => {
+  const handleMobileLoad = ({
+    event,
+    scale,
+    previewSurface = "",
+    scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
+  }) => {
     if (!htmlContent) return;
     applyPreviewFrameScale(event, scale, "mobile", {
       layoutMode: previewLayoutMode,
+      previewSurface,
+      scrollAuthority,
     });
     captureCountdownAuditFromHtmlString(htmlContent, {
       stage: showPublishActions
@@ -600,7 +628,6 @@ export default function ModalVistaPrevia({
       frameWidth={layout.desktopFrame.scaledWidth}
       frameHeight={layout.desktopFrame.scaledHeight}
       htmlContent={htmlContent}
-      iframeKey={`desktop-${iframeKey}`}
       scale={layout.desktopFrame.scale}
       previewLayoutMode={previewLayoutMode}
       variant={desktopVariant}
@@ -616,7 +643,6 @@ export default function ModalVistaPrevia({
       frameWidth={layout.mobileFrame.scaledWidth}
       frameHeight={layout.mobileFrame.scaledHeight}
       htmlContent={htmlContent}
-      iframeKey={`mobile-${iframeKey}`}
       scale={layout.mobileFrame.scale}
       previewLayoutMode={previewLayoutMode}
       variant={mobileVariant}
@@ -631,11 +657,12 @@ export default function ModalVistaPrevia({
       frameWidth={mobileFocusedLayout.frame.scaledWidth}
       frameHeight={mobileFocusedLayout.frame.scaledHeight}
       htmlContent={htmlContent}
-      iframeKey={`mobile-focused-${iframeKey}`}
       scale={mobileFocusedLayout.frame.scale}
       previewLayoutMode={previewLayoutMode}
       variant="showcase"
       onLoad={handleMobileLoad}
+      previewSurface="mobile-preview-focused"
+      scrollAuthority={PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY}
     />
   );
 
@@ -646,7 +673,6 @@ export default function ModalVistaPrevia({
       frameWidth={desktopFocusedLayout.frame.scaledWidth}
       frameHeight={desktopFocusedLayout.frame.scaledHeight}
       htmlContent={htmlContent}
-      iframeKey={`desktop-focused-${iframeKey}`}
       scale={desktopFocusedLayout.frame.scale}
       previewLayoutMode={previewLayoutMode}
       variant="stacked"
@@ -679,18 +705,15 @@ export default function ModalVistaPrevia({
         </button>
 
         {htmlContent ? (
-          <iframe
-            key={`fullscreen-${fullscreenIframeKey}`}
-            srcDoc={buildPreviewFrameSrcDoc(htmlContent, {
-              previewViewport: fullscreenViewport,
-              layoutMode: previewLayoutMode,
-            })}
-            sandbox="allow-scripts allow-same-origin"
-            title={
+          <PreviewIframeDocument
+            htmlContent={htmlContent}
+            iframeTitle={
               fullscreenViewport === PREVIEW_MODAL_VIEWPORTS.MOBILE
                 ? "Vista previa movil en pantalla completa"
                 : "Vista previa escritorio en pantalla completa"
             }
+            previewViewport={fullscreenViewport}
+            previewLayoutMode={previewLayoutMode}
             style={{
               width: "100%",
               height: "100%",
@@ -702,7 +725,9 @@ export default function ModalVistaPrevia({
                 event,
                 1,
                 fullscreenViewport,
-                { layoutMode: previewLayoutMode }
+                {
+                  layoutMode: previewLayoutMode,
+                }
               );
             }}
           />

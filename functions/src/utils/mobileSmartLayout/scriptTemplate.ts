@@ -60,7 +60,7 @@ export function buildScript(cfg: NormalizedConfig): string {
 
     return false;
   }
-  var MSL_DEBUG = readDebugFlag("mslDebug");
+  var MSL_DEBUG = Boolean(window.__PREVIEW_SCROLL_DIAG_ACTIVE) || readDebugFlag("mslDebug");
   var MSL_VERBOSE = readDebugFlag("mslVerbose");
   function dbg(label, payload){
     if (!MSL_DEBUG) return;
@@ -1311,7 +1311,10 @@ export function buildScript(cfg: NormalizedConfig): string {
     });
   }
 
+  var booted = false;
   function boot(){
+    if (booted) return;
+    booted = true;
     mslLog("boot", { cfg: CFG });
     runOnce();
     setTimeout(runOnce, 150);

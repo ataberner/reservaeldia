@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-04-27.
+> Updated from code inspection on 2026-07-22.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -94,6 +94,8 @@ Gallery preview/publish viewer behavior is governed by [`GALLERY_VIEWER_RENDER_C
 
 The modal does not request separate HTML for desktop and mobile. It uses the same HTML and changes the iframe viewport, wrapper scale, and preview metadata.
 
+Each visible preview surface mounts its iframe once when the HTML becomes available. Opening the modal, receiving that HTML, measuring the shell, or entering fullscreen must not schedule a post-commit `key` change that replaces the already loaded iframe document. A real `srcDoc` change remains the document-navigation authority; closing or switching to a different preview surface unmounts it normally.
+
 Before iframe scripts run, `buildPreviewFrameSrcDoc(...)` injects:
 
 - `data-preview-viewport="desktop|mobile"`
@@ -130,22 +132,57 @@ Parity mode means preview tries to match published mobile behavior. It does not 
 
 ## 7. Mobile Scroll Ownership
 
-In mobile preview, scroll ownership belongs to the iframe document root:
+The focused mobile mockup (`mobile-preview-focused`) uses `<body>` as its only
+effective scroll authority:
 
-- `<html>` is the scroll root
-- `<body>` remains visible-height content
-- the outer preview wrapper clips and scales the iframe but should not become the invitation scroll authority
+- `<html>` is a fixed-height viewport with `overflow-y:hidden`
+- `<body>` has viewport height with `overflow-y:auto`; invitation content grows inside it
+- `document.scrollingElement` may still report `<html>` in Chrome, so focused-preview code resolves the effective root from the explicit `data-preview-scroll-authority="body"` contract
+- the outer preview wrapper continues to clip and scale the logical `390 x 844` iframe; it is not a scroll authority
 
-The generated preview-only mobile scroll runtime starts only for preview, embedded, mobile documents. It waits for `preview:mobile-scroll:enable`, then normalizes wheel/body scroll back to the root document scroll.
+This exception is owned by `buildPreviewFrameSrcDoc(...)` and
+`applyPreviewFrameScale(...)` in the frontend iframe shell. It is enabled only
+when the viewport is mobile, layout mode is parity, the surface is
+`mobile-preview-focused`, and the requested authority is `body`. Paired mobile
+preview, fullscreen preview, desktop preview, published HTML, share-image
+rendering, and dashboard captures retain their existing contracts.
+
+Physical Android 15 / Chrome 150 A/B evidence established the cause on
+2026-07-22: variants with both `<html>` and `<body>` effectively scrollable
+failed the first gesture while scroll transferred from small `bodyScrollTop`
+values to `<html>`. The otherwise identical `body-root-only` variant scrolled
+on the first gesture with `<html>` fixed at zero. Transform, scale, iframe
+dimensions, and mockup clipping were unchanged. The cause is therefore double
+effective scroll authority and first-gesture transfer/latching between the two
+surfaces, not iframe scaling.
+
+The generated preview-only mobile marker still performs no input handling. It
+does not intercept touch, pointer, wheel, or scroll events and never converts
+input into `scrollTop`, `scrollTo`, or `scrollBy` writes. The focused srcDoc
+adapter changes its authority marker to `body` and adapts generated preview
+target scrolling to the explicit effective-root resolver instead of trusting
+`document.scrollingElement` alone.
 
 Constraints:
 
 - scroll must work inside mobile preview
 - the preview shell must not distort invitation layout to make scroll work
-- body-level scroll leakage should be redirected to the root
-- synthetic wheel redirection must run only for cancelable wheel events, so native scroll is not doubled
-- body scroll leakage must not be added again when the document root already consumed the same gesture
+- wheel scrolling stays native on the iframe document root, including wheel events emitted on touch-capable devices
+- touch scroll must not rewrite `scrollTop` after the document root already consumed the gesture
+- a delayed or mirrored `body.scrollTop` value must not be treated as a new delta
 - hiding scrollbar chrome is allowed; disabling scroll is not
+- Gallery and gift modals keep using their existing `body` overflow lock and restoration
+- RSVP background locking is declared only by the focused body-root preview contract and preserves the current body position while the modal is open
+
+Generated base `html` and `body` use `height:auto; min-height:100%`, so the root can
+represent content taller than the viewport in preview and publication. The
+focused mobile shell overrides that base geometry with its body-root contract.
+The base section geometry runtime performs its first `compute()` synchronously
+after the generated invitation DOM is present. This establishes fixed-section
+heights and a root scroll range before the document becomes interactable;
+subsequent RAF/resize work may refine geometry but does not own scroll position.
+Mobile Smart Layout boot is idempotent so `DOMContentLoaded` plus `load` cannot
+schedule duplicate 150/600/1800 ms passes and never owns either root position.
 
 ## 8. Mobile Height Model
 

@@ -23,6 +23,7 @@ import {
   getAssistantGuidedTourMessage,
   getAssistantGuidedTourPositionKey,
   reconcileAssistantGuidedTourPosition,
+  resolveAssistantGuidedTourActivation,
   resolveAssistantGuidedTourOverlayRect,
   resolveAssistantGuidedTourTargetId,
   resolveAssistantGuidedTourTooltipPosition,
@@ -917,7 +918,11 @@ export default function AssistantGuidedTour({
   const tooltipRef = useRef(null);
   const spotlightRef = useRef(null);
   const positionKeyRef = useRef("");
-  const assistantActivationSessionRef = useRef("");
+  const assistantActivationSessionRef = useRef(
+    assistantState?.active === true
+      ? createAssistantGuidedTourSessionKey({ draftKey, userUid })
+      : ""
+  );
   const fieldAdvancedByTransitionRef = useRef({});
   const fieldEditSignalConsumedRef = useRef({});
   const contentAdvancedRef = useRef("");
@@ -1492,17 +1497,21 @@ export default function AssistantGuidedTour({
   ]);
 
   useEffect(() => {
-    if (!sessionKey) return;
-    if (!editorReady || editorReadOnly) return;
-    if (!preferencesLoaded || assistantTourOptOut === true) {
-      return;
-    }
-    if (closedSessionKey === sessionKey || completedSessionKey === sessionKey) return;
-    if (assistantActive) return;
-    if (assistantActivationSessionRef.current === sessionKey) return;
-    if (typeof onRequestAssistantMode !== "function") return;
+    const activation = resolveAssistantGuidedTourActivation({
+      sessionKey,
+      activationSessionKey: assistantActivationSessionRef.current,
+      assistantActive,
+      editorReady,
+      preferencesLoaded,
+      assistantTourOptOut,
+      editorReadOnly,
+      sessionClosed: closedSessionKey === sessionKey,
+      sessionCompleted: completedSessionKey === sessionKey,
+      canRequestAssistantMode: typeof onRequestAssistantMode === "function",
+    });
+    assistantActivationSessionRef.current = activation.activationSessionKey;
+    if (!activation.shouldRequest) return;
 
-    assistantActivationSessionRef.current = sessionKey;
     logAssistantTourDebug("assistant-activation-request", () => ({
       reason: "tour-auto-start-needs-assistant-mode",
       draftKey,

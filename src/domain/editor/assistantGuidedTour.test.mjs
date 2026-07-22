@@ -18,6 +18,7 @@ import {
   getAssistantGuidedTourMessage,
   getAssistantGuidedTourPositionKey,
   reconcileAssistantGuidedTourPosition,
+  resolveAssistantGuidedTourActivation,
   resolveAssistantGuidedTourOverlayRect,
   resolveAssistantGuidedTourRestoreMenuItemState,
   resolveAssistantGuidedTourTargetId,
@@ -93,6 +94,114 @@ test("guided tour starts only when the draft, editor, Assistant and targets are 
     }),
     false
   );
+});
+
+test("a sidebar opened on draft entry stays closed after the first explicit close and late hydration", () => {
+  for (const viewport of ["desktop", "mobile"]) {
+    const sessionKey = `user-1:draft-${viewport}`;
+    let activationSessionKey = "";
+    let requests = 0;
+
+    const runEffect = (overrides = {}) => {
+      const result = resolveAssistantGuidedTourActivation({
+        sessionKey,
+        activationSessionKey,
+        assistantActive: false,
+        editorReady: false,
+        preferencesLoaded: false,
+        assistantTourOptOut: false,
+        editorReadOnly: false,
+        sessionClosed: false,
+        sessionCompleted: false,
+        canRequestAssistantMode: true,
+        ...overrides,
+      });
+      activationSessionKey = result.activationSessionKey;
+      if (result.shouldRequest) requests += 1;
+      return result;
+    };
+
+    const initialOpen = runEffect({ assistantActive: true });
+    assert.equal(initialOpen.shouldRequest, false, viewport);
+    assert.equal(activationSessionKey, sessionKey, viewport);
+
+    const firstClose = runEffect({ assistantActive: false });
+    assert.equal(firstClose.shouldRequest, false, viewport);
+
+    const hydrationFinished = runEffect({
+      assistantActive: false,
+      editorReady: true,
+      preferencesLoaded: true,
+    });
+    assert.equal(hydrationFinished.shouldRequest, false, viewport);
+
+    const strictModeReplay = runEffect({
+      assistantActive: false,
+      editorReady: true,
+      preferencesLoaded: true,
+    });
+    assert.equal(strictModeReplay.shouldRequest, false, viewport);
+    assert.equal(requests, 0, viewport);
+
+    const normalTabOpenAfterClose = runEffect({
+      assistantActive: false,
+      editorReady: true,
+      preferencesLoaded: true,
+    });
+    assert.equal(normalTabOpenAfterClose.shouldRequest, false, viewport);
+
+    const manualReopen = runEffect({
+      assistantActive: true,
+      editorReady: true,
+      preferencesLoaded: true,
+    });
+    assert.equal(manualReopen.shouldRequest, false, viewport);
+
+    const laterClose = runEffect({
+      assistantActive: false,
+      editorReady: true,
+      preferencesLoaded: true,
+    });
+    assert.equal(laterClose.shouldRequest, false, viewport);
+    assert.equal(requests, 0, viewport);
+  }
+});
+
+test("the guided tour requests Assistant once only when the session never opened it", () => {
+  const sessionKey = "user-1:draft-closed-on-entry";
+  let activationSessionKey = "";
+
+  const waiting = resolveAssistantGuidedTourActivation({
+    sessionKey,
+    activationSessionKey,
+    assistantActive: false,
+    editorReady: false,
+    preferencesLoaded: false,
+    canRequestAssistantMode: true,
+  });
+  assert.equal(waiting.shouldRequest, false);
+  activationSessionKey = waiting.activationSessionKey;
+
+  const ready = resolveAssistantGuidedTourActivation({
+    sessionKey,
+    activationSessionKey,
+    assistantActive: false,
+    editorReady: true,
+    preferencesLoaded: true,
+    canRequestAssistantMode: true,
+  });
+  assert.equal(ready.shouldRequest, true);
+  assert.equal(ready.activationSessionKey, sessionKey);
+
+  const replay = resolveAssistantGuidedTourActivation({
+    sessionKey,
+    activationSessionKey: ready.activationSessionKey,
+    assistantActive: false,
+    editorReady: true,
+    preferencesLoaded: true,
+    canRequestAssistantMode: true,
+  });
+  assert.equal(replay.shouldRequest, false);
 });
 
 test("guided tour respects the No volver a mostrar preference", () => {

@@ -1010,6 +1010,52 @@ export function createAssistantGuidedTourSessionKey({
   return safeUserUid ? `${safeUserUid}:${safeDraftKey}` : safeDraftKey;
 }
 
+export function resolveAssistantGuidedTourActivation({
+  sessionKey,
+  activationSessionKey = "",
+  assistantActive = false,
+  editorReady = false,
+  preferencesLoaded = false,
+  assistantTourOptOut = false,
+  editorReadOnly = false,
+  sessionClosed = false,
+  sessionCompleted = false,
+  canRequestAssistantMode = false,
+} = {}) {
+  const safeSessionKey = normalizeTourText(sessionKey);
+  if (!safeSessionKey) {
+    return {
+      activationSessionKey: "",
+      shouldRequest: false,
+    };
+  }
+
+  const safeActivationSessionKey = normalizeTourText(activationSessionKey);
+  if (assistantActive === true) {
+    return {
+      activationSessionKey: safeSessionKey,
+      shouldRequest: false,
+    };
+  }
+
+  const shouldRequest =
+    editorReady === true &&
+    preferencesLoaded === true &&
+    assistantTourOptOut !== true &&
+    editorReadOnly !== true &&
+    sessionClosed !== true &&
+    sessionCompleted !== true &&
+    canRequestAssistantMode === true &&
+    safeActivationSessionKey !== safeSessionKey;
+
+  return {
+    activationSessionKey: shouldRequest
+      ? safeSessionKey
+      : safeActivationSessionKey,
+    shouldRequest,
+  };
+}
+
 export function getAssistantGuidedTourPositionKey({
   currentStep,
   currentStepId,

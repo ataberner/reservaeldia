@@ -109,7 +109,7 @@ Assumptions:
 | `src/components/appHeader/AppHeader.jsx` | Shared visual header for public landing and authenticated non-editor dashboard chrome | `src/components/appHeader/AppHeader.module.css` | Visual-only owner. Does not own editor runtime attributes, header measurement, scroll roots, sidebar geometry, or preview/publish behavior. |
 | `src/pages/dashboard.js` | Dashboard route orchestrator and view composition | Tailwind wrappers and state-dependent view containers | Avoid broad visual rewrites here; prefer child-component ownership later. |
 | `src/domain/dashboard/pageShell.js` | Dashboard view/layout prop derivation | No direct CSS; controls shell props such as `modoSelector`, `ocultarSidebar`, and `lockMainScroll` | Behavior boundary. Do not change during visual cleanup unless preserving exact view behavior. |
-| `DashboardLayout.jsx` | Fixed dashboard frame, main scroll root, child composition | Tailwind classes, inline main sizing, `[data-dashboard-scroll-root]` | Runtime-critical shell owner. |
+| `DashboardLayout.jsx` | Fixed dashboard frame, main scroll root, child composition, and the single editor-startup presentation spanning sidebar plus main canvas area | Tailwind classes, inline main sizing, `[data-dashboard-scroll-root]` | Runtime-critical shell owner. During editor entry it renders the existing `EditorStartupLoader` continuously from route resolution through runtime readiness, above both work surfaces, and keeps them inert until the existing startup visibility gate opens; it does not own or duplicate editor readiness. |
 | `DashboardHeader.jsx` | Fixed measured dashboard/editor header shell and editor header mounting point; passes non-editor dashboard header config to `AppHeader` | Tailwind shell classes and runtime header-height variable; non-editor visual content comes from `AppHeader.module.css` | Runtime-critical hook owner. Keeps `[data-dashboard-header]`, `[data-preserve-canvas-selection]`, header refs, and measured height ownership. |
 | `CanvasEditorHeader.jsx` | Editor/canvas header visual content, editor action buttons, document name controls, mobile editor options sheet | Tailwind classes and file-local editor header class recipes | Editor header content owner only. Safe future redesign target as long as shell hooks and callbacks remain stable. |
 | `DashboardSidebar.jsx` | Editor tool rail, mobile toolbar, sidebar panel, Assistant guided-tour targets | Tailwind classes, inline panel/mobile geometry, `[data-dashboard-sidebar]`, `#sidebar-panel`, `[data-assistant-tour-target]`; tour overlay styles in `AssistantGuidedTour.module.css` | Runtime-critical hook owner. The Assistant tour observes these hooks but does not own Assistant navigation. |
@@ -315,6 +315,8 @@ CanvasEditorHeader.jsx
 DashboardLayout.jsx
   -> reads --dashboard-header-height for main sizing
   -> exposes [data-dashboard-scroll-root="true"]
+  -> owns the full-workspace presentation of EditorStartupLoader below the fixed header
+  -> hides sidebar and main content behind that single overlay from route resolution through the existing runtime startup gate
   -> consumed by ConfirmDeleteItemModal.jsx for scroll/touch locking
 
 DashboardSidebar.jsx

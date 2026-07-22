@@ -95,12 +95,6 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
   ]);
 
   useEffect(() => {
-    progressStartAtRef.current = Date.now();
-    setDisplayProgress(18);
-    setMaxSignalProgress(18);
-  }, [preloadState.slug]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       setIntroVisible(true);
       return undefined;
@@ -115,7 +109,7 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
     };
-  }, [preloadState.slug]);
+  }, []);
 
   useEffect(() => {
     setMaxSignalProgress((prev) => Math.max(prev, signalProgress));
@@ -253,4 +247,3 @@ export default function EditorStartupLoader({ preloadState = {}, runtimeState = 
     </div>
   );
 }
-

@@ -230,6 +230,7 @@ export function useDashboardStartupLoaders({
   editorSession = null,
   initialDraftData = null,
   initialEditorData = null,
+  isResolvingEditorRoute = false,
   isHomeView,
   homeResetKey,
 }) {
@@ -752,10 +753,12 @@ export function useDashboardStartupLoaders({
     Boolean(slugInvitacion) && editorPreloadWarm;
 
   const showEditorStartupLoaderRaw =
-    Boolean(slugInvitacion) && !editorRuntimeReady;
+    isResolvingEditorRoute === true ||
+    (Boolean(slugInvitacion) && !editorRuntimeReady);
 
   useEffect(() => {
-    const canShowLoader = Boolean(slugInvitacion);
+    const canShowLoader =
+      isResolvingEditorRoute === true || Boolean(slugInvitacion);
 
     if (!canShowLoader) {
       if (editorLoaderHideTimerRef.current) {
@@ -814,7 +817,12 @@ export function useDashboardStartupLoaders({
         editorLoaderHideTimerRef.current = null;
       }
     };
-  }, [holdEditorStartupLoader, showEditorStartupLoaderRaw, slugInvitacion]);
+  }, [
+    holdEditorStartupLoader,
+    isResolvingEditorRoute,
+    showEditorStartupLoaderRaw,
+    slugInvitacion,
+  ]);
 
   const showEditorStartupLoader =
     showEditorStartupLoaderRaw || holdEditorStartupLoader;

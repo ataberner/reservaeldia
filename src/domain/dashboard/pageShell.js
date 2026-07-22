@@ -23,7 +23,6 @@ export function buildDashboardPageViewState({
       !hasActiveEditor &&
       adminDraftView?.enabled === true &&
       adminDraftView?.status === "loading",
-    showRouteResolvingView: isResolvingEditorRoute === true,
     showPublicationsView: !hasActiveEditor && vista === "publicadas",
     showTrashView: !hasActiveEditor && vista === "papelera",
     showManagementView:
@@ -50,6 +49,11 @@ export function buildDashboardLayoutProps({
   isEditorReadOnly,
   isResolvingEditorRoute,
   shouldRenderHomeStartupLoader,
+  editorPreloadState = null,
+  editorRuntimeState = null,
+  showEditorStartupLoader = false,
+  shouldRenderEditorStartupLoader = false,
+  isEditorStartupLoaderExiting = false,
   templatePreviewModalVisible,
   adminDraftView,
   templateWorkspaceView,
@@ -92,6 +96,13 @@ export function buildDashboardLayoutProps({
     lockMainScroll:
       shouldRenderHomeStartupLoader === true ||
       templatePreviewModalVisible === true,
+    editorPreloadState,
+    editorRuntimeState,
+    showEditorStartupLoader: showEditorStartupLoader === true,
+    shouldRenderEditorStartupLoader:
+      shouldRenderEditorStartupLoader === true,
+    isEditorStartupLoaderExiting:
+      isEditorStartupLoaderExiting === true,
     editorReadOnly: isEditorReadOnly === true,
     draftDisplayName:
       normalizeText(adminDraftView?.draftName) ||

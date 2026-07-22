@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import {
+  applyDashboardPublicationTransition,
   assembleDashboardPublicationItems,
   loadUserPublicationSourceRecords,
 } from "@/domain/publications/dashboardList";
@@ -12,7 +13,6 @@ export function useDashboardPublications({ userUid }) {
   const [publications, setPublications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -58,16 +58,18 @@ export function useDashboardPublications({ userUid }) {
     return () => {
       mounted = false;
     };
-  }, [refreshTick, userUid]);
+  }, [userUid]);
 
-  const refresh = useCallback(() => {
-    setRefreshTick((previous) => previous + 1);
+  const applyPublicationTransition = useCallback((transition) => {
+    setPublications((current) =>
+      applyDashboardPublicationTransition(current, transition)
+    );
   }, []);
 
   return {
     publications,
     loading,
     error,
-    refresh,
+    applyPublicationTransition,
   };
 }

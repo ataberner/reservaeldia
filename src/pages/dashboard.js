@@ -30,7 +30,6 @@ import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
-import EditorStartupLoader from "@/components/editor/EditorStartupLoader";
 import BrowserStorageRecoveryBanner from "@/components/dashboard/BrowserStorageRecoveryBanner";
 import { pushEditorBreadcrumb } from "@/lib/monitoring/editorIssueReporter";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
@@ -72,7 +71,6 @@ export default function Dashboard() {
     hasSyncedEditorRoute,
     requestedRouteSlug,
     isResolvingEditorRoute,
-    pendingEditorRouteLabel,
     handleOpenTemplateSession,
     abrirBorradorEnEditor,
   } = useDashboardEditorRoute({
@@ -163,6 +161,7 @@ export default function Dashboard() {
     editorSession,
     initialDraftData: adminDraftView?.draftData || null,
     initialEditorData: templateWorkspaceView?.initialData || null,
+    isResolvingEditorRoute,
     isHomeView: pageViewState.isHomeView,
     homeResetKey: tipoSeleccionado,
   });
@@ -236,6 +235,11 @@ export default function Dashboard() {
     isEditorReadOnly,
     isResolvingEditorRoute,
     shouldRenderHomeStartupLoader,
+    editorPreloadState,
+    editorRuntimeState,
+    showEditorStartupLoader,
+    shouldRenderEditorStartupLoader,
+    isEditorStartupLoaderExiting,
     templatePreviewModalVisible: templatePreviewModalProps.visible,
     adminDraftView,
     templateWorkspaceView,
@@ -391,24 +395,6 @@ export default function Dashboard() {
           </div>
         )}
 
-      {pageViewState.showRouteResolvingView && (
-        <div className="mx-4 mt-4 flex min-h-[280px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.06)] sm:mx-6 lg:mx-8">
-          <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
-            <div className="relative flex h-11 w-11 items-center justify-center">
-              <span className="absolute inset-0 animate-ping rounded-full border border-[#6f3bc0]/25" />
-              <span className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300/80 border-t-[#6f3bc0]" />
-            </div>
-            <p className="text-sm font-semibold text-slate-800">
-              {pendingEditorRouteLabel}
-            </p>
-            <p className="max-w-md text-sm text-slate-500">
-              Estamos preparando el canvas para evitar el salto visual del dashboard antes de entrar al editor.
-            </p>
-          </div>
-        </div>
-      )}
-   
-
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
       {pageViewState.isHomeView && (
         <div className="relative w-full bg-white">
@@ -491,42 +477,21 @@ export default function Dashboard() {
       {pageViewState.showEditorView && (
         <ChunkErrorBoundary>
           <div style={editorSurfaceStyle}>
-            <div className={shouldMountCanvasEditor ? "relative" : ""}>
-              {shouldMountCanvasEditor && (
-                <div
-                  className={
-                    "transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
-                    (showEditorStartupLoader
-                      ? "pointer-events-none opacity-0 scale-[0.985] blur-[3px]"
-                      : "opacity-100 scale-100 blur-0")
-                  }
-                  aria-hidden={showEditorStartupLoader ? "true" : undefined}
-                >
-                  <CanvasEditor
-                    {...canvasEditorProps}
-                    editorCanvasSidebarInsetLeft={editorCanvasLayout.sidebarInsetLeft}
-                  />
-                </div>
-              )}
-
-              {shouldRenderEditorStartupLoader && (
-                <div className={shouldMountCanvasEditor ? "absolute inset-0 z-10" : ""}>
-                  <div
-                    className={
-                      "w-full transform-gpu transition-all duration-[920ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform " +
-                      (isEditorStartupLoaderExiting
-                        ? "pointer-events-none opacity-0 translate-y-10 scale-[1.03] blur-[2.5px]"
-                        : "opacity-100 translate-y-0 scale-100 blur-0")
-                    }
-                  >
-                    <EditorStartupLoader
-                      preloadState={editorPreloadState}
-                      runtimeState={editorRuntimeState}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            {shouldMountCanvasEditor && (
+              <div
+                className={
+                  showEditorStartupLoader
+                    ? "pointer-events-none invisible"
+                    : "visible"
+                }
+                aria-hidden={showEditorStartupLoader ? "true" : undefined}
+              >
+                <CanvasEditor
+                  {...canvasEditorProps}
+                  editorCanvasSidebarInsetLeft={editorCanvasLayout.sidebarInsetLeft}
+                />
+              </div>
+            )}
           </div>
         </ChunkErrorBoundary>
       )}

@@ -813,6 +813,26 @@ export default function DashboardHeader(props) {
 
     const isDashboardPublicationView =
         vistaActual === "publicadas" || vistaActual === "papelera";
+    const dashboardHomeNavItems =
+        vistaActual === "home"
+            ? [
+                  {
+                      key: "templates",
+                      label: "Plantillas",
+                      href: "#dashboard-home-template-collections",
+                  },
+                  {
+                      key: "how-it-works",
+                      label: "Cómo funciona",
+                      href: "#dashboard-como-funciona",
+                  },
+                  {
+                      key: "pricing",
+                      label: "Precios",
+                      href: "#dashboard-precios",
+                  },
+              ]
+            : [];
     const canShowCreativePanelAction = !loadingAdminAccess && canManageSite;
     const canShowSiteManagementAction = !loadingAdminAccess && isSuperAdmin;
     const assistantTourRestoreMenuItemState =
@@ -964,6 +984,7 @@ export default function DashboardHeader(props) {
                     logo={{
                         href: "/dashboard",
                     }}
+                    navItems={dashboardHomeNavItems}
                     actions={dashboardActions}
                     userMenu={dashboardUserMenu}
                 />

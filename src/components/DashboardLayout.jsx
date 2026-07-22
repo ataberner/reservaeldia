@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardHeader from "./DashboardHeader";
 import DashboardSidebar from "./DashboardSidebar";
+import EditorStartupLoader from "./editor/EditorStartupLoader";
 import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import { corregirURLsInvalidas } from "@/utils/corregirImagenes";
 
@@ -38,6 +39,11 @@ export default function DashboardLayout({
   assistantTourSaving = false,
   onAssistantTourPreferenceChange = null,
   assistantTourPreviewOpen = false,
+  editorPreloadState = null,
+  editorRuntimeState = null,
+  showEditorStartupLoader = false,
+  shouldRenderEditorStartupLoader = false,
+  isEditorStartupLoaderExiting = false,
 }) {
   useEffect(() => {
     corregirURLsInvalidas(); // Corrige URLs invalidas al entrar
@@ -113,6 +119,10 @@ export default function DashboardLayout({
     typeof onAssistantTourPreferenceChange === "function"
       ? handleAssistantTourPreferenceChange
       : null;
+  const renderEditorStartupOverlay =
+    showEditorStartupLoader || shouldRenderEditorStartupLoader;
+  const resolvedAssistantTourEditorReady =
+    assistantTourEditorReady && !renderEditorStartupOverlay;
 
   // Runtime-sensitive shell contract: header/sidebar/editor overlays consume
   // this CSS variable, so keep it in sync with DashboardHeader.
@@ -177,7 +187,10 @@ export default function DashboardLayout({
   ]);
 
   return (
-    <div className={`relative flex h-screen overflow-hidden ${shellBackgroundClass}`}>
+    <div
+      className={`relative flex h-screen overflow-hidden ${shellBackgroundClass}`}
+      aria-busy={showEditorStartupLoader ? "true" : undefined}
+    >
       {/* Barra superior */}
       <DashboardHeader
         slugInvitacion={slugInvitacion}
@@ -208,29 +221,34 @@ export default function DashboardLayout({
 
       {/* Sidebar */}
       {!ocultarSidebar && (
-        <DashboardSidebar
-          key={sidebarInstanceKey}
-          slugInvitacion={slugInvitacion}
-          generarVistaPrevia={generarVistaPrevia}
-          modoSelector={modoSelector}
-          mostrarMiniToolbar={mostrarMiniToolbar}
-          seccionActivaId={seccionActivaId}
-          historialExternos={historialExternos}
-          futurosExternos={futurosExternos}
-          editorReadOnly={editorReadOnly}
-          canManageSite={canManageSite}
-          editorSession={editorSession}
-          templateSessionMeta={templateSessionMeta}
-          userUid={usuario?.uid || ""}
-          assistantTourEditorReady={assistantTourEditorReady}
-          assistantTourPreferencesLoaded={assistantTourPreferencesLoaded}
-          assistantTourOptOut={assistantTourOptOut}
-          assistantTourSaving={assistantTourSaving}
-          onAssistantTourPreferenceChange={resolvedAssistantTourPreferenceChange}
-          assistantTourPreviewOpen={assistantTourPreviewOpen}
-          assistantTourOpeningKey={assistantTourOpeningRef.current.openingKey}
-          assistantTourRestartKey={assistantTourRestartKey}
-        />
+        <div
+          aria-hidden={showEditorStartupLoader ? "true" : undefined}
+          inert={showEditorStartupLoader ? true : undefined}
+        >
+          <DashboardSidebar
+            key={sidebarInstanceKey}
+            slugInvitacion={slugInvitacion}
+            generarVistaPrevia={generarVistaPrevia}
+            modoSelector={modoSelector}
+            mostrarMiniToolbar={mostrarMiniToolbar}
+            seccionActivaId={seccionActivaId}
+            historialExternos={historialExternos}
+            futurosExternos={futurosExternos}
+            editorReadOnly={editorReadOnly}
+            canManageSite={canManageSite}
+            editorSession={editorSession}
+            templateSessionMeta={templateSessionMeta}
+            userUid={usuario?.uid || ""}
+            assistantTourEditorReady={resolvedAssistantTourEditorReady}
+            assistantTourPreferencesLoaded={assistantTourPreferencesLoaded}
+            assistantTourOptOut={assistantTourOptOut}
+            assistantTourSaving={assistantTourSaving}
+            onAssistantTourPreferenceChange={resolvedAssistantTourPreferenceChange}
+            assistantTourPreviewOpen={assistantTourPreviewOpen}
+            assistantTourOpeningKey={assistantTourOpeningRef.current.openingKey}
+            assistantTourRestartKey={assistantTourRestartKey}
+          />
+        </div>
       )}
 
       {/* Area principal */}
@@ -239,9 +257,35 @@ export default function DashboardLayout({
         data-dashboard-scroll-root="true"
         className={`${mainBaseClass} ${mainScrollClass}`}
         style={mainStyle}
+        aria-hidden={showEditorStartupLoader ? "true" : undefined}
+        inert={showEditorStartupLoader ? true : undefined}
       >
         {children}
       </main>
+
+      {renderEditorStartupOverlay && (
+        <div
+          className={
+            "fixed bottom-0 left-0 right-0 z-[46] overflow-y-auto bg-white transition-opacity duration-500 ease-out " +
+            (isEditorStartupLoaderExiting
+              ? "pointer-events-none opacity-0"
+              : "opacity-100")
+          }
+          style={{ top: headerHeight }}
+        >
+          <span className="sr-only" role="status" aria-live="polite">
+            Estamos preparando tu invitacion
+          </span>
+          <div className="flex min-h-full w-full items-center">
+            <div className="w-full" aria-hidden="true">
+              <EditorStartupLoader
+                preloadState={editorPreloadState || {}}
+                runtimeState={editorRuntimeState || {}}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

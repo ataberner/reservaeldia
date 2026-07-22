@@ -172,6 +172,58 @@ function buildHistoryDashboardPublicationItem(
   };
 }
 
+export function applyDashboardPublicationTransition(items, transition) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const publicSlug =
+    typeof transition?.slug === "string" ? transition.slug.trim() : "";
+  const nextState =
+    typeof transition?.estado === "string" ? transition.estado.trim() : "";
+
+  if (!publicSlug || !nextState) return safeItems;
+
+  let changed = false;
+  const nextItems = safeItems.flatMap((item) => {
+    const itemSlug = String(item?.publicSlug || item?.id || "").trim();
+    if (item?.source !== "active" || itemSlug !== publicSlug) {
+      return [item];
+    }
+
+    changed = true;
+    const raw = {
+      ...(item?.raw && typeof item.raw === "object" ? item.raw : {}),
+      estado: nextState,
+      publicadaAt: transition.publicadaAt ?? item?.raw?.publicadaAt ?? null,
+      venceAt: transition.venceAt ?? item?.raw?.venceAt ?? null,
+      pausadaAt: transition.pausadaAt ?? null,
+      enPapeleraAt: transition.enPapeleraAt ?? null,
+    };
+    const status = getPublicationStatus(raw);
+
+    if (status.isTrashed) return [];
+
+    const dates = resolvePublicationDates(raw);
+    return [
+      {
+        ...item,
+        url: status.isActive ? String(raw.urlPublica || "").trim() : "",
+        stateKey: status.state,
+        statusLabel: status.label,
+        isActive: status.isActive,
+        isPaused: status.isPaused,
+        isTrashed: status.isTrashed,
+        isFinalized: status.isFinalized,
+        publishedAt: dates.publishedAt,
+        expiresAt: dates.expiresAt,
+        pausedAt: dates.pausedAt,
+        trashedAt: dates.trashedAt,
+        raw,
+      },
+    ];
+  });
+
+  return changed ? nextItems : safeItems;
+}
+
 export async function loadUserPublicationSourceRecords({
   userUid,
   limit,

@@ -870,11 +870,6 @@ export function useDashboardEditorRoute({
     router.isReady &&
     !slugInvitacionState &&
     Boolean(requestedRouteSlug || requestedRouteTemplateId);
-  const pendingEditorRouteLabel = requestedRouteTemplateId
-    ? "Abriendo plantilla interna..."
-    : requestedAdminView
-      ? "Cargando vista administrativa del borrador..."
-      : "Abriendo editor...";
 
   const isAdminReadOnlyView =
     adminDraftView.enabled === true && adminDraftView.status === "ready";
@@ -904,7 +899,6 @@ export function useDashboardEditorRoute({
     requestedRouteTemplateId,
     requestedAdminView,
     isResolvingEditorRoute,
-    pendingEditorRouteLabel,
     handleOpenTemplateSession,
     abrirBorradorEnEditor,
     hasSyncedEditorRoute,

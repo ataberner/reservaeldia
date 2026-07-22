@@ -129,7 +129,7 @@ export default function DashboardLandingCarouselSections({
   hasTemplateSections = false,
   onDraftRemoved,
   onOpenPublicationResponses,
-  onPublicationsRefresh,
+  onPublicationTransition,
   onPreviewTemplate,
   onSelectTemplate,
   onUseTemplate,
@@ -227,11 +227,11 @@ export default function DashboardLandingCarouselSections({
     setPublicationActionError("");
 
     try {
-      await transitionPublishedInvitationState({
+      const transition = await transitionPublishedInvitationState({
         slug: publicSlug,
         action: safeAction,
       });
-      onPublicationsRefresh?.();
+      onPublicationTransition?.(transition);
       return true;
     } catch (transitionError) {
       const message =

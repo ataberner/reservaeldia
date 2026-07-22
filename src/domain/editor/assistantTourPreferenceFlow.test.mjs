@@ -97,11 +97,11 @@ test("pending hydration and repeated effects cannot activate the same tour sessi
 
   assert.match(
     tourSource,
-    /if \(!preferencesLoaded \|\| assistantTourOptOut === true\) \{[\s\S]*?return;/
+    /resolveAssistantGuidedTourActivation\(\{[\s\S]*?editorReady,[\s\S]*?preferencesLoaded,[\s\S]*?assistantTourOptOut,[\s\S]*?editorReadOnly,/
   );
   assert.match(
     tourSource,
-    /if \(assistantActivationSessionRef\.current === sessionKey\) return;[\s\S]*?assistantActivationSessionRef\.current = sessionKey;[\s\S]*?onRequestAssistantMode\(\);/
+    /assistantActivationSessionRef\.current = activation\.activationSessionKey;[\s\S]*?if \(!activation\.shouldRequest\) return;[\s\S]*?onRequestAssistantMode\(\);/
   );
   assert.match(
     tourSource,

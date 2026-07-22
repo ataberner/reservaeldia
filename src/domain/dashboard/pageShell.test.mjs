@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   buildDashboardCanvasEditorProps,
@@ -7,6 +8,10 @@ import {
   buildDashboardPageViewState,
   buildDashboardPreviewGateState,
 } from "./pageShell.js";
+
+function readSource(relativeUrl) {
+  return readFileSync(new URL(relativeUrl, import.meta.url), "utf8");
+}
 
 test("page view state preserves current dashboard branch precedence", () => {
   assert.deepEqual(
@@ -28,7 +33,6 @@ test("page view state preserves current dashboard branch precedence", () => {
       isHomeView: true,
       showLegacyDraftNotice: true,
       showAdminDraftLoadingNotice: true,
-      showRouteResolvingView: false,
       showPublicationsView: false,
       showTrashView: false,
       showManagementView: false,
@@ -48,7 +52,6 @@ test("page view state preserves current dashboard branch precedence", () => {
       isHomeView: false,
       showLegacyDraftNotice: false,
       showAdminDraftLoadingNotice: false,
-      showRouteResolvingView: true,
       showPublicationsView: false,
       showTrashView: false,
       showManagementView: false,
@@ -68,7 +71,6 @@ test("page view state preserves current dashboard branch precedence", () => {
       isHomeView: false,
       showLegacyDraftNotice: false,
       showAdminDraftLoadingNotice: false,
-      showRouteResolvingView: false,
       showPublicationsView: false,
       showTrashView: false,
       showManagementView: false,
@@ -107,6 +109,17 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     isEditorReadOnly: false,
     isResolvingEditorRoute: false,
     shouldRenderHomeStartupLoader: true,
+    editorPreloadState: {
+      slug: "draft-1",
+      status: "done",
+    },
+    editorRuntimeState: {
+      slug: "draft-1",
+      status: "running",
+    },
+    showEditorStartupLoader: true,
+    shouldRenderEditorStartupLoader: true,
+    isEditorStartupLoaderExiting: false,
     templatePreviewModalVisible: false,
     adminDraftView: {
       draftName: "",
@@ -151,6 +164,17 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     isSuperAdmin: false,
     loadingAdminAccess: false,
     lockMainScroll: true,
+    editorPreloadState: {
+      slug: "draft-1",
+      status: "done",
+    },
+    editorRuntimeState: {
+      slug: "draft-1",
+      status: "running",
+    },
+    showEditorStartupLoader: true,
+    shouldRenderEditorStartupLoader: true,
+    isEditorStartupLoaderExiting: false,
     editorReadOnly: false,
     draftDisplayName: "Template workspace",
     editorSession: {
@@ -193,6 +217,60 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     }).draftDisplayName,
     "Admin name"
   );
+});
+
+test("editor startup uses one shell-level overlay for sidebar and canvas", () => {
+  const layoutSource = readSource("../../components/DashboardLayout.jsx");
+  const dashboardSource = readSource("../../pages/dashboard.js");
+  const startupHookSource = readSource("../../hooks/useDashboardStartupLoaders.js");
+  const editorRouteSource = readSource("../../hooks/useDashboardEditorRoute.js");
+  const startupLoaderSource = readSource(
+    "../../components/editor/EditorStartupLoader.jsx"
+  );
+  const combinedSource = [
+    layoutSource,
+    dashboardSource,
+    startupHookSource,
+    editorRouteSource,
+    startupLoaderSource,
+  ].join("\n");
+
+  assert.equal(
+    (combinedSource.match(/<EditorStartupLoader\b/g) || []).length,
+    1
+  );
+  assert.match(
+    layoutSource,
+    /renderEditorStartupOverlay\s*=\s*showEditorStartupLoader\s*\|\|\s*shouldRenderEditorStartupLoader/
+  );
+  assert.match(
+    layoutSource,
+    /fixed bottom-0 left-0 right-0 z-\[46\][\s\S]*?style=\{\{ top: headerHeight \}\}/
+  );
+  assert.match(
+    layoutSource,
+    /<DashboardSidebar[\s\S]*?assistantTourEditorReady=\{resolvedAssistantTourEditorReady\}/
+  );
+  assert.match(
+    layoutSource,
+    /<main[\s\S]*?aria-hidden=\{showEditorStartupLoader \? "true" : undefined\}[\s\S]*?inert=\{showEditorStartupLoader \? true : undefined\}/
+  );
+  assert.match(
+    dashboardSource,
+    /showEditorStartupLoader\s*\?\s*"pointer-events-none invisible"\s*:\s*"visible"/
+  );
+  assert.match(
+    dashboardSource,
+    /useDashboardStartupLoaders\(\{[\s\S]*?isResolvingEditorRoute,/
+  );
+  assert.match(
+    startupHookSource,
+    /showEditorStartupLoaderRaw\s*=\s*isResolvingEditorRoute === true \|\|[\s\S]*?Boolean\(slugInvitacion\) && !editorRuntimeReady/
+  );
+  assert.doesNotMatch(dashboardSource, /<EditorStartupLoader\b/);
+  assert.doesNotMatch(combinedSource, /Abriendo plantilla interna/);
+  assert.doesNotMatch(dashboardSource, /showRouteResolvingView/);
+  assert.doesNotMatch(startupLoaderSource, /\[preloadState\.slug\]/);
 });
 
 test("canvas editor props preserve current read-only and initial-data precedence", () => {

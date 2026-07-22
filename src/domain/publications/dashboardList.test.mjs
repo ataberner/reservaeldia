@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
+  applyDashboardPublicationTransition,
   assembleDashboardPublicationItems,
   loadUserPublicationSourceRecords,
 } from "./dashboardList.js";
@@ -11,6 +13,10 @@ function createDoc(id, data) {
     id,
     data: () => data,
   };
+}
+
+function readSource(relativeUrl) {
+  return readFileSync(new URL(relativeUrl, import.meta.url), "utf8");
 }
 
 test("loadUserPublicationSourceRecords keeps active records when history read is permission-denied", async () => {
@@ -132,5 +138,148 @@ test("assembleDashboardPublicationItems preserves dashboard ordering and shared 
   assert.equal(
     items.some((item) => item.id === "pub-papelera"),
     false
+  );
+});
+
+test("applyDashboardPublicationTransition updates only the affected active item", () => {
+  const unaffected = {
+    id: "otra-publicacion",
+    source: "active",
+    publicSlug: "otra-publicacion",
+    isActive: true,
+    raw: { urlPublica: "https://reserva.example.com/otra-publicacion" },
+  };
+  const affected = {
+    id: "mi-publicacion",
+    source: "active",
+    publicSlug: "mi-publicacion",
+    url: "https://reserva.example.com/mi-publicacion",
+    isActive: true,
+    isPaused: false,
+    raw: {
+      urlPublica: "https://reserva.example.com/mi-publicacion",
+      publicadaAt: "2026-01-10T10:00:00.000Z",
+      venceAt: "2099-01-10T10:00:00.000Z",
+    },
+  };
+
+  const paused = applyDashboardPublicationTransition(
+    [unaffected, affected],
+    {
+      slug: "mi-publicacion",
+      estado: "publicada_pausada",
+      publicadaAt: "2026-01-10T10:00:00.000Z",
+      venceAt: "2099-01-10T10:00:00.000Z",
+      pausadaAt: "2026-07-22T12:00:00.000Z",
+      enPapeleraAt: null,
+    }
+  );
+
+  assert.equal(paused[0], unaffected);
+  assert.equal(paused[1].isPaused, true);
+  assert.equal(paused[1].isActive, false);
+  assert.equal(paused[1].statusLabel, "Pausada");
+  assert.equal(paused[1].url, "");
+  assert.equal(
+    paused[1].raw.urlPublica,
+    "https://reserva.example.com/mi-publicacion"
+  );
+
+  const resumed = applyDashboardPublicationTransition(paused, {
+    slug: "mi-publicacion",
+    estado: "publicada_activa",
+    publicadaAt: "2026-01-10T10:00:00.000Z",
+    venceAt: "2099-01-10T10:00:00.000Z",
+    pausadaAt: null,
+    enPapeleraAt: null,
+  });
+
+  assert.equal(resumed[0], unaffected);
+  assert.equal(resumed[1].isActive, true);
+  assert.equal(resumed[1].isPaused, false);
+  assert.equal(resumed[1].statusLabel, "Activa");
+  assert.equal(
+    resumed[1].url,
+    "https://reserva.example.com/mi-publicacion"
+  );
+});
+
+test("applyDashboardPublicationTransition removes only an item moved to trash", () => {
+  const unaffected = {
+    id: "otra-publicacion",
+    source: "active",
+    publicSlug: "otra-publicacion",
+  };
+  const affected = {
+    id: "mi-publicacion",
+    source: "active",
+    publicSlug: "mi-publicacion",
+    isPaused: true,
+    raw: {
+      estado: "publicada_pausada",
+      publicadaAt: "2026-01-10T10:00:00.000Z",
+      venceAt: "2099-01-10T10:00:00.000Z",
+    },
+  };
+
+  const nextItems = applyDashboardPublicationTransition(
+    [unaffected, affected],
+    {
+      slug: "mi-publicacion",
+      estado: "papelera",
+      publicadaAt: "2026-01-10T10:00:00.000Z",
+      venceAt: "2099-01-10T10:00:00.000Z",
+      pausadaAt: "2026-07-22T12:00:00.000Z",
+      enPapeleraAt: "2026-07-22T12:00:00.000Z",
+    }
+  );
+
+  assert.deepEqual(nextItems, [unaffected]);
+});
+
+test("applyDashboardPublicationTransition preserves the list when the slug is unknown", () => {
+  const items = [
+    {
+      id: "mi-publicacion",
+      source: "active",
+      publicSlug: "mi-publicacion",
+    },
+  ];
+
+  assert.equal(
+    applyDashboardPublicationTransition(items, {
+      slug: "otra-publicacion",
+      estado: "publicada_pausada",
+    }),
+    items
+  );
+});
+
+test("dashboard home applies successful publication transitions without a global refetch", () => {
+  const carouselSource = readSource(
+    "../../components/dashboard/home/DashboardLandingCarouselSections.jsx"
+  );
+  const homeSource = readSource(
+    "../../components/dashboard/home/DashboardHomeView.jsx"
+  );
+  const hookSource = readSource("../../hooks/useDashboardPublications.js");
+
+  assert.match(
+    carouselSource,
+    /const transition = await transitionPublishedInvitationState\([\s\S]*onPublicationTransition\?\.\(transition\)/
+  );
+  assert.doesNotMatch(carouselSource, /onPublicationsRefresh/);
+  assert.match(
+    homeSource,
+    /onPublicationTransition=\{applyPublicationTransition\}/
+  );
+  assert.match(
+    hookSource,
+    /setPublications\(\(current\) =>[\s\S]*applyDashboardPublicationTransition\(current, transition\)/
+  );
+  assert.doesNotMatch(hookSource, /refreshTick/);
+  assert.doesNotMatch(
+    hookSource,
+    /const applyPublicationTransition[\s\S]*setLoading\(/
   );
 });

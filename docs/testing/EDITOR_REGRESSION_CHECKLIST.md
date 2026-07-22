@@ -28,6 +28,27 @@ Preparar un borrador con:
 - una galeria `tipo: "galeria"` con tres fotos, una foto repetida en otra galeria, y `allowedLayouts/defaultLayout/currentLayout`
 - si el cambio toca CTA o countdown, incluir tambien esos objetos
 
+## 0. Inicio del editor
+
+### [ ] Loader unico de canvas y sidebar
+
+1. Abrir un borrador con carga normal en desktop y mobile.
+2. Repetir con red o recursos deliberadamente lentos.
+3. Desde que comienza la resolucion de la ruta y durante toda la carga, verificar que la placa `Estamos preparando tu invitacion` cubra el area completa debajo del header.
+4. Confirmar que ni el canvas ni el sidebar sean visibles, enfocables o interactuables antes de que el runtime del editor reporte `ready`.
+5. En la salida del loader, confirmar que canvas y sidebar aparezcan juntos y sin parpadeo.
+6. Cerrar y volver a abrir el panel del sidebar.
+7. Repetir con el modo Asistente y con una cuenta habilitada para la visita guiada.
+
+Resultado esperado:
+
+- existe una sola placa de carga para todo el workspace del editor
+- no aparece antes ninguna placa `Abriendo plantilla interna`, `Abriendo editor` ni equivalente
+- el sidebar nunca aparece antes que el canvas
+- la placa se retira solo mediante el gate de startup existente, sin otro estado ni temporizador
+- el sidebar conserva su apertura/cierre normal despues de la carga
+- el Asistente y su visita guiada esperan a que la placa haya terminado de salir y conservan sus targets reales
+
 ## 1. Seleccion y drag
 
 ### [ ] Seleccion simple y limpieza de seleccion

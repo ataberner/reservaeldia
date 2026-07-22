@@ -43,7 +43,7 @@ export default function DashboardHomeView({
     publications,
     loading: loadingPublications,
     error: publicationsError,
-    refresh: refreshPublications,
+    applyPublicationTransition,
   } = useDashboardPublications({ userUid });
   const {
     templates,
@@ -150,7 +150,7 @@ export default function DashboardHomeView({
         hasTemplateSections={hasTemplateSections}
         onDraftRemoved={removeDraft}
         onOpenPublicationResponses={onOpenPublicationResponses}
-        onPublicationsRefresh={refreshPublications}
+        onPublicationTransition={applyPublicationTransition}
         onPreviewTemplate={onPreviewTemplate || onSelectTemplate}
         onSelectTemplate={onSelectTemplate}
         onUseTemplate={onUseTemplate || onSelectTemplate}

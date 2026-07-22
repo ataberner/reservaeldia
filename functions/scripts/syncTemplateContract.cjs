@@ -99,6 +99,17 @@ const artifacts = [
       path.resolve(__dirname, "../lib/shared/functionalAssociations.cjs"),
     ],
   },
+  {
+    label: "Presentacion del loader de invitacion",
+    sourcePath: path.resolve(
+      __dirname,
+      "../../shared/invitationLoaderPresentation.cjs"
+    ),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/invitationLoaderPresentation.cjs"),
+      path.resolve(__dirname, "../lib/shared/invitationLoaderPresentation.cjs"),
+    ],
+  },
 ];
 
 artifacts.forEach(({ label, sourcePath, targetPaths }) => {

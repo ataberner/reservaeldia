@@ -66,6 +66,21 @@ test("preview runtime exposes generated preview capabilities when HTML is ready"
   assert.equal(runtime.shouldShowMissingPreviewState, false);
 });
 
+test("preview runtime keeps loading as internal state until generated HTML is ready", () => {
+  const template = createRepresentativeTemplateFixture();
+  const runtime = resolveTemplatePreviewRuntimeState({
+    template,
+    previewHtml: "",
+    previewStatus: { status: "loading" },
+  });
+
+  assert.equal(runtime.status, "loading");
+  assert.equal(runtime.shouldShowLoadingState, true);
+  assert.equal(runtime.shouldShowGeneratedPreview, false);
+  assert.equal(runtime.shouldShowErrorState, false);
+  assert.equal(runtime.shouldShowMissingPreviewState, false);
+});
+
 test("generated preview only emits DOM-patchable operations from the shared personalization plan", () => {
   const template = createRepresentativeTemplateFixture();
 

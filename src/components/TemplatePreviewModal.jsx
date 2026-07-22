@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { resolveTemplatePreviewRuntimeState } from "@/domain/templates/preview";
 import { captureCountdownAuditFromHtmlString } from "@/domain/countdownAudit/runtime";
 import TemplateEventForm from "@/components/templates/TemplateEventForm";
@@ -17,6 +17,10 @@ import {
   resolvePreviewFrameLayoutMode,
 } from "@/components/preview/previewFrameRuntime";
 
+const {
+  buildInvitationLoaderLoadingDocumentHTML,
+} = require("../../shared/invitationLoaderPresentation.cjs");
+
 const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
 const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
 const TEMPLATE_PREVIEW_MOBILE_VIEWPORT_WIDTH = 390;
@@ -25,6 +29,8 @@ const TEMPLATE_PREVIEW_ACTION_PANEL_BOTTOM_GAP = 20;
 const TEMPLATE_PREVIEW_ACTION_PANEL_SCROLL_BUFFER = 24;
 const TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT = 116;
 const TEMPLATE_PREVIEW_SCROLL_SPACER_ID = "template-preview-modal-scroll-spacer";
+const TEMPLATE_PREVIEW_LOADING_DOCUMENT =
+  buildInvitationLoaderLoadingDocumentHTML();
 const SITE_PRIMARY_BUTTON_CLASS =
   "inline-flex h-10 min-w-[132px] items-center justify-center rounded-[33px] border border-transparent bg-gradient-to-r from-[#692B9A] to-[#F39F5F] px-5 text-sm font-semibold text-white shadow-none transition-all duration-200 hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F39F5F]/40 disabled:cursor-not-allowed disabled:opacity-70";
 
@@ -253,6 +259,8 @@ export default function TemplatePreviewModal({
   const isLandingMode = actionMode === "landing";
   const canCustomizeEvent = !isLandingMode && showEventCustomization !== false;
   const shouldShowGeneratedPreview = previewRuntime.shouldShowGeneratedPreview;
+  const shouldShowPreviewFrame =
+    previewRuntime.shouldShowLoadingState || shouldShowGeneratedPreview;
   const canPatchPreview = previewRuntime.canPatchPreview;
   const isExpanded = canCustomizeEvent && mode === "expanded";
 
@@ -436,9 +444,13 @@ export default function TemplatePreviewModal({
               style={{ flexBasis: isExpanded ? "50%" : "100%" }}
             >
               <div className="absolute inset-0 bg-white">
-                {shouldShowGeneratedPreview ? (
+                {shouldShowPreviewFrame ? (
                   <TemplatePreviewViewport
-                    srcDoc={previewHtml}
+                    srcDoc={
+                      shouldShowGeneratedPreview
+                        ? previewHtml
+                        : TEMPLATE_PREVIEW_LOADING_DOCUMENT
+                    }
                     sandbox="allow-scripts allow-same-origin"
                     title={`Vista previa de ${title}`}
                     iframeRef={previewFrameRef}
@@ -457,15 +469,6 @@ export default function TemplatePreviewModal({
                     }}
                   />
                 ) : null}
-
-                {previewRuntime.shouldShowLoadingState && (
-                  <div className="flex h-full items-center justify-center bg-slate-50">
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Loader2 className="h-4 w-4 animate-spin text-[#6f3bc0]" />
-                      Cargando vista previa...
-                    </div>
-                  </div>
-                )}
 
                 {previewRuntime.shouldShowErrorState && (
                   <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
@@ -486,18 +489,18 @@ export default function TemplatePreviewModal({
               <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 px-4 sm:bottom-5 sm:px-6">
                 <div
                   ref={previewActionPanelRef}
-                  className="pointer-events-auto relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-3 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-4"
+                  className="pointer-events-auto relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-2.5 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-3"
                 >
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.42),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),transparent_55%)]" />
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/55" />
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="relative min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="mr-auto text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
+                  <div className="flex flex-col items-center justify-center gap-2 lg:flex-row lg:items-center lg:justify-center">
+                    <div className="relative min-w-0">
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <p className="text-center text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
                       </div>
                     </div>
 
-                    <div className="relative flex flex-wrap gap-2 lg:justify-end">
+                    <div className="relative flex flex-wrap justify-center gap-2">
                       {isLandingMode ? (
                         <button
                           type="button"

@@ -356,6 +356,64 @@ test("preview html stays cached by template id across modal close and reopen", a
   );
 });
 
+test("closing the modal during a slow template load keeps it closed when work settles", async () => {
+  const templateRequest = createDeferred();
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async () => templateRequest.promise,
+      generatePreviewHtml: async () => "<html>late-preview</html>",
+    },
+  });
+
+  harness.controller.openTemplateModal(
+    createCatalogTemplate({ id: "tpl-slow-close" })
+  );
+  await flushMicrotasks();
+
+  assert.equal(harness.getState().isTemplateModalOpen, true);
+  assert.equal(
+    harness.getDerivedViewState().selectedTemplatePreviewState.status,
+    "loading"
+  );
+
+  harness.controller.closeTemplateModal();
+  await flushMicrotasks();
+  templateRequest.resolve(
+    createFullTemplate({ id: "tpl-slow-close" })
+  );
+  await flushMicrotasks();
+
+  assert.equal(harness.getState().isTemplateModalOpen, false);
+  assert.equal(harness.getState().selectedTemplate, null);
+});
+
+test("preview generation errors preserve the modal and expose the existing error state", async () => {
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async () =>
+        createFullTemplate({ id: "tpl-preview-error" }),
+      generatePreviewHtml: async () => {
+        throw new Error("preview failed");
+      },
+    },
+  });
+
+  harness.controller.openTemplateModal(
+    createCatalogTemplate({ id: "tpl-preview-error" })
+  );
+  await flushMicrotasks();
+
+  assert.equal(harness.getState().isTemplateModalOpen, true);
+  assert.deepEqual(
+    harness.getDerivedViewState().selectedTemplatePreviewState,
+    {
+      status: "error",
+      error: "preview failed",
+      previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+    }
+  );
+});
+
 test("catalog fallback template preview stays visual-only when full template lookup misses", async () => {
   const previewCalls = [];
   const catalogTemplate = createCatalogTemplate({

@@ -7,6 +7,12 @@ import {
 } from "lucide-react";
 import styles from "./AppHeader.module.css";
 
+const LANDING_SMOOTH_SCROLL_TARGETS = new Set([
+  "#plantillas",
+  "#como-funciona",
+  "#precios",
+]);
+
 function joinClassNames(...values) {
   return values.filter(Boolean).join(" ");
 }
@@ -290,6 +296,30 @@ export default function AppHeader({
     setAccountMenuOpen(false);
   };
 
+  const handleCenterNavClick = (event, item) => {
+    closeTransientMenus();
+
+    const href = String(item?.href || "").trim();
+    if (!isLanding || !LANDING_SMOOTH_SCROLL_TARGETS.has(href)) return;
+
+    const target = document.getElementById(href.slice(1));
+    if (!target) return;
+
+    event.preventDefault();
+
+    if (window.location.hash !== href) {
+      window.history.pushState(null, "", href);
+    }
+
+    const reduceMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({
+      behavior: reduceMotion ? "instant" : "smooth",
+      block: "start",
+    });
+  };
+
   const renderCenterNavItems = (className, { mobile = false } = {}) => (
     <nav className={className} aria-label="Navegacion principal">
       {centerNavItems.map((item) => (
@@ -297,7 +327,7 @@ export default function AppHeader({
           key={item.key || `${item.href}-${item.label}`}
           href={item.href}
           className={styles.centerNavButton}
-          onClick={closeTransientMenus}
+          onClick={(event) => handleCenterNavClick(event, item)}
         >
           {mobile ? getMobileNavLabel(item) : item.label}
         </a>

@@ -18,6 +18,7 @@ Scope:
 - `src/components/dashboard/home/DashboardPublicationSummarySection.module.css`
 - `src/lib/components/AuthModal.module.css`
 - `src/pages/index.module.css`
+- `src/pages/preguntas-frecuentes.module.css`
 - `src/components/dashboard/dashboardStyleClasses.js`
 
 This document is observational only. It does not authorize visual changes, CSS movement, deletion, or component refactors.
@@ -41,6 +42,7 @@ The current CSS system has two app-level global files:
 - `src/components/editor/assistantTour/AssistantGuidedTour.module.css`: component-scoped editor Assistant guided-tour overlay styles. It owns the floating tooltip, spotlight ring, arrow, non-blocking overlay layer, and reduced-motion variants.
 - `src/lib/components/AuthModal.module.css`: component-scoped auth modal styles for `LoginModal.js` and `RegisterModal.js`.
 - `src/pages/index.module.css`: route-scoped landing main and remaining landing section styles.
+- `src/pages/preguntas-frecuentes.module.css`: route-scoped FAQ hero, category layout, accessible accordion transitions, CTA, and responsive styles.
 - `src/components/dashboard/dashboardStyleClasses.js`: exact current Tailwind/class recipes shared by dashboard invitation cards and dashboard home error panels. It is not a design system and does not introduce new values.
 
 Contract interpretation:
@@ -60,6 +62,7 @@ This section records the current landing/dashboard ownership map after Phase 2 c
 | Surface | Route/component owner | Current style owner | Notes |
 | --- | --- | --- | --- |
 | Landing route | `src/pages/index.js` plus shared landing components | `AppHeader.module.css` for the header; `LandingHero.module.css` for the shared hero; `LandingFeatureDetails.module.css` for the shared feature-details section; `LandingHowItWorks.module.css` for the shared step-circle section; `LandingPricing.module.css` for the shared pricing section; `LandingShareSection.module.css` for the shared share section; `LandingFooter.module.css` for the shared footer; `src/pages/index.module.css`, Bootstrap classes, `styles/styles.css`, and `styles/globals.css` for remaining sections | The landing header, hero, feature-details, how-it-works, pricing, share, and footer sections are extracted to shared visual components. Auth notice and modal entry remain in one page file. |
+| Public FAQ route | `src/pages/preguntas-frecuentes.js` | `src/pages/preguntas-frecuentes.module.css` plus shared `AppHeader.module.css` and `LandingFooter.module.css` | Owns only FAQ page content/layout. It reuses shared navigation/footer visuals and does not add route styles to global CSS. |
 | Landing auth entry | `src/pages/index.js` plus `src/lib/components/LoginModal.js` and `src/lib/components/RegisterModal.js` | `src/lib/components/AuthModal.module.css` | Login/Register primary modal styling is scoped and no longer owned by `styles/styles.css` or Bootstrap modal selectors. |
 | Profile completion modal | `src/lib/components/ProfileCompletionModal.js` | Legacy auth/global CSS group in `styles/styles.css` plus Bootstrap button/modal classes | Still uses `modal-content auth-modal profile-modal`, `close-btn`, `auth-input-group`, `auth-primary-btn`, `.error`, and Bootstrap button utility classes. This is the remaining auth global-style exception. |
 | Dashboard route shell | `src/pages/dashboard.js` and `src/domain/dashboard/pageShell.js` | Tailwind in JSX plus shell runtime props | Owns view selection, layout props, editor mount state, preview modal mount, and checkout modal mount. |
@@ -116,6 +119,12 @@ These hooks are not ordinary CSS selectors. They are current runtime contracts b
 | Section | Owner/domain | Contract status | Disposition | Risk notes |
 | --- | --- | --- | --- | --- |
 | `.main` and landing section classes below the shared landing components | landing route sections | Allowed route-scoped owner | Stay | Hero styles moved to `LandingHero.module.css`; feature-details styles moved to `LandingFeatureDetails.module.css`; how-it-works styles moved to `LandingHowItWorks.module.css`; pricing styles moved to `LandingPricing.module.css`; share styles moved to `LandingShareSection.module.css`; footer styles moved to `LandingFooter.module.css`; remaining landing sections still coexist with legacy global landing selectors during gradual migration. |
+
+### 3.1.1.a `src/pages/preguntas-frecuentes.module.css`
+
+| Section | Owner/domain | Contract status | Disposition | Risk notes |
+| --- | --- | --- | --- | --- |
+| `.main`, `.hero*`, `.faq*`, `.accordion*`, `.cta*` | public FAQ route | Allowed route-scoped owner | Stay | Reuses documented landing tokens and shared header/footer components. Accordion motion has a reduced-motion override; no selectors leak to landing, dashboard, editor, or generated invitation surfaces. |
 
 ### 3.1.1.1 `src/components/landing/LandingFooter.module.css`
 

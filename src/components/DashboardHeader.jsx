@@ -763,10 +763,6 @@ export default function DashboardHeader(props) {
         window.dispatchEvent(new CustomEvent("dashboard-crear-plantilla"));
     };
 
-    const abrirPanelCreativo = () => {
-        router.push("/admin/panel-creativo");
-    };
-
     const previewButtonLabel = isTemplateSession
         ? "Vista previa"
         : "Publicar";
@@ -830,6 +826,11 @@ export default function DashboardHeader(props) {
                       key: "pricing",
                       label: "Precios",
                       href: "#dashboard-precios",
+                  },
+                  {
+                      key: "faq",
+                      label: "Preguntas frecuentes",
+                      href: "/preguntas-frecuentes/",
                   },
               ]
             : [];
@@ -904,7 +905,10 @@ export default function DashboardHeader(props) {
                                 key: "creative-panel",
                                 label: "Panel creativo",
                                 icon: <Sparkles size={14} />,
-                                onClick: abrirPanelCreativo,
+                                href: "/admin/panel-creativo",
+                                target: "_blank",
+                                rel: "noopener noreferrer",
+                                title: "Abrir Panel creativo en una pestaña nueva",
                             },
                         ]
                       : []),
@@ -912,15 +916,12 @@ export default function DashboardHeader(props) {
                       ? [
                             {
                                 key: "site-management",
-                                label:
-                                    vistaActual === "gestion"
-                                        ? "Volver al dashboard"
-                                        : "Gestion del sitio",
+                                label: "Gestión del sitio",
                                 icon: <Settings size={14} />,
-                                onClick: () =>
-                                    onCambiarVista?.(
-                                        vistaActual === "gestion" ? "home" : "gestion"
-                                    ),
+                                href: "/admin/gestion-sitio",
+                                target: "_blank",
+                                rel: "noopener noreferrer",
+                                title: "Abrir Gestión del sitio en una pestaña nueva",
                             },
                         ]
                       : []),

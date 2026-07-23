@@ -23,6 +23,10 @@ test("static sitemap lists only indexable public pages", () => {
   const sitemap = readRootFile("public/sitemap.xml");
 
   assert.match(sitemap, /<loc>https:\/\/reservaeldia\.com\.ar\/<\/loc>/);
+  assert.match(
+    sitemap,
+    /<loc>https:\/\/reservaeldia\.com\.ar\/preguntas-frecuentes\/<\/loc>/
+  );
   assert.doesNotMatch(sitemap, /\/i\//);
   assert.doesNotMatch(sitemap, /\/dashboard|\/admin|\/boda|para-diseño/);
 });

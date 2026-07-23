@@ -80,6 +80,11 @@ function getDefaultCenterNavItems(isAuthenticated) {
       label: "Precios",
       href: isAuthenticated ? "/#precios" : "#precios",
     },
+    {
+      key: "faq",
+      label: "Preguntas frecuentes",
+      href: "/preguntas-frecuentes/",
+    },
   ];
 }
 
@@ -94,6 +99,26 @@ function AppHeaderAction({ action, onAfterClick }) {
     onAfterClick?.();
   };
 
+  const content = (
+    <>
+      {action.icon ? <span className={styles.actionIcon}>{action.icon}</span> : null}
+      <span>{action.label}</span>
+    </>
+  );
+
+  if (action.href && !action.disabled) {
+    return (
+      <Link
+        href={action.href}
+        className={joinClassNames(styles.action, getActionClassName(action))}
+        onClick={handleClick}
+        title={action.title || action.label}
+      >
+        {content}
+      </Link>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -102,8 +127,7 @@ function AppHeaderAction({ action, onAfterClick }) {
       disabled={action.disabled}
       title={action.title || action.label}
     >
-      {action.icon ? <span className={styles.actionIcon}>{action.icon}</span> : null}
-      <span>{action.label}</span>
+      {content}
     </button>
   );
 }
@@ -128,25 +152,45 @@ function AppHeaderMobileAuthActions({ actions, onAfterClick }) {
       <div className={styles.mobileDivider} aria-hidden="true" />
 
       {loginAction ? (
-        <button
-          type="button"
-          className={styles.mobileAuthSecondaryAction}
-          onClick={handleActionClick(loginAction)}
-          disabled={loginAction.disabled}
-        >
-          Iniciar sesion
-        </button>
+        loginAction.href && !loginAction.disabled ? (
+          <Link
+            href={loginAction.href}
+            className={styles.mobileAuthSecondaryAction}
+            onClick={handleActionClick(loginAction)}
+          >
+            Iniciar sesión
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className={styles.mobileAuthSecondaryAction}
+            onClick={handleActionClick(loginAction)}
+            disabled={loginAction.disabled}
+          >
+            Iniciar sesión
+          </button>
+        )
       ) : null}
 
       {createAccountAction ? (
-        <button
-          type="button"
-          className={styles.mobileAuthPrimaryAction}
-          onClick={handleActionClick(createAccountAction)}
-          disabled={createAccountAction.disabled}
-        >
-          Crear cuenta
-        </button>
+        createAccountAction.href && !createAccountAction.disabled ? (
+          <Link
+            href={createAccountAction.href}
+            className={styles.mobileAuthPrimaryAction}
+            onClick={handleActionClick(createAccountAction)}
+          >
+            Crear cuenta
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className={styles.mobileAuthPrimaryAction}
+            onClick={handleActionClick(createAccountAction)}
+            disabled={createAccountAction.disabled}
+          >
+            Crear cuenta
+          </button>
+        )
       ) : null}
     </div>
   );
@@ -247,6 +291,7 @@ export default function AppHeader({
   const hasMobileDrawer =
     (isLanding || Boolean(userMenu)) &&
     (centerNavItems.length > 0 || Boolean(userMenu));
+  const hasExpandedNavigation = centerNavItems.length > 3;
   const brandHref = logo?.href || "/";
   const brandLabel = "Reserva el Día";
 
@@ -328,6 +373,7 @@ export default function AppHeader({
           href={item.href}
           className={styles.centerNavButton}
           onClick={(event) => handleCenterNavClick(event, item)}
+          aria-current={item.current ? "page" : undefined}
         >
           {mobile ? getMobileNavLabel(item) : item.label}
         </a>
@@ -352,7 +398,8 @@ export default function AppHeader({
       className={joinClassNames(
         styles.root,
         isLanding ? styles.landing : styles.dashboard,
-        placement === "fixed" ? styles.fixed : styles.embedded
+        placement === "fixed" ? styles.fixed : styles.embedded,
+        hasExpandedNavigation ? styles.expandedNavigation : ""
       )}
     >
       <div className={styles.inner}>
@@ -431,27 +478,57 @@ export default function AppHeader({
                   </div>
 
                   <div className={styles.menuItems}>
-                    {(userMenu.items || []).map((item) => (
-                      <button
-                        key={item.key || item.label}
-                        type="button"
-                        className={joinClassNames(
-                          styles.menuItem,
-                          item.tone === "danger" ? styles.menuItemDanger : ""
-                        )}
-                        onClick={() => {
-                          if (item.disabled) return;
-                          item.onClick?.();
-                          closeTransientMenus();
-                        }}
-                        disabled={item.disabled === true}
-                        title={item.title || item.label}
-                        role="menuitem"
-                      >
-                        {item.icon ? <span className={styles.menuItemIcon}>{item.icon}</span> : null}
-                        <span>{item.label}</span>
-                      </button>
-                    ))}
+                    {(userMenu.items || []).map((item) => {
+                      const itemKey = item.key || item.label;
+                      const itemClassName = joinClassNames(
+                        styles.menuItem,
+                        item.tone === "danger" ? styles.menuItemDanger : ""
+                      );
+                      const itemContent = (
+                        <>
+                          {item.icon ? (
+                            <span className={styles.menuItemIcon}>{item.icon}</span>
+                          ) : null}
+                          <span>{item.label}</span>
+                        </>
+                      );
+                      const handleItemClick = () => {
+                        if (item.disabled) return;
+                        item.onClick?.();
+                        closeTransientMenus();
+                      };
+
+                      if (item.href && !item.disabled) {
+                        return (
+                          <Link
+                            key={itemKey}
+                            href={item.href}
+                            className={itemClassName}
+                            onClick={handleItemClick}
+                            target={item.target}
+                            rel={item.rel}
+                            title={item.title || item.label}
+                            role="menuitem"
+                          >
+                            {itemContent}
+                          </Link>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={itemKey}
+                          type="button"
+                          className={itemClassName}
+                          onClick={handleItemClick}
+                          disabled={item.disabled === true}
+                          title={item.title || item.label}
+                          role="menuitem"
+                        >
+                          {itemContent}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}

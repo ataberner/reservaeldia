@@ -447,7 +447,7 @@ export default function Dashboard() {
 
       {/* PUBLISHED view */}
       {pageViewState.showPublicationsView && (
-        <div className="w-full px-4 pb-8">
+        <div className="w-full px-4 pb-8 lg:h-full lg:min-h-0 lg:overflow-hidden">
           <PublicadasGrid
             usuario={usuario}
             focusPublicSlug={focusedPublicSlug}

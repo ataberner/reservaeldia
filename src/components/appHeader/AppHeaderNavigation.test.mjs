@@ -26,6 +26,18 @@ const dashboardHeaderSource = readFileSync(
   new URL("../DashboardHeader.jsx", import.meta.url),
   "utf8"
 );
+const landingFooterSource = readFileSync(
+  new URL("../landing/LandingFooter.jsx", import.meta.url),
+  "utf8"
+);
+const appHeaderStyles = readFileSync(
+  new URL("./AppHeader.module.css", import.meta.url),
+  "utf8"
+);
+const landingPageSource = readFileSync(
+  new URL("../../pages/index.js", import.meta.url),
+  "utf8"
+);
 
 test("authenticated header navigation uses existing same-document dashboard anchors", () => {
   const authenticatedTargets = [
@@ -89,5 +101,54 @@ test("landing hash targets compensate the fixed header without affecting dashboa
   assert.match(
     pricingStyles,
     /\.pricingSection\s*\{[\s\S]*scroll-margin-top:\s*57px;/
+  );
+});
+
+test("shared public navigation routes FAQ links to the indexable FAQ page", () => {
+  assert.match(
+    appHeaderSource,
+    /key: "faq",[\s\S]*href: "\/preguntas-frecuentes\/"/
+  );
+  assert.match(
+    dashboardHeaderSource,
+    /key: "faq",[\s\S]*href: "\/preguntas-frecuentes\/"/
+  );
+  assert.match(
+    landingFooterSource,
+    /Preguntas Frecuentes", href: "\/preguntas-frecuentes\/"/
+  );
+  assert.match(
+    dashboardHomeSource,
+    /Preguntas Frecuentes", href: "\/preguntas-frecuentes\/"/
+  );
+  assert.match(
+    landingFooterSource,
+    /Contacto",[\s\S]*href: "\/preguntas-frecuentes\/#contactar-equipo-reserva-el-dia"/
+  );
+  assert.match(
+    dashboardHomeSource,
+    /Contacto",[\s\S]*href: "\/preguntas-frecuentes\/#contactar-equipo-reserva-el-dia"/
+  );
+});
+
+test("expanded header navigation keeps the established mobile drawer at intermediate widths", () => {
+  assert.match(
+    appHeaderSource,
+    /hasExpandedNavigation = centerNavItems\.length > 3/
+  );
+  assert.match(
+    appHeaderStyles,
+    /@media \(min-width: 860px\) and \(max-width: 1099px\)[\s\S]*\.expandedNavigation \.mobileToggle[\s\S]*display: inline-flex/
+  );
+});
+
+test("linked public header actions preserve auth entry on the landing route", () => {
+  assert.match(
+    appHeaderSource,
+    /if \(action\.href && !action\.disabled\)[\s\S]*<Link[\s\S]*href=\{action\.href\}/
+  );
+  assert.match(
+    landingPageSource,
+    /const authAction = params\.get\("auth"\)[\s\S]*authAction === "login"[\s\S]*authAction === "register"[\s\S]*params\.delete\("auth"\)/
   );
 });

@@ -13,6 +13,7 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 | Route | Index | Robots | Canonical | Sitemap | Social metadata | Structured data | Priority |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/` | Yes | `index, follow` | `https://reservaeldia.com.ar/` | Yes | Open Graph and Twitter Card | `Organization`, `WebSite`, `WebPage` | High |
+| `/preguntas-frecuentes/` | Yes | `index, follow` | `https://reservaeldia.com.ar/preguntas-frecuentes/` | Yes | Open Graph and Twitter Card | `FAQPage` with the same visible questions and answers | High |
 | `/i/{slug}` | No | `noindex, noarchive` | Omitted | No | Open Graph and Twitter Card for private sharing | None | High |
 | `/i/{slug}/share.jpg` | No | `X-Robots-Tag: noindex` | N/A | No | N/A | None | High |
 | `/dashboard/`, `/dashboard/**` | No | `noindex, noarchive` | Omitted | No | None | None | High |
@@ -28,15 +29,15 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 
 - `robots.txt` is static in `public/robots.txt` because the policy does not
   depend on Firestore or runtime publication state.
-- `sitemap.xml` is static in `public/sitemap.xml` while the only indexable route
-  is `/`. Do not add `/i/{slug}` to any sitemap.
+- `sitemap.xml` is static in `public/sitemap.xml` and lists the approved
+  indexable routes `/` and `/preguntas-frecuentes/`. Do not add `/i/{slug}` to
+  any sitemap.
 - Do not disallow `/i/` in `robots.txt`; crawlers must be able to see the
   `noindex` directive on private invitations.
 - Public invitations use `noindex, noarchive` only. Do not add `nofollow` or
   `nosnippet` unless a concrete technical reason is documented here first.
-- Future SEO pages such as `/plantillas/`, `/funcionalidades/*`,
-  `/preguntas-frecuentes/`, guides, or blog posts must be added to this
-  inventory before implementation.
+- Future SEO pages such as `/plantillas/`, `/funcionalidades/*`, guides, or blog
+  posts must be added to this inventory before implementation.
 - AEO policy is tracked in [AEO_ROUTE_INVENTORY.md](AEO_ROUTE_INVENTORY.md).
   Keep both inventories aligned when route indexability, metadata, or
   structured-data policy changes.
@@ -44,6 +45,8 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 ## Verification Anchors
 
 - `functions/seoStaticFiles.test.mjs`
+- `src/domain/seo/faqMetadata.test.mjs`
+- `src/pages/preguntas-frecuentes.test.mjs`
 - `functions/publicDeliveryRoutes.test.mjs`
 - `functions/publicationPublishExecution.test.mjs`
 - `npm run build`

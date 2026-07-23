@@ -18,9 +18,12 @@ const TEMPLATE_COLLECTIONS_ANCHOR_ID = "dashboard-home-template-collections";
 const DASHBOARD_FOOTER_NAV_ITEMS = [
   { label: "Inicio", href: "/dashboard" },
   { label: "Invitaciones", href: `#${TEMPLATE_COLLECTIONS_ANCHOR_ID}` },
-  { label: "Preguntas Frecuentes", href: "#preguntas-frecuentes" },
+  { label: "Preguntas Frecuentes", href: "/preguntas-frecuentes/" },
   { label: "Cómo funciona", href: "#dashboard-como-funciona" },
-  { label: "Contacto", href: "#dashboard-contacto" },
+  {
+    label: "Contacto",
+    href: "/preguntas-frecuentes/#contactar-equipo-reserva-el-dia",
+  },
 ];
 
 export default function DashboardHomeView({

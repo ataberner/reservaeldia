@@ -49,6 +49,17 @@ export function filterInvitationRows(rows = [], { search = "", status = "all" } 
   });
 }
 
+export function findInvitationById(rows = [], invitationId = "") {
+  const normalizedId = normalizeText(invitationId);
+  if (!normalizedId) return null;
+
+  return (
+    (Array.isArray(rows) ? rows : []).find(
+      (row) => normalizeText(row?.id) === normalizedId
+    ) || null
+  );
+}
+
 export function getResponseAttendanceKey(response) {
   const attendance = normalizeText(response?.metrics?.attendance).toLowerCase();
   if (attendance === "yes") return "confirmed";

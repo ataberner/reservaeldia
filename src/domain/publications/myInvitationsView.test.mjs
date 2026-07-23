@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildResponsesCsv,
   computeResponseMetrics,
+  findInvitationById,
   filterInvitationRows,
   filterResponseRows,
   paginateItems,
@@ -45,6 +46,20 @@ test("filterInvitationRows filters by search and status", () => {
     ),
     ["Elena - Mis 15"]
   );
+});
+
+test("findInvitationById resolves the existing row without creating selection state", () => {
+  const rows = [
+    { id: "one", nombre: "Una invitacion" },
+    {
+      id: "two",
+      nombre: "Una invitacion con un nombre especialmente largo para mobile",
+    },
+  ];
+
+  assert.equal(findInvitationById([], "one"), null);
+  assert.equal(findInvitationById(rows, "missing"), null);
+  assert.equal(findInvitationById(rows, "two"), rows[1]);
 });
 
 test("filterResponseRows filters by attendance and accent-insensitive search", () => {

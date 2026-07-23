@@ -173,6 +173,7 @@
   font-size: 12px;
   font-weight: 800;
   line-height: 1.1;
+  text-decoration: none;
   transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
   white-space: nowrap;
 }
@@ -470,6 +471,7 @@
   letter-spacing: 0;
   padding: 0;
   text-align: right;
+  text-decoration: none;
 }
 
 .mobileAuthPrimaryAction {
@@ -746,6 +748,7 @@
   cursor: pointer;
   padding: 9px 10px;
   text-align: left;
+  text-decoration: none;
   font-size: 12px;
   font-weight: 800;
 }
@@ -816,6 +819,31 @@
 
   .landing .account {
     display: block;
+  }
+}
+
+@media (min-width: 860px) and (max-width: 1099px) {
+  .expandedNavigation .inner {
+    justify-content: space-between;
+  }
+
+  .expandedNavigation .logoLink,
+  .expandedNavigation .rightCluster {
+    flex: 0 1 auto;
+  }
+
+  .expandedNavigation .centerNav,
+  .expandedNavigation .desktopActions,
+  .expandedNavigation .dashboardActions {
+    display: none;
+  }
+
+  .expandedNavigation .mobileToggle {
+    display: inline-flex;
+  }
+
+  .expandedNavigation .mobilePanel {
+    display: flex;
   }
 }
 

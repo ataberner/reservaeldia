@@ -50,6 +50,7 @@ import {
   buildResponsesCsv,
   computeHistoricResponseMetrics,
   computeResponseMetrics,
+  findInvitationById,
   filterInvitationRows,
   filterResponseRows,
   getResponseAttendanceKey,
@@ -208,17 +209,6 @@ function createMetricCards(metrics) {
           : "Sin invitados cargados",
       icon: XCircle,
       tone: "orange",
-    },
-    {
-      id: "pending",
-      label: "Pendientes",
-      value: metrics.pendingResponses,
-      detail:
-        metrics.totalExpected > 0
-          ? `${Math.round((metrics.pendingResponses / metrics.totalExpected) * 100)}% del total`
-          : "Sin pendientes",
-      icon: Clock3,
-      tone: "softBrand",
     },
   ];
 }
@@ -674,16 +664,16 @@ export default function PublicadasGrid({
   };
 
   const renderPageHeader = () => (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex items-start gap-4">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-[#692B9A] text-white shadow-[0_16px_32px_rgba(105,43,154,0.22)]">
-          <CalendarDays className="h-6 w-6" />
+    <div className="sticky top-0 z-20 flex shrink-0 flex-col gap-3 bg-white py-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#692B9A] text-white shadow-[0_10px_22px_rgba(105,43,154,0.18)]">
+          <CalendarDays className="h-5 w-5" />
         </div>
-        <div className="text-left">
-          <h1 className="text-[28px] font-semibold leading-tight text-[#262626] sm:text-[32px]">
+        <div className="min-w-0 text-left">
+          <h1 className="text-[24px] font-semibold leading-tight text-[#262626] sm:text-[28px]">
             Mis invitaciones publicadas
           </h1>
-          <p className="mt-1 text-sm leading-6 text-[#262626]/60 sm:text-base">
+          <p className="mt-0.5 text-sm leading-5 text-[#262626]/60">
             Gestiona tus invitaciones y segui las respuestas de tus invitados.
           </p>
         </div>
@@ -700,10 +690,10 @@ export default function PublicadasGrid({
   );
 
   const renderLoading = () => (
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-hidden">
       {renderPageHeader()}
-      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
-        <div className="rounded-[18px] border border-[#EFDBFF] bg-white p-4 shadow-[0_16px_40px_rgba(38,38,38,0.06)]">
+      <div className="grid min-h-0 gap-4 lg:flex-1 lg:grid-cols-[360px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[390px_minmax(0,1fr)]">
+        <div className="rounded-[18px] border border-[#EFDBFF] bg-white p-4 shadow-[0_16px_40px_rgba(38,38,38,0.06)] lg:overflow-hidden">
           <div className="h-11 animate-pulse rounded-xl bg-[#FAF5FF]" />
           <div className="mt-4 space-y-3">
             {Array.from({ length: 5 }).map((_, index) => (
@@ -718,17 +708,17 @@ export default function PublicadasGrid({
             ))}
           </div>
         </div>
-        <div className="rounded-[18px] border border-[#EFDBFF] bg-white p-5 shadow-[0_16px_40px_rgba(38,38,38,0.06)]">
-          <div className="flex gap-5">
-            <div className="h-36 w-64 animate-pulse rounded-2xl bg-[#FBF7F9]" />
-            <div className="flex-1 space-y-3">
+        <div className="min-w-0 max-w-full rounded-[18px] border border-[#EFDBFF] bg-white p-5 shadow-[0_16px_40px_rgba(38,38,38,0.06)] lg:overflow-hidden">
+          <div className="flex min-w-0 flex-col gap-5 lg:flex-row">
+            <div className="h-36 w-full max-w-full animate-pulse rounded-2xl bg-[#FBF7F9] lg:w-64" />
+            <div className="min-w-0 flex-1 space-y-3">
               <div className="h-6 w-1/2 animate-pulse rounded bg-[#FAF5FF]" />
               <div className="h-4 w-1/3 animate-pulse rounded bg-[#FAF5FF]" />
               <div className="h-4 w-2/3 animate-pulse rounded bg-[#FAF5FF]" />
             </div>
           </div>
-          <div className="mt-6 grid grid-cols-3 gap-3">
-            {Array.from({ length: 3 }).map((_, index) => (
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            {Array.from({ length: 2 }).map((_, index) => (
               <div key={index} className="h-28 animate-pulse rounded-2xl bg-[#FAF5FF]" />
             ))}
           </div>
@@ -740,7 +730,7 @@ export default function PublicadasGrid({
 
   if (cargando) {
     return (
-      <div className="mx-auto w-full max-w-[1480px] py-5 text-left [font-family:'DM_Sans',sans-serif] [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
+      <div className="mx-auto flex w-full min-w-0 max-w-full flex-col py-3 text-left [font-family:'DM_Sans',sans-serif] sm:py-4 lg:h-full lg:min-h-0 lg:max-w-[1480px] lg:overflow-hidden [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
         {renderLoading()}
       </div>
     );
@@ -748,7 +738,7 @@ export default function PublicadasGrid({
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-[1480px] py-5 text-left [font-family:'DM_Sans',sans-serif] [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
+      <div className="mx-auto w-full min-w-0 max-w-full py-5 text-left [font-family:'DM_Sans',sans-serif] lg:max-w-[1480px] [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
         {renderPageHeader()}
         <div className="mt-6 rounded-[18px] border border-[#FFDADA] bg-[#fff7f7] p-6 text-[#B3261E]">
           <p className="font-semibold">Ocurrio un error</p>
@@ -759,7 +749,7 @@ export default function PublicadasGrid({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1480px] py-4 text-left [font-family:'DM_Sans',sans-serif] sm:py-5 [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
+    <div className="mx-auto flex w-full min-w-0 max-w-full flex-col py-3 text-left [font-family:'DM_Sans',sans-serif] sm:py-4 lg:h-full lg:min-h-0 lg:max-w-[1480px] lg:overflow-hidden [&_h1]:[text-shadow:none] [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_h4]:[text-shadow:none] [&_p]:[text-shadow:none]">
       {renderPageHeader()}
 
       {actionError ? (
@@ -785,8 +775,25 @@ export default function PublicadasGrid({
           </button>
         </div>
       ) : (
-        <div className="mt-5 grid min-w-0 gap-4 sm:mt-6 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
-          <aside className="min-w-0">
+        <div className="mt-4 grid w-full min-w-0 max-w-full gap-4 sm:mt-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[360px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[390px_minmax(0,1fr)]">
+          <div className="min-w-0 max-w-full lg:hidden">
+            <MobileInvitationSelector
+              rows={filteredInvitationRows}
+              allRowsCount={filas.length}
+              selectedId={publicacionIdSeleccionada}
+              search={invitationSearch}
+              onSearchChange={setInvitationSearch}
+              statusFilter={invitationStatusFilter}
+              onStatusFilterChange={setInvitationStatusFilter}
+              filterCounts={invitationFilterCounts}
+              onSelect={selectInvitation}
+            />
+          </div>
+
+          <aside
+            className="hidden min-w-0 lg:block lg:min-h-0 lg:overflow-hidden"
+            aria-label="Invitaciones publicadas"
+          >
             <InvitationListPanel
               rows={invitationPagination.items}
               totalRows={filteredInvitationRows.length}
@@ -803,7 +810,12 @@ export default function PublicadasGrid({
             />
           </aside>
 
-          <main className="min-w-0">
+          <div
+            className="w-full min-w-0 max-w-full lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2"
+            role="region"
+            aria-label="Detalle de la invitacion seleccionada"
+            tabIndex={0}
+          >
             <InvitationDetailPanel
               publicacion={publicacionSeleccionada}
               metrics={selectedMetrics}
@@ -831,7 +843,7 @@ export default function PublicadasGrid({
               onHardDeleteLegacy={handleHardDeleteLegacy}
               onOpenDetail={setDetalleId}
             />
-          </main>
+          </div>
         </div>
       )}
 
@@ -916,7 +928,120 @@ function InvitationListPanel({
   onSelect,
 }) {
   return (
-    <div className="max-h-[min(58vh,560px)] overflow-y-auto overscroll-contain rounded-[18px] border border-[#EFDBFF] bg-white p-3 shadow-[0_16px_40px_rgba(38,38,38,0.06)] lg:max-h-none lg:overflow-visible">
+    <div className="rounded-[18px] border border-[#EFDBFF] bg-white shadow-[0_16px_40px_rgba(38,38,38,0.06)] lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden">
+      <div className="shrink-0 p-3 pb-2">
+        <InvitationListControls
+          totalRows={totalRows}
+          allRowsCount={allRowsCount}
+          search={search}
+          onSearchChange={onSearchChange}
+          statusFilter={statusFilter}
+          onStatusFilterChange={onStatusFilterChange}
+          filterCounts={filterCounts}
+        />
+      </div>
+
+      <div
+        className="p-3 pt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#692B9A]"
+        aria-label="Listado de invitaciones publicadas"
+        tabIndex={0}
+      >
+        {rows.length ? (
+          <ul className="space-y-2">
+            {rows.map((fila) => (
+              <InvitationListItem
+                key={`${fila.source}-${fila.id}`}
+                fila={fila}
+                selected={fila.id === selectedId}
+                onSelect={() => onSelect(fila)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#EFDBFF] bg-[#FAF5FF] px-4 py-8 text-center text-sm text-[#262626]/60">
+            No hay invitaciones para estos filtros.
+          </div>
+        )}
+
+        <PaginationControls
+          className="mt-4"
+          pagination={pagination}
+          onPageChange={onPageChange}
+          compact
+        />
+      </div>
+    </div>
+  );
+}
+
+function MobileInvitationSelector({
+  rows,
+  allRowsCount,
+  selectedId,
+  search,
+  onSearchChange,
+  statusFilter,
+  onStatusFilterChange,
+  filterCounts,
+  onSelect,
+}) {
+  const selectId = "mobile-published-invitation-select";
+
+  const handleChange = (event) => {
+    const selectedRow = findInvitationById(rows, event.target.value);
+    if (selectedRow) onSelect(selectedRow);
+  };
+
+  return (
+    <div className="w-full min-w-0 max-w-full rounded-[18px] border border-[#EFDBFF] bg-white p-3 shadow-[0_16px_40px_rgba(38,38,38,0.06)]">
+      <InvitationListControls
+        totalRows={rows.length}
+        allRowsCount={allRowsCount}
+        search={search}
+        onSearchChange={onSearchChange}
+        statusFilter={statusFilter}
+        onStatusFilterChange={onStatusFilterChange}
+        filterCounts={filterCounts}
+      />
+
+      <label
+        htmlFor={selectId}
+        className="mt-3 block text-sm font-semibold text-[#262626]"
+      >
+        Elegir invitacion
+      </label>
+      <select
+        id={selectId}
+        value={selectedId || ""}
+        onChange={handleChange}
+        disabled={!rows.length}
+        className="mt-2 h-12 w-full min-w-0 rounded-xl border border-[#E5E5E5] bg-white px-3 text-base text-[#262626] outline-none transition focus-visible:border-[#692B9A] focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-not-allowed disabled:bg-[#FBF7F9] disabled:text-[#262626]/54"
+      >
+        {!rows.length ? (
+          <option value="">No hay invitaciones para estos filtros</option>
+        ) : (
+          rows.map((fila) => (
+            <option key={`${fila.source}-${fila.id}`} value={fila.id}>
+              {fila.nombre} - {fila.estado}
+            </option>
+          ))
+        )}
+      </select>
+    </div>
+  );
+}
+
+function InvitationListControls({
+  totalRows,
+  allRowsCount,
+  search,
+  onSearchChange,
+  statusFilter,
+  onStatusFilterChange,
+  filterCounts,
+}) {
+  return (
+    <>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#262626]/40" />
         <input
@@ -924,11 +1049,12 @@ function InvitationListPanel({
           onChange={(event) => onSearchChange(event.target.value)}
           className="h-11 w-full rounded-xl border border-[#E5E5E5] bg-white pl-10 pr-10 text-sm text-[#262626] outline-none transition placeholder:text-[#262626]/38 focus:border-[#692B9A] focus:ring-2 focus:ring-[#EFDBFF]"
           placeholder="Buscar invitacion..."
+          aria-label="Buscar invitacion publicada"
         />
         <SlidersHorizontal className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#692B9A]" />
       </div>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="mt-3 flex min-w-0 flex-wrap gap-2 pb-1 lg:flex-nowrap lg:overflow-x-auto lg:scrollbar-hide">
         {INVITATION_FILTERS.map((filter) => {
           const active = statusFilter === filter.id;
           return (
@@ -936,7 +1062,7 @@ function InvitationListPanel({
               key={filter.id}
               type="button"
               onClick={() => onStatusFilterChange(filter.id)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2 ${
                 active
                   ? "border-[#692B9A] bg-[#692B9A] text-white"
                   : "border-[#EFDBFF] bg-[#FAF5FF] text-[#692B9A] hover:bg-[#EFDBFF]"
@@ -948,34 +1074,10 @@ function InvitationListPanel({
         })}
       </div>
 
-      <div className="mt-3 text-xs text-[#262626]/54">
+      <div className="mt-2 text-xs text-[#262626]/54">
         {totalRows} de {allRowsCount} invitaciones
       </div>
-
-      {rows.length ? (
-        <ul className="mt-3 space-y-2">
-          {rows.map((fila) => (
-            <InvitationListItem
-              key={`${fila.source}-${fila.id}`}
-              fila={fila}
-              selected={fila.id === selectedId}
-              onSelect={() => onSelect(fila)}
-            />
-          ))}
-        </ul>
-      ) : (
-        <div className="mt-3 rounded-2xl border border-dashed border-[#EFDBFF] bg-[#FAF5FF] px-4 py-8 text-center text-sm text-[#262626]/60">
-          No hay invitaciones para estos filtros.
-        </div>
-      )}
-
-      <PaginationControls
-        className="mt-4"
-        pagination={pagination}
-        onPageChange={onPageChange}
-        compact
-      />
-    </div>
+    </>
   );
 }
 
@@ -986,7 +1088,7 @@ function InvitationListItem({ fila, selected, onSelect }) {
       <button
         type="button"
         onClick={onSelect}
-        className={`grid w-full grid-cols-[88px_minmax(0,1fr)_42px] gap-2 rounded-2xl border p-2 text-left transition sm:grid-cols-[112px_minmax(0,1fr)_46px] sm:gap-3 ${
+        className={`grid w-full grid-cols-[88px_minmax(0,1fr)_42px] gap-2 rounded-2xl border p-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2 sm:grid-cols-[112px_minmax(0,1fr)_46px] sm:gap-3 ${
           selected
             ? "border-[#692B9A] bg-[#FAF5FF] shadow-[0_10px_24px_rgba(105,43,154,0.16)]"
             : "border-transparent bg-white hover:border-[#EFDBFF] hover:bg-[#FBF7F9]"
@@ -1081,7 +1183,7 @@ function InvitationDetailPanel({
     pendingStateActionKey === trashActionKey;
 
   return (
-    <div className="rounded-[18px] border border-[#EFDBFF] bg-white p-4 shadow-[0_16px_40px_rgba(38,38,38,0.06)] sm:p-5">
+    <div className="w-full min-w-0 max-w-full rounded-[18px] border border-[#EFDBFF] bg-white p-4 shadow-[0_16px_40px_rgba(38,38,38,0.06)] sm:p-5">
       {showBackMobile ? (
         <button
           type="button"
@@ -1093,21 +1195,24 @@ function InvitationDetailPanel({
         </button>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_190px]">
-        <div className="overflow-hidden rounded-2xl bg-[#FBF7F9] xl:h-36">
+      <div className="grid min-w-0 max-w-full gap-5 xl:grid-cols-[280px_minmax(0,1fr)_190px]">
+        <div
+          className="aspect-[4/3] w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-[#FBF7F9] lg:aspect-auto xl:h-36"
+          data-mobile-cover-preview="true"
+        >
           <ResolvedPreviewImage
             primarySrc={publicacion.portada || ""}
             previewCandidates={publicacion.previewCandidates || []}
             alt={`Portada de ${publicacion.nombre}`}
-            className={`h-full min-h-[180px] w-full object-cover object-top xl:min-h-0 ${
+            className={`block h-full w-full max-w-full object-cover object-top lg:min-h-[180px] xl:min-h-0 ${
               publicacion.isPaused ? "opacity-80 saturate-[0.9]" : ""
             }`}
           />
         </div>
 
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-2xl font-semibold text-[#262626]">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+            <h2 className="min-w-0 max-w-full break-words text-2xl font-semibold text-[#262626] lg:truncate lg:break-normal">
               {publicacion.nombre}
             </h2>
             <EstadoPill valor={publicacion.estado} />
@@ -1211,7 +1316,7 @@ function InvitationDetailPanel({
         </div>
       </div>
 
-      <div className="mt-7 grid gap-3 md:grid-cols-3">
+      <div className="mt-7 grid gap-3 sm:grid-cols-2">
         {metricCards.map((card) => (
           <MetricCard key={card.id} card={card} />
         ))}
@@ -1255,7 +1360,7 @@ function InvitationDetailPanel({
 
         {!publicacion.isFinalized ? (
           <>
-            <div className="mt-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="mt-4 flex min-w-0 flex-wrap gap-2 pb-1 lg:flex-nowrap lg:overflow-x-auto lg:scrollbar-hide">
               {RESPONSE_FILTERS.map((filter) => {
                 const active = responseFilter === filter.id;
                 return (
@@ -1303,9 +1408,9 @@ function InvitationDetailPanel({
 
 function InfoItem({ icon: Icon, children }) {
   return (
-    <div className="inline-flex min-w-0 items-center gap-2">
+    <div className="inline-flex min-w-0 max-w-full items-center gap-2 lg:max-w-none">
       <Icon className="h-4 w-4 shrink-0 text-[#692B9A]" />
-      <span className="truncate">{children}</span>
+      <span className="min-w-0 break-all lg:truncate lg:break-normal">{children}</span>
     </div>
   );
 }
@@ -1497,7 +1602,7 @@ function PaginationControls({ pagination, onPageChange, className = "", compact 
     });
 
   return (
-    <div className={`flex items-center justify-center gap-2 ${className}`}>
+    <div className={`flex min-w-0 max-w-full items-center justify-center gap-2 ${className}`}>
       <button
         type="button"
         onClick={() => onPageChange(pagination.page - 1)}
@@ -1507,8 +1612,13 @@ function PaginationControls({ pagination, onPageChange, className = "", compact 
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
-      {!compact
-        ? pageNumbers.map((page, index) => {
+      {!compact ? (
+        <>
+          <span className="min-w-[76px] text-center text-sm text-[#262626]/70 sm:hidden">
+            {pagination.page} de {pagination.totalPages}
+          </span>
+          <div className="hidden items-center gap-2 sm:flex">
+            {pageNumbers.map((page, index) => {
             const previous = pageNumbers[index - 1];
             const needsDots = previous && page - previous > 1;
             return (
@@ -1527,12 +1637,14 @@ function PaginationControls({ pagination, onPageChange, className = "", compact 
                 </button>
               </span>
             );
-          })
-        : (
+            })}
+          </div>
+        </>
+      ) : (
           <span className="min-w-[76px] text-center text-sm text-[#262626]/70">
             {pagination.page} de {pagination.totalPages}
           </span>
-        )}
+      )}
       <button
         type="button"
         onClick={() => onPageChange(pagination.page + 1)}

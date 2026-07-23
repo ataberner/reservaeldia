@@ -3,9 +3,12 @@ import styles from "./LandingFooter.module.css";
 const DEFAULT_NAV_ITEMS = [
   { label: "Inicio", href: "/" },
   { label: "Invitaciones", href: "#plantillas" },
-  { label: "Preguntas Frecuentes", href: "#preguntas-frecuentes" },
+  { label: "Preguntas Frecuentes", href: "/preguntas-frecuentes/" },
   { label: "Cómo funciona", href: "#como-funciona" },
-  { label: "Contacto", href: "#contacto" },
+  {
+    label: "Contacto",
+    href: "/preguntas-frecuentes/#contactar-equipo-reserva-el-dia",
+  },
 ];
 
 const LEGAL_LINKS = [

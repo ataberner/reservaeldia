@@ -172,6 +172,7 @@ export default function Home() {
     const noticeCode = params.get("authNotice");
     const noticeMessage = getAuthNoticeMessage(noticeCode);
     const emailVerified = params.get("emailVerified");
+    const authAction = params.get("auth");
 
     let shouldCleanUrl = false;
 
@@ -189,10 +190,18 @@ export default function Home() {
       shouldCleanUrl = true;
     }
 
+    if (authAction === "login" || authAction === "register") {
+      clearPendingLandingTemplateSelection();
+      setShowLogin(authAction === "login");
+      setShowRegister(authAction === "register");
+      shouldCleanUrl = true;
+    }
+
     if (!shouldCleanUrl) return;
 
     params.delete("authNotice");
     params.delete("emailVerified");
+    params.delete("auth");
     const cleanQuery = params.toString();
     const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash || ""}`;
     window.history.replaceState({}, "", cleanUrl);

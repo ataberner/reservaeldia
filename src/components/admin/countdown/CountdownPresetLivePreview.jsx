@@ -4,6 +4,7 @@ import { loadGoogleFont } from "@/utils/loadFont";
 import {
   buildTextPaintStyle,
   buildFrameSvgMarkup,
+  buildCountdownEditorialWidths,
   estimateCountdownUnitHeight,
   getCountdownParts,
   normalizeVisibleUnits,
@@ -12,6 +13,14 @@ import {
   resolvePreviewPaint,
   transformLabel,
 } from "@/domain/countdownPresets/renderModel";
+import {
+  recordCountdownAssetLoadError,
+  recordCountdownRenderTelemetry,
+} from "@/domain/countdownObservability/telemetry";
+import {
+  normalizeCountdownFrameScale,
+  resolveCountdownFrameVisualBounds,
+} from "@/domain/countdownPresets/frameGeometry";
 
 const LEGACY_LAYOUTS = new Set(["pills", "flip", "minimal"]);
 const GENERIC_FONT_NAMES = new Set([
@@ -107,22 +116,30 @@ export default function CountdownPresetLivePreview({
   config,
   svgText,
   frameUrl = "",
+  frameAssetType = null,
   svgColorMode = "fixed",
   frameColor = "#773dbe",
   targetISO,
+  nowMs = null,
+  reducedMotion = false,
   legacyPresetProps = null,
   useLegacyCanvasPreview = false,
 }) {
   const [tick, setTick] = useState(0);
   const stageViewportRef = useRef(null);
   const stageViewport = useElementSize(stageViewportRef);
+  const hasInjectedNow =
+    nowMs !== null &&
+    nowMs !== "" &&
+    Number.isFinite(Number(nowMs));
 
   useEffect(() => {
+    if (hasInjectedNow) return undefined;
     const timer = setInterval(() => {
       setTick((prev) => (prev + 1) % 3600);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [hasInjectedNow]);
 
   const safeConfig = config || {};
   const layout = safeConfig.layout || {};
@@ -144,12 +161,38 @@ export default function CountdownPresetLivePreview({
         unidad,
         tamanoBase: safeConfig?.tamanoBase,
         svgRef: {
-          colorMode: svgColorMode,
+          type: frameAssetType,
+          colorMode:
+            frameAssetType === "png" ? "fixed" : svgColorMode,
           downloadUrl: null,
         },
       }),
-    [layout, typo, colors, animations, unidad, safeConfig?.tamanoBase, svgColorMode]
+    [
+      layout,
+      typo,
+      colors,
+      animations,
+      unidad,
+      safeConfig?.tamanoBase,
+      svgColorMode,
+      frameAssetType,
+    ]
   );
+
+  useEffect(() => {
+    recordCountdownRenderTelemetry({
+      countdown: previewPatch,
+      renderer: "builder-live-preview",
+    });
+  }, [previewPatch]);
+
+  const handleFrameLoadError = () => {
+    recordCountdownAssetLoadError({
+      countdown: previewPatch,
+      renderer: "builder-live-preview",
+      assetKind: `frame-${frameAssetType === "png" ? "png" : "svg"}`,
+    });
+  };
 
   const layoutVariant = resolveLegacyLayout(
     legacyPresetProps?.layout || unidad?.legacyLayout || previewPatch.layout
@@ -161,31 +204,45 @@ export default function CountdownPresetLivePreview({
 
   const visibleUnits = normalizeVisibleUnits(previewPatch.visibleUnits);
   const parts = useMemo(
-    () => getCountdownParts(targetISO, visibleUnits),
-    [targetISO, tick, visibleUnits]
+    () =>
+      getCountdownParts(
+        targetISO,
+        visibleUnits,
+        hasInjectedNow ? Number(nowMs) : Date.now()
+      ),
+    [targetISO, tick, visibleUnits, nowMs, hasInjectedNow]
   );
 
   const valuesKey = parts.map((part) => part.value).join("|");
   const pulseToken = usePulseOnChange(
     valuesKey,
-    !legacyMode && animations.tick && animations.tick !== "none"
+    !reducedMotion &&
+      !legacyMode &&
+      animations.tick &&
+      animations.tick !== "none"
   );
   const canAnimateFrame = Boolean(
-    !legacyMode &&
-      svgText &&
+      !reducedMotion &&
+      !legacyMode &&
+      (svgText || frameUrl) &&
       animations.frame &&
       animations.frame !== "none"
   );
 
   const frameSvgMarkup = useMemo(
     () =>
-      buildFrameSvgMarkup(svgText, {
+      frameAssetType === "png"
+        ? ""
+        : buildFrameSvgMarkup(svgText, {
         colorMode: svgColorMode,
         frameColor,
       }),
-    [svgText, svgColorMode, frameColor]
+    [svgText, svgColorMode, frameColor, frameAssetType]
   );
   const safeFrameUrl = String(frameUrl || "").trim();
+  const isPngFrame = frameAssetType === "png";
+  const canUseCurrentColor =
+    !isPngFrame && svgColorMode === "currentColor";
 
   const distribution = String(previewPatch.distribution || "centered");
   const layoutType = String(previewPatch.layoutType || "singleFrame");
@@ -197,6 +254,7 @@ export default function CountdownPresetLivePreview({
   const letterSpacing = toFinite(previewPatch.letterSpacing, 0);
   const gap = Math.max(0, toFinite(previewPatch.gap, 8));
   const framePadding = Math.max(0, toFinite(previewPatch.framePadding, 10));
+  const frameScale = normalizeCountdownFrameScale(previewPatch.frameScale);
   const paddingX = Math.max(2, toFinite(previewPatch.paddingX, 8));
   const paddingY = Math.max(2, toFinite(previewPatch.paddingY, 6));
   const requestedChipW = Math.max(36, toFinite(previewPatch.chipWidth, 46) + paddingX * 2);
@@ -233,16 +291,12 @@ export default function CountdownPresetLivePreview({
 
   const editorialWidths =
     distribution === "editorial"
-      ? Array.from({ length: itemCount }, (_, index) =>
-          resolveCountdownUnitWidth({
-            width: Math.max(
-              34,
-              Math.round(baseChipW * (index === 0 && itemCount > 1 ? 1.25 : 0.88))
-            ),
-            height: chipH,
-            boxRadius: unitBoxRadius,
-          })
-        )
+      ? buildCountdownEditorialWidths({
+          unitsCount: itemCount,
+          baseChipWidth: baseChipW,
+          chipHeight: chipH,
+          boxRadius: unitBoxRadius,
+        })
       : [];
 
   const naturalW =
@@ -267,7 +321,6 @@ export default function CountdownPresetLivePreview({
     naturalH + (layoutType === "singleFrame" ? framePadding * 2 : 0),
     1
   );
-
   const contentBounds = {
     x: layoutType === "singleFrame" ? framePadding : 0,
     y: layoutType === "singleFrame" ? framePadding : 0,
@@ -356,6 +409,15 @@ export default function CountdownPresetLivePreview({
     baseChipW,
     editorialWidths,
   ]);
+  const frameVisualBounds = resolveCountdownFrameVisualBounds({
+    width: containerW,
+    height: containerH,
+    frameScale:
+      frameSvgMarkup || safeFrameUrl
+        ? frameScale
+        : 1,
+    frameRects: layoutType === "multiUnit" ? unitLayouts : undefined,
+  });
 
   const displayTargetWidth = Math.max(220, Math.min(560, toFinite(safeConfig?.tamanoBase, 320)));
   const viewportWidth = Math.max(1, stageViewport.width || displayTargetWidth);
@@ -363,11 +425,21 @@ export default function CountdownPresetLivePreview({
   const constrainedTargetWidth = Math.min(displayTargetWidth, viewportWidth);
   const stageScale = Math.min(
     1,
-    constrainedTargetWidth / containerW,
-    viewportHeight / containerH
+    constrainedTargetWidth / frameVisualBounds.width,
+    viewportHeight / frameVisualBounds.height
   );
-  const stageWidth = Math.max(1, Math.round(containerW * stageScale));
-  const stageHeight = Math.max(1, Math.round(containerH * stageScale));
+  const stageWidth = Math.max(
+    1,
+    Math.round(frameVisualBounds.width * stageScale)
+  );
+  const stageHeight = Math.max(
+    1,
+    Math.round(frameVisualBounds.height * stageScale)
+  );
+  const frameScaleStyle = {
+    transform: `scale(${frameScale})`,
+    transformOrigin: "center",
+  };
   const canRenderSeparators = Boolean(
     separator && distribution !== "vertical" && distribution !== "grid"
   );
@@ -435,7 +507,9 @@ export default function CountdownPresetLivePreview({
         : "";
 
   const entryAnimationClass =
-    animations.entry === "fadeUp"
+    reducedMotion
+      ? ""
+      : animations.entry === "fadeUp"
       ? "cd-preview-entry-up"
       : animations.entry === "fadeIn"
         ? "cd-preview-entry-fade"
@@ -444,42 +518,89 @@ export default function CountdownPresetLivePreview({
           : "";
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+    <div
+      className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-2"
+      data-countdown-preview-motion={reducedMotion ? "reduced" : "full"}
+    >
       <div
         className={`relative overflow-hidden rounded-2xl border border-slate-200 bg-white ${legacyMode ? "" : entryAnimationClass}`}
-        style={{ height: "clamp(220px, 44vh, 430px)" }}
+        style={{ height: "clamp(200px, 34vh, 340px)" }}
       >
         <div
           ref={stageViewportRef}
-          className="absolute inset-3 flex items-center justify-center overflow-hidden"
+          className="absolute inset-2 flex items-center justify-center overflow-hidden"
         >
           <div className="relative z-[1]" style={{ width: `${stageWidth}px`, height: `${stageHeight}px` }}>
           <div
             className="relative"
             style={{
-              width: `${containerW}px`,
-              height: `${containerH}px`,
+              width: `${frameVisualBounds.width}px`,
+              height: `${frameVisualBounds.height}px`,
               transform: `scale(${stageScale})`,
               transformOrigin: "top left",
+            }}
+          >
+          <div
+            className="absolute"
+            style={{
+              left: `${frameVisualBounds.offsetX}px`,
+              top: `${frameVisualBounds.offsetY}px`,
+              width: `${containerW}px`,
+              height: `${containerH}px`,
             }}
           >
             {layoutType === "singleFrame" && frameSvgMarkup ? (
               <div
                 aria-hidden="true"
                 className={`cd-preview-svg pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                style={frameScaleStyle}
                 dangerouslySetInnerHTML={{ __html: frameSvgMarkup }}
               />
             ) : null}
 
             {layoutType === "singleFrame" && !frameSvgMarkup && safeFrameUrl ? (
-              <img
-                src={safeFrameUrl}
-                alt=""
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 h-full w-full object-fill opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
-                loading="lazy"
-                decoding="async"
-              />
+              canUseCurrentColor ? (
+                <>
+                  <img
+                    src={safeFrameUrl}
+                    alt=""
+                    aria-hidden="true"
+                    onError={handleFrameLoadError}
+                    className="hidden"
+                    loading="eager"
+                    decoding="async"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                    style={{
+                      ...frameScaleStyle,
+                      backgroundColor: frameStrokeColor,
+                      WebkitMaskImage: `url("${safeFrameUrl}")`,
+                      maskImage: `url("${safeFrameUrl}")`,
+                      WebkitMaskPosition: "center",
+                      maskPosition: "center",
+                      WebkitMaskRepeat: "no-repeat",
+                      maskRepeat: "no-repeat",
+                      WebkitMaskSize: "100% 100%",
+                      maskSize: "100% 100%",
+                    }}
+                  />
+                </>
+              ) : (
+                <img
+                  src={safeFrameUrl}
+                  alt=""
+                  aria-hidden="true"
+                  onError={handleFrameLoadError}
+                  className={`pointer-events-none absolute inset-0 h-full w-full ${
+                    isPngFrame ? "object-contain" : "object-fill"
+                  } opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                  style={frameScaleStyle}
+                  loading="lazy"
+                  decoding="async"
+                />
+              )
             ) : null}
 
             {layoutType === "singleFrame" && !frameSvgMarkup && !safeFrameUrl && previewPatch.frameColor ? (
@@ -493,8 +614,9 @@ export default function CountdownPresetLivePreview({
               />
             ) : null}
 
-            {unitLayouts.map((item, index) => {
-                const pulseClass = pulseToken > 0 ? tickAnimationClass : "";
+            {unitLayouts.map((item) => {
+                const pulseClass =
+                  !reducedMotion && pulseToken > 0 ? tickAnimationClass : "";
                 const label = transformLabel(item.label, labelTransform);
                 const canDrawBox = layoutVariant !== "minimal";
                 const cornerRadius = Math.min(unitBoxRadius, item.width / 2, item.height / 2);
@@ -514,19 +636,54 @@ export default function CountdownPresetLivePreview({
                     <div
                       aria-hidden="true"
                       className={`cd-preview-svg pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                      style={frameScaleStyle}
                       dangerouslySetInnerHTML={{ __html: frameSvgMarkup }}
                     />
                   ) : null}
 
                   {layoutType === "multiUnit" && !frameSvgMarkup && safeFrameUrl ? (
-                    <img
-                      src={safeFrameUrl}
-                      alt=""
-                      aria-hidden="true"
-                      className={`pointer-events-none absolute inset-0 h-full w-full object-fill opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
-                      loading="lazy"
-                      decoding="async"
-                    />
+                    canUseCurrentColor ? (
+                      <>
+                        <img
+                          src={safeFrameUrl}
+                          alt=""
+                          aria-hidden="true"
+                          onError={handleFrameLoadError}
+                          className="hidden"
+                          loading="eager"
+                          decoding="async"
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={`pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                          style={{
+                            ...frameScaleStyle,
+                            backgroundColor: frameStrokeColor,
+                            WebkitMaskImage: `url("${safeFrameUrl}")`,
+                            maskImage: `url("${safeFrameUrl}")`,
+                            WebkitMaskPosition: "center",
+                            maskPosition: "center",
+                            WebkitMaskRepeat: "no-repeat",
+                            maskRepeat: "no-repeat",
+                            WebkitMaskSize: "100% 100%",
+                            maskSize: "100% 100%",
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <img
+                        src={safeFrameUrl}
+                        alt=""
+                        aria-hidden="true"
+                        onError={handleFrameLoadError}
+                        className={`pointer-events-none absolute inset-0 h-full w-full ${
+                          isPngFrame ? "object-contain" : "object-fill"
+                        } opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                        style={frameScaleStyle}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    )
                   ) : null}
 
                   {layoutType === "multiUnit" && !frameSvgMarkup && !safeFrameUrl && previewPatch.frameColor ? (
@@ -547,7 +704,9 @@ export default function CountdownPresetLivePreview({
                         background: unitBoxBg || "transparent",
                         border: `1px solid ${unitBoxBorder || "transparent"}`,
                         borderRadius: `${cornerRadius}px`,
-                        boxShadow: unitBoxShadow ? "0 8px 22px rgba(15,23,42,0.18)" : "none",
+                        boxShadow: unitBoxShadow
+                          ? "0 2px 6px rgba(0,0,0,0.15)"
+                          : "none",
                       }}
                     />
                   ) : null}
@@ -609,6 +768,7 @@ export default function CountdownPresetLivePreview({
                 </span>
               ))}
             </div>
+          </div>
           </div>
         </div>
       </div>

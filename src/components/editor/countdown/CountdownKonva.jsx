@@ -7,10 +7,15 @@ import { getRemainingParts, fmt } from "./countdownUtils";
 import { calcularOffsetY } from "@/utils/layout";
 import {
   estimateCountdownUnitHeight,
+  buildCountdownEditorialWidths,
   resolveCountdownUnitWidth,
   resolveCanvasPaint,
 } from "@/domain/countdownPresets/renderModel";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
+import {
+  recordCountdownAssetLoadError,
+  recordCountdownRenderTelemetry,
+} from "@/domain/countdownObservability/telemetry";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import { notePostDragSelectionGuard } from "@/components/editor/canvasEditor/postDragSelectionGuard";
 import {
@@ -25,6 +30,12 @@ import {
   buildEditorDragLifecycleDetail,
 } from "@/lib/editorBridgeContracts";
 import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
+import {
+  normalizeCountdownFrameScale,
+  resolveContainedCountdownFrameRect,
+  resolveCenteredScaledFrameRect,
+  resolveCountdownSelectionGeometry,
+} from "@/domain/countdownPresets/frameGeometry";
 import {
   allowNativeTouchScrollOnKonvaPress,
   claimNativeTouchDrag,
@@ -54,6 +65,29 @@ const UNIT_LABELS = Object.freeze({
 
 const DEFAULT_UNITS = Object.freeze(["days", "hours", "minutes", "seconds"]);
 let countdownRepeatDragDebugInstanceCounter = 0;
+
+function colorizeCountdownFrameImage(image, color) {
+  if (!image || typeof document === "undefined") return image;
+  const width = Math.max(
+    1,
+    Number(image.naturalWidth || image.videoWidth || image.width) || 1
+  );
+  const height = Math.max(
+    1,
+    Number(image.naturalHeight || image.videoHeight || image.height) || 1
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return image;
+  context.drawImage(image, 0, 0, width, height);
+  context.globalCompositeOperation = "source-in";
+  context.fillStyle = resolveCanvasPaint(color, "#773dbe");
+  context.fillRect(0, 0, width, height);
+  context.globalCompositeOperation = "source-over";
+  return canvas;
+}
 
 function normalizeUnits(value) {
   if (!Array.isArray(value)) return [...DEFAULT_UNITS];
@@ -313,8 +347,12 @@ export default function CountdownKonva({
   const n = Math.max(1, parts.length);
   const frameSvgUrl = String(obj.frameSvgUrl || "").trim();
   const hasFrameConfigured = frameSvgUrl.length > 0;
+  const frameAssetType =
+    String(obj.frameAssetType || "").toLowerCase() === "png" ? "png" : "svg";
+  const isPngFrame = frameAssetType === "png";
   const gap = Math.max(0, toFinite(obj.gap, 8));
   const framePadding = Math.max(0, toFinite(obj.framePadding, 10));
+  const frameScale = normalizeCountdownFrameScale(obj.frameScale);
   const paddingY = Math.max(2, toFinite(obj.paddingY, 6));
   const paddingX = Math.max(2, toFinite(obj.paddingX, 8));
   const valueSize = Math.max(10, toFinite(obj.fontSize, 16));
@@ -360,13 +398,12 @@ export default function CountdownKonva({
 
   const editorialWidths =
     distribution === 'editorial'
-      ? Array.from({ length: n }, (_, index) =>
-          resolveCountdownUnitWidth({
-            width: Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88))),
-            height: chipH,
-            boxRadius: unitBoxRadius,
-          })
-        )
+      ? buildCountdownEditorialWidths({
+          unitsCount: n,
+          baseChipWidth: baseChipW,
+          chipHeight: chipH,
+          boxRadius: unitBoxRadius,
+        })
       : [];
 
   const naturalW =
@@ -513,6 +550,10 @@ export default function CountdownKonva({
       altoModo: sectionMode,
       sourceLabel: "CountdownKonva",
     });
+    recordCountdownRenderTelemetry({
+      countdown: obj,
+      renderer: "canvas-konva",
+    });
   }, [
     obj,
     obj?.x,
@@ -529,6 +570,7 @@ export default function CountdownKonva({
     obj?.layoutType,
     obj?.gap,
     obj?.framePadding,
+    obj?.frameScale,
     obj?.paddingX,
     obj?.paddingY,
     obj?.chipWidth,
@@ -551,9 +593,150 @@ export default function CountdownKonva({
     isPassiveRender,
   ]);
 
-  const [frameImageWithCors] = useImage(hasFrameConfigured ? frameSvgUrl : null, "anonymous");
-  const [frameImageDirect] = useImage(hasFrameConfigured ? frameSvgUrl : null);
-  const frameImage = frameImageWithCors || frameImageDirect;
+  const [frameImageWithCors, frameImageWithCorsStatus] = useImage(
+    hasFrameConfigured ? frameSvgUrl : null,
+    "anonymous"
+  );
+  const [frameImageDirect, frameImageDirectStatus] = useImage(
+    hasFrameConfigured ? frameSvgUrl : null
+  );
+  const rawFrameImage = frameImageWithCors || frameImageDirect;
+  const frameImage = useMemo(
+    () =>
+      !isPngFrame &&
+      String(obj.frameColorMode || "fixed").toLowerCase() === "currentcolor"
+        ? colorizeCountdownFrameImage(rawFrameImage, obj.frameColor)
+        : rawFrameImage,
+    [isPngFrame, obj.frameColor, obj.frameColorMode, rawFrameImage]
+  );
+  const frameSourceWidth = Math.max(
+    0,
+    Number(
+      frameImage?.naturalWidth ||
+        frameImage?.videoWidth ||
+        frameImage?.width ||
+        obj.frameIntrinsicWidth
+    ) || 0
+  );
+  const frameSourceHeight = Math.max(
+    0,
+    Number(
+      frameImage?.naturalHeight ||
+        frameImage?.videoHeight ||
+        frameImage?.height ||
+        obj.frameIntrinsicHeight
+    ) || 0
+  );
+  const resolveFrameRect = useCallback(
+    (targetRect) =>
+      isPngFrame
+        ? resolveContainedCountdownFrameRect({
+            sourceWidth: frameSourceWidth,
+            sourceHeight: frameSourceHeight,
+            targetRect,
+          })
+        : targetRect,
+    [frameSourceHeight, frameSourceWidth, isPngFrame]
+  );
+  const singleFrameBaseRect = useMemo(
+    () =>
+      resolveFrameRect({ x: 0, y: 0, width: containerW, height: containerH }),
+    [containerH, containerW, resolveFrameRect]
+  );
+  const singleFrameImageRect = useMemo(
+    () => resolveCenteredScaledFrameRect(singleFrameBaseRect, frameScale),
+    [frameScale, singleFrameBaseRect]
+  );
+  const singleFrameFallbackRect = useMemo(
+    () =>
+      resolveCenteredScaledFrameRect(
+        { x: 0, y: 0, width: containerW, height: containerH },
+        frameScale
+      ),
+    [containerH, containerW, frameScale]
+  );
+  const multiUnitFrameBaseRects = useMemo(
+    () =>
+      unitLayouts.map((item) =>
+        resolveFrameRect({
+          x: item.x,
+          y: item.y,
+          width: item.width,
+          height: item.height,
+        })
+      ),
+    [resolveFrameRect, unitLayouts]
+  );
+  const countdownSelectionGeometry = useMemo(() => {
+    const contentRects = [
+      ...unitLayouts.map((item) => ({
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+      })),
+      ...separatorLayouts.map((item) => ({
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: Math.max(1, separatorFontSize * lineHeight),
+      })),
+    ];
+    const frameRects = useSingleFrameLayout
+      ? [singleFrameBaseRect]
+      : useMultiUnitFrame
+        ? multiUnitFrameBaseRects
+        : [];
+    return resolveCountdownSelectionGeometry({
+      contentRects,
+      frameRects,
+      frameScale,
+      fallbackRect: { x: 0, y: 0, width: containerW, height: containerH },
+    });
+  }, [
+    containerH,
+    containerW,
+    frameScale,
+    lineHeight,
+    multiUnitFrameBaseRects,
+    separatorFontSize,
+    separatorLayouts,
+    singleFrameBaseRect,
+    unitLayouts,
+    useMultiUnitFrame,
+    useSingleFrameLayout,
+  ]);
+  const selectionBounds = countdownSelectionGeometry.selectionBounds;
+  const isSchema2Countdown =
+    Number(obj.countdownSchemaVersion || 1) >= 2;
+  const interactiveBounds = isSchema2Countdown
+    ? selectionBounds
+    : { x: 0, y: 0, width: containerW, height: containerH };
+  const multiUnitFrameImageRects =
+    useMultiUnitFrame && countdownSelectionGeometry.scaledFrameRects.length > 0
+      ? countdownSelectionGeometry.scaledFrameRects
+      : [];
+
+  useEffect(() => {
+    if (!hasFrameConfigured) return;
+    if (
+      frameImageWithCorsStatus !== "failed" ||
+      frameImageDirectStatus !== "failed"
+    ) {
+      return;
+    }
+    recordCountdownAssetLoadError({
+      countdown: obj,
+      renderer: "canvas-konva",
+      assetKind: `frame-${frameAssetType}`,
+    });
+  }, [
+    frameImageDirectStatus,
+    frameImageWithCorsStatus,
+    hasFrameConfigured,
+    obj,
+    frameAssetType,
+  ]);
 
   // ---------------------------
   // Drag gating (la clave)
@@ -2077,12 +2260,22 @@ export default function CountdownKonva({
       onDragMove={isPassiveRender ? undefined : handleDragMove}
       onDragEnd={isPassiveRender ? undefined : handleDragEnd}
     >
-      {/* Hitbox */}
       <Rect
-        name="countdown-hitbox"
+        name="countdown-layout-metrics"
         width={containerW}
         height={containerH}
-        fill={backgroundColor}
+        visible={false}
+        listening={false}
+      />
+
+      {/* Hitbox: coincide con la unión de contenido y frame visibles. */}
+      <Rect
+        name="countdown-hitbox"
+        x={interactiveBounds.x}
+        y={interactiveBounds.y}
+        width={interactiveBounds.width}
+        height={interactiveBounds.height}
+        fill={isSchema2Countdown ? "transparent" : backgroundColor}
         // El borde de selección lo dibuja SelectionBounds (Transformer).
         // Evita doble recuadro (violeta + celeste punteado) en countdown.
         stroke="transparent"
@@ -2092,26 +2285,25 @@ export default function CountdownKonva({
         perfectDrawEnabled={false}
       />
 
-      {!state.invalid && !state.ended && (
-        <Group listening={false}>
+      <Group listening={false}>
           {useSingleFrameLayout && frameImage && (
             <KonvaImage
               image={frameImage}
-              x={0}
-              y={0}
-              width={containerW}
-              height={containerH}
+              x={singleFrameImageRect.x}
+              y={singleFrameImageRect.y}
+              width={singleFrameImageRect.width}
+              height={singleFrameImageRect.height}
               listening={false}
               perfectDrawEnabled={false}
             />
           )}
 
-          {useSingleFrameLayout && !frameImage && obj.frameColor && (
+          {useSingleFrameLayout && !isPngFrame && !frameImage && obj.frameColor && (
             <Rect
-              x={0}
-              y={0}
-              width={containerW}
-              height={containerH}
+              x={singleFrameFallbackRect.x}
+              y={singleFrameFallbackRect.y}
+              width={singleFrameFallbackRect.width}
+              height={singleFrameFallbackRect.height}
               stroke={frameStrokeColor}
               strokeWidth={Math.max(1, Math.round(framePadding * 0.14))}
               cornerRadius={Math.min(18, Math.round(framePadding * 1.4))}
@@ -2121,9 +2313,21 @@ export default function CountdownKonva({
             />
           )}
 
-          {unitLayouts.map((it) => {
+          {unitLayouts.map((it, unitIndex) => {
             const itemLabel = applyLabelTransform(it.label, labelTransform);
             const cornerRadius = Math.min(unitBoxRadius, it.width / 2, it.height / 2);
+            const globalUnitFrameRect =
+              multiUnitFrameImageRects[unitIndex] ||
+              resolveCenteredScaledFrameRect(
+                { x: it.x, y: it.y, width: it.width, height: it.height },
+                frameScale
+              );
+            const unitFrameImageRect = {
+              x: globalUnitFrameRect.x - it.x,
+              y: globalUnitFrameRect.y - it.y,
+              width: globalUnitFrameRect.width,
+              height: globalUnitFrameRect.height,
+            };
             const valueBlockHeight = Math.max(1, valueSize * lineHeight);
             const labelBlockHeight = Math.max(1, labelSize);
             const valueTextFill = resolveKonvaFill(obj.color, it.width, valueBlockHeight, "#111827");
@@ -2141,17 +2345,21 @@ export default function CountdownKonva({
                 {useMultiUnitFrame && frameImage && (
                   <KonvaImage
                     image={frameImage}
-                    width={it.width}
-                    height={it.height}
+                    x={unitFrameImageRect.x}
+                    y={unitFrameImageRect.y}
+                    width={unitFrameImageRect.width}
+                    height={unitFrameImageRect.height}
                     listening={false}
                     perfectDrawEnabled={false}
                   />
                 )}
 
-                {useMultiUnitFrame && !frameImage && obj.frameColor && (
+                {useMultiUnitFrame && !isPngFrame && !frameImage && obj.frameColor && (
                   <Rect
-                    width={it.width}
-                    height={it.height}
+                    x={unitFrameImageRect.x}
+                    y={unitFrameImageRect.y}
+                    width={unitFrameImageRect.width}
+                    height={unitFrameImageRect.height}
                     stroke={frameStrokeColor}
                     strokeWidth={1.2}
                     cornerRadius={cornerRadius}
@@ -2165,11 +2373,16 @@ export default function CountdownKonva({
                   <Rect
                     width={it.width}
                     height={it.height}
-                    fill={unitFillColor}
+                    fill={
+                      obj.boxShadow && unitFillColor === "transparent"
+                        ? "rgba(255,255,255,0.001)"
+                        : unitFillColor
+                    }
                     stroke={unitStrokeColor}
                     cornerRadius={cornerRadius}
-                    shadowBlur={obj.boxShadow ? 8 : 0}
+                    shadowBlur={obj.boxShadow ? 6 : 0}
                     shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
+                    shadowOffsetY={obj.boxShadow ? 2 : 0}
                     listening={false}
                     perfectDrawEnabled={false}
                     shadowForStrokeEnabled={false}
@@ -2234,8 +2447,7 @@ export default function CountdownKonva({
               />
             );
           })}
-        </Group>
-      )}
+      </Group>
     </Group>
   );
 }

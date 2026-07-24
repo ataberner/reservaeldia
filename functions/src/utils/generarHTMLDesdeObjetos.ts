@@ -26,6 +26,9 @@ const {
 const {
   isCountdownVisible,
 } = require("../../shared/countdownEventDetails.cjs");
+const {
+  normalizeCountdownFrameScale,
+} = require("../../shared/countdownFrameGeometry.cjs");
 
 // ✅ Escapar strings para meterlos en atributos/HTML
 function escHTML(str: any = ""): string {
@@ -278,12 +281,15 @@ function buildCountdownLayoutMetrics(obj: any) {
   const unitsCount = Math.max(1, units.length);
   const frameSvgUrl = String(obj?.frameSvgUrl || "").trim();
   const hasFrameConfigured = frameSvgUrl.length > 0;
+  const frameAssetType =
+    String(obj?.frameAssetType || "").toLowerCase() === "png" ? "png" : "svg";
   const distribution = String(obj?.distribution || obj?.layoutType || "centered").toLowerCase();
   const layoutType = String(obj?.layoutType || "singleFrame").toLowerCase();
   const useSingleFrameLayout = layoutType === "singleframe" && hasFrameConfigured;
   const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
   const gap = Math.max(0, toFiniteNumber(obj?.gap, 8));
   const framePadding = Math.max(0, toFiniteNumber(obj?.framePadding, 10));
+  const frameScale = normalizeCountdownFrameScale(obj?.frameScale);
   const paddingY = Math.max(2, toFiniteNumber(obj?.paddingY, 6));
   const paddingX = Math.max(2, toFiniteNumber(obj?.paddingX, 8));
   const valueSize = Math.max(10, toFiniteNumber(obj?.fontSize, 16));
@@ -445,11 +451,13 @@ function buildCountdownLayoutMetrics(obj: any) {
     distribution,
     layoutType,
     frameSvgUrl,
+    frameAssetType,
     hasFrameConfigured,
     useSingleFrameLayout,
     useMultiUnitFrame,
     gap,
     framePadding,
+    frameScale,
     paddingX,
     paddingY,
     chipWidth: toFiniteNumber(obj?.chipWidth, 46),
@@ -1582,7 +1590,11 @@ fill: ${escapeAttr(fill)};
           const distribution = layout.distribution;
           const layoutType = layout.layoutType;
           const altoModo = altoModoPorSeccion.get(obj?.seccionId) || "fijo";
-          const frameColorMode = String(obj.frameColorMode || "fixed").toLowerCase();
+          const frameAssetType = layout.frameAssetType;
+          const frameColorMode =
+            frameAssetType === "png"
+              ? "fixed"
+              : String(obj.frameColorMode || "fixed").toLowerCase();
           const labelTransform = String(obj.labelTransform || "uppercase").toLowerCase();
           const entryAnim = String(obj.entryAnimation || "none").toLowerCase();
           const tickAnim = String(obj.tickAnimation || "none").toLowerCase();
@@ -1626,6 +1638,7 @@ color: ${numberPaint};
             visibleUnits: [...safeUnits],
             gap: roundCountdownAuditMetric(layout.gap),
             framePadding: roundCountdownAuditMetric(layout.framePadding),
+            frameScale: roundCountdownAuditMetric(layout.frameScale),
             paddingX: roundCountdownAuditMetric(layout.paddingX),
             paddingY: roundCountdownAuditMetric(layout.paddingY),
             chipWidth: roundCountdownAuditMetric(layout.chipWidth),
@@ -1670,10 +1683,15 @@ ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
 
           const frameUrl = layout.frameSvgUrl;
           const frameColor = sanitizeCssPaint(obj.frameColor, "#773dbe");
+          const frameScaleStyle = `transform:scale(${toCssNumber(layout.frameScale)});transform-origin:center;pointer-events:none;`;
+          const buildFrameVisualHtml = (frameClassName: string): string =>
+            frameColorMode === "currentcolor"
+              ? `<span class="${frameClassName}" aria-hidden="true" style="position:absolute;inset:0;display:block;background:${escapeAttr(frameColor)};-webkit-mask-image:url(${escapeAttr(frameUrl)});mask-image:url(${escapeAttr(frameUrl)});-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:100% 100%;mask-size:100% 100%;"><img class="cdv2-frame-preload" src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="eager" decoding="async" style="display:none;" /></span>`
+              : `<img class="${frameClassName}" src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${frameAssetType === "png" ? "contain" : "fill"};display:block;pointer-events:none;" />`;
 
           const singleFrameHtml =
             layout.useSingleFrameLayout && layout.hasFrameConfigured
-              ? `<div class="cdv2-frame cdv2-frame--single" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:fill;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
+              ? `<div class="cdv2-frame cdv2-frame--single" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;${frameScaleStyle}">${buildFrameVisualHtml("cdv2-frame-visual")}</div>`
               : "";
 
           const unitsHtml = layout.unitLayouts
@@ -1693,16 +1711,17 @@ height: ${sChipPx(item.height)};
 display: flex;
 align-items: center;
 justify-content: center;
-overflow: hidden;
+overflow: ${layout.frameScale > 1 ? "visible" : "hidden"};
 border-radius: ${sChipPx(cornerRadius)};
 background: ${unitBgPaint};
 border: ${sChipPx(1)} solid ${unitBorderPaint};
+box-shadow: ${obj.boxShadow ? `0 ${sChipPx(2)} ${sChipPx(6)} rgba(0,0,0,0.15)` : "none"};
 box-sizing: border-box;
 pointer-events: none;
 `.trim();
               const unitFrameHtml =
                 layout.useMultiUnitFrame && layout.hasFrameConfigured
-                  ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;"><img src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:fill;display:block;${frameColorMode === "currentcolor" ? `color:${escapeAttr(frameColor)};` : ""}" /></div>`
+                  ? `<div class="cdv2-frame cdv2-frame--unit" data-frame-anim="${escapeAttr(frameAnim)}" style="position:absolute;inset:0;z-index:1;${frameScaleStyle}">${buildFrameVisualHtml("cdv2-frame-visual")}</div>`
                   : "";
               const labelOffsetStyle = showLabels ? `margin-top:${sChipPx(4)};` : "";
 
@@ -1752,7 +1771,9 @@ ${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
   data-entry-anim="${escapeAttr(entryAnim)}"
   data-tick-anim="${escapeAttr(tickAnim)}"
   data-frame-anim="${escapeAttr(frameAnim)}"
+  data-frame-asset-type="${escapeAttr(frameAssetType)}"
   data-frame-color-mode="${escapeAttr(frameColorMode)}"
+  data-frame-scale="${escapeAttr(String(layout.frameScale))}"
   data-units="${escapeAttr(safeUnits.join(","))}"
   style="${containerStyle}">
   ${singleFrameHtml}
@@ -1838,6 +1859,7 @@ height: calc(${sChip} * ${Math.round(legacyLayout.chipH)}px);
 padding: calc(${sChip} * ${paddingY}px) calc(${sChip} * ${paddingX}px);
 border: ${isMinimal ? "0" : `calc(${sChip} * 1px) solid ${chipBorderColorFinal}`};
 border-radius: calc(${sChip} * ${chipRadiusFinal}px);
+box-shadow: ${obj.boxShadow ? `0 calc(${sChip} * 2px) calc(${sChip} * 6px) rgba(0,0,0,0.15)` : "none"};
 display: flex;
 flex-direction: column;
 align-items: center;

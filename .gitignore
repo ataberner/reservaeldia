@@ -84,3 +84,6 @@ Thumbs.db
 .next-dev-*/cache
 *.pack.gz
 trace
+
+# Runtime-only countdown Phase 0 inventories and backups
+/artifacts/countdown-phase0/runtime/

@@ -1,4 +1,5 @@
 import {
+  buildCountdownEditorialWidths,
   estimateCountdownUnitHeight,
   normalizeVisibleUnits,
   resolveCountdownUnitWidth,
@@ -6,6 +7,7 @@ import {
 import {
   resolveCountdownContract,
 } from "../../../shared/renderContractPolicy.js";
+import { normalizeCountdownFrameScale } from "@/domain/countdownPresets/frameGeometry";
 
 export const COUNTDOWN_AUDIT_TRACE_ID_FIELD = "countdownAuditTraceId";
 export const COUNTDOWN_AUDIT_FIXTURE_FIELD = "countdownAuditFixture";
@@ -68,6 +70,7 @@ function computeV2Metrics(countdown) {
     layoutType.toLowerCase() === "singleframe" && hasFrameConfigured;
   const gap = Math.max(0, toFinite(countdown?.gap, 8));
   const framePadding = Math.max(0, toFinite(countdown?.framePadding, 10));
+  const frameScale = normalizeCountdownFrameScale(countdown?.frameScale);
   const paddingX = Math.max(2, toFinite(countdown?.paddingX, 8));
   const paddingY = Math.max(2, toFinite(countdown?.paddingY, 6));
   const fontSize = Math.max(10, toFinite(countdown?.fontSize, 16));
@@ -106,16 +109,12 @@ function computeV2Metrics(countdown) {
 
   const editorialWidths =
     distribution === "editorial"
-      ? Array.from({ length: unitCount }, (_, index) =>
-          resolveCountdownUnitWidth({
-            width: Math.max(
-              34,
-              Math.round(baseChipW * (index === 0 && unitCount > 1 ? 1.25 : 0.88))
-            ),
-            height: chipH,
-            boxRadius,
-          })
-        )
+      ? buildCountdownEditorialWidths({
+          unitsCount: unitCount,
+          baseChipWidth: baseChipW,
+          chipHeight: chipH,
+          boxRadius,
+        })
       : [];
 
   const naturalW =
@@ -240,6 +239,7 @@ function computeV2Metrics(countdown) {
     visibleUnits,
     gap,
     framePadding,
+    frameScale,
     paddingX,
     paddingY,
     chipWidth: toFinite(countdown?.chipWidth, 46),
@@ -322,6 +322,7 @@ function computeLegacyMetrics(countdown) {
     visibleUnits,
     gap,
     framePadding: 0,
+    frameScale: 1,
     paddingX,
     paddingY,
     chipWidth: chipWidthProp != null ? chipWidthProp : Math.max(10, chipWTotal - paddingX * 2),
@@ -420,6 +421,7 @@ export function buildCountdownAuditSnapshot({
     visibleUnits: [...metrics.visibleUnits],
     gap: roundMetric(metrics.gap),
     framePadding: roundMetric(metrics.framePadding),
+    frameScale: roundMetric(metrics.frameScale),
     paddingX: roundMetric(metrics.paddingX),
     paddingY: roundMetric(metrics.paddingY),
     chipWidth: roundMetric(metrics.chipWidth),

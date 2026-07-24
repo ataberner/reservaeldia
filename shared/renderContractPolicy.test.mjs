@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  COUNTDOWN_EXPIRATION_POLICY,
   RENDER_CONTRACT_IDS,
   RENDER_CONTRACT_STATUSES,
   classifyRenderObjectContract,
   collectLegacyRenderContracts,
   resolveCountdownContract,
   resolveCountdownTargetIso,
+  resolveCountdownTemporalState,
 } from "./renderContractPolicy.js";
 import { createRepresentativeDraftLoadStageState } from "./renderAssetContractFixtures.mjs";
 
@@ -98,6 +100,44 @@ test("resolves countdown target preferring fechaObjetivo while keeping alias sup
   assert.equal(fechaAlias.targetISO, "2026-08-01T20:00:00.000Z");
   assert.equal(fechaAlias.sourceField, "fechaISO");
   assert.equal(fechaAlias.usesCompatibilityAlias, true);
+});
+
+test("countdown temporal policy freezes empty, invalid, and expired targets at zero", () => {
+  const now = Date.parse("2030-06-15T12:00:00.000Z");
+  const missing = resolveCountdownTemporalState({}, now);
+  const invalid = resolveCountdownTemporalState(
+    { fechaObjetivo: "not-a-date" },
+    now
+  );
+  const expired = resolveCountdownTemporalState(
+    { fechaObjetivo: "2030-06-15T11:59:59.000Z" },
+    now
+  );
+
+  assert.equal(COUNTDOWN_EXPIRATION_POLICY, "freezeZero");
+  assert.deepEqual(
+    [missing.remainingMs, invalid.remainingMs, expired.remainingMs],
+    [0, 0, 0]
+  );
+  assert.equal(missing.invalid, true);
+  assert.equal(invalid.invalid, true);
+  assert.equal(expired.invalid, false);
+  assert.equal(expired.ended, true);
+  assert.deepEqual(
+    [expired.d, expired.h, expired.m, expired.s],
+    [0, 0, 0, 0]
+  );
+});
+
+test("countdown temporal policy uses the injected clock deterministically", () => {
+  const state = resolveCountdownTemporalState(
+    { fechaObjetivo: "2030-06-17T15:04:05.000Z" },
+    Date.parse("2030-06-15T12:00:00.000Z")
+  );
+
+  assert.equal(state.invalid, false);
+  assert.equal(state.ended, false);
+  assert.deepEqual([state.d, state.h, state.m, state.s], [2, 3, 4, 5]);
 });
 
 test("collects unique legacy render contracts from render state", () => {

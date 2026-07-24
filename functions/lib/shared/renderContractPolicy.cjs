@@ -23,6 +23,8 @@ const RENDER_CONTRACT_IDS = Object.freeze({
   ICONO_SVG_LEGACY: "icono_svg_legacy",
 });
 
+const COUNTDOWN_EXPIRATION_POLICY = "freezeZero";
+
 const RENDER_CONTRACT_METADATA = Object.freeze({
   [RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V1]: Object.freeze({
     id: RENDER_CONTRACT_IDS.COUNTDOWN_SCHEMA_V1,
@@ -128,6 +130,45 @@ function resolveCountdownTargetIso(value) {
   };
 }
 
+function resolveCountdownTemporalState(value, nowValue = Date.now()) {
+  const targetResolution =
+    typeof value === "string"
+      ? {
+          targetISO: normalizeText(value),
+          sourceField: "",
+          usesCompatibilityAlias: false,
+          hasTarget: Boolean(normalizeText(value)),
+        }
+      : resolveCountdownTargetIso(value);
+  const parsedTargetMs = Date.parse(targetResolution.targetISO);
+  const parsedNowMs =
+    nowValue instanceof Date ? nowValue.getTime() : Number(nowValue);
+  const nowMs = Number.isFinite(parsedNowMs) ? parsedNowMs : Date.now();
+  const targetValid =
+    targetResolution.hasTarget && Number.isFinite(parsedTargetMs);
+  const remainingMs = targetValid
+    ? Math.max(0, parsedTargetMs - nowMs)
+    : 0;
+  const expired = targetValid && parsedTargetMs <= nowMs;
+
+  return {
+    policy: COUNTDOWN_EXPIRATION_POLICY,
+    targetISO: targetResolution.targetISO,
+    sourceField: targetResolution.sourceField,
+    usesCompatibilityAlias: targetResolution.usesCompatibilityAlias,
+    hasTarget: targetResolution.hasTarget,
+    targetValid,
+    invalid: !targetValid,
+    ended: expired,
+    expired,
+    remainingMs,
+    d: Math.floor(remainingMs / 86400000),
+    h: Math.floor((remainingMs % 86400000) / 3600000),
+    m: Math.floor((remainingMs % 3600000) / 60000),
+    s: Math.floor((remainingMs % 60000) / 1000),
+  };
+}
+
 function resolveCountdownContract(value) {
   const safeValue = asObject(value);
   const parsedSchemaVersion = Number(safeValue.countdownSchemaVersion);
@@ -218,8 +259,10 @@ function collectLegacyRenderContracts(renderState) {
 module.exports = {
   RENDER_CONTRACT_STATUSES,
   RENDER_CONTRACT_IDS,
+  COUNTDOWN_EXPIRATION_POLICY,
   getRenderContractMetadata,
   resolveCountdownTargetIso,
+  resolveCountdownTemporalState,
   resolveCountdownContract,
   classifyRenderObjectContract,
   collectLegacyRenderContracts,

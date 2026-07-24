@@ -3,17 +3,24 @@ import {
   COUNTDOWN_DEFAULT_VISIBLE_UNITS,
   COUNTDOWN_DISTRIBUTIONS,
   COUNTDOWN_ENTRY_ANIMATIONS,
+  COUNTDOWN_EVENT_CATEGORIES,
   COUNTDOWN_FRAME_ANIMATIONS,
   COUNTDOWN_LABEL_TRANSFORMS,
   COUNTDOWN_LAYOUT_TYPES,
   COUNTDOWN_NUMERIC_LIMITS,
   COUNTDOWN_SVG_COLOR_MODES,
+  COUNTDOWN_STYLE_CATEGORIES,
   COUNTDOWN_TICK_ANIMATIONS,
   COUNTDOWN_UNITS,
   buildCountdownCategoryLabel,
   createDefaultCountdownPresetConfig,
-} from "@/domain/countdownPresets/contract";
-import { parseLinearGradientColors } from "@/domain/colors/presets";
+} from "./contract.js";
+import { parseLinearGradientColors } from "../colors/presets.js";
+import {
+  normalizeCountdownFrameColorMode,
+  resolveCountdownFrameAssetType,
+  resolveCountdownFrameMimeType,
+} from "./frameAssetContract.js";
 
 function clampNumber(value, range) {
   const parsed = Number(value);
@@ -77,7 +84,7 @@ function normalizeVisibleUnits(units) {
     if (!unique.includes(unit)) unique.push(unit);
   });
 
-  return unique.length > 0 ? unique : [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
+  return unique;
 }
 
 export function normalizeCountdownCategory(input) {
@@ -104,6 +111,7 @@ export function normalizeCountdownPresetConfig(rawConfig = {}) {
   const animaciones = rawConfig?.animaciones || {};
   const unidad = rawConfig?.unidad || {};
   const svgRef = rawConfig?.svgRef || {};
+  const frameAssetType = resolveCountdownFrameAssetType(svgRef, null);
 
   const normalized = {
     layout: {
@@ -117,6 +125,7 @@ export function normalizeCountdownPresetConfig(rawConfig = {}) {
       chipWidth: optionalClampNumber(layout.chipWidth, COUNTDOWN_NUMERIC_LIMITS.chipWidth),
       gap: clampNumber(layout.gap, COUNTDOWN_NUMERIC_LIMITS.gap),
       framePadding: clampNumber(layout.framePadding, COUNTDOWN_NUMERIC_LIMITS.framePadding),
+      frameScale: clampNumber(layout.frameScale, COUNTDOWN_NUMERIC_LIMITS.frameScale),
     },
     tipografia: {
       fontFamily: sanitizeText(tipografia.fontFamily, base.tipografia.fontFamily, 120),
@@ -157,17 +166,18 @@ export function normalizeCountdownPresetConfig(rawConfig = {}) {
     },
     tamanoBase: clampNumber(rawConfig?.tamanoBase, COUNTDOWN_NUMERIC_LIMITS.tamanoBase),
     svgRef: {
-      colorMode: hasValueInSet(svgRef.colorMode, COUNTDOWN_SVG_COLOR_MODES)
-        ? svgRef.colorMode
-        : "fixed",
+      type: frameAssetType,
+      mimeType: resolveCountdownFrameMimeType(svgRef, frameAssetType),
+      colorMode: normalizeCountdownFrameColorMode(
+        frameAssetType,
+        hasValueInSet(svgRef.colorMode, COUNTDOWN_SVG_COLOR_MODES)
+          ? svgRef.colorMode
+          : "fixed"
+      ),
     },
   };
 
   return normalized;
-}
-
-function isHexColor(value) {
-  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || "").trim());
 }
 
 function isFrameColor(value) {
@@ -186,32 +196,174 @@ export function validateCountdownPresetInput({
 }) {
   const errors = [];
   const warnings = [];
+  const fieldErrors = {};
+  const sectionErrors = {};
+
+  const addError = (fieldId, sectionId, message) => {
+    errors.push(message);
+    if (fieldId && !fieldErrors[fieldId]) fieldErrors[fieldId] = message;
+    if (sectionId) {
+      sectionErrors[sectionId] = [
+        ...(sectionErrors[sectionId] || []),
+        message,
+      ];
+    }
+  };
 
   const safeNombre = sanitizeText(nombre, "", 100);
   if (!safeNombre) {
-    errors.push("El nombre del preset es obligatorio.");
+    addError("nombre", "information", "El nombre del preset es obligatorio.");
   }
 
   const safeCategoria = normalizeCountdownCategory(categoria);
   const normalizedConfig = normalizeCountdownPresetConfig(config);
 
-  if (!Array.isArray(normalizedConfig.layout.visibleUnits) || !normalizedConfig.layout.visibleUnits.length) {
-    errors.push("Debes seleccionar al menos una unidad visible.");
+  if (!COUNTDOWN_EVENT_CATEGORIES.includes(String(categoria?.event || ""))) {
+    addError(
+      "categoria.event",
+      "information",
+      "Seleccioná una categoría de evento válida."
+    );
+  }
+  if (!COUNTDOWN_STYLE_CATEGORIES.includes(String(categoria?.style || ""))) {
+    addError(
+      "categoria.style",
+      "information",
+      "Seleccioná una categoría visual válida."
+    );
   }
 
-  if (!isSafeCssPaint(normalizedConfig.colores.numberColor)) {
-    errors.push("El color de numero debe ser un color valido o gradiente CSS seguro.");
+  if (!Array.isArray(config?.layout?.visibleUnits) || !config.layout.visibleUnits.length) {
+    addError(
+      "layout.visibleUnits",
+      "layout",
+      "Seleccioná al menos una unidad visible."
+    );
   }
-  if (!isSafeCssPaint(normalizedConfig.colores.labelColor)) {
-    errors.push("El color de label debe ser un color valido o gradiente CSS seguro.");
+
+  if (!COUNTDOWN_LAYOUT_TYPES.includes(config?.layout?.type)) {
+    addError("layout.type", "layout", "Seleccioná un tipo de layout válido.");
   }
-  if (!isFrameColor(normalizedConfig.colores.frameColor)) {
-    errors.push("El color de frame debe ser un color valido o transparent.");
+  if (!COUNTDOWN_DISTRIBUTIONS.includes(config?.layout?.distribution)) {
+    addError(
+      "layout.distribution",
+      "layout",
+      "Seleccioná una distribución válida."
+    );
+  }
+
+  const numericFields = [
+    ["layout.gap", "layout", config?.layout?.gap, COUNTDOWN_NUMERIC_LIMITS.gap, false, "Espaciado"],
+    ["layout.framePadding", "layout", config?.layout?.framePadding, COUNTDOWN_NUMERIC_LIMITS.framePadding, false, "Padding del frame"],
+    ["layout.frameScale", "frame", config?.layout?.frameScale, COUNTDOWN_NUMERIC_LIMITS.frameScale, false, "Tamaño del frame"],
+    ["layout.chipWidth", "layout", config?.layout?.chipWidth, COUNTDOWN_NUMERIC_LIMITS.chipWidth, true, "Ancho del chip"],
+    ["tamanoBase", "layout", config?.tamanoBase, COUNTDOWN_NUMERIC_LIMITS.tamanoBase, false, "Tamaño base"],
+    ["tipografia.numberSize", "typography", config?.tipografia?.numberSize, COUNTDOWN_NUMERIC_LIMITS.numberSize, false, "Tamaño de números"],
+    ["tipografia.labelSize", "typography", config?.tipografia?.labelSize, COUNTDOWN_NUMERIC_LIMITS.labelSize, false, "Tamaño de etiquetas"],
+    ["tipografia.letterSpacing", "typography", config?.tipografia?.letterSpacing, COUNTDOWN_NUMERIC_LIMITS.letterSpacing, false, "Espaciado entre letras"],
+    ["tipografia.lineHeight", "typography", config?.tipografia?.lineHeight, COUNTDOWN_NUMERIC_LIMITS.lineHeight, false, "Interlineado"],
+    ["unidad.boxRadius", "colors", config?.unidad?.boxRadius, COUNTDOWN_NUMERIC_LIMITS.boxRadius, false, "Radio de unidad"],
+  ];
+  numericFields.forEach(
+    ([fieldId, sectionId, rawValue, range, optional, label]) => {
+      if (
+        optional &&
+        (rawValue === "" || rawValue === null || typeof rawValue === "undefined")
+      ) {
+        return;
+      }
+      const parsed = Number(rawValue);
+      if (!Number.isFinite(parsed)) {
+        addError(fieldId, sectionId, `${label} debe ser un número.`);
+        return;
+      }
+      if (parsed < range.min || parsed > range.max) {
+        addError(
+          fieldId,
+          sectionId,
+          `${label} debe estar entre ${range.min} y ${range.max}.`
+        );
+      }
+    }
+  );
+
+  if (!sanitizeText(config?.tipografia?.fontFamily, "", 120)) {
+    addError(
+      "tipografia.fontFamily",
+      "typography",
+      "Indicá una fuente para el countdown."
+    );
+  }
+  if (!COUNTDOWN_LABEL_TRANSFORMS.includes(config?.tipografia?.labelTransform)) {
+    addError(
+      "tipografia.labelTransform",
+      "typography",
+      "Seleccioná una transformación de etiquetas válida."
+    );
+  }
+  if (!COUNTDOWN_ENTRY_ANIMATIONS.includes(config?.animaciones?.entry)) {
+    addError(
+      "animaciones.entry",
+      "animations",
+      "Seleccioná una animación de entrada válida."
+    );
+  }
+  if (!COUNTDOWN_TICK_ANIMATIONS.includes(config?.animaciones?.tick)) {
+    addError(
+      "animaciones.tick",
+      "animations",
+      "Seleccioná una animación de tick válida."
+    );
+  }
+  if (!COUNTDOWN_FRAME_ANIMATIONS.includes(config?.animaciones?.frame)) {
+    addError(
+      "animaciones.frame",
+      "animations",
+      "Seleccioná una animación de frame válida."
+    );
+  }
+
+  if (!isSafeCssPaint(config?.colores?.numberColor)) {
+    addError(
+      "colores.numberColor",
+      "colors",
+      "El color de los números debe ser un color o gradiente CSS seguro."
+    );
+  }
+  if (!isSafeCssPaint(config?.colores?.labelColor)) {
+    addError(
+      "colores.labelColor",
+      "colors",
+      "El color de las etiquetas debe ser un color o gradiente CSS seguro."
+    );
+  }
+  if (!isFrameColor(config?.colores?.frameColor)) {
+    addError(
+      "colores.frameColor",
+      "frame",
+      "El color del frame debe ser un color seguro o transparente."
+    );
+  }
+  if (!isSafeCssPaint(config?.unidad?.boxBg)) {
+    addError(
+      "unidad.boxBg",
+      "colors",
+      "El fondo de la unidad no tiene un formato CSS válido."
+    );
+  }
+  if (!isSafeCssPaint(config?.unidad?.boxBorder)) {
+    addError(
+      "unidad.boxBorder",
+      "colors",
+      "El borde de la unidad no tiene un formato CSS válido."
+    );
   }
 
   if (svgInspection) {
     if (Array.isArray(svgInspection.criticalErrors) && svgInspection.criticalErrors.length > 0) {
-      errors.push(...svgInspection.criticalErrors);
+      svgInspection.criticalErrors.forEach((message) =>
+        addError("svgAsset", "frame", message)
+      );
     }
     if (Array.isArray(svgInspection.warnings) && svgInspection.warnings.length > 0) {
       warnings.push(...svgInspection.warnings);
@@ -222,6 +374,9 @@ export function validateCountdownPresetInput({
     valid: errors.length === 0,
     errors,
     warnings,
+    fieldErrors,
+    sectionErrors,
+    firstField: Object.keys(fieldErrors)[0] || null,
     normalized: {
       nombre: safeNombre,
       categoria: safeCategoria,

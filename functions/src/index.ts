@@ -53,6 +53,8 @@ import {
 import {
   archiveCountdownPreset as archiveCountdownPresetHandler,
   deleteCountdownPreset as deleteCountdownPresetHandler,
+  duplicateCountdownPreset as duplicateCountdownPresetHandler,
+  listCountdownPresetVersionsAdmin as listCountdownPresetVersionsAdminHandler,
   listCountdownPresetsAdmin as listCountdownPresetsAdminHandler,
   listCountdownPresetsPublic as listCountdownPresetsPublicHandler,
   publishCountdownPresetDraft as publishCountdownPresetDraftHandler,
@@ -157,6 +159,9 @@ export const saveCountdownPresetDraft = saveCountdownPresetDraftHandler;
 export const publishCountdownPresetDraft = publishCountdownPresetDraftHandler;
 export const archiveCountdownPreset = archiveCountdownPresetHandler;
 export const deleteCountdownPreset = deleteCountdownPresetHandler;
+export const duplicateCountdownPreset = duplicateCountdownPresetHandler;
+export const listCountdownPresetVersionsAdmin =
+  listCountdownPresetVersionsAdminHandler;
 export const listCountdownPresetsAdmin = listCountdownPresetsAdminHandler;
 export const listCountdownPresetsPublic = listCountdownPresetsPublicHandler;
 export const syncLegacyCountdownPresets = syncLegacyCountdownPresetsHandler;

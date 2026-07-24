@@ -1,0 +1,229 @@
+{
+  "fixtureVersion": 1,
+  "frozenNowISO": "2030-06-15T12:00:00.000Z",
+  "surfaces": [
+    "builder",
+    "canvas",
+    "preview",
+    "publication",
+    "mobile"
+  ],
+  "states": [
+    {
+      "id": "days",
+      "label": "Faltan dias",
+      "targetISO": "2030-06-25T17:23:45.000Z",
+      "expected": {
+        "days": 10,
+        "hours": 5,
+        "minutes": 23,
+        "seconds": 45,
+        "expired": false
+      }
+    },
+    {
+      "id": "hours",
+      "label": "Faltan horas",
+      "targetISO": "2030-06-15T15:17:42.000Z",
+      "expected": {
+        "days": 0,
+        "hours": 3,
+        "minutes": 17,
+        "seconds": 42,
+        "expired": false
+      }
+    },
+    {
+      "id": "seconds",
+      "label": "Faltan segundos",
+      "targetISO": "2030-06-15T12:00:42.000Z",
+      "expected": {
+        "days": 0,
+        "hours": 0,
+        "minutes": 0,
+        "seconds": 42,
+        "expired": false
+      }
+    },
+    {
+      "id": "expired",
+      "label": "Evento finalizado",
+      "targetISO": "2030-06-15T11:59:59.000Z",
+      "expected": {
+        "days": 0,
+        "hours": 0,
+        "minutes": 0,
+        "seconds": 0,
+        "expired": true
+      }
+    }
+  ],
+  "captureVersion": 1,
+  "viewport": {
+    "width": 1440,
+    "height": 1000,
+    "deviceScaleFactor": 1
+  },
+  "captures": [
+    {
+      "state": "days",
+      "surface": "builder",
+      "file": "days/builder.png",
+      "sha256": "a790ee178f8f4008f99fc682b1df5eaa41ea4f24557c2973075dab85cb4e472a",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "days",
+      "surface": "canvas",
+      "file": "days/canvas.png",
+      "sha256": "31b37f1a5ea8c9e0d4bcf3fd8a0a6b8b93a1533cf4a85a73fc5ed18a554ef913",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "days",
+      "surface": "preview",
+      "file": "days/preview.png",
+      "sha256": "d896ceae113e7d3c3f0050cba274e431a034c37f782c119b5f995b5c210cfda7",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "days",
+      "surface": "publication",
+      "file": "days/publication.png",
+      "sha256": "0f84969271e3d96e2e7a5045941c4dd9f5d78e61b059d7ddfff52c18c1ea46e4",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "days",
+      "surface": "mobile",
+      "file": "days/mobile.png",
+      "sha256": "2bff629bfdf6b92ccbe91749100361614ccb961d188fa64efe05bab0457797fb",
+      "width": 430,
+      "height": 470
+    },
+    {
+      "state": "hours",
+      "surface": "builder",
+      "file": "hours/builder.png",
+      "sha256": "ec7fad7279e6b19afd54bd255af5acd9999ebe32f568b31ad9962d406046b76b",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "hours",
+      "surface": "canvas",
+      "file": "hours/canvas.png",
+      "sha256": "9cb2a7a952080842527f3def6f844fca4f1390cdcf2644a7a15001b615a04973",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "hours",
+      "surface": "preview",
+      "file": "hours/preview.png",
+      "sha256": "09748811482d1ed0a06a2ce53c5c9a29cc44ebce7e7f1160dc31b70431012be9",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "hours",
+      "surface": "publication",
+      "file": "hours/publication.png",
+      "sha256": "09a69b770970101ec6c9a2e7fd0952d46b83517972ceaa6ce69451746a76a7cc",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "hours",
+      "surface": "mobile",
+      "file": "hours/mobile.png",
+      "sha256": "8edf77188fc8beff128042e5358fe10dfc5ff74c6e18d50376829e35c8eed53f",
+      "width": 430,
+      "height": 470
+    },
+    {
+      "state": "seconds",
+      "surface": "builder",
+      "file": "seconds/builder.png",
+      "sha256": "d9651ffcda7ac273ea122e27b9baa1f5f6540e24f3c5a8b25888306432ea7c9a",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "seconds",
+      "surface": "canvas",
+      "file": "seconds/canvas.png",
+      "sha256": "d9274b6f8f390ecfb11c8a49cf14eda13604771eeea688c5bf8d2acb4aef2653",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "seconds",
+      "surface": "preview",
+      "file": "seconds/preview.png",
+      "sha256": "26135fc4c6cb6feb8f4c09a829ff7706423bbcd4d5ee2b2263a770e6fc651093",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "seconds",
+      "surface": "publication",
+      "file": "seconds/publication.png",
+      "sha256": "a00fc450167e603e135e0490d5ecbc4c8f854e5084615fe2b5d1334ba598be1f",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "seconds",
+      "surface": "mobile",
+      "file": "seconds/mobile.png",
+      "sha256": "07872ec494b1b8e08420a4b6a8669c206762f4fe7b754edbf3f6f81da68fb432",
+      "width": 430,
+      "height": 470
+    },
+    {
+      "state": "expired",
+      "surface": "builder",
+      "file": "expired/builder.png",
+      "sha256": "134aa80755f87c949c807ef02b42bb57fa1ba4ae9fb3284e87ee99f8dfdf2396",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "expired",
+      "surface": "canvas",
+      "file": "expired/canvas.png",
+      "sha256": "e9579b684bef60e987b32266ef5e7da9ba01b05f100d2674531c2c88c00bd048",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "expired",
+      "surface": "preview",
+      "file": "expired/preview.png",
+      "sha256": "cafb6ceb478a38e24ec4dcfab326ef2bf8f850b0f9a15386249657e9e0adde80",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "expired",
+      "surface": "publication",
+      "file": "expired/publication.png",
+      "sha256": "8f55f6698467d15d8308679af077d47146421bdb16024f9992c8c7fc73a4532f",
+      "width": 820,
+      "height": 470
+    },
+    {
+      "state": "expired",
+      "surface": "mobile",
+      "file": "expired/mobile.png",
+      "sha256": "b185bd408b9055365bd08a7250801cc727a4647395c092b38c723811c4fa2d79",
+      "width": 430,
+      "height": 470
+    }
+  ]
+}

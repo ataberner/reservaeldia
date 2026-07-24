@@ -32,6 +32,11 @@ import {
 import {
   applyObjectUpdateById,
 } from "@/components/editor/canvasEditor/objectUpdateUtils";
+import {
+  findRenderObjectById,
+  updateRenderObjectById,
+} from "@/domain/editor/renderObjectTree";
+import { applyCountdownPresetToExisting } from "@/domain/countdownPresets/applyToExisting";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
 import {
   buildDynamicGalleryObjectPatch,
@@ -50,97 +55,6 @@ import {
   readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
-
-const COUNTDOWN_STYLE_KEYS = [
-  "fontFamily",
-  "fontSize",
-  "color",
-  "labelColor",
-  "showLabels",
-  "boxBg",
-  "boxBorder",
-  "boxRadius",
-  "boxShadow",
-  "separator",
-  "gap",
-  "paddingX",
-  "paddingY",
-  "chipWidth",
-  "labelSize",
-  "padZero",
-  "layout",
-  "background",
-  "countdownSchemaVersion",
-  "presetVersion",
-  "tamanoBase",
-  "layoutType",
-  "distribution",
-  "visibleUnits",
-  "framePadding",
-  "frameSvgUrl",
-  "frameColorMode",
-  "frameColor",
-  "entryAnimation",
-  "tickAnimation",
-  "frameAnimation",
-  "labelTransform",
-  "presetPropsVersion",
-];
-
-function toFiniteMetric(value, fallback = null) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-function withDefinedMetrics(source = {}) {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => typeof value !== "undefined")
-  );
-}
-
-function buildScaledCountdownStylePatch(source, nextWidth, nextHeight) {
-  const originalWidth = Math.max(1, toFiniteMetric(source?.width, 1));
-  const originalHeight = Math.max(1, toFiniteMetric(source?.height, 1));
-  const safeNextWidth = Math.max(1, toFiniteMetric(nextWidth, originalWidth));
-  const safeNextHeight = Math.max(1, toFiniteMetric(nextHeight, originalHeight));
-  const scaleX = safeNextWidth / originalWidth;
-  const scaleY = safeNextHeight / originalHeight;
-  const safeScaleX = Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1;
-  const safeScaleY = Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
-  const uniformScale = safeScaleX || safeScaleY || 1;
-
-  const scaleMetric = (value, { min = null } = {}) => {
-    const numeric = toFiniteMetric(value, null);
-    if (!Number.isFinite(numeric)) return undefined;
-    let scaled = numeric * uniformScale;
-    if (Number.isFinite(min)) scaled = Math.max(min, scaled);
-    return scaled;
-  };
-
-  return withDefinedMetrics({
-    width: safeNextWidth,
-    height: safeNextHeight,
-    scaleX: 1,
-    scaleY: 1,
-    tamanoBase: scaleMetric(source?.tamanoBase, { min: 40 }),
-    chipWidth: scaleMetric(source?.chipWidth, { min: 10 }),
-    fontSize: scaleMetric(source?.fontSize, { min: 6 }),
-    labelSize: scaleMetric(source?.labelSize, { min: 6 }),
-    gap: scaleMetric(source?.gap, { min: 0 }),
-    framePadding: scaleMetric(source?.framePadding, { min: 0 }),
-    paddingX: scaleMetric(source?.paddingX, { min: 2 }),
-    paddingY: scaleMetric(source?.paddingY, { min: 2 }),
-    boxRadius: scaleMetric(source?.boxRadius, { min: 0 }),
-    letterSpacing: scaleMetric(source?.letterSpacing),
-  });
-}
-
-function pickCountdownStylePatch(source = {}) {
-  return COUNTDOWN_STYLE_KEYS.reduce((acc, key) => {
-    acc[key] = source[key];
-    return acc;
-  }, {});
-}
 
 const GALLERY_STRUCTURAL_KEYS = new Set([
   "rows",
@@ -367,46 +281,40 @@ export default function useEditorEvents({
           if (prev[i]?.tipo === "countdown") countdownIndexes.push(i);
         }
 
-        if (countdownIndexes.length === 0) {
+        const countdownFromRuntime = existingCountdownId
+          ? findRenderObjectById(prev, existingCountdownId)
+          : null;
+        const existingCountdown =
+          countdownFromRuntime?.tipo === "countdown"
+            ? countdownFromRuntime
+            : countdownIndexes.length > 0
+              ? prev[countdownIndexes[0]]
+              : null;
+
+        if (!existingCountdown) {
           return [...prev, nuevoConSeccion];
         }
 
-        const primaryIndex = countdownIndexes[0];
-        const existingCountdown = prev[primaryIndex];
         if (!canEditObject(existingCountdown, { secciones })) {
           return prev;
         }
-        const targetWidth = toFiniteMetric(
-          existingCountdown?.width,
-          nuevoConSeccion?.width
+        const mutation = updateRenderObjectById(
+          prev,
+          existingCountdown.id,
+          (currentObject) =>
+            applyCountdownPresetToExisting(currentObject, nuevoConSeccion)
         );
-        const targetHeight = toFiniteMetric(
-          existingCountdown?.height,
-          nuevoConSeccion?.height
-        );
-        const stylePatch = {
-          ...pickCountdownStylePatch(nuevoConSeccion),
-          ...buildScaledCountdownStylePatch(
-            nuevoConSeccion,
-            targetWidth,
-            targetHeight
-          ),
-        };
+        if (!mutation.changed) return prev;
 
-        const nextCountdown = {
-          ...existingCountdown,
-          ...stylePatch,
-          fechaObjetivo: nuevoConSeccion.fechaObjetivo ?? existingCountdown.fechaObjetivo,
-          mostrarCuentaRegresiva: nuevoConSeccion.mostrarCuentaRegresiva !== false,
-          presetId: nuevoConSeccion.presetId,
-        };
+        const primaryIndex = countdownIndexes[0];
+        if (primaryIndex < 0 || prev[primaryIndex]?.id !== existingCountdown.id) {
+          return mutation.objetos;
+        }
 
         // Enforce global uniqueness: mantenemos solo un countdown por borrador.
-        const next = prev.filter(
+        return mutation.objetos.filter(
           (obj, index) => obj?.tipo !== "countdown" || index === primaryIndex
         );
-        next[primaryIndex] = nextCountdown;
-        return next;
       });
 
       const selectedId =

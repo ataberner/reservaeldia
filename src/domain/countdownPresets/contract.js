@@ -1,3 +1,5 @@
+import { COUNTDOWN_FRAME_SCALE_LIMITS } from "./frameGeometry.js";
+
 export const COUNTDOWN_PRESET_SCHEMA_VERSION = 2;
 export const COUNTDOWN_RENDER_CONTRACT_VERSION = 2;
 
@@ -67,6 +69,7 @@ export const COUNTDOWN_NUMERIC_LIMITS = Object.freeze({
   chipWidth: { min: 34, max: 520, default: 72 },
   gap: { min: 0, max: 48, default: 8 },
   framePadding: { min: 0, max: 64, default: 10 },
+  frameScale: COUNTDOWN_FRAME_SCALE_LIMITS,
   numberSize: { min: 10, max: 120, default: 28 },
   labelSize: { min: 8, max: 72, default: 12 },
   letterSpacing: { min: -2, max: 12, default: 0 },
@@ -99,6 +102,7 @@ export function createDefaultCountdownPresetConfig() {
       chipWidth: null,
       gap: COUNTDOWN_NUMERIC_LIMITS.gap.default,
       framePadding: COUNTDOWN_NUMERIC_LIMITS.framePadding.default,
+      frameScale: COUNTDOWN_NUMERIC_LIMITS.frameScale.default,
     },
     tipografia: {
       fontFamily: "Poppins",

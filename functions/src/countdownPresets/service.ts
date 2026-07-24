@@ -1,10 +1,65 @@
 
 import { randomUUID } from "crypto";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
 import { requireAdmin, requireAuth } from "../auth/adminAuth";
+import { recordBackendCountdownTelemetry } from "../countdownObservability/telemetry";
+import {
+  documentReferencesCountdownPreset,
+  planPublishDraftTransition,
+  planSaveDraftTransition,
+  resolveCountdownPresetDeletionPolicy,
+  resolvePublicCatalogVersion,
+} from "./phase1Policy";
+import {
+  buildCountdownDuplicateDraftRoot,
+  resolveCountdownDuplicateSource,
+} from "./phase3Policy";
+import { inspectCountdownPngBuffer } from "./frameAssetValidation";
+
+// Shared CJS is the cross-runtime authority copied into Functions at build time.
+/* eslint-disable @typescript-eslint/no-var-requires -- contrato CJS compartido con frontend y scripts */
+const {
+  COUNTDOWN_FRAME_ASSET_LIMITS,
+  COUNTDOWN_FRAME_MIME_TYPES,
+  normalizeCountdownFrameColorMode,
+  resolveCountdownFrameAssetType,
+  resolveCountdownFrameMimeType,
+} = require("../../shared/countdownFrameAssetContract.cjs") as {
+  COUNTDOWN_FRAME_ASSET_LIMITS: {
+    svgMaxBytes: number;
+    svgWarningBytes: number;
+  };
+  COUNTDOWN_FRAME_MIME_TYPES: {
+    svg: "image/svg+xml";
+    png: "image/png";
+  };
+  normalizeCountdownFrameColorMode: (
+    assetType: FrameAssetType | null,
+    colorMode: unknown
+  ) => ColorMode;
+  resolveCountdownFrameAssetType: (
+    value: unknown,
+    fallback?: FrameAssetType | null
+  ) => FrameAssetType | null;
+  resolveCountdownFrameMimeType: (
+    value: unknown,
+    fallback?: FrameAssetType | null
+  ) => FrameMimeType | null;
+};
+const {
+  COUNTDOWN_FRAME_SCALE_LIMITS,
+} = require("../../shared/countdownFrameGeometry.cjs") as {
+  COUNTDOWN_FRAME_SCALE_LIMITS: {
+    min: number;
+    max: number;
+    default: number;
+  };
+};
+/* eslint-enable @typescript-eslint/no-var-requires */
 
 type Estado = "draft" | "published" | "archived";
 type Unit = "days" | "hours" | "minutes" | "seconds";
@@ -12,6 +67,8 @@ type LayoutType = "singleFrame" | "multiUnit";
 type Distribution = "centered" | "vertical" | "grid" | "editorial";
 type LabelTransform = "none" | "uppercase" | "lowercase" | "capitalize";
 type ColorMode = "currentColor" | "fixed";
+type FrameAssetType = "svg" | "png";
+type FrameMimeType = "image/svg+xml" | "image/png";
 type EntryAnim = "fadeUp" | "fadeIn" | "scaleIn" | "none";
 type TickAnim = "flipSoft" | "pulse" | "none";
 type FrameAnim = "rotateSlow" | "shimmer" | "none";
@@ -31,6 +88,7 @@ type Config = {
     chipWidth: number | null;
     gap: number;
     framePadding: number;
+    frameScale: number;
   };
   tipografia: {
     fontFamily: string;
@@ -62,6 +120,8 @@ type Config = {
 };
 
 type SvgRef = {
+  type: FrameAssetType | null;
+  mimeType: FrameMimeType | null;
   storagePath: string | null;
   downloadUrl: string | null;
   thumbnailPath: string | null;
@@ -69,6 +129,10 @@ type SvgRef = {
   viewBox: string | null;
   hasFixedDimensions: boolean;
   bytes: number;
+  width: number | null;
+  height: number | null;
+  hasAlpha: boolean | null;
+  hasTransparency: boolean | null;
   colorMode: ColorMode;
 };
 
@@ -114,8 +178,13 @@ type SaveInput = {
   categoria?: unknown;
   expectedDraftVersion?: unknown;
   editorSessionId?: unknown;
+  operationId?: unknown;
   config?: unknown;
   assets?: {
+    removeFrame?: unknown;
+    frameFileName?: unknown;
+    frameMimeType?: unknown;
+    frameBase64?: unknown;
     removeSvg?: unknown;
     svgFileName?: unknown;
     svgBase64?: unknown;
@@ -126,6 +195,7 @@ type SaveInput = {
 type PublishInput = {
   presetId?: unknown;
   expectedDraftVersion?: unknown;
+  operationId?: unknown;
 };
 
 type ArchiveInput = {
@@ -139,6 +209,15 @@ type DeleteInput = {
 
 type SyncLegacyInput = {
   presets?: unknown;
+};
+
+type DuplicateInput = {
+  presetId?: unknown;
+  operationId?: unknown;
+};
+
+type ListVersionsInput = {
+  presetId?: unknown;
 };
 
 type LegacyCanvasProps = {
@@ -172,6 +251,7 @@ const RENDER_CONTRACT_VERSION = 2;
 const LEGACY_SYNC_SOURCE = "legacy-config-v1";
 const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 const PRESET_ID = /^[a-z0-9][a-z0-9-]{2,79}$/;
+const OPERATION_ID = /^[a-zA-Z0-9_-]{8,128}$/;
 const UNSAFE_HREF = /^(https?:|\/\/|javascript:)/i;
 const UNSAFE_CSS_TOKEN = /[<>;]/;
 const UNSAFE_CSS_PATTERN = /(url\s*\(|javascript:|expression\s*\()/i;
@@ -193,6 +273,7 @@ const RANGES: Record<string, Range> = {
   chipWidth: { min: 34, max: 520 },
   gap: { min: 0, max: 48 },
   framePadding: { min: 0, max: 64 },
+  frameScale: COUNTDOWN_FRAME_SCALE_LIMITS,
   numberSize: { min: 10, max: 120 },
   labelSize: { min: 8, max: 72 },
   letterSpacing: { min: -2, max: 12 },
@@ -321,6 +402,18 @@ function optionalNumberInRange(value: unknown, range: Range, label: string): num
   return parsed;
 }
 
+function numberInRangeWithDefault(
+  value: unknown,
+  range: Range,
+  label: string,
+  fallback: number
+): number {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return fallback;
+  }
+  return numberInRange(value, range, label);
+}
+
 function parseId(value: unknown): string | null {
   const normalized = text(value, 90).toLowerCase();
   if (!normalized) return null;
@@ -359,6 +452,16 @@ function parseExpectedDraftVersion(value: unknown): number | null {
   return parsed;
 }
 
+function parseOperationId(value: unknown): string {
+  const normalized = text(value, 128);
+  if (!normalized) {
+    // Rolling-deploy compatibility for callers that predate Phase 1.
+    return `legacy_${randomUUID().replace(/-/g, "")}`;
+  }
+  if (!OPERATION_ID.test(normalized)) fail("operationId invalido.");
+  return normalized;
+}
+
 function intOrNull(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : null;
@@ -379,21 +482,25 @@ function slugifyName(value: string): string {
   return normalized || "countdown";
 }
 
-async function resolveDocRef(requestedId: string | null, nombre: string) {
+async function resolveDocRef(
+  requestedId: string | null,
+  nombre: string,
+  operationId: string
+) {
   const database = db();
   if (requestedId) return { presetId: requestedId, ref: database.collection(COLLECTION).doc(requestedId) };
 
   const base = slugifyName(nombre);
-  let attempt = 0;
-  while (attempt < 5) {
-    const candidate = `${base}-${Date.now().toString(36)}${attempt === 0 ? "" : `-${attempt}`}`;
-    const ref = database.collection(COLLECTION).doc(candidate);
-    const snap = await ref.get();
-    if (!snap.exists) return { presetId: candidate, ref };
-    attempt += 1;
-  }
-
-  throw new HttpsError("internal", "No se pudo generar presetId unico.");
+  const operationSuffix = operationId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 16);
+  const candidateBase = `${base}-${operationSuffix || randomUUID().slice(0, 12)}`;
+  const candidate = candidateBase.slice(0, 80).replace(/-+$/g, "");
+  return {
+    presetId: candidate,
+    ref: database.collection(COLLECTION).doc(candidate),
+  };
 }
 
 function normalizeCategory(value: unknown): Category {
@@ -455,6 +562,12 @@ function normalizeConfig(value: unknown): Config {
       chipWidth: optionalNumberInRange(layoutRaw.chipWidth, RANGES.chipWidth, "config.layout.chipWidth"),
       gap: numberInRange(layoutRaw.gap, RANGES.gap, "config.layout.gap"),
       framePadding: numberInRange(layoutRaw.framePadding, RANGES.framePadding, "config.layout.framePadding"),
+      frameScale: numberInRangeWithDefault(
+        layoutRaw.frameScale,
+        RANGES.frameScale,
+        "config.layout.frameScale",
+        COUNTDOWN_FRAME_SCALE_LIMITS.default
+      ),
     },
     tipografia: {
       fontFamily: text(typoRaw.fontFamily, 120) || "Poppins",
@@ -489,9 +602,25 @@ function normalizeConfig(value: unknown): Config {
 function normalizeSvgRef(value: unknown): SvgRef | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
+  const hasAsset = Boolean(
+    optionalText(raw.storagePath, 500) ||
+      optionalText(raw.downloadUrl, 1000) ||
+      optionalText(raw.svgText, 1000)
+  );
+  const type = resolveCountdownFrameAssetType(
+    raw,
+    hasAsset ? "svg" : null
+  );
+  const mimeType = resolveCountdownFrameMimeType(raw, type);
   const modeRaw = text(raw.colorMode, 20);
-  const colorMode: ColorMode = COLOR_MODES.has(modeRaw) ? (modeRaw as ColorMode) : "fixed";
+  const requestedMode: ColorMode = COLOR_MODES.has(modeRaw)
+    ? (modeRaw as ColorMode)
+    : "fixed";
+  const width = Number(raw.width || 0);
+  const height = Number(raw.height || 0);
   return {
+    type,
+    mimeType,
     storagePath: optionalText(raw.storagePath, 500),
     downloadUrl: optionalText(raw.downloadUrl, 1000),
     thumbnailPath: optionalText(raw.thumbnailPath, 500),
@@ -499,12 +628,33 @@ function normalizeSvgRef(value: unknown): SvgRef | null {
     viewBox: optionalText(raw.viewBox, 120),
     hasFixedDimensions: raw.hasFixedDimensions === true,
     bytes: Number(raw.bytes || 0) || 0,
-    colorMode,
+    width: Number.isFinite(width) && width > 0 ? width : null,
+    height: Number.isFinite(height) && height > 0 ? height : null,
+    hasAlpha:
+      typeof raw.hasAlpha === "boolean" ? raw.hasAlpha : null,
+    hasTransparency:
+      typeof raw.hasTransparency === "boolean"
+        ? raw.hasTransparency
+        : null,
+    colorMode: normalizeCountdownFrameColorMode(type, requestedMode),
   };
 }
 
 function createEmptySvgRef(partial: Partial<SvgRef> = {}): SvgRef {
+  const type =
+    partial.type === "png"
+      ? "png"
+      : partial.type === "svg"
+        ? "svg"
+        : null;
   return {
+    type,
+    mimeType:
+      type === "png"
+        ? COUNTDOWN_FRAME_MIME_TYPES.png
+        : type === "svg"
+          ? COUNTDOWN_FRAME_MIME_TYPES.svg
+          : null,
     storagePath: partial.storagePath ?? null,
     downloadUrl: partial.downloadUrl ?? null,
     thumbnailPath: partial.thumbnailPath ?? null,
@@ -512,7 +662,21 @@ function createEmptySvgRef(partial: Partial<SvgRef> = {}): SvgRef {
     viewBox: partial.viewBox ?? null,
     hasFixedDimensions: partial.hasFixedDimensions === true,
     bytes: Number(partial.bytes || 0) || 0,
-    colorMode: partial.colorMode === "currentColor" ? "currentColor" : "fixed",
+    width:
+      Number.isFinite(Number(partial.width)) && Number(partial.width) > 0
+        ? Number(partial.width)
+        : null,
+    height:
+      Number.isFinite(Number(partial.height)) && Number(partial.height) > 0
+        ? Number(partial.height)
+        : null,
+    hasAlpha:
+      typeof partial.hasAlpha === "boolean" ? partial.hasAlpha : null,
+    hasTransparency:
+      typeof partial.hasTransparency === "boolean"
+        ? partial.hasTransparency
+        : null,
+    colorMode: normalizeCountdownFrameColorMode(type, partial.colorMode),
   };
 }
 
@@ -551,6 +715,7 @@ function buildConfigFromLegacyProps(legacyProps: LegacyCanvasProps): Config {
       chipWidth: null,
       gap: clampNumber(legacyProps.gap, RANGES.gap.min, RANGES.gap.max, 8),
       framePadding: 10,
+      frameScale: COUNTDOWN_FRAME_SCALE_LIMITS.default,
     },
     tipografia: {
       fontFamily: legacyProps.fontFamily || "Poppins",
@@ -671,8 +836,11 @@ function inspectSvg(svgText: string, fileName: string, bytes: number) {
   const warnings: string[] = [];
   const criticalErrors: string[] = [];
 
-  if (bytes > 500 * 1024) criticalErrors.push("El SVG supera 500KB.");
-  else if (bytes > 200 * 1024) warnings.push("El SVG pesa mas de 200KB.");
+  if (bytes > COUNTDOWN_FRAME_ASSET_LIMITS.svgMaxBytes) {
+    criticalErrors.push("El SVG supera 500KB.");
+  } else if (bytes > COUNTDOWN_FRAME_ASSET_LIMITS.svgWarningBytes) {
+    warnings.push("El SVG pesa mas de 200KB.");
+  }
 
   const { JSDOM } = require("jsdom") as typeof import("jsdom");
   let dom: import("jsdom").JSDOM;
@@ -799,17 +967,84 @@ async function deleteStoragePrefix(prefix: string) {
   }
 }
 
-async function deleteVersionHistory(ref: admin.firestore.DocumentReference) {
-  const versionRefs = await ref.collection("versions").listDocuments();
-  if (!versionRefs.length) return;
+async function deleteStorageFiles(paths: Array<string | null | undefined>) {
+  const uniquePaths = Array.from(
+    new Set(
+      paths
+        .map((value) => text(value, 600))
+        .filter((value) => value.startsWith("assets/countdown/"))
+    )
+  );
+  await Promise.all(
+    uniquePaths.map(async (path) => {
+      try {
+        await bucket().file(path).delete({ ignoreNotFound: true });
+      } catch (error) {
+        logger.warn("No se pudo limpiar un asset staged de countdown", {
+          path,
+          error,
+        });
+      }
+    })
+  );
+}
+
+function isMutableDraftAssetPath(path: string | null | undefined, presetId: string) {
+  const normalized = text(path, 600);
+  return (
+    normalized.startsWith(`assets/countdown/staging/${presetId}/`) ||
+    normalized.startsWith(`assets/countdown/frames/${presetId}/draft/`) ||
+    normalized.startsWith(`assets/countdown/thumbnails/${presetId}/draft/`)
+  );
+}
+
+async function deleteSubcollection(
+  ref: admin.firestore.DocumentReference,
+  collectionName: string
+) {
+  const childRefs = await ref.collection(collectionName).listDocuments();
+  if (!childRefs.length) return;
 
   const CHUNK_SIZE = 400;
-  for (let index = 0; index < versionRefs.length; index += CHUNK_SIZE) {
-    const chunk = versionRefs.slice(index, index + CHUNK_SIZE);
+  for (let index = 0; index < childRefs.length; index += CHUNK_SIZE) {
+    const chunk = childRefs.slice(index, index + CHUNK_SIZE);
     const batch = db().batch();
-    chunk.forEach((versionRef) => batch.delete(versionRef));
+    chunk.forEach((childRef) => batch.delete(childRef));
     await batch.commit();
   }
+}
+
+const COUNTDOWN_REFERENCE_COLLECTIONS = [
+  "borradores",
+  "plantillas",
+  "publicadas",
+  "publicadas_historial",
+] as const;
+
+async function countCountdownPresetReferences(presetId: string): Promise<number> {
+  let count = 0;
+  for (const collectionName of COUNTDOWN_REFERENCE_COLLECTIONS) {
+    const snapshot = await db().collection(collectionName).get();
+    snapshot.docs.forEach((document) => {
+      if (documentReferencesCountdownPreset(document.data(), presetId)) {
+        count += 1;
+      }
+    });
+  }
+  return count;
+}
+
+function operationConflictMessage(reason: string, action: "guardar" | "publicar") {
+  if (reason === "operation-type-mismatch") {
+    return "operationId ya fue utilizado por otra operacion.";
+  }
+  if (reason === "operation-incomplete") {
+    return "La operacion anterior no termino. Reintenta con el mismo operationId.";
+  }
+  if (reason === "draft-missing") {
+    return "No hay borrador para publicar.";
+  }
+  return `El borrador cambio antes de ${action}. Recarga y reintenta.`;
 }
 
 type TimestampLike = { toDate: () => Date };
@@ -865,8 +1100,18 @@ function buildCanvasPatch(params: {
     visibleUnits,
     gap: config.layout.gap,
     framePadding: config.layout.framePadding,
+    frameScale: config.layout.frameScale,
     frameSvgUrl: svgRef.downloadUrl,
-    frameColorMode: svgRef.colorMode,
+    frameAssetType: svgRef.downloadUrl ? svgRef.type || "svg" : null,
+    frameMimeType: svgRef.downloadUrl
+      ? svgRef.mimeType || COUNTDOWN_FRAME_MIME_TYPES.svg
+      : null,
+    frameIntrinsicWidth: svgRef.width,
+    frameIntrinsicHeight: svgRef.height,
+    frameColorMode: normalizeCountdownFrameColorMode(
+      svgRef.downloadUrl ? svgRef.type || "svg" : null,
+      svgRef.colorMode
+    ),
     frameColor: config.colores.frameColor,
     fontFamily: config.tipografia.fontFamily,
     fontSize: config.tipografia.numberSize,
@@ -912,6 +1157,10 @@ function buildLegacyCanvasPatch(params: {
     gap: legacyProps.gap,
     framePadding: 10,
     frameSvgUrl: null,
+    frameAssetType: null,
+    frameMimeType: null,
+    frameIntrinsicWidth: null,
+    frameIntrinsicHeight: null,
     frameColorMode: "fixed",
     frameColor: normalizeColorOrFallback(legacyProps.boxBorder, "#773dbe"),
     fontFamily: legacyProps.fontFamily,
@@ -954,81 +1203,195 @@ export const saveCountdownPresetDraft = onCall(
     const expectedDraftVersion = parseExpectedDraftVersion(request.data?.expectedDraftVersion);
     const requestedId = parseId(request.data?.presetId);
     const editorSessionId = text(request.data?.editorSessionId, 120);
+    const operationId = parseOperationId(request.data?.operationId);
 
-    const { presetId, ref } = await resolveDocRef(requestedId, nombre);
-    const snap = await ref.get();
-    const existing = (snap.exists ? (snap.data() as PresetDoc) : null) || null;
-
-    const currentDraftVersion = intOrNull(existing?.draftVersion);
-    const metadata =
-      existing?.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
-    const currentDraftEditorSessionId = text(
-      (metadata as Record<string, unknown>)?.draftEditorSessionId,
-      120
-    );
-    const lastUpdatedByUid = text((metadata as Record<string, unknown>)?.updatedByUid, 128);
-    const canReuseDraftSession =
-      !!editorSessionId &&
-      (
-        currentDraftEditorSessionId === editorSessionId ||
-        (!currentDraftEditorSessionId && lastUpdatedByUid === uid)
-      );
-
-    if (expectedDraftVersion !== currentDraftVersion) {
-      if (!canReuseDraftSession) {
+    const { presetId, ref } = await resolveDocRef(requestedId, nombre, operationId);
+    const operationRef = ref.collection("operations").doc(operationId);
+    const existingOperationSnap = await operationRef.get();
+    if (existingOperationSnap.exists) {
+      const replay = planSaveDraftTransition({
+        currentDraftVersion: null,
+        expectedDraftVersion,
+        operationData: existingOperationSnap.data(),
+      });
+      if (replay.kind === "replay") return replay.result;
+      const replayReason =
+        replay.kind === "conflict"
+          ? replay.reason
+          : "operation-incomplete";
       throw new HttpsError(
         "failed-precondition",
-        "El borrador fue modificado por otra sesion. Recarga antes de guardar."
+        operationConflictMessage(replayReason, "guardar")
       );
-      }
     }
 
+    const snap = await ref.get();
+    const existing = (snap.exists ? (snap.data() as PresetDoc) : null) || null;
     const existingDraft = existing?.draft || null;
     const existingSvgRef = normalizeSvgRef(existingDraft?.svgRef) || normalizeSvgRef(existing?.svgRef);
 
     const assets = request.data?.assets || {};
-    const removeSvg = assets.removeSvg === true;
-    const hasIncomingSvg = typeof assets.svgBase64 === "string" && assets.svgBase64.trim().length > 0;
+    const removeFrame =
+      assets.removeFrame === true || assets.removeSvg === true;
+    const canonicalFrameBase64 =
+      typeof assets.frameBase64 === "string"
+        ? assets.frameBase64.trim()
+        : "";
+    const legacySvgBase64 =
+      typeof assets.svgBase64 === "string" ? assets.svgBase64.trim() : "";
+    const incomingFrameBase64 =
+      canonicalFrameBase64 || legacySvgBase64;
+    const hasIncomingFrame = incomingFrameBase64.length > 0;
     const hasIncomingThumb = typeof assets.thumbnailPngBase64 === "string" && assets.thumbnailPngBase64.trim().length > 0;
+    if (removeFrame && hasIncomingFrame) {
+      fail("No se puede quitar y reemplazar el frame en la misma solicitud.");
+    }
 
-    let inspection: ReturnType<typeof inspectSvg> | null = null;
+    let inspection: {
+      valid: boolean;
+      warnings: string[];
+      criticalErrors: string[];
+      checks: Record<string, unknown> & {
+        bytes: number;
+        viewBox?: string | null;
+        viewBoxWidth?: number | null;
+        viewBoxHeight?: number | null;
+        hasFixedDimensions?: boolean;
+        width?: number | null;
+        height?: number | null;
+        hasAlpha?: boolean;
+        hasTransparency?: boolean;
+        colorMode?: ColorMode;
+      };
+      svgText?: string;
+    } | null = null;
     let nextSvgRef: SvgRef | null = existingSvgRef;
+    const attemptId = randomUUID().replace(/-/g, "");
+    const stagingPrefix = `assets/countdown/staging/${presetId}/${operationId}/${attemptId}/`;
+    const uploadedPaths: string[] = [];
 
-    if (removeSvg) {
+    if (removeFrame) {
       nextSvgRef = createEmptySvgRef({
         thumbnailPath: existingSvgRef?.thumbnailPath || null,
         thumbnailUrl: existingSvgRef?.thumbnailUrl || null,
       });
     }
 
-    if (hasIncomingSvg) {
-      const svgFileName = text(assets.svgFileName, 180);
-      if (!svgFileName.toLowerCase().endsWith(".svg")) fail("svgFileName debe terminar en .svg.");
+    if (hasIncomingFrame) {
+      const frameFileName =
+        text(assets.frameFileName, 180) ||
+        text(assets.svgFileName, 180);
+      const lowerFileName = frameFileName.toLowerCase();
+      const frameType: FrameAssetType = lowerFileName.endsWith(".png")
+        ? "png"
+        : lowerFileName.endsWith(".svg")
+          ? "svg"
+          : fail("El archivo no es un SVG o PNG válido.");
+      const expectedMimeType =
+        frameType === "png"
+          ? COUNTDOWN_FRAME_MIME_TYPES.png
+          : COUNTDOWN_FRAME_MIME_TYPES.svg;
+      const declaredMimeType = text(assets.frameMimeType, 80).toLowerCase();
+      if (
+        canonicalFrameBase64 &&
+        declaredMimeType !== expectedMimeType
+      ) {
+        fail("El archivo no es un SVG o PNG válido.");
+      }
+      if (declaredMimeType && declaredMimeType !== expectedMimeType) {
+        fail("El archivo no es un SVG o PNG válido.");
+      }
 
-      const svgBuffer = parseBase64(assets.svgBase64, "assets.svgBase64");
-      const svgText = svgBuffer.toString("utf8");
-      inspection = inspectSvg(svgText, svgFileName, svgBuffer.byteLength);
-      if (!inspection.valid) fail(inspection.criticalErrors.join(" "));
+      const frameBuffer = parseBase64(
+        incomingFrameBase64,
+        canonicalFrameBase64 ? "assets.frameBase64" : "assets.svgBase64"
+      );
+      let uploadBuffer = frameBuffer;
+      if (frameType === "png") {
+        try {
+          inspection = await inspectCountdownPngBuffer(
+            frameBuffer,
+            frameFileName,
+            declaredMimeType
+          );
+        } catch (error) {
+          fail(
+            error instanceof Error
+              ? error.message
+              : "No pudimos leer el archivo. Probá exportándolo nuevamente."
+          );
+        }
+      } else {
+        const svgText = frameBuffer.toString("utf8");
+        inspection = inspectSvg(
+          svgText,
+          frameFileName,
+          frameBuffer.byteLength
+        );
+        if (!inspection.valid) fail(inspection.criticalErrors.join(" "));
+        uploadBuffer = Buffer.from(inspection.svgText || "", "utf8");
+      }
 
-      const draftSvgPath = `assets/countdown/frames/${presetId}/draft/frame.svg`;
-      const uploaded = await uploadWithToken(draftSvgPath, Buffer.from(inspection.svgText, "utf8"), "image/svg+xml");
+      const draftSvgPath = `${stagingPrefix}frame.${frameType}`;
+      const uploaded = await uploadWithToken(
+        draftSvgPath,
+        uploadBuffer,
+        expectedMimeType
+      );
+      uploadedPaths.push(uploaded.storagePath);
 
       nextSvgRef = {
+        type: frameType,
+        mimeType: expectedMimeType,
         storagePath: uploaded.storagePath,
         downloadUrl: uploaded.downloadUrl,
         thumbnailPath: existingSvgRef?.thumbnailPath || null,
         thumbnailUrl: existingSvgRef?.thumbnailUrl || null,
-        viewBox: inspection.checks.viewBox,
-        hasFixedDimensions: inspection.checks.hasFixedDimensions,
+        viewBox:
+          frameType === "svg" ? inspection.checks.viewBox || null : null,
+        hasFixedDimensions:
+          frameType === "svg" &&
+          inspection.checks.hasFixedDimensions === true,
         bytes: inspection.checks.bytes,
-        colorMode: inspection.checks.colorMode,
+        width: Number(
+          frameType === "png"
+            ? inspection.checks.width
+            : inspection.checks.viewBoxWidth
+        ) || null,
+        height: Number(
+          frameType === "png"
+            ? inspection.checks.height
+            : inspection.checks.viewBoxHeight
+        ) || null,
+        hasAlpha:
+          frameType === "png"
+            ? inspection.checks.hasAlpha === true
+            : null,
+        hasTransparency:
+          frameType === "png"
+            ? inspection.checks.hasTransparency === true
+            : null,
+        colorMode: normalizeCountdownFrameColorMode(
+          frameType,
+          inspection.checks.colorMode
+        ),
       };
     }
 
     if (hasIncomingThumb) {
-      const png = parseBase64(assets.thumbnailPngBase64, "assets.thumbnailPngBase64");
-      const draftThumbPath = `assets/countdown/thumbnails/${presetId}/draft/thumbnail.png`;
-      const uploadedThumb = await uploadWithToken(draftThumbPath, png, "image/png");
+      const draftThumbPath = `${stagingPrefix}thumbnail.png`;
+      let uploadedThumb;
+      try {
+        const png = parseBase64(
+          assets.thumbnailPngBase64,
+          "assets.thumbnailPngBase64"
+        );
+        uploadedThumb = await uploadWithToken(draftThumbPath, png, "image/png");
+      } catch (error) {
+        await deleteStorageFiles(uploadedPaths);
+        throw error;
+      }
+      uploadedPaths.push(uploadedThumb.storagePath);
 
       nextSvgRef = {
         ...(nextSvgRef || createEmptySvgRef()),
@@ -1041,15 +1404,12 @@ export const saveCountdownPresetDraft = onCall(
       nextSvgRef = createEmptySvgRef();
     }
 
-    const warnings = removeSvg
+    const warnings = removeFrame
       ? []
       : inspection?.warnings || existingDraft?.validationReport?.warnings || [];
-    const checks = removeSvg
+    const checks = removeFrame
       ? {}
       : inspection?.checks || existingDraft?.validationReport?.checks || {};
-
-    const nextDraftVersion = (currentDraftVersion || 0) + 1;
-    const now = admin.firestore.FieldValue.serverTimestamp();
 
     const draft: Draft = {
       id: presetId,
@@ -1065,44 +1425,143 @@ export const saveCountdownPresetDraft = onCall(
       validationReport: { warnings, checks },
     };
 
-    const hasActiveVersion = Number(existing?.activeVersion || 0) > 0;
+    let previousDraftAssetPaths: Array<string | null> = [];
+    const committedSvgRef: SvgRef = nextSvgRef;
+    let transactionOutcome: {
+      result: Record<string, unknown>;
+      didCommit: boolean;
+    } | null = null;
 
-    await ref.set(
-      {
-        id: presetId,
-        nombre: hasActiveVersion ? existing?.nombre || nombre : nombre,
-        categoria: hasActiveVersion ? existing?.categoria || categoria : categoria,
-        estado: (existing?.estado as Estado) || "draft",
-        activeVersion: hasActiveVersion ? Number(existing?.activeVersion || 0) : null,
-        draftVersion: nextDraftVersion,
-        svgRef: hasActiveVersion ? normalizeSvgRef(existing?.svgRef) || nextSvgRef : nextSvgRef,
-        layout: hasActiveVersion ? existing?.layout || config.layout : config.layout,
-        tipografia: hasActiveVersion ? existing?.tipografia || config.tipografia : config.tipografia,
-        colores: hasActiveVersion ? existing?.colores || config.colores : config.colores,
-        animaciones: hasActiveVersion ? existing?.animaciones || config.animaciones : config.animaciones,
-        unidad: hasActiveVersion ? existing?.unidad || config.unidad : config.unidad,
-        tamanoBase: hasActiveVersion ? Number(existing?.tamanoBase || config.tamanoBase) : config.tamanoBase,
-        draft,
-        metadata: {
-          ...metadata,
-          schemaVersion: SCHEMA_VERSION,
-          renderContractVersion: RENDER_CONTRACT_VERSION,
-          draftEditorSessionId: editorSessionId || currentDraftEditorSessionId || null,
-          updatedAt: now,
-          updatedByUid: uid,
-          ...(snap.exists ? {} : { createdAt: now, createdByUid: uid }),
-        },
-      },
-      { merge: true }
+    try {
+      transactionOutcome = await db().runTransaction(async (transaction) => {
+        const [operationSnap, currentSnap] = await Promise.all([
+          transaction.get(operationRef),
+          transaction.get(ref),
+        ]);
+        const current = (currentSnap.exists
+          ? (currentSnap.data() as PresetDoc)
+          : null) || null;
+        const transition = planSaveDraftTransition({
+          currentDraftVersion: current?.draftVersion,
+          expectedDraftVersion,
+          operationData: operationSnap.exists ? operationSnap.data() : null,
+        });
+
+        if (transition.kind === "replay") {
+          return { result: transition.result, didCommit: false };
+        }
+        if (transition.kind === "conflict") {
+          throw new HttpsError(
+            "failed-precondition",
+            operationConflictMessage(transition.reason, "guardar")
+          );
+        }
+
+        const nextDraftVersion = Number(transition.nextDraftVersion);
+        const currentMetadata =
+          current?.metadata && typeof current.metadata === "object"
+            ? current.metadata
+            : {};
+        const currentDraftEditorSessionId = text(
+          (currentMetadata as Record<string, unknown>)?.draftEditorSessionId,
+          120
+        );
+        const currentDraft = current?.draft || null;
+        const previousDraftSvgRef =
+          normalizeSvgRef(currentDraft?.svgRef) || normalizeSvgRef(current?.svgRef);
+        previousDraftAssetPaths = [
+          previousDraftSvgRef?.storagePath || null,
+          previousDraftSvgRef?.thumbnailPath || null,
+        ];
+        const hasActiveVersion = Number(current?.activeVersion || 0) > 0;
+        const now = FieldValue.serverTimestamp();
+        const result = {
+          presetId,
+          draftVersion: nextDraftVersion,
+          estado: (current?.estado as Estado) || "draft",
+          warnings,
+          operationId,
+          updatedAt: new Date().toISOString(),
+        };
+
+        transaction.set(
+          ref,
+          {
+            id: presetId,
+            nombre: hasActiveVersion ? current?.nombre || nombre : nombre,
+            categoria: hasActiveVersion ? current?.categoria || categoria : categoria,
+            estado: (current?.estado as Estado) || "draft",
+            activeVersion: hasActiveVersion
+              ? Number(current?.activeVersion || 0)
+              : null,
+            draftVersion: nextDraftVersion,
+            svgRef: hasActiveVersion
+              ? normalizeSvgRef(current?.svgRef) || nextSvgRef
+              : nextSvgRef,
+            layout: hasActiveVersion ? current?.layout || config.layout : config.layout,
+            tipografia: hasActiveVersion
+              ? current?.tipografia || config.tipografia
+              : config.tipografia,
+            colores: hasActiveVersion
+              ? current?.colores || config.colores
+              : config.colores,
+            animaciones: hasActiveVersion
+              ? current?.animaciones || config.animaciones
+              : config.animaciones,
+            unidad: hasActiveVersion ? current?.unidad || config.unidad : config.unidad,
+            tamanoBase: hasActiveVersion
+              ? Number(current?.tamanoBase || config.tamanoBase)
+              : config.tamanoBase,
+            draft,
+            metadata: {
+              ...currentMetadata,
+              schemaVersion: SCHEMA_VERSION,
+              renderContractVersion: RENDER_CONTRACT_VERSION,
+              draftEditorSessionId:
+                editorSessionId || currentDraftEditorSessionId || null,
+              updatedAt: now,
+              updatedByUid: uid,
+              ...(currentSnap.exists
+                ? {}
+                : { createdAt: now, createdByUid: uid }),
+            },
+          },
+          { merge: true }
+        );
+        transaction.create(operationRef, {
+          type: "save",
+          status: "completed",
+          expectedDraftVersion,
+          result,
+          createdAt: now,
+          completedAt: now,
+          uid,
+        });
+        return { result, didCommit: true };
+      });
+    } catch (error) {
+      await deleteStorageFiles(uploadedPaths);
+      throw error;
+    }
+
+    if (!transactionOutcome.didCommit) {
+      await deleteStorageFiles(uploadedPaths);
+      return transactionOutcome.result;
+    }
+
+    const retainedPaths = new Set(
+      [committedSvgRef.storagePath, committedSvgRef.thumbnailPath].filter(Boolean)
+    );
+    await deleteStorageFiles(
+      previousDraftAssetPaths.filter(
+        (path) =>
+          path &&
+          isMutableDraftAssetPath(path, presetId) &&
+          !retainedPaths.has(path)
+      )
     );
 
-    return {
-      presetId,
-      draftVersion: nextDraftVersion,
-      estado: (existing?.estado as Estado) || "draft",
-      warnings,
-      updatedAt: new Date().toISOString(),
-    };
+    return transactionOutcome.result;
   }
 );
 
@@ -1116,44 +1575,85 @@ export const publishCountdownPresetDraft = onCall(
 
     const expectedDraftVersion = parseExpectedDraftVersion(request.data?.expectedDraftVersion);
     if (!expectedDraftVersion) fail("expectedDraftVersion es obligatorio.");
+    const operationId = parseOperationId(request.data?.operationId);
 
     const ref = db().collection(COLLECTION).doc(presetId);
+    const operationRef = ref.collection("operations").doc(operationId);
+    const existingOperationSnap = await operationRef.get();
+    if (existingOperationSnap.exists) {
+      const replay = planPublishDraftTransition({
+        currentDraftVersion: null,
+        expectedDraftVersion,
+        activeVersion: null,
+        hasDraft: false,
+        operationData: existingOperationSnap.data(),
+      });
+      if (replay.kind === "replay") return replay.result;
+      const replayReason =
+        replay.kind === "conflict"
+          ? replay.reason
+          : "operation-incomplete";
+      throw new HttpsError(
+        "failed-precondition",
+        operationConflictMessage(replayReason, "publicar")
+      );
+    }
+
     const snap = await ref.get();
     if (!snap.exists) throw new HttpsError("not-found", "No existe el preset solicitado.");
 
     const data = (snap.data() || {}) as PresetDoc;
-    const currentDraftVersion = intOrNull(data.draftVersion);
-    if (currentDraftVersion !== expectedDraftVersion) {
-      throw new HttpsError("failed-precondition", "El borrador cambio. Recarga antes de publicar.");
+    const draftSnapshot = data.draft as Draft | null;
+    if (!draftSnapshot) {
+      throw new HttpsError("failed-precondition", "No hay borrador para publicar.");
     }
-
-    const draft = data.draft as Draft | null;
-    if (!draft) throw new HttpsError("failed-precondition", "No hay borrador para publicar.");
-
-    const config = normalizeConfig({
-      layout: draft.layout,
-      tipografia: draft.tipografia,
-      colores: draft.colores,
-      animaciones: draft.animaciones,
-      unidad: draft.unidad,
-      tamanoBase: draft.tamanoBase,
-    });
-    const category = normalizeCategory(draft.categoria);
-    const draftSvgRef = normalizeSvgRef(draft.svgRef) || createEmptySvgRef();
+    const draftSvgRef = normalizeSvgRef(draftSnapshot.svgRef) || createEmptySvgRef();
     if (!draftSvgRef.thumbnailPath) throw new HttpsError("failed-precondition", "El borrador no tiene miniatura PNG.");
 
-    const nextVersion = Math.max(0, Number(data.activeVersion || 0)) + 1;
-    const frameTarget = `assets/countdown/frames/${presetId}/v${nextVersion}/frame.svg`;
-    const thumbTarget = `assets/countdown/thumbnails/${presetId}/v${nextVersion}/thumbnail.png`;
+    const attemptId = randomUUID().replace(/-/g, "");
+    const frameAssetType = draftSvgRef.storagePath
+      ? draftSvgRef.type || "svg"
+      : null;
+    const frameMimeType = frameAssetType
+      ? resolveCountdownFrameMimeType(draftSvgRef, frameAssetType) ||
+        COUNTDOWN_FRAME_MIME_TYPES.svg
+      : null;
+    const frameTarget = frameAssetType
+      ? `assets/countdown/frames/${presetId}/operations/${operationId}/${attemptId}/frame.${frameAssetType}`
+      : null;
+    const thumbTarget = `assets/countdown/thumbnails/${presetId}/operations/${operationId}/${attemptId}/thumbnail.png`;
+    const stagedPaths: string[] = [];
+    let framePublished: Awaited<ReturnType<typeof copyVersionedAsset>> | null = null;
+    let thumbPublished: Awaited<ReturnType<typeof copyVersionedAsset>>;
 
-    const [framePublished, thumbPublished] = await Promise.all([
-      draftSvgRef.storagePath
-        ? copyVersionedAsset(draftSvgRef.storagePath, frameTarget, "image/svg+xml")
-        : Promise.resolve(null),
-      copyVersionedAsset(draftSvgRef.thumbnailPath, thumbTarget, "image/png"),
-    ]);
+    try {
+      [framePublished, thumbPublished] = await Promise.all([
+        draftSvgRef.storagePath
+          ? copyVersionedAsset(
+              draftSvgRef.storagePath,
+              frameTarget as string,
+              frameMimeType as string
+            )
+          : Promise.resolve(null),
+        copyVersionedAsset(draftSvgRef.thumbnailPath, thumbTarget, "image/png"),
+      ]);
+      if (framePublished?.storagePath) stagedPaths.push(framePublished.storagePath);
+      stagedPaths.push(thumbPublished.storagePath);
+    } catch (error) {
+      await Promise.all([
+        deleteStoragePrefix(
+          `assets/countdown/frames/${presetId}/operations/${operationId}/${attemptId}/`
+        ),
+        deleteStoragePrefix(
+          `assets/countdown/thumbnails/${presetId}/operations/${operationId}/${attemptId}/`
+        ),
+      ]);
+      throw error;
+    }
 
     const publishedSvgRef: SvgRef = {
+      type: framePublished ? frameAssetType : null,
+      mimeType: framePublished ? frameMimeType : null,
       storagePath: framePublished?.storagePath || null,
       downloadUrl: framePublished?.downloadUrl || null,
       thumbnailPath: thumbPublished.storagePath,
@@ -1161,69 +1661,486 @@ export const publishCountdownPresetDraft = onCall(
       viewBox: draftSvgRef.viewBox,
       hasFixedDimensions: draftSvgRef.hasFixedDimensions,
       bytes: framePublished?.bytes || draftSvgRef.bytes,
-      colorMode: draftSvgRef.colorMode,
+      width: draftSvgRef.width,
+      height: draftSvgRef.height,
+      hasAlpha: draftSvgRef.hasAlpha,
+      hasTransparency: draftSvgRef.hasTransparency,
+      colorMode: normalizeCountdownFrameColorMode(
+        framePublished ? frameAssetType : null,
+        draftSvgRef.colorMode
+      ),
     };
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
-    const metadata = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
+    let transactionOutcome: {
+      result: Record<string, unknown>;
+      didCommit: boolean;
+      draftAssets: SvgRef | null;
+    } | null = null;
 
-    const batch = db().batch();
-    batch.set(ref.collection("versions").doc(String(nextVersion)), {
-      id: presetId,
-      version: nextVersion,
-      nombre: draft.nombre,
-      categoria: category,
-      svgRef: publishedSvgRef,
-      layout: config.layout,
-      tipografia: config.tipografia,
-      colores: config.colores,
-      animaciones: config.animaciones,
-      unidad: config.unidad,
-      tamanoBase: config.tamanoBase,
-      metadata: {
-        schemaVersion: SCHEMA_VERSION,
-        renderContractVersion: RENDER_CONTRACT_VERSION,
-        publishedAt: now,
-        publishedByUid: uid,
-        sourceDraftVersion: expectedDraftVersion,
-      },
+    try {
+      transactionOutcome = await db().runTransaction(async (transaction) => {
+        const [operationSnap, currentSnap] = await Promise.all([
+          transaction.get(operationRef),
+          transaction.get(ref),
+        ]);
+        if (!currentSnap.exists) {
+          throw new HttpsError("not-found", "No existe el preset solicitado.");
+        }
+
+        const current = (currentSnap.data() || {}) as PresetDoc;
+        const currentDraft = current.draft as Draft | null;
+        const transition = planPublishDraftTransition({
+          currentDraftVersion: current.draftVersion,
+          expectedDraftVersion,
+          activeVersion: current.activeVersion,
+          hasDraft: Boolean(currentDraft),
+          operationData: operationSnap.exists ? operationSnap.data() : null,
+        });
+
+        if (transition.kind === "replay") {
+          return {
+            result: transition.result,
+            didCommit: false,
+            draftAssets: null,
+          };
+        }
+        if (transition.kind === "conflict") {
+          throw new HttpsError(
+            "failed-precondition",
+            operationConflictMessage(transition.reason, "publicar")
+          );
+        }
+        if (!currentDraft) {
+          throw new HttpsError("failed-precondition", "No hay borrador para publicar.");
+        }
+
+        const currentDraftSvgRef =
+          normalizeSvgRef(currentDraft.svgRef) || createEmptySvgRef();
+        if (
+          currentDraftSvgRef.storagePath !== draftSvgRef.storagePath ||
+          currentDraftSvgRef.thumbnailPath !== draftSvgRef.thumbnailPath
+        ) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Los assets del borrador cambiaron antes de publicar."
+          );
+        }
+
+        const config = normalizeConfig({
+          layout: currentDraft.layout,
+          tipografia: currentDraft.tipografia,
+          colores: currentDraft.colores,
+          animaciones: currentDraft.animaciones,
+          unidad: currentDraft.unidad,
+          tamanoBase: currentDraft.tamanoBase,
+        });
+        const category = normalizeCategory(currentDraft.categoria);
+        const nextVersion = Number(transition.nextActiveVersion);
+        const versionRef = ref.collection("versions").doc(String(nextVersion));
+        const metadata =
+          current.metadata && typeof current.metadata === "object"
+            ? current.metadata
+            : {};
+        const now = FieldValue.serverTimestamp();
+        const result = {
+          presetId,
+          activeVersion: nextVersion,
+          operationId,
+          publishedAt: new Date().toISOString(),
+        };
+
+        transaction.create(versionRef, {
+          id: presetId,
+          version: nextVersion,
+          nombre: currentDraft.nombre,
+          categoria: category,
+          svgRef: publishedSvgRef,
+          layout: config.layout,
+          tipografia: config.tipografia,
+          colores: config.colores,
+          animaciones: config.animaciones,
+          unidad: config.unidad,
+          tamanoBase: config.tamanoBase,
+          metadata: {
+            schemaVersion: SCHEMA_VERSION,
+            renderContractVersion: RENDER_CONTRACT_VERSION,
+            publishedAt: now,
+            publishedByUid: uid,
+            sourceDraftVersion: expectedDraftVersion,
+            assetOperationId: operationId,
+          },
+        });
+
+        transaction.set(
+          ref,
+          {
+            id: presetId,
+            nombre: currentDraft.nombre,
+            categoria: category,
+            estado: "published",
+            activeVersion: nextVersion,
+            draftVersion: null,
+            svgRef: publishedSvgRef,
+            layout: config.layout,
+            tipografia: config.tipografia,
+            colores: config.colores,
+            animaciones: config.animaciones,
+            unidad: config.unidad,
+            tamanoBase: config.tamanoBase,
+            draft: null,
+            legacyPresetProps: FieldValue.delete(),
+            metadata: {
+              ...metadata,
+              schemaVersion: SCHEMA_VERSION,
+              renderContractVersion: RENDER_CONTRACT_VERSION,
+              updatedAt: now,
+              updatedByUid: uid,
+              publishedAt: now,
+              publishedByUid: uid,
+              archivedAt: null,
+              archivedByUid: null,
+            },
+          },
+          { merge: true }
+        );
+        transaction.create(operationRef, {
+          type: "publish",
+          status: "completed",
+          expectedDraftVersion,
+          result,
+          createdAt: now,
+          completedAt: now,
+          uid,
+        });
+
+        return {
+          result,
+          didCommit: true,
+          draftAssets: currentDraftSvgRef,
+        };
+      });
+    } catch (error) {
+      await deleteStorageFiles(stagedPaths);
+      throw error;
+    }
+
+    if (!transactionOutcome.didCommit) {
+      await deleteStorageFiles(stagedPaths);
+      return transactionOutcome.result;
+    }
+
+    await deleteStorageFiles([
+      isMutableDraftAssetPath(
+        transactionOutcome.draftAssets?.storagePath,
+        presetId
+      )
+        ? transactionOutcome.draftAssets?.storagePath
+        : null,
+      isMutableDraftAssetPath(
+        transactionOutcome.draftAssets?.thumbnailPath,
+        presetId
+      )
+        ? transactionOutcome.draftAssets?.thumbnailPath
+        : null,
+    ]);
+    return transactionOutcome.result;
+  }
+);
+
+export const duplicateCountdownPreset = onCall(
+  OPTIONS,
+  async (request: CallableRequest<DuplicateInput>) => {
+    const uid = requireAdmin(request);
+    const sourcePresetId = parseId(request.data?.presetId);
+    if (!sourcePresetId) fail("presetId es obligatorio.");
+    const operationId = parseOperationId(request.data?.operationId);
+
+    const sourceRef = db().collection(COLLECTION).doc(sourcePresetId);
+    const operationRef = sourceRef.collection("operations").doc(operationId);
+    const existingOperation = await operationRef.get();
+    if (existingOperation.exists) {
+      const operationData = existingOperation.data() || {};
+      if (
+        operationData.type === "duplicate" &&
+        operationData.status === "completed" &&
+        operationData.result &&
+        typeof operationData.result === "object"
+      ) {
+        return operationData.result as Record<string, unknown>;
+      }
+      throw new HttpsError(
+        "failed-precondition",
+        "El operationId ya fue utilizado por otra operación."
+      );
+    }
+
+    const sourceSnap = await sourceRef.get();
+    if (!sourceSnap.exists) {
+      throw new HttpsError("not-found", "No existe el preset solicitado.");
+    }
+    const sourceRoot = (sourceSnap.data() || {}) as PresetDoc;
+    const sourceDraftVersion = intOrNull(sourceRoot.draftVersion);
+    const activeVersion = intOrNull(sourceRoot.activeVersion);
+    let activeVersionData: Record<string, unknown> | null = null;
+    if (!sourceRoot.draft) {
+      if (!activeVersion || activeVersion < 1) {
+        throw new HttpsError(
+          "failed-precondition",
+          "El preset no tiene un borrador ni una versión publicada para duplicar."
+        );
+      }
+      const versionSnap = await sourceRef
+        .collection("versions")
+        .doc(String(activeVersion))
+        .get();
+      if (!versionSnap.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "La versión activa del preset no está disponible."
+        );
+      }
+      activeVersionData = (versionSnap.data() || {}) as Record<string, unknown>;
+    }
+    const sourcePlan = resolveCountdownDuplicateSource({
+      rootData: sourceRoot as Record<string, unknown>,
+      activeVersionData,
     });
+    if (!sourcePlan.ok) {
+      throw new HttpsError(
+        "failed-precondition",
+        "El preset no tiene una fuente compatible para duplicar."
+      );
+    }
+    const { sourcePayload, sourceKind, sourceVersion } = sourcePlan;
 
-    batch.set(ref, {
-      id: presetId,
-      nombre: draft.nombre,
-      categoria: category,
-      estado: "published",
-      activeVersion: nextVersion,
-      draftVersion: null,
-      svgRef: publishedSvgRef,
-      layout: config.layout,
-      tipografia: config.tipografia,
-      colores: config.colores,
-      animaciones: config.animaciones,
-      unidad: config.unidad,
-      tamanoBase: config.tamanoBase,
-      draft: null,
-      legacyPresetProps: admin.firestore.FieldValue.delete(),
-      metadata: {
-        ...metadata,
-        schemaVersion: SCHEMA_VERSION,
-        renderContractVersion: RENDER_CONTRACT_VERSION,
-        updatedAt: now,
-        updatedByUid: uid,
-        publishedAt: now,
-        publishedByUid: uid,
-        archivedAt: null,
-        archivedByUid: null,
-      },
-    }, { merge: true });
+    const sourceName =
+      text(sourcePayload.nombre, 108) || text(sourceRoot.nombre, 108) || sourcePresetId;
+    const duplicateName = text(`${sourceName} — copia`, 120);
+    const category = normalizeCategory(
+      sourcePayload.categoria || sourceRoot.categoria
+    );
+    const config = normalizeConfig({
+      layout: sourcePayload.layout,
+      tipografia: sourcePayload.tipografia,
+      colores: sourcePayload.colores,
+      animaciones: sourcePayload.animaciones,
+      unidad: sourcePayload.unidad,
+      tamanoBase: sourcePayload.tamanoBase,
+    });
+    const sourceSvgRef =
+      normalizeSvgRef(sourcePayload.svgRef) ||
+      normalizeSvgRef(sourceRoot.svgRef) ||
+      createEmptySvgRef();
+    const { presetId, ref: targetRef } = await resolveDocRef(
+      null,
+      duplicateName,
+      operationId
+    );
+    const attemptId = randomUUID().replace(/-/g, "");
+    const stagingPrefix = `assets/countdown/staging/${presetId}/${operationId}/${attemptId}/`;
+    const uploadedPaths: string[] = [];
 
-    await batch.commit();
+    let copiedFrame: Awaited<ReturnType<typeof copyVersionedAsset>> | null = null;
+    let copiedThumbnail: Awaited<ReturnType<typeof copyVersionedAsset>> | null =
+      null;
+    try {
+      if (sourceSvgRef.storagePath) {
+        const sourceFrameType = sourceSvgRef.type || "svg";
+        const sourceFrameMimeType =
+          resolveCountdownFrameMimeType(sourceSvgRef, sourceFrameType) ||
+          COUNTDOWN_FRAME_MIME_TYPES.svg;
+        copiedFrame = await copyVersionedAsset(
+          sourceSvgRef.storagePath,
+          `${stagingPrefix}frame.${sourceFrameType}`,
+          sourceFrameMimeType
+        );
+        uploadedPaths.push(copiedFrame.storagePath);
+      }
+      if (sourceSvgRef.thumbnailPath) {
+        copiedThumbnail = await copyVersionedAsset(
+          sourceSvgRef.thumbnailPath,
+          `${stagingPrefix}thumbnail.png`,
+          "image/png"
+        );
+        uploadedPaths.push(copiedThumbnail.storagePath);
+      }
+    } catch (error) {
+      await deleteStorageFiles(uploadedPaths);
+      throw error;
+    }
+
+    const copiedSvgRef: SvgRef = {
+      type: copiedFrame ? sourceSvgRef.type || "svg" : null,
+      mimeType: copiedFrame
+        ? resolveCountdownFrameMimeType(
+            sourceSvgRef,
+            sourceSvgRef.type || "svg"
+          ) || COUNTDOWN_FRAME_MIME_TYPES.svg
+        : null,
+      storagePath: copiedFrame?.storagePath || null,
+      downloadUrl: copiedFrame?.downloadUrl || null,
+      thumbnailPath: copiedThumbnail?.storagePath || null,
+      thumbnailUrl: copiedThumbnail?.downloadUrl || null,
+      viewBox: sourceSvgRef.viewBox,
+      hasFixedDimensions: sourceSvgRef.hasFixedDimensions,
+      bytes: copiedFrame?.bytes || sourceSvgRef.bytes,
+      width: sourceSvgRef.width,
+      height: sourceSvgRef.height,
+      hasAlpha: sourceSvgRef.hasAlpha,
+      hasTransparency: sourceSvgRef.hasTransparency,
+      colorMode: normalizeCountdownFrameColorMode(
+        copiedFrame ? sourceSvgRef.type || "svg" : null,
+        sourceSvgRef.colorMode
+      ),
+    };
+    const sourceValidation =
+      sourcePayload.validationReport &&
+      typeof sourcePayload.validationReport === "object"
+        ? (sourcePayload.validationReport as {
+            warnings?: unknown;
+            checks?: unknown;
+          })
+        : null;
+    const warnings = Array.isArray(sourceValidation?.warnings)
+      ? sourceValidation.warnings.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    const checks =
+      sourceValidation?.checks &&
+      typeof sourceValidation.checks === "object" &&
+      !Array.isArray(sourceValidation.checks)
+        ? (sourceValidation.checks as Record<string, unknown>)
+        : {};
+    let didCommit = false;
+    try {
+      const transactionResult = await db().runTransaction(
+        async (transaction) => {
+          const [currentOperation, currentSource, currentTarget] =
+            await Promise.all([
+              transaction.get(operationRef),
+              transaction.get(sourceRef),
+              transaction.get(targetRef),
+            ]);
+
+          if (currentOperation.exists) {
+            const operationData = currentOperation.data() || {};
+            if (
+              operationData.type === "duplicate" &&
+              operationData.status === "completed" &&
+              operationData.result &&
+              typeof operationData.result === "object"
+            ) {
+              return {
+                result: operationData.result as Record<string, unknown>,
+                didCommit: false,
+              };
+            }
+            throw new HttpsError(
+              "failed-precondition",
+              "El operationId ya fue utilizado por otra operación."
+            );
+          }
+          if (!currentSource.exists) {
+            throw new HttpsError("not-found", "No existe el preset solicitado.");
+          }
+          if (
+            sourceKind === "draft" &&
+            intOrNull((currentSource.data() as PresetDoc)?.draftVersion) !==
+              sourceDraftVersion
+          ) {
+            throw new HttpsError(
+              "failed-precondition",
+              "El borrador original cambió durante la duplicación."
+            );
+          }
+          if (currentTarget.exists) {
+            throw new HttpsError(
+              "already-exists",
+              "Ya existe el destino de esta duplicación."
+            );
+          }
+
+          const now = FieldValue.serverTimestamp();
+          const result = {
+            presetId,
+            draftVersion: 1,
+            operationId,
+            sourcePresetId,
+            duplicatedAt: new Date().toISOString(),
+          };
+          transaction.create(
+            targetRef,
+            buildCountdownDuplicateDraftRoot({
+              presetId,
+              duplicateName,
+              category,
+              config,
+              svgRef: copiedSvgRef,
+              validationReport: { warnings, checks },
+              uid,
+              sourcePresetId,
+              sourceKind,
+              sourceVersion,
+              schemaVersion: SCHEMA_VERSION,
+              renderContractVersion: RENDER_CONTRACT_VERSION,
+              now,
+            })
+          );
+          transaction.create(operationRef, {
+            type: "duplicate",
+            status: "completed",
+            result,
+            createdAt: now,
+            completedAt: now,
+            uid,
+          });
+          return { result, didCommit: true };
+        }
+      );
+      didCommit = transactionResult.didCommit;
+      if (!didCommit) {
+        await deleteStorageFiles(uploadedPaths);
+      }
+      return transactionResult.result;
+    } catch (error) {
+      if (!didCommit) await deleteStorageFiles(uploadedPaths);
+      throw error;
+    }
+  }
+);
+
+export const listCountdownPresetVersionsAdmin = onCall(
+  OPTIONS,
+  async (request: CallableRequest<ListVersionsInput>) => {
+    requireAdmin(request);
+    const presetId = parseId(request.data?.presetId);
+    if (!presetId) fail("presetId es obligatorio.");
+
+    const ref = db().collection(COLLECTION).doc(presetId);
+    const [rootSnap, versionsSnap] = await Promise.all([
+      ref.get(),
+      ref.collection("versions").get(),
+    ]);
+    if (!rootSnap.exists) {
+      throw new HttpsError("not-found", "No existe el preset solicitado.");
+    }
+
+    const rootData = (rootSnap.data() || {}) as PresetDoc;
+    const items = versionsSnap.docs
+      .map((versionDoc): Record<string, unknown> & { id: string } => ({
+        id: versionDoc.id,
+        ...(versionDoc.data() as Record<string, unknown>),
+      }))
+      .sort(
+        (left, right) =>
+          Number(right.version || right.id || 0) -
+          Number(left.version || left.id || 0)
+      )
+      .map((item) => serialize(item));
 
     return {
       presetId,
-      activeVersion: nextVersion,
-      publishedAt: new Date().toISOString(),
+      activeVersion: intOrNull(rootData.activeVersion) || 0,
+      items,
     };
   }
 );
@@ -1234,7 +2151,7 @@ export const syncLegacyCountdownPresets = onCall(
     const uid = requireAdmin(request);
     const legacyPresets = normalizeSyncLegacyPayload(request.data?.presets);
     const database = db();
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     let created = 0;
     let skipped = 0;
@@ -1263,7 +2180,7 @@ export const syncLegacyCountdownPresets = onCall(
       const svgRef = createEmptySvgRef();
       const category = { ...DEFAULT_CATEGORY };
 
-      batch.set(
+      batch.create(
         ref,
         {
           id: legacyPreset.id,
@@ -1277,6 +2194,7 @@ export const syncLegacyCountdownPresets = onCall(
           tipografia: legacyConfig.tipografia,
           colores: legacyConfig.colores,
           animaciones: legacyConfig.animaciones,
+          unidad: legacyConfig.unidad,
           tamanoBase: legacyConfig.tamanoBase,
           draft: null,
           legacyPresetProps: legacyPreset.legacyProps,
@@ -1293,12 +2211,11 @@ export const syncLegacyCountdownPresets = onCall(
             archivedByUid: null,
             migrationSource: LEGACY_SYNC_SOURCE,
           },
-        },
-        { merge: false }
+        }
       );
       writeOps += 1;
 
-      batch.set(
+      batch.create(
         ref.collection("versions").doc("1"),
         {
           id: legacyPreset.id,
@@ -1310,7 +2227,9 @@ export const syncLegacyCountdownPresets = onCall(
           tipografia: legacyConfig.tipografia,
           colores: legacyConfig.colores,
           animaciones: legacyConfig.animaciones,
+          unidad: legacyConfig.unidad,
           tamanoBase: legacyConfig.tamanoBase,
+          legacyPresetProps: legacyPreset.legacyProps,
           metadata: {
             schemaVersion: SCHEMA_VERSION,
             renderContractVersion: RENDER_CONTRACT_VERSION,
@@ -1318,8 +2237,7 @@ export const syncLegacyCountdownPresets = onCall(
             publishedByUid: uid,
             migrationSource: LEGACY_SYNC_SOURCE,
           },
-        },
-        { merge: false }
+        }
       );
       writeOps += 1;
 
@@ -1365,9 +2283,9 @@ export const archiveCountdownPreset = onCall(
         estado: nextEstado,
         metadata: {
           ...metadata,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
           updatedByUid: uid,
-          archivedAt: archived ? admin.firestore.FieldValue.serverTimestamp() : null,
+          archivedAt: archived ? FieldValue.serverTimestamp() : null,
           archivedByUid: archived ? uid : null,
         },
       },
@@ -1381,7 +2299,7 @@ export const archiveCountdownPreset = onCall(
 export const deleteCountdownPreset = onCall(
   OPTIONS,
   async (request: CallableRequest<DeleteInput>) => {
-    requireAdmin(request);
+    const uid = requireAdmin(request);
     const presetId = parseId(request.data?.presetId);
     if (!presetId) fail("presetId es obligatorio.");
 
@@ -1390,24 +2308,86 @@ export const deleteCountdownPreset = onCall(
     if (!snap.exists) throw new HttpsError("not-found", "No existe el preset solicitado.");
 
     const data = (snap.data() || {}) as PresetDoc;
-    const estadoActual = text(data.estado, 20);
-    if (estadoActual === "published") {
-      throw new HttpsError(
-        "failed-precondition",
-        "Solo se pueden eliminar presets despublicados (draft o archived)."
-      );
+    const [versionSnap, referenceCount] = await Promise.all([
+      ref.collection("versions").limit(1).get(),
+      countCountdownPresetReferences(presetId),
+    ]);
+    const deletionPolicy = resolveCountdownPresetDeletionPolicy({
+      activeVersion: data.activeVersion,
+      versionCount: versionSnap.size,
+      referenceCount,
+    });
+
+    if (deletionPolicy === "tombstone") {
+      const result = await db().runTransaction(async (transaction) => {
+        const currentSnap = await transaction.get(ref);
+        if (!currentSnap.exists) {
+          throw new HttpsError("not-found", "No existe el preset solicitado.");
+        }
+        const current = (currentSnap.data() || {}) as PresetDoc;
+        const metadata =
+          current.metadata && typeof current.metadata === "object"
+            ? current.metadata
+            : {};
+        const now = FieldValue.serverTimestamp();
+        transaction.set(
+          ref,
+          {
+            estado: "archived",
+            metadata: {
+              ...metadata,
+              updatedAt: now,
+              updatedByUid: uid,
+              archivedAt: now,
+              archivedByUid: uid,
+              tombstonedAt: now,
+              tombstonedByUid: uid,
+              tombstoneReason:
+                Number(current.activeVersion || 0) > 0
+                  ? "published-version-protection"
+                  : "reference-protection",
+            },
+          },
+          { merge: true }
+        );
+        return {
+          presetId,
+          deleted: false,
+          archived: true,
+          tombstoned: true,
+          protectedVersionCount: versionSnap.size,
+          protectedReferenceCount: referenceCount,
+        };
+      });
+      return result;
     }
 
-    await deleteVersionHistory(ref);
-    await ref.delete();
+    await db().runTransaction(async (transaction) => {
+      const currentSnap = await transaction.get(ref);
+      if (!currentSnap.exists) {
+        throw new HttpsError("not-found", "No existe el preset solicitado.");
+      }
+      const current = (currentSnap.data() || {}) as PresetDoc;
+      if (Number(current.activeVersion || 0) > 0) {
+        throw new HttpsError(
+          "failed-precondition",
+          "El preset ya tiene una version publicada y solo puede archivarse."
+        );
+      }
+      transaction.delete(ref);
+    });
+    await deleteSubcollection(ref, "operations");
     await Promise.all([
-      deleteStoragePrefix(`assets/countdown/frames/${presetId}/`),
-      deleteStoragePrefix(`assets/countdown/thumbnails/${presetId}/`),
+      deleteStoragePrefix(`assets/countdown/staging/${presetId}/`),
+      deleteStoragePrefix(`assets/countdown/frames/${presetId}/draft/`),
+      deleteStoragePrefix(`assets/countdown/thumbnails/${presetId}/draft/`),
     ]);
 
     return {
       presetId,
       deleted: true,
+      archived: false,
+      tombstoned: false,
     };
   }
 );
@@ -1443,79 +2423,107 @@ export const listCountdownPresetsPublic = onCall(
 
     const snap = await db().collection(COLLECTION).where("estado", "==", "published").get();
 
-    const items = snap.docs
-      .map((doc) => {
-        const data = (doc.data() || {}) as PresetDoc;
+    const resolvedItems = await Promise.all(
+      snap.docs.map(async (doc) => {
+        const rootData = (doc.data() || {}) as PresetDoc;
+        const activeVersion = intOrNull(rootData.activeVersion);
+        const versionSnap =
+          activeVersion !== null && activeVersion > 0
+            ? await doc.ref.collection("versions").doc(String(activeVersion)).get()
+            : null;
+        const resolution = resolvePublicCatalogVersion({
+          rootData,
+          versionExists: Boolean(versionSnap?.exists),
+          versionData: versionSnap?.data() || null,
+        });
+
+        if (!resolution.ok) {
+          logger.error("Preset countdown omitido del catalogo publico", {
+            presetId: doc.id,
+            reason: resolution.reason,
+            activeVersion,
+          });
+          return null;
+        }
 
         try {
-          const draftVersion = intOrNull(data.draftVersion);
-          const draft = draftVersion && data.draft ? data.draft : null;
+          const versionData = resolution.versionData as PresetDoc &
+            Record<string, unknown>;
           const config = normalizeConfig({
-            layout: draft?.layout || data.layout,
-            tipografia: draft?.tipografia || data.tipografia,
-            colores: draft?.colores || data.colores,
-            animaciones: draft?.animaciones || data.animaciones,
-            unidad: draft?.unidad || data.unidad,
-            tamanoBase: draft?.tamanoBase ?? data.tamanoBase,
+            layout: versionData.layout,
+            tipografia: versionData.tipografia,
+            colores: versionData.colores,
+            animaciones: versionData.animaciones,
+            unidad: versionData.unidad,
+            tamanoBase: versionData.tamanoBase,
           });
-
-          const svgRef = normalizeSvgRef(draft?.svgRef) || normalizeSvgRef(data.svgRef) || {
-            storagePath: null,
-            downloadUrl: null,
-            thumbnailPath: null,
-            thumbnailUrl: null,
-            viewBox: null,
-            hasFixedDimensions: false,
-            bytes: 0,
-            colorMode: "fixed" as ColorMode,
-          };
-
-          const categoria = draft?.categoria
-            ? normalizeCategory(draft.categoria)
-            : data.categoria
-              ? normalizeCategory(data.categoria)
-              : DEFAULT_CATEGORY;
-          const activeVersion = Math.max(1, Number(data.activeVersion || 1));
+          const svgRef =
+            normalizeSvgRef(versionData.svgRef) || createEmptySvgRef();
+          const categoria = versionData.categoria
+            ? normalizeCategory(versionData.categoria)
+            : DEFAULT_CATEGORY;
           const migrationSource = text(
-            (data.metadata as Record<string, unknown> | undefined)?.migrationSource,
+            (versionData.metadata as Record<string, unknown> | undefined)
+              ?.migrationSource,
             80
           );
-          const legacyProps = normalizeLegacyCanvasProps(data.legacyPresetProps);
+          const legacyProps = normalizeLegacyCanvasProps(
+            versionData.legacyPresetProps
+          );
           const shouldUseLegacyPatch =
-            !draft &&
             migrationSource === LEGACY_SYNC_SOURCE &&
-            activeVersion <= 1 &&
+            resolution.activeVersion <= 1 &&
             Boolean(legacyProps);
 
           return {
-            id: doc.id,
-            nombre: text(draft?.nombre, 120) || text(data.nombre, 120) || doc.id,
-            categoria: { label: categoria.label },
-            thumbnailUrl: svgRef.thumbnailUrl,
-            activeVersion,
-            draftVersion,
-            presetPropsForCanvas: shouldUseLegacyPatch && legacyProps
-              ? buildLegacyCanvasPatch({
-                  presetId: doc.id,
-                  activeVersion,
-                  legacyProps,
-                })
-              : buildCanvasPatch({
-                  presetId: doc.id,
-                  activeVersion,
-                  config,
-                  svgRef,
-                }),
+            migrationSource,
+            publicItem: {
+              id: doc.id,
+              nombre: text(versionData.nombre, 120) || doc.id,
+              categoria: { label: categoria.label },
+              thumbnailUrl: svgRef.thumbnailUrl,
+              activeVersion: resolution.activeVersion,
+              presetPropsForCanvas:
+                shouldUseLegacyPatch && legacyProps
+                  ? buildLegacyCanvasPatch({
+                      presetId: doc.id,
+                      activeVersion: resolution.activeVersion,
+                      legacyProps,
+                    })
+                  : buildCanvasPatch({
+                      presetId: doc.id,
+                      activeVersion: resolution.activeVersion,
+                      config,
+                      svgRef,
+                    }),
+            },
           };
         } catch (error) {
-          logger.error("Preset countdown invalido en catalogo publico", {
+          logger.error("Version countdown invalida en catalogo publico", {
             presetId: doc.id,
+            activeVersion: resolution.activeVersion,
             error,
           });
           return null;
         }
       })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    );
+    const catalogEntries = resolvedItems.filter(
+      (item): item is NonNullable<typeof item> => Boolean(item)
+    );
+    const items = catalogEntries.map((entry) => entry.publicItem);
+
+    recordBackendCountdownTelemetry({
+      eventType: "catalog_read",
+      renderer: "countdown-preset-catalog",
+      renderState: {
+        objetos: catalogEntries.map((entry) => ({
+          ...entry.publicItem.presetPropsForCanvas,
+          tipo: "countdown",
+          migrationSource: entry.migrationSource || null,
+        })),
+      },
+    });
 
     return { items };
   }

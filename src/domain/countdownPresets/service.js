@@ -8,6 +8,14 @@ const deletePresetCallable = httpsCallable(functions, "deleteCountdownPreset");
 const listAdminCallable = httpsCallable(functions, "listCountdownPresetsAdmin");
 const listPublicCallable = httpsCallable(functions, "listCountdownPresetsPublic");
 const syncLegacyCallable = httpsCallable(functions, "syncLegacyCountdownPresets");
+const duplicatePresetCallable = httpsCallable(
+  functions,
+  "duplicateCountdownPreset"
+);
+const listVersionsAdminCallable = httpsCallable(
+  functions,
+  "listCountdownPresetVersionsAdmin"
+);
 
 function unwrapCallableResult(result) {
   return result?.data || {};
@@ -45,5 +53,15 @@ export async function listCountdownPresetsPublic() {
 
 export async function syncLegacyCountdownPresets(payload) {
   const result = await syncLegacyCallable(payload || {});
+  return unwrapCallableResult(result);
+}
+
+export async function duplicateCountdownPreset(payload) {
+  const result = await duplicatePresetCallable(payload || {});
+  return unwrapCallableResult(result);
+}
+
+export async function listCountdownPresetVersionsAdmin(payload) {
+  const result = await listVersionsAdminCallable(payload || {});
   return unwrapCallableResult(result);
 }

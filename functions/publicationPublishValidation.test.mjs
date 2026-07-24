@@ -206,6 +206,54 @@ test("keeps v2 frame validation blocking while avoiding false legacy warnings", 
   assert.deepEqual(issueKeys(result.warnings), []);
 });
 
+test("blocks missing and invalid countdown targets while allowing expired freezeZero targets", () => {
+  const rawObjetos = [
+    {
+      id: "count-missing",
+      tipo: "countdown",
+      seccionId: "section-1",
+      countdownSchemaVersion: 2,
+      width: 320,
+      height: 120,
+    },
+    {
+      id: "count-invalid",
+      tipo: "countdown",
+      seccionId: "section-1",
+      countdownSchemaVersion: 2,
+      fechaObjetivo: "not-a-date",
+      width: 320,
+      height: 120,
+    },
+    {
+      id: "count-expired",
+      tipo: "countdown",
+      seccionId: "section-1",
+      countdownSchemaVersion: 2,
+      fechaObjetivo: "2020-01-01T00:00:00.000Z",
+      width: 320,
+      height: 120,
+    },
+  ];
+
+  const result = validatePreparedPublicationRenderState({
+    rawObjetos,
+    rawSecciones: FIXED_SECTION,
+    objetosFinales: rawObjetos,
+    seccionesFinales: FIXED_SECTION,
+  });
+
+  assert.equal(result.canPublish, false);
+  assert.deepEqual(issueKeys(result.blockers), [
+    "countdown-target-invalid|count-invalid|section-1|fechaObjetivo",
+    "countdown-target-missing|count-missing|section-1|fechaObjetivo",
+  ]);
+  assert.equal(
+    result.blockers.some((issue) => issue.objectId === "count-expired"),
+    false
+  );
+});
+
 test("skips countdown publish validation when the event details visibility flag is false", () => {
   const rawObjetos = [
     {

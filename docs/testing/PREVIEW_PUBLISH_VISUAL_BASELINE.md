@@ -17,6 +17,13 @@ Shared fixture source of truth:
 - `artifacts/preview-publish-baseline/manifest.json`
 - `shared/previewPublishParity.test.mjs`
 
+Countdown-specific frozen-clock source of truth:
+
+- `shared/countdownVisualBaselineFixtures.mjs`
+- `src/components/admin/countdown/CountdownPhase0BaselineHarness.jsx`
+- `scripts/captureCountdownVisualBaseline.cjs`
+- `artifacts/countdown-phase0/baseline/manifest.json`
+
 ## Required Views
 
 Every baseline case must reserve the same five capture views:
@@ -107,6 +114,15 @@ Treat any of the following as a regression unless a new product or architecture 
 - changed gallery cell ordering, sizing pattern, layout family, preset visibility, or generated global-viewer marker set
 - changed mapping for primary Gallery selector options (`1x4`, `2x2`, `2x3`/`three_by_n`, `Collage`/`squares`) without updating both editor/canvas and generated HTML baselines, or re-exposed legacy `full_width` as selectable
 - changed countdown frame or unit composition
+- changed SVG/PNG frame fit semantics: existing SVG remains baseline-compatible
+  and PNG must stay contained, fixed-color and pointer-inert across Builder,
+  Canvas, Preview and Publication
+- changed `frameScale: 1` output relative to the historical frame baseline, or
+  supported frame-scale variants (`0.5..5`) that move the visual center, deform
+  the asset, resize interior content or diverge between Builder, Canvas,
+  Preview and Publication
+- changed countdown `currentColor`, unit `boxShadow`, editorial unit widths, or
+  expired `freezeZero` output without an explicit countdown-contract change
 - changed cross-section order or changed `fijo`/`pantalla` relationship in the mixed case
 - changed mobile smart-layout height expansion between preview iframe and publish
 - changed group-child offsets relative to the group wrapper
@@ -115,10 +131,22 @@ Treat any of the following as a regression unless a new product or architecture 
 
 ## Notes
 
-- The baseline remains manifest-first. No PNG or JPEG baselines are committed yet.
+- The general invitation baseline remains manifest-first. The countdown Phase 0
+  subset additionally commits 20 deterministic PNGs: Builder, Canvas, Preview,
+  Publication, and Publication mobile for days, hours, seconds, and expired
+  states. Time is frozen at `2030-06-15T12:00:00.000Z`.
+- On 2026-07-24 the four Builder captures were reviewed and rebased to the
+  already-authorized compact simulation shell. The other 16 captures remained
+  byte-identical. SVG frame rendering did not change; PNG frame parity is
+  additionally protected by the frame contract and renderer tests.
 - Mobile geometry parity capture is available through the opt-in Node test guarded by `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; normal CI keeps the deterministic fixture/diff tests only. The snapshot includes section, object, group-child, and edge-decoration geometry. Edge decoration sizing is governed by the generated HTML intrinsic-clamp model; the editor canvas can adjust only desktop edge offsets today, and mobile edge offsets remain a separate render field.
 - The current preview iframe supports publish-like layout mode by default through `data-preview-layout-mode="parity"`. Set `NEXT_PUBLIC_MOBILE_PREVIEW_PARITY_MODE=0` to use the legacy iframe height/overflow mutation path during rollback.
 - On physical Android Chrome, the first gesture inside `mobile-preview-focused` must move `body.scrollTop` while `document.documentElement.scrollTop` remains `0`. The iframe stays at logical `390 x 844` and keeps the normal transformed mockup. This shell-only body-root rule is not a preview/publish geometry parity target.
 - Mobile height diagnostics may expose `data-msl-height-model`; `publish-like` is expected for publish and parity preview, while `embedded-preview` belongs to the legacy iframe mode.
 - Existing live capture scripts such as `scripts/inlineOverlayMatrixProbe.mjs` and `scripts/generarPreview.cjs` are not the baseline system.
-- The countdown case is intentionally included now, but deterministic screenshot capture for countdown still requires a later frozen-clock harness.
+- Validate countdown captures with `npm run countdowns:baseline:check`. Regenerate
+  them with `npm run countdowns:baseline:update` only after an intentional,
+  reviewed rendering change. The check uses exact hashes first and permits only
+  explicitly reported Chromium subpixel drift (maximum 2/255 channel delta in
+  at most 0.01% of channels); dimensions and larger visual changes remain hard
+  failures. Artifact hashes are always verified by the Node test.

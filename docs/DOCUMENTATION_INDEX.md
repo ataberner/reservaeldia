@@ -65,6 +65,8 @@ likely to be used as an authority by humans or AI agents.
 | CSS and design | [DESIGN_SYSTEM.md](design/DESIGN_SYSTEM.md), [CSS_ARCHITECTURE_CONTRACT.md](architecture/CSS_ARCHITECTURE_CONTRACT.md), [CSS_INVENTORY.md](architecture/CSS_INVENTORY.md), [LANDING_DASHBOARD_STYLING_MAP.md](architecture/LANDING_DASHBOARD_STYLING_MAP.md) | Visual identity, CSS ownership, current inventory, and landing/dashboard/auth styling map. |
 | Risk map | [SYSTEM_FRAGILITY_MAP.md](architecture/SYSTEM_FRAGILITY_MAP.md) | Current cross-system fragility and risk register. |
 | Regression anchors | [EDITOR_REGRESSION_CHECKLIST.md](testing/EDITOR_REGRESSION_CHECKLIST.md), [PREVIEW_PUBLISH_VISUAL_BASELINE.md](testing/PREVIEW_PUBLISH_VISUAL_BASELINE.md) | Manual editor checks and preview/publish visual baseline. |
+| Countdown protection/observability | [COUNTDOWN_PHASE_0_RUNBOOK.md](operations/COUNTDOWN_PHASE_0_RUNBOOK.md) | Read-only inventory, backup/restore safety, sanitized telemetry, frozen-clock baseline, and rollout flags. |
+| Countdown preset administration | [COUNTDOWN_PRESET_BUILDER.md](architecture/COUNTDOWN_PRESET_BUILDER.md), [DATA_MODEL.md](architecture/DATA_MODEL.md) | Current builder ownership, local state, preview simulation, read-only history, duplication, and persisted preset authority. |
 
 ## 4. Implementation Maps vs Normative Contracts
 
@@ -148,6 +150,10 @@ Add focused contracts:
 
 Use focused contracts for object-family details instead of duplicating schema
 rules in `DATA_MODEL.md`.
+
+For the countdown administrative builder, continue with
+[COUNTDOWN_PRESET_BUILDER.md](architecture/COUNTDOWN_PRESET_BUILDER.md) and the
+Phase 0 operational runbook.
 
 ### Gallery Subsystem
 
@@ -240,6 +246,10 @@ Then use subsystem tests named in the relevant contracts, especially:
 - `functions/publicationPublishExecution.test.mjs`
 - `src/domain/gallery/galleryMutations.test.mjs`
 - `src/domain/gallery/galleryLayoutPresets.test.mjs`
+
+For countdown inventory, backup/restore, telemetry, feature flags, and the
+frozen-clock visual baseline, use
+[COUNTDOWN_PHASE_0_RUNBOOK.md](operations/COUNTDOWN_PHASE_0_RUNBOOK.md).
 
 ## 6. Historical Docs
 

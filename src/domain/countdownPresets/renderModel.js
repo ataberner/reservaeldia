@@ -1,5 +1,10 @@
-import { COUNTDOWN_DEFAULT_VISIBLE_UNITS } from "@/domain/countdownPresets/contract";
-import { parseLinearGradientColors } from "@/domain/colors/presets";
+import { COUNTDOWN_DEFAULT_VISIBLE_UNITS } from "./contract.js";
+import { parseLinearGradientColors } from "../colors/presets.js";
+import { resolveCountdownTemporalState } from "../../../shared/renderContractPolicy.js";
+import {
+  normalizeCountdownFrameScale,
+  resolveCenteredScaledFrameRect,
+} from "./frameGeometry.js";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -8,22 +13,34 @@ const UNIT_LABELS = Object.freeze({
   seconds: "Seg",
 });
 
-function toSafeDate(value) {
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) ? parsed : null;
-}
-
 function encodeSvg(svg) {
   return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
 }
 
-function loadImage(src) {
+function loadImage(src, { crossOrigin = false } = {}) {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    if (crossOrigin) image.crossOrigin = "anonymous";
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function drawImageContain(ctx, image, x, y, width, height) {
+  const sourceWidth = Number(image?.naturalWidth || image?.width || 0);
+  const sourceHeight = Number(image?.naturalHeight || image?.height || 0);
+  if (sourceWidth <= 0 || sourceHeight <= 0) return;
+  const scale = Math.min(width / sourceWidth, height / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  ctx.drawImage(
+    image,
+    x + (width - drawWidth) / 2,
+    y + (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight
+  );
 }
 
 function clamp(value, min, max) {
@@ -177,6 +194,28 @@ export function resolveCountdownUnitWidth({
   return Math.round(safeWidth + (safeHeight - safeWidth) * blend);
 }
 
+export function buildCountdownEditorialWidths({
+  unitsCount = 4,
+  baseChipWidth = 46,
+  chipHeight = 44,
+  boxRadius = 0,
+} = {}) {
+  const safeCount = Math.max(1, Math.min(4, Number(unitsCount) || 1));
+  return Array.from({ length: safeCount }, (_, index) =>
+    resolveCountdownUnitWidth({
+      width: Math.max(
+        34,
+        Math.round(
+          Number(baseChipWidth || 46) *
+            (index === 0 && safeCount > 1 ? 1.25 : 0.88)
+        )
+      ),
+      height: chipHeight,
+      boxRadius,
+    })
+  );
+}
+
 export function buildFrameSvgMarkup(svgText, { colorMode, frameColor }) {
   if (!svgText || typeof svgText !== "string") return "";
 
@@ -218,24 +257,14 @@ export function transformLabel(label, transformMode) {
   return safe;
 }
 
-export function getCountdownParts(targetISO, units) {
-  const targetDate = toSafeDate(targetISO);
-  if (!targetDate) {
-    return normalizeVisibleUnits(units).map((unit) => ({
-      unit,
-      label: UNIT_LABELS[unit],
-      value: "00",
-    }));
-  }
-
-  const now = Date.now();
-  const diffMs = Math.max(0, targetDate.getTime() - now);
-  const days = Math.floor(diffMs / 86400000);
-  const hours = Math.floor((diffMs % 86400000) / 3600000);
-  const minutes = Math.floor((diffMs % 3600000) / 60000);
-  const seconds = Math.floor((diffMs % 60000) / 1000);
-
-  const map = { days, hours, minutes, seconds };
+export function getCountdownParts(targetISO, units, nowMs = Date.now()) {
+  const state = resolveCountdownTemporalState(targetISO, nowMs);
+  const map = {
+    days: state.d,
+    hours: state.h,
+    minutes: state.m,
+    seconds: state.s,
+  };
   return normalizeVisibleUnits(units).map((unit) => ({
     unit,
     label: UNIT_LABELS[unit],
@@ -286,6 +315,8 @@ export function createFutureDateISO(daysAhead = 30) {
 export async function generateCountdownThumbnailDataUrl({
   config,
   svgText,
+  frameImageUrl = "",
+  frameAssetType = "svg",
   svgColorMode = "fixed",
   frameColor = "#773dbe",
   size = 320,
@@ -309,6 +340,16 @@ export async function generateCountdownThumbnailDataUrl({
   const boxBorder = resolveCanvasPaint(unitStyle.boxBorder, "transparent");
   const boxRadius = clamp(unitStyle.boxRadius, 0, 999);
   const boxShadow = unitStyle.boxShadow === true;
+  const frameScale = normalizeCountdownFrameScale(
+    baseConfig?.layout?.frameScale
+  );
+  const thumbnailCompositionScale = 1 / Math.max(1, frameScale);
+  ctx.save();
+  if (thumbnailCompositionScale < 1) {
+    ctx.translate(size / 2, size / 2);
+    ctx.scale(thumbnailCompositionScale, thumbnailCompositionScale);
+    ctx.translate(-size / 2, -size / 2);
+  }
   let frameImage = null;
 
   if (svgText) {
@@ -322,7 +363,51 @@ export async function generateCountdownThumbnailDataUrl({
       const frameSize = Math.round(size * 0.9);
       const frameOffset = Math.round((size - frameSize) / 2);
       if (isSingleFrame) {
-        ctx.drawImage(frameImage, frameOffset, frameOffset, frameSize, frameSize);
+        const frameRect = resolveCenteredScaledFrameRect(
+          {
+            x: frameOffset,
+            y: frameOffset,
+            width: frameSize,
+            height: frameSize,
+          },
+          frameScale
+        );
+        ctx.drawImage(
+          frameImage,
+          frameRect.x,
+          frameRect.y,
+          frameRect.width,
+          frameRect.height
+        );
+      }
+    } catch {
+      // Non-blocking for thumbnail generation.
+    }
+  } else if (frameAssetType === "png" && frameImageUrl) {
+    try {
+      frameImage = await loadImage(frameImageUrl, {
+        crossOrigin: /^https?:/i.test(frameImageUrl),
+      });
+      const frameSize = Math.round(size * 0.9);
+      const frameOffset = Math.round((size - frameSize) / 2);
+      if (isSingleFrame) {
+        const frameRect = resolveCenteredScaledFrameRect(
+          {
+            x: frameOffset,
+            y: frameOffset,
+            width: frameSize,
+            height: frameSize,
+          },
+          frameScale
+        );
+        drawImageContain(
+          ctx,
+          frameImage,
+          frameRect.x,
+          frameRect.y,
+          frameRect.width,
+          frameRect.height
+        );
       }
     } catch {
       // Non-blocking for thumbnail generation.
@@ -365,7 +450,28 @@ export async function generateCountdownThumbnailDataUrl({
 
     if (baseConfig?.layout?.type === "multiUnit") {
       if (frameImage) {
-        ctx.drawImage(frameImage, x, y, chipW, chipH);
+        const frameRect = resolveCenteredScaledFrameRect(
+          { x, y, width: chipW, height: chipH },
+          frameScale
+        );
+        if (frameAssetType === "png") {
+          drawImageContain(
+            ctx,
+            frameImage,
+            frameRect.x,
+            frameRect.y,
+            frameRect.width,
+            frameRect.height
+          );
+        } else {
+          ctx.drawImage(
+            frameImage,
+            frameRect.x,
+            frameRect.y,
+            frameRect.width,
+            frameRect.height
+          );
+        }
       } else {
         ctx.strokeStyle = frameColor;
         ctx.lineWidth = 1.2;
@@ -441,5 +547,6 @@ export async function generateCountdownThumbnailDataUrl({
     }
   });
 
+  ctx.restore();
   return canvas.toDataURL("image/png", 0.92);
 }

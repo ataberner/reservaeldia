@@ -33,6 +33,18 @@ Only `draft-authoritative` preview participates in publish parity. Template prev
 
 For draft preview, validation blockers prevent trusted preview HTML. The backend returns validation and `blocked: true`; the controller must not treat that result as a trustworthy generated preview. Validation warnings can still allow preview.
 
+Countdown targets participate in that prepared validation boundary. A missing
+target produces `countdown-target-missing`, an unparsable target produces
+`countdown-target-invalid`, and both block authoritative preview/publish. A
+valid past target is allowed and all render surfaces use the current
+`freezeZero` expiration policy.
+
+Schema 2 countdown frames continue to resolve through the compatible
+`frameSvgUrl` render field. Additive `frameAssetType: "png"` makes Builder,
+Canvas, authoritative preview and publish use contained image geometry and
+fixed original colors; absent type remains SVG-compatible. Asset URL
+preparation and `countdown-frame-unresolved` validation are unchanged.
+
 ## 2. Draft Preview Flow
 
 The draft preview path is:

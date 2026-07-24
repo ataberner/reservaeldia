@@ -1,8 +1,15 @@
 import { sanitizeMotionEffect } from "@/domain/motionEffects";
 import {
   estimateCountdownUnitHeight,
+  buildCountdownEditorialWidths,
   resolveCountdownUnitWidth,
 } from "@/domain/countdownPresets/renderModel";
+import {
+  normalizeCountdownFrameScale,
+  resolveContainedCountdownFrameRect,
+  resolveCountdownBoundsXWithinCanvas,
+  resolveCountdownSelectionGeometry,
+} from "@/domain/countdownPresets/frameGeometry";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { applyGalleryLayoutPresetToRenderObject } from "@/domain/gallery/galleryLayoutPresets";
 import {
@@ -28,7 +35,10 @@ function stripUndefined(obj) {
   );
 }
 
-function calcCountdownInitialWidth(presetProps = {}) {
+export function resolveCountdownInsertGeometry(
+  presetProps = {},
+  { width: requestedWidth = null, height: requestedHeight = null } = {}
+) {
   const defaultUnits = ["days", "hours", "minutes", "seconds"];
   const unitsRaw = Array.isArray(presetProps.visibleUnits)
     ? presetProps.visibleUnits
@@ -39,6 +49,7 @@ function calcCountdownInitialWidth(presetProps = {}) {
   const n = Math.max(1, units.length || defaultUnits.length);
   const gap = toNumber(presetProps.gap, 8);
   const framePadding = Math.max(0, toNumber(presetProps.framePadding, 10));
+  const frameScale = normalizeCountdownFrameScale(presetProps.frameScale);
   const chipWidth = Math.max(34, toNumber(presetProps.chipWidth, 46));
   const paddingX = Math.max(2, toNumber(presetProps.paddingX, 8));
   const paddingY = toNumber(presetProps.paddingY, 6);
@@ -83,13 +94,12 @@ function calcCountdownInitialWidth(presetProps = {}) {
         : 1;
   const editorialWidths =
     distribution === "editorial"
-      ? Array.from({ length: n }, (_, index) =>
-          resolveCountdownUnitWidth({
-            width: Math.max(34, Math.round(baseChipW * (index === 0 && n > 1 ? 1.25 : 0.88))),
-            height: chipH,
-            boxRadius,
-          })
-        )
+      ? buildCountdownEditorialWidths({
+          unitsCount: n,
+          baseChipWidth: baseChipW,
+          chipHeight: chipH,
+          boxRadius,
+        })
       : [];
   const naturalW =
     distribution === "vertical"
@@ -100,73 +110,118 @@ function calcCountdownInitialWidth(presetProps = {}) {
           ? editorialWidths.reduce((acc, width) => acc + width, 0) +
             gap * Math.max(0, n - 1)
           : n * baseChipW + gap * (n - 1);
-  const containerW = naturalW + (useSingleFrameLayout ? framePadding * 2 : 0);
-
-  return Math.max(180, Math.round(containerW));
-}
-
-function calcCountdownInitialHeight(presetProps = {}) {
-  const defaultUnits = ["days", "hours", "minutes", "seconds"];
-  const unitsRaw = Array.isArray(presetProps.visibleUnits)
-    ? presetProps.visibleUnits
-    : defaultUnits;
-  const units = unitsRaw
-    .map((unit) => String(unit || "").trim())
-    .filter(Boolean);
-  const n = Math.max(1, units.length || defaultUnits.length);
-  const gap = toNumber(presetProps.gap, 8);
-  const framePadding = Math.max(0, toNumber(presetProps.framePadding, 10));
-  const chipWidth = Math.max(34, toNumber(presetProps.chipWidth, 46));
-  const paddingX = Math.max(2, toNumber(presetProps.paddingX, 8));
-  const paddingY = toNumber(presetProps.paddingY, 6);
-  const valueSize = Math.max(10, toNumber(presetProps.fontSize, 16));
-  const labelSize = Math.max(8, toNumber(presetProps.labelSize, 10));
-  const showLabels = presetProps.showLabels !== false;
-  const layoutType = String(presetProps.layoutType || "singleFrame");
-  const hasFrameConfigured = String(presetProps.frameSvgUrl || "").trim().length > 0;
-  const distribution = String(
-    presetProps.distribution || presetProps.layoutType || "centered"
-  ).toLowerCase();
-  const tamanoBase = toNumber(presetProps.tamanoBase, 320);
-  const useSingleFrameLayout =
-    layoutType === "singleFrame" && hasFrameConfigured;
-  const baseChipW = Math.max(36, chipWidth + paddingX * 2);
-  const textDrivenChipH = Math.max(
-    44,
-    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
+  const naturalH =
+    distribution === "vertical" || distribution === "grid"
+      ? rows * chipH + gap * Math.max(0, rows - 1)
+      : chipH;
+  const naturalContainerW =
+    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0);
+  const naturalContainerH =
+    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0);
+  const defaultWidth = Math.max(180, Math.round(naturalContainerW));
+  const defaultHeight =
+    distribution === "vertical"
+      ? Math.max(120, Math.round(naturalContainerH))
+      : distribution === "grid" || distribution === "editorial"
+        ? Math.max(110, Math.round(naturalContainerH))
+        : Math.max(90, Math.round(naturalContainerH));
+  const width = Math.max(
+    naturalContainerW,
+    toNumber(requestedWidth, defaultWidth)
   );
-  const layoutDrivenChipH = estimateCountdownUnitHeight({
-    tamanoBase,
-    distribution,
-    unitsCount: n,
+  const height = Math.max(
+    naturalContainerH,
+    toNumber(requestedHeight, defaultHeight)
+  );
+  const contentArea = {
+    x: useSingleFrameLayout ? framePadding : 0,
+    y: useSingleFrameLayout ? framePadding : 0,
+    width: Math.max(
+      1,
+      width - (useSingleFrameLayout ? framePadding * 2 : 0)
+    ),
+    height: Math.max(
+      1,
+      height - (useSingleFrameLayout ? framePadding * 2 : 0)
+    ),
+  };
+  const distributionX = contentArea.x + (contentArea.width - naturalW) / 2;
+  const distributionY = contentArea.y + (contentArea.height - naturalH) / 2;
+  const unitRects =
+    distribution === "vertical"
+      ? units.map((_, index) => ({
+          x: contentArea.x + (contentArea.width - baseChipW) / 2,
+          y: distributionY + index * (chipH + gap),
+          width: baseChipW,
+          height: chipH,
+        }))
+      : distribution === "grid"
+        ? units.map((_, index) => {
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            return {
+              x: distributionX + col * (baseChipW + gap),
+              y: distributionY + row * (chipH + gap),
+              width: baseChipW,
+              height: chipH,
+            };
+          })
+        : distribution === "editorial"
+          ? (() => {
+              let cursorX = distributionX;
+              return units.map((_, index) => {
+                const width = editorialWidths[index] || baseChipW;
+                const rect = {
+                  x: cursorX,
+                  y: distributionY,
+                  width,
+                  height: chipH,
+                };
+                cursorX += width + gap;
+                return rect;
+              });
+            })()
+          : units.map((_, index) => ({
+              x: distributionX + index * (baseChipW + gap),
+              y: distributionY,
+              width: baseChipW,
+              height: chipH,
+            }));
+  const frameAssetType =
+    String(presetProps.frameAssetType || "").toLowerCase() === "png"
+      ? "png"
+      : "svg";
+  const frameSourceWidth = toNumber(presetProps.frameIntrinsicWidth, 0);
+  const frameSourceHeight = toNumber(presetProps.frameIntrinsicHeight, 0);
+  const containFrame = (targetRect) =>
+    frameAssetType === "png"
+      ? resolveContainedCountdownFrameRect({
+          sourceWidth: frameSourceWidth,
+          sourceHeight: frameSourceHeight,
+          targetRect,
+        })
+      : targetRect;
+  const frameRects = !hasFrameConfigured
+    ? []
+    : useSingleFrameLayout
+      ? [containFrame({ x: 0, y: 0, width, height })]
+      : layoutType === "multiUnit"
+        ? unitRects.map(containFrame)
+        : [];
+  const geometry = resolveCountdownSelectionGeometry({
+    contentRects: unitRects,
+    frameRects,
+    frameScale,
+    fallbackRect: { x: 0, y: 0, width, height },
   });
-  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
 
-  if (distribution === "vertical") {
-    return Math.max(
-      120,
-      Math.round(n * chipH + gap * (n - 1) + (useSingleFrameLayout ? framePadding * 2 : 0))
-    );
-  }
-  if (distribution === "grid") {
-    const cols = Math.min(2, n);
-    const rows = Math.ceil(n / cols);
-    return Math.max(
-      110,
-      Math.round(rows * chipH + gap * (rows - 1) + (useSingleFrameLayout ? framePadding * 2 : 0))
-    );
-  }
-  if (distribution === "editorial") {
-    return Math.max(
-      110,
-      Math.round(chipH + (useSingleFrameLayout ? framePadding * 2 : 0))
-    );
-  }
-
-  return Math.max(
-    90,
-    Math.round(chipH + (useSingleFrameLayout ? framePadding * 2 : 0))
-  );
+  return {
+    width,
+    height,
+    contentBounds: geometry.contentBounds,
+    visualFrameBounds: geometry.visualFrameBounds,
+    selectionBounds: geometry.selectionBounds,
+  };
 }
 
 function inferTextVariant(variant = "texto", isMobile = false) {
@@ -243,6 +298,7 @@ export default function computeInsertDefaults({
     scaleX: toNumber(payload.scaleX, 1),
     scaleY: toNumber(payload.scaleY, 1),
   };
+  let countdownSelectionBounds = null;
 
   if (tipo === "texto") {
     const variant = inferTextVariant(payload.variant, isMobile);
@@ -397,9 +453,19 @@ export default function computeInsertDefaults({
   } else if (tipo === "countdown") {
     const presetProps = payload.presetProps || payload.props || {};
     const countdownTarget = resolveCountdownTargetIso(payload);
-    const width = incomingWidth ?? calcCountdownInitialWidth(presetProps);
-    const height = incomingHeight ?? calcCountdownInitialHeight(presetProps);
-    const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
+    const countdownGeometry = resolveCountdownInsertGeometry(presetProps, {
+      width: incomingWidth,
+      height: incomingHeight,
+    });
+    const width = countdownGeometry.width;
+    const height = countdownGeometry.height;
+    countdownSelectionBounds = countdownGeometry.selectionBounds;
+    const x =
+      incomingX ??
+      resolveCountdownBoundsXWithinCanvas({
+        bounds: countdownSelectionBounds,
+        canvasWidth: CANVAS_WIDTH,
+      });
     const y = incomingY ?? 140;
     next = {
       ...next,
@@ -475,7 +541,16 @@ export default function computeInsertDefaults({
     };
   }
 
-  if (Number.isFinite(next.width)) {
+  if (next.tipo === "countdown" && countdownSelectionBounds) {
+    next.x = resolveCountdownBoundsXWithinCanvas({
+      bounds: countdownSelectionBounds,
+      canvasWidth: CANVAS_WIDTH,
+      preferredCenterX:
+        toNumber(next.x, 0) +
+        countdownSelectionBounds.x +
+        countdownSelectionBounds.width / 2,
+    });
+  } else if (Number.isFinite(next.width)) {
     next.x = clamp(toNumber(next.x, 0), 0, Math.max(0, CANVAS_WIDTH - next.width));
   } else {
     next.x = clamp(toNumber(next.x, 0), 0, CANVAS_WIDTH);

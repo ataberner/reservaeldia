@@ -125,9 +125,17 @@ function rectFromNodes(nodes) {
 
 function getCountdownScaledSize(node) {
   try {
-    const hitbox = node?.findOne?.(".countdown-hitbox");
-    const baseW = typeof hitbox?.width === "function" ? hitbox.width() : NaN;
-    const baseH = typeof hitbox?.height === "function" ? hitbox.height() : NaN;
+    const layoutMetrics =
+      node?.findOne?.(".countdown-layout-metrics") ||
+      node?.findOne?.(".countdown-hitbox");
+    const baseW =
+      typeof layoutMetrics?.width === "function"
+        ? layoutMetrics.width()
+        : NaN;
+    const baseH =
+      typeof layoutMetrics?.height === "function"
+        ? layoutMetrics.height()
+        : NaN;
     const sx = Math.abs(typeof node?.scaleX === "function" ? (node.scaleX() || 1) : 1);
     const sy = Math.abs(typeof node?.scaleY === "function" ? (node.scaleY() || 1) : 1);
 

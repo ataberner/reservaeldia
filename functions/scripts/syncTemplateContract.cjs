@@ -36,6 +36,36 @@ const artifacts = [
     ],
   },
   {
+    label: "Contrato de proteccion y observabilidad de countdowns",
+    sourcePath: path.resolve(__dirname, "../../shared/countdownPhase0Contract.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/countdownPhase0Contract.cjs"),
+      path.resolve(__dirname, "../lib/shared/countdownPhase0Contract.cjs"),
+    ],
+  },
+  {
+    label: "Contrato de assets de frame de countdown",
+    sourcePath: path.resolve(
+      __dirname,
+      "../../shared/countdownFrameAssetContract.cjs"
+    ),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/countdownFrameAssetContract.cjs"),
+      path.resolve(__dirname, "../lib/shared/countdownFrameAssetContract.cjs"),
+    ],
+  },
+  {
+    label: "Geometria de frame de countdown",
+    sourcePath: path.resolve(
+      __dirname,
+      "../../shared/countdownFrameGeometry.cjs"
+    ),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/countdownFrameGeometry.cjs"),
+      path.resolve(__dirname, "../lib/shared/countdownFrameGeometry.cjs"),
+    ],
+  },
+  {
     label: "Configuracion de modalidad de evento",
     sourcePath: path.resolve(__dirname, "../../shared/eventDetailsConfig.cjs"),
     targetPaths: [

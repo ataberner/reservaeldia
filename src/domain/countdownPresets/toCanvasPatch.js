@@ -1,7 +1,13 @@
 import {
   COUNTDOWN_NUMERIC_LIMITS,
-} from "@/domain/countdownPresets/contract";
-import { normalizeVisibleUnits } from "@/domain/countdownPresets/renderModel";
+} from "./contract.js";
+import { normalizeVisibleUnits } from "./renderModel.js";
+import {
+  normalizeCountdownFrameColorMode,
+  resolveCountdownFrameAssetType,
+  resolveCountdownFrameMimeType,
+} from "./frameAssetContract.js";
+import { normalizeCountdownFrameScale } from "./frameGeometry.js";
 
 function toFinite(value, fallback) {
   const parsed = Number(value);
@@ -36,6 +42,7 @@ export function buildCountdownCanvasPatchFromPreset({
   const distribution = layout.distribution || "centered";
   const gap = toFinite(layout.gap, 8);
   const framePadding = toFinite(layout.framePadding, 10);
+  const frameScale = normalizeCountdownFrameScale(layout.frameScale);
   const requestedChipWidth = Number(layout.chipWidth);
   const chipWidth = Number.isFinite(requestedChipWidth)
     ? Math.max(
@@ -45,6 +52,12 @@ export function buildCountdownCanvasPatchFromPreset({
     : Math.max(34, estimateChipWidth(tamanoBase, visibleUnits, distribution));
   const numberSize = Math.max(10, toFinite(tipografia.numberSize, 28));
   const labelSize = Math.max(8, toFinite(tipografia.labelSize, 12));
+  const frameAssetType = svgRef?.downloadUrl
+    ? resolveCountdownFrameAssetType(svgRef, "svg")
+    : null;
+  const frameMimeType = frameAssetType
+    ? resolveCountdownFrameMimeType(svgRef, frameAssetType)
+    : null;
 
   return {
     countdownSchemaVersion: 2,
@@ -56,8 +69,16 @@ export function buildCountdownCanvasPatchFromPreset({
     visibleUnits,
     gap,
     framePadding,
+    frameScale,
     frameSvgUrl: svgRef.downloadUrl || null,
-    frameColorMode: svgRef.colorMode || "fixed",
+    frameAssetType,
+    frameMimeType,
+    frameIntrinsicWidth: Number(svgRef.width || 0) || null,
+    frameIntrinsicHeight: Number(svgRef.height || 0) || null,
+    frameColorMode: normalizeCountdownFrameColorMode(
+      frameAssetType,
+      svgRef.colorMode
+    ),
     frameColor: colores.frameColor || "#773dbe",
     fontFamily: tipografia.fontFamily || "Poppins",
     fontSize: numberSize,

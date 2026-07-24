@@ -571,10 +571,11 @@ export function generarHTMLDesdeSecciones(
 
   function tickOne(root){
     const iso = root.getAttribute("data-target");
-    if(!iso) return;
-    const targetDate = new Date(iso);
-    if(isNaN(targetDate.getTime())) return;
-    const parts = diffParts(targetDate);
+    const targetDate = iso ? new Date(iso) : null;
+    const parts =
+      targetDate && !isNaN(targetDate.getTime())
+        ? diffParts(targetDate)
+        : { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
     if (resolveCountdownContract(root) === "v2") {
       tickOneV2(root, parts);
@@ -2019,8 +2020,8 @@ export function generarHTMLDesdeSecciones(
     .cdv2-entry-scale { animation: cdv2EntryScale 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
     .cdv2-tick-flip { animation: cdv2TickFlip 320ms ease; transform-origin: center; }
     .cdv2-tick-pulse { animation: cdv2TickPulse 280ms ease; }
-    .cdv2-frame-rotate img { animation: cdv2FrameRotate 12s linear infinite; }
-    .cdv2-frame-shimmer img { animation: cdv2FrameShimmer 2.4s ease-in-out infinite; }
+    .cdv2-frame-rotate > .cdv2-frame-visual { animation: cdv2FrameRotate 12s linear infinite; }
+    .cdv2-frame-shimmer > .cdv2-frame-visual { animation: cdv2FrameShimmer 2.4s ease-in-out infinite; }
 
     @keyframes cdv2EntryUp {
       from { opacity: 0; transform: translateY(10px); }
@@ -2068,8 +2069,8 @@ export function generarHTMLDesdeSecciones(
         animation: none !important;
       }
 
-      .cdv2-frame-rotate img,
-      .cdv2-frame-shimmer img {
+      .cdv2-frame-rotate > .cdv2-frame-visual,
+      .cdv2-frame-shimmer > .cdv2-frame-visual {
         animation: none !important;
       }
     }

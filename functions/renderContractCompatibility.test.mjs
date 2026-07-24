@@ -721,6 +721,144 @@ test("legacy countdown HTML uses the canvas-equivalent visual bounds for horizon
   assert.match(html, /data-countdown-audit-payload="[^"]*&quot;containerW&quot;:272/);
 });
 
+test("modern countdown HTML preserves currentColor, boxShadow, and editorial distribution", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-modern-editorial",
+        countdownAuditTraceId: "count-modern-editorial-test",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2030-06-17T15:04:05.000Z",
+        width: 320,
+        height: 120,
+        frameSvgUrl: "https://cdn.example.com/frame.svg",
+        frameColorMode: "currentColor",
+        frameColor: "#c026d3",
+        frameScale: 1.5,
+        distribution: "editorial",
+        layoutType: "multiUnit",
+        visibleUnits: ["days", "hours", "minutes", "seconds"],
+        chipWidth: 46,
+        paddingX: 8,
+        paddingY: 6,
+        fontSize: 28,
+        labelSize: 12,
+        boxRadius: 10,
+        boxShadow: true,
+        gap: 8,
+        tamanoBase: 320,
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /mask-image:url\(https:\/\/cdn\.example\.com\/frame\.svg\)/);
+  assert.match(html, /background:#c026d3/);
+  assert.match(html, /data-frame-scale="1.5"/);
+  assert.match(html, /transform:scale\(1.5\);transform-origin:center/);
+  assert.match(html, /box-shadow:\s*0 calc\([^;]+2px\) calc\([^;]+6px\) rgba\(0,0,0,0\.15\)/);
+  assert.match(html, /cdv2-unit cdv2-unit--hero/);
+  assert.match(
+    html,
+    /data-countdown-audit-payload="[^"]*&quot;unitLayouts&quot;:\[\{[^}]*&quot;unit&quot;:&quot;days&quot;,[^}]*&quot;width&quot;:78/
+  );
+});
+
+test("modern countdown HTML renders PNG frames with original color and contained geometry", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-modern-png",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2030-06-17T15:04:05.000Z",
+        width: 320,
+        height: 120,
+        frameSvgUrl: "https://cdn.example.com/floral-transparent.png",
+        frameAssetType: "png",
+        frameMimeType: "image/png",
+        frameColorMode: "currentColor",
+        frameColor: "#c026d3",
+        frameScale: 1.5,
+        distribution: "editorial",
+        layoutType: "singleFrame",
+        visibleUnits: ["days", "hours", "minutes", "seconds"],
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-frame-asset-type="png"/);
+  assert.match(html, /data-frame-color-mode="fixed"/);
+  assert.match(html, /data-frame-scale="1.5"/);
+  assert.match(html, /transform:scale\(1.5\);transform-origin:center/);
+  assert.match(html, /object-fit:contain/);
+  assert.match(html, /pointer-events:none/);
+  assert.doesNotMatch(html, /mask-image:url\([^)]*floral-transparent\.png/);
+});
+
+test("modern countdown HTML preserves centered SVG and PNG frames at 500%", () => {
+  for (const frameAssetType of ["svg", "png"]) {
+    const extension = frameAssetType === "png" ? "png" : "svg";
+    const html = generarHTMLDesdeObjetos(
+      [
+        {
+          id: `count-modern-${frameAssetType}-500`,
+          tipo: "countdown",
+          seccionId: "section-1",
+          countdownSchemaVersion: 2,
+          fechaObjetivo: "2030-06-17T15:04:05.000Z",
+          width: 320,
+          height: 120,
+          frameSvgUrl: `https://cdn.example.com/frame.${extension}`,
+          frameAssetType,
+          frameMimeType:
+            frameAssetType === "png" ? "image/png" : "image/svg+xml",
+          frameColorMode: "fixed",
+          frameScale: 5,
+          layoutType: "singleFrame",
+          distribution: "editorial",
+          visibleUnits: ["days", "hours", "minutes", "seconds"],
+        },
+      ],
+      FIXED_SECTION
+    );
+
+    assert.match(html, /data-frame-scale="5"/);
+    assert.match(
+      html,
+      /transform:scale\(5\);transform-origin:center;pointer-events:none/
+    );
+    assert.match(html, /overflow:\s*visible/);
+  }
+});
+
+test("modern countdown HTML defaults missing frameScale to the historical 100%", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-modern-default-frame-scale",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2030-06-17T15:04:05.000Z",
+        frameSvgUrl: "https://cdn.example.com/frame.svg",
+        frameAssetType: "svg",
+        layoutType: "singleFrame",
+        distribution: "centered",
+        visibleUnits: ["days", "hours"],
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-frame-scale="1"/);
+  assert.match(html, /transform:scale\(1\);transform-origin:center/);
+});
+
 test("omits countdown HTML when the event details visibility flag is false", () => {
   const visibleHtml = generarHTMLDesdeObjetos(
     [

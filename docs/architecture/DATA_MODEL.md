@@ -493,12 +493,12 @@ Observed countdown fields:
 
 | Field Group | Fields |
 | --- | --- |
-| Target date | `targetISO`, legacy `fechaObjetivo`, legacy `fechaISO` |
+| Target date | canonical `fechaObjetivo`; compatibility aliases `targetISO`, `fechaISO` |
 | Versioning | `countdownSchemaVersion`, `presetId`, legacy `layout` |
-| Geometry | `width`, `height`, `tamanoBase`, `gap`, `paddingX`, `paddingY`, `chipWidth`, `boxRadius`, `framePadding` |
+| Geometry | `width`, `height`, `tamanoBase`, `gap`, `paddingX`, `paddingY`, `chipWidth`, `boxRadius`, `framePadding`, additive `frameScale` |
 | Layout | `visibleUnits`, `distribution`, `layoutType`, `separator` |
 | Typography | `fontFamily`, `fontSize`, `labelSize`, `letterSpacing`, `lineHeight`, `showLabels`, `labelTransform` |
-| Styling | `color`, `labelColor`, `boxBg`, `boxBorder`, `separatorColor`, `frameSvgUrl`, `frameColor`, `frameColorMode` |
+| Styling | `color`, `labelColor`, `boxBg`, `boxBorder`, `boxShadow`, `separatorColor`, historical URL field `frameSvgUrl`, additive `frameAssetType`, `frameMimeType`, `frameIntrinsicWidth`, `frameIntrinsicHeight`, `frameColor`, `frameColorMode` |
 | Runtime animation | `entryAnimation`, `tickAnimation`, `frameAnimation` |
 | Audit/debug | `countdownAuditTraceId`, `countdownAuditFixture`, `countdownAuditLabel` |
 
@@ -512,6 +512,62 @@ Legacy v1 countdowns may also use a `labels` object such as:
   seg: string,
 }
 ```
+
+Countdown expiration currently has one platform policy: `freezeZero`. Missing
+or invalid targets are publish-validation blockers. At runtime, invalid and
+expired targets keep the countdown structure visible and render all units as
+zero; there is no message, replacement, or hide lifecycle in the current
+contract.
+
+For schema v2, root `frameScale` is the materialized decorative-frame scale:
+`1` is the historical/default rendering and the accepted range is `0.5..5`.
+Missing values read as `1`. It scales SVG/PNG from the center without changing
+the countdown content metrics or the object-level `scaleX`/`scaleY`.
+Persisted `width`/`height` remain the layout and resize metrics. Canvas
+selection is derived at runtime as the union of the actual unit/separator
+content bounds and the visible scaled-frame bounds; this derived selection box
+is not persisted and does not redefine object geometry.
+
+### `countdownPresets`
+
+Countdown preset roots live at `countdownPresets/{presetId}`. The root owns
+administrative draft state and the public pointer; immutable published payloads
+live at `countdownPresets/{presetId}/versions/{version}`.
+
+Current authority rules:
+
+- `activeVersion` on the root is the only public pointer.
+- Public catalog reads resolve exactly `versions/{activeVersion}` and fail
+  closed when the pointer or version is missing, zero, mismatched, or corrupt.
+- Root `draft` and `draftVersion` are administrative only and never participate
+  in public catalog output.
+- Save and publish mutations require optimistic `expectedDraftVersion` and an
+  idempotent `operationId`. Completed results are stored under
+  `operations/{operationId}` for replay.
+- Draft assets are staged below
+  `assets/countdown/staging/{presetId}/{operationId}/{attemptId}/`.
+- `svgRef` is the historical preset field name and remains the compatible frame
+  container. New frame refs distinguish `type: "svg" | "png"` and canonical
+  MIME, and may store `width`, `height`, PNG `hasAlpha` (channel capability) and
+  PNG `hasTransparency` (decoded pixels include alpha below 255). Refs without
+  these additive fields are read as SVG; no data migration is required. PNG
+  always normalizes `colorMode` to `fixed`.
+- Preset `layout.frameScale` is optional on compatible reads, defaults to `1`,
+  and is range-validated at `0.5..5` on writes. It is copied into inserted
+  countdown snapshots as root `frameScale`; it does not change schema version.
+- Published assets use immutable operation-scoped paths below the existing
+  countdown frame/thumbnail prefixes. A version document is created with
+  `transaction.create` and is never overwritten by the preset service.
+- Presets with an active version, version history, or invitation/template
+  references are tombstoned as `archived`; their versions and published assets
+  are retained. Hard deletion is limited to unreferenced draft-only presets.
+- Administrative version history is a read-only traversal of
+  `versions/{version}` plus the root `activeVersion`; inspection never mutates
+  the editor draft or a version document.
+- Duplication requires an idempotent `operationId`, creates a new draft-only
+  preset id, and copies mutable frame/thumbnail assets into destination-owned
+  staging paths. It does not copy `activeVersion`, immutable version documents,
+  operations, tombstones, or `legacyPresetProps`.
 
 ### `rsvp-boton` and `regalo-boton`
 CTA button objects share the same visual model:
@@ -711,7 +767,7 @@ The current generator and normalizers still read multiple legacy-compatible name
 - text alignment: `align`, `textAlign`
 - image/icon source: `src`, `url`
 - gallery cell media source: `mediaUrl`, `url`, `src`
-- countdown target date: `targetISO`, `fechaObjetivo`, `fechaISO`
+- countdown target date: canonical `fechaObjetivo`; read-compatible aliases `targetISO`, `fechaISO`
 - invitation type root metadata: `tipoInvitacion`, template/publication fallbacks such as `tipo`
 - preview metadata: `thumbnailUrl`, `thumbnailurl`, `thumbnail_url`, `thumbnailURL`, `previewUrl`, `previewurl`, `preview_url`, `previewURL`, and `portada`
 

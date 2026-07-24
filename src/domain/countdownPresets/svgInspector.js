@@ -1,4 +1,5 @@
-import { COUNTDOWN_SVG_COLOR_MODES } from "@/domain/countdownPresets/contract";
+import { COUNTDOWN_SVG_COLOR_MODES } from "./contract.js";
+import { COUNTDOWN_FRAME_ASSET_LIMITS } from "./frameAssetContract.js";
 
 function parseViewBox(viewBox) {
   if (!viewBox || typeof viewBox !== "string") return null;
@@ -158,9 +159,9 @@ function inspectSvgDocument({ doc, fileName = "", byteSize = 0, mimeType = "" })
     warnings.push("El viewBox no es cuadrado. Se recomienda una relacion 1:1.");
   }
 
-  if (byteSize > 500 * 1024) {
+  if (byteSize > COUNTDOWN_FRAME_ASSET_LIMITS.svgMaxBytes) {
     criticalErrors.push("El SVG supera 500KB. Reduce su peso para continuar.");
-  } else if (byteSize > 200 * 1024) {
+  } else if (byteSize > COUNTDOWN_FRAME_ASSET_LIMITS.svgWarningBytes) {
     warnings.push("El SVG pesa mas de 200KB. Considera optimizarlo.");
   }
 

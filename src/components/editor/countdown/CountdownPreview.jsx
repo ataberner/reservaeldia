@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { getRemainingParts, fmt } from "./countdownUtils";
 import {
   buildTextPaintStyle,
+  buildCountdownEditorialWidths,
   estimateCountdownUnitHeight,
   resolveCountdownUnitWidth,
   resolvePreviewPaint,
@@ -11,6 +12,14 @@ import {
   COUNTDOWN_PREVIEW_FIT_MODES,
   computeCountdownPreviewScale,
 } from "./countdownPreviewScale";
+import {
+  recordCountdownAssetLoadError,
+  recordCountdownRenderTelemetry,
+} from "@/domain/countdownObservability/telemetry";
+import {
+  normalizeCountdownFrameScale,
+  resolveCountdownFrameVisualBounds,
+} from "@/domain/countdownPresets/frameGeometry";
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -51,6 +60,7 @@ export default function CountdownPreview({
   size = "sm",
   live = true,
   fitMode = COUNTDOWN_PREVIEW_FIT_MODES.WIDTH,
+  telemetryRenderer = "react-countdown-preview",
 }) {
   const [, setTick] = useState(0);
 
@@ -108,6 +118,13 @@ export default function CountdownPreview({
     [preset]
   );
   const isV2 = countdownContract.contractVersion === "v2";
+
+  useEffect(() => {
+    recordCountdownRenderTelemetry({
+      countdown: preset,
+      renderer: telemetryRenderer,
+    });
+  }, [preset, telemetryRenderer]);
   const legacyParts = [
     { key: "d", value: fmt(state.d, preset?.padZero), label: "Dias" },
     { key: "h", value: fmt(state.h, preset?.padZero), label: "Horas" },
@@ -153,9 +170,6 @@ export default function CountdownPreview({
 
     return () => observer.disconnect();
   }, [measureScale]);
-
-  if (state.invalid) return <div className="text-center text-red-500">Fecha invalida</div>;
-  if (state.ended) return <div className="text-center text-green-600">Llego el dia</div>;
 
   const fontFamily = preset?.fontFamily || "Inter, system-ui, sans-serif";
   const numberColor = resolvePreviewPaint(preset?.color, "#111");
@@ -258,10 +272,27 @@ export default function CountdownPreview({
   const distribution = String(preset?.distribution || "centered").toLowerCase();
   const layoutType = String(preset?.layoutType || "singleFrame").toLowerCase();
   const frameUrl = String(preset?.frameSvgUrl || "").trim();
+  const frameAssetType =
+    String(preset?.frameAssetType || "").toLowerCase() === "png"
+      ? "png"
+      : "svg";
+  const isPngFrame = frameAssetType === "png";
+  const frameColorMode = String(preset?.frameColorMode || "fixed").toLowerCase();
+  const frameColor = resolvePreviewPaint(preset?.frameColor, "#773dbe");
+  const usesCurrentColorFrame =
+    !isPngFrame && frameColorMode === "currentcolor";
   const hasFrameConfigured = frameUrl.length > 0;
   const useSingleFrameLayout = layoutType === "singleframe" && hasFrameConfigured;
   const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
+  const handleFrameLoadError = () => {
+    recordCountdownAssetLoadError({
+      countdown: preset,
+      renderer: telemetryRenderer,
+      assetKind: `frame-${frameAssetType}`,
+    });
+  };
   const framePadding = Math.max(0, toFinite(preset?.framePadding, SZ.framePadding));
+  const frameScale = normalizeCountdownFrameScale(preset?.frameScale);
   const gap = Math.max(0, toFinite(preset?.gap, SZ.gap));
   const chipPx = Math.max(2, toFinite(preset?.paddingX, SZ.chipPx));
   const chipPy = Math.max(2, toFinite(preset?.paddingY, SZ.chipPy));
@@ -306,16 +337,12 @@ export default function CountdownPreview({
         : 1;
   const editorialWidths =
     distribution === "editorial"
-      ? Array.from({ length: itemCount }, (_, index) =>
-          resolveCountdownUnitWidth({
-            width: Math.max(
-              34,
-              Math.round(baseChipW * (index === 0 && itemCount > 1 ? 1.25 : 0.88))
-            ),
-            height: chipOuterH,
-            boxRadius: chipRadius,
-          })
-        )
+      ? buildCountdownEditorialWidths({
+          unitsCount: itemCount,
+          baseChipWidth: baseChipW,
+          chipHeight: chipOuterH,
+          boxRadius: chipRadius,
+        })
       : [];
   const naturalW =
     distribution === "vertical"
@@ -338,6 +365,10 @@ export default function CountdownPreview({
     1,
     naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
   );
+  const frameScaleStyle = {
+    transform: `scale(${frameScale})`,
+    transformOrigin: "center",
+  };
   const contentBounds = {
     x: useSingleFrameLayout ? framePadding : 0,
     y: useSingleFrameLayout ? framePadding : 0,
@@ -400,6 +431,12 @@ export default function CountdownPreview({
               width: baseChipW,
               height: chipOuterH,
             }));
+  const frameVisualBounds = resolveCountdownFrameVisualBounds({
+    width: containerW,
+    height: containerH,
+    frameScale: hasFrameConfigured ? frameScale : 1,
+    frameRects: layoutType === "multiUnit" ? unitLayouts : undefined,
+  });
   const separatorFontSize = Math.max(10, Math.round(valueSize * 0.64));
   const separatorLayouts =
     canDrawSeparators && unitLayouts.length > 1
@@ -423,22 +460,65 @@ export default function CountdownPreview({
         ref={innerRef}
         className="relative"
         style={{
-          width: containerW,
-          height: containerH,
+          width: frameVisualBounds.width,
+          height: frameVisualBounds.height,
           fontFamily,
           transform: `scale(${scale})`,
           transformOrigin: "center",
         }}
       >
+        <div
+          className="absolute"
+          style={{
+            left: frameVisualBounds.offsetX,
+            top: frameVisualBounds.offsetY,
+            width: containerW,
+            height: containerH,
+          }}
+        >
         {useSingleFrameLayout ? (
-          <img
-            src={frameUrl}
-            alt=""
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-0 h-full w-full object-fill"
-            loading="lazy"
-            decoding="async"
-          />
+          usesCurrentColorFrame ? (
+            <>
+              <img
+                src={frameUrl}
+                alt=""
+                aria-hidden="true"
+                onError={handleFrameLoadError}
+                className="hidden"
+                loading="eager"
+                decoding="async"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-0"
+                style={{
+                  ...frameScaleStyle,
+                  backgroundColor: frameColor,
+                  WebkitMaskImage: `url("${frameUrl}")`,
+                  maskImage: `url("${frameUrl}")`,
+                  WebkitMaskPosition: "center",
+                  maskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  maskRepeat: "no-repeat",
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                }}
+              />
+            </>
+          ) : (
+            <img
+              src={frameUrl}
+              alt=""
+              aria-hidden="true"
+              onError={handleFrameLoadError}
+              className={`pointer-events-none absolute inset-0 z-0 h-full w-full ${
+                isPngFrame ? "object-contain" : "object-fill"
+              }`}
+              style={frameScaleStyle}
+              loading="lazy"
+              decoding="async"
+            />
+          )
         ) : null}
 
         <div className="relative z-[1]" style={{ width: containerW, height: containerH }}>
@@ -465,14 +545,48 @@ export default function CountdownPreview({
                 }}
               >
                 {useMultiUnitFrame ? (
-                  <img
-                    src={frameUrl}
-                    alt=""
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-0 h-full w-full object-fill"
-                    loading="lazy"
-                    decoding="async"
-                  />
+                  usesCurrentColorFrame ? (
+                    <>
+                      <img
+                        src={frameUrl}
+                        alt=""
+                        aria-hidden="true"
+                        onError={handleFrameLoadError}
+                        className="hidden"
+                        loading="eager"
+                        decoding="async"
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 z-0"
+                        style={{
+                          ...frameScaleStyle,
+                          backgroundColor: frameColor,
+                          WebkitMaskImage: `url("${frameUrl}")`,
+                          maskImage: `url("${frameUrl}")`,
+                          WebkitMaskPosition: "center",
+                          maskPosition: "center",
+                          WebkitMaskRepeat: "no-repeat",
+                          maskRepeat: "no-repeat",
+                          WebkitMaskSize: "100% 100%",
+                          maskSize: "100% 100%",
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <img
+                      src={frameUrl}
+                      alt=""
+                      aria-hidden="true"
+                      onError={handleFrameLoadError}
+                      className={`pointer-events-none absolute inset-0 z-0 h-full w-full ${
+                        isPngFrame ? "object-contain" : "object-fill"
+                      }`}
+                      style={frameScaleStyle}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )
                 ) : null}
 
                 <div className="relative z-[1] flex flex-col items-center">
@@ -505,6 +619,7 @@ export default function CountdownPreview({
               {separator}
             </span>
           ))}
+        </div>
         </div>
       </div>
     </div>

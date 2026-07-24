@@ -4,6 +4,10 @@ import {
 } from "../drafts/sourceOfTruth";
 import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
 import {
+  recordBackendCountdownError,
+  recordBackendCountdownTelemetry,
+} from "../countdownObservability/telemetry";
+import {
   resolveFunctionalCtaContract,
   type FunctionalCtaContract,
 } from "../utils/functionalCtaContract";
@@ -288,10 +292,24 @@ export async function prepareRenderPayload(
   draftData: UnknownRecord
 ): Promise<PreparedRenderPayload> {
   const draftRenderState = normalizeDraftRenderState(draftData);
-  const normalizedAssets = await normalizePublishRenderStateAssets({
-    objetos: draftRenderState.objetos,
-    secciones: draftRenderState.secciones,
-  });
+  let normalizedAssets;
+  const preparationStartedAt = Date.now();
+  try {
+    normalizedAssets = await normalizePublishRenderStateAssets({
+      objetos: draftRenderState.objetos,
+      secciones: draftRenderState.secciones,
+    });
+  } catch (error) {
+    recordBackendCountdownError({
+      eventType: "asset_preparation_error",
+      renderState: draftRenderState,
+      renderer: "prepared-render-payload",
+      error,
+      assetKind: "render-asset",
+      durationMs: Date.now() - preparationStartedAt,
+    });
+    throw error;
+  }
 
   const assetObjetos = asRecordList(normalizedAssets.objetos);
   const assetSecciones = asRecordList(normalizedAssets.secciones);
@@ -356,7 +374,7 @@ export async function preparePublicationRenderState(
 export function validatePreparedRenderPayload(
   payload: PreparedRenderPayload
 ): PublicationPublishValidationResult {
-  return validatePreparedPublicationRenderState({
+  const result = validatePreparedPublicationRenderState({
     rawObjetos: payload.draftRenderState.objetos,
     rawSecciones: payload.draftRenderState.secciones,
     objetosFinales: payload.objetosFinales,
@@ -365,6 +383,27 @@ export function validatePreparedRenderPayload(
     rawGifts: payload.draftRenderState.gifts,
     functionalCtaContract: payload.functionalCtaContract,
   });
+  const firstCountdownIssue = [...result.blockers, ...result.warnings].find(
+    (issue) =>
+      issue.code.includes("countdown") ||
+      issue.code.includes("asset") ||
+      issue.code.includes("legacy")
+  );
+
+  recordBackendCountdownTelemetry({
+    eventType: "prepared_render_validation",
+    renderState: { objetos: payload.objetosFinales },
+    renderer: "prepared-render-validation",
+    success: result.canPublish,
+    errorCode: firstCountdownIssue?.code || null,
+    assetKind:
+      firstCountdownIssue?.code.includes("asset") ||
+      firstCountdownIssue?.code.includes("frame")
+        ? "render-asset"
+        : null,
+  });
+
+  return result;
 }
 
 export function buildPreviewRenderPayloadFromPreparedPayload(
@@ -400,19 +439,44 @@ export function generateHtmlFromPreparedRenderPayload(
   >,
   options: { slug?: string; isPreview?: boolean } = {}
 ): string {
-  return generarHTMLDesdeSecciones(
-    payload.seccionesFinales as any[],
-    payload.objetosFinales as any[],
-    payload.functionalCtaContract.rsvp.config || undefined,
-    {
-      slug: getString(options.slug),
-      isPreview: options.isPreview === true,
-      gifts: payload.functionalCtaContract.gifts.config || null,
-      rsvpSource: payload.draftRenderState.rsvp,
-      giftsSource: payload.draftRenderState.gifts,
-      functionalCtaContract: payload.functionalCtaContract,
-    }
-  );
+  const renderer = options.isPreview === true
+    ? "prepared-preview-html"
+    : "published-html";
+  const renderStartedAt = Date.now();
+
+  try {
+    const html = generarHTMLDesdeSecciones(
+      payload.seccionesFinales as any[],
+      payload.objetosFinales as any[],
+      payload.functionalCtaContract.rsvp.config || undefined,
+      {
+        slug: getString(options.slug),
+        isPreview: options.isPreview === true,
+        gifts: payload.functionalCtaContract.gifts.config || null,
+        rsvpSource: payload.draftRenderState.rsvp,
+        giftsSource: payload.draftRenderState.gifts,
+        functionalCtaContract: payload.functionalCtaContract,
+      }
+    );
+
+    recordBackendCountdownTelemetry({
+      eventType: "render_complete",
+      renderState: { objetos: payload.objetosFinales },
+      renderer,
+      success: true,
+      durationMs: Date.now() - renderStartedAt,
+    });
+    return html;
+  } catch (error) {
+    recordBackendCountdownError({
+      eventType: "render_error",
+      renderState: { objetos: payload.objetosFinales },
+      renderer,
+      error,
+      durationMs: Date.now() - renderStartedAt,
+    });
+    throw error;
+  }
 }
 
 export function validatePreparedPublicationRenderState(params: {
@@ -808,6 +872,32 @@ export function validatePreparedPublicationRenderState(params: {
       const countdownTarget = resolveCountdownTargetIso(rawObject);
       const rawFrameSvgUrl = getString(rawObject.frameSvgUrl);
       const finalFrameSvgUrl = getString(finalObject.frameSvgUrl);
+
+      if (!countdownTarget.hasTarget) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "countdown-target-missing",
+            message: `${objectLabel} no tiene fecha objetivo.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath("fechaObjetivo"),
+          })
+        );
+      } else if (!Number.isFinite(Date.parse(countdownTarget.targetISO))) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "countdown-target-invalid",
+            message: `${objectLabel} tiene una fecha objetivo invalida.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath(
+              countdownTarget.sourceField || "fechaObjetivo"
+            ),
+          })
+        );
+      }
 
       if (countdownTarget.usesCompatibilityAlias) {
         pushIssue(

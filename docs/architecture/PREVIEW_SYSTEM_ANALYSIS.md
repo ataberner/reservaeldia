@@ -122,6 +122,9 @@ Loading presentation has one shell authority per visible mockup:
 - generated HTML retains its normal invitation loader and publish-compatible runtime unchanged
 - the shell observes the generated `invitation-loader-hidden` event, with DOM-state fallback, and removes the stable outer presentation only after the final invitation has completed its loader exit
 - HTML without the generated loader protocol becomes ready on iframe `load`
+- the shell loading wrapper establishes `contain: layout paint`, so the shared
+  presentation's published-page `position: fixed` loader is contained by the
+  mockup from its first visible render and cannot cover the dashboard viewport
 
 The generated loader remains part of the generated invitation contract. Inside
 the modal it is a readiness producer rather than a second visible loading
@@ -143,6 +146,28 @@ After load, `applyPreviewFrameScale(...)`:
 - dispatches `resize` on the next animation frame
 
 These iframe mutations are preview-shell behavior. They must minimize layout distortion and should not be treated as changes to the invitation render contract.
+
+Scaled mockups use CSS `zoom` on the fixed-size logical iframe wrapper. They do
+not use `transform: scale(...)`: transform scaling makes Chromium resample the
+already-painted iframe surface and can independently antialias two contiguous
+section edges against the white document at fractional scale or
+`devicePixelRatio`. Layout zoom paints the same logical iframe viewport at the
+requested modal scale in one pass, so it preserves section bounds and scroll
+behavior without adding paint, overlap, or iframe-document mutations. This is
+owned by `ModalVistaPrevia` and `TemplatePreviewModal`; it does not change the
+generated or published invitation HTML.
+
+At non-native preview scale, `previewFrameRuntime` also prevents background
+images from creating a second transformed raster edge. It maps the existing
+`--bg-image-left` and `--bg-image-top` variables to the equivalent absolute
+base position and disables the generated combined transform. For sections with
+`soft` or `dynamic` parallax, only the live `--bg-parallax-y` delta uses the
+individual compositor-friendly `translate` property. Keeping the changing
+delta out of `top` avoids layout work on every scroll frame while preserving
+the non-transformed base edge that prevents the scaled section seam.
+Native-scale preview keeps the generated image transform authoritative. The
+override changes neither image bounds nor parallax inputs; it is a
+scaled-iframe rasterization rule, not part of the invitation render contract.
 
 ## 6. Mobile Preview Parity Mode
 
@@ -194,6 +219,14 @@ input into `scrollTop`, `scrollTo`, or `scrollBy` writes. The focused srcDoc
 adapter changes its authority marker to `body` and adapts generated preview
 target scrolling to the explicit effective-root resolver instead of trusting
 `document.scrollingElement` alone.
+
+The preview shell itself installs no `wheel`, `touchmove`, `pointermove`, or
+`scroll` handlers in either viewport and performs no root-scroll writes.
+Desktop and paired previews retain the document root; focused mobile retains
+the explicit body root. Generated parallax observes native scroll sources with
+passive listeners and coalesces notifications into one RAF update. The scaled
+preview raster adapter must therefore keep that update compositor-only rather
+than turning `--bg-parallax-y` into a changing layout property.
 
 Constraints:
 
@@ -271,6 +304,7 @@ Focused loading/session coverage:
 
 - `src/components/preview/modalVistaPreviaLifecycle.test.mjs`
 - `src/components/preview/previewFrameRuntime.test.mjs`
+- `shared/previewMobileNativeScrollRuntime.test.mjs`
 - `src/hooks/useDashboardPreviewController.controller.test.mjs`
 - `src/domain/dashboard/previewPipeline.test.mjs`
 - `src/domain/dashboard/previewTiming.test.mjs`

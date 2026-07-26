@@ -198,8 +198,7 @@ function TemplatePreviewViewport({
           style={{
             width: viewportWidth,
             height: viewportHeight,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
+            zoom: scale,
           }}
         >
           {sourceIdentity ? (

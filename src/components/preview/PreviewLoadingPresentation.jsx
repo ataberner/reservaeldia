@@ -9,6 +9,7 @@ export default function PreviewLoadingPresentation({
   return (
     <div
       className={`absolute inset-0 z-10 overflow-hidden ${className}`}
+      style={{ contain: "layout paint" }}
       data-preview-loading-authority="frame"
       aria-hidden={announce ? undefined : "true"}
       dangerouslySetInnerHTML={{

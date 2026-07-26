@@ -620,6 +620,17 @@ function buildScrollbarStyleText({
   return `
         ${legacyLayoutCss}
         ${parityScrollRootCss}
+        html[data-preview-raster-scale="scaled"] .sec-bg-image {
+          left: var(--bg-image-left, 0px);
+          top: var(--bg-image-top, 0px);
+          transform: none;
+          will-change: auto;
+        }
+        html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="soft"] .sec-bg-image,
+        html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="dynamic"] .sec-bg-image {
+          translate: 0 var(--bg-parallax-y, 0px);
+          will-change: translate;
+        }
         html::-webkit-scrollbar,
         body::-webkit-scrollbar {
           display: none !important;
@@ -672,6 +683,15 @@ export function applyPreviewFrameScale(
 
   frameDocument.documentElement?.setAttribute?.("data-preview-scale", scaleValue);
   frameDocument.body?.setAttribute?.("data-preview-scale", scaleValue);
+  const rasterScaleMode = safeScale === 1 ? "native" : "scaled";
+  frameDocument.documentElement?.setAttribute?.(
+    "data-preview-raster-scale",
+    rasterScaleMode
+  );
+  frameDocument.body?.setAttribute?.(
+    "data-preview-raster-scale",
+    rasterScaleMode
+  );
   frameDocument.documentElement?.setAttribute?.("data-preview-layout-mode", resolvedLayoutMode);
   frameDocument.body?.setAttribute?.("data-preview-layout-mode", resolvedLayoutMode);
 

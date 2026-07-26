@@ -8,6 +8,22 @@ import {
   createSyntheticGeometrySnapshot,
   diffMobileGeometrySnapshots,
 } from "./previewPublishMobileGeometryParity.mjs";
+import {
+  buildPreviewFrameSrcDoc,
+} from "../src/components/preview/previewFrameRuntime.js";
+
+const NOIR_SECTION_JUNCTION_FIXTURE = Object.freeze([
+  { id: "seccion-1750939089837", orden: 0, altoModo: "fijo", altura: 662, fondo: "#2f3c61" },
+  { id: "seccion-1774704812672", orden: 1, altoModo: "fijo", altura: 260, fondo: "#ccbb9f" },
+  { id: "seccion-1774723116034", orden: 2, altoModo: "fijo", altura: 657, fondo: "#2f3c61" },
+  { id: "seccion-1774724800758", orden: 3, altoModo: "fijo", altura: 488, fondo: "#cbbb9d" },
+  { id: "seccion-1774725741189", orden: 4, altoModo: "fijo", altura: 737, fondo: "#2f3c62" },
+  { id: "seccion-1774762340490", orden: 5, altoModo: "fijo", altura: 283, fondo: "#2f3c62" },
+  { id: "seccion-1782824303195", orden: 6, altoModo: "fijo", altura: 178, fondo: "#ffffff" },
+]);
+
+const DARK_SECTION_IMAGE =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="503"%3E%3Crect width="800" height="503" fill="%23101014"/%3E%3C/svg%3E';
 
 test("mobile geometry parity viewport set is explicit and stable", () => {
   assert.deepEqual(MOBILE_GEOMETRY_PARITY_VIEWPORTS, [
@@ -139,6 +155,393 @@ test("mobile geometry diff reports section, object, and group-child drift", () =
   assert.equal(paths.includes("groupChildren.relative.group-1:child-1.left"), true);
 });
 
+test("Noir section junction fixture keeps the consecutive dark baseline explicit", () => {
+  assert.deepEqual(
+    NOIR_SECTION_JUNCTION_FIXTURE.map(({ altoModo }) => altoModo),
+    Array(NOIR_SECTION_JUNCTION_FIXTURE.length).fill("fijo")
+  );
+  assert.deepEqual(
+    NOIR_SECTION_JUNCTION_FIXTURE.slice(4, 6).map(({ fondo }) => fondo),
+    ["#2f3c62", "#2f3c62"]
+  );
+
+  assert.deepEqual(
+    NOIR_SECTION_JUNCTION_FIXTURE.map(({ altura }) => altura),
+    [662, 260, 657, 488, 737, 283, 178]
+  );
+});
+
+test(
+  "opt-in scaled iframe capture keeps section junctions covered without geometry drift",
+  {
+    skip:
+      process.env.PREVIEW_PUBLISH_MOBILE_GEOMETRY !== "1"
+        ? "Set PREVIEW_PUBLISH_MOBILE_GEOMETRY=1 to run scaled iframe seam capture."
+        : false,
+  },
+  async (t) => {
+    const { default: puppeteer } = await import("puppeteer");
+    const { default: sharp } = await import("sharp");
+    const { installFirebaseStorageMock } = await import(
+      "../functions/testUtils/firebaseStorageMock.mjs"
+    );
+    const publicationPublishValidationModule = (
+      await import("../functions/lib/payments/publicationPublishValidation.js")
+    ).default;
+    const {
+      generateHtmlFromPreparedRenderPayload,
+      prepareRenderPayload,
+    } = publicationPublishValidationModule;
+    const storageMock = installFirebaseStorageMock({
+      defaultBucketName: "preview-publish-geometry.appspot.com",
+      files: {},
+    });
+    t.after(() => storageMock.restore());
+    const browser = await puppeteer.launch({
+      headless: "shell",
+      timeout: 60_000,
+      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+    });
+    t.after(async () => browser.close());
+
+    const viewports = [
+      { id: "desktop-1280x820", width: 1280, height: 820, previewViewport: "desktop" },
+      { id: "mobile-390x844", width: 390, height: 844, previewViewport: "mobile" },
+    ];
+    const scaleCases = [
+      { scale: 0.32, devicePixelRatio: 1 },
+      { scale: 0.53, devicePixelRatio: 1 },
+      { scale: 0.53, devicePixelRatio: 2 },
+      { scale: 0.9, devicePixelRatio: 2 },
+    ];
+    const junctionCases = [
+      {
+        id: "noir-consecutive-dark",
+        sections: NOIR_SECTION_JUNCTION_FIXTURE,
+        boundaryIndex: 4,
+        expectedMaxChannel: 0x62,
+      },
+      {
+        id: "consecutive-dark",
+        sections: [
+          { id: "dark-a", orden: 0, altoModo: "fijo", altura: 503, fondo: "#101014" },
+          { id: "dark-b", orden: 1, altoModo: "fijo", altura: 497, fondo: "#101014" },
+        ],
+        boundaryIndex: 0,
+        expectedMaxChannel: 0x14,
+      },
+      {
+        id: "light-to-dark",
+        sections: [
+          { id: "light-a", orden: 0, altoModo: "fijo", altura: 503, fondo: "#ccbb9f" },
+          { id: "dark-b", orden: 1, altoModo: "fijo", altura: 497, fondo: "#2f3c61" },
+        ],
+        boundaryIndex: 0,
+        expectedMaxChannel: 0xcc,
+      },
+      {
+        id: "consecutive-image-backgrounds",
+        sections: [
+          {
+            id: "image-a",
+            orden: 0,
+            altoModo: "fijo",
+            altura: 503,
+            fondo: "#ffffff",
+            fondoTipo: "imagen",
+            fondoImagen: DARK_SECTION_IMAGE,
+            decoracionesFondo: { parallax: "dynamic", items: [] },
+          },
+          {
+            id: "image-b",
+            orden: 1,
+            altoModo: "fijo",
+            altura: 497,
+            fondo: "#ffffff",
+            fondoTipo: "imagen",
+            fondoImagen: DARK_SECTION_IMAGE,
+            decoracionesFondo: { parallax: "dynamic", items: [] },
+          },
+        ],
+        boundaryIndex: 0,
+        expectedMaxChannel: null,
+      },
+    ];
+
+    async function settleInvitation(target) {
+      await target.evaluate(async () => {
+        document.querySelectorAll('[id*="load"]').forEach((node) => node.remove());
+        if (document.body) {
+          document.body.dataset.loaderReady = "1";
+        }
+        const invitation = document.querySelector(".inv");
+        invitation?.style.setProperty("animation", "none", "important");
+        invitation?.style.setProperty("opacity", "1", "important");
+        invitation?.style.setProperty("transition", "none", "important");
+        document.querySelectorAll("*").forEach((node) => {
+          node.style?.setProperty("animation-duration", "0s", "important");
+          node.style?.setProperty("transition", "none", "important");
+        });
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await Promise.all(
+          Array.from(document.images || []).map((image) => {
+            if (image.complete) return Promise.resolve();
+            return new Promise((resolve) => {
+              image.addEventListener("load", resolve, { once: true });
+              image.addEventListener("error", resolve, { once: true });
+            });
+          })
+        );
+        await new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+      });
+    }
+
+    async function readJunctionMaxChannel({
+      page,
+      boundaryY,
+      viewportWidth,
+      scale,
+      devicePixelRatio,
+      offset = 0,
+    }) {
+      const screenshot = await page.screenshot({ type: "png" });
+      const { data, info } = await sharp(screenshot)
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const x = Math.round(
+        (offset + (viewportWidth * scale) / 2) * devicePixelRatio
+      );
+      const centerY = (offset + boundaryY * scale) * devicePixelRatio;
+      let maxChannel = 0;
+
+      for (
+        let y = Math.floor(centerY) - 2;
+        y <= Math.ceil(centerY) + 2;
+        y += 1
+      ) {
+        const index = (y * info.width + x) * info.channels;
+        maxChannel = Math.max(
+          maxChannel,
+          data[index],
+          data[index + 1],
+          data[index + 2]
+        );
+      }
+
+      return maxChannel;
+    }
+
+    async function capturePublish(html, viewport, devicePixelRatio, boundaryIndex) {
+      const page = await browser.newPage();
+      await page.setViewport({
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: devicePixelRatio,
+        isMobile: viewport.previewViewport === "mobile",
+      });
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      await settleInvitation(page);
+      const snapshot = await page.evaluate(
+        collectMobileGeometrySnapshotFromDocument
+      );
+      const boundaryBottom = Number(
+        snapshot.sections?.[boundaryIndex]?.rect?.bottom || 0
+      );
+      const maxScroll = await page.evaluate(
+        () =>
+          Math.max(
+            0,
+            Number(document.documentElement.scrollHeight || 0) -
+              Number(window.innerHeight || 0)
+          )
+      );
+      const requestedScroll = Math.max(
+        0,
+        Math.min(maxScroll, boundaryBottom - viewport.height / 2)
+      );
+      await page.evaluate((top) => window.scrollTo(0, top), requestedScroll);
+      const scrollTop = await page.evaluate(() => window.scrollY || 0);
+      const maxChannel = await readJunctionMaxChannel({
+        page,
+        boundaryY: boundaryBottom - scrollTop,
+        viewportWidth: viewport.width,
+        scale: 1,
+        devicePixelRatio,
+      });
+      await page.close();
+      return { maxChannel, snapshot };
+    }
+
+    async function capturePreview(
+      html,
+      viewport,
+      { scale, devicePixelRatio },
+      boundaryIndex
+    ) {
+      const page = await browser.newPage();
+      const offset = 8;
+      await page.setViewport({
+        width: Math.ceil(viewport.width * scale) + offset * 2,
+        height: Math.ceil(viewport.height * scale) + offset * 2,
+        deviceScaleFactor: devicePixelRatio,
+        isMobile: viewport.previewViewport === "mobile",
+      });
+      await page.setContent(
+        `<meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          html,body{margin:0;background:#f6f2fb}
+          #clip{position:absolute;left:${offset}px;top:${offset}px;width:${Math.ceil(
+            viewport.width * scale
+          )}px;height:${Math.ceil(
+            viewport.height * scale
+          )}px;overflow:hidden}
+          #logical{width:${viewport.width}px;height:${
+            viewport.height
+          }px;zoom:${scale}}
+          #preview{display:block;width:${viewport.width}px;height:${
+            viewport.height
+          }px;border:0}
+        </style>
+        <div id="clip"><div id="logical"><iframe id="preview"></iframe></div></div>`,
+        { waitUntil: "domcontentloaded" }
+      );
+
+      let srcDoc = buildPreviewFrameSrcDoc(html, {
+        previewViewport: viewport.previewViewport,
+        layoutMode: "parity",
+      });
+      srcDoc = srcDoc.replace(
+        /<\/head>/i,
+        `<style>
+          html[data-preview-raster-scale="scaled"] .sec-bg-image{
+            left:var(--bg-image-left,0px);
+            top:var(--bg-image-top,0px);
+            transform:none;
+            will-change:auto;
+          }
+          html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="soft"] .sec-bg-image,
+          html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="dynamic"] .sec-bg-image{
+            translate:0 var(--bg-parallax-y,0px);
+            will-change:translate;
+          }
+        </style></head>`
+      );
+
+      await page.$eval("#preview", (iframe, value) => {
+        iframe.srcdoc = value;
+      }, srcDoc);
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#preview")?.contentDocument?.querySelectorAll(
+            ".sec"
+          ).length > 1
+      );
+      const frame = await (await page.$("#preview")).contentFrame();
+      await settleInvitation(frame);
+      await frame.evaluate(() => {
+        document.documentElement?.setAttribute(
+          "data-preview-raster-scale",
+          "scaled"
+        );
+        document.body?.setAttribute("data-preview-raster-scale", "scaled");
+        return new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+      });
+      const snapshot = await frame.evaluate(
+        collectMobileGeometrySnapshotFromDocument
+      );
+      const boundaryBottom = Number(
+        snapshot.sections?.[boundaryIndex]?.rect?.bottom || 0
+      );
+      const maxScroll = await frame.evaluate(
+        () =>
+          Math.max(
+            0,
+            Number(document.documentElement.scrollHeight || 0) -
+              Number(window.innerHeight || 0)
+          )
+      );
+      const requestedScroll = Math.max(
+        0,
+        Math.min(maxScroll, boundaryBottom - viewport.height / 2)
+      );
+      await frame.evaluate((top) => window.scrollTo(0, top), requestedScroll);
+      const scrollTop = await frame.evaluate(() => window.scrollY || 0);
+      const maxChannel = await readJunctionMaxChannel({
+        page,
+        boundaryY: boundaryBottom - scrollTop,
+        viewportWidth: viewport.width,
+        scale,
+        devicePixelRatio,
+        offset,
+      });
+      await page.close();
+      return { maxChannel, snapshot };
+    }
+
+    for (const fixture of junctionCases) {
+      await t.test(fixture.id, async () => {
+        const prepared = await prepareRenderPayload({
+          secciones: fixture.sections,
+          objetos: [],
+        });
+        const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+          slug: `${fixture.id}-preview`,
+          isPreview: true,
+        });
+        const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+          slug: `${fixture.id}-publish`,
+        });
+
+        for (const viewport of viewports) {
+          const publishByDpr = new Map();
+          for (const devicePixelRatio of [1, 2]) {
+            publishByDpr.set(
+              devicePixelRatio,
+              await capturePublish(
+                publishHtml,
+                viewport,
+                devicePixelRatio,
+                fixture.boundaryIndex
+              )
+            );
+          }
+
+          for (const scaleCase of scaleCases) {
+            const preview = await capturePreview(
+              previewHtml,
+              viewport,
+              scaleCase,
+              fixture.boundaryIndex
+            );
+            const publish = publishByDpr.get(scaleCase.devicePixelRatio);
+            assert.deepEqual(
+              diffMobileGeometrySnapshots(
+                preview.snapshot,
+                publish.snapshot
+              ),
+              [],
+              `${fixture.id} ${viewport.id} scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}`
+            );
+            const allowedMax = Math.max(
+              Number(fixture.expectedMaxChannel || 0) + 6,
+              Number(publish.maxChannel || 0) + 4
+            );
+            assert.ok(
+              preview.maxChannel <= allowedMax,
+              `${fixture.id} ${viewport.id} scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}: junction max ${preview.maxChannel}, allowed ${allowedMax}`
+            );
+          }
+        }
+      });
+    }
+  }
+);
+
 test(
   "opt-in browser capture compares generated mobile preview and publish geometry",
   {
@@ -167,10 +570,6 @@ test(
     const {
       previewPublishVisualBaselineFixtures,
     } = await import("./previewPublishVisualBaselineFixtures.mjs");
-    const {
-      buildPreviewFrameSrcDoc,
-    } = await import("../src/components/preview/previewFrameRuntime.js");
-
     const storageMock = installFirebaseStorageMock({
       defaultBucketName: PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
       files: {

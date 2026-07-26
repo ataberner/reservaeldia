@@ -6,6 +6,14 @@ const modalSource = readFileSync(
   new URL("../ModalVistaPrevia.jsx", import.meta.url),
   "utf8"
 );
+const loadingPresentationSource = readFileSync(
+  new URL("./PreviewLoadingPresentation.jsx", import.meta.url),
+  "utf8"
+);
+const invitationLoaderPresentationSource = readFileSync(
+  new URL("../../../shared/invitationLoaderPresentation.cjs", import.meta.url),
+  "utf8"
+);
 
 test("mobile preview keeps the loaded iframe mounted after HTML becomes available", () => {
   assert.doesNotMatch(modalSource, /\biframeKey\b/);
@@ -39,6 +47,35 @@ test("preview modal and mockups keep one stable heart loader around a single fin
   assert.match(modalSource, /!frameReady \? \(\s*<PreviewLoadingPresentation/);
 });
 
+test("the shared fixed heart loader is contained by its preview frame from the first loading render", () => {
+  assert.match(
+    invitationLoaderPresentationSource,
+    /\.inv-loader\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/
+  );
+  assert.match(
+    loadingPresentationSource,
+    /className=\{`absolute inset-0 z-10 overflow-hidden/
+  );
+  assert.match(
+    loadingPresentationSource,
+    /style=\{\{\s*contain:\s*"layout paint"\s*\}\}/
+  );
+  assert.match(
+    loadingPresentationSource,
+    /data-preview-loading-authority="frame"/
+  );
+  assert.doesNotMatch(loadingPresentationSource, /transform:\s*["'`]scale/);
+});
+
+test("scaled preview mockups use layout zoom without changing the logical viewport", () => {
+  assert.match(modalSource, /zoom: scale/);
+  assert.doesNotMatch(modalSource, /transform: `scale\(\$\{scale\}\)`/);
+  assert.doesNotMatch(
+    modalSource,
+    /marginTop:\s*-\d|translateY\(-|outline:\s*["'`]\d|borderBottom/
+  );
+});
+
 test("only mobile-preview-focused requests body scroll authority", () => {
   const bodyAuthorityMatches = modalSource.match(
     /scrollAuthority=\{PREVIEW_FRAME_SCROLL_AUTHORITIES\.BODY\}/g
@@ -52,4 +89,20 @@ test("only mobile-preview-focused requests body scroll authority", () => {
   assert.doesNotMatch(modalSource, /Copiar logs/);
   assert.doesNotMatch(modalSource, /previewScrollAB/);
   assert.doesNotMatch(modalSource, /setIframeKey/);
+});
+
+test("preview shell leaves gestures to the iframe and cleans lifecycle observers and RAF", () => {
+  assert.doesNotMatch(
+    modalSource,
+    /addEventListener\(\s*["'](?:wheel|scroll|touchmove|pointermove)["']/
+  );
+  assert.doesNotMatch(
+    modalSource,
+    /(?:scrollTop\s*=|scrollTo\(|scrollBy\()/
+  );
+  assert.match(modalSource, /readinessCleanupRef\.current\?\.\(\)/);
+  assert.match(modalSource, /timingCleanupRef\.current\?\.\(\)/);
+  assert.match(modalSource, /observer\.disconnect\(\)/);
+  assert.match(modalSource, /window\.cancelAnimationFrame\(frameId\)/);
+  assert.match(modalSource, /window\.removeEventListener\("resize", onResize\)/);
 });

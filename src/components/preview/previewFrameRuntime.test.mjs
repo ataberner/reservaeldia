@@ -35,10 +35,21 @@ function createStyleRecorder() {
 }
 
 function createElementStub() {
+  let scrollTop = 0;
+  let scrollTopWrites = 0;
   return {
     attributes: {},
-    scrollTop: 0,
     style: createStyleRecorder(),
+    get scrollTop() {
+      return scrollTop;
+    },
+    set scrollTop(value) {
+      scrollTop = value;
+      scrollTopWrites += 1;
+    },
+    get scrollTopWrites() {
+      return scrollTopWrites;
+    },
     setAttribute(name, value) {
       this.attributes[name] = String(value);
     },
@@ -51,10 +62,14 @@ function createFrameStub() {
   const body = createElementStub();
   const frameWindow = {
     events: [],
+    listenerRegistrations: [],
     Event: class {
       constructor(type) {
         this.type = type;
       }
+    },
+    addEventListener(type, listener, options) {
+      this.listenerRegistrations.push({ type, listener, options });
     },
     dispatchEvent(event) {
       this.events.push(event.type);
@@ -334,6 +349,10 @@ test("parity preview frame scale keeps the mobile iframe document scrollable", (
   applyPreviewFrameScale(stub.event, 0.5, "mobile", { layoutMode: "parity" });
 
   assert.equal(stub.frameDocument.documentElement.attributes["data-preview-scale"], "0.5");
+  assert.equal(
+    stub.frameDocument.documentElement.attributes["data-preview-raster-scale"],
+    "scaled"
+  );
   assert.equal(stub.frameDocument.documentElement.attributes["data-preview-viewport"], "mobile");
   assert.equal(stub.frameDocument.documentElement.attributes["data-preview-layout-mode"], "parity");
   assert.equal(stub.frameDocument.documentElement.style.height, "auto");
@@ -347,7 +366,87 @@ test("parity preview frame scale keeps the mobile iframe document scrollable", (
     /html\[data-preview-viewport="mobile"\]\[data-preview-layout-mode="parity"\]/
   );
   assert.match(stub.children[0].textContent, /overflow-y: visible !important/);
+  assert.match(
+    stub.children[0].textContent,
+    /html\[data-preview-raster-scale="scaled"\] \.sec-bg-image/
+  );
+  assert.match(
+    stub.children[0].textContent,
+    /left: var\(--bg-image-left, 0px\);[\s\S]*top: var\(--bg-image-top, 0px\);[\s\S]*transform: none;[\s\S]*will-change: auto;/
+  );
+  assert.match(
+    stub.children[0].textContent,
+    /\.sec\[data-decor-parallax="soft"\] \.sec-bg-image,[\s\S]*\.sec\[data-decor-parallax="dynamic"\] \.sec-bg-image[\s\S]*translate: 0 var\(--bg-parallax-y, 0px\);[\s\S]*will-change: translate;/
+  );
+  assert.doesNotMatch(
+    stub.children[0].textContent,
+    /top: calc\(var\(--bg-image-top, 0px\) \+ var\(--bg-parallax-y, 0px\)\)/
+  );
   assert.deepEqual(stub.frameWindow.events, ["preview:mobile-scroll:enable", "resize"]);
+});
+
+test("native-scale preview leaves generated image transforms authoritative", () => {
+  const stub = createFrameStub();
+
+  applyPreviewFrameScale(stub.event, 1, "desktop", { layoutMode: "parity" });
+
+  assert.equal(
+    stub.frameDocument.documentElement.attributes["data-preview-raster-scale"],
+    "native"
+  );
+  assert.doesNotMatch(
+    stub.children[0].textContent,
+    /html\[data-preview-raster-scale="native"\] \.sec-bg-image/
+  );
+});
+
+test("preview scale preserves native scroll positions without gesture listeners or duplicate style nodes", () => {
+  const desktop = createFrameStub();
+  desktop.frameDocument.documentElement.scrollTop = 42;
+  desktop.frameDocument.body.scrollTop = 7;
+  const desktopDocumentWrites =
+    desktop.frameDocument.documentElement.scrollTopWrites;
+  const desktopBodyWrites = desktop.frameDocument.body.scrollTopWrites;
+
+  applyPreviewFrameScale(desktop.event, 0.5, "desktop", {
+    layoutMode: "parity",
+  });
+  applyPreviewFrameScale(desktop.event, 0.75, "desktop", {
+    layoutMode: "parity",
+  });
+
+  assert.equal(desktop.frameDocument.documentElement.scrollTop, 42);
+  assert.equal(desktop.frameDocument.body.scrollTop, 7);
+  assert.equal(
+    desktop.frameDocument.documentElement.scrollTopWrites,
+    desktopDocumentWrites
+  );
+  assert.equal(desktop.frameDocument.body.scrollTopWrites, desktopBodyWrites);
+  assert.deepEqual(desktop.frameWindow.listenerRegistrations, []);
+  assert.equal(desktop.children.length, 1);
+
+  const mobile = createFrameStub();
+  mobile.frameDocument.documentElement.scrollTop = 0;
+  mobile.frameDocument.body.scrollTop = 36;
+  const mobileDocumentWrites =
+    mobile.frameDocument.documentElement.scrollTopWrites;
+  const mobileBodyWrites = mobile.frameDocument.body.scrollTopWrites;
+
+  applyPreviewFrameScale(mobile.event, 0.5, "mobile", {
+    layoutMode: "parity",
+    previewSurface: "mobile-preview-focused",
+    scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
+  });
+
+  assert.equal(mobile.frameDocument.documentElement.scrollTop, 0);
+  assert.equal(mobile.frameDocument.body.scrollTop, 36);
+  assert.equal(
+    mobile.frameDocument.documentElement.scrollTopWrites,
+    mobileDocumentWrites
+  );
+  assert.equal(mobile.frameDocument.body.scrollTopWrites, mobileBodyWrites);
+  assert.deepEqual(mobile.frameWindow.listenerRegistrations, []);
+  assert.equal(mobile.children.length, 1);
 });
 
 test("body authority is applied only to the focused parity mobile surface", () => {

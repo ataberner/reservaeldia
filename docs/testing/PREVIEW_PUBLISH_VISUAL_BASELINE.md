@@ -98,7 +98,7 @@ The following differences are accepted in the current baseline and must not be t
 
 - preview modal chrome and dashboard shell are not parity targets
 - embedded preview scroll or stabilization mechanics are not parity targets by themselves
-- minor rounding or scale-precision variance is acceptable when the invitation structure does not change
+- minor rounding or scale-precision variance is acceptable when the invitation structure does not change and no uncovered row appears between contiguous sections
 - current warning-only drift remains accepted where explicitly present in a baseline case
 - warning vocabulary that may remain acceptable where applicable is:
   `pantalla-ynorm-missing`, `pantalla-ynorm-drift`, `fullbleed-editor-drift`
@@ -131,6 +131,42 @@ Treat any of the following as a regression unless a new product or architecture 
 - changed group-child offsets relative to the group wrapper
 - changed fullbleed/content lane separation in fixed sections
 - changed `decoracionesBorde` rendering into object/smart-layout nodes, or changed top/bottom viewport-width anchoring, intrinsic-clamp sizing budget, or offset behavior
+
+## Scaled Preview Section-Junction Baseline
+
+The modal-shell scaler has a focused visual baseline in
+`shared/previewPublishMobileGeometryParity.test.mjs`. It is separate from the
+invitation-render cases above because it validates the scaled iframe container,
+not a different preview or publish payload.
+
+The frozen reference includes the real section sequence from
+`Noir · Elegante oscura` (`nueva-invitacion-en-blanco-1774704789526`), including
+its consecutive `#2f3c62` fixed sections, plus synthetic consecutive dark,
+light-to-dark, and image-background junctions. The capture runs at logical
+desktop `1280x820` and mobile `390x844` viewports, multiple modal scales, and
+device-pixel ratios `1` and `2`.
+
+Required assertions:
+
+- preview and publish geometry snapshots stay equal within the existing
+  tolerance
+- the scaled preview junction never exposes a channel value brighter than the
+  matching published junction (apart from the small capture tolerance)
+- scaled modal wrappers use layout `zoom`, not `transform: scale(...)`, and must
+  not introduce background, border, outline, shadow, overlap, or negative-margin
+  corrections
+- at non-native scale, background-image placement uses the same generated
+  position/parallax variables through `left`/`top` and avoids a second
+  transformed image layer; native scale retains the generated transform
+- the generated preview and publish documents are measured before shell scaling
+  and remain geometrically equivalent
+- published HTML remains byte-shape compatible because the correction is owned
+  by the preview shell (`ModalVistaPrevia`, `TemplatePreviewModal`, and
+  `previewFrameRuntime`), not the invitation generator
+
+Run the browser-backed junction capture with:
+
+`PREVIEW_PUBLISH_MOBILE_GEOMETRY=1 node --test --test-name-pattern="scaled iframe capture" shared/previewPublishMobileGeometryParity.test.mjs`
 
 ## Notes
 

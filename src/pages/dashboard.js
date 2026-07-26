@@ -107,6 +107,7 @@ export default function Dashboard() {
   const {
     mostrarVistaPrevia,
     htmlVistaPrevia,
+    previewTimingSessionId,
     urlPublicaVistaPrevia,
     slugPublicoVistaPrevia,
     publicacionVistaPreviaError,
@@ -509,6 +510,13 @@ export default function Dashboard() {
         visible={mostrarVistaPrevia}
         onClose={closePreview}
         htmlContent={htmlVistaPrevia}
+        previewTimingSessionId={previewTimingSessionId}
+        previewTimingType={
+          editorSession?.kind === "template"
+            ? "template-visual"
+            : "draft-authoritative"
+        }
+        previewTimingTarget={slugInvitacion}
         publicUrl={urlPublicaVistaPrevia}
         previewDisplayUrl={previewDisplayUrl}
         onPublish={publicarDesdeVistaPrevia}

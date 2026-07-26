@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-07-22.
+> Updated from code inspection on 2026-07-26.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -49,15 +49,20 @@ preparation and `countdown-frame-unresolved` validation are unchanged.
 
 The draft preview path is:
 
-1. The dashboard starts a guarded preview session.
+1. The dashboard starts a guarded preview session and opens the modal in its loading state.
 2. `ensureDraftFlushBeforeCriticalAction("preview-before-open")` waits for inline editing to settle and forces persistence flush.
 3. The pipeline re-reads `borradores/{slug}` mainly to keep metadata and publication-link compatibility state current.
 4. If publish compatibility is enabled, the pipeline resolves the public slug/URL used for preview display and `slugPreview`.
 5. The pipeline calls `prepareDraftPreviewRender({ draftSlug, slugPreview })`.
 6. The backend reads the owned draft, builds `prepareRenderPayload(...)`, validates it with `validatePreparedRenderPayload(...)`, and generates preview HTML through `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })` only when validation allows it.
-7. The result is classified as `previewAuthority: "draft-authoritative"`.
+7. The result is classified as `previewAuthority: "draft-authoritative"` and the final HTML is committed to the active guarded session.
 
 The live editor snapshot still exists as a compatibility aid inside the local preview pipeline, but backend-prepared draft HTML is generated from the backend-owned draft read after the critical flush. Draft preview authority comes from the backend prepared payload, not from the frontend snapshot overlay.
+
+Repeated open actions while the same session is still preparing share one
+in-flight operation. Closing the modal invalidates that session; a late result
+may finish at the transport level but cannot commit HTML or loading state into
+a later opening.
 
 ## 3. Template And Fallback Preview
 
@@ -107,6 +112,21 @@ Gallery preview/publish viewer behavior is governed by [`GALLERY_VIEWER_RENDER_C
 The modal does not request separate HTML for desktop and mobile. It uses the same HTML and changes the iframe viewport, wrapper scale, and preview metadata.
 
 Each visible preview surface mounts its iframe once when the HTML becomes available. Opening the modal, receiving that HTML, measuring the shell, or entering fullscreen must not schedule a post-commit `key` change that replaces the already loaded iframe document. A real `srcDoc` change remains the document-navigation authority; closing or switching to a different preview surface unmounts it normally.
+
+Loading presentation has one shell authority per visible mockup:
+
+- the modal shows the canonical heart presentation immediately, including while the critical flush and backend preparation are pending
+- no provisional loading document is assigned to iframe `srcDoc`
+- the final iframe mounts only after final generated HTML exists, so receiving that HTML does not replace a provisional iframe document
+- the shell keeps the final iframe non-focusable and hidden from accessibility APIs until generated runtime readiness
+- generated HTML retains its normal invitation loader and publish-compatible runtime unchanged
+- the shell observes the generated `invitation-loader-hidden` event, with DOM-state fallback, and removes the stable outer presentation only after the final invitation has completed its loader exit
+- HTML without the generated loader protocol becomes ready on iframe `load`
+
+The generated loader remains part of the generated invitation contract. Inside
+the modal it is a readiness producer rather than a second visible loading
+authority. This prevents the old sequence of provisional iframe load, `srcDoc`
+replacement, blank navigation commit, and generated loader restart.
 
 Before iframe scripts run, `buildPreviewFrameSrcDoc(...)` injects:
 
@@ -246,6 +266,46 @@ Use these references for parity work:
 - `shared/previewPublishMobileGeometryParity.test.mjs`
 - `functions/renderContractCompatibility.test.mjs`
 - `functions/publicationPublishValidation.test.mjs`
+
+Focused loading/session coverage:
+
+- `src/components/preview/modalVistaPreviaLifecycle.test.mjs`
+- `src/components/preview/previewFrameRuntime.test.mjs`
+- `src/hooks/useDashboardPreviewController.controller.test.mjs`
+- `src/domain/dashboard/previewPipeline.test.mjs`
+- `src/domain/dashboard/previewTiming.test.mjs`
+
+Append `previewTiming=1` to the dashboard URL to start one diagnostic session
+per modal opening. Every browser record uses
+`[PREVIEW:TIMING][session=<opaque-id>]`, `performance.now()`, the preview type,
+target, source, viewport, and surface. The session records:
+
+- click/open, inline-edit settlement, FIFO persistence flush
+- persisted source read and publication-link resolution
+- `prepareDraftPreviewRender` start/end and frontend callable round trip
+- backend-owned draft read, `prepareRenderPayload`,
+  `validatePreparedRenderPayload`, preview-payload construction,
+  `generateHtmlFromPreparedRenderPayload`, response cloning/assembly, and total
+  backend duration
+- the calculated difference between the frontend round trip and backend total,
+  labeled as network/callable/serialization transport
+- frontend HTML receipt, `buildPreviewFrameSrcDoc`, definitive React commit,
+  each visible iframe mount and `load`
+- iframe bootstrap, `DOMContentLoaded`, critical fonts, the first critical
+  image resource when Resource Timing exposes it, window resources, invitation
+  runtime readiness, `invitation-loader-hidden` emission/reception, external
+  loader commit, and interactive visibility
+
+Desktop and mobile mockups share the preparation/backend rows and have separate
+iframe/runtime rows. The final `console.table` is emitted only after every
+currently visible mockup is ready. Closing, changing controller context, error,
+validation blocking, or a stale response finalizes the session with a
+non-success status; late events are ignored. Marks, measures, listeners, and
+temporary session collections are cleaned at completion. Diagnostic metadata
+is injected only into preview `srcDoc`; generated/published HTML and the normal
+callable response remain unchanged while the flag is absent. The
+instrumentation does not bypass validation, change waits, or select a different
+renderer.
 
 ## 11. 2026-04-30 Centered Title Reflow Fix
 

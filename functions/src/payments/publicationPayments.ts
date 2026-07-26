@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { performance } from "node:perf_hooks";
 import type { Request, Response } from "express";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
@@ -1560,35 +1561,119 @@ export async function validateDraftForPublicationHandler(
 }
 
 export async function prepareDraftPreviewRenderHandler(
-  request: CallableRequest<{ draftSlug: string; slugPreview?: string }>
+  request: CallableRequest<{
+    draftSlug: string;
+    slugPreview?: string;
+    previewTiming?: {
+      sessionId?: string;
+    };
+  }>
 ) {
-  const uid = requireAuth(request);
-  const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
-  const draft = await ensureDraftOwnership(uid, draftSlug);
-  const draftData = draft.data as Record<string, unknown>;
-  const prepared = await prepareRenderPayload(draftData);
-  const validation = validatePreparedRenderPayload(prepared);
-  const previewPayload = buildPreviewRenderPayloadFromPreparedPayload(prepared);
-  const slugPreview =
-    normalizePublicSlug(request.data?.slugPreview) ||
-    normalizePublicSlug(draftData.slugPublico) ||
-    draftSlug;
-  const htmlGenerado = validation.canPublish
-    ? generateHtmlFromPreparedRenderPayload(prepared, {
-        slug: slugPreview,
-        isPreview: true,
-      })
-    : null;
+  const previewTimingSessionId = getString(
+    request.data?.previewTiming?.sessionId
+  )
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .slice(0, 96);
+  const includeTiming = Boolean(previewTimingSessionId);
+  const readNow = () => performance.now();
+  const roundTimingMs = (value: number) =>
+    Math.round(Math.max(0, value) * 10) / 10;
+  const requestStartedAt = includeTiming ? readNow() : 0;
+  let draftSlugForLog = "";
 
-  return {
-    draftSlug,
-    slugPreview,
-    previewAuthority: DRAFT_AUTHORITATIVE_PREVIEW_AUTHORITY,
-    htmlGenerado,
-    previewPayload: cloneFirestoreSafe(previewPayload),
-    validation: cloneFirestoreSafe(validation),
-    blocked: !validation.canPublish,
-  };
+  try {
+    const uid = requireAuth(request);
+    const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
+    draftSlugForLog = draftSlug;
+    const draft = await ensureDraftOwnership(uid, draftSlug);
+    const draftReadCompletedAt = includeTiming ? readNow() : 0;
+    const draftData = draft.data as Record<string, unknown>;
+    const prepared = await prepareRenderPayload(draftData);
+    const preparationCompletedAt = includeTiming ? readNow() : 0;
+    const validation = validatePreparedRenderPayload(prepared);
+    const validationCompletedAt = includeTiming ? readNow() : 0;
+    const previewPayload = buildPreviewRenderPayloadFromPreparedPayload(prepared);
+    const previewPayloadCompletedAt = includeTiming ? readNow() : 0;
+    const slugPreview =
+      normalizePublicSlug(request.data?.slugPreview) ||
+      normalizePublicSlug(draftData.slugPublico) ||
+      draftSlug;
+    const htmlGenerationStartedAt = includeTiming ? readNow() : 0;
+    const htmlGenerado = validation.canPublish
+      ? generateHtmlFromPreparedRenderPayload(prepared, {
+          slug: slugPreview,
+          isPreview: true,
+        })
+      : null;
+    const htmlGenerationCompletedAt = includeTiming ? readNow() : 0;
+    const safePreviewPayload = cloneFirestoreSafe(previewPayload);
+    const safeValidation = cloneFirestoreSafe(validation);
+    const responsePayload = {
+      draftSlug,
+      slugPreview,
+      previewAuthority: DRAFT_AUTHORITATIVE_PREVIEW_AUTHORITY,
+      htmlGenerado,
+      previewPayload: safePreviewPayload,
+      validation: safeValidation,
+      blocked: !validation.canPublish,
+    };
+    const requestCompletedAt = includeTiming ? readNow() : 0;
+    const previewTiming = includeTiming
+      ? {
+          sessionId: previewTimingSessionId,
+          readDraftMs: roundTimingMs(
+            draftReadCompletedAt - requestStartedAt
+          ),
+          prepareRenderPayloadMs: roundTimingMs(
+            preparationCompletedAt - draftReadCompletedAt
+          ),
+          validatePreparedRenderPayloadMs: roundTimingMs(
+            validationCompletedAt - preparationCompletedAt
+          ),
+          buildPreviewPayloadMs: roundTimingMs(
+            previewPayloadCompletedAt - validationCompletedAt
+          ),
+          generateHtmlMs: roundTimingMs(
+            htmlGenerationCompletedAt - htmlGenerationStartedAt
+          ),
+          serializeMs: roundTimingMs(
+            requestCompletedAt - htmlGenerationCompletedAt
+          ),
+          totalBackendMs: roundTimingMs(
+            requestCompletedAt - requestStartedAt
+          ),
+        }
+      : null;
+
+    if (previewTiming) {
+      logger.info("[PREVIEW:TIMING] prepareDraftPreviewRender", {
+        previewType: "draft-authoritative",
+        draftSlug,
+        ...previewTiming,
+        htmlBytes: String(htmlGenerado || "").length,
+        blocked: !validation.canPublish,
+      });
+    }
+
+    return {
+      ...responsePayload,
+      ...(previewTiming ? { previewTiming } : {}),
+    };
+  } catch (error) {
+    if (includeTiming) {
+      logger.warn("[PREVIEW:TIMING] prepareDraftPreviewRender error", {
+        sessionId: previewTimingSessionId,
+        previewType: "draft-authoritative",
+        draftSlug: draftSlugForLog || null,
+        totalBackendMs: roundTimingMs(readNow() - requestStartedAt),
+        errorCode:
+          error && typeof error === "object" && "code" in error
+            ? String(error.code || "")
+            : "unknown",
+      });
+    }
+    throw error;
+  }
 }
 
 export async function upsertPublicationDiscountCodeHandler(

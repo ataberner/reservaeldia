@@ -7,20 +7,20 @@ const modalSource = readFileSync(
   "utf8"
 );
 
-test("template preview keeps one iframe-mounted loading presentation", () => {
+test("template preview keeps one stable loading authority and mounts only final html", () => {
   assert.doesNotMatch(modalSource, /Cargando vista previa/);
-  assert.match(
-    modalSource,
-    /buildInvitationLoaderLoadingDocumentHTML\(\)/
-  );
+  assert.doesNotMatch(modalSource, /TEMPLATE_PREVIEW_LOADING_DOCUMENT/);
   assert.match(
     modalSource,
     /previewRuntime\.shouldShowLoadingState \|\| shouldShowGeneratedPreview/
   );
   assert.match(
     modalSource,
-    /shouldShowGeneratedPreview\s*\? previewHtml\s*: TEMPLATE_PREVIEW_LOADING_DOCUMENT/
+    /srcDoc=\{shouldShowGeneratedPreview \? previewHtml : null\}/
   );
+  assert.match(modalSource, /observePreviewFrameReadiness\(/);
+  assert.match(modalSource, /!frameReady \? <PreviewLoadingPresentation \/> : null/);
+  assert.match(modalSource, /\{sourceIdentity \? \(\s*<iframe/);
   assert.equal(
     (modalSource.match(/<TemplatePreviewViewport\b/g) || []).length,
     1

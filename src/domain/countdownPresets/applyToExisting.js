@@ -1,4 +1,5 @@
 import { resolveCountdownTargetIso } from "../../../shared/renderContractPolicy.js";
+import { resolveCountdownEffectiveGeometry } from "./effectiveGeometry.js";
 
 export const COUNTDOWN_PRESET_STYLE_KEYS = Object.freeze([
   "fontFamily",
@@ -56,9 +57,61 @@ function preserveFiniteDimension(nextValue, currentValue) {
   return currentValue;
 }
 
+function toFinite(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function resolveCountdownRootY(countdown, pantallaHeight) {
+  const safePantallaHeight = Number(pantallaHeight);
+  const yNorm = Number(countdown?.yNorm);
+  if (
+    Number.isFinite(safePantallaHeight) &&
+    safePantallaHeight > 0 &&
+    Number.isFinite(yNorm)
+  ) {
+    return yNorm * safePantallaHeight;
+  }
+  return toFinite(countdown?.y, 0);
+}
+
+function resolveTransformedCenterOffset(countdown, bounds) {
+  const localCenterX = bounds.x + bounds.width / 2;
+  const localCenterY = bounds.y + bounds.height / 2;
+  const scaleX = toFinite(countdown?.scaleX, 1) || 1;
+  const scaleY = toFinite(countdown?.scaleY, 1) || 1;
+  const radians = (toFinite(countdown?.rotation, 0) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const scaledCenterX = localCenterX * scaleX;
+  const scaledCenterY = localCenterY * scaleY;
+
+  return {
+    x: scaledCenterX * cos - scaledCenterY * sin,
+    y: scaledCenterX * sin + scaledCenterY * cos,
+  };
+}
+
+export function resolveCountdownVisualCenter(
+  countdown,
+  { pantallaHeight = null } = {}
+) {
+  const geometry = resolveCountdownEffectiveGeometry(countdown);
+  const offset = resolveTransformedCenterOffset(
+    countdown,
+    geometry.effectiveBounds
+  );
+
+  return {
+    x: toFinite(countdown?.x, 0) + offset.x,
+    y: resolveCountdownRootY(countdown, pantallaHeight) + offset.y,
+  };
+}
+
 export function applyCountdownPresetToExisting(
   currentCountdown,
-  preparedCountdown
+  preparedCountdown,
+  { pantallaHeight = null } = {}
 ) {
   if (
     !currentCountdown ||
@@ -73,8 +126,7 @@ export function applyCountdownPresetToExisting(
   const preparedTarget = resolveCountdownTargetIso(preparedCountdown);
   const preservedTarget = currentTarget.targetISO || preparedTarget.targetISO;
   const stylePatch = buildCountdownPresetStylePatch(preparedCountdown);
-
-  return {
+  const nextCountdown = {
     ...currentCountdown,
     ...stylePatch,
     width: preserveFiniteDimension(
@@ -95,5 +147,45 @@ export function applyCountdownPresetToExisting(
     seccionId: currentCountdown.seccionId,
     x: currentCountdown.x,
     y: currentCountdown.y,
+  };
+  const isPresetApplication =
+    String(preparedCountdown.presetId || "").trim().length > 0;
+  if (!isPresetApplication) return nextCountdown;
+
+  const currentCenter = resolveCountdownVisualCenter(currentCountdown, {
+    pantallaHeight,
+  });
+  const nextGeometry = resolveCountdownEffectiveGeometry(nextCountdown);
+  const nextWithRealDimensions = {
+    ...nextCountdown,
+    width: nextGeometry.width,
+    height: nextGeometry.height,
+  };
+  const nextOffset = resolveTransformedCenterOffset(
+    nextWithRealDimensions,
+    nextGeometry.effectiveBounds
+  );
+  const nextRootX = currentCenter.x - nextOffset.x;
+  const nextRootY = currentCenter.y - nextOffset.y;
+  const currentRootY = resolveCountdownRootY(
+    currentCountdown,
+    pantallaHeight
+  );
+  const rootDeltaY = nextRootY - currentRootY;
+  const safePantallaHeight = Number(pantallaHeight);
+  const usesNormalizedY =
+    Number.isFinite(safePantallaHeight) &&
+    safePantallaHeight > 0 &&
+    Number.isFinite(Number(currentCountdown.yNorm));
+
+  return {
+    ...nextWithRealDimensions,
+    x: nextRootX,
+    y: Number.isFinite(Number(currentCountdown.y))
+      ? Number(currentCountdown.y) + rootDeltaY
+      : currentCountdown.y,
+    ...(usesNormalizedY
+      ? { yNorm: nextRootY / safePantallaHeight }
+      : { y: nextRootY }),
   };
 }

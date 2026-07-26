@@ -100,6 +100,7 @@ function compactPendingSequence(snapshots) {
 function createControllerHarness({
   options = DEFAULT_TEST_OPTIONS,
   dependencyOverrides = {},
+  runtimeOverrides = {},
 } = {}) {
   let previewState = createPublicationPreviewState();
   const previewStateRef = {
@@ -109,6 +110,7 @@ function createControllerHarness({
   const controller = createDashboardPreviewControllerRuntime({
     ...options,
     dependencyOverrides,
+    ...runtimeOverrides,
     previewStateRef,
     setPreviewState: (updater) => {
       previewState =
@@ -128,7 +130,7 @@ function createControllerHarness({
   };
 }
 
-test("preview open success keeps the preview visible before html generation settles and then patches the resolved preview state", async () => {
+test("preview open success shows one loading session before flush settles and then patches the resolved preview state", async () => {
   const previewPipeline = createDeferred();
   const showAlertCalls = [];
   const inlineBoundaryCalls = [];
@@ -166,6 +168,8 @@ test("preview open success keeps the preview visible before html generation sett
   });
 
   const previewPromise = harness.controller.generarVistaPrevia();
+  assert.equal(harness.getState().mostrarVistaPrevia, true);
+  assert.equal(harness.getState().htmlVistaPrevia, null);
   await flushMicrotasks();
 
   assert.deepEqual(inlineBoundaryCalls, [
@@ -258,6 +262,45 @@ test("preview open failure on flush keeps the preview closed and preserves the c
   assert.deepEqual(showAlertCalls, []);
 });
 
+test("preview generation error clears the loading session and a retry can commit fresh html", async () => {
+  let previewPipelineCalls = 0;
+  const showAlertCalls = [];
+  const harness = createControllerHarness({
+    dependencyOverrides: createTestDependencies({
+      runPreviewPipeline: async () => {
+        previewPipelineCalls += 1;
+        if (previewPipelineCalls === 1) {
+          throw new Error("preview-network-failure");
+        }
+        return {
+          status: "success",
+          htmlGenerado: "<html>preview-retry</html>",
+          urlPublicaDetectada: "",
+          slugPublicoDetectado: "",
+          publicacionNoVigenteDetectada: false,
+        };
+      },
+      showAlert: (message) => {
+        showAlertCalls.push(message);
+      },
+    }),
+  });
+
+  await harness.controller.generarVistaPrevia();
+  assert.equal(harness.getState().mostrarVistaPrevia, false);
+  assert.equal(harness.getState().htmlVistaPrevia, null);
+
+  await harness.controller.generarVistaPrevia();
+
+  assert.equal(previewPipelineCalls, 2);
+  assert.deepEqual(showAlertCalls, ["No se pudo generar la vista previa"]);
+  assert.equal(harness.getState().mostrarVistaPrevia, true);
+  assert.equal(
+    harness.getState().htmlVistaPrevia,
+    "<html>preview-retry</html>"
+  );
+});
+
 test("preview open with prepared-render blockers closes the preview and stores validation", async () => {
   const validation = {
     canPublish: false,
@@ -346,6 +389,87 @@ test("inline boundary failure stops preview before flush and preserves the contr
   );
 });
 
+test("duplicate preview-open attempts survive controller runtime recreation without a second pipeline", async () => {
+  const previewPipeline = createDeferred();
+  const previewOpenInFlightRef = { current: null };
+  let flushCalls = 0;
+  let previewPipelineCalls = 0;
+  const dependencyOverrides = createTestDependencies({
+    runCriticalActionFlush: async () => {
+      flushCalls += 1;
+      return { ok: true };
+    },
+    runPreviewPipeline: async () => {
+      previewPipelineCalls += 1;
+      return previewPipeline.promise;
+    },
+  });
+  const harness = createControllerHarness({
+    dependencyOverrides,
+    runtimeOverrides: {
+      previewOpenInFlightRef,
+    },
+  });
+  const recreatedHarness = createControllerHarness({
+    dependencyOverrides,
+    runtimeOverrides: {
+      previewOpenInFlightRef,
+    },
+  });
+
+  const firstAttempt = harness.controller.generarVistaPrevia();
+  const duplicateAttempt = recreatedHarness.controller.generarVistaPrevia();
+  assert.equal(duplicateAttempt, firstAttempt);
+  await flushMicrotasks();
+
+  assert.equal(flushCalls, 1);
+  assert.equal(previewPipelineCalls, 1);
+
+  previewPipeline.resolve({
+    status: "success",
+    htmlGenerado: "<html>preview-deduped</html>",
+    urlPublicaDetectada: "",
+    slugPublicoDetectado: "",
+    publicacionNoVigenteDetectada: false,
+  });
+  await firstAttempt;
+});
+
+test("duplicate preview-open attempts in one runtime share the active promise", async () => {
+  const previewPipeline = createDeferred();
+  let flushCalls = 0;
+  let previewPipelineCalls = 0;
+  const harness = createControllerHarness({
+    dependencyOverrides: createTestDependencies({
+      runCriticalActionFlush: async () => {
+        flushCalls += 1;
+        return { ok: true };
+      },
+      runPreviewPipeline: async () => {
+        previewPipelineCalls += 1;
+        return previewPipeline.promise;
+      },
+    }),
+  });
+
+  const firstAttempt = harness.controller.generarVistaPrevia();
+  const duplicateAttempt = harness.controller.generarVistaPrevia();
+  assert.equal(duplicateAttempt, firstAttempt);
+  await flushMicrotasks();
+
+  assert.equal(flushCalls, 1);
+  assert.equal(previewPipelineCalls, 1);
+
+  previewPipeline.resolve({
+    status: "success",
+    htmlGenerado: "<html>preview-deduped</html>",
+    urlPublicaDetectada: "",
+    slugPublicoDetectado: "",
+    publicacionNoVigenteDetectada: false,
+  });
+  await firstAttempt;
+});
+
 test("stale preview completions cannot overwrite a newer preview-open session", async () => {
   const firstPreview = createDeferred();
   const secondPreview = createDeferred();
@@ -361,6 +485,7 @@ test("stale preview completions cannot overwrite a newer preview-open session", 
 
   const firstPreviewPromise = harness.controller.generarVistaPrevia();
   await flushMicrotasks();
+  harness.controller.closePreview();
   const secondPreviewPromise = harness.controller.generarVistaPrevia();
   await flushMicrotasks();
 

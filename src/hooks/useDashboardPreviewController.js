@@ -31,6 +31,12 @@ import {
   runDashboardPreviewPipeline,
 } from "../domain/dashboard/previewPipeline.js";
 import {
+  cancelPreviewTimingSession,
+  finishPreviewTimingSession,
+  recordPreviewTimingStage,
+  startPreviewTimingSession,
+} from "../domain/dashboard/previewTiming.js";
+import {
   resolveDashboardPreviewPublishAction,
   runDashboardPreviewPublishValidation,
   scheduleDashboardPreviewPublishedAuditCapture,
@@ -52,12 +58,20 @@ const EMPTY_PREVIEW_CONTROLLER_SESSION = Object.freeze({
   isOpen: false,
 });
 const STALE_PREVIEW_SESSION_ERROR_CODE = "dashboard-preview-session-stale";
+const EMPTY_DASHBOARD_PREVIEW_DEPENDENCY_OVERRIDES = Object.freeze({});
 const INLINE_CRITICAL_BOUNDARY_MAX_WAIT_MS = 120;
 const INLINE_CRITICAL_BOUNDARY_ERROR_MESSAGE =
   "No se pudo cerrar la edicion de texto en curso. Intenta nuevamente.";
 
 function normalizeText(value) {
   return String(value || "").trim();
+}
+
+function readPreviewPerformanceNow() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return 0;
 }
 
 function createStalePreviewSessionError() {
@@ -94,6 +108,93 @@ function isDashboardPreviewDebugEnabled() {
 
 function isPreparedDraftPreviewEnabled() {
   return process.env.NEXT_PUBLIC_PREPARED_DRAFT_PREVIEW !== "0";
+}
+
+const PREVIEW_PIPELINE_TIMING_LABELS = Object.freeze({
+  "source-read-start": "Inicio lectura del borrador",
+  "source-read": "Lectura del borrador",
+  "publication-link-read-start": "Inicio resolucion publicacion",
+  "publication-link-read": "Resolucion estado publicacion",
+  "prepared-render-request-start": "Inicio prepareDraftPreviewRender",
+  "prepared-render-request": "prepareDraftPreviewRender",
+  "html-received": "HTML recibido en frontend",
+  "html-generation": "Generacion HTML local",
+  "pipeline-total": "Pipeline de vista previa",
+});
+
+function recordBackendTimingBreakdown(
+  previewTimingContext,
+  backendTiming,
+  frontendRoundTripMs
+) {
+  if (!previewTimingContext?.sessionId || !backendTiming) return;
+
+  const stages = [
+    [
+      "backend-read-draft",
+      "Backend: lectura del borrador",
+      backendTiming.readDraftMs,
+    ],
+    [
+      "backend-prepare-render-payload",
+      "Backend: prepareRenderPayload",
+      backendTiming.prepareRenderPayloadMs,
+    ],
+    [
+      "backend-validate-render-payload",
+      "Backend: validatePreparedRenderPayload",
+      backendTiming.validatePreparedRenderPayloadMs,
+    ],
+    [
+      "backend-build-preview-payload",
+      "Backend: armado payload preview",
+      backendTiming.buildPreviewPayloadMs,
+    ],
+    [
+      "backend-generate-html",
+      "Backend: generateHtmlFromPreparedRenderPayload",
+      backendTiming.generateHtmlMs,
+    ],
+    [
+      "backend-serialize-response",
+      "Backend: serializacion/armado respuesta",
+      backendTiming.serializeMs,
+    ],
+  ];
+  let backendAccumulatedMs = 0;
+
+  stages.forEach(([stage, label, duration]) => {
+    const safeDuration = Math.max(0, Number(duration) || 0);
+    backendAccumulatedMs += safeDuration;
+    recordPreviewTimingStage(previewTimingContext.sessionId, {
+      stage,
+      label,
+      durationMs: safeDuration,
+      source: "backend",
+      backendAccumulatedMs,
+      recordKey: stage,
+    });
+  });
+
+  const totalBackendMs = Math.max(
+    0,
+    Number(backendTiming.totalBackendMs) || backendAccumulatedMs
+  );
+  recordPreviewTimingStage(previewTimingContext.sessionId, {
+    stage: "backend-total",
+    label: "Backend: total interno",
+    durationMs: totalBackendMs,
+    source: "backend",
+    backendAccumulatedMs: totalBackendMs,
+    recordKey: "backend-total",
+  });
+  recordPreviewTimingStage(previewTimingContext.sessionId, {
+    stage: "network-serialization-transport",
+    label: "Red, callable y transporte",
+    durationMs: Math.max(0, Number(frontendRoundTripMs) - totalBackendMs),
+    source: "network",
+    recordKey: "network-serialization-transport",
+  });
 }
 
 async function runDashboardPreviewControllerCriticalActionFlush({
@@ -169,9 +270,34 @@ async function runDashboardPreviewControllerPreviewPipeline({
   isTemplateSession = false,
   canUsePublishCompatibility = false,
   previewBoundarySnapshot = null,
+  previewTimingContext = null,
   assertCurrentSession,
 } = {}) {
   const previewDebug = isDashboardPreviewDebugEnabled();
+  const previewTimingSessionId = normalizeText(
+    previewTimingContext?.sessionId
+  );
+  const previewTiming = Boolean(previewTimingSessionId);
+  const recordPipelineStage = (timing) => {
+    if (!previewTiming || !timing) return;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: timing.stage,
+      label:
+        PREVIEW_PIPELINE_TIMING_LABELS[timing.stage] ||
+        timing.stage,
+      durationMs: timing.durationMs,
+      source: "preview-pipeline",
+      htmlBytes: timing.htmlBytes,
+      status: timing.status,
+      recordKey: `pipeline:${timing.stage}`,
+      detail: {
+        ...(timing.source ? { dataSource: timing.source } : {}),
+        ...(timing.found !== undefined ? { found: timing.found } : {}),
+        ...(timing.matched !== undefined ? { matched: timing.matched } : {}),
+        ...(timing.blocked !== undefined ? { blocked: timing.blocked } : {}),
+      },
+    });
+  };
   const useBackendPreparedDraftPreview =
     !isTemplateSession &&
     canUsePublishCompatibility &&
@@ -232,12 +358,59 @@ async function runDashboardPreviewControllerPreviewPipeline({
     },
     prepareDraftPreviewRender: useBackendPreparedDraftPreview
       ? async ({ draftSlug, slugPreview }) => {
+          const serviceModuleStartedAt = readPreviewPerformanceNow();
           const { prepareDraftPreviewRender } =
             await loadPublicationsServiceModule();
-          return prepareDraftPreviewRender({
+          recordPreviewTimingStage(previewTimingSessionId, {
+            stage: "publication-service-module-load",
+            label: "Carga modulo de publicacion",
+            startedAt: serviceModuleStartedAt,
+            source: "frontend",
+            recordKey: "publication-service-module-load",
+          });
+
+          const backendCallStartedAt = readPreviewPerformanceNow();
+          recordPreviewTimingStage(previewTimingSessionId, {
+            stage: "backend-call-start",
+            label: "Inicio llamada al backend",
+            durationMs: 0,
+            completedAt: backendCallStartedAt,
+            source: "network",
+            recordKey: "backend-call-start",
+          });
+          const result = await prepareDraftPreviewRender({
             draftSlug,
             slugPreview,
+            previewTimingSessionId,
           });
+          const backendCallCompletedAt = readPreviewPerformanceNow();
+          const frontendRoundTripMs = Math.max(
+            0,
+            backendCallCompletedAt - backendCallStartedAt
+          );
+          recordPreviewTimingStage(previewTimingSessionId, {
+            stage: "backend-call-roundtrip",
+            label: "Llamada de red al backend",
+            durationMs: frontendRoundTripMs,
+            completedAt: backendCallCompletedAt,
+            source: "network",
+            recordKey: "backend-call-roundtrip",
+          });
+          recordBackendTimingBreakdown(
+            previewTimingContext,
+            result?.previewTiming,
+            frontendRoundTripMs
+          );
+          recordPreviewTimingStage(previewTimingSessionId, {
+            stage: "html-received",
+            label: PREVIEW_PIPELINE_TIMING_LABELS["html-received"],
+            durationMs: 0,
+            completedAt: backendCallCompletedAt,
+            source: "frontend",
+            htmlBytes: String(result?.htmlGenerado || "").length,
+            recordKey: "html-received",
+          });
+          return result;
         }
       : null,
     onBeforeGenerateHtml: ({ previewPayload }) => {
@@ -270,6 +443,7 @@ async function runDashboardPreviewControllerPreviewPipeline({
         console.warn("[PREVIEW] no se pudo armar resumen de objetos", error);
       }
     },
+    onStageTiming: previewTiming ? recordPipelineStage : null,
     assertCurrentSession,
   });
 }
@@ -307,7 +481,9 @@ function showDashboardPreviewControllerAlert(message) {
   alert(message);
 }
 
-function buildDashboardPreviewControllerDependencies(dependencyOverrides = {}) {
+function buildDashboardPreviewControllerDependencies(
+  dependencyOverrides = EMPTY_DASHBOARD_PREVIEW_DEPENDENCY_OVERRIDES
+) {
   const safeOverrides =
     dependencyOverrides && typeof dependencyOverrides === "object"
       ? dependencyOverrides
@@ -450,6 +626,7 @@ export function createDashboardPreviewControllerRuntime({
   currentPreviewContextRef,
   previewSessionSequenceRef,
   activePreviewSessionRef,
+  previewOpenInFlightRef,
   previewStateRef,
   setPreviewState,
 } = {}) {
@@ -492,6 +669,10 @@ export function createDashboardPreviewControllerRuntime({
     activePreviewSessionRef && typeof activePreviewSessionRef === "object"
       ? activePreviewSessionRef
       : { current: EMPTY_PREVIEW_CONTROLLER_SESSION };
+  const resolvedPreviewOpenInFlightRef =
+    previewOpenInFlightRef && typeof previewOpenInFlightRef === "object"
+      ? previewOpenInFlightRef
+      : { current: null };
   const resolvedPreviewStateRef =
     previewStateRef && typeof previewStateRef === "object"
       ? previewStateRef
@@ -542,8 +723,21 @@ export function createDashboardPreviewControllerRuntime({
     return commitPreviewState(previewSession, createPublicationPreviewState());
   };
 
-  const ensureDraftFlushBeforeCriticalAction = async (reason) => {
+  const ensureDraftFlushBeforeCriticalAction = async (
+    reason,
+    { previewTimingSessionId = "" } = {}
+  ) => {
     const safeSlug = sanitizeDraftSlug(slugInvitacion);
+    const inlineBoundaryStartedAt = previewTimingSessionId
+      ? readPreviewPerformanceNow()
+      : 0;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "inline-edit-settle-start",
+      label: "Inicio cierre edicion inline",
+      durationMs: 0,
+      source: "editor",
+      recordKey: "inline-edit-settle-start",
+    });
     pushEditorBreadcrumb("critical-action-inline-boundary-start", {
       slug: safeSlug || null,
       reason,
@@ -556,6 +750,15 @@ export function createDashboardPreviewControllerRuntime({
       editorSession,
       reason,
       maxWaitMs: INLINE_CRITICAL_BOUNDARY_MAX_WAIT_MS,
+    });
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "inline-edit-settled",
+      label: "Edicion inline cerrada",
+      startedAt: inlineBoundaryStartedAt,
+      source: "editor",
+      status: inlineBoundaryResult?.ok ? "ok" : "error",
+      reason: inlineBoundaryResult?.reason || "",
+      recordKey: "inline-edit-settled",
     });
 
     pushEditorBreadcrumb(
@@ -600,11 +803,34 @@ export function createDashboardPreviewControllerRuntime({
       sessionKind: editorSession?.kind || null,
     });
 
+    const flushStartedAt = previewTimingSessionId
+      ? readPreviewPerformanceNow()
+      : 0;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "draft-fifo-flush-start",
+      label: "Inicio flush FIFO del borrador",
+      durationMs: 0,
+      source: "editor-persistence",
+      recordKey: "draft-fifo-flush-start",
+    });
     const result = await runCriticalActionFlush({
       slugInvitacion: safeSlug,
       modoEditor,
       editorSession,
       reason,
+    });
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "draft-fifo-flush",
+      label: "Flush FIFO del borrador",
+      startedAt: flushStartedAt,
+      source: "editor-persistence",
+      status: result?.ok ? "ok" : "error",
+      reason: result?.reason || "",
+      recordKey: "draft-fifo-flush",
+      detail: {
+        transport: result?.transport || null,
+        skipped: result?.skipped === true,
+      },
     });
 
     pushEditorBreadcrumb(
@@ -678,20 +904,54 @@ export function createDashboardPreviewControllerRuntime({
     }
   };
 
-  const generarVistaPrevia = async () => {
+  const executePreviewOpen = async () => {
     const previewSession = beginPreviewSession();
+    const timingSessionId = startPreviewTimingSession({
+      previewType: resolvedPreviewCompatibilityState.isTemplateSession
+        ? "template-visual"
+        : "draft-authoritative",
+      targetId: previewSession.targetId,
+      attempt: resolvedPreviewSessionSequenceRef.current,
+    });
+    previewSession.previewTimingSessionId = timingSessionId;
+    resolvedActivePreviewSessionRef.current.previewTimingSessionId =
+      timingSessionId;
     const assertCurrentPreviewSession = () => {
       if (!isCurrentPreviewSession(previewSession)) {
         throw createStalePreviewSessionError();
       }
     };
 
+    if (
+      !commitPreviewState(previewSession, {
+        ...buildDashboardPreviewOpenedState(),
+        previewTimingSessionId: timingSessionId || null,
+      })
+    ) {
+      cancelPreviewTimingSession(timingSessionId, {
+        reason: "open-state-rejected",
+        status: "discarded",
+        label: "Resultado descartado",
+      });
+      return;
+    }
+
     try {
       const flushResult = await ensureDraftFlushBeforeCriticalAction(
-        "preview-before-open"
+        "preview-before-open",
+        {
+          previewTimingSessionId: timingSessionId,
+        }
       );
 
-      if (!isCurrentPreviewSession(previewSession)) return;
+      if (!isCurrentPreviewSession(previewSession)) {
+        cancelPreviewTimingSession(timingSessionId, {
+          reason: "stale-after-flush",
+          status: "discarded",
+          label: "Resultado obsoleto descartado",
+        });
+        return;
+      }
 
       if (!flushResult.ok) {
         commitPreviewState(previewSession, (prev) => ({
@@ -700,12 +960,11 @@ export function createDashboardPreviewControllerRuntime({
             errorMessage: flushResult.error,
           }),
         }));
-        return;
-      }
-
-      if (
-        !commitPreviewState(previewSession, buildDashboardPreviewOpenedState())
-      ) {
+        finishPreviewTimingSession(timingSessionId, {
+          reason: flushResult.reason || "flush-failed",
+          status: "error",
+          label: "Vista previa interrumpida",
+        });
         return;
       }
 
@@ -721,20 +980,44 @@ export function createDashboardPreviewControllerRuntime({
         canUsePublishCompatibility:
           resolvedPreviewCompatibilityState.canUsePublishCompatibility,
         previewBoundarySnapshot,
+        previewTimingContext: {
+          sessionId: timingSessionId,
+          previewType: resolvedPreviewCompatibilityState.isTemplateSession
+            ? "template-visual"
+            : "draft-authoritative",
+          targetId: previewSession.targetId,
+        },
         assertCurrentSession: assertCurrentPreviewSession,
       });
 
-      if (!isCurrentPreviewSession(previewSession)) return;
+      if (!isCurrentPreviewSession(previewSession)) {
+        cancelPreviewTimingSession(timingSessionId, {
+          reason: "stale-after-pipeline",
+          status: "discarded",
+          label: "Resultado obsoleto descartado",
+        });
+        return;
+      }
 
       if (previewResult.status === "missing-template") {
         showAlert("No se encontro la plantilla.");
         resetPreviewState(previewSession);
+        finishPreviewTimingSession(timingSessionId, {
+          reason: "missing-template",
+          status: "error",
+          label: "Vista previa interrumpida",
+        });
         return;
       }
 
       if (previewResult.status === "missing-draft") {
         showAlert("No se encontro el borrador");
         resetPreviewState(previewSession);
+        finishPreviewTimingSession(timingSessionId, {
+          reason: "missing-draft",
+          status: "error",
+          label: "Vista previa interrumpida",
+        });
         return;
       }
 
@@ -758,9 +1041,17 @@ export function createDashboardPreviewControllerRuntime({
           }),
           ...buildDashboardPreviewPublishValidationSettledStatePatch(),
         }));
+        finishPreviewTimingSession(timingSessionId, {
+          reason: "backend-validation-blocked",
+          status: "blocked",
+          label: "Vista previa bloqueada",
+        });
         return;
       }
 
+      const reactDispatchStartedAt = timingSessionId
+        ? readPreviewPerformanceNow()
+        : 0;
       if (
         !commitPreviewState(previewSession, (prev) => ({
           ...prev,
@@ -785,8 +1076,21 @@ export function createDashboardPreviewControllerRuntime({
             : {}),
         }))
       ) {
+        cancelPreviewTimingSession(timingSessionId, {
+          reason: "html-commit-rejected",
+          status: "discarded",
+          label: "Resultado obsoleto descartado",
+        });
         return;
       }
+      recordPreviewTimingStage(timingSessionId, {
+        stage: "react-html-state-dispatched",
+        label: "HTML definitivo enviado a React",
+        startedAt: reactDispatchStartedAt,
+        source: "react",
+        htmlBytes: String(previewResult.htmlGenerado || "").length,
+        recordKey: "react-html-state-dispatched",
+      });
 
       if (
         resolvedPreviewCompatibilityState.shouldRefreshPublishValidationAfterPreview &&
@@ -800,13 +1104,58 @@ export function createDashboardPreviewControllerRuntime({
         });
       }
     } catch (error) {
-      if (isStalePreviewSessionError(error)) return;
-      if (!isCurrentPreviewSession(previewSession)) return;
+      if (isStalePreviewSessionError(error)) {
+        cancelPreviewTimingSession(timingSessionId, {
+          reason: "stale-session-error",
+          status: "discarded",
+          label: "Resultado obsoleto descartado",
+        });
+        return;
+      }
+      if (!isCurrentPreviewSession(previewSession)) {
+        cancelPreviewTimingSession(timingSessionId, {
+          reason: "inactive-session-error",
+          status: "discarded",
+          label: "Resultado obsoleto descartado",
+        });
+        return;
+      }
 
-      console.error("Error generando vista previa:", error);
+      console.error("Error al generar la vista previa:", error);
       showAlert("No se pudo generar la vista previa");
       resetPreviewState(previewSession);
+      finishPreviewTimingSession(timingSessionId, {
+        reason: error?.code || error?.message || "preview-error",
+        status: "error",
+        label: "Error de vista previa",
+      });
     }
+  };
+
+  const generarVistaPrevia = () => {
+    if (resolvedPreviewOpenInFlightRef.current) {
+      recordPreviewTimingStage(
+        resolvedActivePreviewSessionRef.current?.previewTimingSessionId,
+        {
+          stage: "duplicate-open-reused",
+          label: "Apertura duplicada reutilizada",
+          source: "frontend",
+          status: "deduplicated",
+          recordKey: "duplicate-open-reused",
+        }
+      );
+      return resolvedPreviewOpenInFlightRef.current;
+    }
+
+    const currentPromise = executePreviewOpen();
+    resolvedPreviewOpenInFlightRef.current = currentPromise;
+    const clearCurrentPromise = () => {
+      if (resolvedPreviewOpenInFlightRef.current === currentPromise) {
+        resolvedPreviewOpenInFlightRef.current = null;
+      }
+    };
+    void currentPromise.then(clearCurrentPromise, clearCurrentPromise);
+    return currentPromise;
   };
 
   const publicarDesdeVistaPrevia = async () => {
@@ -895,6 +1244,15 @@ export function createDashboardPreviewControllerRuntime({
   };
 
   const closePreview = () => {
+    cancelPreviewTimingSession(
+      resolvedActivePreviewSessionRef.current?.previewTimingSessionId,
+      {
+        reason: "modal-closed",
+        status: "cancelled",
+        label: "Vista previa cerrada",
+      }
+    );
+    resolvedPreviewOpenInFlightRef.current = null;
     clearPreviewSession();
     setPreviewState(buildDashboardPreviewCloseState());
   };
@@ -923,7 +1281,7 @@ export function useDashboardPreviewControllerWithDependencies(
     modoEditor,
     editorSession,
   } = {},
-  dependencyOverrides = {}
+  dependencyOverrides = EMPTY_DASHBOARD_PREVIEW_DEPENDENCY_OVERRIDES
 ) {
   const controllerDependencies = useMemo(
     () => buildDashboardPreviewControllerDependencies(dependencyOverrides),
@@ -936,6 +1294,7 @@ export function useDashboardPreviewControllerWithDependencies(
   const previewStateRef = useRef(previewState);
   const previewSessionSequenceRef = useRef(0);
   const activePreviewSessionRef = useRef(EMPTY_PREVIEW_CONTROLLER_SESSION);
+  const previewOpenInFlightRef = useRef(null);
   const currentPreviewContext = useMemo(
     () =>
       buildDashboardPreviewControllerContext({
@@ -960,6 +1319,24 @@ export function useDashboardPreviewControllerWithDependencies(
     previewStateRef.current = previewState;
   }, [previewState]);
 
+  useEffect(
+    () => () => {
+      cancelPreviewTimingSession(
+        activePreviewSessionRef.current?.previewTimingSessionId,
+        {
+          reason: "preview-controller-context-disposed",
+          status: "cancelled",
+          label: "Sesion de vista previa descartada",
+        }
+      );
+    },
+    [
+      currentPreviewContext.sessionId,
+      currentPreviewContext.sessionKind,
+      currentPreviewContext.targetId,
+    ]
+  );
+
   const controllerRuntime = useMemo(
     () =>
       createDashboardPreviewControllerRuntime({
@@ -971,6 +1348,7 @@ export function useDashboardPreviewControllerWithDependencies(
         currentPreviewContextRef,
         previewSessionSequenceRef,
         activePreviewSessionRef,
+        previewOpenInFlightRef,
         previewStateRef,
         setPreviewState,
       }),

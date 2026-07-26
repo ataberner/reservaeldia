@@ -210,6 +210,8 @@ test("draft preview pipeline rereads persisted data, prefers the boundary snapsh
 test("draft preview pipeline uses backend prepared render output when the preview callable is provided", async () => {
   let prepareCall = null;
   let debugPayload = null;
+  let liveSnapshotReads = 0;
+  const stageTimings = [];
 
   const validation = {
     canPublish: true,
@@ -238,6 +240,13 @@ test("draft preview pipeline uses backend prepared render output when the previe
         objetos: [{ id: "persisted-local-only", seccionId: "hero", tipo: "texto" }],
         secciones: [{ id: "hero" }],
       }),
+    readLiveEditorSnapshot: () => {
+      liveSnapshotReads += 1;
+      return {
+        objetos: [{ id: "unused-live-object" }],
+        secciones: [{ id: "unused-live-section" }],
+      };
+    },
     readPublicationBySlug: async (publicSlug) =>
       createSnapshotRecord(publicSlug, {
         urlPublica: "https://reservaeldia.com.ar/i/backend-slug",
@@ -252,6 +261,16 @@ test("draft preview pipeline uses backend prepared render output when the previe
           secciones: [{ id: "hero" }],
         },
         validation,
+        previewTiming: {
+          sessionId: "session-backend-1",
+          readDraftMs: 12,
+          prepareRenderPayloadMs: 34,
+          validatePreparedRenderPayloadMs: 5,
+          buildPreviewPayloadMs: 2,
+          generateHtmlMs: 20,
+          serializeMs: 3,
+          totalBackendMs: 76,
+        },
       };
     },
     generateHtmlFromSections: async () => {
@@ -259,6 +278,9 @@ test("draft preview pipeline uses backend prepared render output when the previe
     },
     onBeforeGenerateHtml: ({ previewPayload }) => {
       debugPayload = previewPayload;
+    },
+    onStageTiming: (timing) => {
+      stageTimings.push(timing);
     },
   });
 
@@ -275,6 +297,28 @@ test("draft preview pipeline uses backend prepared render output when the previe
   });
   assert.equal(debugPayload.objetos[0].id, "prepared-object");
   assert.equal(previewResult.previewPayload.objetos[0].id, "prepared-object");
+  assert.equal(liveSnapshotReads, 0);
+  assert.equal(
+    stageTimings.some(
+      (timing) => timing.stage === "prepared-render-request-start"
+    ),
+    true
+  );
+  assert.deepEqual(
+    stageTimings.find(
+      (timing) => timing.stage === "prepared-render-request"
+    )?.backend,
+    {
+      sessionId: "session-backend-1",
+      readDraftMs: 12,
+      prepareRenderPayloadMs: 34,
+      validatePreparedRenderPayloadMs: 5,
+      buildPreviewPayloadMs: 2,
+      generateHtmlMs: 20,
+      serializeMs: 3,
+      totalBackendMs: 76,
+    }
+  );
 });
 
 test("draft preview pipeline blocks trusted preview html when backend prepared validation has blockers", async () => {
@@ -903,4 +947,42 @@ test("preview debug summary keeps the current section aggregation format", () =>
       `hero | total=2 | tipos=texto:2\n` +
       `details | total=1 | tipos=imagen:1`
   );
+});
+
+test("preview pipeline exposes bounded stage timing without changing its result", async () => {
+  let clockMs = 0;
+  const timings = [];
+  const result = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-preview-timing",
+    readNow: () => {
+      clockMs += 5;
+      return clockMs;
+    },
+    onStageTiming: (timing) => {
+      timings.push(timing);
+    },
+    readDraftDocument: async () =>
+      createSnapshotRecord("draft-preview-timing", {
+        objetos: [],
+        secciones: [{ id: "hero", orden: 0 }],
+      }),
+    generateHtmlFromSections: async () => "<html>timed-preview</html>",
+  });
+
+  assert.equal(result.status, "success");
+  assert.deepEqual(
+    timings.map((timing) => timing.stage),
+    [
+      "source-read-start",
+      "source-read",
+      "html-generation",
+      "pipeline-total",
+    ]
+  );
+  timings.forEach((timing) => {
+    assert.equal(Number.isFinite(timing.durationMs), true);
+    assert.equal(Number.isFinite(timing.elapsedMs), true);
+    assert.equal(timing.durationMs >= 0, true);
+    assert.equal(timing.elapsedMs >= timing.durationMs, true);
+  });
 });

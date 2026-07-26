@@ -533,6 +533,8 @@ Resultado esperado:
 5. Confirmar que Contador no muestra ni permite editar una segunda `Fecha del evento`.
 6. Revisar presets circulares, cuadrados, verticales, horizontales y compactos, incluido `Aro floral` cuando este disponible.
 7. Repetir el catalogo con sidebar desktop y en anchos mobile de 320 px y 390 px, con movimiento normal y con reduccion de movimiento activa.
+8. Antes de cambiar cada preset, registrar el centro del bounds visual del countdown; repetir entre presets de dimensiones distintas, frame SVG, PNG contenido, sin frame y `frameScale` diferentes.
+9. Repetir la preservacion de centro en una seccion `fijo` y una `pantalla`; luego mover, redimensionar, recargar el borrador y editar visibilidad/fecha sin cambiar el preset.
 
 Resultado esperado:
 
@@ -541,6 +543,8 @@ Resultado esperado:
 - `mostrarCuentaRegresiva` controla la visibilidad sin eliminar el objeto ni alterar su preset, geometria o fecha
 - el valor aplicado a `fechaObjetivo` proviene de Detalles del evento; el tab Contador no mantiene un input ni una fecha editable alternativa
 - cambiar de preset preserva el flujo existente entre los datos del evento y el contador
+- cambiar de preset conserva el centro exacto del bounding visual efectivo aunque cambien dimensiones, escala o frame; en `pantalla`, `yNorm` conserva el mismo centro mobile
+- cargar, mover, redimensionar o editar propiedades distintas del preset no activa ninguna correccion adicional de posicion
 - cada miniatura ocupa al maximo uno de los ejes disponibles, conserva una guarda interna uniforme y permanece centrada, completa y sin deformacion ni recorte
 - la altura del preview se deriva de la proporcion visual del preset dentro del rango comun de 88 px a 288 px; los contadores horizontales usan tarjetas mas bajas y los circulares o verticales disponen de mayor altura
 - los marcos PNG contenidos usan sus dimensiones intrinsecas para excluir del calculo el espacio vacio del viewport interno; `Aro floral` aprovecha sustancialmente el area util

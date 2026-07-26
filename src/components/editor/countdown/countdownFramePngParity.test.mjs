@@ -33,6 +33,17 @@ const insertDefaultsSource = readFileSync(
   new URL("../events/computeInsertDefaults.js", import.meta.url),
   "utf8"
 );
+const effectiveGeometrySource = readFileSync(
+  new URL(
+    "../../../domain/countdownPresets/effectiveGeometry.js",
+    import.meta.url
+  ),
+  "utf8"
+);
+const frameGeometrySource = readFileSync(
+  new URL("../../../../shared/countdownFrameGeometry.cjs", import.meta.url),
+  "utf8"
+);
 const auditSnapshotSource = readFileSync(
   new URL("../../../domain/countdownAudit/layoutSnapshot.js", import.meta.url),
   "utf8"
@@ -92,7 +103,7 @@ test("old refs remain SVG/currentColor and every interactive surface protects PN
   assert.equal(legacyPatch.frameMimeType, "image/svg+xml");
   assert.equal(legacyPatch.frameColorMode, "currentColor");
 
-  assert.match(konvaSource, /resolveContainedCountdownFrameRect/);
+  assert.match(effectiveGeometrySource, /resolveContainedCountdownFrameRect/);
   assert.match(konvaSource, /!isPngFrame/);
   assert.match(previewSource, /isPngFrame \? "object-contain" : "object-fill"/);
   assert.match(livePreviewSource, /isPngFrame \? "object-contain" : "object-fill"/);
@@ -229,7 +240,8 @@ test("builder, canvas, preview, publication and thumbnails share centered frame 
   assert.match(formSectionsSource, /formState\.svgAsset \? \(/);
   assert.match(livePreviewSource, /resolveCountdownFrameVisualBounds/);
   assert.match(livePreviewSource, /transform: `scale\(\$\{frameScale\}\)`/);
-  assert.match(konvaSource, /resolveCenteredScaledFrameRect/);
+  assert.match(konvaSource, /resolveCountdownEffectiveGeometry/);
+  assert.match(frameGeometrySource, /resolveCenteredScaledFrameRect/);
   assert.match(previewSource, /resolveCountdownFrameVisualBounds/);
   assert.match(previewSource, /transform: `scale\(\$\{frameScale\}\)`/);
   assert.match(renderModelSource, /resolveCenteredScaledFrameRect/);
@@ -245,7 +257,9 @@ test("all live and published adapters consume the shared semantic layout contrac
   assert.match(previewSource, /resolveCountdownLayoutMetrics/);
   assert.match(livePreviewSource, /resolveCountdownLayoutMetrics/);
   assert.match(publishSource, /countdownLayoutContract\.cjs/);
-  assert.match(insertDefaultsSource, /resolveCountdownLayoutMetrics/);
+  assert.match(insertDefaultsSource, /resolveCountdownInsertGeometry/);
+  assert.match(effectiveGeometrySource, /resolveCountdownLayoutMetrics/);
+  assert.match(effectiveGeometrySource, /resolveCountdownSelectionGeometry/);
   assert.match(auditSnapshotSource, /resolveCountdownLayoutMetrics/);
   assert.doesNotMatch(auditSnapshotSource, /function normalizeLayoutType/);
   assert.doesNotMatch(livePreviewSource, /slice\(0, 3\)/);
@@ -268,14 +282,15 @@ test("multi-unit frame stays above unit background and separators share number c
 });
 
 test("canvas selection uses visible content plus frame while resize keeps layout metrics", () => {
-  assert.match(konvaSource, /resolveCountdownSelectionGeometry/);
+  assert.match(konvaSource, /resolveCountdownEffectiveGeometry/);
+  assert.match(effectiveGeometrySource, /resolveCountdownSelectionGeometry/);
   assert.match(konvaSource, /name="countdown-layout-metrics"/);
   assert.match(konvaSource, /x=\{interactiveBounds\.x\}/);
   assert.match(konvaSource, /width=\{interactiveBounds\.width\}/);
   assert.match(konvaSource, /countdownSchemaVersion \|\| 1/);
   assert.match(transformerSource, /\.countdown-layout-metrics/);
   assert.match(insertDefaultsSource, /resolveCountdownBoundsXWithinCanvas/);
-  assert.match(insertDefaultsSource, /frameIntrinsicWidth/);
+  assert.match(effectiveGeometrySource, /frameIntrinsicWidth/);
 });
 
 test("applying a preset recalculates stale countdown dimensions instead of preserving an oversized box", () => {

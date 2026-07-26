@@ -6,6 +6,8 @@ import {
   PREVIEW_FRAME_SCROLL_AUTHORITIES,
   applyPreviewFrameScale,
   buildPreviewFrameSrcDoc,
+  observePreviewFrameReadiness,
+  observePreviewFrameTiming,
   resolvePreviewFrameLayoutMode,
 } from "./previewFrameRuntime.js";
 
@@ -107,6 +109,67 @@ test("preview frame srcDoc injects viewport and layout metadata before iframe lo
   assert.match(srcDoc, /<body[^>]*data-preview-layout-mode="parity"/);
 });
 
+test("preview timing metadata and collector are injected only for a diagnostic session", () => {
+  const html =
+    "<!doctype html><html lang=\"es\"><head></head><body><main></main></body></html>";
+  const normalSrcDoc = buildPreviewFrameSrcDoc(html, {
+    previewViewport: "desktop",
+  });
+  const diagnosticSrcDoc = buildPreviewFrameSrcDoc(html, {
+    previewViewport: "desktop",
+    previewTiming: {
+      sessionId: "session-123",
+      surface: "desktop-mockup",
+    },
+  });
+
+  assert.doesNotMatch(normalSrcDoc, /preview-timing-collector/);
+  assert.doesNotMatch(normalSrcDoc, /data-preview-timing-session/);
+  assert.match(
+    diagnosticSrcDoc,
+    /data-preview-timing-session="session-123"/
+  );
+  assert.match(
+    diagnosticSrcDoc,
+    /data-preview-timing-surface="desktop-mockup"/
+  );
+  assert.match(diagnosticSrcDoc, /data-preview-timing-collector="1"/);
+  assert.match(diagnosticSrcDoc, /invitation-loader-hidden/);
+  assert.doesNotMatch(diagnosticSrcDoc, /<main[^>]*session-123/);
+});
+
+test("preview frame timing drains early runtime events and cleans its listener", () => {
+  const frameWindow = new EventTarget();
+  frameWindow.__previewTimingEvents = [
+    {
+      sessionId: "session-early",
+      stage: "iframe-runtime-bootstrap",
+    },
+  ];
+  const iframe = {
+    contentWindow: frameWindow,
+  };
+  const events = [];
+  const cleanup = observePreviewFrameTiming(iframe, (event) => {
+    events.push(event);
+  });
+  const runtimeEvent = new Event("preview-timing-event");
+  Object.defineProperty(runtimeEvent, "detail", {
+    value: {
+      sessionId: "session-early",
+      stage: "critical-fonts-ready",
+    },
+  });
+  frameWindow.dispatchEvent(runtimeEvent);
+  cleanup();
+  frameWindow.dispatchEvent(runtimeEvent);
+
+  assert.deepEqual(
+    events.map((event) => event.stage),
+    ["iframe-runtime-bootstrap", "critical-fonts-ready"]
+  );
+});
+
 test("focused mobile srcDoc installs body authority after generated CSS and adapts root lookup", () => {
   const html =
     '<!doctype html><html><head><style data-runtime="generated">body{overflow-y:auto}</style></head>' +
@@ -162,6 +225,98 @@ test("preview frame srcDoc preserves edge decoration offset CSS variables", () =
   assert.match(srcDoc, /data-preview-viewport="desktop"/);
   assert.match(srcDoc, /--edge-offset-desktop:64px/);
   assert.match(srcDoc, /--edge-offset-mobile:-12px/);
+});
+
+test("preview frame readiness waits for the generated loader to finish exactly once", () => {
+  const frameWindow = new EventTarget();
+  let loaderNode = {};
+  const body = {
+    getAttribute(name) {
+      return name === "data-loader-ready" ? "0" : null;
+    },
+  };
+  const frameDocument = {
+    body,
+    getElementById(id) {
+      return id === "inv-loader" ? loaderNode : null;
+    },
+  };
+  const iframe = {
+    contentDocument: frameDocument,
+    contentWindow: frameWindow,
+  };
+  const readyEvents = [];
+  const cleanup = observePreviewFrameReadiness(iframe, (event) => {
+    readyEvents.push(event);
+  });
+
+  assert.equal(readyEvents.length, 0);
+
+  body.getAttribute = (name) =>
+    name === "data-loader-ready" ? "1" : null;
+  loaderNode = null;
+  frameWindow.dispatchEvent(new Event("invitation-loader-hidden"));
+  frameWindow.dispatchEvent(new Event("invitation-loader-hidden"));
+
+  assert.equal(readyEvents.length, 1);
+  assert.equal(readyEvents[0].reason, "loader-hidden-event");
+  cleanup();
+});
+
+test("preview frame readiness resolves on load when HTML has no loader protocol", () => {
+  const frameDocument = {
+    body: {
+      getAttribute() {
+        return null;
+      },
+    },
+    getElementById() {
+      return null;
+    },
+  };
+  const iframe = {
+    contentDocument: frameDocument,
+    contentWindow: new EventTarget(),
+  };
+  const readyEvents = [];
+
+  observePreviewFrameReadiness(iframe, (event) => {
+    readyEvents.push(event);
+  });
+
+  assert.equal(readyEvents.length, 1);
+  assert.equal(readyEvents[0].reason, "frame-load");
+});
+
+test("preview frame readiness cleanup ignores a late result from an obsolete session", () => {
+  const frameWindow = new EventTarget();
+  let loaderNode = {};
+  let loaderState = "0";
+  const frameDocument = {
+    body: {
+      getAttribute(name) {
+        return name === "data-loader-ready" ? loaderState : null;
+      },
+    },
+    getElementById(id) {
+      return id === "inv-loader" ? loaderNode : null;
+    },
+  };
+  const iframe = {
+    contentDocument: frameDocument,
+    contentWindow: frameWindow,
+  };
+  let readyCalls = 0;
+  const cleanup = observePreviewFrameReadiness(iframe, () => {
+    readyCalls += 1;
+  });
+
+  cleanup();
+  loaderState = "1";
+  loaderNode = null;
+  frameWindow.dispatchEvent(new Event("invitation-loader-hidden"));
+
+  assert.equal(readyCalls, 0);
 });
 
 test("preview frame layout mode defaults to parity with legacy rollback values", () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { resolveTemplatePreviewRuntimeState } from "@/domain/templates/preview";
@@ -14,12 +14,10 @@ import { logTemplateDraftDebug } from "@/domain/templates/draftPersonalizationDe
 import {
   applyPreviewFrameScale,
   buildPreviewFrameSrcDoc,
+  observePreviewFrameReadiness,
   resolvePreviewFrameLayoutMode,
 } from "@/components/preview/previewFrameRuntime";
-
-const {
-  buildInvitationLoaderLoadingDocumentHTML,
-} = require("../../shared/invitationLoaderPresentation.cjs");
+import PreviewLoadingPresentation from "@/components/preview/PreviewLoadingPresentation";
 
 const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
 const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
@@ -29,8 +27,6 @@ const TEMPLATE_PREVIEW_ACTION_PANEL_BOTTOM_GAP = 20;
 const TEMPLATE_PREVIEW_ACTION_PANEL_SCROLL_BUFFER = 24;
 const TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT = 116;
 const TEMPLATE_PREVIEW_SCROLL_SPACER_ID = "template-preview-modal-scroll-spacer";
-const TEMPLATE_PREVIEW_LOADING_DOCUMENT =
-  buildInvitationLoaderLoadingDocumentHTML();
 const SITE_PRIMARY_BUTTON_CLASS =
   "inline-flex h-10 min-w-[132px] items-center justify-center rounded-[33px] border border-transparent bg-gradient-to-r from-[#692B9A] to-[#F39F5F] px-5 text-sm font-semibold text-white shadow-none transition-all duration-200 hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F39F5F]/40 disabled:cursor-not-allowed disabled:opacity-70";
 
@@ -89,8 +85,10 @@ function TemplatePreviewViewport({
   overlayHeight = 0,
 }) {
   const stageRef = useRef(null);
+  const readinessCleanupRef = useRef(null);
   const [stageWidth, setStageWidth] = useState(0);
   const [stageHeight, setStageHeight] = useState(0);
+  const [readySource, setReadySource] = useState(null);
 
   useEffect(() => {
     const node = stageRef.current;
@@ -148,12 +146,28 @@ function TemplatePreviewViewport({
       TEMPLATE_PREVIEW_ACTION_PANEL_SCROLL_BUFFER) /
       scale
   );
-  const resolvedSrcDoc = srcDoc
-    ? buildPreviewFrameSrcDoc(srcDoc, {
-        previewViewport: "",
-        layoutMode: previewLayoutMode,
-      })
-    : srcDoc;
+  const resolvedSrcDoc = useMemo(
+    () =>
+      srcDoc
+        ? buildPreviewFrameSrcDoc(srcDoc, {
+            previewViewport: "",
+            layoutMode: previewLayoutMode,
+          })
+        : srcDoc,
+    [previewLayoutMode, srcDoc]
+  );
+  const sourceIdentity = resolvedSrcDoc || src || "";
+  const frameReady = Boolean(sourceIdentity && readySource === sourceIdentity);
+
+  useEffect(() => {
+    const cleanupCurrentReadiness = () => {
+      readinessCleanupRef.current?.();
+      readinessCleanupRef.current = null;
+    };
+
+    cleanupCurrentReadiness();
+    return cleanupCurrentReadiness;
+  }, [sourceIdentity]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -176,7 +190,8 @@ function TemplatePreviewViewport({
       className="flex h-full w-full items-start justify-center overflow-hidden"
     >
       <div
-        className="overflow-hidden bg-white"
+        className="relative overflow-hidden bg-white"
+        aria-busy={!frameReady ? "true" : undefined}
         style={{ width: scaledWidth, height: scaledHeight }}
       >
         <div
@@ -187,34 +202,50 @@ function TemplatePreviewViewport({
             transformOrigin: "top left",
           }}
         >
-          <iframe
-            ref={iframeRef}
-            src={src}
-            srcDoc={resolvedSrcDoc}
-            sandbox={sandbox}
-            scrolling="yes"
-            title={title}
-            className="block h-full w-full border-0"
-            style={{ WebkitOverflowScrolling: "touch" }}
-            onError={onError}
-            onLoad={(event) => {
-              applyPreviewFrameScale(
-                event,
-                scale,
-                previewViewport,
-                {
-                  layoutMode: previewLayoutMode,
-                  dispatchMobileScrollEvent: false,
-                }
-              );
-              applyTemplatePreviewScrollSpacer(event.currentTarget, bottomScrollInset);
-              onLoad?.({
-                event,
-                scale,
-                previewViewport,
-              });
-            }}
-          />
+          {sourceIdentity ? (
+            <iframe
+              ref={iframeRef}
+              src={src}
+              srcDoc={resolvedSrcDoc}
+              sandbox={sandbox}
+              scrolling="yes"
+              title={title}
+              className="block h-full w-full border-0"
+              aria-hidden={!frameReady ? "true" : undefined}
+              tabIndex={!frameReady ? -1 : undefined}
+              style={{ WebkitOverflowScrolling: "touch" }}
+              onError={onError}
+              onLoad={(event) => {
+                const iframe = event.currentTarget;
+                const loadedDocument = iframe?.contentDocument || null;
+                applyPreviewFrameScale(
+                  event,
+                  scale,
+                  previewViewport,
+                  {
+                    layoutMode: previewLayoutMode,
+                    dispatchMobileScrollEvent: false,
+                  }
+                );
+                applyTemplatePreviewScrollSpacer(iframe, bottomScrollInset);
+                onLoad?.({
+                  event,
+                  scale,
+                  previewViewport,
+                });
+
+                readinessCleanupRef.current?.();
+                readinessCleanupRef.current = observePreviewFrameReadiness(
+                  iframe,
+                  () => {
+                    if (iframe?.contentDocument !== loadedDocument) return;
+                    setReadySource(sourceIdentity);
+                  }
+                );
+              }}
+            />
+          ) : null}
+          {!frameReady ? <PreviewLoadingPresentation /> : null}
         </div>
       </div>
     </div>
@@ -446,11 +477,7 @@ export default function TemplatePreviewModal({
               <div className="absolute inset-0 bg-white">
                 {shouldShowPreviewFrame ? (
                   <TemplatePreviewViewport
-                    srcDoc={
-                      shouldShowGeneratedPreview
-                        ? previewHtml
-                        : TEMPLATE_PREVIEW_LOADING_DOCUMENT
-                    }
+                    srcDoc={shouldShowGeneratedPreview ? previewHtml : null}
                     sandbox="allow-scripts allow-same-origin"
                     title={`Vista previa de ${title}`}
                     iframeRef={previewFrameRef}

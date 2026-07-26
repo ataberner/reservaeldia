@@ -53,6 +53,14 @@ function assertCurrentSession(assertCurrentSessionCallback) {
   assertCurrentSessionCallback();
 }
 
+function resolveTimingNow(readNow) {
+  if (typeof readNow === "function") return readNow;
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return () => performance.now();
+  }
+  return () => 0;
+}
+
 export function buildDashboardPreviewDebugSummary({
   previewPayload,
   viewportWidth,
@@ -123,12 +131,36 @@ export async function runDashboardPreviewPipeline({
   generateHtmlFromSections,
   prepareDraftPreviewRender,
   onBeforeGenerateHtml,
+  onStageTiming,
+  readNow,
   assertCurrentSession: assertCurrentSessionCallback,
 } = {}) {
   let data = null;
+  const timingEnabled = typeof onStageTiming === "function";
+  const now = resolveTimingNow(readNow);
+  const pipelineStartedAt = timingEnabled ? now() : 0;
+  const emitStageTiming = (stage, startedAt, detail = {}) => {
+    if (!timingEnabled) return;
+    const completedAt = now();
+    onStageTiming({
+      stage,
+      durationMs: Math.max(0, completedAt - startedAt),
+      elapsedMs: Math.max(0, completedAt - pipelineStartedAt),
+      ...detail,
+    });
+  };
   const localPreviewAuthority = isTemplateSession
     ? PREVIEW_AUTHORITY.TEMPLATE_VISUAL
     : PREVIEW_AUTHORITY.LOCAL_FALLBACK;
+  const usePreparedDraftPreview =
+    !isTemplateSession &&
+    canUsePublishCompatibility &&
+    typeof prepareDraftPreviewRender === "function";
+  const sourceReadStartedAt = timingEnabled ? now() : 0;
+  emitStageTiming("source-read-start", sourceReadStartedAt, {
+    durationMs: 0,
+    source: isTemplateSession ? "template" : "draft",
+  });
 
   if (isTemplateSession) {
     const result =
@@ -140,6 +172,10 @@ export async function runDashboardPreviewPipeline({
     assertCurrentSession(assertCurrentSessionCallback);
 
     data = resolveTemplateEditorDocument(result);
+    emitStageTiming("source-read", sourceReadStartedAt, {
+      source: "template",
+      found: Boolean(data),
+    });
     if (!data) {
       return {
         status: "missing-template",
@@ -156,6 +192,10 @@ export async function runDashboardPreviewPipeline({
     assertCurrentSession(assertCurrentSessionCallback);
 
     data = resolveDraftDocumentData(result);
+    emitStageTiming("source-read", sourceReadStartedAt, {
+      source: "draft",
+      found: Boolean(data),
+    });
     if (!data) {
       return {
         status: "missing-draft",
@@ -164,18 +204,25 @@ export async function runDashboardPreviewPipeline({
     }
   }
 
-  const liveEditorSnapshot =
-    previewBoundarySnapshot ||
-    (typeof readLiveEditorSnapshot === "function"
-      ? readLiveEditorSnapshot()
-      : null);
-  const previewSourceData = overlayLiveEditorSnapshot(data, liveEditorSnapshot);
+  const previewSourceData = usePreparedDraftPreview
+    ? data
+    : overlayLiveEditorSnapshot(
+        data,
+        previewBoundarySnapshot ||
+          (typeof readLiveEditorSnapshot === "function"
+            ? readLiveEditorSnapshot()
+            : null)
+      );
 
   let urlPublicaDetectada = "";
   let slugPublicoDetectado = "";
   let publicacionNoVigenteDetectada = false;
 
   if (canUsePublishCompatibility) {
+    const publicationReadStartedAt = timingEnabled ? now() : 0;
+    emitStageTiming("publication-link-read-start", publicationReadStartedAt, {
+      durationMs: 0,
+    });
     const publicationRead = await resolvePublicationLinkForDraftRead({
       draftSlug: slugInvitacion,
       draftData: previewSourceData,
@@ -195,23 +242,31 @@ export async function runDashboardPreviewPipeline({
     slugPublicoDetectado = normalizeText(publicationRead?.publicSlug);
     urlPublicaDetectada = normalizeText(publicationRead?.publicUrl);
     publicacionNoVigenteDetectada = publicationRead?.matchedInactive === true;
+    emitStageTiming("publication-link-read", publicationReadStartedAt, {
+      matched: Boolean(slugPublicoDetectado || urlPublicaDetectada),
+    });
   }
 
-  if (
-    !isTemplateSession &&
-    canUsePublishCompatibility &&
-    typeof prepareDraftPreviewRender === "function"
-  ) {
+  if (usePreparedDraftPreview) {
     const { slugPreview } = buildDashboardPreviewGeneratorInput({
       slugPublicoDetectado,
       urlPublicaDetectada,
       slugInvitacion,
+    });
+    const preparedRenderStartedAt = timingEnabled ? now() : 0;
+    emitStageTiming("prepared-render-request-start", preparedRenderStartedAt, {
+      durationMs: 0,
     });
     const preparedPreviewResult = await prepareDraftPreviewRender({
       draftSlug: slugInvitacion,
       slugPreview,
     });
     assertCurrentSession(assertCurrentSessionCallback);
+    emitStageTiming("prepared-render-request", preparedRenderStartedAt, {
+      blocked: preparedPreviewResult?.blocked === true,
+      htmlBytes: String(preparedPreviewResult?.htmlGenerado || "").length,
+      backend: preparedPreviewResult?.previewTiming || null,
+    });
 
     const validation = preparedPreviewResult?.validation || null;
     const previewAuthority = PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE;
@@ -228,6 +283,9 @@ export async function runDashboardPreviewPipeline({
     }
 
     if (preparedPreviewResult?.blocked === true || validation?.canPublish === false) {
+      emitStageTiming("pipeline-total", pipelineStartedAt, {
+        status: "blocked",
+      });
       return {
         status: "blocked",
         previewAuthority,
@@ -246,6 +304,10 @@ export async function runDashboardPreviewPipeline({
       throw new Error("No se pudo generar la vista previa preparada.");
     }
 
+    emitStageTiming("pipeline-total", pipelineStartedAt, {
+      status: "success",
+      htmlBytes: htmlGenerado.length,
+    });
     return {
       status: "success",
       previewAuthority,
@@ -266,6 +328,7 @@ export async function runDashboardPreviewPipeline({
     });
   }
 
+  const htmlGenerationStartedAt = timingEnabled ? now() : 0;
   const { htmlGenerado } = await generateDashboardPreviewHtmlFromRenderState({
     previewPayload,
     slugPublicoDetectado,
@@ -274,6 +337,13 @@ export async function runDashboardPreviewPipeline({
     generateHtmlFromSections,
   });
   assertCurrentSession(assertCurrentSessionCallback);
+  emitStageTiming("html-generation", htmlGenerationStartedAt, {
+    htmlBytes: String(htmlGenerado || "").length,
+  });
+  emitStageTiming("pipeline-total", pipelineStartedAt, {
+    status: "success",
+    htmlBytes: String(htmlGenerado || "").length,
+  });
 
   return {
     status: "success",

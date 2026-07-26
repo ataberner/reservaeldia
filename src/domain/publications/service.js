@@ -53,10 +53,15 @@ export async function validateDraftForPublication({
 export async function prepareDraftPreviewRender({
   draftSlug,
   slugPreview = "",
+  previewTimingSessionId = "",
 }) {
   const safeDraftSlug = typeof draftSlug === "string" ? draftSlug.trim() : "";
   const safeSlugPreview =
     typeof slugPreview === "string" ? slugPreview.trim() : "";
+  const safePreviewTimingSessionId =
+    typeof previewTimingSessionId === "string"
+      ? previewTimingSessionId.trim().slice(0, 96)
+      : "";
   if (!safeDraftSlug) {
     throw new Error("Slug invalido para preview preparado.");
   }
@@ -64,6 +69,13 @@ export async function prepareDraftPreviewRender({
   const result = await prepareDraftPreviewRenderCallable({
     draftSlug: safeDraftSlug,
     slugPreview: safeSlugPreview,
+    ...(safePreviewTimingSessionId
+      ? {
+          previewTiming: {
+            sessionId: safePreviewTimingSessionId,
+          },
+        }
+      : {}),
   });
 
   return result?.data || null;

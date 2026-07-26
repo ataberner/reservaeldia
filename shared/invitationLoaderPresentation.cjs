@@ -166,21 +166,6 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
 </div>
 `.trim();
 
-function buildInvitationLoaderLoadingDocumentHTML() {
-  return `<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Preparando invitacion</title>
-  </head>
-  <body data-loader-ready="0">
-    ${INVITATION_LOADER_PRESENTATION_HTML}
-  </body>
-</html>`;
-}
-
 module.exports = {
   INVITATION_LOADER_PRESENTATION_HTML,
-  buildInvitationLoaderLoadingDocumentHTML,
 };

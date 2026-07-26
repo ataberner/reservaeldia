@@ -17,6 +17,7 @@ const INITIAL_PUBLICATION_PREVIEW_STATE = Object.freeze({
   mostrarVistaPrevia: false,
   htmlVistaPrevia: null,
   previewAuthority: null,
+  previewTimingSessionId: null,
   urlPublicaVistaPrevia: null,
   slugPublicoVistaPrevia: null,
   puedeActualizarPublicacion: false,

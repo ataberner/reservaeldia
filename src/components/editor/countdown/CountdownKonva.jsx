@@ -30,10 +30,8 @@ import {
 } from "@/lib/editorBridgeContracts";
 import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
 import {
-  resolveContainedCountdownFrameRect,
-  resolveCenteredScaledFrameRect,
-  resolveCountdownSelectionGeometry,
-} from "@/domain/countdownPresets/frameGeometry";
+  resolveCountdownEffectiveGeometry,
+} from "@/domain/countdownPresets/effectiveGeometry";
 import {
   allowNativeTouchScrollOnKonvaPress,
   claimNativeTouchDrag,
@@ -339,7 +337,6 @@ export default function CountdownKonva({
     hasFrameConfigured,
     gap,
     framePadding,
-    frameScale,
     paddingY,
     paddingX,
     valueSize,
@@ -476,91 +473,26 @@ export default function CountdownKonva({
         obj.frameIntrinsicHeight
     ) || 0
   );
-  const resolveFrameRect = useCallback(
-    (targetRect) =>
-      isPngFrame
-        ? resolveContainedCountdownFrameRect({
-            sourceWidth: frameSourceWidth,
-            sourceHeight: frameSourceHeight,
-            targetRect,
-          })
-        : targetRect,
-    [frameSourceHeight, frameSourceWidth, isPngFrame]
-  );
-  const singleFrameBaseRect = useMemo(
-    () =>
-      resolveFrameRect({ x: 0, y: 0, width: containerW, height: containerH }),
-    [containerH, containerW, resolveFrameRect]
-  );
-  const singleFrameImageRect = useMemo(
-    () => resolveCenteredScaledFrameRect(singleFrameBaseRect, frameScale),
-    [frameScale, singleFrameBaseRect]
-  );
-  const singleFrameFallbackRect = useMemo(
-    () =>
-      resolveCenteredScaledFrameRect(
-        { x: 0, y: 0, width: containerW, height: containerH },
-        frameScale
-      ),
-    [containerH, containerW, frameScale]
-  );
-  const multiUnitFrameBaseRects = useMemo(
-    () =>
-      unitLayouts.map((item) =>
-        resolveFrameRect({
-          x: item.x,
-          y: item.y,
-          width: item.width,
-          height: item.height,
-        })
-      ),
-    [resolveFrameRect, unitLayouts]
-  );
   const countdownSelectionGeometry = useMemo(() => {
-    const contentRects = [
-      ...unitLayouts.map((item) => ({
-        x: item.x,
-        y: item.y,
-        width: item.width,
-        height: item.height,
-      })),
-      ...separatorLayouts.map((item) => ({
-        x: item.x,
-        y: item.y,
-        width: item.width,
-        height: Math.max(1, separatorFontSize * lineHeight),
-      })),
-    ];
-    const frameRects = useSingleFrameLayout
-      ? [singleFrameBaseRect]
-      : useMultiUnitFrame
-        ? multiUnitFrameBaseRects
-        : [];
-    return resolveCountdownSelectionGeometry({
-      contentRects,
-      frameRects,
-      frameScale,
-      fallbackRect: { x: 0, y: 0, width: containerW, height: containerH },
+    return resolveCountdownEffectiveGeometry(obj, {
+      width: containerW,
+      height: containerH,
+      frameSourceWidth,
+      frameSourceHeight,
     });
   }, [
     containerH,
     containerW,
-    frameScale,
-    lineHeight,
-    multiUnitFrameBaseRects,
-    separatorFontSize,
-    separatorLayouts,
-    singleFrameBaseRect,
-    unitLayouts,
-    useMultiUnitFrame,
-    useSingleFrameLayout,
+    frameSourceHeight,
+    frameSourceWidth,
+    obj,
   ]);
-  const selectionBounds = countdownSelectionGeometry.selectionBounds;
-  const isSchema2Countdown =
-    Number(obj.countdownSchemaVersion || 1) >= 2;
-  const interactiveBounds = isSchema2Countdown
-    ? selectionBounds
-    : { x: 0, y: 0, width: containerW, height: containerH };
+  const singleFrameImageRect =
+    countdownSelectionGeometry.scaledFrameRects[0] ||
+    { x: 0, y: 0, width: containerW, height: containerH };
+  const singleFrameFallbackRect = singleFrameImageRect;
+  const isSchema2Countdown = Number(obj.countdownSchemaVersion || 1) >= 2;
+  const interactiveBounds = countdownSelectionGeometry.effectiveBounds;
   const multiUnitFrameImageRects =
     useMultiUnitFrame && countdownSelectionGeometry.scaledFrameRects.length > 0
       ? countdownSelectionGeometry.scaledFrameRects
@@ -2167,10 +2099,7 @@ export default function CountdownKonva({
             const cornerRadius = Math.min(unitBoxRadius, it.width / 2, it.height / 2);
             const globalUnitFrameRect =
               multiUnitFrameImageRects[unitIndex] ||
-              resolveCenteredScaledFrameRect(
-                { x: it.x, y: it.y, width: it.width, height: it.height },
-                frameScale
-              );
+              { x: it.x, y: it.y, width: it.width, height: it.height };
             const unitFrameImageRect = {
               x: globalUnitFrameRect.x - it.x,
               y: globalUnitFrameRect.y - it.y,

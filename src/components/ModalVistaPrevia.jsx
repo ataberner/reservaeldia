@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ExternalLink,
   Link2,
@@ -22,10 +22,18 @@ import {
 import {
   applyPreviewFrameScale,
   buildPreviewFrameSrcDoc,
+  observePreviewFrameReadiness,
+  observePreviewFrameTiming,
   PREVIEW_FRAME_SCROLL_AUTHORITIES,
   resolvePreviewFrameLayoutMode,
 } from "@/components/preview/previewFrameRuntime";
+import {
+  markPreviewTimingSurfaceReady,
+  recordPreviewTimingStage,
+  setPreviewTimingExpectedSurfaces,
+} from "@/domain/dashboard/previewTiming";
 import PreviewPublishNoticeLayer from "@/components/preview/PreviewPublishNoticeLayer";
+import PreviewLoadingPresentation from "@/components/preview/PreviewLoadingPresentation";
 
 const SECONDARY_TOOLBAR_BUTTON_CLASS =
   "inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#ddd2f5] bg-white/90 px-3 text-sm font-medium text-[#6f3bc0] shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:bg-[#f4ecff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#dfcaf8]";
@@ -46,6 +54,28 @@ const MOBILE_VIEWPORT_TOGGLE_OPTIONS = [
   },
 ];
 
+const PREVIEW_FRAME_TIMING_LABELS = Object.freeze({
+  "iframe-runtime-bootstrap": "Bootstrap runtime del iframe",
+  "dom-content-loaded": "Iframe DOMContentLoaded",
+  "critical-resources-loaded": "Recursos criticos cargados",
+  "critical-fonts-ready": "Fuentes criticas listas",
+  "critical-fonts-error": "Error cargando fuentes criticas",
+  "critical-image-ready": "Imagen critica lista",
+  "runtime-initialization-start": "Inicio runtime invitacion",
+  "runtime-initialized": "Runtime invitacion inicializado",
+  "invitation-runtime-ready": "Evento invitation-runtime-ready",
+  "invitation-runtime-failed": "Error runtime invitacion",
+  "invitation-loader-hidden-emitted":
+    "Emision invitation-loader-hidden",
+});
+
+function readPreviewPerformanceNow() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return 0;
+}
+
 function PreviewIframeDocument({
   htmlContent,
   iframeTitle,
@@ -53,22 +83,295 @@ function PreviewIframeDocument({
   previewLayoutMode,
   previewSurface = "",
   scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
+  previewTimingSessionId = "",
+  timingSurface = "",
+  onMount,
   onLoad,
+  loading = false,
   style,
 }) {
-  return (
-    <iframe
-      srcDoc={buildPreviewFrameSrcDoc(htmlContent, {
+  const iframeRef = useRef(null);
+  const onMountRef = useRef(onMount);
+  onMountRef.current = onMount;
+  const srcDocResult = useMemo(() => {
+    const transformStartedAt = previewTimingSessionId
+      ? readPreviewPerformanceNow()
+      : 0;
+    const srcDoc = buildPreviewFrameSrcDoc(htmlContent, {
         previewViewport,
         layoutMode: previewLayoutMode,
         previewSurface,
         scrollAuthority,
-      })}
+        previewTiming: previewTimingSessionId
+          ? {
+              sessionId: previewTimingSessionId,
+              surface: timingSurface,
+            }
+          : null,
+      });
+    return {
+      srcDoc,
+      transformDurationMs: previewTimingSessionId
+        ? readPreviewPerformanceNow() - transformStartedAt
+        : 0,
+    };
+  }, [
+    htmlContent,
+    previewLayoutMode,
+    previewSurface,
+    previewTimingSessionId,
+    previewViewport,
+    scrollAuthority,
+    timingSurface,
+  ]);
+
+  useEffect(() => {
+    if (!previewTimingSessionId || !srcDocResult.srcDoc) return;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "build-preview-frame-srcdoc",
+      label: "Transformacion buildPreviewFrameSrcDoc",
+      durationMs: srcDocResult.transformDurationMs,
+      source: "react",
+      viewport: previewViewport,
+      surface: timingSurface,
+      htmlBytes: String(srcDocResult.srcDoc || "").length,
+      recordKey: `build-preview-frame-srcdoc:${timingSurface}`,
+    });
+  }, [
+    previewTimingSessionId,
+    previewViewport,
+    srcDocResult,
+    timingSurface,
+  ]);
+
+  useEffect(() => {
+    if (!iframeRef.current || !srcDocResult.srcDoc) return;
+    onMountRef.current?.(iframeRef.current);
+  }, [srcDocResult.srcDoc]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcDocResult.srcDoc}
       sandbox="allow-scripts allow-same-origin"
       title={iframeTitle}
       onLoad={onLoad}
+      aria-hidden={loading ? "true" : undefined}
+      tabIndex={loading ? -1 : undefined}
       style={style}
     />
+  );
+}
+
+function PreviewDocumentSurface({
+  htmlContent,
+  iframeTitle,
+  previewViewport,
+  previewLayoutMode,
+  onLoad,
+  previewSurface = "",
+  previewTimingSessionId = "",
+  timingSurface = "",
+  scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
+  announceLoading = true,
+  iframeStyle,
+}) {
+  const [readyHtmlContent, setReadyHtmlContent] = useState(null);
+  const readinessCleanupRef = useRef(null);
+  const timingCleanupRef = useRef(null);
+  const frameTimingRef = useRef(null);
+  const readyReasonRef = useRef("");
+  const frameReady = Boolean(
+    htmlContent && readyHtmlContent === htmlContent
+  );
+
+  if (htmlContent && frameTimingRef.current?.htmlContent !== htmlContent) {
+    frameTimingRef.current = {
+      htmlContent,
+      startedAt: readPreviewPerformanceNow(),
+      mountedAt: null,
+      iframeLoadedAt: null,
+    };
+  } else if (!htmlContent && frameTimingRef.current) {
+    frameTimingRef.current = null;
+  }
+
+  useEffect(() => {
+    const cleanupCurrentReadiness = () => {
+      readinessCleanupRef.current?.();
+      readinessCleanupRef.current = null;
+      timingCleanupRef.current?.();
+      timingCleanupRef.current = null;
+    };
+
+    cleanupCurrentReadiness();
+    return cleanupCurrentReadiness;
+  }, [htmlContent, previewTimingSessionId]);
+
+  useEffect(() => {
+    if (!frameReady || !previewTimingSessionId) return;
+    const surface = timingSurface || previewSurface || previewViewport;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "external-loader-hidden",
+      label: "Ocultamiento loader externo",
+      source: "react",
+      viewport: previewViewport,
+      surface,
+      reason: readyReasonRef.current,
+      recordKey: `external-loader-hidden:${surface}`,
+    });
+    markPreviewTimingSurfaceReady(previewTimingSessionId, {
+      surface,
+      viewport: previewViewport,
+      reason: readyReasonRef.current,
+    });
+  }, [
+    frameReady,
+    previewSurface,
+    previewTimingSessionId,
+    previewViewport,
+    timingSurface,
+  ]);
+
+  const handleIframeMount = () => {
+    const timing = frameTimingRef.current;
+    const mountedAt = readPreviewPerformanceNow();
+    if (timing?.htmlContent === htmlContent) {
+      timing.mountedAt = mountedAt;
+    }
+    const surface = timingSurface || previewSurface || previewViewport;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "iframe-mounted",
+      label: "Montaje iframe",
+      startedAt: timing?.startedAt,
+      completedAt: mountedAt,
+      source: "iframe",
+      viewport: previewViewport,
+      surface,
+      recordKey: `iframe-mounted:${surface}`,
+    });
+  };
+
+  const handleIframeLoad = (event) => {
+    const iframe = event.currentTarget;
+    const loadedDocument = iframe?.contentDocument || null;
+    const timing = frameTimingRef.current;
+    const loadedAt = readPreviewPerformanceNow();
+    if (timing && timing.htmlContent === htmlContent) {
+      timing.iframeLoadedAt = loadedAt;
+      const surface = timingSurface || previewSurface || previewViewport;
+      recordPreviewTimingStage(previewTimingSessionId, {
+        stage: "iframe-load",
+        label: "Evento iframe.onload",
+        startedAt: timing.mountedAt ?? timing.startedAt,
+        completedAt: loadedAt,
+        source: "iframe",
+        viewport: previewViewport,
+        surface,
+        htmlBytes: String(htmlContent || "").length,
+        recordKey: `iframe-load:${surface}`,
+      });
+    }
+
+    timingCleanupRef.current?.();
+    timingCleanupRef.current = observePreviewFrameTiming(
+      iframe,
+      (runtimeTiming) => {
+        if (
+          runtimeTiming?.sessionId !== previewTimingSessionId ||
+          iframe?.contentDocument !== loadedDocument
+        ) {
+          return;
+        }
+        const runtimeStage = String(runtimeTiming.stage || "runtime-event");
+        const surface =
+          runtimeTiming.surface ||
+          timingSurface ||
+          previewSurface ||
+          previewViewport;
+        recordPreviewTimingStage(previewTimingSessionId, {
+          stage: runtimeStage,
+          label:
+            PREVIEW_FRAME_TIMING_LABELS[runtimeStage] || runtimeStage,
+          durationMs: runtimeTiming.durationMs,
+          completedAt:
+            typeof runtimeTiming.parentAt === "number"
+              ? runtimeTiming.parentAt
+              : null,
+          source: "iframe-runtime",
+          viewport: runtimeTiming.viewport || previewViewport,
+          surface,
+          status: runtimeStage.includes("failed") ||
+            runtimeStage.includes("error")
+            ? "error"
+            : "ok",
+          reason: runtimeTiming.detail?.reason || "",
+          recordKey: `iframe-runtime:${surface}:${runtimeStage}`,
+          detail: {
+            ...(runtimeTiming.detail &&
+            typeof runtimeTiming.detail === "object"
+              ? runtimeTiming.detail
+              : {}),
+          },
+        });
+      }
+    );
+
+    onLoad?.(event);
+
+    readinessCleanupRef.current?.();
+    readinessCleanupRef.current = observePreviewFrameReadiness(
+      iframe,
+      ({ reason }) => {
+        if (iframe?.contentDocument !== loadedDocument) return;
+        readyReasonRef.current = reason;
+        const surface = timingSurface || previewSurface || previewViewport;
+        recordPreviewTimingStage(previewTimingSessionId, {
+          stage: "invitation-loader-hidden-received",
+          label: "Recepcion invitation-loader-hidden",
+          source: "iframe",
+          viewport: previewViewport,
+          surface,
+          reason,
+          recordKey: `invitation-loader-hidden-received:${surface}`,
+        });
+        setReadyHtmlContent(htmlContent);
+      }
+    );
+  };
+
+  return (
+    <div
+      className="relative h-full w-full bg-white"
+      aria-busy={announceLoading && !frameReady ? "true" : undefined}
+    >
+      {htmlContent ? (
+        // The final srcDoc mounts once. The stable outer loader owns presentation until runtime readiness.
+        <PreviewIframeDocument
+          htmlContent={htmlContent}
+          iframeTitle={iframeTitle}
+          previewViewport={previewViewport}
+          previewLayoutMode={previewLayoutMode}
+          previewSurface={previewSurface}
+          scrollAuthority={scrollAuthority}
+          previewTimingSessionId={previewTimingSessionId}
+          timingSurface={timingSurface}
+          onMount={handleIframeMount}
+          onLoad={handleIframeLoad}
+          loading={!frameReady}
+          style={{
+            width: "100%",
+            height: "100%",
+            border: "none",
+            display: "block",
+            ...iframeStyle,
+          }}
+        />
+      ) : null}
+      {!frameReady ? (
+        <PreviewLoadingPresentation announce={announceLoading} />
+      ) : null}
+    </div>
   );
 }
 
@@ -84,7 +387,10 @@ function PreviewFrame({
   scaledHeight,
   onLoad,
   previewSurface = "",
+  previewTimingSessionId = "",
+  timingSurface = "",
   scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
+  announceLoading = true,
 }) {
   return (
     <div
@@ -103,38 +409,25 @@ function PreviewFrame({
           transformOrigin: "top left",
         }}
       >
-        {htmlContent ? (
-          // srcDoc owns iframe navigation. A post-commit key change would discard native scroll.
-          <PreviewIframeDocument
-            htmlContent={htmlContent}
-            iframeTitle={iframeTitle}
-            previewViewport={previewViewport}
-            previewLayoutMode={previewLayoutMode}
-            previewSurface={previewSurface}
-            scrollAuthority={scrollAuthority}
-            onLoad={(event) => {
-              onLoad?.({
-                event,
-                scale,
-                previewSurface,
-                scrollAuthority,
-              });
-            }}
-            style={{
-              width: "100%",
-              height: "100%",
-              border: "none",
-              display: "block",
-            }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-slate-50">
-            <div className="flex items-center gap-3 text-slate-600">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#773dbe] border-t-transparent" />
-              <span className="text-sm">Generando vista previa...</span>
-            </div>
-          </div>
-        )}
+        <PreviewDocumentSurface
+          htmlContent={htmlContent}
+          iframeTitle={iframeTitle}
+          previewViewport={previewViewport}
+          previewLayoutMode={previewLayoutMode}
+          previewSurface={previewSurface}
+          previewTimingSessionId={previewTimingSessionId}
+          timingSurface={timingSurface}
+          scrollAuthority={scrollAuthority}
+          announceLoading={announceLoading}
+          onLoad={(event) => {
+            onLoad?.({
+              event,
+              scale,
+              previewSurface,
+              scrollAuthority,
+            });
+          }}
+        />
       </div>
     </div>
   );
@@ -223,6 +516,9 @@ function DesktopPreviewShell({
   previewLayoutMode,
   variant = "compact",
   showFrameLabel = false,
+  announceLoading = true,
+  previewTimingSessionId = "",
+  timingSurface = "desktop-mockup",
 }) {
   const isShowcase = variant === "showcase";
   const shellClass = isShowcase
@@ -263,6 +559,9 @@ function DesktopPreviewShell({
             scaledWidth={frameWidth}
             scaledHeight={frameHeight}
             onLoad={onLoad}
+            announceLoading={announceLoading}
+            previewTimingSessionId={previewTimingSessionId}
+            timingSurface={timingSurface}
           />
         </div>
       </div>
@@ -282,6 +581,9 @@ function MobilePreviewShell({
   previewSurface = "",
   scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
   variant = "compact",
+  announceLoading = true,
+  previewTimingSessionId = "",
+  timingSurface = "mobile-mockup",
 }) {
   const shellClass =
     variant === "showcase"
@@ -318,6 +620,9 @@ function MobilePreviewShell({
             onLoad={onLoad}
             previewSurface={previewSurface}
             scrollAuthority={scrollAuthority}
+            announceLoading={announceLoading}
+            previewTimingSessionId={previewTimingSessionId}
+            timingSurface={timingSurface}
           />
         </div>
       </div>
@@ -340,6 +645,9 @@ export default function ModalVistaPrevia({
   checkoutVisible = false,
   publishValidation = null,
   publishValidationPending = false,
+  previewTimingSessionId = "",
+  previewTimingType = "draft-authoritative",
+  previewTimingTarget = "",
 }) {
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const [noticePosition, setNoticePosition] = useState(null);
@@ -405,6 +713,53 @@ export default function ModalVistaPrevia({
     publishError,
     publishSuccess,
   });
+
+  useEffect(() => {
+    if (!visible || !previewTimingSessionId) return;
+    const expectedTimingSurfaces = fullscreenPreview
+      ? [`fullscreen-${fullscreenViewport}`]
+      : isMobileViewport
+        ? [
+            mobilePreviewViewport === PREVIEW_MODAL_VIEWPORTS.DESKTOP
+              ? "desktop-focused"
+              : "mobile-focused",
+          ]
+        : ["desktop-mockup", "mobile-mockup"];
+    setPreviewTimingExpectedSurfaces(
+      previewTimingSessionId,
+      expectedTimingSurfaces
+    );
+  }, [
+    fullscreenPreview,
+    fullscreenViewport,
+    isMobileViewport,
+    mobilePreviewViewport,
+    previewTimingSessionId,
+    visible,
+  ]);
+
+  useEffect(() => {
+    if (!visible || !htmlContent || !previewTimingSessionId) return;
+    recordPreviewTimingStage(previewTimingSessionId, {
+      stage: "react-html-committed",
+      label: "Commit HTML definitivo en React",
+      source: "react",
+      viewport: isMobileViewport ? "mobile" : "desktop",
+      htmlBytes: String(htmlContent || "").length,
+      recordKey: "react-html-committed",
+      detail: {
+        previewType: previewTimingType,
+        target: String(previewTimingTarget || "").slice(0, 120),
+      },
+    });
+  }, [
+    htmlContent,
+    isMobileViewport,
+    previewTimingSessionId,
+    previewTimingTarget,
+    previewTimingType,
+    visible,
+  ]);
 
   useEffect(() => {
     if (visible) return;
@@ -633,6 +988,8 @@ export default function ModalVistaPrevia({
       variant={desktopVariant}
       showFrameLabel={layout.mode !== "stacked-priority"}
       onLoad={handleDesktopLoad}
+      previewTimingSessionId={previewTimingSessionId}
+      timingSurface="desktop-mockup"
     />
   );
 
@@ -647,6 +1004,9 @@ export default function ModalVistaPrevia({
       previewLayoutMode={previewLayoutMode}
       variant={mobileVariant}
       onLoad={handleMobileLoad}
+      announceLoading={false}
+      previewTimingSessionId={previewTimingSessionId}
+      timingSurface="mobile-mockup"
     />
   );
 
@@ -663,6 +1023,8 @@ export default function ModalVistaPrevia({
       onLoad={handleMobileLoad}
       previewSurface="mobile-preview-focused"
       scrollAuthority={PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY}
+      previewTimingSessionId={previewTimingSessionId}
+      timingSurface="mobile-focused"
     />
   );
 
@@ -678,6 +1040,8 @@ export default function ModalVistaPrevia({
       variant="stacked"
       showFrameLabel
       onLoad={handleDesktopLoad}
+      previewTimingSessionId={previewTimingSessionId}
+      timingSurface="desktop-focused"
     />
   );
 
@@ -704,41 +1068,29 @@ export default function ModalVistaPrevia({
           <X className="h-4 w-4" />
         </button>
 
-        {htmlContent ? (
-          <PreviewIframeDocument
-            htmlContent={htmlContent}
-            iframeTitle={
-              fullscreenViewport === PREVIEW_MODAL_VIEWPORTS.MOBILE
-                ? "Vista previa movil en pantalla completa"
-                : "Vista previa escritorio en pantalla completa"
-            }
-            previewViewport={fullscreenViewport}
-            previewLayoutMode={previewLayoutMode}
-            style={{
-              width: "100%",
-              height: "100%",
-              border: "none",
-              display: "block",
-            }}
-            onLoad={(event) => {
-              applyPreviewFrameScale(
-                event,
-                1,
-                fullscreenViewport,
-                {
-                  layoutMode: previewLayoutMode,
-                }
-              );
-            }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-slate-50">
-            <div className="flex items-center gap-3 text-slate-600">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#773dbe] border-t-transparent" />
-              <span className="text-sm">Generando vista previa...</span>
-            </div>
-          </div>
-        )}
+        <PreviewDocumentSurface
+          htmlContent={htmlContent}
+          iframeTitle={
+            fullscreenViewport === PREVIEW_MODAL_VIEWPORTS.MOBILE
+              ? "Vista previa movil en pantalla completa"
+              : "Vista previa escritorio en pantalla completa"
+          }
+          previewViewport={fullscreenViewport}
+          previewLayoutMode={previewLayoutMode}
+          previewSurface={`fullscreen-${fullscreenViewport}`}
+          previewTimingSessionId={previewTimingSessionId}
+          timingSurface={`fullscreen-${fullscreenViewport}`}
+          onLoad={(event) => {
+            applyPreviewFrameScale(
+              event,
+              1,
+              fullscreenViewport,
+              {
+                layoutMode: previewLayoutMode,
+              }
+            );
+          }}
+        />
       </div>
     );
   }

@@ -1,12 +1,10 @@
 import { sanitizeMotionEffect } from "@/domain/motionEffects";
 import {
-  resolveCountdownLayoutMetrics,
-} from "@/domain/countdownPresets/renderModel";
-import {
-  resolveContainedCountdownFrameRect,
   resolveCountdownBoundsXWithinCanvas,
-  resolveCountdownSelectionGeometry,
 } from "@/domain/countdownPresets/frameGeometry";
+import {
+  resolveCountdownInsertGeometry,
+} from "@/domain/countdownPresets/effectiveGeometry";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { applyGalleryLayoutPresetToRenderObject } from "@/domain/gallery/galleryLayoutPresets";
 import {
@@ -32,73 +30,7 @@ function stripUndefined(obj) {
   );
 }
 
-export function resolveCountdownInsertGeometry(
-  presetProps = {},
-  { width: requestedWidth = null, height: requestedHeight = null } = {}
-) {
-  const naturalMetrics = resolveCountdownLayoutMetrics(presetProps);
-  const frameScale = naturalMetrics.frameScale;
-  const defaultWidth = Math.max(
-    180,
-    Math.round(naturalMetrics.naturalContainerW)
-  );
-  const defaultHeight =
-    naturalMetrics.distribution === "vertical"
-      ? Math.max(120, Math.round(naturalMetrics.naturalContainerH))
-      : naturalMetrics.distribution === "grid" ||
-          naturalMetrics.distribution === "editorial"
-        ? Math.max(110, Math.round(naturalMetrics.naturalContainerH))
-        : Math.max(90, Math.round(naturalMetrics.naturalContainerH));
-  const width = Math.max(
-    naturalMetrics.naturalContainerW,
-    toNumber(requestedWidth, defaultWidth)
-  );
-  const height = Math.max(
-    naturalMetrics.naturalContainerH,
-    toNumber(requestedHeight, defaultHeight)
-  );
-  const layout = resolveCountdownLayoutMetrics({
-    ...presetProps,
-    width,
-    height,
-  });
-  const unitRects = layout.unitLayouts;
-  const frameAssetType =
-    String(presetProps.frameAssetType || "").toLowerCase() === "png"
-      ? "png"
-      : "svg";
-  const frameSourceWidth = toNumber(presetProps.frameIntrinsicWidth, 0);
-  const frameSourceHeight = toNumber(presetProps.frameIntrinsicHeight, 0);
-  const containFrame = (targetRect) =>
-    frameAssetType === "png"
-      ? resolveContainedCountdownFrameRect({
-          sourceWidth: frameSourceWidth,
-          sourceHeight: frameSourceHeight,
-          targetRect,
-        })
-      : targetRect;
-  const frameRects = !layout.hasFrameConfigured
-    ? []
-    : layout.useSingleFrameLayout
-      ? [containFrame({ x: 0, y: 0, width, height })]
-      : layout.useMultiUnitFrame
-        ? unitRects.map(containFrame)
-        : [];
-  const geometry = resolveCountdownSelectionGeometry({
-    contentRects: unitRects,
-    frameRects,
-    frameScale,
-    fallbackRect: { x: 0, y: 0, width, height },
-  });
-
-  return {
-    width,
-    height,
-    contentBounds: geometry.contentBounds,
-    visualFrameBounds: geometry.visualFrameBounds,
-    selectionBounds: geometry.selectionBounds,
-  };
-}
+export { resolveCountdownInsertGeometry };
 
 function inferTextVariant(variant = "texto", isMobile = false) {
   if (variant === "titulo") {

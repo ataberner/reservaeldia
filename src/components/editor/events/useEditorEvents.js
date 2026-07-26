@@ -301,8 +301,21 @@ export default function useEditorEvents({
         const mutation = updateRenderObjectById(
           prev,
           existingCountdown.id,
-          (currentObject) =>
-            applyCountdownPresetToExisting(currentObject, nuevoConSeccion)
+          (currentObject) => {
+            const countdownSection = secciones.find(
+              (section) => section?.id === currentObject?.seccionId
+            );
+            const pantallaHeight =
+              normalizarAltoModo(countdownSection?.altoModo) === "pantalla"
+                ? ALTURA_PANTALLA_EDITOR
+                : null;
+
+            return applyCountdownPresetToExisting(
+              currentObject,
+              nuevoConSeccion,
+              { pantallaHeight }
+            );
+          }
         );
         if (!mutation.changed) return prev;
 

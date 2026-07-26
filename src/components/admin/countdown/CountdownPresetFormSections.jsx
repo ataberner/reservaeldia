@@ -431,6 +431,7 @@ export default function CountdownPresetFormSections({
             label="Espaciado entre unidades (px)"
             value={config.layout.gap}
             range={COUNTDOWN_NUMERIC_LIMITS.gap}
+            step={0.1}
             error={errors["layout.gap"]}
             onChange={(value) => setConfig("layout", "gap", value)}
           />

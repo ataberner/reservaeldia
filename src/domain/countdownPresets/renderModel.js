@@ -1,10 +1,25 @@
-import { COUNTDOWN_DEFAULT_VISIBLE_UNITS } from "./contract.js";
 import { parseLinearGradientColors } from "../colors/presets.js";
 import { resolveCountdownTemporalState } from "../../../shared/renderContractPolicy.js";
 import {
   normalizeCountdownFrameScale,
   resolveCenteredScaledFrameRect,
 } from "./frameGeometry.js";
+import {
+  buildCountdownEditorialWidths,
+  estimateCountdownUnitHeight,
+  normalizeCountdownVisibleUnits,
+  resolveCountdownLayoutMetrics,
+  resolveCountdownUnitWidth,
+} from "../../../shared/countdownLayoutContract.js";
+
+export {
+  buildCountdownEditorialWidths,
+  estimateCountdownUnitHeight,
+  resolveCountdownLayoutMetrics,
+  resolveCountdownUnitWidth,
+};
+
+export const normalizeVisibleUnits = normalizeCountdownVisibleUnits;
 
 const UNIT_LABELS = Object.freeze({
   days: "Dias",
@@ -136,86 +151,6 @@ function roundRectPath(ctx, x, y, w, h, radius) {
   ctx.closePath();
 }
 
-export function normalizeVisibleUnits(units) {
-  if (!Array.isArray(units) || units.length === 0) return [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
-
-  const normalized = units
-    .map((unit) => String(unit || "").trim())
-    .filter((unit) => UNIT_LABELS[unit]);
-  const unique = [];
-  normalized.forEach((unit) => {
-    if (!unique.includes(unit)) unique.push(unit);
-  });
-  return unique.length > 0 ? unique : [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
-}
-
-export function estimateCountdownUnitHeight({
-  tamanoBase = 320,
-  distribution = "centered",
-  unitsCount = 4,
-} = {}) {
-  const base = clamp(tamanoBase, 220, 960);
-  const count = Math.max(1, Math.min(4, Number(unitsCount || 4)));
-  const mode = String(distribution || "centered").toLowerCase();
-
-  if (mode === "vertical") return Math.max(44, Math.round(base * 0.17));
-  if (mode === "grid") return Math.max(44, Math.round(base * 0.2));
-  if (mode === "editorial") return Math.max(44, Math.round(base * 0.16));
-
-  const centeredScale =
-    count <= 1 ? 0.34 : count === 2 ? 0.24 : count === 3 ? 0.18 : 0.15;
-  return Math.max(44, Math.round(base * centeredScale));
-}
-
-export function resolveCountdownUnitWidth({
-  width = 46,
-  height = 44,
-  boxRadius = 0,
-} = {}) {
-  const safeWidth = Math.max(1, Number(width) || 0);
-  const safeHeight = Math.max(1, Number(height) || 0);
-  const safeRadius = clamp(boxRadius, 0, 999);
-  const roundedThreshold = safeHeight / 2;
-
-  if (safeWidth <= safeHeight || safeRadius <= roundedThreshold) {
-    return Math.round(safeWidth);
-  }
-
-  const circleThreshold = safeHeight;
-  const blend =
-    circleThreshold <= roundedThreshold
-      ? 1
-      : clamp(
-          (safeRadius - roundedThreshold) / (circleThreshold - roundedThreshold),
-          0,
-          1
-        );
-
-  return Math.round(safeWidth + (safeHeight - safeWidth) * blend);
-}
-
-export function buildCountdownEditorialWidths({
-  unitsCount = 4,
-  baseChipWidth = 46,
-  chipHeight = 44,
-  boxRadius = 0,
-} = {}) {
-  const safeCount = Math.max(1, Math.min(4, Number(unitsCount) || 1));
-  return Array.from({ length: safeCount }, (_, index) =>
-    resolveCountdownUnitWidth({
-      width: Math.max(
-        34,
-        Math.round(
-          Number(baseChipWidth || 46) *
-            (index === 0 && safeCount > 1 ? 1.25 : 0.88)
-        )
-      ),
-      height: chipHeight,
-      boxRadius,
-    })
-  );
-}
-
 export function buildFrameSvgMarkup(svgText, { colorMode, frameColor }) {
   if (!svgText || typeof svgText !== "string") return "";
 
@@ -239,7 +174,9 @@ export function buildFrameSvgMarkup(svgText, { colorMode, frameColor }) {
     root.setAttribute("style", styleParts.filter(Boolean).join(";"));
     root.setAttribute("width", "100%");
     root.setAttribute("height", "100%");
-    root.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    // El contrato geometrico estira el frame SVG a la caja del preset en todos
+    // los runtimes; el contenido raster conserva su proporcion con contain.
+    root.setAttribute("preserveAspectRatio", "none");
 
     return new XMLSerializer().serializeToString(root);
   } catch {
@@ -335,7 +272,7 @@ export async function generateCountdownThumbnailDataUrl({
   const isSingleFrame = baseConfig?.layout?.type === "singleFrame";
   const unitStyle = baseConfig?.unidad || {};
   const showLabels = unitStyle.showLabels !== false;
-  const separator = String(unitStyle.separator || "").slice(0, 3);
+  const separator = String(unitStyle.separator || "").slice(0, 4);
   const boxBg = resolveCanvasPaint(unitStyle.boxBg, "transparent");
   const boxBorder = resolveCanvasPaint(unitStyle.boxBorder, "transparent");
   const boxRadius = clamp(unitStyle.boxRadius, 0, 999);
@@ -415,7 +352,12 @@ export async function generateCountdownThumbnailDataUrl({
   }
 
   const distribution = baseConfig?.layout?.distribution || "centered";
-  const gap = 8;
+  const gap = Math.max(
+    0,
+    Number.isFinite(Number(baseConfig?.layout?.gap))
+      ? Number(baseConfig.layout.gap)
+      : 8
+  );
   const areaWidth = Math.round(size * 0.82);
   const chipH = Math.round(size * 0.22);
   const numberSize = Math.max(10, Math.min(120, Number(baseConfig?.tipografia?.numberSize) || 28));
@@ -448,41 +390,6 @@ export async function generateCountdownThumbnailDataUrl({
     const x = areaX + col * (chipW + gap);
     const y = areaY + row * (chipH + gap);
 
-    if (baseConfig?.layout?.type === "multiUnit") {
-      if (frameImage) {
-        const frameRect = resolveCenteredScaledFrameRect(
-          { x, y, width: chipW, height: chipH },
-          frameScale
-        );
-        if (frameAssetType === "png") {
-          drawImageContain(
-            ctx,
-            frameImage,
-            frameRect.x,
-            frameRect.y,
-            frameRect.width,
-            frameRect.height
-          );
-        } else {
-          ctx.drawImage(
-            frameImage,
-            frameRect.x,
-            frameRect.y,
-            frameRect.width,
-            frameRect.height
-          );
-        }
-      } else {
-        ctx.strokeStyle = frameColor;
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(x, y, chipW, chipH);
-      }
-    } else if (!isSingleFrame) {
-      ctx.strokeStyle = frameColor;
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(x, y, chipW, chipH);
-    }
-
     if (boxShadow) {
       ctx.shadowColor = "rgba(15,23,42,0.18)";
       ctx.shadowBlur = 6;
@@ -506,6 +413,31 @@ export async function generateCountdownThumbnailDataUrl({
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
+
+    if (baseConfig?.layout?.type === "multiUnit" && frameImage) {
+      const frameRect = resolveCenteredScaledFrameRect(
+        { x, y, width: chipW, height: chipH },
+        frameScale
+      );
+      if (frameAssetType === "png") {
+        drawImageContain(
+          ctx,
+          frameImage,
+          frameRect.x,
+          frameRect.y,
+          frameRect.width,
+          frameRect.height
+        );
+      } else {
+        ctx.drawImage(
+          frameImage,
+          frameRect.x,
+          frameRect.y,
+          frameRect.width,
+          frameRect.height
+        );
+      }
+    }
 
     const valueY = showLabels ? y + chipH / 2 - labelSize * 0.35 : y + chipH / 2;
 

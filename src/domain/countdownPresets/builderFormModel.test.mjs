@@ -36,6 +36,24 @@ test("out-of-range values are actionable blockers while the normalized payload s
   assert.equal(validation.normalized.config.tipografia.numberSize, 10);
 });
 
+test("decimal chip separation survives validation, save baseline, and edit hydration", () => {
+  const form = buildCountdownPresetFormState(null);
+  form.nombre = "Separacion decimal";
+  form.config.layout.gap = 27.5;
+
+  const validation = validateCountdownPresetFormState(form);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.normalized.config.layout.gap, 27.5);
+
+  const saved = markCountdownPresetFormSaved(form);
+  const hydrated = buildCountdownPresetFormState({
+    nombre: saved.nombre,
+    layout: saved.config.layout,
+  });
+  assert.equal(saved.config.layout.gap, 27.5);
+  assert.equal(hydrated.config.layout.gap, 27.5);
+});
+
 test("frame scale defaults old presets to 100% and rejects invalid UI values", () => {
   const legacySchema2Form = buildCountdownPresetFormState({
     nombre: "Schema 2 anterior",

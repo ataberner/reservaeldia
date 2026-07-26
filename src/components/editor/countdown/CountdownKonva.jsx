@@ -6,10 +6,9 @@ import useImage from "use-image";
 import { getRemainingParts, fmt } from "./countdownUtils";
 import { calcularOffsetY } from "@/utils/layout";
 import {
-  estimateCountdownUnitHeight,
-  buildCountdownEditorialWidths,
-  resolveCountdownUnitWidth,
+  normalizeVisibleUnits,
   resolveCanvasPaint,
+  resolveCountdownLayoutMetrics,
 } from "@/domain/countdownPresets/renderModel";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import {
@@ -31,7 +30,6 @@ import {
 } from "@/lib/editorBridgeContracts";
 import { clearMatchingPredragSelectionLock } from "@/lib/editorSelectionRuntime";
 import {
-  normalizeCountdownFrameScale,
   resolveContainedCountdownFrameRect,
   resolveCenteredScaledFrameRect,
   resolveCountdownSelectionGeometry,
@@ -63,7 +61,6 @@ const UNIT_LABELS = Object.freeze({
   seconds: "Seg",
 });
 
-const DEFAULT_UNITS = Object.freeze(["days", "hours", "minutes", "seconds"]);
 let countdownRepeatDragDebugInstanceCounter = 0;
 
 function colorizeCountdownFrameImage(image, color) {
@@ -87,17 +84,6 @@ function colorizeCountdownFrameImage(image, color) {
   context.fillRect(0, 0, width, height);
   context.globalCompositeOperation = "source-over";
   return canvas;
-}
-
-function normalizeUnits(value) {
-  if (!Array.isArray(value)) return [...DEFAULT_UNITS];
-  const out = [];
-  value.forEach((unit) => {
-    const safe = String(unit || "").trim();
-    if (!UNIT_LABELS[safe]) return;
-    if (!out.includes(safe)) out.push(safe);
-  });
-  return out.length > 0 ? out : [...DEFAULT_UNITS];
 }
 
 function applyLabelTransform(label, mode) {
@@ -324,7 +310,7 @@ export default function CountdownKonva({
   );
 
   const visibleUnits = useMemo(
-    () => normalizeUnits(obj.visibleUnits),
+    () => normalizeVisibleUnits(obj.visibleUnits),
     [obj.visibleUnits]
   );
 
@@ -343,194 +329,57 @@ export default function CountdownKonva({
     }));
   }, [state.d, state.h, state.m, state.s, obj.padZero, visibleUnits]);
 
-  // Layout (countdown v2 + fallback legacy)
-  const n = Math.max(1, parts.length);
-  const frameSvgUrl = String(obj.frameSvgUrl || "").trim();
-  const hasFrameConfigured = frameSvgUrl.length > 0;
+  // Layout semantico compartido por Builder, Canvas, React preview y HTML.
+  const layoutMetrics = useMemo(
+    () => resolveCountdownLayoutMetrics(obj),
+    [obj]
+  );
+  const {
+    frameSvgUrl,
+    hasFrameConfigured,
+    gap,
+    framePadding,
+    frameScale,
+    paddingY,
+    paddingX,
+    valueSize,
+    labelSize,
+    showLabels,
+    distribution,
+    layoutType,
+    useSingleFrameLayout,
+    useMultiUnitFrame,
+    lineHeight,
+    letterSpacing,
+    boxRadius: unitBoxRadius,
+    chipH,
+    baseChipW,
+    naturalW,
+    naturalH,
+    containerW,
+    containerH,
+    startX,
+    startY,
+    separatorText,
+    separatorFontSize,
+  } = layoutMetrics;
   const frameAssetType =
     String(obj.frameAssetType || "").toLowerCase() === "png" ? "png" : "svg";
   const isPngFrame = frameAssetType === "png";
-  const gap = Math.max(0, toFinite(obj.gap, 8));
-  const framePadding = Math.max(0, toFinite(obj.framePadding, 10));
-  const frameScale = normalizeCountdownFrameScale(obj.frameScale);
-  const paddingY = Math.max(2, toFinite(obj.paddingY, 6));
-  const paddingX = Math.max(2, toFinite(obj.paddingX, 8));
-  const valueSize = Math.max(10, toFinite(obj.fontSize, 16));
-  const labelSize = Math.max(8, toFinite(obj.labelSize, 10));
-  const showLabels = obj.showLabels !== false;
-  const distribution = String(obj.distribution || obj.layoutType || 'centered');
-  const layoutType = String(obj.layoutType || 'singleFrame');
-  const useSingleFrameLayout = layoutType === "singleFrame" && hasFrameConfigured;
-  const useMultiUnitFrame = layoutType === "multiUnit" && hasFrameConfigured;
   const labelTransform = String(obj.labelTransform || 'uppercase');
-  const lineHeight = Math.max(0.8, toFinite(obj.lineHeight, 1.05));
-  const letterSpacing = toFinite(obj.letterSpacing, 0);
   const frameStrokeColor = resolveCanvasPaint(obj.frameColor, "#773dbe");
   const unitFillColor = resolveCanvasPaint(obj.boxBg, "transparent");
   const unitStrokeColor = resolveCanvasPaint(obj.boxBorder, "transparent");
   const backgroundColor = resolveCanvasPaint(obj.background, "transparent");
 
-  const requestedChipW = Math.max(36, toFinite(obj.chipWidth, 46) + paddingX * 2);
-  const textDrivenChipH = Math.max(
-    44,
-    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
-  );
-  const layoutDrivenChipH = estimateCountdownUnitHeight({
-    tamanoBase: toFinite(obj.tamanoBase, 320),
-    distribution,
-    unitsCount: n,
-  });
-  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
-  const unitBoxRadius = Math.max(0, toFinite(obj.boxRadius, 8));
-  const baseChipW = resolveCountdownUnitWidth({
-    width: requestedChipW,
-    height: chipH,
-    boxRadius: unitBoxRadius,
-  });
-
-  const cols =
-    distribution === 'vertical'
-      ? 1
-      : distribution === 'grid'
-      ? Math.min(2, n)
-      : n;
-  const rows = distribution === 'vertical' ? n : distribution === 'grid' ? Math.ceil(n / cols) : 1;
-
-  const editorialWidths =
-    distribution === 'editorial'
-      ? buildCountdownEditorialWidths({
-          unitsCount: n,
-          baseChipWidth: baseChipW,
-          chipHeight: chipH,
-          boxRadius: unitBoxRadius,
-        })
-      : [];
-
-  const naturalW =
-    distribution === 'vertical'
-      ? baseChipW
-      : distribution === 'grid'
-      ? cols * baseChipW + gap * (cols - 1)
-      : distribution === 'editorial'
-      ? editorialWidths.reduce((acc, width) => acc + width, 0) + gap * Math.max(0, n - 1)
-      : n * baseChipW + gap * (n - 1);
-
-  const naturalH =
-    distribution === 'vertical' || distribution === 'grid'
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-
-  const containerW = Math.max(
-    toFinite(obj.width, 0),
-    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0)
-  );
-  const containerH = Math.max(
-    toFinite(obj.height, 0),
-    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
-  );
-
-  const contentBounds = {
-    x: useSingleFrameLayout ? framePadding : 0,
-    y: useSingleFrameLayout ? framePadding : 0,
-    width: Math.max(1, containerW - (useSingleFrameLayout ? framePadding * 2 : 0)),
-    height: Math.max(1, containerH - (useSingleFrameLayout ? framePadding * 2 : 0)),
-  };
-
-  const distributionW =
-    distribution === 'grid'
-      ? cols * baseChipW + gap * (cols - 1)
-      : distribution === 'vertical'
-      ? baseChipW
-      : naturalW;
-  const distributionH =
-    distribution === 'vertical' || distribution === 'grid'
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-
-  const startX = contentBounds.x + (contentBounds.width - distributionW) / 2;
-  const startY = contentBounds.y + (contentBounds.height - distributionH) / 2;
-
   const unitLayouts = useMemo(() => {
-    if (distribution === 'vertical') {
-      return parts.map((part, index) => ({
-        ...part,
-        x: contentBounds.x + (contentBounds.width - baseChipW) / 2,
-        y: startY + index * (chipH + gap),
-        width: baseChipW,
-        height: chipH,
-      }));
-    }
-
-    if (distribution === 'grid') {
-      return parts.map((part, index) => {
-        const row = Math.floor(index / cols);
-        const col = index % cols;
-        return {
-          ...part,
-          x: startX + col * (baseChipW + gap),
-          y: startY + row * (chipH + gap),
-          width: baseChipW,
-          height: chipH,
-        };
-      });
-    }
-
-    if (distribution === 'editorial') {
-      let cursorX = startX;
-      return parts.map((part, index) => {
-        const width = editorialWidths[index] || baseChipW;
-        const item = {
-          ...part,
-          x: cursorX,
-          y: startY,
-          width,
-          height: chipH,
-        };
-        cursorX += width + gap;
-        return item;
-      });
-    }
-
-    return parts.map((part, index) => ({
-      ...part,
-      x: startX + index * (baseChipW + gap),
-      y: startY,
-      width: baseChipW,
-      height: chipH,
+    const partsByUnit = new Map(parts.map((part) => [part.key, part]));
+    return layoutMetrics.unitLayouts.map((item) => ({
+      ...item,
+      ...(partsByUnit.get(item.unit) || {}),
     }));
-  }, [
-    distribution,
-    parts,
-    contentBounds.x,
-    contentBounds.width,
-    startY,
-    gap,
-    chipH,
-    cols,
-    baseChipW,
-    startX,
-    editorialWidths,
-  ]);
-  const separatorText = String(obj.separator || "");
-  const separatorFontSize = Math.max(10, Math.round(valueSize * 0.64));
-  const canRenderSeparators = Boolean(
-    separatorText && distribution !== "vertical" && distribution !== "grid" && unitLayouts.length > 1
-  );
-  const separatorLayouts = useMemo(() => {
-    if (!canRenderSeparators) return [];
-    return unitLayouts.slice(0, -1).map((item, index) => {
-      const next = unitLayouts[index + 1];
-      const itemRight = item.x + item.width;
-      const midpointX = itemRight + (next.x - itemRight) / 2;
-      const width = Math.max(12, Math.round(separatorFontSize * 1.4));
-      return {
-        key: `${item.key}-${next.key}-${index}`,
-        x: midpointX - width / 2,
-        y: item.y + Math.max(4, item.height * 0.3),
-        width,
-      };
-    });
-  }, [canRenderSeparators, unitLayouts, separatorFontSize]);
+  }, [layoutMetrics, parts]);
+  const separatorLayouts = layoutMetrics.separatorLayouts;
 
   useEffect(() => {
     if (isPassiveRender) return;
@@ -2342,6 +2191,26 @@ export default function CountdownKonva({
 
             return (
               <Group key={it.key} x={it.x} y={it.y} listening={false}>
+                {obj.layout !== "minimal" && (
+                  <Rect
+                    width={it.width}
+                    height={it.height}
+                    fill={
+                      obj.boxShadow && unitFillColor === "transparent"
+                        ? "rgba(255,255,255,0.001)"
+                        : unitFillColor
+                    }
+                    stroke={unitStrokeColor}
+                    cornerRadius={cornerRadius}
+                    shadowBlur={obj.boxShadow ? 6 : 0}
+                    shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
+                    shadowOffsetY={obj.boxShadow ? 2 : 0}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                    shadowForStrokeEnabled={false}
+                  />
+                )}
+
                 {useMultiUnitFrame && frameImage && (
                   <KonvaImage
                     image={frameImage}
@@ -2366,26 +2235,6 @@ export default function CountdownKonva({
                     fill="transparent"
                     listening={false}
                     perfectDrawEnabled={false}
-                  />
-                )}
-
-                {obj.layout !== "minimal" && (
-                  <Rect
-                    width={it.width}
-                    height={it.height}
-                    fill={
-                      obj.boxShadow && unitFillColor === "transparent"
-                        ? "rgba(255,255,255,0.001)"
-                        : unitFillColor
-                    }
-                    stroke={unitStrokeColor}
-                    cornerRadius={cornerRadius}
-                    shadowBlur={obj.boxShadow ? 6 : 0}
-                    shadowColor={obj.boxShadow ? "rgba(0,0,0,0.15)" : "transparent"}
-                    shadowOffsetY={obj.boxShadow ? 2 : 0}
-                    listening={false}
-                    perfectDrawEnabled={false}
-                    shadowForStrokeEnabled={false}
                   />
                 )}
 
@@ -2426,7 +2275,7 @@ export default function CountdownKonva({
 
           {separatorLayouts.map((item) => {
             const separatorFill = resolveKonvaFill(
-              obj.color,
+              obj.separatorColor ?? obj.color,
               Math.max(1, item.width),
               Math.max(1, separatorFontSize),
               "#111827"

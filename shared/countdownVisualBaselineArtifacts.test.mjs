@@ -50,3 +50,16 @@ test("committed countdown visual baseline matches fixtures and file hashes", () 
     assert.equal(fileHash, capture.sha256, capture.file);
   });
 });
+
+test("countdown baseline waits for the invitation entrance opacity to settle", () => {
+  const captureScript = fs.readFileSync(
+    path.resolve(
+      currentDirectory,
+      "../scripts/captureCountdownVisualBaseline.cjs"
+    ),
+    "utf8"
+  );
+
+  assert.match(captureScript, /getComputedStyle\(invitation\)/);
+  assert.match(captureScript, /invitationOpacity >= 0\.999/);
+});

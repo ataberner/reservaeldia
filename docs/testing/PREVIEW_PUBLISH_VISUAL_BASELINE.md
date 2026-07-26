@@ -123,6 +123,9 @@ Treat any of the following as a regression unless a new product or architecture 
   Preview and Publication
 - changed countdown `currentColor`, unit `boxShadow`, editorial unit widths, or
   expired `freezeZero` output without an explicit countdown-contract change
+- changed shared countdown layout metrics, frame opacity/stacking, SVG frame
+  fit, decimal `gap`, separator placement, or number/label typography without
+  an explicit countdown-contract change
 - changed cross-section order or changed `fijo`/`pantalla` relationship in the mixed case
 - changed mobile smart-layout height expansion between preview iframe and publish
 - changed group-child offsets relative to the group wrapper
@@ -149,4 +152,6 @@ Treat any of the following as a regression unless a new product or architecture 
   reviewed rendering change. The check uses exact hashes first and permits only
   explicitly reported Chromium subpixel drift (maximum 2/255 channel delta in
   at most 0.01% of channels); dimensions and larger visual changes remain hard
-  failures. Artifact hashes are always verified by the Node test.
+  failures. Capture begins only after the invitation loader is gone and the
+  `.inv` entrance opacity has fully settled. Artifact hashes are always verified
+  by the Node test.

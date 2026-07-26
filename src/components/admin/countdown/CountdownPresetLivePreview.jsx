@@ -4,11 +4,8 @@ import { loadGoogleFont } from "@/utils/loadFont";
 import {
   buildTextPaintStyle,
   buildFrameSvgMarkup,
-  buildCountdownEditorialWidths,
-  estimateCountdownUnitHeight,
   getCountdownParts,
-  normalizeVisibleUnits,
-  resolveCountdownUnitWidth,
+  resolveCountdownLayoutMetrics,
   resolveCanvasPaint,
   resolvePreviewPaint,
   transformLabel,
@@ -18,7 +15,6 @@ import {
   recordCountdownRenderTelemetry,
 } from "@/domain/countdownObservability/telemetry";
 import {
-  normalizeCountdownFrameScale,
   resolveCountdownFrameVisualBounds,
 } from "@/domain/countdownPresets/frameGeometry";
 
@@ -202,7 +198,17 @@ export default function CountdownPresetLivePreview({
     "#e5e7eb"
   );
 
-  const visibleUnits = normalizeVisibleUnits(previewPatch.visibleUnits);
+  const layoutMetrics = useMemo(
+    () =>
+      resolveCountdownLayoutMetrics({
+        ...previewPatch,
+        frameSvgUrl:
+          String(frameUrl || "").trim() || (svgText ? "inline:svg" : ""),
+        frameAssetType,
+      }),
+    [previewPatch, frameUrl, svgText, frameAssetType]
+  );
+  const visibleUnits = layoutMetrics.visibleUnits;
   const parts = useMemo(
     () =>
       getCountdownParts(
@@ -244,171 +250,33 @@ export default function CountdownPresetLivePreview({
   const canUseCurrentColor =
     !isPngFrame && svgColorMode === "currentColor";
 
-  const distribution = String(previewPatch.distribution || "centered");
-  const layoutType = String(previewPatch.layoutType || "singleFrame");
-  const showLabels = previewPatch.showLabels !== false;
-  const separator = String(previewPatch.separator || "").slice(0, 3);
-  const numberSize = Math.max(10, toFinite(previewPatch.fontSize, 28));
-  const labelSize = Math.max(8, toFinite(previewPatch.labelSize, 12));
-  const lineHeight = Math.max(0.8, toFinite(previewPatch.lineHeight, 1.05));
-  const letterSpacing = toFinite(previewPatch.letterSpacing, 0);
-  const gap = Math.max(0, toFinite(previewPatch.gap, 8));
-  const framePadding = Math.max(0, toFinite(previewPatch.framePadding, 10));
-  const frameScale = normalizeCountdownFrameScale(previewPatch.frameScale);
-  const paddingX = Math.max(2, toFinite(previewPatch.paddingX, 8));
-  const paddingY = Math.max(2, toFinite(previewPatch.paddingY, 6));
-  const requestedChipW = Math.max(36, toFinite(previewPatch.chipWidth, 46) + paddingX * 2);
-  const textDrivenChipH = Math.max(
-    44,
-    paddingY * 2 + numberSize + (showLabels ? labelSize + 6 : 0)
-  );
-  const itemCount = Math.max(1, parts.length);
-  const layoutDrivenChipH = estimateCountdownUnitHeight({
-    tamanoBase: toFinite(previewPatch.tamanoBase, 320),
-    distribution,
-    unitsCount: itemCount,
-  });
-  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
-  const unitBoxRadius = Math.max(0, Math.min(999, toFinite(previewPatch.boxRadius, 10)));
-  const baseChipW = resolveCountdownUnitWidth({
-    width: requestedChipW,
-    height: chipH,
+  const {
+    useSingleFrameLayout,
+    useMultiUnitFrame,
+    showLabels,
+    separatorText: separator,
+    valueSize: numberSize,
+    labelSize,
+    lineHeight,
+    letterSpacing,
+    frameScale,
     boxRadius: unitBoxRadius,
-  });
-
-  const cols =
-    distribution === "vertical"
-      ? 1
-      : distribution === "grid"
-        ? Math.min(2, itemCount)
-        : itemCount;
-  const rows =
-    distribution === "vertical"
-      ? itemCount
-      : distribution === "grid"
-        ? Math.ceil(itemCount / cols)
-        : 1;
-
-  const editorialWidths =
-    distribution === "editorial"
-      ? buildCountdownEditorialWidths({
-          unitsCount: itemCount,
-          baseChipWidth: baseChipW,
-          chipHeight: chipH,
-          boxRadius: unitBoxRadius,
-        })
-      : [];
-
-  const naturalW =
-    distribution === "vertical"
-      ? baseChipW
-      : distribution === "grid"
-        ? cols * baseChipW + gap * (cols - 1)
-        : distribution === "editorial"
-          ? editorialWidths.reduce((acc, width) => acc + width, 0) + gap * Math.max(0, itemCount - 1)
-          : itemCount * baseChipW + gap * (itemCount - 1);
-
-  const naturalH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-
-  const containerW = Math.max(
-    naturalW + (layoutType === "singleFrame" ? framePadding * 2 : 0),
-    1
+    containerW,
+    containerH,
+    separatorFontSize,
+  } = layoutMetrics;
+  const partsByUnit = useMemo(
+    () => new Map(parts.map((part) => [part.unit, part])),
+    [parts]
   );
-  const containerH = Math.max(
-    naturalH + (layoutType === "singleFrame" ? framePadding * 2 : 0),
-    1
+  const unitLayouts = useMemo(
+    () =>
+      layoutMetrics.unitLayouts.map((item) => ({
+        ...item,
+        ...(partsByUnit.get(item.unit) || {}),
+      })),
+    [layoutMetrics, partsByUnit]
   );
-  const contentBounds = {
-    x: layoutType === "singleFrame" ? framePadding : 0,
-    y: layoutType === "singleFrame" ? framePadding : 0,
-    width: Math.max(
-      1,
-      containerW - (layoutType === "singleFrame" ? framePadding * 2 : 0)
-    ),
-    height: Math.max(
-      1,
-      containerH - (layoutType === "singleFrame" ? framePadding * 2 : 0)
-    ),
-  };
-
-  const distributionW =
-    distribution === "grid"
-      ? cols * baseChipW + gap * (cols - 1)
-      : distribution === "vertical"
-        ? baseChipW
-        : naturalW;
-  const distributionH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-
-  const startX = contentBounds.x + (contentBounds.width - distributionW) / 2;
-  const startY = contentBounds.y + (contentBounds.height - distributionH) / 2;
-
-  const unitLayouts = useMemo(() => {
-    if (distribution === "vertical") {
-      return parts.map((part, index) => ({
-        ...part,
-        x: contentBounds.x + (contentBounds.width - baseChipW) / 2,
-        y: startY + index * (chipH + gap),
-        width: baseChipW,
-        height: chipH,
-      }));
-    }
-
-    if (distribution === "grid") {
-      return parts.map((part, index) => {
-        const row = Math.floor(index / cols);
-        const col = index % cols;
-        return {
-          ...part,
-          x: startX + col * (baseChipW + gap),
-          y: startY + row * (chipH + gap),
-          width: baseChipW,
-          height: chipH,
-        };
-      });
-    }
-
-    if (distribution === "editorial") {
-      let cursorX = startX;
-      return parts.map((part, index) => {
-        const width = editorialWidths[index] || baseChipW;
-        const item = {
-          ...part,
-          x: cursorX,
-          y: startY,
-          width,
-          height: chipH,
-        };
-        cursorX += width + gap;
-        return item;
-      });
-    }
-
-    return parts.map((part, index) => ({
-      ...part,
-      x: startX + index * (baseChipW + gap),
-      y: startY,
-      width: baseChipW,
-      height: chipH,
-    }));
-  }, [
-    distribution,
-    parts,
-    contentBounds.x,
-    contentBounds.width,
-    startY,
-    chipH,
-    gap,
-    cols,
-    startX,
-    baseChipW,
-    editorialWidths,
-  ]);
   const frameVisualBounds = resolveCountdownFrameVisualBounds({
     width: containerW,
     height: containerH,
@@ -416,7 +284,7 @@ export default function CountdownPresetLivePreview({
       frameSvgMarkup || safeFrameUrl
         ? frameScale
         : 1,
-    frameRects: layoutType === "multiUnit" ? unitLayouts : undefined,
+    frameRects: useMultiUnitFrame ? unitLayouts : undefined,
   });
 
   const displayTargetWidth = Math.max(220, Math.min(560, toFinite(safeConfig?.tamanoBase, 320)));
@@ -440,22 +308,7 @@ export default function CountdownPresetLivePreview({
     transform: `scale(${frameScale})`,
     transformOrigin: "center",
   };
-  const canRenderSeparators = Boolean(
-    separator && distribution !== "vertical" && distribution !== "grid"
-  );
-  const separatorLayouts = useMemo(() => {
-    if (!canRenderSeparators || unitLayouts.length < 2) return [];
-    return unitLayouts.slice(0, -1).map((item, index) => {
-      const next = unitLayouts[index + 1];
-      const itemRight = item.x + item.width;
-      const midpointX = itemRight + (next.x - itemRight) / 2;
-      return {
-        key: `${item.unit}-${next.unit}-${index}`,
-        x: midpointX,
-        y: item.y + Math.max(5, item.height * 0.31),
-      };
-    });
-  }, [canRenderSeparators, unitLayouts]);
+  const separatorLayouts = layoutMetrics.separatorLayouts;
 
   const unitBoxBg = resolveUnitCssValue(
     resolvePreviewPaint(unidad.boxBg, "transparent"),
@@ -474,6 +327,10 @@ export default function CountdownPresetLivePreview({
     colors.labelColor || previewPatch.labelColor,
     "#4b5563"
   );
+  const separatorColor = resolvePreviewPaint(
+    previewPatch.separatorColor ?? previewPatch.color,
+    "#111111"
+  );
   const frameStrokeColor = resolveCanvasPaint(
     previewPatch.frameColor || frameColor,
     "#773dbe"
@@ -482,6 +339,10 @@ export default function CountdownPresetLivePreview({
   const labelTransform = typo.labelTransform || previewPatch.labelTransform || "uppercase";
   const numberTextPaintStyle = buildTextPaintStyle(numberColor, "#111111");
   const labelTextPaintStyle = buildTextPaintStyle(labelColor, "#4b5563");
+  const separatorTextPaintStyle = buildTextPaintStyle(
+    separatorColor,
+    "#111111"
+  );
 
   useEffect(() => {
     const family = extractPrimaryFontName(fontFamily);
@@ -549,16 +410,16 @@ export default function CountdownPresetLivePreview({
               height: `${containerH}px`,
             }}
           >
-            {layoutType === "singleFrame" && frameSvgMarkup ? (
+            {useSingleFrameLayout && frameSvgMarkup ? (
               <div
                 aria-hidden="true"
-                className={`cd-preview-svg pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                className={`cd-preview-svg pointer-events-none absolute inset-0 ${canAnimateFrame ? frameAnimationClass : ""}`}
                 style={frameScaleStyle}
                 dangerouslySetInnerHTML={{ __html: frameSvgMarkup }}
               />
             ) : null}
 
-            {layoutType === "singleFrame" && !frameSvgMarkup && safeFrameUrl ? (
+            {useSingleFrameLayout && !frameSvgMarkup && safeFrameUrl ? (
               canUseCurrentColor ? (
                 <>
                   <img
@@ -572,7 +433,7 @@ export default function CountdownPresetLivePreview({
                   />
                   <span
                     aria-hidden="true"
-                    className={`pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                    className={`pointer-events-none absolute inset-0 ${canAnimateFrame ? frameAnimationClass : ""}`}
                     style={{
                       ...frameScaleStyle,
                       backgroundColor: frameStrokeColor,
@@ -595,23 +456,12 @@ export default function CountdownPresetLivePreview({
                   onError={handleFrameLoadError}
                   className={`pointer-events-none absolute inset-0 h-full w-full ${
                     isPngFrame ? "object-contain" : "object-fill"
-                  } opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                  } ${canAnimateFrame ? frameAnimationClass : ""}`}
                   style={frameScaleStyle}
                   loading="lazy"
                   decoding="async"
                 />
               )
-            ) : null}
-
-            {layoutType === "singleFrame" && !frameSvgMarkup && !safeFrameUrl && previewPatch.frameColor ? (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  border: `1px solid ${frameStrokeColor}`,
-                  borderRadius: `${Math.min(18, Math.round(framePadding * 1.4))}px`,
-                }}
-              />
             ) : null}
 
             {unitLayouts.map((item) => {
@@ -632,16 +482,30 @@ export default function CountdownPresetLivePreview({
                     height: `${item.height}px`,
                   }}
                 >
-                  {layoutType === "multiUnit" && frameSvgMarkup ? (
+                  {canDrawBox ? (
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        background: unitBoxBg || "transparent",
+                        border: `1px solid ${unitBoxBorder || "transparent"}`,
+                        borderRadius: `${cornerRadius}px`,
+                        boxShadow: unitBoxShadow
+                          ? "0 2px 6px rgba(0,0,0,0.15)"
+                          : "none",
+                      }}
+                    />
+                  ) : null}
+
+                  {useMultiUnitFrame && frameSvgMarkup ? (
                     <div
                       aria-hidden="true"
-                      className={`cd-preview-svg pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                      className={`cd-preview-svg pointer-events-none absolute inset-0 ${canAnimateFrame ? frameAnimationClass : ""}`}
                       style={frameScaleStyle}
                       dangerouslySetInnerHTML={{ __html: frameSvgMarkup }}
                     />
                   ) : null}
 
-                  {layoutType === "multiUnit" && !frameSvgMarkup && safeFrameUrl ? (
+                  {useMultiUnitFrame && !frameSvgMarkup && safeFrameUrl ? (
                     canUseCurrentColor ? (
                       <>
                         <img
@@ -655,7 +519,7 @@ export default function CountdownPresetLivePreview({
                         />
                         <span
                           aria-hidden="true"
-                          className={`pointer-events-none absolute inset-0 opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                          className={`pointer-events-none absolute inset-0 ${canAnimateFrame ? frameAnimationClass : ""}`}
                           style={{
                             ...frameScaleStyle,
                             backgroundColor: frameStrokeColor,
@@ -678,37 +542,12 @@ export default function CountdownPresetLivePreview({
                         onError={handleFrameLoadError}
                         className={`pointer-events-none absolute inset-0 h-full w-full ${
                           isPngFrame ? "object-contain" : "object-fill"
-                        } opacity-95 ${canAnimateFrame ? frameAnimationClass : ""}`}
+                        } ${canAnimateFrame ? frameAnimationClass : ""}`}
                         style={frameScaleStyle}
                         loading="lazy"
                         decoding="async"
                       />
                     )
-                  ) : null}
-
-                  {layoutType === "multiUnit" && !frameSvgMarkup && !safeFrameUrl && previewPatch.frameColor ? (
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        border: `1px solid ${frameStrokeColor}`,
-                        borderRadius: `${cornerRadius}px`,
-                      }}
-                    />
-                  ) : null}
-
-                  {canDrawBox ? (
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        background: unitBoxBg || "transparent",
-                        border: `1px solid ${unitBoxBorder || "transparent"}`,
-                        borderRadius: `${cornerRadius}px`,
-                        boxShadow: unitBoxShadow
-                          ? "0 2px 6px rgba(0,0,0,0.15)"
-                          : "none",
-                      }}
-                    />
                   ) : null}
 
                   {layoutVariant === "flip" && canDrawBox ? (
@@ -740,6 +579,7 @@ export default function CountdownPresetLivePreview({
                           fontSize: labelSize,
                           marginTop: 4,
                           letterSpacing: `${letterSpacing}px`,
+                          lineHeight: 1,
                         }}
                       >
                         {label}
@@ -754,14 +594,15 @@ export default function CountdownPresetLivePreview({
               {separatorLayouts.map((item) => (
                 <span
                   key={item.key}
-                  className="pointer-events-none absolute z-[5] font-bold leading-none"
+                  className="pointer-events-none absolute z-[5] flex items-center justify-center font-bold leading-none"
                   style={{
                     left: `${item.x}px`,
                     top: `${item.y}px`,
-                    transform: "translateX(-50%)",
-                    ...numberTextPaintStyle,
+                    width: `${item.width}px`,
+                    ...separatorTextPaintStyle,
                     fontFamily,
-                    fontSize: Math.max(10, Math.round(numberSize * 0.64)),
+                    fontSize: separatorFontSize,
+                    letterSpacing: `${letterSpacing}px`,
                   }}
                 >
                   {separator}

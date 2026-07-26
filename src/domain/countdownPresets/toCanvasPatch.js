@@ -103,5 +103,6 @@ export function buildCountdownCanvasPatchFromPreset({
     boxBorder: unidad.boxBorder || "transparent",
     boxRadius: Math.max(0, toFinite(unidad.boxRadius, 10)),
     boxShadow: unidad.boxShadow === true,
+    presetPropsVersion: 2,
   };
 }

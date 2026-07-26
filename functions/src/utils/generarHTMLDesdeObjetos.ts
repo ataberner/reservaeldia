@@ -27,8 +27,9 @@ const {
   isCountdownVisible,
 } = require("../../shared/countdownEventDetails.cjs");
 const {
-  normalizeCountdownFrameScale,
-} = require("../../shared/countdownFrameGeometry.cjs");
+  COUNTDOWN_DEFAULT_VISIBLE_UNITS,
+  resolveCountdownLayoutMetrics,
+} = require("../../shared/countdownLayoutContract.cjs");
 
 // ✅ Escapar strings para meterlos en atributos/HTML
 function escHTML(str: any = ""): string {
@@ -187,8 +188,6 @@ const COUNTDOWN_UNIT_LABELS = Object.freeze({
   seconds: "Seg",
 });
 
-const COUNTDOWN_DEFAULT_VISIBLE_UNITS = Object.freeze(["days", "hours", "minutes", "seconds"]);
-
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -196,74 +195,6 @@ function clampNumber(value: number, min: number, max: number): number {
 function toFiniteNumber(value: any, fallback: number): number {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-function normalizeCountdownUnits(value: any): string[] {
-  if (!Array.isArray(value) || value.length === 0) return [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
-
-  const normalized = value
-    .map((unit) => String(unit || "").trim())
-    .filter((unit) => Object.prototype.hasOwnProperty.call(COUNTDOWN_UNIT_LABELS, unit));
-
-  const unique: string[] = [];
-  normalized.forEach((unit) => {
-    if (!unique.includes(unit)) unique.push(unit);
-  });
-
-  return unique.length > 0 ? unique : [...COUNTDOWN_DEFAULT_VISIBLE_UNITS];
-}
-
-function estimateCountdownUnitHeightLikeCanvas({
-  tamanoBase = 320,
-  distribution = "centered",
-  unitsCount = 4,
-}: {
-  tamanoBase?: any;
-  distribution?: any;
-  unitsCount?: any;
-} = {}): number {
-  const base = clampNumber(toFiniteNumber(tamanoBase, 320), 220, 960);
-  const count = Math.max(1, Math.min(4, Number(unitsCount || 4)));
-  const mode = String(distribution || "centered").toLowerCase();
-
-  if (mode === "vertical") return Math.max(44, Math.round(base * 0.17));
-  if (mode === "grid") return Math.max(44, Math.round(base * 0.2));
-  if (mode === "editorial") return Math.max(44, Math.round(base * 0.16));
-
-  const centeredScale =
-    count <= 1 ? 0.34 : count === 2 ? 0.24 : count === 3 ? 0.18 : 0.15;
-  return Math.max(44, Math.round(base * centeredScale));
-}
-
-function resolveCountdownUnitWidthLikeCanvas({
-  width = 46,
-  height = 44,
-  boxRadius = 0,
-}: {
-  width?: any;
-  height?: any;
-  boxRadius?: any;
-} = {}): number {
-  const safeWidth = Math.max(1, toFiniteNumber(width, 46));
-  const safeHeight = Math.max(1, toFiniteNumber(height, 44));
-  const safeRadius = clampNumber(toFiniteNumber(boxRadius, 0), 0, 999);
-  const roundedThreshold = safeHeight / 2;
-
-  if (safeWidth <= safeHeight || safeRadius <= roundedThreshold) {
-    return Math.round(safeWidth);
-  }
-
-  const circleThreshold = safeHeight;
-  const blend =
-    circleThreshold <= roundedThreshold
-      ? 1
-      : clampNumber(
-          (safeRadius - roundedThreshold) / (circleThreshold - roundedThreshold),
-          0,
-          1
-        );
-
-  return Math.round(safeWidth + (safeHeight - safeWidth) * blend);
 }
 
 function transformCountdownLabel(label: string, transformMode: string): string {
@@ -277,207 +208,7 @@ function transformCountdownLabel(label: string, transformMode: string): string {
 }
 
 function buildCountdownLayoutMetrics(obj: any) {
-  const units = normalizeCountdownUnits(obj?.visibleUnits);
-  const unitsCount = Math.max(1, units.length);
-  const frameSvgUrl = String(obj?.frameSvgUrl || "").trim();
-  const hasFrameConfigured = frameSvgUrl.length > 0;
-  const frameAssetType =
-    String(obj?.frameAssetType || "").toLowerCase() === "png" ? "png" : "svg";
-  const distribution = String(obj?.distribution || obj?.layoutType || "centered").toLowerCase();
-  const layoutType = String(obj?.layoutType || "singleFrame").toLowerCase();
-  const useSingleFrameLayout = layoutType === "singleframe" && hasFrameConfigured;
-  const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
-  const gap = Math.max(0, toFiniteNumber(obj?.gap, 8));
-  const framePadding = Math.max(0, toFiniteNumber(obj?.framePadding, 10));
-  const frameScale = normalizeCountdownFrameScale(obj?.frameScale);
-  const paddingY = Math.max(2, toFiniteNumber(obj?.paddingY, 6));
-  const paddingX = Math.max(2, toFiniteNumber(obj?.paddingX, 8));
-  const valueSize = Math.max(10, toFiniteNumber(obj?.fontSize, 16));
-  const labelSize = Math.max(8, toFiniteNumber(obj?.labelSize, 10));
-  const showLabels = obj?.showLabels !== false;
-  const unitBoxRadius = Math.max(0, toFiniteNumber(obj?.boxRadius, 8));
-  const requestedChipW = Math.max(36, toFiniteNumber(obj?.chipWidth, 46) + paddingX * 2);
-  const textDrivenChipH = Math.max(
-    44,
-    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
-  );
-  const layoutDrivenChipH = estimateCountdownUnitHeightLikeCanvas({
-    tamanoBase: toFiniteNumber(obj?.tamanoBase, 320),
-    distribution,
-    unitsCount,
-  });
-  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
-  const baseChipW = resolveCountdownUnitWidthLikeCanvas({
-    width: requestedChipW,
-    height: chipH,
-    boxRadius: unitBoxRadius,
-  });
-
-  const cols =
-    distribution === "vertical"
-      ? 1
-      : distribution === "grid"
-        ? Math.min(2, unitsCount)
-        : unitsCount;
-  const rows =
-    distribution === "vertical"
-      ? unitsCount
-      : distribution === "grid"
-        ? Math.ceil(unitsCount / cols)
-        : 1;
-
-  const editorialWidths =
-    distribution === "editorial"
-      ? Array.from({ length: unitsCount }, (_, index) =>
-          resolveCountdownUnitWidthLikeCanvas({
-            width: Math.max(34, Math.round(baseChipW * (index === 0 && unitsCount > 1 ? 1.25 : 0.88))),
-            height: chipH,
-            boxRadius: unitBoxRadius,
-          })
-        )
-      : [];
-
-  const naturalW =
-    distribution === "vertical"
-      ? baseChipW
-      : distribution === "grid"
-        ? cols * baseChipW + gap * (cols - 1)
-        : distribution === "editorial"
-          ? editorialWidths.reduce((acc, width) => acc + width, 0) + gap * Math.max(0, unitsCount - 1)
-          : unitsCount * baseChipW + gap * (unitsCount - 1);
-
-  const naturalH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-
-  const containerW = Math.max(
-    toFiniteNumber(obj?.width, 0),
-    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0)
-  );
-  const containerH = Math.max(
-    toFiniteNumber(obj?.height, 0),
-    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
-  );
-
-  const contentBounds = {
-    x: useSingleFrameLayout ? framePadding : 0,
-    y: useSingleFrameLayout ? framePadding : 0,
-    width: Math.max(1, containerW - (useSingleFrameLayout ? framePadding * 2 : 0)),
-    height: Math.max(1, containerH - (useSingleFrameLayout ? framePadding * 2 : 0)),
-  };
-
-  const distributionW =
-    distribution === "grid"
-      ? cols * baseChipW + gap * (cols - 1)
-      : distribution === "vertical"
-        ? baseChipW
-        : naturalW;
-  const distributionH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-
-  const startX = contentBounds.x + (contentBounds.width - distributionW) / 2;
-  const startY = contentBounds.y + (contentBounds.height - distributionH) / 2;
-
-  const unitLayouts =
-    distribution === "vertical"
-      ? units.map((unit, index) => ({
-          unit,
-          x: contentBounds.x + (contentBounds.width - baseChipW) / 2,
-          y: startY + index * (chipH + gap),
-          width: baseChipW,
-          height: chipH,
-        }))
-      : distribution === "grid"
-        ? units.map((unit, index) => {
-            const row = Math.floor(index / cols);
-            const col = index % cols;
-            return {
-              unit,
-              x: startX + col * (baseChipW + gap),
-              y: startY + row * (chipH + gap),
-              width: baseChipW,
-              height: chipH,
-            };
-          })
-        : distribution === "editorial"
-          ? (() => {
-              let cursorX = startX;
-              return units.map((unit, index) => {
-                const width = editorialWidths[index] || baseChipW;
-                const item = {
-                  unit,
-                  x: cursorX,
-                  y: startY,
-                  width,
-                  height: chipH,
-                };
-                cursorX += width + gap;
-                return item;
-              });
-            })()
-          : units.map((unit, index) => ({
-              unit,
-              x: startX + index * (baseChipW + gap),
-              y: startY,
-              width: baseChipW,
-              height: chipH,
-            }));
-
-  const separatorText = String(obj?.separator || "");
-  const separatorFontSize = Math.max(10, Math.round(valueSize * 0.64));
-  const canRenderSeparators = Boolean(
-    separatorText && distribution !== "vertical" && distribution !== "grid" && unitLayouts.length > 1
-  );
-  const separatorLayouts = canRenderSeparators
-    ? unitLayouts.slice(0, -1).map((item, index) => {
-        const next = unitLayouts[index + 1];
-        const itemRight = item.x + item.width;
-        const midpointX = itemRight + (next.x - itemRight) / 2;
-        const width = Math.max(12, Math.round(separatorFontSize * 1.4));
-        return {
-          key: `${item.unit}-${next.unit}-${index}`,
-          x: midpointX - width / 2,
-          y: item.y + Math.max(4, item.height * 0.3),
-          width,
-        };
-      })
-    : [];
-
-  return {
-    units,
-    distribution,
-    layoutType,
-    frameSvgUrl,
-    frameAssetType,
-    hasFrameConfigured,
-    useSingleFrameLayout,
-    useMultiUnitFrame,
-    gap,
-    framePadding,
-    frameScale,
-    paddingX,
-    paddingY,
-    chipWidth: toFiniteNumber(obj?.chipWidth, 46),
-    showLabels,
-    boxRadius: unitBoxRadius,
-    valueSize,
-    labelSize,
-    chipH,
-    baseChipW,
-    naturalW,
-    naturalH,
-    containerW,
-    containerH,
-    startX,
-    startY,
-    unitLayouts,
-    separatorText,
-    separatorFontSize,
-    separatorLayouts,
-  };
+  return resolveCountdownLayoutMetrics(obj);
 }
 
 function formatShapePercent(value: number): string {
@@ -1586,7 +1317,7 @@ fill: ${escapeAttr(fill)};
 
         if (countdownContractVersion === "v2") {
           const layout = buildCountdownLayoutMetrics(obj);
-          const safeUnits = layout.units;
+          const safeUnits = layout.visibleUnits;
           const distribution = layout.distribution;
           const layoutType = layout.layoutType;
           const altoModo = altoModoPorSeccion.get(obj?.seccionId) || "fijo";
@@ -1669,15 +1400,15 @@ pointer-events: none;
           const valueStyle = `
 font-weight: 700;
 font-size: ${sChipPx(layout.valueSize)};
-line-height: ${Number.isFinite(obj.lineHeight) ? Number(obj.lineHeight) : 1.05};
-letter-spacing: ${sChipPx(Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0)};
+line-height: ${toCssNumber(layout.lineHeight)};
+letter-spacing: ${sChipPx(layout.letterSpacing)};
 ${buildTextPaintStyleCss(numberPaint, "#111")}
 `.trim();
 
           const labelStyle = `
 font-size: ${sChipPx(layout.labelSize)};
 line-height: 1;
-letter-spacing: ${sChipPx(Number.isFinite(obj.letterSpacing) ? Number(obj.letterSpacing) : 0)};
+letter-spacing: ${sChipPx(layout.letterSpacing)};
 ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
 `.trim();
 
@@ -1695,7 +1426,7 @@ ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
               : "";
 
           const unitsHtml = layout.unitLayouts
-            .map((item, index: number) => {
+            .map((item: any, index: number) => {
               const unit = item.unit;
               const cornerRadius = Math.min(
                 Number.isFinite(obj.boxRadius) ? Number(obj.boxRadius) : 8,
@@ -1736,19 +1467,19 @@ pointer-events: none;
             })
             .join("");
 
-          const separatorPaint = sanitizeCssPaint(obj.separatorColor ?? obj.labelColor, "#6b7280");
+          const separatorPaint = sanitizeCssPaint(obj.separatorColor ?? obj.color, "#111");
           const separatorStyle = `
 font-weight: 700;
 font-size: ${sChipPx(layout.separatorFontSize)};
 line-height: 1;
 text-align: center;
 white-space: pre;
-${buildTextPaintStyleCss(separatorPaint, "#6b7280")}
+${buildTextPaintStyleCss(separatorPaint, "#111")}
 `.trim();
 
           const separatorsHtml = layout.separatorLayouts
             .map(
-              (item) => `
+              (item: any) => `
 <span class="cdv2-separator" aria-hidden="true" style="position:absolute;left:${sChipPx(item.x)};top:${sChipPx(item.y)};width:${sChipPx(item.width)};z-index:3;pointer-events:none;${separatorStyle}">${escapeAttr(layout.separatorText)}</span>
 `.trim()
             )

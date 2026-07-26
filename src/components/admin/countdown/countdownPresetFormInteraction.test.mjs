@@ -59,6 +59,10 @@ test("form is split by schema 2 responsibility and exposes actionable validation
   assert.match(formSource, /focusFirstInvalid/);
   assert.match(sectionsSource, /aria-invalid/);
   assert.match(sectionsSource, /min-h-11/);
+  assert.match(
+    sectionsSource,
+    /id="layout\.gap"[\s\S]*step=\{0\.1\}/
+  );
 });
 
 test("frame UI is compact, accepts SVG and PNG, and exposes accessible help and errors", () => {

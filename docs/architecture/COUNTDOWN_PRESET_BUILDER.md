@@ -20,6 +20,7 @@ contract.
 | Administrative catalog | `CountdownPresetList.jsx` |
 | Builder simulation shell | `CountdownPresetPreviewPanel.jsx` |
 | Existing builder countdown renderer | `CountdownPresetLivePreview.jsx` |
+| Canonical schema-v2 layout semantics | `shared/countdownLayoutContract.cjs` |
 | Frame upload UX and browser validation | `SvgUploadInspector.jsx`, `frameAssetInspector.js` |
 | Shared SVG/PNG frame contract | `shared/countdownFrameAssetContract.cjs` |
 | Shared frame scale and centered geometry | `shared/countdownFrameGeometry.cjs` |
@@ -58,8 +59,18 @@ rules.
 The simulation state is not part of the form fingerprint or save payload. It
 supports desktop/mobile containers, zoom, light/dark/checkerboard backgrounds,
 reduced motion, a custom date and four frozen-clock scenarios. The panel reuses
-`CountdownPresetLivePreview` and the existing schema 2 render helpers; it does
-not introduce another public renderer.
+`CountdownPresetLivePreview`. Builder, Canvas/Konva, React sidebar preview,
+insert geometry and generated HTML consume `shared/countdownLayoutContract.cjs`
+for unit dimensions, distribution, `gap`, padding, container bounds and
+separator placement. Each surface remains a runtime-specific adapter; none may
+redefine those metrics.
+
+`layout.gap` has one meaning: editor pixels between adjacent units in
+`centered`, `vertical`, `grid` and `editorial` distributions. The persisted
+range is `0..48`, zero and decimal values are valid, and missing compatible
+data reads as `8`. The builder numeric control uses `step=0.1`; save, edit,
+materialization, Canvas, sidebar, preview and publication preserve the same
+number without per-surface conversions.
 
 Default props preserve the Phase 0 baseline harness behavior. Injecting `nowMs`
 freezes the builder timer only for simulation and tests.
@@ -79,6 +90,13 @@ frame resets it to `1`. The materialized countdown stores the same value as
 root `frameScale`. Builder, Konva, React preview, thumbnail generation and
 published HTML all scale the frame from its center without changing numbers,
 labels, chips, target time or the countdown layout box.
+
+The visual stacking contract is stable: a unit background is below its
+multi-unit frame, and number/label content is above both. Single-frame
+decoration stays below the units. SVG frames fill the authored frame box
+(`preserveAspectRatio="none"` or equivalent runtime geometry); PNG frames use
+contained geometry and preserve their intrinsic aspect ratio and alpha bytes.
+Builder preview does not apply an additional frame opacity.
 
 PNG upload validation distinguishes an alpha-capable PNG from one that contains
 actual transparent pixels. `hasAlpha` remains compatible channel metadata;
@@ -130,6 +148,9 @@ normalized through the existing compatibility adapter and remains compatible.
 - SVG retains the existing sanitization contract and 500 KB hard limit.
 - `fechaObjetivo`, invitation snapshots and public render payloads are
   untouched.
+- The persisted raster thumbnail is an administrative catalog artifact, not a
+  render authority or parity oracle. The live builder preview and the live
+  Contador-tab preview consume materialized preset props.
 - Legacy/v1 reads, aliases, tombstones, immutable versions, staging and
   telemetry remain active.
 - There is no rollback activation, autosave, schema v3, IANA timezone,
@@ -148,6 +169,7 @@ normalized through the existing compatibility adapter and remains compatible.
 - `src/components/editor/countdown/countdownFramePngParity.test.mjs`
 - `shared/countdownFrameAssetContract.test.mjs`
 - `shared/countdownFrameGeometry.test.mjs`
+- `shared/countdownLayoutContract.test.mjs`
 - `functions/countdownFrameAssetValidation.test.mjs`
 - `functions/countdownPresetPhase3Policy.test.mjs`
 - `functions/countdownPresetPhase3Service.test.mjs`

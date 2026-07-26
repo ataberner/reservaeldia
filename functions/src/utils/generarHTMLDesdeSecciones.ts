@@ -1999,14 +1999,6 @@ export function generarHTMLDesdeSecciones(
       box-sizing: border-box;
     }
 
-    .countdown-v2 .cdv2-unit {
-      backdrop-filter: saturate(1.04);
-    }
-
-    .countdown-v2 .cdv2-unit--hero {
-      min-height: calc(var(--sfinal, var(--sx)) * 82px);
-    }
-
     .countdown-v2 .cdv2-frame img {
       width: 100%;
       height: 100%;

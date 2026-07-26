@@ -69,7 +69,7 @@
       "state": "days",
       "surface": "builder",
       "file": "days/builder.png",
-      "sha256": "a790ee178f8f4008f99fc682b1df5eaa41ea4f24557c2973075dab85cb4e472a",
+      "sha256": "060ea77d9ab115a28c2f2671e3f7ff3e0347b04ad5267b1847c0a44b6c994822",
       "width": 820,
       "height": 470
     },
@@ -77,7 +77,7 @@
       "state": "days",
       "surface": "canvas",
       "file": "days/canvas.png",
-      "sha256": "31b37f1a5ea8c9e0d4bcf3fd8a0a6b8b93a1533cf4a85a73fc5ed18a554ef913",
+      "sha256": "af819a8c4ea1b144ec3f3fccd7b8ae673beb107dbc16f5be49da3e282db158c3",
       "width": 820,
       "height": 470
     },
@@ -85,7 +85,7 @@
       "state": "days",
       "surface": "preview",
       "file": "days/preview.png",
-      "sha256": "d896ceae113e7d3c3f0050cba274e431a034c37f782c119b5f995b5c210cfda7",
+      "sha256": "7f1774a9d8b7565830229edac5b42534ed93ff1cd907b8d9feb4f82d6fa45368",
       "width": 820,
       "height": 470
     },
@@ -93,7 +93,7 @@
       "state": "days",
       "surface": "publication",
       "file": "days/publication.png",
-      "sha256": "0f84969271e3d96e2e7a5045941c4dd9f5d78e61b059d7ddfff52c18c1ea46e4",
+      "sha256": "0a59dd3496b68192bf3d5fcb71f3c1836438c5e144e8c95b167e360ab0ba5dce",
       "width": 820,
       "height": 470
     },
@@ -101,7 +101,7 @@
       "state": "days",
       "surface": "mobile",
       "file": "days/mobile.png",
-      "sha256": "2bff629bfdf6b92ccbe91749100361614ccb961d188fa64efe05bab0457797fb",
+      "sha256": "9847e9864a35daab9aa4a12d7ce75a00d5c24426918d4e3f471cada21eba8ad3",
       "width": 430,
       "height": 470
     },
@@ -109,7 +109,7 @@
       "state": "hours",
       "surface": "builder",
       "file": "hours/builder.png",
-      "sha256": "ec7fad7279e6b19afd54bd255af5acd9999ebe32f568b31ad9962d406046b76b",
+      "sha256": "2ff31fe31a25a1a32cb28a8fd04d8f2e7fded4fa77b7ab286be05d6daf3994e1",
       "width": 820,
       "height": 470
     },
@@ -117,7 +117,7 @@
       "state": "hours",
       "surface": "canvas",
       "file": "hours/canvas.png",
-      "sha256": "9cb2a7a952080842527f3def6f844fca4f1390cdcf2644a7a15001b615a04973",
+      "sha256": "8256850e481e9a1f671ea4fe2b58705b1332aef1032e76d86b6748d04779c094",
       "width": 820,
       "height": 470
     },
@@ -125,7 +125,7 @@
       "state": "hours",
       "surface": "preview",
       "file": "hours/preview.png",
-      "sha256": "09748811482d1ed0a06a2ce53c5c9a29cc44ebce7e7f1160dc31b70431012be9",
+      "sha256": "59d5b5df220e88a9109107cf6e201bb5f7ef8d42137a2948bc4c0de3e0e544aa",
       "width": 820,
       "height": 470
     },
@@ -133,7 +133,7 @@
       "state": "hours",
       "surface": "publication",
       "file": "hours/publication.png",
-      "sha256": "09a69b770970101ec6c9a2e7fd0952d46b83517972ceaa6ce69451746a76a7cc",
+      "sha256": "a0007ee9e84f0c8d53e55d9fab270b973be0e11afd6a94206d7d918e6f7c2364",
       "width": 820,
       "height": 470
     },
@@ -141,7 +141,7 @@
       "state": "hours",
       "surface": "mobile",
       "file": "hours/mobile.png",
-      "sha256": "8edf77188fc8beff128042e5358fe10dfc5ff74c6e18d50376829e35c8eed53f",
+      "sha256": "5a94c824965a68e4175857778150f2ba9c8988e9940839542555ec169743bd4c",
       "width": 430,
       "height": 470
     },
@@ -149,7 +149,7 @@
       "state": "seconds",
       "surface": "builder",
       "file": "seconds/builder.png",
-      "sha256": "d9651ffcda7ac273ea122e27b9baa1f5f6540e24f3c5a8b25888306432ea7c9a",
+      "sha256": "8709fa43d28f115fca327bf5aca14d05437640b26e81aaa54cdfb3c7de387603",
       "width": 820,
       "height": 470
     },
@@ -157,7 +157,7 @@
       "state": "seconds",
       "surface": "canvas",
       "file": "seconds/canvas.png",
-      "sha256": "d9274b6f8f390ecfb11c8a49cf14eda13604771eeea688c5bf8d2acb4aef2653",
+      "sha256": "8494e090f439525b36a6b006f016a36db564956e8279896cd026424249f4f63d",
       "width": 820,
       "height": 470
     },
@@ -165,7 +165,7 @@
       "state": "seconds",
       "surface": "preview",
       "file": "seconds/preview.png",
-      "sha256": "26135fc4c6cb6feb8f4c09a829ff7706423bbcd4d5ee2b2263a770e6fc651093",
+      "sha256": "6702bda96f2ded62fbf713de3e1ebaaec969c99fe9588e49c09682fbcec6e815",
       "width": 820,
       "height": 470
     },
@@ -173,7 +173,7 @@
       "state": "seconds",
       "surface": "publication",
       "file": "seconds/publication.png",
-      "sha256": "a00fc450167e603e135e0490d5ecbc4c8f854e5084615fe2b5d1334ba598be1f",
+      "sha256": "144c6aa989583b4d833c35e9ddcba69d1bb050d012c11e950b20048f5c800137",
       "width": 820,
       "height": 470
     },
@@ -181,7 +181,7 @@
       "state": "seconds",
       "surface": "mobile",
       "file": "seconds/mobile.png",
-      "sha256": "07872ec494b1b8e08420a4b6a8669c206762f4fe7b754edbf3f6f81da68fb432",
+      "sha256": "bb710d628d5ba9cc264ee24a58f95f0ab9a5d9c442f96044868603395fcfa054",
       "width": 430,
       "height": 470
     },
@@ -189,7 +189,7 @@
       "state": "expired",
       "surface": "builder",
       "file": "expired/builder.png",
-      "sha256": "134aa80755f87c949c807ef02b42bb57fa1ba4ae9fb3284e87ee99f8dfdf2396",
+      "sha256": "75a466ea6cc38399a7284f4d081c4e8d85f2a5940aced951c4b6c547987d48b2",
       "width": 820,
       "height": 470
     },
@@ -197,7 +197,7 @@
       "state": "expired",
       "surface": "canvas",
       "file": "expired/canvas.png",
-      "sha256": "e9579b684bef60e987b32266ef5e7da9ba01b05f100d2674531c2c88c00bd048",
+      "sha256": "9f043ee5a8af680bb087e4f92c8ec52bc20db74c00a37c80145ca7427a306c63",
       "width": 820,
       "height": 470
     },
@@ -205,7 +205,7 @@
       "state": "expired",
       "surface": "preview",
       "file": "expired/preview.png",
-      "sha256": "cafb6ceb478a38e24ec4dcfab326ef2bf8f850b0f9a15386249657e9e0adde80",
+      "sha256": "353454ca2b593b522926beccb47756d43c9de1a7cd63db3b945f4549cdd13b35",
       "width": 820,
       "height": 470
     },
@@ -213,7 +213,7 @@
       "state": "expired",
       "surface": "publication",
       "file": "expired/publication.png",
-      "sha256": "8f55f6698467d15d8308679af077d47146421bdb16024f9992c8c7fc73a4532f",
+      "sha256": "8979ee39d727c2e286b72eb8f42d2727b319801f8f22eb1ed16dfcb574044258",
       "width": 820,
       "height": 470
     },
@@ -221,7 +221,7 @@
       "state": "expired",
       "surface": "mobile",
       "file": "expired/mobile.png",
-      "sha256": "b185bd408b9055365bd08a7250801cc727a4647395c092b38c723811c4fa2d79",
+      "sha256": "65c9317f0c906ac716ea9e80993e9508f2463811e401a3e23b5a043da5dbf2c2",
       "width": 430,
       "height": 470
     }

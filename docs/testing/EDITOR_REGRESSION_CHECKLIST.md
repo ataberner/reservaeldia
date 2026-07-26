@@ -524,6 +524,49 @@ Resultado esperado:
 - el campo dinamico `event_dress_code` sincroniza tab, canvas, preview y HTML publico
 - los campos legacy `event_date`, `event_start_time`, `event_end_time`, `event_venue_name` y `event_venue_address` aparecen migrados a Ceremonia al cargar
 
+### [ ] Contador: catalogo, visibilidad y fecha del evento
+
+1. Abrir el tab Contador con un contador existente y verificar el switch superior en estados activo e inactivo.
+2. Seleccionar varios presets y confirmar que el tab no muestra sliders, selectores de color ni ningun panel contextual del diseño elegido.
+3. Ocultar y volver a mostrar el contador; cambiar de tab entre cada accion.
+4. En Detalles del evento, cambiar la fecha y el horario de Ceremonia; volver a Contador y aplicar otro preset.
+5. Confirmar que Contador no muestra ni permite editar una segunda `Fecha del evento`.
+6. Revisar presets circulares, cuadrados, verticales, horizontales y compactos, incluido `Aro floral` cuando este disponible.
+7. Repetir el catalogo con sidebar desktop y en anchos mobile de 320 px y 390 px, con movimiento normal y con reduccion de movimiento activa.
+
+Resultado esperado:
+
+- el switch usa el mismo lenguaje visual, foco visible y semantica `role="switch"` de Asistencia y Regalos
+- el tab contiene unicamente el switch y el catalogo de presets; seleccionar una miniatura no agrega paneles, controles ni espacios vacios
+- `mostrarCuentaRegresiva` controla la visibilidad sin eliminar el objeto ni alterar su preset, geometria o fecha
+- el valor aplicado a `fechaObjetivo` proviene de Detalles del evento; el tab Contador no mantiene un input ni una fecha editable alternativa
+- cambiar de preset preserva el flujo existente entre los datos del evento y el contador
+- cada miniatura ocupa al maximo uno de los ejes disponibles, conserva una guarda interna uniforme y permanece centrada, completa y sin deformacion ni recorte
+- la altura del preview se deriva de la proporcion visual del preset dentro del rango comun de 88 px a 288 px; los contadores horizontales usan tarjetas mas bajas y los circulares o verticales disponen de mayor altura
+- los marcos PNG contenidos usan sus dimensiones intrinsecas para excluir del calculo el espacio vacio del viewport interno; `Aro floral` aprovecha sustancialmente el area util
+- todas las miniaturas usan exactamente la misma superficie gris-lavanda suave dentro del viewport, sin decisiones por luminancia, preset, color o tipo de asset
+- la superficie uniforme permite reconocer textos blancos, negros, claros e intensos y frames PNG/SVG sin modificar colores, datos ni render del contador; el nombre y la tarjeta exterior conservan su superficie normal
+- las tarjetas conservan jerarquia, foco y targets tactiles utilizables sin desbordar el sidebar en los anchos verificados
+- la reduccion de movimiento elimina las transiciones decorativas del switch y de las tarjetas
+
+### [ ] Contador: paridad integral del preset y separacion entre chips
+
+1. En el constructor, crear, guardar, publicar, volver a editar y duplicar un preset schema v2 con `gap` en `0`, `0.5`, `27.5` y `48`.
+2. Para cada valor, comparar preview del constructor, miniatura viva del tab Contador, Canvas, preview autoritativa y HTML publicado.
+3. Repetir con distribuciones horizontal/`centered`, vertical, grid y editorial; incluir frame SVG, PNG transparente, texto blanco, fondo propio y sin frame.
+4. En `multiUnit`, usar un fondo de chip opaco y confirmar que el frame queda por encima del fondo y por debajo del texto.
+5. Usar un separador de cuatro caracteres y, en un borrador compatible que tenga `separatorColor`, confirmar el mismo color en Canvas, preview y publicacion.
+6. Probar anchos desktop y mobile representativos, valores de countdown activo y expirado, y `prefers-reduced-motion`.
+
+Resultado esperado:
+
+- `gap` conserva una unica unidad en pixeles de editor, incluidos cero y decimales, sin conversiones por superficie
+- las posiciones y dimensiones de unidades/separadores coinciden con `shared/countdownLayoutContract.cjs`; solo cambian el wrapper y la escala de cada viewport
+- numeros, etiquetas, `lineHeight`, `letterSpacing`, padding, radios y sombras conservan el contrato materializado
+- SVG llena la caja de frame; PNG conserva proporcion y alfa mediante geometria `contain`
+- constructor, Canvas, preview autoritativa y publicacion mantienen el mismo orden de capas y la misma opacidad
+- los adapters v1 y aliases de fecha siguen siendo compatibilidad intencional; no se reescriben como schema v2
+
 ### [ ] Asociaciones funcionales RSVP / Regalos / Ceremonia / Fiesta / Dress Code
 
 1. En edicion de plantilla como admin/superadmin, asociar una seccion completa a RSVP y otra a Regalos desde el menu de seccion.

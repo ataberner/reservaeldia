@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { getRemainingParts, fmt } from "./countdownUtils";
 import {
   buildTextPaintStyle,
-  buildCountdownEditorialWidths,
-  estimateCountdownUnitHeight,
+  normalizeVisibleUnits,
+  resolveCountdownLayoutMetrics,
   resolveCountdownUnitWidth,
   resolvePreviewPaint,
 } from "@/domain/countdownPresets/renderModel";
@@ -17,7 +17,6 @@ import {
   recordCountdownRenderTelemetry,
 } from "@/domain/countdownObservability/telemetry";
 import {
-  normalizeCountdownFrameScale,
   resolveCountdownFrameVisualBounds,
 } from "@/domain/countdownPresets/frameGeometry";
 
@@ -27,19 +26,6 @@ const UNIT_LABELS = Object.freeze({
   minutes: "Min",
   seconds: "Seg",
 });
-
-const DEFAULT_UNITS = Object.freeze(["days", "hours", "minutes", "seconds"]);
-
-function normalizeVisibleUnits(units) {
-  if (!Array.isArray(units) || units.length === 0) return [...DEFAULT_UNITS];
-  const unique = [];
-  units.forEach((unit) => {
-    const safe = String(unit || "").trim();
-    if (!UNIT_LABELS[safe]) return;
-    if (!unique.includes(safe)) unique.push(safe);
-  });
-  return unique.length ? unique : [...DEFAULT_UNITS];
-}
 
 function applyLabelTransform(label, mode) {
   const safe = String(label || "");
@@ -174,8 +160,13 @@ export default function CountdownPreview({
   const fontFamily = preset?.fontFamily || "Inter, system-ui, sans-serif";
   const numberColor = resolvePreviewPaint(preset?.color, "#111");
   const labelColor = resolvePreviewPaint(preset?.labelColor, "#6b7280");
+  const separatorColor = resolvePreviewPaint(
+    preset?.separatorColor ?? preset?.color,
+    "#111"
+  );
   const numberTextPaintStyle = buildTextPaintStyle(numberColor, "#111");
   const labelTextPaintStyle = buildTextPaintStyle(labelColor, "#6b7280");
+  const separatorTextPaintStyle = buildTextPaintStyle(separatorColor, "#111");
   const legacyGap = Math.max(0, toFinite(preset?.gap, SZ.gap));
   const legacyPaddingX = Math.max(2, toFinite(preset?.paddingX, SZ.chipPx));
   const legacyPaddingY = Math.max(2, toFinite(preset?.paddingY, SZ.chipPy));
@@ -269,9 +260,26 @@ export default function CountdownPreview({
     );
   }
 
-  const distribution = String(preset?.distribution || "centered").toLowerCase();
-  const layoutType = String(preset?.layoutType || "singleFrame").toLowerCase();
-  const frameUrl = String(preset?.frameSvgUrl || "").trim();
+  const layoutMetrics = resolveCountdownLayoutMetrics(preset);
+  const {
+    frameSvgUrl: frameUrl,
+    hasFrameConfigured,
+    useSingleFrameLayout,
+    useMultiUnitFrame,
+    frameScale,
+    paddingX: chipPx,
+    paddingY: chipPy,
+    boxRadius: chipRadius,
+    showLabels,
+    separatorText: separator,
+    valueSize,
+    labelSize: unitLabelSize,
+    lineHeight,
+    letterSpacing,
+    containerW,
+    containerH,
+    separatorFontSize,
+  } = layoutMetrics;
   const frameAssetType =
     String(preset?.frameAssetType || "").toLowerCase() === "png"
       ? "png"
@@ -281,9 +289,6 @@ export default function CountdownPreview({
   const frameColor = resolvePreviewPaint(preset?.frameColor, "#773dbe");
   const usesCurrentColorFrame =
     !isPngFrame && frameColorMode === "currentcolor";
-  const hasFrameConfigured = frameUrl.length > 0;
-  const useSingleFrameLayout = layoutType === "singleframe" && hasFrameConfigured;
-  const useMultiUnitFrame = layoutType === "multiunit" && hasFrameConfigured;
   const handleFrameLoadError = () => {
     recordCountdownAssetLoadError({
       countdown: preset,
@@ -291,168 +296,24 @@ export default function CountdownPreview({
       assetKind: `frame-${frameAssetType}`,
     });
   };
-  const framePadding = Math.max(0, toFinite(preset?.framePadding, SZ.framePadding));
-  const frameScale = normalizeCountdownFrameScale(preset?.frameScale);
-  const gap = Math.max(0, toFinite(preset?.gap, SZ.gap));
-  const chipPx = Math.max(2, toFinite(preset?.paddingX, SZ.chipPx));
-  const chipPy = Math.max(2, toFinite(preset?.paddingY, SZ.chipPy));
-  const chipRadius = Math.max(0, toFinite(preset?.boxRadius, 10));
-  const showLabels = preset?.showLabels !== false;
-  const separator = String(preset?.separator || "").slice(0, 3);
   const labelTransform = String(preset?.labelTransform || "uppercase").toLowerCase();
   const isMinimal = String(preset?.layout || "pills").toLowerCase() === "minimal";
-  const canDrawSeparators = Boolean(separator && distribution !== "vertical" && distribution !== "grid");
-  const itemCount = Math.max(1, v2Parts.length);
-  const valueSize = Math.max(10, toFinite(preset?.fontSize, 28));
-  const unitLabelSize = Math.max(8, toFinite(preset?.labelSize, 12));
-  const lineHeight = Math.max(0.8, toFinite(preset?.lineHeight, 1.05));
-  const letterSpacing = toFinite(preset?.letterSpacing, 0);
-  const requestedChipW = Math.max(36, toFinite(preset?.chipWidth, SZ.chipMinW) + chipPx * 2);
-  const textDrivenChipH = Math.max(
-    44,
-    chipPy * 2 + valueSize + (showLabels ? unitLabelSize + 6 : 0)
-  );
-  const layoutDrivenChipH = estimateCountdownUnitHeight({
-    tamanoBase: toFinite(preset?.tamanoBase, 320),
-    distribution,
-    unitsCount: itemCount,
-  });
-  const chipOuterH = Math.max(textDrivenChipH, layoutDrivenChipH);
-  const baseChipW = resolveCountdownUnitWidth({
-    width: requestedChipW,
-    height: chipOuterH,
-    boxRadius: chipRadius,
-  });
-  const cols =
-    distribution === "vertical"
-      ? 1
-      : distribution === "grid"
-        ? Math.min(2, itemCount)
-        : itemCount;
-  const rows =
-    distribution === "vertical"
-      ? itemCount
-      : distribution === "grid"
-        ? Math.ceil(itemCount / cols)
-        : 1;
-  const editorialWidths =
-    distribution === "editorial"
-      ? buildCountdownEditorialWidths({
-          unitsCount: itemCount,
-          baseChipWidth: baseChipW,
-          chipHeight: chipOuterH,
-          boxRadius: chipRadius,
-        })
-      : [];
-  const naturalW =
-    distribution === "vertical"
-      ? baseChipW
-      : distribution === "grid"
-        ? cols * baseChipW + gap * (cols - 1)
-        : distribution === "editorial"
-          ? editorialWidths.reduce((acc, width) => acc + width, 0) +
-            gap * Math.max(0, itemCount - 1)
-          : itemCount * baseChipW + gap * (itemCount - 1);
-  const naturalH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipOuterH + gap * Math.max(0, rows - 1)
-      : chipOuterH;
-  const containerW = Math.max(
-    1,
-    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0)
-  );
-  const containerH = Math.max(
-    1,
-    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0)
-  );
   const frameScaleStyle = {
     transform: `scale(${frameScale})`,
     transformOrigin: "center",
   };
-  const contentBounds = {
-    x: useSingleFrameLayout ? framePadding : 0,
-    y: useSingleFrameLayout ? framePadding : 0,
-    width: Math.max(1, containerW - (useSingleFrameLayout ? framePadding * 2 : 0)),
-    height: Math.max(1, containerH - (useSingleFrameLayout ? framePadding * 2 : 0)),
-  };
-  const distributionW =
-    distribution === "grid"
-      ? cols * baseChipW + gap * (cols - 1)
-      : distribution === "vertical"
-        ? baseChipW
-        : naturalW;
-  const distributionH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipOuterH + gap * Math.max(0, rows - 1)
-      : chipOuterH;
-  const startX = contentBounds.x + (contentBounds.width - distributionW) / 2;
-  const startY = contentBounds.y + (contentBounds.height - distributionH) / 2;
-  const unitLayouts =
-    distribution === "vertical"
-      ? v2Parts.map((item, index) => ({
-          ...item,
-          x: contentBounds.x + (contentBounds.width - baseChipW) / 2,
-          y: startY + index * (chipOuterH + gap),
-          width: baseChipW,
-          height: chipOuterH,
-        }))
-      : distribution === "grid"
-        ? v2Parts.map((item, index) => {
-            const row = Math.floor(index / cols);
-            const col = index % cols;
-            return {
-              ...item,
-              x: startX + col * (baseChipW + gap),
-              y: startY + row * (chipOuterH + gap),
-              width: baseChipW,
-              height: chipOuterH,
-            };
-          })
-        : distribution === "editorial"
-          ? (() => {
-              let cursorX = startX;
-              return v2Parts.map((item, index) => {
-                const width = editorialWidths[index] || baseChipW;
-                const layout = {
-                  ...item,
-                  x: cursorX,
-                  y: startY,
-                  width,
-                  height: chipOuterH,
-                };
-                cursorX += width + gap;
-                return layout;
-              });
-            })()
-          : v2Parts.map((item, index) => ({
-              ...item,
-              x: startX + index * (baseChipW + gap),
-              y: startY,
-              width: baseChipW,
-              height: chipOuterH,
-            }));
+  const partsByUnit = new Map(v2Parts.map((item) => [item.key, item]));
+  const unitLayouts = layoutMetrics.unitLayouts.map((item) => ({
+    ...item,
+    ...(partsByUnit.get(item.unit) || {}),
+  }));
   const frameVisualBounds = resolveCountdownFrameVisualBounds({
     width: containerW,
     height: containerH,
     frameScale: hasFrameConfigured ? frameScale : 1,
-    frameRects: layoutType === "multiUnit" ? unitLayouts : undefined,
+    frameRects: useMultiUnitFrame ? unitLayouts : undefined,
   });
-  const separatorFontSize = Math.max(10, Math.round(valueSize * 0.64));
-  const separatorLayouts =
-    canDrawSeparators && unitLayouts.length > 1
-      ? unitLayouts.slice(0, -1).map((item, index) => {
-          const next = unitLayouts[index + 1];
-          const itemRight = item.x + item.width;
-          const midpointX = itemRight + (next.x - itemRight) / 2;
-          const width = Math.max(12, Math.round(separatorFontSize * 1.4));
-          return {
-            key: `${item.key}-${next.key}-${index}`,
-            x: midpointX - width / 2,
-            y: item.y + Math.max(4, item.height * 0.3),
-            width,
-          };
-        })
-      : [];
+  const separatorLayouts = layoutMetrics.separatorLayouts;
 
   return (
     <div ref={wrapperRef} className="flex w-full justify-center overflow-hidden">
@@ -590,11 +451,29 @@ export default function CountdownPreview({
                 ) : null}
 
                 <div className="relative z-[1] flex flex-col items-center">
-                  <span className="font-bold" style={{ ...numberTextPaintStyle, fontSize: valueSize }}>
+                  <span
+                    className="font-bold"
+                    style={{
+                      ...numberTextPaintStyle,
+                      fontFamily,
+                      fontSize: valueSize,
+                      lineHeight,
+                      letterSpacing: `${letterSpacing}px`,
+                    }}
+                  >
                     {item.value}
                   </span>
                   {showLabels ? (
-                    <span style={{ ...labelTextPaintStyle, fontSize: unitLabelSize }}>
+                    <span
+                      style={{
+                        ...labelTextPaintStyle,
+                        fontFamily,
+                        fontSize: unitLabelSize,
+                        lineHeight: 1,
+                        letterSpacing: `${letterSpacing}px`,
+                        marginTop: 4,
+                      }}
+                    >
                       {applyLabelTransform(item.label, labelTransform)}
                     </span>
                   ) : null}
@@ -610,9 +489,10 @@ export default function CountdownPreview({
                 left: item.x,
                 top: item.y,
                 width: item.width,
-                ...numberTextPaintStyle,
+                ...separatorTextPaintStyle,
+                fontFamily,
                 fontSize: separatorFontSize,
-                lineHeight,
+                lineHeight: 1,
                 letterSpacing: `${letterSpacing}px`,
               }}
             >

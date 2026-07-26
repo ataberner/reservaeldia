@@ -18,6 +18,12 @@ const EDITOR_ONLY_CLASS_NAMES = new Set([
   "Transformer",
 ]);
 
+export const DASHBOARD_EXPORT_RASTER_LIMITS = Object.freeze({
+  maxWidth: 480,
+  maxHeight: 2000,
+  maxPixels: 750000,
+});
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
@@ -107,16 +113,33 @@ function createOffscreenContainer({ width, height }) {
   return offscreen;
 }
 
-async function createKonvaStage({ container, width, height }) {
+async function createKonvaStage({
+  container,
+  width,
+  height,
+  pixelRatio,
+}) {
   const module = await import("konva");
   const Konva = module.default || module;
+  const previousPixelRatio = Konva.pixelRatio;
 
-  return new Konva.Stage({
-    container,
-    width,
-    height,
-    listening: false,
-  });
+  Konva.pixelRatio = pixelRatio;
+  try {
+    return {
+      stage: new Konva.Stage({
+        container,
+        width,
+        height,
+        listening: false,
+      }),
+      restorePixelRatio() {
+        Konva.pixelRatio = previousPixelRatio;
+      },
+    };
+  } catch (error) {
+    Konva.pixelRatio = previousPixelRatio;
+    throw error;
+  }
 }
 
 function waitForNextFrame() {
@@ -165,16 +188,13 @@ export function cloneDashboardStageLayersForExport(stage, stageClone) {
   layers.forEach((layer) => {
     if (!layer || typeof layer.clone !== "function") return;
 
-    const layerClone = layer.clone({ listening: false });
-    clonedLayerCount += 1;
-
     if (isDashboardExportExcludedLayer(layer)) {
-      try {
-        layerClone.visible(false);
-        excludedLayerCount += 1;
-      } catch {}
+      excludedLayerCount += 1;
+      return;
     }
 
+    const layerClone = layer.clone({ listening: false });
+    clonedLayerCount += 1;
     stageClone.add(layerClone);
   });
 
@@ -182,6 +202,44 @@ export function cloneDashboardStageLayersForExport(stage, stageClone) {
     clonedLayerCount,
     excludedLayerCount,
   };
+}
+
+export function resolveDashboardExportPixelRatio({
+  width,
+  height,
+  requestedPixelRatio = 1,
+  limits = DASHBOARD_EXPORT_RASTER_LIMITS,
+} = {}) {
+  const safeWidth = Number(width);
+  const safeHeight = Number(height);
+  const requested = Number(requestedPixelRatio);
+  if (
+    !Number.isFinite(safeWidth) ||
+    safeWidth <= 0 ||
+    !Number.isFinite(safeHeight) ||
+    safeHeight <= 0
+  ) {
+    return 1;
+  }
+
+  const safeRequested =
+    Number.isFinite(requested) && requested > 0 ? requested : 1;
+  const maxWidth = Number(limits?.maxWidth);
+  const maxHeight = Number(limits?.maxHeight);
+  const maxPixels = Number(limits?.maxPixels);
+  const widthRatio =
+    Number.isFinite(maxWidth) && maxWidth > 0 ? maxWidth / safeWidth : 1;
+  const heightRatio =
+    Number.isFinite(maxHeight) && maxHeight > 0 ? maxHeight / safeHeight : 1;
+  const pixelRatio =
+    Number.isFinite(maxPixels) && maxPixels > 0
+      ? Math.sqrt(maxPixels / (safeWidth * safeHeight))
+      : 1;
+
+  return Math.max(
+    0.01,
+    Math.min(1, safeRequested, widthRatio, heightRatio, pixelRatio)
+  );
 }
 
 export function applyDashboardExportExclusions(stageClone) {
@@ -211,22 +269,34 @@ export async function exportDashboardImageFromStage(stageInput, options = {}) {
   if (!stage || !width || !height) {
     throw new Error("No se puede exportar la imagen del dashboard: Stage invalido.");
   }
-
+  const pixelRatio = resolveDashboardExportPixelRatio({
+    width,
+    height,
+    requestedPixelRatio: options.pixelRatio,
+  });
   const offscreen = createOffscreenContainer({ width, height });
-  const stageClone = await createKonvaStage({
+  const {
+    stage: stageClone,
+    restorePixelRatio,
+  } = await createKonvaStage({
     container: offscreen,
     width,
     height,
+    pixelRatio,
   });
 
   try {
-    cloneDashboardStageLayersForExport(stage, stageClone);
+    try {
+      cloneDashboardStageLayersForExport(stage, stageClone);
+    } finally {
+      restorePixelRatio();
+    }
     applyDashboardExportExclusions(stageClone);
     stageClone.draw();
     await waitForNextFrame();
 
     const dataUrl = stageClone.toDataURL({
-      pixelRatio: Number(options.pixelRatio) || 1,
+      pixelRatio,
       mimeType: normalizeText(options.mimeType) || "image/png",
       ...(typeof options.quality === "number" ? { quality: options.quality } : {}),
     });

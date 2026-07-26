@@ -528,6 +528,19 @@ selection is derived at runtime as the union of the actual unit/separator
 content bounds and the visible scaled-frame bounds; this derived selection box
 is not persisted and does not redefine object geometry.
 
+Schema-v2 layout semantics are centralized in
+`shared/countdownLayoutContract.cjs`. `gap` is an editor-pixel distance between
+adjacent units, accepts `0..48` including decimals, and reads as `8` when absent.
+`separator` preserves up to the four characters accepted by the preset
+validator. Runtime adapters may translate these metrics to Konva, DOM or CSS,
+but do not apply surface-specific unit conversions or defaults.
+
+The compositing order is unit background, optional per-unit frame, then number
+and label content. A single shared frame sits below the unit layer. PNG frames
+retain their byte-level alpha channel and use contained geometry; SVG frames
+fill the authored frame rectangle. `separatorColor` is an additive compatible
+override; when absent the separator uses the number `color`.
+
 ### `countdownPresets`
 
 Countdown preset roots live at `countdownPresets/{presetId}`. The root owns

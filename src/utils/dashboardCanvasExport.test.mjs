@@ -5,10 +5,12 @@ import {
   applyDashboardExportExclusions,
   cloneDashboardStageLayersForExport,
   dashboardExportExcludeProps,
+  DASHBOARD_EXPORT_RASTER_LIMITS,
   exportDashboardImageFromStage,
   getDashboardExportExcludedName,
   isDashboardExportExcludedLayer,
   isDashboardExportExcludedNode,
+  resolveDashboardExportPixelRatio,
 } from "./dashboardCanvasExport.js";
 
 class MockNode {
@@ -106,7 +108,7 @@ test("dashboard export predicate excludes editor-only nodes explicitly", () => {
   assert.equal(isDashboardExportExcludedNode(new MockNode({ name: "ui-card" })), false);
 });
 
-test("dashboard export hides editor-only layers and marked nodes in the clone", () => {
+test("dashboard export skips editor-only layers before allocating their clone canvases", () => {
   const sourceStage = new MockNode({
     children: [
       new MockNode({
@@ -126,17 +128,54 @@ test("dashboard export hides editor-only layers and marked nodes in the clone", 
 
   const cloneResult = cloneDashboardStageLayersForExport(sourceStage, stageClone);
   assert.deepEqual(cloneResult, {
-    clonedLayerCount: 2,
+    clonedLayerCount: 1,
     excludedLayerCount: 1,
   });
   assert.equal(isDashboardExportExcludedLayer(sourceStage.children[0]), true);
-  assert.equal(stageClone.children[0].visibleValue, false);
-  assert.equal(stageClone.children[1].visibleValue, true);
+  assert.equal(stageClone.children.length, 1);
+  assert.equal(stageClone.children[0].visibleValue, true);
 
   const exclusionResult = applyDashboardExportExclusions(stageClone);
-  assert.equal(exclusionResult.excludedNodeCount, 2);
-  assert.equal(stageClone.children[1].children[0].visibleValue, false);
-  assert.equal(stageClone.children[1].children[1].visibleValue, true);
+  assert.equal(exclusionResult.excludedNodeCount, 1);
+  assert.equal(stageClone.children[0].children[0].visibleValue, false);
+  assert.equal(stageClone.children[0].children[1].visibleValue, true);
+});
+
+test("dashboard export bounds the raster allocation for a tall editor stage", () => {
+  const ratio = resolveDashboardExportPixelRatio({
+    width: 800,
+    height: 3062,
+    requestedPixelRatio: 1,
+  });
+  const outputWidth = 800 * ratio;
+  const outputHeight = 3062 * ratio;
+
+  assert.ok(ratio > 0 && ratio < 1);
+  assert.ok(outputWidth <= DASHBOARD_EXPORT_RASTER_LIMITS.maxWidth);
+  assert.ok(outputHeight <= DASHBOARD_EXPORT_RASTER_LIMITS.maxHeight);
+  assert.ok(
+    outputWidth * outputHeight <=
+      DASHBOARD_EXPORT_RASTER_LIMITS.maxPixels + 0.001
+  );
+});
+
+test("dashboard export preserves a lower requested ratio and never upscales", () => {
+  assert.equal(
+    resolveDashboardExportPixelRatio({
+      width: 800,
+      height: 500,
+      requestedPixelRatio: 0.25,
+    }),
+    0.25
+  );
+  assert.equal(
+    resolveDashboardExportPixelRatio({
+      width: 320,
+      height: 240,
+      requestedPixelRatio: 2,
+    }),
+    1
+  );
 });
 
 test("dashboard export rejects invalid stages before loading Konva", async () => {

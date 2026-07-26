@@ -766,6 +766,56 @@ test("modern countdown HTML preserves currentColor, boxShadow, and editorial dis
   );
 });
 
+test("public countdown CSS does not override canonical unit geometry or paint", () => {
+  const html = generarHTMLDesdeSecciones([], [], {});
+  assert.doesNotMatch(
+    html,
+    /\.countdown-v2\s+\.cdv2-unit--hero\s*\{[^}]*min-height/s
+  );
+  assert.doesNotMatch(
+    html,
+    /\.countdown-v2\s+\.cdv2-unit\s*\{[^}]*backdrop-filter/s
+  );
+});
+
+test("modern countdown HTML preserves decimal gap, four-character separator, and separator paint", () => {
+  const html = generarHTMLDesdeObjetos(
+    [
+      {
+        id: "count-modern-gap",
+        countdownAuditTraceId: "count-modern-gap-test",
+        tipo: "countdown",
+        seccionId: "section-1",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2030-06-17T15:04:05.000Z",
+        layoutType: "multiUnit",
+        distribution: "centered",
+        visibleUnits: ["days", "hours"],
+        gap: 27.5,
+        separator: "••••",
+        separatorColor: "#d946ef",
+        color: "#ffffff",
+        frameSvgUrl: "https://cdn.example.com/frame.svg",
+        chipWidth: 46,
+        paddingX: 8,
+        paddingY: 6,
+        fontSize: 28,
+        labelSize: 12,
+        tamanoBase: 320,
+      },
+    ],
+    FIXED_SECTION
+  );
+
+  assert.match(html, /data-layout-type="multiUnit"/);
+  assert.match(html, />••••<\/span>/);
+  assert.match(html, /color:\s*#d946ef/);
+  assert.match(
+    html,
+    /data-countdown-audit-payload="[^"]*&quot;gap&quot;:27\.5/
+  );
+});
+
 test("modern countdown HTML renders PNG frames with original color and contained geometry", () => {
   const html = generarHTMLDesdeObjetos(
     [

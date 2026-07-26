@@ -643,11 +643,11 @@ async function recordSyntheticPresetStages(fixture) {
   recorded.push(
     captureSnapshotFromCountdown(fixture.presetProps, {
       stage: "canvas-sidebar-preview",
-      renderer: "raster-thumbnail",
-      sourceDocument: "synthetic-sidebar-card",
+      renderer: "react-countdown-preview",
+      sourceDocument: "synthetic-sidebar-live-preview",
       viewport: "sidebar",
       wrapperScale: 1,
-      usesRasterThumbnail: true,
+      usesRasterThumbnail: false,
       sourceLabel: fixture.label,
     })
   );

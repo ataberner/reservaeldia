@@ -367,9 +367,18 @@ async function captureAll({
               frames.every((frame) => {
                 try {
                   const body = frame.contentDocument?.body;
+                  const invitation =
+                    frame.contentDocument?.querySelector(".inv");
+                  const invitationOpacity = invitation
+                    ? Number.parseFloat(
+                        frame.contentWindow?.getComputedStyle(invitation)
+                          ?.opacity || "0"
+                      )
+                    : 1;
                   return (
                     body?.getAttribute("data-loader-ready") === "1" &&
-                    !frame.contentDocument?.getElementById("inv-loader")
+                    !frame.contentDocument?.getElementById("inv-loader") &&
+                    invitationOpacity >= 0.999
                   );
                 } catch (_error) {
                   return false;

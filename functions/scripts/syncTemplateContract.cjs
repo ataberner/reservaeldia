@@ -66,6 +66,17 @@ const artifacts = [
     ],
   },
   {
+    label: "Contrato de layout de countdown",
+    sourcePath: path.resolve(
+      __dirname,
+      "../../shared/countdownLayoutContract.cjs"
+    ),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/countdownLayoutContract.cjs"),
+      path.resolve(__dirname, "../lib/shared/countdownLayoutContract.cjs"),
+    ],
+  },
+  {
     label: "Configuracion de modalidad de evento",
     sourcePath: path.resolve(__dirname, "../../shared/eventDetailsConfig.cjs"),
     targetPaths: [

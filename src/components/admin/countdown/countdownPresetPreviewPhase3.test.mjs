@@ -28,10 +28,10 @@ test("injected clock reproduces seconds and freezeZero expiration", () => {
   );
 });
 
-test("builder preview keeps currentColor, shadow, and editorial on the existing renderer path", () => {
+test("builder preview keeps currentColor and shadow on the shared layout contract", () => {
   assert.match(livePreviewSource, /buildFrameSvgMarkup/);
   assert.match(livePreviewSource, /boxShadow/);
-  assert.match(livePreviewSource, /buildCountdownEditorialWidths/);
+  assert.match(livePreviewSource, /resolveCountdownLayoutMetrics/);
   assert.match(previewPanelSource, /CountdownPresetLivePreview/);
   assert.doesNotMatch(previewPanelSource, /setInterval|resolveCountdownTemporalState/);
 });
@@ -41,6 +41,16 @@ test("builder preview renders PNG frames without currentColor or deformation", (
   assert.match(livePreviewSource, /isPngFrame \? "object-contain" : "object-fill"/);
   assert.match(livePreviewSource, /!isPngFrame && svgColorMode === "currentColor"/);
   assert.match(livePreviewSource, /frame-\$\{frameAssetType === "png"/);
+  assert.doesNotMatch(livePreviewSource, /opacity-95/);
+});
+
+test("builder paints unit background below multi-unit frame and keeps canonical typography", () => {
+  const boxIndex = livePreviewSource.indexOf("{canDrawBox ? (");
+  const frameIndex = livePreviewSource.indexOf("{useMultiUnitFrame && frameSvgMarkup ? (");
+  assert.ok(boxIndex >= 0);
+  assert.ok(frameIndex > boxIndex);
+  assert.match(livePreviewSource, /lineHeight: 1/);
+  assert.match(livePreviewSource, /separatorTextPaintStyle/);
 });
 
 test("frozen preview stops its timer and reduced motion disables all builder animations", () => {

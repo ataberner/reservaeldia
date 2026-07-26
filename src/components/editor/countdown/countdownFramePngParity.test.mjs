@@ -33,6 +33,10 @@ const insertDefaultsSource = readFileSync(
   new URL("../events/computeInsertDefaults.js", import.meta.url),
   "utf8"
 );
+const auditSnapshotSource = readFileSync(
+  new URL("../../../domain/countdownAudit/layoutSnapshot.js", import.meta.url),
+  "utf8"
+);
 const editorEventsSource = readFileSync(
   new URL("../events/useEditorEvents.js", import.meta.url),
   "utf8"
@@ -66,6 +70,7 @@ test("canvas patch materializes PNG metadata without changing schema 2", () => {
     },
   });
   assert.equal(patch.countdownSchemaVersion, 2);
+  assert.equal(patch.presetPropsVersion, 2);
   assert.equal(patch.frameSvgUrl, "https://cdn.example.com/floral.png");
   assert.equal(patch.frameAssetType, "png");
   assert.equal(patch.frameMimeType, "image/png");
@@ -228,11 +233,38 @@ test("builder, canvas, preview, publication and thumbnails share centered frame 
   assert.match(previewSource, /resolveCountdownFrameVisualBounds/);
   assert.match(previewSource, /transform: `scale\(\$\{frameScale\}\)`/);
   assert.match(renderModelSource, /resolveCenteredScaledFrameRect/);
-  assert.match(publishSource, /normalizeCountdownFrameScale/);
+  assert.match(publishSource, /resolveCountdownLayoutMetrics/);
   assert.match(publishSource, /data-frame-scale=/);
   assert.match(publishSource, /transform:scale\(/);
   assert.match(livePreviewSource, /viewportHeight \/ frameVisualBounds\.height/);
   assert.match(livePreviewSource, /constrainedTargetWidth \/ frameVisualBounds\.width/);
+});
+
+test("all live and published adapters consume the shared semantic layout contract", () => {
+  assert.match(konvaSource, /resolveCountdownLayoutMetrics/);
+  assert.match(previewSource, /resolveCountdownLayoutMetrics/);
+  assert.match(livePreviewSource, /resolveCountdownLayoutMetrics/);
+  assert.match(publishSource, /countdownLayoutContract\.cjs/);
+  assert.match(insertDefaultsSource, /resolveCountdownLayoutMetrics/);
+  assert.match(auditSnapshotSource, /resolveCountdownLayoutMetrics/);
+  assert.doesNotMatch(auditSnapshotSource, /function normalizeLayoutType/);
+  assert.doesNotMatch(livePreviewSource, /slice\(0, 3\)/);
+  assert.doesNotMatch(previewSource, /slice\(0, 3\)/);
+});
+
+test("multi-unit frame stays above unit background and separators share number color fallback", () => {
+  const canvasBoxIndex = konvaSource.indexOf("{obj.layout !== \"minimal\" && (");
+  const canvasFrameIndex = konvaSource.indexOf("{useMultiUnitFrame && frameImage && (");
+  const builderBoxIndex = livePreviewSource.indexOf("{canDrawBox ? (");
+  const builderFrameIndex = livePreviewSource.indexOf(
+    "{useMultiUnitFrame && frameSvgMarkup ? ("
+  );
+
+  assert.ok(canvasBoxIndex >= 0 && canvasFrameIndex > canvasBoxIndex);
+  assert.ok(builderBoxIndex >= 0 && builderFrameIndex > builderBoxIndex);
+  assert.match(konvaSource, /obj\.separatorColor \?\? obj\.color/);
+  assert.match(previewSource, /preset\?\.separatorColor \?\? preset\?\.color/);
+  assert.match(publishSource, /obj\.separatorColor \?\? obj\.color/);
 });
 
 test("canvas selection uses visible content plus frame while resize keeps layout metrics", () => {

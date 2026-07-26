@@ -1,11 +1,8 @@
 import { sanitizeMotionEffect } from "@/domain/motionEffects";
 import {
-  estimateCountdownUnitHeight,
-  buildCountdownEditorialWidths,
-  resolveCountdownUnitWidth,
+  resolveCountdownLayoutMetrics,
 } from "@/domain/countdownPresets/renderModel";
 import {
-  normalizeCountdownFrameScale,
   resolveContainedCountdownFrameRect,
   resolveCountdownBoundsXWithinCanvas,
   resolveCountdownSelectionGeometry,
@@ -39,154 +36,33 @@ export function resolveCountdownInsertGeometry(
   presetProps = {},
   { width: requestedWidth = null, height: requestedHeight = null } = {}
 ) {
-  const defaultUnits = ["days", "hours", "minutes", "seconds"];
-  const unitsRaw = Array.isArray(presetProps.visibleUnits)
-    ? presetProps.visibleUnits
-    : defaultUnits;
-  const units = unitsRaw
-    .map((unit) => String(unit || "").trim())
-    .filter(Boolean);
-  const n = Math.max(1, units.length || defaultUnits.length);
-  const gap = toNumber(presetProps.gap, 8);
-  const framePadding = Math.max(0, toNumber(presetProps.framePadding, 10));
-  const frameScale = normalizeCountdownFrameScale(presetProps.frameScale);
-  const chipWidth = Math.max(34, toNumber(presetProps.chipWidth, 46));
-  const paddingX = Math.max(2, toNumber(presetProps.paddingX, 8));
-  const paddingY = toNumber(presetProps.paddingY, 6);
-  const valueSize = Math.max(10, toNumber(presetProps.fontSize, 16));
-  const labelSize = Math.max(8, toNumber(presetProps.labelSize, 10));
-  const showLabels = presetProps.showLabels !== false;
-  const boxRadius = Math.max(0, toNumber(presetProps.boxRadius, 10));
-  const layoutType = String(presetProps.layoutType || "singleFrame");
-  const hasFrameConfigured = String(presetProps.frameSvgUrl || "").trim().length > 0;
-  const distribution = String(
-    presetProps.distribution || presetProps.layoutType || "centered"
-  ).toLowerCase();
-  const tamanoBase = toNumber(presetProps.tamanoBase, 320);
-  const useSingleFrameLayout =
-    layoutType === "singleFrame" && hasFrameConfigured;
-  const textDrivenChipH = Math.max(
-    44,
-    paddingY * 2 + valueSize + (showLabels ? labelSize + 6 : 0)
+  const naturalMetrics = resolveCountdownLayoutMetrics(presetProps);
+  const frameScale = naturalMetrics.frameScale;
+  const defaultWidth = Math.max(
+    180,
+    Math.round(naturalMetrics.naturalContainerW)
   );
-  const layoutDrivenChipH = estimateCountdownUnitHeight({
-    tamanoBase,
-    distribution,
-    unitsCount: n,
-  });
-  const chipH = Math.max(textDrivenChipH, layoutDrivenChipH);
-  const baseChipW = resolveCountdownUnitWidth({
-    width: Math.max(36, chipWidth + paddingX * 2),
-    height: chipH,
-    boxRadius,
-  });
-  const cols =
-    distribution === "vertical"
-      ? 1
-      : distribution === "grid"
-        ? Math.min(2, n)
-        : n;
-  const rows =
-    distribution === "vertical"
-      ? n
-      : distribution === "grid"
-        ? Math.ceil(n / cols)
-        : 1;
-  const editorialWidths =
-    distribution === "editorial"
-      ? buildCountdownEditorialWidths({
-          unitsCount: n,
-          baseChipWidth: baseChipW,
-          chipHeight: chipH,
-          boxRadius,
-        })
-      : [];
-  const naturalW =
-    distribution === "vertical"
-      ? baseChipW
-      : distribution === "grid"
-        ? cols * baseChipW + gap * (cols - 1)
-        : distribution === "editorial"
-          ? editorialWidths.reduce((acc, width) => acc + width, 0) +
-            gap * Math.max(0, n - 1)
-          : n * baseChipW + gap * (n - 1);
-  const naturalH =
-    distribution === "vertical" || distribution === "grid"
-      ? rows * chipH + gap * Math.max(0, rows - 1)
-      : chipH;
-  const naturalContainerW =
-    naturalW + (useSingleFrameLayout ? framePadding * 2 : 0);
-  const naturalContainerH =
-    naturalH + (useSingleFrameLayout ? framePadding * 2 : 0);
-  const defaultWidth = Math.max(180, Math.round(naturalContainerW));
   const defaultHeight =
-    distribution === "vertical"
-      ? Math.max(120, Math.round(naturalContainerH))
-      : distribution === "grid" || distribution === "editorial"
-        ? Math.max(110, Math.round(naturalContainerH))
-        : Math.max(90, Math.round(naturalContainerH));
+    naturalMetrics.distribution === "vertical"
+      ? Math.max(120, Math.round(naturalMetrics.naturalContainerH))
+      : naturalMetrics.distribution === "grid" ||
+          naturalMetrics.distribution === "editorial"
+        ? Math.max(110, Math.round(naturalMetrics.naturalContainerH))
+        : Math.max(90, Math.round(naturalMetrics.naturalContainerH));
   const width = Math.max(
-    naturalContainerW,
+    naturalMetrics.naturalContainerW,
     toNumber(requestedWidth, defaultWidth)
   );
   const height = Math.max(
-    naturalContainerH,
+    naturalMetrics.naturalContainerH,
     toNumber(requestedHeight, defaultHeight)
   );
-  const contentArea = {
-    x: useSingleFrameLayout ? framePadding : 0,
-    y: useSingleFrameLayout ? framePadding : 0,
-    width: Math.max(
-      1,
-      width - (useSingleFrameLayout ? framePadding * 2 : 0)
-    ),
-    height: Math.max(
-      1,
-      height - (useSingleFrameLayout ? framePadding * 2 : 0)
-    ),
-  };
-  const distributionX = contentArea.x + (contentArea.width - naturalW) / 2;
-  const distributionY = contentArea.y + (contentArea.height - naturalH) / 2;
-  const unitRects =
-    distribution === "vertical"
-      ? units.map((_, index) => ({
-          x: contentArea.x + (contentArea.width - baseChipW) / 2,
-          y: distributionY + index * (chipH + gap),
-          width: baseChipW,
-          height: chipH,
-        }))
-      : distribution === "grid"
-        ? units.map((_, index) => {
-            const row = Math.floor(index / cols);
-            const col = index % cols;
-            return {
-              x: distributionX + col * (baseChipW + gap),
-              y: distributionY + row * (chipH + gap),
-              width: baseChipW,
-              height: chipH,
-            };
-          })
-        : distribution === "editorial"
-          ? (() => {
-              let cursorX = distributionX;
-              return units.map((_, index) => {
-                const width = editorialWidths[index] || baseChipW;
-                const rect = {
-                  x: cursorX,
-                  y: distributionY,
-                  width,
-                  height: chipH,
-                };
-                cursorX += width + gap;
-                return rect;
-              });
-            })()
-          : units.map((_, index) => ({
-              x: distributionX + index * (baseChipW + gap),
-              y: distributionY,
-              width: baseChipW,
-              height: chipH,
-            }));
+  const layout = resolveCountdownLayoutMetrics({
+    ...presetProps,
+    width,
+    height,
+  });
+  const unitRects = layout.unitLayouts;
   const frameAssetType =
     String(presetProps.frameAssetType || "").toLowerCase() === "png"
       ? "png"
@@ -201,11 +77,11 @@ export function resolveCountdownInsertGeometry(
           targetRect,
         })
       : targetRect;
-  const frameRects = !hasFrameConfigured
+  const frameRects = !layout.hasFrameConfigured
     ? []
-    : useSingleFrameLayout
+    : layout.useSingleFrameLayout
       ? [containFrame({ x: 0, y: 0, width, height })]
-      : layoutType === "multiUnit"
+      : layout.useMultiUnitFrame
         ? unitRects.map(containFrame)
         : [];
   const geometry = resolveCountdownSelectionGeometry({

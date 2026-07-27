@@ -2,11 +2,10 @@
 
 Status: Canonical Contract.
 
-Scope: Stage 1 of the Reserva el Día provider database. This contract defines
-the future Firestore documents, deterministic identity, local normalization,
-eligibility, import progress, Storage paths, and security boundaries. It does
-not authorize a real import, image download, source-site crawl, rules deploy, or
-profile publication.
+Scope: provider persistence, deterministic identity, normalization,
+eligibility, import progress, Storage paths, security boundaries, and the
+single/mass enrichment pipeline with durable bounded execution. It does not
+authorize an unreviewed mass apply, rules deploy, or profile publication.
 
 Implementation anchors:
 
@@ -18,11 +17,15 @@ Implementation anchors:
 - `functions/src/providers/validation.ts`
 - `functions/src/providers/storagePaths.ts`
 - `scripts/providers/providerInput.cjs`
+- `scripts/providers/enrichProviders.cjs`
+- `scripts/providers/providerEnrichmentPage.cjs`
+- `scripts/providers/providerEnrichmentImages.cjs`
 - `scripts/providers/README.md`
 
 Code is the current executable truth. Update this contract and the focused
 tests in `functions/providersStage1.test.mjs`,
-`scripts/providersStage1.test.mjs`, and `scripts/providersCsv.test.mjs`
+`scripts/providersStage1.test.mjs`, `scripts/providersCsv.test.mjs`, and
+`scripts/providersEnrichment.test.mjs`
 whenever a provider contract changes.
 
 ## 1. Authority and boundaries
@@ -33,9 +36,10 @@ rejected during normalization; they are not a second application database.
 Storage is authoritative for image bytes. Firestore only stores stable
 `storagePath` values, optional delivery URLs, and image metadata.
 
-There is no provider client, public route, validation flow, claim flow, scraper,
-or deployed backend in Stage 1. The prepared Admin script is an operator tool,
-not an automatically executed Cloud Function.
+There is no provider client, public route, validation flow, claim flow, mass
+scraper, or deployed enrichment backend. Import, seed, and single-provider
+enrichment scripts are explicit operator tools, not automatically executed
+Cloud Functions.
 
 ## 2. Collections
 
@@ -59,7 +63,7 @@ The definitive TypeScript shape is `Proveedor` in
 | `propietario` | Profile-claim state; independent from validation. |
 | `revisionManual` | Review gate and normalized reasons; independent from validation and ownership. |
 | `fuente` | Import provenance, `categoriaOriginal`, and original provider-page identifiers. |
-| `importacion` | Data/description/cover/gallery progress and bounded error state. |
+| `importacion` | Data progress, source-field discovery evidence, confirmed page processing, and bounded error state. |
 | `creadoEn`, `actualizadoEn`, `publicadoEn` | Firestore timestamps. |
 
 Provider timestamps have separate write/read contracts:
@@ -122,12 +126,22 @@ The Stage 2 initial lifecycle is:
 }
 ```
 
+Provider enrichment adds three backward-compatible discovery fields inside
+`importacion`: `descripcionEncontrada`, `portadaEncontrada`, and
+`galeriaEncontrada`. Their absence means that an older or Stage 2 document has
+not recorded that inspection evidence. After a successful page analysis each
+field is an explicit boolean, including `false` when the source does not
+publish that content. The corresponding `*Importada` fields continue to record
+persisted import progress and are never reset merely because a later source
+inspection does not expose the field.
+
 Runtime validation rejects documents that do not preserve required groups,
 states, timestamp types, ISO country-code shape, image metadata shape, the
 manual-review reason allowlist/uniqueness invariant, or the invariant that a
 visible provider must also be active and published. Timestamp validation
 accepts valid native `Date` values before writes and structural Firestore
-timestamps after reads.
+timestamps after reads. Discovery fields are optional for backward
+compatibility and must be boolean whenever present.
 
 ### `categorias_proveedores/{categoriaId}`
 
@@ -455,6 +469,226 @@ The helpers accept only provider/image IDs without path separators and these
 extensions: JPG, JPEG, PNG, WEBP, GIF, AVIF. They return a path only; they do
 not assume a bucket or fabricate a download URL.
 
+### Provider enrichment pipeline v2
+
+`scripts/providers/enrichProviders.cjs` keeps one extraction and persistence
+pipeline for both an explicit single provider and a bounded mass scope. Mass
+orchestration can select the whole collection or one category, but every worker
+still obtains a page only from that provider's canonical
+`fuente.urlOriginal`, verifies that URL identity produces the requested
+document ID, and rejects source or page redirects outside the authorized
+portal host.
+
+Page discovery is evidence-based and ordered:
+
+1. use an explicit complete structured gallery list when the page publishes
+   one;
+2. parse valid JSON-LD scripts;
+3. parse valid embedded JSON scripts such as `application/json` and
+   `__NEXT_DATA__`;
+4. inspect lazy/data attributes, lightbox links, and semantic
+   description/gallery/cover HTML;
+5. inspect Open Graph;
+6. inspect remaining supported metadata.
+
+The extractor records only selected literal text and image URLs in memory. It
+does not use AI, generate attribution phrases, summarize, persist HTML, or keep
+page snapshots. An explicit literal short description is used when present;
+otherwise `descripcionCorta` equals the complete extracted description.
+
+Remote page and image requests permit only public HTTP(S) hosts, revalidate
+every redirect, and use byte/time/redirect limits. Selected image bytes must
+match one of the existing provider MIME types, remain within
+`PROVIDER_IMAGE_MAX_BYTES`, and expose valid dimensions through Sharp.
+SHA-256 over downloaded bytes removes duplicates before persistence.
+
+For the portal's current provider template,
+`script[type="application/json"][data-gallery-all-images]` is the gallery
+authority used by the site's own lightbox. Its array length and any rendered
+counter must agree before the source is considered complete. Each item retains
+source order. Explicit original/full URLs take priority; for WordPress uploads,
+the extractor can derive the stable original identity by removing only a
+terminal generated `-WIDTHxHEIGHT` suffix. It attempts that original and then
+the declared lightbox variants. URL identity deduplicates thumbnail/original
+variants, while SHA-256 remains authoritative for identical bytes.
+
+Images are downloaded sequentially into a unique OS temporary directory and
+that directory is removed on every success/failure path. Image IDs are
+deterministic from byte hashes. Storage paths are built only by the provider
+path helpers. The authenticated Firebase `adminSdkConfig` endpoint supplies
+the actual bucket name; it is not derived from the project ID. Uploads use a
+zero-generation precondition, so an existing object is never overwritten.
+Firestore keeps `storagePath`, source URL, dimensions, MIME, format, byte size,
+order, and import timestamp; `url` remains `null`.
+
+All read-only validation finishes before the first upload:
+
+- provider exists and passes `assertValidProveedor`;
+- source URL and deterministic identity match;
+- Firestore and the discovered Storage bucket are accessible;
+- the source page downloaded and parsed successfully;
+- every discovered image candidate has valid bytes, MIME, dimensions,
+  duplicate identity, and path;
+- every planned destination object is absent;
+- the final merged provider document passes runtime validation.
+
+Apply uploads sequentially, removes temporary files, then uses a Firestore
+transaction to re-read the provider and reject a concurrent change to
+description, images, or import progress. The transaction always updates
+`importacion` and `actualizadoEn`; it includes `descripcion` /
+`descripcionCorta` or `imagenes` only when a new valid value was found and
+fully prepared. Name, categories, contact, location, review, lifecycle, and
+visibility fields are untouched.
+
+Firestore and Storage do not offer a shared transaction. The one-provider mode
+without durable state uses compensating rollback: a Storage failure deletes
+objects previously created by that execution, and a Firestore failure deletes
+all objects created by that execution. Pre-existing objects are never deleted.
+A rollback failure is surfaced in the sanitized report for operator
+intervention. Mass/durable mode uses reconciliation instead, as defined below.
+
+An empty gallery is a valid discovered result and sets
+`galeriaImportada: true`. If no gallery is present, an existing Firestore
+gallery is preserved and no empty replacement is written; a provider that had
+no gallery remains without one. Missing description, cover, gallery, or all
+three is a successful source result. The absent content field is not written,
+existing content is never cleared, and the matching `*Encontrada` field is
+`false`.
+
+A successful final update sets accurate persisted/imported flags, all three
+discovery booleans, `cantidadImagenes`, `ultimoIntentoEn`,
+`ultimoError: null`, `completadaEn`, and `actualizadoEn`. `completadaEn` means
+that the page downloaded, parsed, and reconciled successfully; it does not
+mean that every optional content type existed. Only technical failures such as
+unrecovered HTTP/timeouts, unreadable/parser failures, discovered-image
+download or validation failures, Storage/Firestore failures, state
+inconsistency, or unreconciled interruption produce an enrichment error.
+Failed operations do not make a separate Firestore error write because partial
+writes are forbidden; the sanitized local report is the failure authority.
+
+`galeriaImportada: true` has a strict completeness meaning: the source gallery
+was inspected in full and every expected unique item was persisted or matched
+to an existing valid Storage reference. Finding a non-empty subset is
+insufficient. If the declared total does not match, an entry is invalid, an
+image fails validation, or an existing reused object is missing,
+`gallery_incomplete` is reported locally, `galleryComplete` remains false, and
+the run performs no remote write.
+
+Without `--force`, a provider with `importacion.completadaEn` is skipped before
+page download. Fully populated legacy documents retain a compatibility skip
+when their three prior completion signals are present. `--force` permits
+reanalysis but does not permit overwriting an existing description, cover,
+gallery object, or Storage path. A forced inspection that finds no content
+updates only import evidence/timestamps and preserves all existing content.
+
+`--complete-gallery` explicitly repairs one partial gallery. It never changes
+an existing description or cover, contact, categories, lifecycle, review, or
+visibility. If the provider has never been enriched, missing description and
+cover are populated only when the source provides valid values while the
+gallery is inspected completely; their absence remains successful.
+Existing gallery objects are matched by canonical media identity or hash ID;
+only missing deterministic paths are uploaded. Firestore's ordered
+`imagenes.galeria` array is replaced only after complete validation and upload.
+Objects no longer present in the authority are removed from the Firestore array
+but are not deleted from Storage. A failed Firestore transaction rolls back
+only objects created by that execution, preserving the prior document.
+Re-execution against an already matching source is write-free.
+
+The safety bound `--max-gallery-images` defaults to 100 and is configurable
+from 1 to 500. Reports expose expected, detected, downloaded, valid, existing,
+added, uploaded, discarded, complete, and extraction-source gallery evidence.
+`--debug-local` is dry-run-only and may temporarily retain source HTML plus a
+sanitized structured URL list under Git-ignored
+`artifacts/providers/runtime/debug-{providerId}/`; operators must remove the
+raw HTML after diagnosis because the source page can include contact data.
+
+### Durable mass orchestration contract
+
+Mass apply requires an explicit local resume path. The state has schema version
+1 and enrichment script version `2.1.0`. Version `2.0.0` states are
+intentionally incompatible because they used the former content-required
+confirmation semantics; they must be preserved for audit and explicitly
+migrated or replaced with a reviewed new state path. The state records:
+
+- project, category/filter, sorted candidate-ID SHA-256 and count;
+- provider contract schema version, enrichment script version and extractor
+  SHA-256;
+- output-affecting options (`force`, complete-gallery mode and gallery limit);
+- run timestamps/status, current and last-confirmed IDs;
+- terminal processed IDs and per-provider phase/status/attempts;
+- uploaded object evidence: deterministic path, image ID, content SHA-256,
+  byte count and execution ID;
+- completed/partial/error/skipped/recovered counts and byte/write totals;
+- a checksum over the complete state excluding the checksum property.
+
+The compatible per-provider state transitions are:
+
+```text
+pending (implicit)
+  -> processing
+  -> storage_complete
+  -> firestore_updated
+  -> confirmed
+
+processing/storage_complete -> partial | recoverable_error
+processing                 -> definitive_error | skipped | already_complete
+firestore_updated          -> recovered (after remote reconciliation)
+```
+
+`confirmed` is written only after all required Storage objects exist, the
+Firestore transaction succeeded, and the local confirmed checkpoint itself was
+flushed and atomically installed. State writes are serialized across workers.
+Each write flushes a temporary file, rotates the valid primary to
+`*.backup.json`, renames the temporary file to the primary path, and syncs the
+directory where the operating system supports it. A canonical checksum detects
+valid JSON that was truncated or edited.
+
+At startup a corrupt primary is quarantined and restored only from a valid
+backup. Invalid primary + backup, checksum mismatch without a recovery source,
+changed project/candidate set/options/contract/extractor, or an unsupported
+state version aborts. Existing state is never silently discarded.
+
+The sibling lock is created with exclusive filesystem semantics and stores a
+PID, run ID, timestamp, scope hash and credential-redacted command. A live lock
+always aborts a second process. A stale lock requires both
+`--recover-stale-lock` and `--confirm-stale-lock=PID`; it is archived before
+the replacement lock is acquired.
+
+SIGINT, SIGTERM, uncaught exceptions and unhandled rejections stop new worker
+assignments and new remote operations, checkpoint current phases, allow an
+already safe commit boundary to finish, remove temporary directories, close
+Admin clients, and exit non-zero when interrupted/fatal. A five-second
+periodic checkpoint is only an additional safeguard: upload, Storage-complete,
+Firestore-updated and confirmed transitions are persisted per provider and do
+not wait for a batch.
+
+Cross-service failures use idempotent reconciliation, not a false distributed
+transaction:
+
+1. Storage complete + Firestore failure: retain and record new objects; retry
+   verifies their metadata/hash and never uploads them again.
+2. Firestore processed (`importacion.completadaEn` present) + local checkpoint
+   failure: compare the saved pre-attempt enrichment fingerprint with
+   Firestore and mark the document recovered, even when the source contained no
+   enrichable fields.
+3. Partial Storage: retain verified objects as partial evidence; retry reuses
+   only exact execution/provider/image/path/hash/size matches.
+4. Local confirmed + remote incomplete/missing: report an inconsistency and
+   abort rather than assuming success.
+
+Unrecognized objects at a deterministic destination remain hard conflicts.
+Mass recovery never overwrites or deletes existing objects, manual
+descriptions, images or non-enrichment provider fields. `--limit` bounds new
+IDs attempted in one invocation; previously partial/recoverable IDs are retried
+first and do not consume that fresh limit. Concurrency defaults to 2 and is
+bounded at 8.
+
+Dry-run never writes the apply resume state. An optional `--dry-run-state`
+provides separate durability, while Storage and Firestore writes remain zero.
+The request controller enforces one shared delay, bounded timeouts/retries,
+`Retry-After`, optional 429 pauses, and a circuit breaker after repeated
+429/5xx responses.
+
 Prepared Storage rules limit create/update to administrators, 15 MiB, the
 corresponding MIME types, and the exact cover/gallery path shapes. Deletes are
 administrator-only. Reads require an administrator or a linked provider that
@@ -504,12 +738,13 @@ query(
 Prepared backend batch queries use automatic single-field indexes and document
 ID pagination:
 
-- pending description:
-  `where("importacion.descripcionImportada", "==", false)`;
-- pending cover:
-  `where("importacion.portadaImportada", "==", false)`;
-- pending gallery:
-  `where("importacion.galeriaImportada", "==", false)`;
+- provider not yet inspected by enrichment:
+  `where("importacion.completadaEn", "==", null)`;
+- source inspection records description/cover/gallery presence through
+  `descripcionEncontrada`, `portadaEncontrada`, and `galeriaEncontrada`;
+- `descripcionImportada`, `portadaImportada`, and `galeriaImportada` remain
+  persisted-stage signals, but `false` description/cover values are not errors
+  once `completadaEn` is present;
 - review:
   `where("estado", "==", "pendiente_revision")`;
 - manual review:
@@ -539,10 +774,32 @@ presence/count booleans, location is limited to city/level1/country/metropolitan
 classification, WhatsApp is represented only by presence/equality booleans,
 and image URLs are reduced to presence booleans. No raw email, phone, street,
 full address, credentials, or review error text is emitted.
-Runtime reports and resume files live under the Git-ignored
-`artifacts/providers/runtime/`.
+Repository-local runtime reports and dry-run state live under the Git-ignored
+`artifacts/providers/runtime/`; durable apply state should normally live in an
+access-controlled path such as `C:\private\providers`.
 
-The local emulator integration test uses the importer's own SDK, commits one
-mapped provider to the Firestore emulator, reads it back, verifies that the
-three native write `Date` values return as Firestore `Timestamp` values, and
-deletes the emulator document. It never targets a real project.
+Single-provider enrichment reports add only provider ID, visited source URL,
+description presence/length/source type, gallery completeness counts, image
+counts, byte counts, stable Storage paths, write/rollback state, errors, and
+stage timings. They do not include extracted description text, image source
+URLs, HTML, provider contact, or full-address fields. The only exception is the
+explicit dry-run-only debug artifact described above; it is ignored by Git and
+must be deleted after use. Temporary image files are always outside the
+repository and are removed before a successful Firestore commit.
+
+Mass enrichment adds a credential-redacted run ID/scope/resume command,
+per-provider phase/timings/retries/results, checkpoint/recovery evidence,
+aggregate service writes/bytes and sanitized errors. Persistent JSONL logs
+apply key-based redaction to credentials, contacts, addresses, HTML and
+buffers. They never contain description text. State, reports and logs are
+operational artifacts rather than Firestore authorities; repository-local
+runtime paths are Git-ignored and the recommended durable state location is
+access-controlled storage outside the repository.
+
+The local emulator tests use the importer's own SDK. The import test commits
+one mapped provider, reads it back and verifies native `Date` values return as
+Firestore `Timestamp`. The enrichment recovery test uses Firestore and Storage
+demo emulators, confirms one of three synthetic providers, kills the child
+process without cleanup, resumes through the stale lock, and proves no lost
+confirmation, duplicate Storage path, inconsistent final document/state or
+temporary directory. They never target a real project.

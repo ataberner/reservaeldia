@@ -335,6 +335,19 @@ export function validateProveedor(value: unknown): RuntimeValidationIssue[] {
     ]) {
       push(issues, typeof importacion[field] === "boolean", `importacion.${field}`, "Debe ser boolean.");
     }
+    for (const field of [
+      "descripcionEncontrada",
+      "portadaEncontrada",
+      "galeriaEncontrada",
+    ]) {
+      push(
+        issues,
+        importacion[field] === undefined ||
+          typeof importacion[field] === "boolean",
+        `importacion.${field}`,
+        "Debe ser boolean cuando está presente."
+      );
+    }
     push(issues, Number.isInteger(importacion.cantidadImagenes) && Number(importacion.cantidadImagenes) >= 0, "importacion.cantidadImagenes", "Debe ser entero no negativo.");
     push(issues, importacion.ultimoIntentoEn === null || isTimestampValue(importacion.ultimoIntentoEn), "importacion.ultimoIntentoEn", "Debe ser Date, Timestamp o null.");
     push(issues, isStringOrNull(importacion.ultimoError), "importacion.ultimoError", "Debe ser string o null.");

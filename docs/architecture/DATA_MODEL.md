@@ -804,6 +804,13 @@ Firebase-independent; the importer owns Firestore serialization and performs a
 no-commit preflight for every candidate. Firestore reads remain compatible with
 the structural timestamp contract documented in `PROVIDER_DATA_MODEL.md`.
 
+Provider enrichment records optional boolean source evidence as
+`importacion.descripcionEncontrada`, `portadaEncontrada`, and
+`galeriaEncontrada`. `importacion.completadaEn` is the durable authority that
+the page was downloaded, parsed, and reconciled successfully; it does not
+require optional description or image content to exist. Missing source content
+never clears an existing provider field.
+
 Provider image bytes belong in Storage under deterministic provider paths;
 Firestore stores `storagePath` and metadata only. Invitation drafts and
 publications do not become a provider authority.

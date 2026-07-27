@@ -181,6 +181,9 @@ export type Proveedor<TTimestamp = ProviderTimestampValue> = {
     descripcionImportada: boolean;
     portadaImportada: boolean;
     galeriaImportada: boolean;
+    descripcionEncontrada?: boolean;
+    portadaEncontrada?: boolean;
+    galeriaEncontrada?: boolean;
     cantidadImagenes: number;
     ultimoIntentoEn: TTimestamp | null;
     ultimoError: string | null;

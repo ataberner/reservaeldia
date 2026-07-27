@@ -34,6 +34,10 @@
       "providers:import:dry": "npm --prefix functions run build && node scripts/providers/importProviders.cjs --dry-run",
       "providers:categories:seed:dry": "npm --prefix functions run build && node scripts/providers/seedProviderCategories.cjs --dry-run",
       "providers:categories:seed:apply": "npm --prefix functions run build && node scripts/providers/seedProviderCategories.cjs --apply",
+      "providers:enrich:dry": "npm --prefix functions run build && node scripts/providers/enrichProviders.cjs --dry-run",
+      "providers:enrich:apply": "npm --prefix functions run build && node scripts/providers/enrichProviders.cjs --apply",
+      "providers:enrich:test": "node --test scripts/providersEnrichment.test.mjs scripts/providersEnrichmentState.test.mjs scripts/providersEnrichmentBulk.test.mjs",
+      "providers:enrich:test:emulator": "npm --prefix functions run build && firebase emulators:exec --only firestore,storage --project demo-reservaeldia-provider-enrichment \"node --test scripts/providersEnrichmentEmulator.test.mjs\"",
       "deploy:functions:batched": "node scripts/deployFunctionsBatched.cjs",
       "deploy:full": "npm run build && firebase deploy --only hosting && npm run deploy:functions:batched",
       "deploy:hosting": "npm run build && firebase deploy --only hosting"

@@ -622,6 +622,40 @@ test("runtime validation enforces the manual review contract", () => {
   );
 });
 
+test("runtime validation accepts optional enrichment discovery evidence", () => {
+  const mapped = providers.mapPortalProviderRecord(validRecord(), {
+    sourceFile: sourceFile(),
+    sourceFileName: "providers.json",
+  });
+  const inspected = {
+    ...mapped.document,
+    importacion: {
+      ...mapped.document.importacion,
+      descripcionEncontrada: true,
+      portadaEncontrada: false,
+      galeriaEncontrada: false,
+    },
+  };
+  assert.deepEqual(providers.validateProveedor(inspected), []);
+
+  const invalid = {
+    ...inspected,
+    importacion: {
+      ...inspected.importacion,
+      portadaEncontrada: "no",
+    },
+  };
+  assert.ok(
+    providers
+      .validateProveedor(invalid)
+      .some(
+        (issue) =>
+          issue.path ===
+          "importacion.portadaEncontrada"
+      )
+  );
+});
+
 test("runtime validation enforces safe imported WhatsApp mapping", () => {
   const mapped = providers.mapPortalProviderRecord(validRecord(), {
     sourceFile: sourceFile(),

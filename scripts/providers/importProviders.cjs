@@ -397,7 +397,7 @@ function loadExplicitServiceAccount(credentialsPath, projectId) {
   return serviceAccount;
 }
 
-function initializeAdminForApply(args) {
+function initializeAdminAppForApply(args) {
   if (!args.project || !args.confirmProject || args.project !== args.confirmProject) {
     throw new Error(
       "--apply requiere --project y --confirm-project con el mismo valor."
@@ -420,7 +420,11 @@ function initializeAdminForApply(args) {
     credential: cert(serviceAccount),
     projectId: args.project,
   });
-  return getFirestore(app);
+  return app;
+}
+
+function initializeAdminForApply(args) {
+  return getFirestore(initializeAdminAppForApply(args));
 }
 
 function initializeFirestoreForEmulator({
@@ -1061,6 +1065,7 @@ module.exports = {
     app: require.resolve("firebase-admin/app"),
     firestore: require.resolve("firebase-admin/firestore"),
   }),
+  initializeAdminAppForApply,
   initializeAdminForApply,
   initializeFirestoreForEmulator,
   parseArgs,

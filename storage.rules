@@ -14,6 +14,29 @@ service firebase.storage {
       );
     }
 
+    function isPublicProvider(providerId) {
+      return firestore.exists(
+          /databases/(default)/documents/proveedores/$(providerId)
+        ) &&
+        firestore.get(
+          /databases/(default)/documents/proveedores/$(providerId)
+        ).data.estado == "publicado" &&
+        firestore.get(
+          /databases/(default)/documents/proveedores/$(providerId)
+        ).data.activo == true &&
+        firestore.get(
+          /databases/(default)/documents/proveedores/$(providerId)
+        ).data.visible == true;
+    }
+
+    function isAllowedProviderImage() {
+      return request.resource != null &&
+        request.resource.size <= 15 * 1024 * 1024 &&
+        request.resource.contentType.matches(
+          '^image/(jpeg|png|webp|gif|avif)$'
+        );
+    }
+
     match /iconos/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
@@ -27,10 +50,28 @@ service firebase.storage {
       allow read, write: if isAdmin();
     }
 
+    match /proveedores/{proveedorId}/portada/{fileName} {
+      allow read: if isAdmin() || isPublicProvider(proveedorId);
+      allow create, update: if isAdmin() &&
+        fileName.matches('^portada-original\\.(jpg|jpeg|png|webp|gif|avif)$') &&
+        isAllowedProviderImage();
+      allow delete: if isAdmin();
+    }
+
+    match /proveedores/{proveedorId}/galeria/{fileName} {
+      allow read: if isAdmin() || isPublicProvider(proveedorId);
+      allow create, update: if isAdmin() &&
+        fileName.matches('^[A-Za-z0-9][A-Za-z0-9_-]{0,79}\\.(jpg|jpeg|png|webp|gif|avif)$') &&
+        isAllowedProviderImage();
+      allow delete: if isAdmin();
+    }
+
     // Compatibility fallback for existing app assets.
-    match /{allPaths=**} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+    match /{topLevel}/{allPaths=**} {
+      allow read: if isSignedIn() &&
+        topLevel != "proveedores";
+      allow write: if isSignedIn() &&
+        topLevel != "proveedores";
     }
   }
 }

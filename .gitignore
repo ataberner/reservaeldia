@@ -87,3 +87,6 @@ trace
 
 # Runtime-only countdown Phase 0 inventories and backups
 /artifacts/countdown-phase0/runtime/
+
+# Runtime-only provider analysis, dry-run reports, and resume state
+/artifacts/providers/runtime/

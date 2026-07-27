@@ -52,7 +52,7 @@ likely to be used as an authority by humans or AI agents.
 | Area | Canonical docs | Role |
 | --- | --- | --- |
 | Product and system architecture | [ARCHITECTURE_GUIDELINES.md](architecture/ARCHITECTURE_GUIDELINES.md), [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md) | Product/architecture rules and whole-system map. |
-| Data and persistence | [DATA_MODEL.md](architecture/DATA_MODEL.md) | Canonical draft/publication/render-state data model. |
+| Data and persistence | [DATA_MODEL.md](architecture/DATA_MODEL.md), [PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) | Canonical draft/publication/render-state data model and the Stage 1 provider persistence/import contract. |
 | Editor subsystem | [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), [INTERACTION_CONTRACT.md](architecture/INTERACTION_CONTRACT.md), [INTERACTION_SYSTEM_CURRENT_STATE.md](architecture/INTERACTION_SYSTEM_CURRENT_STATE.md) | Editor boundary, normative interaction rules, and current implementation map. |
 | Preview/publish/render | [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md), [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) | Preview authority model and cross-runtime render compatibility. |
 | Checkout/publication lifecycle | [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md) | Checkout, payment approval, slug reservation, publish execution, retry, and public delivery lifecycle. |
@@ -150,6 +150,11 @@ Add focused contracts:
 
 Use focused contracts for object-family details instead of duplicating schema
 rules in `DATA_MODEL.md`.
+
+For the provider database, continue with
+[PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) and the operational
+runbook at `scripts/providers/README.md`. The provider contract is independent
+from invitation render-state contracts.
 
 For the countdown administrative builder, continue with
 [COUNTDOWN_PRESET_BUILDER.md](architecture/COUNTDOWN_PRESET_BUILDER.md) and the

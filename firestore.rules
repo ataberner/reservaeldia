@@ -36,6 +36,134 @@ service cloud.firestore {
         resource.data.estadoEditorial == "publicada";
     }
 
+    function isPublicProviderResource() {
+      return resource.data.estado == "publicado" &&
+        resource.data.activo == true &&
+        resource.data.visible == true;
+    }
+
+    function isValidProviderWrite() {
+      return request.resource.data.keys().hasAll([
+          "schemaVersion",
+          "nombre",
+          "nombreNormalizado",
+          "slug",
+          "categoriaPrincipalId",
+          "categoriaIds",
+          "descripcion",
+          "descripcionCorta",
+          "contacto",
+          "redesSociales",
+          "ubicacion",
+          "imagenes",
+          "estado",
+          "activo",
+          "visible",
+          "validacion",
+          "propietario",
+          "revisionManual",
+          "fuente",
+          "importacion",
+          "creadoEn",
+          "actualizadoEn",
+          "publicadoEn"
+        ]) &&
+        request.resource.data.schemaVersion is int &&
+        request.resource.data.schemaVersion >= 2 &&
+        request.resource.data.nombre is string &&
+        request.resource.data.nombre.size() > 0 &&
+        request.resource.data.nombreNormalizado is string &&
+        request.resource.data.slug is string &&
+        request.resource.data.slug.size() > 0 &&
+        request.resource.data.categoriaIds is list &&
+        request.resource.data.estado in [
+          "importado",
+          "borrador",
+          "pendiente_revision",
+          "publicado",
+          "pausado",
+          "rechazado",
+          "eliminado"
+        ] &&
+        request.resource.data.activo is bool &&
+        request.resource.data.visible is bool &&
+        request.resource.data.validacion is map &&
+        request.resource.data.validacion.estado in [
+          "no_validado",
+          "pendiente",
+          "validado",
+          "rechazado",
+          "suspendido"
+        ] &&
+        request.resource.data.propietario is map &&
+        request.resource.data.revisionManual is map &&
+        request.resource.data.revisionManual.keys().hasAll([
+          "requerida",
+          "motivos",
+          "revisadaEn",
+          "revisadaPor",
+          "notas"
+        ]) &&
+        request.resource.data.revisionManual.requerida is bool &&
+        request.resource.data.revisionManual.motivos is list &&
+        request.resource.data.revisionManual.motivos.hasOnly([
+          "posible_duplicado_nombre",
+          "categoria_contenedora_novias",
+          "categoria_contenedora_experiencias_adicionales",
+          "categoria_ambigua",
+          "sin_id_externo",
+          "ubicacion_incompleta",
+          "contacto_dudoso"
+        ]) &&
+        (
+          (
+            request.resource.data.revisionManual.requerida == true &&
+            request.resource.data.revisionManual.motivos.size() > 0
+          ) ||
+          (
+            request.resource.data.revisionManual.requerida == false &&
+            request.resource.data.revisionManual.motivos.size() == 0
+          )
+        ) &&
+        request.resource.data.fuente is map &&
+        request.resource.data.fuente.keys().hasAll([
+          "categoriaOriginal"
+        ]) &&
+        (
+          request.resource.data.fuente.categoriaOriginal == null ||
+          request.resource.data.fuente.categoriaOriginal is string
+        ) &&
+        request.resource.data.importacion is map &&
+        (
+          request.resource.data.visible == false ||
+          (
+            request.resource.data.estado == "publicado" &&
+            request.resource.data.activo == true
+          )
+        );
+    }
+
+    function isValidProviderCategoryWrite() {
+      return request.resource.data.keys().hasAll([
+          "nombre",
+          "slug",
+          "descripcion",
+          "activa",
+          "orden",
+          "icono",
+          "categoriaPadreId",
+          "creadoEn",
+          "actualizadoEn"
+        ]) &&
+        request.resource.data.nombre is string &&
+        request.resource.data.nombre.size() > 0 &&
+        request.resource.data.slug is string &&
+        request.resource.data.slug.size() > 0 &&
+        request.resource.data.descripcion is string &&
+        request.resource.data.activa is bool &&
+        request.resource.data.orden is int;
+    }
+
     match /borradores/{draftId} {
       allow create: if isDraftOwnerOnCreate();
       allow read, delete: if isDraftOwner();
@@ -153,6 +281,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /proveedores/{proveedorId} {
+      // Firestore Rules cannot redact internal fields. This direct read exposes
+      // the whole document and is therefore limited to explicitly public rows.
+      allow read: if isAdmin() || isPublicProviderResource();
+      allow create, update: if isAdmin() && isValidProviderWrite();
+      allow delete: if isAdmin();
+    }
+
+    match /categorias_proveedores/{categoriaId} {
+      allow read: if isAdmin() || resource.data.activa == true;
+      allow create, update: if isAdmin() && isValidProviderCategoryWrite();
+      allow delete: if isAdmin();
+    }
+
     // Compatibility fallback for the rest of current app documents.
     match /{collection}/{document=**} {
       allow read, write: if isSignedIn() &&
@@ -165,7 +307,9 @@ service cloud.firestore {
         collection != "publication_checkout_sessions" &&
         collection != "public_slug_reservations" &&
         collection != "publication_discount_codes" &&
-        collection != "publication_discount_code_usage";
+        collection != "publication_discount_code_usage" &&
+        collection != "proveedores" &&
+        collection != "categorias_proveedores";
     }
   }
 }

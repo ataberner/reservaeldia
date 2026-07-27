@@ -30,6 +30,10 @@
       "countdowns:baseline:update": "node scripts/captureCountdownVisualBaseline.cjs --update",
       "countdowns:baseline:check": "node scripts/captureCountdownVisualBaseline.cjs --check",
       "countdowns:frame-upload-check": "node scripts/checkCountdownFrameUploadLayout.cjs",
+      "providers:analyze": "npm --prefix functions run build && node scripts/providers/analyzeProviderJson.cjs",
+      "providers:import:dry": "npm --prefix functions run build && node scripts/providers/importProviders.cjs --dry-run",
+      "providers:categories:seed:dry": "npm --prefix functions run build && node scripts/providers/seedProviderCategories.cjs --dry-run",
+      "providers:categories:seed:apply": "npm --prefix functions run build && node scripts/providers/seedProviderCategories.cjs --apply",
       "deploy:functions:batched": "node scripts/deployFunctionsBatched.cjs",
       "deploy:full": "npm run build && firebase deploy --only hosting && npm run deploy:functions:batched",
       "deploy:hosting": "npm run build && firebase deploy --only hosting"

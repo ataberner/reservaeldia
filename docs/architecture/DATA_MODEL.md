@@ -785,6 +785,29 @@ The current generator and normalizers still read multiple legacy-compatible name
 - preview metadata: `thumbnailUrl`, `thumbnailurl`, `thumbnail_url`, `thumbnailURL`, `previewUrl`, `previewurl`, `preview_url`, `previewURL`, and `portada`
 
 ## 7. Firestore Representation
+### `proveedores` (Stage 1 prepared contract)
+
+The provider database contract is owned by
+[PROVIDER_DATA_MODEL.md](PROVIDER_DATA_MODEL.md). Stage 1 prepares
+`proveedores/{proveedorId}`, `categorias_proveedores/{categoriaId}`, local
+normalization/eligibility, rules, dry-run analysis, and a guarded future Admin
+importer. It does not create any remote documents or make providers visible.
+
+Provider schema version 2 includes required `revisionManual` state and
+`fuente.categoriaOriginal`. Manual-review reasons are normalized and
+deduplicated; possible duplicate names mark every eligible URL identity without
+merging records. The definitive category and review policy remains in the
+provider contract.
+
+Provider writes use native `Date` values at the domain boundary. The mapper is
+Firebase-independent; the importer owns Firestore serialization and performs a
+no-commit preflight for every candidate. Firestore reads remain compatible with
+the structural timestamp contract documented in `PROVIDER_DATA_MODEL.md`.
+
+Provider image bytes belong in Storage under deterministic provider paths;
+Firestore stores `storagePath` and metadata only. Invitation drafts and
+publications do not become a provider authority.
+
 ### `borradores`
 The modern draft schema is embedded in a single Firestore document:
 

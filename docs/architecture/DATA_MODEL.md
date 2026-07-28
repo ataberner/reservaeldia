@@ -785,13 +785,14 @@ The current generator and normalizers still read multiple legacy-compatible name
 - preview metadata: `thumbnailUrl`, `thumbnailurl`, `thumbnail_url`, `thumbnailURL`, `previewUrl`, `previewurl`, `preview_url`, `previewURL`, and `portada`
 
 ## 7. Firestore Representation
-### `proveedores` (Stage 1 prepared contract)
+### `proveedores` and `categorias_proveedores`
 
 The provider database contract is owned by
-[PROVIDER_DATA_MODEL.md](PROVIDER_DATA_MODEL.md). Stage 1 prepares
-`proveedores/{proveedorId}`, `categorias_proveedores/{categoriaId}`, local
-normalization/eligibility, rules, dry-run analysis, and a guarded future Admin
-importer. It does not create any remote documents or make providers visible.
+[PROVIDER_DATA_MODEL.md](PROVIDER_DATA_MODEL.md). It owns both collection
+shapes, deterministic identity, normalization/eligibility, import progress,
+image metadata and Storage paths, security boundaries, and durable enrichment
+recovery. Operator commands and sequencing live in
+`scripts/providers/README.md`; this general data map does not duplicate them.
 
 Provider schema version 2 includes required `revisionManual` state and
 `fuente.categoriaOriginal`. Manual-review reasons are normalized and
@@ -814,6 +815,12 @@ never clears an existing provider field.
 Provider image bytes belong in Storage under deterministic provider paths;
 Firestore stores `storagePath` and metadata only. Invitation drafts and
 publications do not become a provider authority.
+
+The implemented scripts can create missing provider/category documents and
+enrich existing providers only when an operator selects explicit apply mode
+and passes the guarded project/credential checks. Their default/local dry-runs
+do not write Firebase, enrichment dry-run is remote-read-only, and no provider
+script makes a provider visible or publishes a directory route.
 
 ### `borradores`
 The modern draft schema is embedded in a single Firestore document:

@@ -2,13 +2,37 @@
 
 Status: Canonical Contract.
 
+Current-implementation snapshot revalidated: 2026-07-27.
+
 Scope: provider persistence, deterministic identity, normalization,
 eligibility, import progress, Storage paths, security boundaries, and the
 single/mass enrichment pipeline with durable bounded execution. It does not
 authorize an unreviewed mass apply, rules deploy, or profile publication.
 
-Implementation anchors:
+Content classification:
 
+- Unlabelled statements in this document are the normative provider contract.
+- **[Current implementation]** records behavior verified against the present
+  repository. Code remains the executable truth if that snapshot drifts.
+- **[Compatibility]** records a read/skip/recovery branch retained for older
+  documents or state files; it is not the preferred shape for new writes.
+- **[Assumption]** records an operational fact that cannot be proved from the
+  repository alone.
+- **[Pending]** records work or an external decision that is not implemented.
+- **[Historical]** preserves context and must not be read as current rollout
+  state or implementation authority.
+
+This file is the smallest canonical owner for provider invariants. The
+whole-system architecture map remains
+`docs/architecture/ARCHITECTURE_OVERVIEW.md`; the general persistence map
+remains `docs/architecture/DATA_MODEL.md`; and commands, interruption,
+recovery, and operator sequencing are owned by
+`scripts/providers/README.md`. Those adjacent documents link here instead of
+redeclaring the schema.
+
+Current implementation anchors:
+
+- `functions/src/providers/config.ts`
 - `functions/src/providers/types.ts`
 - `functions/src/providers/normalization.ts`
 - `functions/src/providers/eligibility.ts`
@@ -16,17 +40,43 @@ Implementation anchors:
 - `functions/src/providers/review.ts`
 - `functions/src/providers/validation.ts`
 - `functions/src/providers/storagePaths.ts`
+- `scripts/providers/analyzeProviderJson.cjs`
+- `scripts/providers/importProviders.cjs`
 - `scripts/providers/providerInput.cjs`
+- `scripts/providers/seedProviderCategories.cjs`
 - `scripts/providers/enrichProviders.cjs`
+- `scripts/providers/providerEnrichmentBulk.cjs`
 - `scripts/providers/providerEnrichmentPage.cjs`
 - `scripts/providers/providerEnrichmentImages.cjs`
+- `scripts/providers/providerEnrichmentState.cjs`
+- `scripts/providers/providerEnrichmentRuntime.cjs`
+- `firestore.rules`, `storage.rules`, and `firestore.indexes.json`
 - `scripts/providers/README.md`
 
-Code is the current executable truth. Update this contract and the focused
-tests in `functions/providersStage1.test.mjs`,
-`scripts/providersStage1.test.mjs`, `scripts/providersCsv.test.mjs`, and
-`scripts/providersEnrichment.test.mjs`
-whenever a provider contract changes.
+The focused tests are verification evidence, not a second architecture or
+contract authority:
+
+- model, normalization, rules isolation, import and CSV:
+  `functions/providersStage1.test.mjs`,
+  `scripts/providersStage1.test.mjs`, and
+  `scripts/providersCsv.test.mjs`;
+- category manifest/seed:
+  `scripts/providersCategorySeed.test.mjs` and
+  `scripts/providersCategorySeedFirestoreEmulator.test.mjs`;
+- Firestore serialization:
+  `scripts/providersFirestoreEmulator.test.mjs`;
+- extraction, Storage metadata, single-provider persistence and rollback:
+  `scripts/providersEnrichment.test.mjs`;
+- checksum, backup, lock, retry, dashboard and log behavior:
+  `scripts/providersEnrichmentState.test.mjs`;
+- mass state transitions, reconciliation, concurrency and interruption:
+  `scripts/providersEnrichmentBulk.test.mjs`;
+- killed-process recovery across Firestore and Storage:
+  `scripts/providersEnrichmentEmulator.test.mjs`.
+
+Update this contract and those applicable tests together whenever a provider
+invariant changes. The exact test commands and current coverage gaps belong to
+the operational runbook.
 
 ## 1. Authority and boundaries
 
@@ -36,10 +86,17 @@ rejected during normalization; they are not a second application database.
 Storage is authoritative for image bytes. Firestore only stores stable
 `storagePath` values, optional delivery URLs, and image metadata.
 
-There is no provider client, public route, validation flow, claim flow, mass
-scraper, or deployed enrichment backend. Import, seed, and single-provider
-enrichment scripts are explicit operator tools, not automatically executed
-Cloud Functions.
+**[Current implementation]** There is no provider client, public route,
+validation flow, claim flow, discovery crawler, or deployed enrichment
+backend. The repository does implement explicit operator CLIs for local
+analysis, JSON/CSV import, category seed, and remote single/mass enrichment.
+Mass enrichment starts from existing Firestore provider IDs and each
+provider's canonical source URL; it does not discover new businesses. None of
+these scripts is exported as a Cloud Function or executes automatically.
+
+The directory does not traverse invitation editor, preview, checkout,
+publication, or generated-public-HTML flows. Its current public-delivery
+boundary is limited to the Firestore/Storage rules described in section 7.
 
 ## 2. Collections
 
@@ -53,7 +110,7 @@ The definitive TypeScript shape is `Proveedor` in
 | `schemaVersion` | Provider document contract version. The required manual-review contract is version `2`. |
 | `nombre`, `nombreNormalizado`, `slug` | Display and search identity. None is the document ID. |
 | `categoriaPrincipalId`, `categoriaIds` | One optional primary category and a deduplicated category list. |
-| `descripcion`, `descripcionCorta` | Empty after Stage 2; populated only by the future enrichment stage. |
+| `descripcion`, `descripcionCorta` | Empty after initial import; populated by the implemented enrichment CLI only when literal source text is found and no existing description is protected. |
 | `contacto` | Original/safely normalized phone, source WhatsApp copied only when safely normalized, email set, and commercial website. |
 | `redesSociales` | Known social networks plus typed `otras` entries for preserved values that require review. |
 | `ubicacion` | International country/level1/level2/city model plus optional metropolitan classification and coordinates. |
@@ -79,15 +136,17 @@ and uses the same millisecond value for `fuente.importadoEn`, `creadoEn`, and
 same SDK instance that owns the client. The mapper leaves `publicadoEn`,
 `validacion.validadoEn`, `propietario.reclamadoEn`,
 `revisionManual.revisadaEn`, `importacion.ultimoIntentoEn`,
-`importacion.completadaEn`, and every image `importadaEn` as `null` in Stage 2.
+`importacion.completadaEn`, and every image `importadaEn` as `null` during the
+initial import.
 
 No timestamp is represented as a manual `{seconds, nanoseconds}` object or an
 ISO string. The importer currently does not use `FieldValue.serverTimestamp()`.
-If a future persistence operation needs it, the transform must be constructed
+If a later persistence operation needs it, the transform must be constructed
 only in `importProviders.cjs` from that importer's
 `firebase-admin/firestore` instance.
 
-The Stage 2 initial lifecycle is:
+**[Historical]** Earlier documentation called the following shape “Stage 2”.
+It is the current initial-import lifecycle:
 
 ```js
 {
@@ -126,10 +185,10 @@ The Stage 2 initial lifecycle is:
 }
 ```
 
-Provider enrichment adds three backward-compatible discovery fields inside
+**[Compatibility]** Provider enrichment adds three optional discovery fields inside
 `importacion`: `descripcionEncontrada`, `portadaEncontrada`, and
-`galeriaEncontrada`. Their absence means that an older or Stage 2 document has
-not recorded that inspection evidence. After a successful page analysis each
+`galeriaEncontrada`. Their absence means that an older or initial-import
+document has not recorded that inspection evidence. After a successful page analysis each
 field is an explicit boolean, including `false` when the source does not
 publish that content. The corresponding `*Importada` fields continue to record
 persisted import progress and are never reset merely because a later source
@@ -214,10 +273,13 @@ values for `creadoEn` and `actualizadoEn`; Firestore returns them as
 new run instant. Re-execution creates nothing and skips all compatible
 documents.
 
-The current provider project was populated before this seed authority existed.
-Its category references therefore must be reconciled by the seed before any
-additional provider apply. The foto/video importer also fails closed when its
-required category is missing, inactive, or has a mismatched slug.
+**[Historical] [Assumption]** Repository history records an import before the
+category seed became the canonical manifest, but the repository cannot prove
+the current remote project's contents or whether the corrective seed was
+executed. Before any additional provider apply, an operator must reconcile the
+remote category references with the seed report. The importer itself fails
+closed when any required category is missing, inactive, or has a mismatched
+slug.
 
 Two additional source decisions are definitive:
 
@@ -259,8 +321,8 @@ type MotivoRevisionProveedor =
   | "contacto_dudoso";
 ```
 
-The Stage 1 mapper automatically assigns only decisions backed by the current
-contract:
+The initial-import mapper automatically assigns only decisions backed by the
+current contract:
 
 - the applicable category-container or category-ambiguity reason;
 - `sin_id_externo` when the URL remains a valid deterministic identity but no
@@ -268,8 +330,8 @@ contract:
 - `posible_duplicado_nombre` when the eligible record belongs to a normalized
   name group with more than one deterministic URL identity.
 
-`ubicacion_incompleta` and `contacto_dudoso` remain valid future reasons but are
-not inferred until explicit criteria exist. Reasons are ordered by the
+**[Pending]** `ubicacion_incompleta` and `contacto_dudoso` remain valid reasons
+but are not inferred until explicit criteria exist. Reasons are ordered by the
 allowlist and deduplicated. `requerida` is true exactly when `motivos` is
 non-empty.
 
@@ -297,19 +359,21 @@ The selected provider ID algorithm is:
 1. Parse an absolute `http` or `https` source URL.
 2. Reject credentials or an invalid hostname.
 3. Lowercase the hostname and remove a leading `www.`.
-4. Remove query, hash, and trailing slash while preserving the path and its
+4. Preserve the original `http`/`https` scheme and any explicit port.
+5. Remove query, hash, and trailing slash while preserving the path and its
    case.
-5. Compute SHA-256 over the normalized URL.
-6. Use `pcar_` plus the first 24 lowercase hexadecimal characters:
+6. Compute SHA-256 over the normalized URL.
+7. Use `pcar_` plus the first 24 lowercase hexadecimal characters:
    `pcar_{96-bit-hash}`.
 
 The full normalized URL and any evidenced five-character external ID remain in
 `fuente`; the hash is not a substitute for provenance. A normalized URL always
 produces the same document ID, including when no external ID can be established.
+Conversely, changing scheme, explicit port, or path case changes identity.
 Names and slugs never participate in identity, and equal names are never
 merged.
 
-The future importer uses create-or-skip semantics:
+The implemented importer uses create-or-skip semantics:
 
 - absent deterministic ID: `batch.create`;
 - existing ID with the same normalized source URL: skip;
@@ -318,7 +382,7 @@ The future importer uses create-or-skip semantics:
 - never update an existing provider during this initial importer.
 
 This makes reruns idempotent and protects later descriptions and image metadata
-from a Stage 2 rerun.
+from a repeated initial import.
 
 An authorized apply writes a separate sanitized existing-match report. Each
 entry contains only provider ID, source index, URL path, and match reason. It
@@ -335,6 +399,22 @@ local checks:
 The preflight prepares all candidate batches first. A foreign SDK `Timestamp`
 or other unsupported object aborts with provider ID, source index, field path,
 and incompatible type plus `batchCommitted: false` and `remoteWrites: 0`.
+
+**[Current implementation]** Import resume state and enrichment resume state
+are deliberately different contracts. `importProviders.cjs` writes a small
+progress marker after each committed or fully skipped block using
+`writeJsonAtomic`: input SHA-256, source file name, project, last source index,
+completion flag, totals, and update time. On read it enforces the input hash
+and last-index shape; apply also checks a persisted project when present.
+Crashing after a Firestore commit but before that marker is installed may
+revisit the block, and create-or-skip makes the revisit write-safe.
+
+**[Compatibility]** The importer marker has `stateVersion: 1`, but the current
+reader does not reject another `stateVersion` and does not validate persisted
+totals or source file name. It has an atomic temporary-file rename, but no
+checksum, fsync, rotating backup, process lock, or automatic corruption
+recovery. It must not be described or operated as the durable mass-enrichment
+checkpoint from section 6, and two import processes must never share it.
 
 ## 4. Normalization
 
@@ -419,9 +499,10 @@ territorial levels stay `null` when no other reliable input exists.
 Missing detailed location is reported as a quality metric but does not by
 itself make a provider ineligible.
 
-Stage 1 does not infer `nivel2`, coordinates, GBA, or a metropolitan subregion.
-GBA remains an additional future classification and never replaces province,
-municipality/partido, or city.
+**[Current implementation]** Initial mapping does not infer `nivel2`,
+coordinates, GBA, or a metropolitan subregion.
+**[Pending]** Any GBA classification requires a reviewed authoritative source
+and must never replace province, municipality/partido, or city.
 
 ## 5. Eligibility
 
@@ -476,8 +557,7 @@ pipeline for both an explicit single provider and a bounded mass scope. Mass
 orchestration can select the whole collection or one category, but every worker
 still obtains a page only from that provider's canonical
 `fuente.urlOriginal`, verifies that URL identity produces the requested
-document ID, and rejects source or page redirects outside the authorized
-portal host.
+document ID, and rejects a final page URL outside the authorized portal host.
 
 Page discovery is evidence-based and ordered:
 
@@ -502,6 +582,16 @@ match one of the existing provider MIME types, remain within
 `PROVIDER_IMAGE_MAX_BYTES`, and expose valid dimensions through Sharp.
 SHA-256 over downloaded bytes removes duplicates before persistence.
 
+**[Current implementation limitation]** The canonical source URL is checked
+against the portal before the first request, and every redirect target is
+checked against local/private-address SSRF rules. The portal-host allowlist is
+then checked on the final page URL, after the final public target has been
+fetched. A redirect to a public off-origin host is therefore downloaded and
+then rejected; there is no focused off-origin redirect test.
+**[Pending]** Enforcing the page-host allowlist before each redirected request
+would close that gap. Image URLs intentionally remain allowed on public CDN
+hosts.
+
 For the portal's current provider template,
 `script[type="application/json"][data-gallery-all-images]` is the gallery
 authority used by the site's own lightbox. Its array length and any rendered
@@ -514,12 +604,23 @@ variants, while SHA-256 remains authoritative for identical bytes.
 
 Images are downloaded sequentially into a unique OS temporary directory and
 that directory is removed on every success/failure path. Image IDs are
-deterministic from byte hashes. Storage paths are built only by the provider
-path helpers. The authenticated Firebase `adminSdkConfig` endpoint supplies
-the actual bucket name; it is not derived from the project ID. Uploads use a
-zero-generation precondition, so an existing object is never overwritten.
-Firestore keeps `storagePath`, source URL, dimensions, MIME, format, byte size,
-order, and import timestamp; `url` remains `null`.
+deterministic: `portada_` or `img_` plus the first 20 hexadecimal characters
+of the byte SHA-256. Storage paths are built only by the provider path helpers.
+The authenticated Firebase `adminSdkConfig` endpoint supplies the actual
+bucket name; it is not derived from the project ID. Uploads are non-resumable,
+validated with CRC32C, and use `ifGenerationMatch: 0`, so an existing object is
+never overwritten. Object metadata contains:
+
+- `contentType` and
+  `cacheControl: public,max-age=31536000,immutable`;
+- custom `providerId`, `imageId`, `executionId`, and full byte
+  `hashSha256`, used by durable resume to recognize only its own partial
+  uploads.
+
+Firestore `ImagenProveedor` metadata keeps `id`, `tipo`, `storagePath`,
+`url: null`, final source `urlOriginal`, literal/fallback `alt`, order,
+dimensions, MIME, normalized format, byte size, and import timestamp. No
+Firebase download token or fabricated delivery URL is generated.
 
 All read-only validation finishes before the first upload:
 
@@ -575,8 +676,9 @@ image fails validation, or an existing reused object is missing,
 the run performs no remote write.
 
 Without `--force`, a provider with `importacion.completadaEn` is skipped before
-page download. Fully populated legacy documents retain a compatibility skip
-when their three prior completion signals are present. `--force` permits
+page download. **[Compatibility]** Fully populated legacy documents retain a
+skip when description, cover, and the prior gallery-completion signal are all
+present. `--force` permits
 reanalysis but does not permit overwriting an existing description, cover,
 gallery object, or Storage path. A forced inspection that finds no content
 updates only import evidence/timestamps and preserves all existing content.
@@ -605,10 +707,11 @@ raw HTML after diagnosis because the source page can include contact data.
 ### Durable mass orchestration contract
 
 Mass apply requires an explicit local resume path. The state has schema version
-1 and enrichment script version `2.1.0`. Version `2.0.0` states are
+1 and enrichment script version `2.1.0`. **[Compatibility]** Version `2.0.0` states are
 intentionally incompatible because they used the former content-required
 confirmation semantics; they must be preserved for audit and explicitly
-migrated or replaced with a reviewed new state path. The state records:
+migrated or replaced with a reviewed new state path. **[Pending]** No
+automated state migration exists. The state records:
 
 - project, category/filter, sorted candidate-ID SHA-256 and count;
 - provider contract schema version, enrichment script version and extractor
@@ -620,6 +723,12 @@ migrated or replaced with a reviewed new state path. The state records:
   byte count and execution ID;
 - completed/partial/error/skipped/recovered counts and byte/write totals;
 - a checksum over the complete state excluding the checksum property.
+
+**[Current implementation]** The full `candidateProviderIds` array is not
+persisted. Each invocation reconstructs and sorts the candidate IDs from
+Firestore, then requires their hash and count to match `inputScope`. The state
+does persist terminal `processedProviderIds`, current/last-confirmed IDs and
+the entries that have actually been attempted.
 
 The compatible per-provider state transitions are:
 
@@ -683,11 +792,51 @@ IDs attempted in one invocation; previously partial/recoverable IDs are retried
 first and do not consume that fresh limit. Concurrency defaults to 2 and is
 bounded at 8.
 
+The current reconciliation boundaries are:
+
+| Local phase | Firestore check | Storage check |
+| --- | --- | --- |
+| `processing`, `storage_complete`, `partial`, `recoverable_error` | Re-read the provider and compare the saved pre-attempt enrichment fingerprint. | Reuse a recorded object only when path, provider ID, image ID, execution ID, SHA-256 and byte size match its Storage metadata. Existing Firestore image references are also checked for object existence during provider preflight. |
+| `firestore_updated` or a changed remote fingerprint after an interrupted attempt | A valid `importacion.completadaEn` (or the legacy complete-content branch) can reconcile the entry as `recovered`. | No new upload is attempted when Firestore proves the committed result. |
+| `confirmed` / `recovered` at startup | Every such provider is re-read; missing or Firestore-incomplete state aborts as `confirmed_remote_inconsistent`. | **[Current implementation limitation]** Startup does not re-hash or even enumerate every Storage object for already-confirmed providers. |
+
+**[Pending]** A complete post-confirmation Firestore-to-Storage audit would be
+a separate read-only tool/test. The current implementation proves Storage
+coherence at upload/reuse/preflight boundaries and in the killed-process
+emulator fixture, but it must not be represented as a permanent byte audit of
+all confirmed providers.
+
+Images inside one provider are downloaded and uploaded sequentially; provider
+workers may overlap. The shared request controller serializes request starts
+through a global delay, while `--concurrency` accepts 1–8. Other enforced
+bounds are `--limit=1..10000`, `--request-delay-ms=0..60000`,
+`--max-retries=0..10`, `--timeout-ms=1000..300000`,
+`--stop-after-errors=1..1000`, and `--max-gallery-images=1..500`.
+Transient network/timeouts and HTTP 429/5xx use bounded exponential retry,
+`Retry-After` up to 60 seconds, and a global circuit pause after five recent
+429/5xx responses. `--pause-on-429` additionally applies the 429 pause to the
+shared controller.
+
 Dry-run never writes the apply resume state. An optional `--dry-run-state`
 provides separate durability, while Storage and Firestore writes remain zero.
-The request controller enforces one shared delay, bounded timeouts/retries,
-`Retry-After`, optional 429 pauses, and a circuit breaker after repeated
-429/5xx responses.
+
+**[Current implementation]** A TTY dashboard refreshes at most once per second
+and shows full-scope progress, the most recently updated active worker,
+stage/last confirmation/checkpoint, status counts, timings/estimated ETA,
+throughput, bytes, and service writes. With concurrency greater than one, the
+durable state's `currentProviderIds` is the complete in-flight list; the
+single “current provider” dashboard slot is only a latest-worker view.
+Non-interactive output emits one sanitized bounded line per completed provider.
+
+The JSONL logger appends sanitized lifecycle/request/provider events and fsyncs
+important run boundaries. The version-2 mass report records the scope hash,
+run result, per-provider summaries, counters, recovery/checkpoint evidence,
+paths and a credential-placeholder resume command. **[Current implementation
+limitation]** `buildResumeCommand` does not include `--provider-id`; therefore
+its generated command is directly reusable only for all/category mass scopes.
+A durable one-provider run must preserve `--provider-id` manually or the next
+scope hash will fail closed. The generated command also does not preserve a
+custom `--log` path.
 
 Prepared Storage rules limit create/update to administrators, 15 MiB, the
 corresponding MIME types, and the exact cover/gallery path shapes. Deletes are
@@ -698,9 +847,12 @@ is published, active, and visible.
 
 Public clients cannot write provider documents, categories, or provider
 images. Backend Admin SDK writes bypass client rules; authorized admin clients
-must pass the runtime/rules shape checks.
+must pass the script's runtime/preflight checks, while client-originated writes
+must pass the rules shape checks. `firestore.rules` permits provider/category
+create, update, and delete only to administrators; `storage.rules` excludes
+`proveedores` from the broad authenticated compatibility fallback.
 
-The prepared Firestore rule allows a whole provider document to be read only
+The repository Firestore rule allows a whole provider document to be read only
 when `estado == "publicado"`, `activo == true`, and `visible == true`.
 Firestore Rules cannot hide `fuente`, `importacion`, validation actor IDs, or
 other individual fields. Therefore setting any provider visible is blocked
@@ -710,14 +862,41 @@ operationally until product/security decides one of:
 2. a backend read endpoint returns an explicit public-field whitelist.
 
 Option 2 is preferred if provenance, import errors, or validation/claim actor
-IDs are internal. Stage 1 does not create a duplicate public collection or a
-public endpoint because no public provider surface exists yet. If a projection
+IDs are internal. **[Current implementation]** No duplicate public collection,
+backend projection, directory client, or public route exists. If a projection
 is introduced, it must be derived from `proveedores` and must never become a
 parallel authority.
 
+**[Current implementation]** The unit suite asserts that both provider paths
+are excluded from broad authenticated rule fallbacks and checks the public
+tuple, admin write gate, path pattern, MIME set, and 15 MiB bound as source
+text. The Firestore/Storage emulator tests exercise Admin SDK serialization,
+persistence, interruption, and recovery; they do not execute allow/deny
+requests through Firebase Rules.
+
+**[Pending]** A rules-unit-testing suite for unauthenticated, provider,
+administrator, public, hidden, inactive, malformed-write, MIME/size, and delete
+cases remains required before treating the prepared rules as an independently
+verified public-delivery boundary. Repository state also cannot prove whether
+the rules or indexes have been deployed to a remote project.
+
 ## 8. Concrete queries and indexes
 
-The only added composite indexes correspond to concrete ordered client reads:
+**[Current implementation]** `providerEnrichmentBulk.cjs` obtains its scope
+with a projection-only collection read:
+
+- all providers: `db.collection("proveedores").select().get()`;
+- category scope: the same query with
+  `where("categoriaIds", "array-contains", category)`.
+
+It sorts document IDs in memory, hashes the complete set, and then performs an
+individual document read before each provider attempt. It does not currently
+filter by `importacion.completadaEn`, page by document ID, or run review/error
+queries. Completion and retry decisions occur after the ID scope is built,
+using Firestore state plus the local checkpoint.
+
+`firestore.indexes.json` contains two composite indexes reserved for the
+future directory read shapes:
 
 ```js
 query(
@@ -735,26 +914,18 @@ query(
 );
 ```
 
-Prepared backend batch queries use automatic single-field indexes and document
-ID pagination:
+**[Pending]** No client or backend currently executes those two ordered
+queries, and repository state cannot establish remote index deployment.
+Likewise, queries for unprocessed providers, review queues, manual review, or
+errors are possible schema consumers but are not implemented behavior.
+A future backend must add pagination and have its actual query plans tested
+before new indexes are treated as required.
 
-- provider not yet inspected by enrichment:
-  `where("importacion.completadaEn", "==", null)`;
-- source inspection records description/cover/gallery presence through
-  `descripcionEncontrada`, `portadaEncontrada`, and `galeriaEncontrada`;
-- `descripcionImportada`, `portadaImportada`, and `galeriaImportada` remain
-  persisted-stage signals, but `false` description/cover values are not errors
-  once `completadaEn` is present;
-- review:
-  `where("estado", "==", "pendiente_revision")`;
-- manual review:
-  `where("revisionManual.requerida", "==", true)`;
-- errors:
-  `where("importacion.ultimoError", ">", "").orderBy("importacion.ultimoError")`.
-
-The future backend must page by document ID and apply any additional Stage 3
-eligibility gates after each page. No Stage 3 composite indexes are added before
-those jobs exist and their actual query plans are tested.
+The persisted semantics remain normative even without those consumers:
+`completadaEn` means page processing reconciled successfully;
+`descripcionEncontrada`, `portadaEncontrada`, and `galeriaEncontrada` record
+source presence; and `*Importada` records persisted progress. A false
+description/cover discovery is not an error once `completadaEn` is present.
 
 ## 9. Privacy
 

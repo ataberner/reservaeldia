@@ -1,15 +1,31 @@
-# Provider import operations
+# Provider directory operations
 
 Status: Operational Runbook.
 
+Current-implementation snapshot revalidated: 2026-07-27.
+
 This runbook covers local validation and the explicit operations for provider
-data. The historical provider import has already populated the target project;
-the category seed described below is a separate corrective deployment step.
-No real Firebase writes are performed merely by building, testing, or running
-its default dry-run.
+data. It is not the schema contract, an architecture map, a test result, or a
+record of remote deployment state. No real Firebase writes are performed
+merely by building, testing, or running a default/local dry-run.
 
 Read the contract first:
 `docs/architecture/PROVIDER_DATA_MODEL.md`.
+
+Labels used below:
+
+- **[Current implementation]**: verified against the current scripts/tests;
+- **[Compatibility]**: an older-document/state branch retained by code;
+- **[Assumption]**: an external operational fact not provable from this repo;
+- **[Pending]**: not implemented or still requires an external decision;
+- **[Historical]**: context only, never present-tense implementation authority.
+
+**[Historical] [Assumption]** Git history and prior operator notes say an
+earlier provider import populated the target project before the category seed
+became canonical. This repository cannot prove current remote documents,
+whether the corrective category seed ran, or whether rules/indexes are
+deployed. Every apply must re-establish those facts through its current
+preflight and reviewed report.
 
 ## Safety invariants
 
@@ -35,11 +51,50 @@ Read the contract first:
   seed. Provider importers never create taxonomy opportunistically.
 - Rules, indexes, categories, and provider documents are separate operator
   actions. Nothing deploys automatically.
+- The small importer resume marker is not the checksummed enrichment
+  checkpoint. It has no backup or process lock and must never be shared by
+  parallel import processes.
+- Do not run category seed and provider import concurrently. Do not overlap
+  mass enrichment with any importer, enricher, cleanup, or manual/admin process
+  that can change providers or `proveedores/**` Storage objects. A
+  one-provider enrichment must not overlap a mass run that includes that ID.
+- A dry-run taken while another process mutates the same scope is only
+  transient evidence and must not be promoted to an apply approval.
 
 On Windows with a PowerShell execution policy that blocks `npm.ps1`, use
 `npm.cmd` in place of `npm`.
 
-## Stage 1: local validation
+## Official operation map
+
+Use only the command block in the linked section; similar-looking ad hoc
+commands are not additional authorities.
+For copy-friendly abbreviated templates, use the non-canonical
+[`SNIPPETS.md`](SNIPPETS.md) and return here before any remote apply.
+
+| Operation | Official recipe |
+| --- | --- |
+| Analyze / import dry-run | [Local validation and focused test baseline](#local-validation-and-focused-test-baseline) |
+| Category dry-run / apply | [Operational provider-category catalog](#operational-provider-category-catalog) |
+| Provider import sample / full apply | [Provider import: protected small apply](#provider-import-protected-small-apply) and [full apply and resume](#provider-import-full-apply-and-resume) |
+| One-provider enrichment dry-run / apply | [One-provider dry-run](#one-provider-dry-run) and [One-provider apply](#one-provider-apply) |
+| Mass enrichment dry-run / bounded apply / normal resume | [Blocks, stopping, and resuming](#blocks-stopping-and-resuming) |
+| Controlled interruption | Press Ctrl+C once and follow the wait/checkpoint procedure in [Blocks, stopping, and resuming](#blocks-stopping-and-resuming). |
+| Corrupt-primary recovery | Repeat the normal resume command in [Atomic checkpoints and recovery](#atomic-checkpoints-and-recovery); a valid backup is selected automatically. |
+| Stale-lock recovery | Use both recovery flags and the recorded dead PID in [Lock and parallel-process safety](#lock-and-parallel-process-safety). |
+| Unit / Emulator validation | [Local validation and focused test baseline](#local-validation-and-focused-test-baseline) and [Recovery validation](#recovery-validation) |
+
+### Current CLI surface
+
+Unknown arguments fail closed in every tool.
+
+| Tool | Current options |
+| --- | --- |
+| `analyzeProviderJson.cjs` | Required `--input`; optional `--input-format=json\|csv`, CSV-only `--category=foto-video`, `--out`, and positive `--sample-limit` (default 25). |
+| `importProviders.cjs` | Defaults to `--dry-run`; accepts the same input/format/category boundary plus `--report`, `--resume-state`, `--batch-size` (default 200, maximum 400), positive `--limit` (default unlimited), non-negative `--start-index` (default 0), and positive `--sample-limit` (default 25). Apply additionally requires matching `--project` / `--confirm-project` and `--credentials`. |
+| `seedProviderCategories.cjs` | Defaults to `--dry-run`; accepts `--report`. Apply additionally requires matching project confirmation and credentials. |
+| `enrichProviders.cjs` | Defaults to remote-read-only `--dry-run`; scope is one `--provider-id`, one `--category`, or the whole collection. It accepts `--limit`, `--concurrency`, `--request-delay-ms`, `--max-retries`, `--timeout-ms`, `--stop-after-errors`, `--max-gallery-images`, `--force`, `--complete-gallery`, `--pause-on-429`, `--report`, and `--log`. Durable apply uses `--resume-state`; dry-run durability uses the separate `--dry-run-state`. `--debug-local` is dry-run-only. Stale lock recovery requires both `--recover-stale-lock` and `--confirm-stale-lock=PID`. Project confirmation and credentials are required even in enrichment dry-run because it performs authenticated remote reads. |
+
+## Local validation and focused test baseline
 
 Build the existing Functions TypeScript project:
 
@@ -50,18 +105,32 @@ npm --prefix functions run build
 Run the focused tests:
 
 ```bash
-node --test functions/providersStage1.test.mjs scripts/providersStage1.test.mjs scripts/providersCsv.test.mjs
+node --test functions/providersStage1.test.mjs scripts/providersStage1.test.mjs scripts/providersCsv.test.mjs scripts/providersCategorySeed.test.mjs
 ```
 
-Validate actual Firestore serialization in a disposable local emulator:
+This unit baseline covers the exact model, normalization, eligibility,
+deterministic IDs and Storage paths, JSON/CSV adapters, sanitized analysis,
+create-or-skip planning/preflight, category manifest/seed, rule-route
+isolation, and provider/category invariants.
+
+Validate actual provider and category Firestore serialization in one disposable
+local emulator:
 
 ```bash
-firebase emulators:exec --only firestore --project demo-reservaeldia-providers "node --test scripts/providersFirestoreEmulator.test.mjs"
+firebase emulators:exec --only firestore --project demo-reservaeldia-providers "node --test scripts/providersFirestoreEmulator.test.mjs scripts/providersCategorySeedFirestoreEmulator.test.mjs"
 ```
 
-The emulator test commits and deletes one document only in the emulator. It
-asserts that mapped native `Date` fields are accepted and read back as
-Firestore `Timestamp` values from the importer's SDK.
+Those emulator tests commit and delete one provider and one category only in
+the emulator. They assert that mapped native `Date` fields are accepted and
+read back as Firestore `Timestamp` values from the owning Admin SDK.
+
+The enrichment unit and Firestore+Storage emulator baselines are in
+[Recovery validation](#recovery-validation).
+**[Pending]** These integration tests use Admin SDK clients and therefore
+bypass Firebase Rules. There is currently no rules-unit-testing emulator suite
+for provider allow/deny cases; section
+[Rules and indexes](#rules-and-indexes-manual-deployment-boundary) records that
+gap.
 
 Analyze a private local JSON:
 
@@ -218,7 +287,7 @@ ignored local report under `artifacts/providers/runtime/` and must show:
 }
 ```
 
-The future protected apply command is:
+**[Current implementation]** The protected category apply command is:
 
 ```bash
 npm --prefix functions run build
@@ -254,12 +323,13 @@ remote read/write counts, and commit state. It never contains credentials or
 provider contact/location data. A second successful run must report all
 documents as skipped, zero writes, and no committed batch.
 
-In a new environment, seed this catalog before importing any provider. In the
-current environment, where providers already exist, run the authorized seed
-before the foto/video CSV apply; its reference verification must reconcile all
-category IDs already stored on those providers without modifying them.
+In a new environment, seed this catalog before importing any provider.
+**[Historical] [Assumption]** Prior notes say the current target contains
+providers created before this seed. Before another provider/CSV apply, run and
+review the seed preflight against that exact target; its reference verification
+must reconcile every stored category ID without modifying provider documents.
 
-## Review gate before Stage 2
+## Review gate before any provider import apply
 
 Do not proceed with any additional provider apply until all items are
 satisfied:
@@ -289,10 +359,12 @@ satisfied:
 - ensure every imported provider will remain `estado: "importado"` and
   `visible: false`.
 
-## Future Stage 2: small real sample
+## Provider import: protected small apply
 
-These commands are documentation only. They require approved access and have
-not been executed.
+**[Current implementation]** These commands exercise the implemented guarded
+importer. **[Pending]** They still require an approved target, credential,
+change window, reviewed dry-run and recovery owner. This repository does not
+authorize or prove execution against any remote project.
 
 Use a service account dedicated to the import window. Do not place it in the
 repository. Build first, then execute a 10-document sample:
@@ -302,7 +374,7 @@ npm --prefix functions run build
 node scripts/providers/importProviders.cjs --apply --input="C:\private\providers.json" --limit=10 --batch-size=10 --project="EXPECTED_PROJECT_ID" --confirm-project="EXPECTED_PROJECT_ID" --credentials="C:\private\provider-import-service-account.json" --resume-state="C:\private\provider-import-state.json"
 ```
 
-Future foto/video CSV pilot, only after the category-document and review gates:
+Foto/video CSV sample, only after the category-document and review gates:
 
 ```bash
 node scripts/providers/importProviders.cjs --apply --input="C:\private\providers\proveedores-foto-video.csv" --input-format=csv --category=foto-video --limit=10 --batch-size=10 --project="EXPECTED_PROJECT_ID" --confirm-project="EXPECTED_PROJECT_ID" --credentials="C:\private\provider-import-service-account.json" --resume-state="C:\private\provider-import-foto-video-state.json"
@@ -353,7 +425,15 @@ under `artifacts/providers/runtime/` is derived from the source SHA-256. When
 an explicit state path is supplied, repeat the exact same command and path to
 continue after `lastSourceIndex`. It does not revisit the first ten.
 
-To deliberately verify idempotency against the original pilot after its main
+**[Current implementation limitation]** This import marker is installed with a
+temporary-file rename but has no fsync, checksum, rotating backup, lock, stale
+lock recovery, or per-provider phase. The reader verifies input SHA-256 and
+`lastSourceIndex`; apply also rejects a persisted different project. It does
+not enforce the marker's `stateVersion`, totals, or source file name. Never
+confuse it with `providerEnrichmentState.cjs`, hand-edit it, or use the same
+path from two processes.
+
+To deliberately verify idempotency against the original sample after its main
 state has advanced, use a new, non-existing review-state path:
 
 ```bash
@@ -378,7 +458,7 @@ skipped by the same complete-file eligibility plan. If a commit succeeds but
 the local state write is interrupted, rerunning may evaluate that block again,
 but deterministic create-or-skip behavior prevents overwrites and duplicates.
 
-## Future Stage 2: full import and resume
+## Provider import: full apply and resume
 
 After the sample gate passes, run without `--limit`:
 
@@ -407,7 +487,7 @@ Full verification:
 - retain the sanitized report and state file in controlled operational storage;
 - remove/rotate the temporary importer credential according to policy.
 
-## Single-provider enrichment pilot
+## Single-provider enrichment
 
 `scripts/providers/enrichProviders.cjs` is the enrichment-stage operator tool.
 Without a durable state argument it retains the original one-provider mode.
@@ -435,6 +515,14 @@ actual default Storage bucket. The script does not derive a bucket name from a
 project-name convention and does not generate download URLs. Firestore image
 metadata stores the stable `storagePath` with `url: null`.
 
+Image IDs are `portada_` / `img_` plus the first 20 hex characters of the
+downloaded-byte SHA-256. Storage uploads use CRC32C validation,
+`ifGenerationMatch: 0`, immutable one-year cache control, MIME `contentType`,
+and custom `providerId`, `imageId`, `executionId`, and full `hashSha256`.
+Firestore additionally keeps final source URL, alt text, order, dimensions,
+MIME, normalized format, byte count, and import timestamp; it never stores
+bytes or a Firebase token.
+
 ### One-provider dry-run
 
 Dry-run performs the complete remote-read and download preflight but has zero
@@ -451,7 +539,7 @@ It verifies:
 - deterministic provider-ID shape and identity agreement with
   `fuente.urlOriginal`;
 - provider existence and runtime compatibility;
-- source and redirect host remain the authorized portal;
+- source and final page URL remain on the authorized portal;
 - Firestore and Storage are accessible;
 - the page downloads and parses successfully;
 - all images actually discovered pass MIME, size, dimensions, and duplicate
@@ -617,7 +705,6 @@ The durable state schema is:
     "extractorSha256": "..."
   },
   "inputScopeHash": "...",
-  "candidateProviderIds": ["pcar_..."],
   "startedAt": "...",
   "updatedAt": "...",
   "status": "running",
@@ -654,6 +741,12 @@ The durable state schema is:
 }
 ```
 
+The state does not persist a `candidateProviderIds` array. On every run it
+re-reads and sorts Firestore IDs, then requires `providerIdsHash` and
+`providerCount` to match the persisted scope. It stores only IDs that matter
+to progress: attempted entries under `providerStates`, terminal
+`processedProviderIds`, `currentProviderIds`, and `lastConfirmedProviderId`.
+
 Per-provider statuses are `pending`, `processing`, `storage_complete`,
 `firestore_updated`, `confirmed`, `partial`, `recoverable_error`,
 `definitive_error`, `skipped`, `already_complete`, and `recovered`. Pending is
@@ -661,11 +754,13 @@ implicit until the first attempt. A provider becomes `confirmed` only after
 Storage is complete, the Firestore transaction succeeded, and the confirmed
 checkpoint was durably persisted.
 
-The no-content-success policy is enrichment script version `2.1.0`. A durable
+The no-content-success policy is enrichment script version `2.1.0`.
+**[Compatibility]** A durable
 state created by `2.0.0` is intentionally incompatible because its confirmed
 semantics required content. Preserve the old state for audit and use an
 explicitly reviewed migration or a new state path; the command never continues
-silently with the changed contract.
+silently with the changed contract. **[Pending]** No automated `2.0.0` to
+`2.1.0` state migration command exists.
 
 ### Atomic checkpoints and recovery
 
@@ -764,6 +859,14 @@ Storage uses `ifGenerationMatch: 0`, hash-derived image IDs, and deterministic
 paths, so an unrecognized existing object is a conflict rather than an
 overwrite. No existing object is deleted by mass recovery.
 
+**[Current implementation limitation]** Startup reconciliation for local
+`confirmed` / `recovered` entries re-reads Firestore and checks processing
+completion, but it does not enumerate or re-hash every referenced Storage
+object. Storage is checked when preflighting retained references and when
+matching partial-upload metadata during retry. **[Pending]** A full
+post-confirmation Firestore/Storage audit is a separate tool/test that does not
+exist yet.
+
 ### Blocks, stopping, and resuming
 
 `--limit` is the maximum number of previously unattempted providers selected in
@@ -818,18 +921,26 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\
 
 The request controls default to `--request-delay-ms=500`,
 `--max-retries=3`, `--timeout-ms=30000`, `--stop-after-errors=10`, and
-`--concurrency=2`. Add `--pause-on-429` to honor `Retry-After` with a global
-pause. Five recent 429/5xx responses open a 60-second circuit breaker. The
-identifiable User-Agent does not evade CAPTCHA or origin protections.
+`--concurrency=2`. Enforced ranges are delay 0–60000 ms, retries 0–10,
+timeout 1000–300000 ms, stop-after-errors 1–1000, concurrency 1–8, limit
+1–10000, and gallery limit 1–500. Retryable network/timeouts and 429/5xx
+responses use exponential backoff and honor `Retry-After` up to 60 seconds.
+`--pause-on-429` additionally moves that pause into the global shared request
+controller. Five recent 429/5xx responses open a global circuit pause for at
+least 60 seconds. The identifiable User-Agent does not evade CAPTCHA or origin
+protections.
 
 ### Dashboard, logs, and reports
 
 An interactive terminal refreshes one dashboard at most once per second. It
-shows current ID/name/stage, total progress, completed/partial/error/skipped/
+shows the most recently updated active worker's ID/name/stage, total-scope
+progress, completed/partial/error/skipped/
 recovered counts, last confirmation/checkpoint, current/average/median time,
 estimated (continuously adjusted) ETA, providers/hour, byte totals, and
-Firestore/Storage writes. Non-interactive terminals emit one bounded line per
-provider.
+Firestore/Storage writes. With concurrency greater than one,
+`currentProviderIds` in the checkpoint is the complete in-flight authority;
+the dashboard has only one latest-worker slot. Non-interactive terminals emit
+one bounded line per provider.
 
 The detailed JSONL log defaults next to the report or can be selected with
 `--log`. Each provider records its source URL, stage, timings, description
@@ -841,9 +952,16 @@ remain under `C:\private\providers`.
 
 The final report includes run/project/scope, start/end/reason, aggregate
 counts, recoveries, bytes, remote and service writes, per-provider sanitized
-results/errors, state/log/report paths, and a credential-redacted exact resume
-command. ETA is explicitly an estimate derived from the most recent 20
+results/errors, state/log/report paths, and a credential-redacted resume
+command template. ETA is explicitly an estimate derived from the most recent 20
 provider durations.
+
+**[Current implementation limitation]** The generated resume command does not
+include a custom `--log` path and, more importantly, omits `--provider-id`.
+It is directly reusable for all-provider/category mass scopes. If a single
+provider opted into durable mode with `--resume-state`, copy the original
+reviewed command and keep its `--provider-id`; using the generated command
+unchanged would select a different scope and fail the state-hash check.
 
 ### Recovery validation
 
@@ -865,7 +983,7 @@ lock with the same state, completes the rest, and verifies zero duplicate
 Storage paths, zero lost confirmations, coherent Firestore/state, and no
 temporary directories. It never uses real credentials or a real project.
 
-## Rules and indexes: manual future commands
+## Rules and indexes: manual deployment boundary
 
 Review diffs and validate locally first. When an approved project and operator
 exist, the intended deployment command is:
@@ -874,33 +992,48 @@ exist, the intended deployment command is:
 firebase deploy --only firestore:rules,firestore:indexes,storage --project "EXPECTED_PROJECT_ID"
 ```
 
-This command was not run in Stage 1. The operator must verify the exact Firebase
-CLI target before approval.
+**[Assumption]** Repository state cannot prove whether this deployment command
+has run in any remote project. The operator must verify the exact Firebase CLI
+target before approval.
 
-## Future Stage 3 checklist
+**[Pending]** The current tests inspect provider rule isolation as source text,
+but do not run authenticated/unauthenticated allow/deny cases through
+`@firebase/rules-unit-testing`. Add and review those Firestore/Storage Rules
+emulator cases before using the rules as independently verified public
+delivery.
 
-- start mass enrichment only after reviewing a bounded dry-run and 10-provider
-  apply with the durable state; do not add crawling to the Stage 2 importer;
-- respect the origin site's terms, rate limits, robots policy, and legal/privacy
-  review;
-- select normally only providers with `importacion.completadaEn == null`;
-  providers already inspected with absent optional fields require an explicit
-  reviewed `--force` reinspection rather than being treated as errors;
-- record `ultimoIntentoEn` and a bounded/sanitized `ultimoError`;
-- import description without overwriting reviewed manual content;
-- fetch images with content-type, size, dimensions, and format validation;
-- reject redirects or downloads outside the approved host policy;
-- generate a deterministic `imagenId`;
-- upload bytes only to the provider Storage paths;
-- persist `storagePath` first and a real URL only after Storage returns one;
-- never put Base64 or image bytes in Firestore;
-- make cover/gallery progress independently resumable;
-- set `cantidadImagenes` from successfully persisted image metadata;
-- do not calculate GBA without a reviewed authoritative geographic source;
-- never change `visible` or `estado` to published as an enrichment side effect;
-- verify public projection/privacy policy before any profile publication.
+## Implemented enrichment gates and pending rollout work
 
-## Open decisions and risks
+**[Current implementation]** The enrichment CLI already:
+
+- selects existing Firestore IDs for all/category scope and skips processed
+  providers after their individual read unless `--force` or
+  `--complete-gallery` applies;
+- preserves manual description/images and all non-enrichment provider fields;
+- validates remote host/redirects, payload size, content type, byte signature,
+  dimensions and format;
+- uses hash-derived image IDs, deterministic Storage paths, generation-zero
+  uploads and Firestore metadata without Base64;
+- checkpoints image uploads and provider phases in durable mode;
+- records successful processing timestamps/counts without changing
+  `visible`, `activo`, or `estado`.
+
+**[Pending]** Operational/product work outside the implemented CLI:
+
+- approve terms/robots/legal/privacy and rate-limit policy before a mass run;
+- review a bounded dry-run and small durable apply before increasing `--limit`;
+- add a full post-confirmation Firestore/Storage audit if permanent byte
+  reconciliation is required;
+- enforce/test the portal allowlist before each page redirect request; current
+  code applies public-address SSRF checks to every hop but rejects an
+  off-origin public redirect only after fetching its final response;
+- add Rules emulator allow/deny coverage and establish actual deployment state;
+- decide the public-field projection before any provider becomes visible;
+- define authoritative GBA/level-2 geography before deriving it;
+- define criteria before automatically assigning `ubicacion_incompleta` or
+  `contacto_dudoso`.
+
+## Open decisions, compatibility, and risks
 
 - The verified source contains 28 categories. Twenty-two retain their source
   ID, `novios` maps to `trajes-novio`, `proveedores-integrales` is retained,
@@ -909,12 +1042,13 @@ CLI target before approval.
   `null`; deterministic document identity continues to use the normalized URL.
 - Cross-URL name duplicates are marked on every member for manual review; name
   equality is never sufficient to merge or choose a primary record.
-- Direct public Firestore reads expose the full canonical document. Decide on a
+- **[Pending]** Direct public Firestore reads expose the full canonical document. Decide on a
   backend whitelist before any provider becomes visible if internal fields must
   remain private.
 - Phone normalization intentionally leaves ambiguous formats untouched; a
-  reviewed phone library may be justified later, but Stage 1 adds no dependency.
-- GBA and level-2 geography require an authoritative dataset.
-- The current application retains broad compatibility fallbacks for unrelated
+  reviewed phone library may be justified later, but the current mapper adds no
+  dependency.
+- **[Pending]** GBA and level-2 geography require an authoritative dataset.
+- **[Compatibility]** The current application retains broad fallbacks for unrelated
   authenticated Firestore and Storage paths. Provider routes are explicitly
   excluded, but a broader security migration remains outside this task.

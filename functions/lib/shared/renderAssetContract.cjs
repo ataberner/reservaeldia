@@ -11,6 +11,10 @@ function normalizeLowerText(value) {
   return normalizeText(value).toLowerCase();
 }
 
+const {
+  normalizeSectionDividers,
+} = require("./sectionDividerPresets.cjs");
+
 const SECTION_MOBILE_LAYOUT_MODES = new Set(["auto", "preserve"]);
 
 function normalizeSectionMobileLayoutMode(value) {
@@ -192,6 +196,15 @@ function normalizeRenderAssetSection(value) {
 
   if (safeValue.decoracionesBorde && typeof safeValue.decoracionesBorde === "object") {
     next.decoracionesBorde = normalizeSectionEdgeDecorationsValue(safeValue.decoracionesBorde);
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(safeValue, "divisores") &&
+    safeValue.divisores &&
+    typeof safeValue.divisores === "object" &&
+    !Array.isArray(safeValue.divisores)
+  ) {
+    next.divisores = normalizeSectionDividers(safeValue.divisores);
   }
 
   const mobileLayoutMode = normalizeSectionMobileLayoutMode(safeValue.mobileLayoutMode);

@@ -82,6 +82,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | fondo base de seccion por imagen | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-background-unresolved` | usar con restricciones |
 | decoraciones de fondo | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `section-decoration-unresolved` | usar con restricciones |
 | decoraciones de borde (`decoracionesBorde`) | `si` | `soportado` | `soportado` | `soportado` | `alta` en prepared payload | puede bloquear por `section-edge-decoration-unresolved` | usar con checklist; `intrinsic-clamp` por defecto, `ratio-band` como fallback explicito |
+| divisores SVG de seccion (`divisores`) | `si` | `soportado` | `soportado` | `soportado` | `alta`; canvas y HTML usan el mismo catalogo/path y una sola autoridad visible por union | no requiere asset ni blocker propio | section-owned, pointer-inert, fuera de `.objeto`, z-index y smart layout; `top` de la seccion siguiente prevalece si el `bottom` anterior reclama la misma union |
 | `forma.rect` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer | sin warning especifico | usar con checklist |
 | `forma.circle` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por geometria | sin warning especifico | usar con checklist |
 | `forma.line` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por geometria | sin warning especifico | usar con checklist |

@@ -4,6 +4,8 @@ import DashboardHeader from "./DashboardHeader";
 import DashboardSidebar from "./DashboardSidebar";
 import EditorStartupLoader from "./editor/EditorStartupLoader";
 import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
+import { EditorPanelCoordinatorProvider } from "@/components/editor/panels/EditorPanelCoordinatorContext";
+import { EDITOR_PANEL_IDS } from "@/domain/editor/editorPanelCoordinator";
 import { corregirURLsInvalidas } from "@/utils/corregirImagenes";
 
 export default function DashboardLayout({
@@ -219,6 +221,12 @@ export default function DashboardLayout({
         onAssistantTourPreferenceChange={resolvedAssistantTourPreferenceChange}
       />
 
+      <EditorPanelCoordinatorProvider
+        scopeKey={sidebarInstanceKey}
+        defaultPanel={
+          ocultarSidebar || modoSelector ? null : EDITOR_PANEL_IDS.LEFT
+        }
+      >
       {/* Sidebar */}
       {!ocultarSidebar && (
         <div
@@ -286,6 +294,7 @@ export default function DashboardLayout({
           </div>
         </div>
       )}
+      </EditorPanelCoordinatorProvider>
     </div>
   );
 }

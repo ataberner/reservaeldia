@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Group, Rect, Transformer, Image as KonvaImage } from "react-konva";
+import {
+  Group,
+  Path,
+  Rect,
+  Transformer,
+  Image as KonvaImage,
+} from "react-konva";
 import { resolveKonvaFill } from "@/domain/colors/presets";
 import {
   buildSectionBaseImagePatchFromRenderBox,
@@ -9,6 +15,19 @@ import {
 } from "@/domain/sections/backgrounds";
 import useSharedImage from "@/hooks/useSharedImage";
 import { getDashboardExportExcludedName } from "@/utils/dashboardCanvasExport";
+import {
+  resolveSectionDividerFillColor,
+  resolveSectionDividerPreset,
+  resolveSectionDividerRenderSlots,
+} from "../../../shared/sectionDividerPresets.js";
+
+function resolveNeighborDividerFill(section) {
+  if (!section) return "#ffffff";
+  const model = normalizeSectionBackgroundModel(section, {
+    sectionHeight: section?.altura,
+  });
+  return resolveSectionDividerFillColor(model.base.fondo, "#ffffff");
+}
 
 function SectionDecorationImage({
   sectionId,
@@ -194,6 +213,8 @@ function updateBodyCursor(nextCursor) {
 
 export default function FondoSeccion({
   seccion,
+  previousSection = null,
+  nextSection = null,
   offsetY,
   alturaPx,
   onSelect,
@@ -212,6 +233,22 @@ export default function FondoSeccion({
   const backgroundModel = normalizeSectionBackgroundModel(seccion, {
     sectionHeight: alturaPx,
   });
+  const renderDividers = resolveSectionDividerRenderSlots(
+    backgroundModel.divisores,
+    { nextDividers: nextSection?.divisores }
+  );
+  const dividerHeight = Math.min(
+    Math.max(1, Number(renderDividers.height) || 1),
+    Math.max(1, alturaPx)
+  );
+  const topDividerPreset = resolveSectionDividerPreset(
+    renderDividers.top
+  );
+  const bottomDividerPreset = resolveSectionDividerPreset(
+    renderDividers.bottom
+  );
+  const topDividerFill = resolveNeighborDividerFill(previousSection);
+  const bottomDividerFill = resolveNeighborDividerFill(nextSection);
   const baseImageUrl = backgroundModel.base.fondoImagen;
   const [fondoImage, fondoImageStatus] = useSharedImage(baseImageUrl || null, "anonymous");
   const imagenRef = useRef(null);
@@ -414,6 +451,39 @@ export default function FondoSeccion({
               onInteractionChange?.(false);
               updateBodyCursor("move");
             }}
+          />
+        ) : null}
+      </Group>
+
+      <Group
+        clipX={0}
+        clipY={offsetY}
+        clipWidth={canvasWidth}
+        clipHeight={alturaPx}
+        listening={false}
+      >
+        {topDividerPreset.path ? (
+          <Path
+            data={topDividerPreset.path}
+            x={0}
+            y={offsetY + dividerHeight}
+            scaleX={canvasWidth / 1000}
+            scaleY={-dividerHeight / 100}
+            fill={topDividerFill}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+        ) : null}
+        {bottomDividerPreset.path ? (
+          <Path
+            data={bottomDividerPreset.path}
+            x={0}
+            y={offsetY + alturaPx - dividerHeight}
+            scaleX={canvasWidth / 1000}
+            scaleY={dividerHeight / 100}
+            fill={bottomDividerFill}
+            listening={false}
+            perfectDrawEnabled={false}
           />
         ) : null}
       </Group>

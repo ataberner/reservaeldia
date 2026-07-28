@@ -24,6 +24,12 @@ const {
 const {
   normalizeSectionMobileLayoutMode,
 } = require("../../shared/renderAssetContract.cjs");
+const {
+  hasActiveSectionDividers,
+  resolveSectionDividerFillColor,
+  resolveSectionDividerPreset,
+  resolveSectionDividerRenderSlots,
+} = require("../../shared/sectionDividerPresets.cjs");
 
 const ENABLE_MOBILE_SMART_LAYOUT = true; // ✅ empezamos apagado
 
@@ -165,6 +171,54 @@ function renderSectionBackgroundLayer(
   <img class="sec-bg-image" data-bg-parallax-item="true" src="${escapeAttr(imageUrl)}" alt="" decoding="async" loading="eager" draggable="false" />
 </div>
 `.trim();
+}
+
+function renderSectionDividers(
+  dividers: any,
+  previousBackgroundModel: any = null,
+  nextBackgroundModel: any = null
+): string {
+  const renderDividers = resolveSectionDividerRenderSlots(dividers, {
+    nextDividers: nextBackgroundModel?.divisores,
+  });
+  if (!hasActiveSectionDividers(renderDividers)) return "";
+
+  const height = Number(renderDividers.height) || 72;
+  const slots = [
+    {
+      slot: "top",
+      preset: resolveSectionDividerPreset(renderDividers.top),
+      fill: resolveSectionDividerFillColor(
+        previousBackgroundModel?.base?.fondo,
+        "#ffffff"
+      ),
+      pathTransform: ' transform="translate(0 100) scale(1 -1)"',
+    },
+    {
+      slot: "bottom",
+      preset: resolveSectionDividerPreset(renderDividers.bottom),
+      fill: resolveSectionDividerFillColor(
+        nextBackgroundModel?.base?.fondo,
+        "#ffffff"
+      ),
+      pathTransform: "",
+    },
+  ];
+  const items = slots
+    .filter((item) => item.preset?.path)
+    .map(
+      (item) => `
+      <div class="sec-divider sec-divider--${item.slot}" data-section-divider-slot="${item.slot}" data-section-divider-preset="${escapeAttr(item.preset.id)}" style="--section-divider-height:${escapeAttr(String(height))};color:${escapeAttr(item.fill)}">
+        <svg viewBox="${escapeAttr(item.preset.viewBox)}" preserveAspectRatio="none" focusable="false" aria-hidden="true">
+          <path d="${escapeAttr(item.preset.path)}" fill="currentColor"${item.pathTransform}></path>
+        </svg>
+      </div>
+    `.trim()
+    )
+    .join("\n");
+
+  if (!items) return "";
+  return `<div class="sec-divider-layer" aria-hidden="true">${items}</div>`;
 }
 
 function hasImageBackground(seccion: any): boolean {
@@ -1324,8 +1378,20 @@ export function generarHTMLDesdeSecciones(
 
 
   const htmlSecciones = seccionesOrdenadas
-    .map((seccion) => {
+    .map((seccion, sectionIndex) => {
       const backgroundModel = normalizeSectionBackgroundModel(seccion);
+      const previousBackgroundModel =
+        sectionIndex > 0
+          ? normalizeSectionBackgroundModel(
+              seccionesOrdenadas[sectionIndex - 1]
+            )
+          : null;
+      const nextBackgroundModel =
+        sectionIndex < seccionesOrdenadas.length - 1
+          ? normalizeSectionBackgroundModel(
+              seccionesOrdenadas[sectionIndex + 1]
+            )
+          : null;
       const modo = String(seccion?.altoModo || "fijo").toLowerCase();
       const hbase = Number.isFinite(seccion?.altura) ? Number(seccion.altura) : 600;
       const fondoEsImagen = hasImageBackground(seccion);
@@ -1347,9 +1413,17 @@ export function generarHTMLDesdeSecciones(
       const htmlDecoracionesBorde = renderSectionEdgeDecorations(
         backgroundModel.decoracionesBorde
       );
+      const htmlDivisores = renderSectionDividers(
+        backgroundModel.divisores,
+        previousBackgroundModel,
+        nextBackgroundModel
+      );
       const htmlDecoraciones = renderSectionDecorations(backgroundModel.decoraciones, modo);
       const hasEdgeDecorations = Boolean(htmlDecoracionesBorde);
       const edgeDecorationsAttr = hasEdgeDecorations ? ' data-edge-decorations="1"' : "";
+      const sectionDividersAttr = htmlDivisores
+        ? ' data-section-dividers="1"'
+        : "";
 
       const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas, {
         functionalCtaContract,
@@ -1360,10 +1434,11 @@ export function generarHTMLDesdeSecciones(
 
 
       return `
-<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}"${edgeDecorationsAttr}${mobileLayoutModeAttr} style="--hbase:${hbase}">
+<section class="sec" data-seccion-id="${seccionId}" data-modo="${escapeAttr(modo)}" data-fondo="${fondoEsImagen ? "imagen" : "color"}" data-decor-parallax="${escapeAttr(backgroundModel.parallax)}"${edgeDecorationsAttr}${sectionDividersAttr}${mobileLayoutModeAttr} style="--hbase:${hbase}">
   <div class="sec-zoom sec-zoom-backdrop">
     ${fondoLayerHtml}
   </div>
+  ${htmlDivisores}
   ${htmlDecoracionesBorde}
   <div class="sec-zoom sec-zoom-decor">
     ${htmlDecoraciones}
@@ -1680,6 +1755,33 @@ export function generarHTMLDesdeSecciones(
     .sec[data-modo="pantalla"] .sec-zoom-backdrop,
     .sec[data-modo="pantalla"] .sec-zoom-decor,
     .sec[data-modo="pantalla"] .sec-zoom-content{
+      overflow: hidden;
+    }
+
+    .sec-divider-layer{
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .sec-divider{
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: calc(var(--sfinal, var(--sx, 1)) * var(--section-divider-height, 72) * 1px);
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .sec-divider--top{ top: 0; }
+    .sec-divider--bottom{ bottom: 0; }
+
+    .sec-divider svg{
+      display: block;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
     }
 

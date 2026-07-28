@@ -76,8 +76,9 @@ Section-owned visual image roles live in `secciones`:
 - Fondo de la sección: base fields such as `fondo`, `fondoTipo`, `fondoImagen`, `fondoImagenOffsetX`, `fondoImagenOffsetY`, and `fondoImagenScale`.
 - Decoración: `decoracionesFondo.items[]`, normalized with `id`, `src`, `storagePath`, `x`, `y`, `width`, `height`, `rotation`, and `orden`.
 - Decoración arriba / Decoración abajo: `decoracionesBorde.top` and `decoracionesBorde.bottom`, normalized as edge slots with `enabled`, `src`, `storagePath`, intrinsic dimensions, height limits, section-ratio limits, desktop/mobile offsets, and `mode`.
+- Divisores superior/inferior generados: `divisores`, normalized as `{ top, bottom, height }`; these are section-owned SVG geometry, not image roles or canvas objects.
 
-`decoracionesFondo` still accepts legacy `superior` / `inferior` shapes during normalization, but the current normalized free-decoration model is `items[]`. `decoracionesBorde` is independent from `decoracionesFondo`.
+`decoracionesFondo` still accepts legacy `superior` / `inferior` shapes during normalization, but the current normalized free-decoration model is `items[]`. `decoracionesBorde` and generated `divisores` are independent from `decoracionesFondo`.
 
 ## Image Conversion Semantics
 
@@ -249,6 +250,7 @@ Selection rule:
 - Base-background, free-decoration, and top/bottom edge-decoration conversion remove the source image object.
 - Section-owned visuals render below normal content and outside smart-layout object flows.
 - Section-owned editor overlays are custom section edit surfaces, not normal object selection boxes.
+- Generated section dividers are pointer-inert section layers and never enter object selection, grouping, z-index, rotation, resize, drag, or smart-layout flows.
 - The section actions menu does not expose delete buttons for free, top, or bottom decorations.
 - Desktop preview/publish uses controlled edge-layer overflow for top/bottom decorations so full edge artwork is not cropped merely because the preview viewport is wider than the 800px editor canvas.
 
@@ -263,6 +265,14 @@ Edge decoration render strategy:
 - Desktop preview/publish may allow controlled vertical overflow only for `decoracionesBorde` edge artwork. This preserves the full edge ornament when the editor canvas shows it fully.
 - Mobile edge behavior remains on the existing mobile sizing and offset path; desktop overflow changes must not redefine mobile geometry.
 - Edge decorations stay behind content and remain `pointer-events: none`.
+
+Generated divider render strategy:
+
+- `divisores.top` and `divisores.bottom` use the deterministic path catalog in `shared/sectionDividerPresets`.
+- Canvas (`FondoSeccion`) and generated preview/publish HTML (`generarHTMLDesdeSecciones`) consume the same path and height normalization.
+- Each path is clipped inside its owning section and filled with the adjacent section's deterministic base/fallback color, preserving a continuous junction without changing logical section height or object offsets.
+- A physical junction has one visible divider owner. If the preceding section has `bottom` and the following section has `top`, the following section's `top` slot wins in normal document order and the preceding `bottom` slot is suppressed only at render time. Both persisted values remain unchanged. This avoids a second straight color boundary between two independently clipped SVGs.
+- Dividers have no external asset; publish asset validation continues to validate image backgrounds and decorations without adding an alternate transport or bypass.
 
 Publish preparation validates unresolved assets separately:
 

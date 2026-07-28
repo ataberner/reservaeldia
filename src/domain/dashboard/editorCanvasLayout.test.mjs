@@ -4,12 +4,17 @@ import assert from "node:assert/strict";
 import {
   DASHBOARD_EDITOR_CANVAS_GAP_PX,
   DASHBOARD_EDITOR_CANVAS_INITIAL_INSET_LEFT_PX,
+  DASHBOARD_SIDEBAR_DESKTOP_NAV_WIDTH_PX,
   DASHBOARD_SIDEBAR_DESKTOP_PANEL_LEFT_PX,
   DASHBOARD_SIDEBAR_DESKTOP_PANEL_WIDTH_PX,
+  SECTION_DESIGN_PANEL_CANVAS_INSET_RIGHT_PX,
+  SECTION_DESIGN_PANEL_DESKTOP_WIDTH_PX,
   createDashboardSidebarPanelLayout,
   createInitialEditorSidebarPanelLayout,
+  resolveEditorCanvasAvailableBounds,
   resolveEditorCanvasSidebarInsetLeft,
   resolveEditorSidebarAutoOpenDraftKey,
+  resolveSectionDesignCanvasInsetRight,
   shouldAutoOpenEditorSidebar,
 } from "./editorCanvasLayout.js";
 
@@ -49,6 +54,7 @@ test("initial editor sidebar layout reserves the desktop panel area", () => {
     {
       pinned: true,
       offsetLeft: DASHBOARD_EDITOR_CANVAS_INITIAL_INSET_LEFT_PX,
+      navigationRight: DASHBOARD_SIDEBAR_DESKTOP_NAV_WIDTH_PX,
       panelLeft: DASHBOARD_SIDEBAR_DESKTOP_PANEL_LEFT_PX,
       panelWidth: DASHBOARD_SIDEBAR_DESKTOP_PANEL_WIDTH_PX,
       panelRight:
@@ -59,7 +65,7 @@ test("initial editor sidebar layout reserves the desktop panel area", () => {
   );
 });
 
-test("canvas sidebar inset applies only to visible pinned desktop layouts", () => {
+test("canvas sidebar inset reserves the visible desktop navigation and expanded panel", () => {
   const pinnedLayout = createInitialEditorSidebarPanelLayout({ shouldPin: true });
 
   assert.equal(
@@ -91,7 +97,8 @@ test("canvas sidebar inset applies only to visible pinned desktop layouts", () =
       createDashboardSidebarPanelLayout({ pinned: false }),
       { isMobileViewport: false, sidebarHidden: false }
     ),
-    0
+    DASHBOARD_SIDEBAR_DESKTOP_NAV_WIDTH_PX +
+      DASHBOARD_EDITOR_CANVAS_GAP_PX
   );
 });
 
@@ -108,5 +115,53 @@ test("canvas sidebar inset can derive from panelRight when offsetLeft is missing
       sidebarHidden: false,
     }),
     680 + DASHBOARD_EDITOR_CANVAS_GAP_PX
+  );
+});
+
+test("section design panel uses one narrower width authority and desktop-only canvas inset", () => {
+  assert.equal(SECTION_DESIGN_PANEL_DESKTOP_WIDTH_PX, 376);
+  assert.ok(
+    SECTION_DESIGN_PANEL_DESKTOP_WIDTH_PX <
+      DASHBOARD_SIDEBAR_DESKTOP_PANEL_WIDTH_PX
+  );
+  assert.equal(
+    resolveSectionDesignCanvasInsetRight({
+      open: true,
+      isMobileViewport: false,
+    }),
+    SECTION_DESIGN_PANEL_CANVAS_INSET_RIGHT_PX
+  );
+  assert.equal(
+    resolveSectionDesignCanvasInsetRight({
+      open: true,
+      isMobileViewport: true,
+    }),
+    0
+  );
+  assert.equal(resolveSectionDesignCanvasInsetRight({ open: false }), 0);
+});
+
+test("canvas center is derived from the unobscured interval between navigation and design panel", () => {
+  const viewportWidth = 1440;
+  const leftInset =
+    DASHBOARD_SIDEBAR_DESKTOP_NAV_WIDTH_PX +
+    DASHBOARD_EDITOR_CANVAS_GAP_PX;
+  const rightInset = SECTION_DESIGN_PANEL_CANVAS_INSET_RIGHT_PX;
+  const bounds = resolveEditorCanvasAvailableBounds({
+    viewportWidth,
+    leftInset,
+    rightInset,
+  });
+
+  assert.deepEqual(bounds, {
+    left: leftInset,
+    right: viewportWidth - rightInset,
+    width: viewportWidth - leftInset - rightInset,
+    center: leftInset + (viewportWidth - leftInset - rightInset) / 2,
+  });
+  assert.ok(bounds.left > DASHBOARD_SIDEBAR_DESKTOP_NAV_WIDTH_PX);
+  assert.ok(
+    bounds.right <
+      viewportWidth - SECTION_DESIGN_PANEL_DESKTOP_WIDTH_PX
   );
 });

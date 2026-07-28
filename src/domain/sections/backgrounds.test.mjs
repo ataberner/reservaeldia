@@ -2,12 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applySectionSolidBackground,
   applySectionBaseImage,
   buildSectionEdgeDecorationsPayload,
   convertImageObjectToSectionEdgeDecorationState,
   resolveFirstSectionBaseImage,
   resolveEdgeDecorationCanvasHeight,
   resolveEdgeDecorationCanvasRenderBox,
+  normalizeSectionBackgroundModel,
+  updateSectionDividers,
   updateSectionEdgeDecorationOffset,
 } from "./backgrounds.js";
 
@@ -20,6 +23,101 @@ const defaultSizingFields = {
   minHeightMobilePx: 64,
   maxHeightMobilePx: 150,
 };
+
+test("legacy sections normalize divider defaults without mutating persisted input", () => {
+  const section = {
+    id: "legacy",
+    fondo: "#ffffff",
+    altura: 600,
+  };
+  const model = normalizeSectionBackgroundModel(section);
+
+  assert.deepEqual(model.divisores, {
+    top: "none",
+    bottom: "none",
+    height: 72,
+  });
+  assert.equal("divisores" in section, false);
+});
+
+test("updateSectionDividers edits only the selected section visual model", () => {
+  const sections = [
+    {
+      id: "one",
+      fondo: "#f6d1e7",
+      altura: 600,
+      orden: 0,
+    },
+    {
+      id: "two",
+      fondo: "#26356f",
+      altura: 640,
+      orden: 1,
+    },
+  ];
+  const objects = [
+    {
+      id: "title",
+      tipo: "texto",
+      seccionId: "one",
+      x: 120,
+      y: 180,
+    },
+  ];
+
+  const updated = updateSectionDividers(sections, "one", {
+    top: "wave-soft",
+    bottom: "wave-double",
+    height: 94,
+  });
+
+  assert.deepEqual(updated[0].divisores, {
+    top: "wave-soft",
+    bottom: "wave-double",
+    height: 94,
+  });
+  assert.equal(updated[0].altura, 600);
+  assert.equal(updated[0].orden, 0);
+  assert.equal(updated[1], sections[1]);
+  assert.deepEqual(objects, [
+    {
+      id: "title",
+      tipo: "texto",
+      seccionId: "one",
+      x: 120,
+      y: 180,
+    },
+  ]);
+});
+
+test("section design fields persist together through the existing section mutation model", () => {
+  const withBackground = applySectionSolidBackground(
+    [
+      {
+        id: "one",
+        fondo: "#ffffff",
+        fondoTipo: "imagen",
+        fondoImagen: "https://cdn.example.com/legacy-background.jpg",
+      },
+    ],
+    "one",
+    "#f6d1e7"
+  );
+  const updated = updateSectionDividers(withBackground, "one", {
+    top: "wave-wide",
+    bottom: "wave-asymmetric",
+    height: 88,
+  });
+
+  assert.equal(updated[0].fondo, "#f6d1e7");
+  assert.equal("fondoTipo" in updated[0], false);
+  assert.equal("fondoImagen" in updated[0], false);
+  assert.deepEqual(updated[0].divisores, {
+    top: "wave-wide",
+    bottom: "wave-asymmetric",
+    height: 88,
+  });
+});
 
 test("applySectionBaseImage preserves existing placement when requested", () => {
   const sections = [

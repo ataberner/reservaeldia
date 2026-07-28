@@ -58,6 +58,7 @@ import {
 } from "@/domain/editor/assistantGuidedTour";
 import {
     DASHBOARD_EDITOR_CANVAS_GAP_PX as DESKTOP_PANEL_GAP_PX,
+    DASHBOARD_SIDEBAR_DESKTOP_NAV_WIDTH_PX as DESKTOP_NAV_WIDTH_PX,
     DASHBOARD_SIDEBAR_DESKTOP_PANEL_LEFT_PX as DESKTOP_PANEL_LEFT_PX,
     DASHBOARD_SIDEBAR_DESKTOP_PANEL_WIDTH_PX as DESKTOP_PANEL_WIDTH_PX,
     DASHBOARD_SIDEBAR_MOBILE_BREAKPOINT_PX as MOBILE_BREAKPOINT,
@@ -66,6 +67,8 @@ import {
     resolveEditorSidebarAutoOpenDraftKey,
 } from "@/domain/dashboard/editorCanvasLayout";
 import { shouldPreventMobileScrollChain } from "@/domain/dashboard/mobileScrollContainment";
+import { EDITOR_PANEL_IDS } from "@/domain/editor/editorPanelCoordinator";
+import { useEditorPanelCoordinator } from "@/components/editor/panels/EditorPanelCoordinatorContext";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
     readCanvasEditorMethod,
@@ -351,6 +354,13 @@ export default function DashboardSidebar({
     assistantTourOpeningKey = "",
     assistantTourRestartKey = 0,
 }) {
+    const {
+        activePanel,
+        openPanel: openEditorPanel,
+        closePanel: closeEditorPanel,
+    } = useEditorPanelCoordinator();
+    const isLeftPanelActive = activePanel === EDITOR_PANEL_IDS.LEFT;
+
     // --------------------------
     // Estados internos del sidebar
     // --------------------------
@@ -448,7 +458,8 @@ export default function DashboardSidebar({
         pendingUploadedImageHandlerRef.current = request;
         abrirSelector();
     }, [abrirSelector]);
-    const sidebarAbierta = fijadoSidebar || hoverSidebar;
+    const sidebarAbierta =
+        isLeftPanelActive && (fijadoSidebar || hoverSidebar);
     const canUseGalleryBuilder = canAccessGalleryBuilder({
         canManageSite,
         editorReadOnly,
@@ -617,7 +628,8 @@ export default function DashboardSidebar({
     // Helpers para mostrar/ocultar con pequeno delay seguro
     const openPanel = (tipo) => {
         if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-        if (fijadoSidebar) return;
+        if (fijadoSidebar && isLeftPanelActive) return;
+        openEditorPanel(EDITOR_PANEL_IDS.LEFT);
         if (tipo) setBotonActivo(tipo);
         setHoverSidebar(true);
     };
@@ -685,12 +697,13 @@ export default function DashboardSidebar({
         setFijadoSidebar(true);
         setHoverSidebar(true);
         setRsvpForcePresetSelection(false);
+        openEditorPanel(EDITOR_PANEL_IDS.LEFT);
 
         if (options.expandMobilePanel === true && isMobileViewport) {
             const bounds = resolveMobilePanelHeightBounds();
             setMobilePanelHeight(bounds.max);
         }
-    }, [isMobileViewport, resolveAssistantFlowOptions]);
+    }, [isMobileViewport, openEditorPanel, resolveAssistantFlowOptions]);
 
     const handleAssistantAccessClick = useCallback(() => {
         const flowOptions = resolveAssistantFlowOptions();
@@ -702,6 +715,7 @@ export default function DashboardSidebar({
         const resumeStep = getAssistantStep(resumeStepIndex, flowOptions);
 
         if (
+            isLeftPanelActive &&
             assistantActive &&
             assistantStepIndex === resumeStepIndex &&
             botonActivo === resumeStep.id
@@ -718,6 +732,7 @@ export default function DashboardSidebar({
         assistantHasStarted,
         assistantStepIndex,
         botonActivo,
+        isLeftPanelActive,
         openAssistantAtStep,
         resolveAssistantFlowOptions,
     ]);
@@ -1047,7 +1062,8 @@ export default function DashboardSidebar({
         setHoverSidebar(false);
         setBotonActivo(null);
         setRsvpForcePresetSelection(false);
-    }, []);
+        closeEditorPanel(EDITOR_PANEL_IDS.LEFT);
+    }, [closeEditorPanel]);
 
     useEffect(() => {
         if (botonActivo !== "gallery-builder") return;
@@ -1078,8 +1094,18 @@ export default function DashboardSidebar({
     }, []);
 
     useEffect(() => {
-        const pinned = !modoSelector && !isMobileViewport && fijadoSidebar && Boolean(botonActivo);
+        const pinned =
+            isLeftPanelActive &&
+            !modoSelector &&
+            !isMobileViewport &&
+            fijadoSidebar &&
+            Boolean(botonActivo);
         const panelRect = panelRef.current?.getBoundingClientRect?.() || null;
+        const navigationRect =
+            asideRef.current?.getBoundingClientRect?.() || null;
+        const navigationRight = Math.round(
+            navigationRect?.right || DESKTOP_NAV_WIDTH_PX
+        );
         const panelRight = pinned
             ? Math.round(panelRect?.right || (DESKTOP_PANEL_LEFT_PX + DESKTOP_PANEL_WIDTH_PX))
             : 0;
@@ -1087,6 +1113,7 @@ export default function DashboardSidebar({
         publishSidebarPanelLayout({
             pinned,
             offsetLeft: pinned ? panelRight + DESKTOP_PANEL_GAP_PX : 0,
+            navigationRight,
             panelLeft: DESKTOP_PANEL_LEFT_PX,
             panelWidth: DESKTOP_PANEL_WIDTH_PX,
             panelRight: pinned ? panelRight : DESKTOP_PANEL_LEFT_PX + DESKTOP_PANEL_WIDTH_PX,
@@ -1095,23 +1122,24 @@ export default function DashboardSidebar({
     }, [
         botonActivo,
         fijadoSidebar,
+        isLeftPanelActive,
         isMobileViewport,
         modoSelector,
     ]);
 
     useEffect(() => {
         if (!isMobileViewport) return;
-        if (!(hoverSidebar || fijadoSidebar)) return;
+        if (!sidebarAbierta) return;
         if (!botonActivo) return;
 
         const panelEl = panelRef.current;
         if (!panelEl) return;
         panelEl.scrollTop = 0;
-    }, [isMobileViewport, hoverSidebar, fijadoSidebar, botonActivo]);
+    }, [isMobileViewport, sidebarAbierta, botonActivo]);
 
     useEffect(() => {
         if (!isMobileViewport) return undefined;
-        if (!(hoverSidebar || fijadoSidebar)) return undefined;
+        if (!sidebarAbierta) return undefined;
 
         const panelEl = panelRef.current;
         if (!panelEl) return undefined;
@@ -1205,7 +1233,7 @@ export default function DashboardSidebar({
             panelEl.removeEventListener("touchcancel", handleTouchEnd);
             panelEl.removeEventListener("wheel", handleWheel);
         };
-    }, [isMobileViewport, hoverSidebar, fijadoSidebar]);
+    }, [isMobileViewport, sidebarAbierta]);
 
     useEffect(() => {
         syncMobileScrollHint();
@@ -1244,11 +1272,12 @@ export default function DashboardSidebar({
             setFijadoSidebar(true);
             setHoverSidebar(true);
             setRsvpForcePresetSelection(forcePresetSelection);
+            openEditorPanel(EDITOR_PANEL_IDS.LEFT);
         };
 
         window.addEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
         return () => window.removeEventListener("abrir-panel-rsvp", handleAbrirPanelRsvp);
-    }, []);
+    }, [openEditorPanel]);
 
     useEffect(() => {
         const handleAbrirPanelRegalos = () => {
@@ -1257,11 +1286,12 @@ export default function DashboardSidebar({
             setFijadoSidebar(true);
             setHoverSidebar(true);
             setRsvpForcePresetSelection(false);
+            openEditorPanel(EDITOR_PANEL_IDS.LEFT);
         };
 
         window.addEventListener("abrir-panel-regalos", handleAbrirPanelRegalos);
         return () => window.removeEventListener("abrir-panel-regalos", handleAbrirPanelRegalos);
-    }, []);
+    }, [openEditorPanel]);
 
     useEffect(() => {
         const handleAbrirModalSeccionDesdeHeader = () => {
@@ -1449,7 +1479,8 @@ export default function DashboardSidebar({
     };
 
     const handleSidebarTabClick = (boton) => {
-        const shouldForceOpenNormalTab = assistantActive;
+        const shouldForceOpenNormalTab =
+            assistantActive || !isLeftPanelActive;
 
         if (assistantActive) {
             setAssistantActive(false);
@@ -1459,6 +1490,7 @@ export default function DashboardSidebar({
             setRsvpForcePresetSelection(false);
         }
 
+        openEditorPanel(EDITOR_PANEL_IDS.LEFT);
         alternarSidebarConBoton(boton, { forceOpen: shouldForceOpenNormalTab });
     };
 
@@ -1466,7 +1498,7 @@ export default function DashboardSidebar({
     // editor tool rail aligned with the fixed dashboard header.
     const sidebarShellClass = `
     fixed bottom-0 left-0 z-50 h-[96px] w-full text-slate-700
-    md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))] md:w-[205px]
+    md:top-[var(--dashboard-header-height,52px)] md:h-[calc(100vh-var(--dashboard-header-height,52px))]
     flex items-center justify-center md:flex-col md:items-center md:justify-start
     border-t border-[#e6dbf8] md:border-t-0 md:border-r md:border-[#e6dbf8]
     bg-white md:bg-white/95 md:backdrop-blur-sm
@@ -1758,7 +1790,11 @@ export default function DashboardSidebar({
                 ref={asideRef}
                 data-dashboard-sidebar="true"
                 className={sidebarShellClass}
-                style={{ zIndex: 45, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+                style={{
+                    zIndex: 45,
+                    paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                    width: isMobileViewport ? "100%" : `${DESKTOP_NAV_WIDTH_PX}px`,
+                }}
             >
                 {/* Escritorio: barra vertical a la izquierda */}
                 <div className="mt-2 hidden flex-col items-start gap-2 py-3 pl-0 pr-0 md:flex">
@@ -1892,7 +1928,7 @@ export default function DashboardSidebar({
 
 
 
-            {(hoverSidebar || fijadoSidebar) && (
+            {sidebarAbierta && (
                 /* Runtime-sensitive hook: editor text toolbar geometry and
                    selection preservation query #sidebar-panel. */
                 <div

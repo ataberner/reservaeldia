@@ -15,6 +15,7 @@ import {
   Unlock,
   Smartphone,
   Tag,
+  Palette,
 } from "lucide-react";
 import { calcularOffsetY } from "@/utils/layout";
 import { normalizarAltoModo } from "@/components/editor/canvasEditor/canvasEditorCoreUtils";
@@ -46,6 +47,7 @@ const DESKTOP_TOOLTIP_LABELS = Object.freeze({
   unlock: "Desbloquear seccion",
   mobileReflowOn: "Reflow movil: Activado",
   mobileReflowOff: "Reflow movil: Desactivado",
+  design: "Diseño de la sección",
 });
 
 const DESKTOP_BUTTON_BASE =
@@ -89,6 +91,12 @@ function DesktopSectionActionButton({ action }) {
       title={action.title}
       aria-label={action.ariaLabel}
       aria-pressed={typeof action.pressed === "boolean" ? action.pressed : undefined}
+      data-section-design-trigger={
+        action.id === "open-section-design" ? "true" : undefined
+      }
+      data-editor-only={
+        action.id === "open-section-design" ? "true" : undefined
+      }
       className={`${DESKTOP_BUTTON_BASE} ${variantClassName} ${action.pulse ? "animate-pulse" : ""}`}
     >
       <IconComponent className="h-4 w-4" />
@@ -144,6 +152,8 @@ export default function SectionActionsOverlay({
   refrescarPlantillasDeSeccion,
   abrirModalBorrarSeccion,
   onToggleSectionLock,
+  onOpenSectionDesign,
+  sectionDesignOpen = false,
 }) {
   const activeSectionIndex = seccionesOrdenadas.findIndex((seccion) => seccion.id === seccionActivaId);
   const seccion = activeSectionIndex === -1 ? null : seccionesOrdenadas[activeSectionIndex];
@@ -314,6 +324,23 @@ export default function SectionActionsOverlay({
           />
         </span>
       </label>
+
+      {canManageSite && typeof onOpenSectionDesign === "function" ? (
+        <button
+          type="button"
+          data-section-design-trigger="true"
+          data-editor-only="true"
+          onClick={onOpenSectionDesign}
+          className={`${mobileButtonBase} ${
+            sectionDesignOpen ? mobileButtonPrimary : mobileButtonNeutral
+          }`}
+          title={DESKTOP_TOOLTIP_LABELS.design}
+          aria-label={DESKTOP_TOOLTIP_LABELS.design}
+          aria-pressed={sectionDesignOpen}
+        >
+          {renderMobileActionContent(Palette, "Diseño")}
+        </button>
+      ) : null}
 
       {seccionProtegida ? (
         <div
@@ -627,6 +654,25 @@ export default function SectionActionsOverlay({
           : []),
       ],
     },
+    ...(canManageSite && typeof onOpenSectionDesign === "function"
+      ? [
+          {
+            id: "section-design",
+            items: [
+              {
+                id: "open-section-design",
+                icon: Palette,
+                title: DESKTOP_TOOLTIP_LABELS.design,
+                ariaLabel: DESKTOP_TOOLTIP_LABELS.design,
+                variant: sectionDesignOpen ? "active" : "neutral",
+                pressed: sectionDesignOpen,
+                disabled: false,
+                onClick: onOpenSectionDesign,
+              },
+            ],
+          },
+        ]
+      : []),
     ...(canToggleSectionLock
       ? [
           {

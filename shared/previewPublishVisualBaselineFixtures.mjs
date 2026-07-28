@@ -150,6 +150,49 @@ function withHeroEdgeDecorations(draft) {
   return next;
 }
 
+function withSectionWaveDividers(draft) {
+  const next = deepClone(draft);
+  next.secciones = (Array.isArray(next.secciones) ? next.secciones : []).map(
+    (section) => {
+      const normalized = { ...section };
+      delete normalized.fondoTipo;
+      delete normalized.fondoImagen;
+      delete normalized.fondoImagenOffsetX;
+      delete normalized.fondoImagenOffsetY;
+      delete normalized.fondoImagenScale;
+      delete normalized.decoracionesFondo;
+      delete normalized.decoracionesBorde;
+
+      if (section?.id === "section-hero") {
+        return {
+          ...normalized,
+          fondo: "#f6d1e7",
+          divisores: {
+            top: "wave-soft",
+            bottom: "wave-wide",
+            height: 84,
+          },
+        };
+      }
+
+      if (section?.id === "section-gallery") {
+        return {
+          ...normalized,
+          fondo: "#26356f",
+          divisores: {
+            top: "wave-asymmetric",
+            bottom: "wave-double",
+            height: 68,
+          },
+        };
+      }
+
+      return normalized;
+    }
+  );
+  return next;
+}
+
 function createPantallaTextObject({
   id = "hero-title",
   texto = "Nos casamos",
@@ -779,6 +822,22 @@ const edgeDecorationsPublishDraft = withHeroEdgeDecorations(
     })
   )
 );
+const sectionWaveDividersPreviewDraft = withSectionWaveDividers(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+      sectionIds: ["section-hero", "section-gallery"],
+      objectIds: [],
+    })
+  )
+);
+const sectionWaveDividersPublishDraft = withSectionWaveDividers(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+      sectionIds: ["section-hero", "section-gallery"],
+      objectIds: [],
+    })
+  )
+);
 
 export const previewPublishVisualBaselineFixtures = Object.freeze([
   createVisualBaselineCase({
@@ -797,6 +856,26 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
     ],
     notes: [
       "Uses the same decorative assets as the representative hero section but through decoracionesBorde.",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "section-wave-dividers",
+    label: "Section wave dividers",
+    purpose: "Freeze section-owned SVG dividers across adjacent contrasting backgrounds.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: sectionWaveDividersPreviewDraft,
+    publishDraft: sectionWaveDividersPublishDraft,
+    focusCheckpoints: [
+      "top and bottom SVG paths match the centralized preset catalog",
+      "each physical junction has one visible divider owner",
+      "contrasting adjacent backgrounds meet without straight or white seams",
+      "divider height scales without changing section or object layout",
+      "desktop and mobile preserve the same section-owned boundary reading",
+      "clean canvas capture includes dividers without editor controls",
+    ],
+    notes: [
+      "Uses one pantalla section and one fixed section with deterministic solid backgrounds.",
     ],
   }),
   createVisualBaselineCase({

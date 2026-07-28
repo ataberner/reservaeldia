@@ -119,6 +119,7 @@ test("dashboard export skips editor-only layers before allocating their clone ca
         perfLabel: "sections-base",
         children: [
           new MockNode({ name: getDashboardExportExcludedName("section-active-indicator") }),
+          new MockNode({ name: "section-divider-wave" }),
           new MockNode({ name: "render-content" }),
         ],
       }),
@@ -139,6 +140,7 @@ test("dashboard export skips editor-only layers before allocating their clone ca
   assert.equal(exclusionResult.excludedNodeCount, 1);
   assert.equal(stageClone.children[0].children[0].visibleValue, false);
   assert.equal(stageClone.children[0].children[1].visibleValue, true);
+  assert.equal(stageClone.children[0].children[2].visibleValue, true);
 });
 
 test("dashboard export bounds the raster allocation for a tall editor stage", () => {

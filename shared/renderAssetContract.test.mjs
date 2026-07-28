@@ -145,6 +145,28 @@ test("normalizes section mobile layout mode as an explicit preserve opt-out", ()
   assert.equal("mobileLayoutMode" in invalid, false);
 });
 
+test("normalizes persisted dividers but does not materialize fields on untouched legacy sections", () => {
+  const legacy = normalizeRenderAssetSection({
+    id: "legacy",
+    fondo: "#ffffff",
+  });
+  const normalized = normalizeRenderAssetSection({
+    id: "modern",
+    divisores: {
+      top: "wave-wide",
+      bottom: "invalid",
+      height: 200,
+    },
+  });
+
+  assert.equal("divisores" in legacy, false);
+  assert.deepEqual(normalized.divisores, {
+    top: "wave-wide",
+    bottom: "none",
+    height: 160,
+  });
+});
+
 test("normalizes representative draft-load assets the same way preview preparation expects them", () => {
   const draftLoadState = createRepresentativeDraftLoadStageState();
   const previewPreparationState = createRepresentativePreviewPreparationStageState();

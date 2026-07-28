@@ -22,6 +22,27 @@
       ]
     },
     {
+      "caseId": "section-wave-dividers",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "top and bottom SVG paths match the centralized preset catalog",
+        "each physical junction has one visible divider owner",
+        "contrasting adjacent backgrounds meet without straight or white seams",
+        "divider height scales without changing section or object layout",
+        "desktop and mobile preserve the same section-owned boundary reading",
+        "clean canvas capture includes dividers without editor controls"
+      ]
+    },
+    {
       "caseId": "simple-pantalla-section",
       "sourceFixture": "preview-publish-hydrated-asset-parity",
       "requiredViews": [

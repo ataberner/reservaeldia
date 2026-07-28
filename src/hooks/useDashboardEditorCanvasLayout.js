@@ -136,7 +136,10 @@ export default function useDashboardEditorCanvasLayout({
 
   return {
     sidebarInsetLeft,
-    sidebarPaddingRight: sidebarInsetLeft ? DASHBOARD_EDITOR_CANVAS_GAP_PX : 0,
+    sidebarPaddingRight:
+      sidebarInsetLeft && effectiveLayout.pinned
+        ? DASHBOARD_EDITOR_CANVAS_GAP_PX
+        : 0,
     sidebarTransitionMs: DASHBOARD_EDITOR_CANVAS_TRANSITION_MS,
     isMobileViewport,
     sidebarLayout: effectiveLayout,

@@ -109,6 +109,14 @@ const artifacts = [
     ],
   },
   {
+    label: "Catalogo de divisores de seccion",
+    sourcePath: path.resolve(__dirname, "../../shared/sectionDividerPresets.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/sectionDividerPresets.cjs"),
+      path.resolve(__dirname, "../lib/shared/sectionDividerPresets.cjs"),
+    ],
+  },
+  {
     label: "Contrato de assets de render",
     sourcePath: path.resolve(__dirname, "../../shared/renderAssetContract.cjs"),
     targetPaths: [

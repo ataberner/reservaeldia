@@ -40,6 +40,15 @@ const {
   resolveSectionDecorationAssetUrl,
   resolveSectionEdgeDecorationAssetUrl,
 } = require("../../shared/renderAssetContract.cjs");
+const {
+  normalizeSectionDividers,
+} = require("../../shared/sectionDividerPresets.cjs");
+
+export type SectionDividers = {
+  top: string;
+  bottom: string;
+  height: number;
+};
 
 export type BackgroundDecorationItem = {
   id: string;
@@ -109,6 +118,7 @@ type SectionBackgroundModel = {
   parallax: BackgroundDecorationParallaxMode;
   decoraciones: BackgroundDecorationItem[];
   decoracionesBorde: EdgeDecorationsPayload;
+  divisores: SectionDividers;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -607,6 +617,7 @@ export function normalizeSectionBackgroundModel(section: unknown): SectionBackgr
       canvasWidth: CANVAS_WIDTH,
     }),
     decoracionesBorde: normalizeEdgeDecorations(safeSection.decoracionesBorde),
+    divisores: normalizeSectionDividers(safeSection.divisores),
   };
 }
 

@@ -11408,6 +11408,8 @@ export default function CanvasStageContent({
                         <FondoSeccion
                           key={`fondo-${seccion.id}`}
                           seccion={seccion}
+                          previousSection={seccionesOrdenadas[index - 1] || null}
+                          nextSection={seccionesOrdenadas[index + 1] || null}
                           offsetY={offsetY}
                           alturaPx={alturaPx}
                           onSelect={() => selectSectionAndClearInlineIntent(seccion.id, "section-bg-image-select")}

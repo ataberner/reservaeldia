@@ -33,6 +33,10 @@ import useStageGestures from "./editor/mobile/useStageGestures";
 import useOptionButtonPosition from "@/components/editor/overlays/useOptionButtonPosition";
 import SectionActionsOverlay from "@/components/editor/canvasEditor/SectionActionsOverlay";
 import CanvasStageContent from "@/components/editor/canvasEditor/CanvasStageContent";
+import SectionDesignPanel from "@/components/editor/sectionDesign/SectionDesignPanel";
+import { useEditorPanelCoordinator } from "@/components/editor/panels/EditorPanelCoordinatorContext";
+import { EDITOR_PANEL_IDS } from "@/domain/editor/editorPanelCoordinator";
+import { updateSectionDividers } from "@/domain/sections/backgrounds";
 import {
   ALTURA_REFERENCIA_PANTALLA,
   ALTURA_PANTALLA_EDITOR,
@@ -110,6 +114,7 @@ import {
 } from "@/components/editor/canvasEditor/selectionPreservationPolicy";
 import {
   DASHBOARD_EDITOR_CANVAS_TRANSITION_MS,
+  resolveSectionDesignCanvasInsetRight,
 } from "@/domain/dashboard/editorCanvasLayout";
 
 const SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS = DASHBOARD_EDITOR_CANVAS_TRANSITION_MS + 60;
@@ -196,6 +201,11 @@ export default function CanvasEditor({
   initialEditorData = null,
   editorCanvasSidebarInsetLeft = 0,
 }) {
+  const {
+    activePanel: activeEditorPanel,
+    openPanel: openEditorPanel,
+    closePanel: closeEditorPanel,
+  } = useEditorPanelCoordinator();
   const [objetos, setObjetos] = useState([]);
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
   const [secciones, setSecciones] = useState([]);
@@ -681,6 +691,39 @@ export default function CanvasEditor({
     () => renderSeccionesOrdenadas.reduce((acc, section) => acc + Number(section.altura || 0), 0) || 800,
     [renderSeccionesOrdenadas]
   );
+  const selectedSection = useMemo(
+    () =>
+      secciones.find((section) => section?.id === seccionActivaId) || null,
+    [seccionActivaId, secciones]
+  );
+  const sectionDesignOpen =
+    activeEditorPanel === EDITOR_PANEL_IDS.SECTION_DESIGN &&
+    canManageSite &&
+    !readOnly;
+  const handleOpenSectionDesign = useCallback(() => {
+    if (!canManageSite || readOnly || !seccionActivaId) return;
+    setMobileSectionActionsOpen(false);
+    openEditorPanel(EDITOR_PANEL_IDS.SECTION_DESIGN);
+  }, [
+    canManageSite,
+    openEditorPanel,
+    readOnly,
+    seccionActivaId,
+    setMobileSectionActionsOpen,
+  ]);
+  const handleSectionDividersChange = useCallback(
+    (patch) => {
+      if (!canManageSite || readOnly || !seccionActivaId) return;
+      const targetSection = secciones.find(
+        (section) => section?.id === seccionActivaId
+      );
+      if (!canMutateSection(targetSection)) return;
+      setSecciones((previous) =>
+        updateSectionDividers(previous, seccionActivaId, patch)
+      );
+    },
+    [canManageSite, readOnly, seccionActivaId, secciones]
+  );
   const functionalHiddenObjectIds = useMemo(
     () => new Set(functionalRenderState.hiddenObjectIds || []),
     [functionalRenderState.hiddenObjectIds]
@@ -831,6 +874,10 @@ export default function CanvasEditor({
         SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX +
         SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX,
     suspendResizeSync: sidebarLayoutSettling || sidebarPanelInsetChanging,
+  });
+  const sectionDesignCanvasInsetRight = resolveSectionDesignCanvasInsetRight({
+    open: sectionDesignOpen,
+    isMobileViewport: isMobile,
   });
 
   useEffect(() => {
@@ -1731,6 +1778,7 @@ export default function CanvasEditor({
   return (
     <div
       ref={editorOverlayRootRef}
+      data-section-design-canvas-inset-right={sectionDesignCanvasInsetRight}
       className="flex justify-center"
       style={{
         // ? Dejamos que el scroll lo maneje el <main> del DashboardLayout (un solo scroll)
@@ -1747,7 +1795,8 @@ export default function CanvasEditor({
         // ? espacio para que no â€œchoqueâ€ con header / barras
         paddingTop: isMobile ? mobileCanvasToolbarOffset : 12,
         paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
-        transition: "padding-top 180ms ease",
+        paddingRight: sectionDesignCanvasInsetRight,
+        transition: "padding-top 180ms ease, padding-right 220ms ease",
       }}
     >
 
@@ -1820,6 +1869,8 @@ export default function CanvasEditor({
                 refrescarPlantillasDeSeccion={refrescarPlantillasDeSeccion}
                 abrirModalBorrarSeccion={abrirModalBorrarSeccion}
                 onToggleSectionLock={handleToggleSectionLock}
+                onOpenSectionDesign={handleOpenSectionDesign}
+                sectionDesignOpen={sectionDesignOpen}
               />
             )}
 
@@ -2037,6 +2088,14 @@ export default function CanvasEditor({
         onSaved={handleTemplateEditorialSaved}
       />
 
+      {sectionDesignOpen ? (
+        <SectionDesignPanel
+          seccion={selectedSection}
+          disabled={!selectedSection || !canMutateSection(selectedSection)}
+          onClose={() => closeEditorPanel(EDITOR_PANEL_IDS.SECTION_DESIGN)}
+          onDividersChange={handleSectionDividersChange}
+        />
+      ) : null}
 
 
     </div>

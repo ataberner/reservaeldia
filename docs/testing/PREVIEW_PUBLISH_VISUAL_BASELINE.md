@@ -53,6 +53,7 @@ These views freeze invitation rendering reference points only. They do not freez
 | Case | Why this case exists | Parity mode | Views | Accepted warning-only drift | Focus checkpoints |
 | --- | --- | --- | --- | --- | --- |
 | `edge-decorations-pantalla` | Protect section-owned top/bottom edge ornaments in a `pantalla` section. | `shared-parity` | all five baseline views | none | viewport-width edge bands, intrinsic-clamp sizing budget, desktop offset interpretation, no `.objeto`, `pantalla` zoom compensation |
+| `section-wave-dividers` | Protect section-owned SVG waves across two contrasting adjacent sections. | `shared-parity` | all five baseline views | none | shared preset paths, one visible owner per physical junction, no straight or white seams, unchanged section/object layout, desktop/mobile scaling, clean-capture inclusion |
 | `simple-pantalla-section` | Protect the minimal `pantalla` text baseline. | `shared-parity` | all five baseline views | none | `pantalla` viewport fit, content anchoring, text hierarchy |
 | `decorative-fullbleed` | Protect current `fullbleed` behavior in a decorated `pantalla` section. | `warning-only` | all five baseline views | `fullbleed-editor-drift`, `pantalla-ynorm-drift` | bleed-layer width behavior, section decoration attachment, mobile anchor interpretation |
 | `text-with-decoration-behind` | Protect text layering over current section background/decor rendering. | `shared-parity` | all five baseline views | none | text stays above decorations, decoration does not detach, no accidental bleed reinterpretation |
@@ -131,6 +132,7 @@ Treat any of the following as a regression unless a new product or architecture 
 - changed group-child offsets relative to the group wrapper
 - changed fullbleed/content lane separation in fixed sections
 - changed `decoracionesBorde` rendering into object/smart-layout nodes, or changed top/bottom viewport-width anchoring, intrinsic-clamp sizing budget, or offset behavior
+- changed `divisores` into object/selection/smart-layout nodes, changed a catalog path without updating all five baseline views, allowed both adjacent slots to paint the same physical junction, introduced a straight or white section seam, or excluded the divider from clean canvas capture
 
 ## Scaled Preview Section-Junction Baseline
 

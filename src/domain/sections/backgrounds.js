@@ -3,6 +3,9 @@ import {
   resolveSectionDecorationAssetUrl,
   resolveSectionEdgeDecorationAssetUrl,
 } from "../../../shared/renderAssetContract.js";
+import {
+  normalizeSectionDividers,
+} from "../../../shared/sectionDividerPresets.js";
 const CANVAS_WIDTH = 800;
 const DEFAULT_SECTION_HEIGHT = 600;
 const DEFAULT_DECORATION_WIDTH = 220;
@@ -717,7 +720,35 @@ export function normalizeSectionBackgroundModel(
       canvasWidth: safeCanvasWidth,
     }),
     decoracionesBorde: normalizeEdgeDecorations(safeSection.decoracionesBorde),
+    divisores: normalizeSectionDividers(safeSection.divisores),
   };
+}
+
+export function updateSectionDividers(sections, sectionId, patch = {}) {
+  const safePatch = asObject(patch);
+
+  return (Array.isArray(sections) ? sections : []).map((section) => {
+    if (section?.id !== sectionId) return section;
+
+    const current = normalizeSectionDividers(section?.divisores);
+    const next = normalizeSectionDividers({
+      ...current,
+      ...(Object.prototype.hasOwnProperty.call(safePatch, "top")
+        ? { top: safePatch.top }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(safePatch, "bottom")
+        ? { bottom: safePatch.bottom }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(safePatch, "height")
+        ? { height: safePatch.height }
+        : {}),
+    });
+
+    return {
+      ...section,
+      divisores: next,
+    };
+  });
 }
 
 export function resolveSectionBaseImageLayout(

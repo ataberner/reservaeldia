@@ -217,6 +217,7 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `fondoImagenDraggable` | Optional | Editor-only background interaction flag. |
 | `decoracionesFondo` | Optional but normalized | Background decoration payload normalized to `{ items, parallax }`. |
 | `decoracionesBorde` | Optional but normalized | Section edge decoration payload for top/bottom viewport-width ornaments. |
+| `divisores` | Optional but normalized | Section-owned SVG divider payload `{ top, bottom, height }`. Missing legacy data reads as `none`/`none`/`72` without being written back until the section is edited. |
 | `bloqueada` | Optional editor-only flag | When exactly `true`, the editor renders the section normally but blocks edits to the section and its objects. Missing/false never auto-locks a section. |
 | `bloqueoMotivo` | Optional editor-only metadata | Human/system reason for a locked section, for example `"system-final-section"`. Preview and publish ignore it. |
 
@@ -297,6 +298,24 @@ Rules:
 - `mode: "cover-x"` is the default. It fills the resolved edge band and preserves the content-facing side when controlled crop is needed. `mode: "contain-x"` preserves the full artwork inside the same band and may leave unused space.
 - Normalization clamps ratios, min/max heights, combined budgets, intrinsic dimensions, and offsets. Offsets are clamped to `-240..240px`.
 
+### Section Divider Payload
+
+`divisores` is a section-owned decoration primitive and never an entry in `objetos`:
+
+```ts
+{
+  top: "none" | "wave-soft" | "wave-wide" | "wave-double" | "wave-asymmetric",
+  bottom: "none" | "wave-soft" | "wave-wide" | "wave-double" | "wave-asymmetric",
+  height: number,
+}
+```
+
+The only preset authority is `shared/sectionDividerPresets.cjs` with its ESM facade `shared/sectionDividerPresets.js`. It owns identifiers, labels, SVG `viewBox`/paths and allowed height bounds. `height` is an authored 800px-canvas value, normalized to an integer in `32..160`; the safe default is `72`. Render scaling applies that authored value through the existing desktop/mobile section scale and does not alter persisted section height.
+
+Missing or invalid legacy values normalize in memory to `{ top: "none", bottom: "none", height: 72 }`. `normalizeRenderAssetSection` preserves absence on untouched legacy documents; the field is materialized only when the section design mutation writes it through the normal `setSecciones`/autosave path. Dividers require no publication asset resolution because their SVG geometry is generated from the shared catalog.
+
+Canvas and generated HTML render the divider inside the owning section boundary, below normal content and outside object ordering. The path is filled with the adjacent section's deterministic base/fallback color so contrasting sections meet continuously. Dividers cannot be selected, dragged, resized, rotated, grouped, reordered by object z-index or processed by smart layout.
+
 Important section rules:
 
 - The stage/editor derives absolute section offsets at runtime. Offsets are not stored per object.
@@ -307,9 +326,12 @@ Important section rules:
 - Mobile smart layout records runtime height interpretation with `data-msl-height-model` values such as `publish-like`, `publish-like-pending`, and `embedded-preview`. This marker is generated/runtime state, not Firestore data.
 - `decoracionesFondo` supports legacy shapes (`superior` / `inferior`) but normalizes them into `items`.
 - `decoracionesBorde` is independent from `decoracionesFondo`: use it for top/bottom full-width ornaments, not arbitrary positioned decorations.
+- `divisores` is independent from image edge decorations: it is generated SVG geometry, has no asset URL, and uses the centralized preset catalog.
 - `fondo` can still act as a legacy image background fallback when it contains an image-like URL string.
 - The normative image role and conversion contract lives in `docs/contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md`. When a normal `tipo: "imagen"` object is converted into a section-owned visual role, the original object must be removed from `objetos`; the section field becomes the single owner of that visual.
 - Role-gated authoring is an editor UI rule, not a Firestore schema distinction. Regular users can author `Imagen (contenido)` and `Fondo de la sección`; `Decoración`, `Decoración arriba`, and `Decoración abajo` creation/management controls are visible only to admin/superadmin users. Existing `decoracionesFondo` and `decoracionesBorde` data remains valid and renderable regardless of the viewing user's role.
+
+The `Diseño de la sección` authoring entry point follows that same role rule: it reuses `canManageSite` and is available only to admin/superadmin users. Existing `divisores` remain renderable for every viewer and user role.
 
 ## 4. Elements Model
 Elements are stored in the `objetos` array. The HTML generator groups them by `seccionId`, then splits each section into:

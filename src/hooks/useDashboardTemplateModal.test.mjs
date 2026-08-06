@@ -124,6 +124,7 @@ test("template modal prop shaping preserves the current modal contract", () => {
   const onClose = () => {};
   const onOpenEditorWithChanges = () => {};
   const onOpenEditorWithoutChanges = () => {};
+  const onRecoverStaleChunks = () => {};
   const onFormStateChange = () => {};
 
   const props = buildTemplatePreviewModalProps({
@@ -143,6 +144,7 @@ test("template modal prop shaping preserves the current modal contract", () => {
     onClose,
     onOpenEditorWithChanges,
     onOpenEditorWithoutChanges,
+    onRecoverStaleChunks,
     formState: {
       rawValues: {
         event_name: "Mara y Nico",
@@ -162,6 +164,7 @@ test("template modal prop shaping preserves the current modal contract", () => {
     "onClose",
     "onOpenEditorWithChanges",
     "onOpenEditorWithoutChanges",
+    "onRecoverStaleChunks",
     "formState",
     "onFormStateChange",
     "openingEditor",
@@ -177,6 +180,7 @@ test("template modal prop shaping preserves the current modal contract", () => {
     props.onOpenEditorWithoutChanges,
     onOpenEditorWithoutChanges
   );
+  assert.equal(props.onRecoverStaleChunks, onRecoverStaleChunks);
   assert.equal(props.onFormStateChange, onFormStateChange);
   assert.equal(props.openingEditor, true);
   assert.deepEqual(props.formState, {

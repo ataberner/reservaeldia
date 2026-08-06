@@ -45,3 +45,12 @@ test("template preview does not mediate iframe gestures and cleans its measureme
   assert.match(modalSource, /observer\.disconnect\(\)/);
   assert.match(modalSource, /window\.removeEventListener\("resize", measure\)/);
 });
+
+test("template preview only offers application refresh for a classified stale chunk", () => {
+  assert.match(
+    modalSource,
+    /previewStatus\?\.recoveryAction === CHUNK_LOAD_RECOVERY_ACTION/
+  );
+  assert.match(modalSource, /onClick=\{onRecoverStaleChunks\}/);
+  assert.match(modalSource, /Actualizar aplicación/);
+});

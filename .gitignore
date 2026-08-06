@@ -25,6 +25,7 @@
 .next-dev-*/
 out/
 build/
+/.hosting-static-history/
 
 # =========================
 # Logs

@@ -7,6 +7,10 @@ import {
   resolveDashboardTemplateModalViewState,
 } from "./useDashboardTemplateModal.js";
 import { PREVIEW_AUTHORITY } from "../domain/dashboard/previewSession.js";
+import {
+  CHUNK_LOAD_RECOVERY_ACTION,
+  CHUNK_LOAD_RECOVERY_MESSAGE,
+} from "../domain/runtime/chunkLoadRecovery.js";
 
 function createDeferred() {
   let resolve;
@@ -412,6 +416,53 @@ test("preview generation errors preserve the modal and expose the existing error
       previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
     }
   );
+});
+
+test("a stale preview-generator chunk exposes one controlled application update", async () => {
+  const recoveryCalls = [];
+  const harness = createControllerHarness({
+    dependencyOverrides: {
+      getTemplateById: async () =>
+        createFullTemplate({ id: "tpl-stale-chunk" }),
+      generatePreviewHtml: async () => {
+        const error = new Error(
+          "Loading chunk 264 failed. (error: /_next/static/chunks/264.old.js)"
+        );
+        error.name = "ChunkLoadError";
+        throw error;
+      },
+      requestChunkRecoveryReload: () => {
+        recoveryCalls.push("reload");
+        return {
+          reloaded: true,
+          reason: "reload-requested",
+          buildId: "old-build",
+        };
+      },
+    },
+  });
+
+  harness.controller.openTemplateModal(
+    createCatalogTemplate({ id: "tpl-stale-chunk" })
+  );
+  await flushMicrotasks();
+
+  assert.deepEqual(
+    harness.getDerivedViewState().selectedTemplatePreviewState,
+    {
+      status: "error",
+      error: CHUNK_LOAD_RECOVERY_MESSAGE,
+      recoveryAction: CHUNK_LOAD_RECOVERY_ACTION,
+      previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+    }
+  );
+
+  assert.deepEqual(harness.controller.recoverFromStaleChunks(), {
+    reloaded: true,
+    reason: "reload-requested",
+    buildId: "old-build",
+  });
+  assert.deepEqual(recoveryCalls, ["reload"]);
 });
 
 test("catalog fallback template preview stays visual-only when full template lookup misses", async () => {

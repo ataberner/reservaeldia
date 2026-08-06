@@ -280,7 +280,54 @@ Functional group centering is a generation/prepared-payload derivation that runs
 
 `decoracionesBorde` is generated as a section-owned edge layer, not as an object. It stays out of mobile smart layout, uses renderer-owned `--edgezoom` compensation, and sizes the edge band from section height with separate desktop/mobile ratios. This keeps top/bottom ornaments viewport-width and visually balanced in `pantalla` sections during draft-authoritative preview and publish.
 
-## 9. Known Constraints
+## 9. Runtime Version And Deployment Compatibility
+
+Template preview keeps the HTML generator behind a browser `import()`:
+
+1. the dashboard template card calls `openTemplateModal(...)`
+2. the controller opens the modal and reads the full template document
+3. `generateTemplatePreviewHtml(...)` delegates to
+   `generateDashboardPreviewHtmlFromRenderState(...)`
+4. `previewSession.js` imports
+   `functions/src/utils/generarHTMLDesdeSecciones` on demand
+
+Next.js assigns that generator to a content-hashed lazy chunk. A dashboard tab
+retains the Webpack chunk map from the build that originally loaded the page.
+Therefore a hosting release must keep the static assets of recent builds
+available; fresh HTML alone is not sufficient for a tab that was open before
+the release.
+
+The production build wrapper snapshots the just-built `out/_next/static` tree,
+merges the latest three release snapshots without overwriting content, and
+fails if the same immutable path ever has different bytes. GitHub Actions
+restores and saves this bounded history and serializes live deployments. When
+the cache is empty, the live workflow first seeds it from the current public
+dashboard, its manifest, and the current deploy inventory, including lazy
+chunks. The
+post-build verifier requires the dashboard HTML, `BUILD_ID`, build manifest,
+and local static references to agree. Live deployments additionally verify
+that the new dashboard build ID and every deployed current/retained static file
+are available with the expected cache policy.
+
+Dashboard HTML remains `no-cache, no-store`; `/_next/static` remains
+content-hashed and `immutable`. There is no application service worker in the
+current implementation.
+
+If a tab predates the retention window or an asset is otherwise unavailable,
+template preview classifies the rejected import as a chunk-load failure and
+offers an explicit application update. That recovery reload is allowed only
+once per active `buildId` in the tab session. It is secondary recovery, not the
+deployment compatibility mechanism.
+
+Focused anchors:
+
+- `scripts/retainNextStaticAssets.cjs`
+- `scripts/bootstrapNextStaticHistory.cjs`
+- `scripts/verifyNextStaticRelease.cjs`
+- `src/domain/runtime/chunkLoadRecovery.js`
+- `src/hooks/useDashboardTemplateModal.js`
+
+## 10. Known Constraints
 
 - Template preview is not authoritative.
 - Local fallback preview is not authoritative.
@@ -289,7 +336,7 @@ Functional group centering is a generation/prepared-payload derivation that runs
 - Fullbleed, edge-decoration layering, and complex mobile layouts remain sensitive to viewport, fit-scale, and smart-layout timing.
 - The editor interaction system remains complex and is documented separately in `INTERACTION_SYSTEM_CURRENT_STATE.md`.
 
-## 10. Testing Anchors
+## 11. Testing Anchors
 
 Use these references for parity work:
 
@@ -308,6 +355,8 @@ Focused loading/session coverage:
 - `src/hooks/useDashboardPreviewController.controller.test.mjs`
 - `src/domain/dashboard/previewPipeline.test.mjs`
 - `src/domain/dashboard/previewTiming.test.mjs`
+- `src/domain/runtime/chunkLoadRecovery.test.mjs`
+- `scripts/retainNextStaticAssets.test.mjs`
 
 Append `previewTiming=1` to the dashboard URL to start one diagnostic session
 per modal opening. Every browser record uses
@@ -341,7 +390,7 @@ callable response remain unchanged while the flag is absent. The
 instrumentation does not bypass validation, change waits, or select a different
 renderer.
 
-## 11. 2026-04-30 Centered Title Reflow Fix
+## 12. 2026-04-30 Centered Title Reflow Fix
 
 Modified files:
 

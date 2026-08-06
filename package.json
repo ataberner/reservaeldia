@@ -8,7 +8,8 @@
       "emulators": "npm --prefix functions run build && firebase emulators:start --only auth,firestore,functions",
       "dev:emulators": "npm --prefix functions run build && cross-env NEXT_PUBLIC_FIREBASE_MODE=emulators concurrently -k \"npm --prefix functions run build:watch\" \"firebase emulators:start --only auth,firestore,functions\" \"node scripts/runNextDev.cjs\"",
       "dev:reset": "node -e \"const fs=require('fs'); fs.readdirSync('.').filter((d)=>d==='.next'||d==='.next-dev'||d.startsWith('.next-dev-')).forEach((d)=>fs.rmSync(d,{recursive:true,force:true}))\" && cross-env NEXT_PUBLIC_FIREBASE_MODE=prod node scripts/runNextDev.cjs",
-      "build": "next build",
+      "build": "node scripts/retainNextStaticAssets.cjs capture && next build && node scripts/retainNextStaticAssets.cjs finalize && node scripts/verifyNextStaticRelease.cjs",
+      "build:next": "next build",
       "export": "next export",
       "templates:seed:dry": "node scripts/seedTemplateContracts.cjs --dry-run",
       "templates:seed:apply": "node scripts/seedTemplateContracts.cjs --apply",
@@ -39,8 +40,10 @@
       "providers:enrich:test": "node --test scripts/providersEnrichment.test.mjs scripts/providersEnrichmentState.test.mjs scripts/providersEnrichmentBulk.test.mjs",
       "providers:enrich:test:emulator": "npm --prefix functions run build && firebase emulators:exec --only firestore,storage --project demo-reservaeldia-provider-enrichment \"node --test scripts/providersEnrichmentEmulator.test.mjs\"",
       "deploy:functions:batched": "node scripts/deployFunctionsBatched.cjs",
-      "deploy:full": "npm run build && firebase deploy --only hosting && npm run deploy:functions:batched",
-      "deploy:hosting": "npm run build && firebase deploy --only hosting"
+      "hosting:bootstrap": "node scripts/bootstrapNextStaticHistory.cjs --origin https://reservaeldia.com.ar",
+      "verify:hosting:production": "node scripts/verifyNextStaticRelease.cjs --origin https://reservaeldia.com.ar",
+      "deploy:full": "npm run hosting:bootstrap && npm run build && firebase deploy --only hosting && npm run verify:hosting:production && npm run deploy:functions:batched",
+      "deploy:hosting": "npm run hosting:bootstrap && npm run build && firebase deploy --only hosting && npm run verify:hosting:production"
    },
    "dependencies": {
       "@next/third-parties": "^15.3.2",

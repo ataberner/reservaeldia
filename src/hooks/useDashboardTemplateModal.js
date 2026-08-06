@@ -6,6 +6,12 @@ import { normalizeTemplateMetadata } from "../domain/templates/metadata.js";
 import {
   generateTemplatePreviewHtml,
 } from "../domain/templates/preview.js";
+import {
+  CHUNK_LOAD_RECOVERY_ACTION,
+  CHUNK_LOAD_RECOVERY_MESSAGE,
+  isChunkLoadError,
+  requestChunkLoadRecoveryReload,
+} from "../domain/runtime/chunkLoadRecovery.js";
 import { pushEditorBreadcrumb } from "../lib/monitoring/editorIssueReporter.js";
 
 export const TEMPLATE_PREVIEW_STATUS_IDLE = Object.freeze({
@@ -200,6 +206,10 @@ function buildDashboardTemplateModalControllerDependencies(
       typeof safeOverrides.logTemplateEditorError === "function"
         ? safeOverrides.logTemplateEditorError
         : logDashboardTemplateEditorError,
+    requestChunkRecoveryReload:
+      typeof safeOverrides.requestChunkRecoveryReload === "function"
+        ? safeOverrides.requestChunkRecoveryReload
+        : requestChunkLoadRecoveryReload,
   };
 }
 
@@ -313,6 +323,7 @@ export function buildTemplatePreviewModalProps({
   onClose,
   onOpenEditorWithChanges,
   onOpenEditorWithoutChanges,
+  onRecoverStaleChunks,
   formState,
   onFormStateChange,
   openingEditor = false,
@@ -330,6 +341,7 @@ export function buildTemplatePreviewModalProps({
     onClose,
     onOpenEditorWithChanges,
     onOpenEditorWithoutChanges,
+    onRecoverStaleChunks,
     formState: normalizeTemplateFormStateValue(formState),
     onFormStateChange,
     openingEditor: openingEditor === true,
@@ -383,6 +395,7 @@ export function createDashboardTemplateModalControllerRuntime({
     showAlert,
     logTemplateLoadError,
     logTemplateEditorError,
+    requestChunkRecoveryReload,
   } = controllerDependencies;
 
   const resolvedRequestSequenceRef =
@@ -549,13 +562,23 @@ export function createDashboardTemplateModalControllerRuntime({
         error: "",
       });
     } catch (error) {
-      setTemplatePreviewState(templateId, {
-        status: "error",
-        error: getErrorMessage(
-          error,
-          "No se pudo generar la vista previa de esta plantilla."
-        ),
-      });
+      const chunkLoadFailed = isChunkLoadError(error);
+      setTemplatePreviewState(
+        templateId,
+        chunkLoadFailed
+          ? {
+              status: "error",
+              error: CHUNK_LOAD_RECOVERY_MESSAGE,
+              recoveryAction: CHUNK_LOAD_RECOVERY_ACTION,
+            }
+          : {
+              status: "error",
+              error: getErrorMessage(
+                error,
+                "No se pudo generar la vista previa de esta plantilla."
+              ),
+            }
+      );
     }
   };
 
@@ -604,6 +627,16 @@ export function createDashboardTemplateModalControllerRuntime({
   const closeTemplateModal = () => {
     if (resolvedIsOpeningTemplateEditorRef.current) return;
     resetTemplateModalController();
+  };
+
+  const recoverFromStaleChunks = () => {
+    const result = requestChunkRecoveryReload();
+    if (result?.reloaded !== true) {
+      showAlert(
+        "La aplicación ya intentó actualizar esta versión. Cierra esta pestaña y abre el dashboard nuevamente."
+      );
+    }
+    return result;
   };
 
   const createTemplateDraftAndOpenEditor = async ({
@@ -763,6 +796,7 @@ export function createDashboardTemplateModalControllerRuntime({
     handleOpenEditorWithoutChanges,
     handleOpenEditorWithChanges,
     openTemplateEditorFromTemplateId,
+    recoverFromStaleChunks,
   };
 }
 
@@ -879,6 +913,7 @@ export function useDashboardTemplateModalWithDependencies(
         onClose: runtime.closeTemplateModal,
         onOpenEditorWithChanges: runtime.handleOpenEditorWithChanges,
         onOpenEditorWithoutChanges: runtime.handleOpenEditorWithoutChanges,
+        onRecoverStaleChunks: runtime.recoverFromStaleChunks,
         formState: templateModalViewState.selectedTemplateFormState,
         onFormStateChange: runtime.handleTemplateModalFormStateChange,
         openingEditor: isOpeningTemplateEditor,
@@ -890,6 +925,7 @@ export function useDashboardTemplateModalWithDependencies(
       runtime.handleOpenEditorWithChanges,
       runtime.handleOpenEditorWithoutChanges,
       runtime.handleTemplateModalFormStateChange,
+      runtime.recoverFromStaleChunks,
       selectedTemplate,
       templateModalViewState.selectedTemplateFormState,
       templateModalViewState.selectedTemplateMetadata,

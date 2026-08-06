@@ -18,6 +18,7 @@ import {
   resolvePreviewFrameLayoutMode,
 } from "@/components/preview/previewFrameRuntime";
 import PreviewLoadingPresentation from "@/components/preview/PreviewLoadingPresentation";
+import { CHUNK_LOAD_RECOVERY_ACTION } from "@/domain/runtime/chunkLoadRecovery";
 
 const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
 const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
@@ -260,6 +261,7 @@ export default function TemplatePreviewModal({
   onClose,
   onOpenEditorWithChanges,
   onOpenEditorWithoutChanges,
+  onRecoverStaleChunks,
   onUseTemplate,
   actionMode = "editor",
   useTemplateLabel = "Usar plantilla",
@@ -289,6 +291,9 @@ export default function TemplatePreviewModal({
   const isLandingMode = actionMode === "landing";
   const canCustomizeEvent = !isLandingMode && showEventCustomization !== false;
   const shouldShowGeneratedPreview = previewRuntime.shouldShowGeneratedPreview;
+  const shouldShowChunkRecovery =
+    previewStatus?.recoveryAction === CHUNK_LOAD_RECOVERY_ACTION &&
+    typeof onRecoverStaleChunks === "function";
   const shouldShowPreviewFrame =
     previewRuntime.shouldShowLoadingState || shouldShowGeneratedPreview;
   const canPatchPreview = previewRuntime.canPatchPreview;
@@ -497,8 +502,17 @@ export default function TemplatePreviewModal({
                 ) : null}
 
                 {previewRuntime.shouldShowErrorState && (
-                  <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
+                  <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#fcfbff] px-6 text-center">
                     <p className="max-w-xl text-sm text-rose-600">{errorMessage}</p>
+                    {shouldShowChunkRecovery ? (
+                      <button
+                        type="button"
+                        onClick={onRecoverStaleChunks}
+                        className={SITE_PRIMARY_BUTTON_CLASS}
+                      >
+                        Actualizar aplicación
+                      </button>
+                    ) : null}
                   </div>
                 )}
 

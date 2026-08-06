@@ -1,15 +1,9 @@
 import React from "react";
 import { captureEditorIssue } from "@/lib/monitoring/editorIssueReporter";
-
-function isChunkLoadLike(error) {
-  const message = String(error?.message || "");
-  return (
-    message.includes("ChunkLoadError") ||
-    message.includes("Loading chunk") ||
-    message.includes("Failed to fetch dynamically imported module") ||
-    message.includes("hunkLoadError")
-  );
-}
+import {
+  isChunkLoadError,
+  requestChunkLoadRecoveryReload,
+} from "@/domain/runtime/chunkLoadRecovery";
 
 class ChunkErrorBoundary extends React.Component {
   constructor(props) {
@@ -18,6 +12,7 @@ class ChunkErrorBoundary extends React.Component {
       hasError: false,
       error: null,
       isChunkError: false,
+      recoveryBlocked: false,
     };
   }
 
@@ -25,7 +20,7 @@ class ChunkErrorBoundary extends React.Component {
     return {
       hasError: true,
       error,
-      isChunkError: isChunkLoadLike(error),
+      isChunkError: isChunkLoadError(error),
     };
   }
 
@@ -42,8 +37,11 @@ class ChunkErrorBoundary extends React.Component {
   }
 
   handleReload = () => {
-    if (typeof window !== "undefined") {
-      window.location.reload();
+    const result = requestChunkLoadRecoveryReload();
+    if (result?.reloaded !== true) {
+      this.setState({
+        recoveryBlocked: true,
+      });
     }
   };
 
@@ -52,6 +50,7 @@ class ChunkErrorBoundary extends React.Component {
       hasError: false,
       error: null,
       isChunkError: false,
+      recoveryBlocked: false,
     });
   };
 
@@ -64,8 +63,10 @@ class ChunkErrorBoundary extends React.Component {
       ? "No se pudo cargar el editor"
       : "Ocurrio un error al cargar el editor";
 
-    const description = this.state.isChunkError
-      ? "Parece que el bundle cambio o quedo desactualizado. Recarga para continuar."
+    const description = this.state.recoveryBlocked
+      ? "La aplicación ya intentó actualizar esta versión. Cierra esta pestaña y abre el dashboard nuevamente."
+      : this.state.isChunkError
+      ? "Parece que el bundle cambió o quedó desactualizado. Actualiza para continuar."
       : "Hubo un problema inesperado. Podes intentar nuevamente.";
 
     return (
@@ -79,7 +80,7 @@ class ChunkErrorBoundary extends React.Component {
             onClick={this.handleReload}
             className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
           >
-            Recargar pagina
+            Actualizar aplicación
           </button>
           <button
             type="button"

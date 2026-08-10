@@ -31,7 +31,8 @@ test("injected clock reproduces seconds and freezeZero expiration", () => {
 test("builder preview keeps currentColor and shadow on the shared layout contract", () => {
   assert.match(livePreviewSource, /buildFrameSvgMarkup/);
   assert.match(livePreviewSource, /boxShadow/);
-  assert.match(livePreviewSource, /resolveCountdownLayoutMetrics/);
+  assert.match(livePreviewSource, /resolveCountdownInsertGeometry/);
+  assert.match(livePreviewSource, /previewGeometry\.layoutMetrics/);
   assert.match(previewPanelSource, /CountdownPresetLivePreview/);
   assert.doesNotMatch(previewPanelSource, /setInterval|resolveCountdownTemporalState/);
 });

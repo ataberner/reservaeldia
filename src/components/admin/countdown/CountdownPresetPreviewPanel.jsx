@@ -221,6 +221,9 @@ export default function CountdownPresetPreviewPanel({
                   svgText={svgAsset?.svgText || ""}
                   frameUrl={frameUrl}
                   frameAssetType={frameAssetType}
+                  frameMimeType={svgAsset?.mimeType || null}
+                  frameIntrinsicWidth={svgAsset?.width || null}
+                  frameIntrinsicHeight={svgAsset?.height || null}
                   svgColorMode={svgAsset?.colorMode || "fixed"}
                   frameColor={config?.colores?.frameColor}
                   targetISO={preview?.targetISO}

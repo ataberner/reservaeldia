@@ -557,6 +557,14 @@ adjacent units, accepts `0..48` including decimals, and reads as `8` when absent
 validator. Runtime adapters may translate these metrics to Konva, DOM or CSS,
 but do not apply surface-specific unit conversions or defaults.
 
+Preset-to-countdown materialization is centralized in
+`shared/countdownPresetMaterialization.cjs`. Preset `layout.chipWidth: null` is
+the compatible auto-width sentinel; it resolves from `tamanoBase`, visible
+units and distribution when producing the numeric root `chipWidth` stored in an
+inserted countdown snapshot. Builder simulation and the Functions public
+catalog use this same materializer. Existing preset/version documents remain
+valid and require no rewrite.
+
 The compositing order is unit background, optional per-unit frame, then number
 and label content. A single shared frame sits below the unit layer. PNG frames
 retain their byte-level alpha channel and use contained geometry; SVG frames

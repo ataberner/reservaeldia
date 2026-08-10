@@ -130,11 +130,5 @@ export function resolveCountdownInsertGeometry(
     height,
   });
 
-  return {
-    width: geometry.width,
-    height: geometry.height,
-    contentBounds: geometry.contentBounds,
-    visualFrameBounds: geometry.visualFrameBounds,
-    selectionBounds: geometry.selectionBounds,
-  };
+  return geometry;
 }

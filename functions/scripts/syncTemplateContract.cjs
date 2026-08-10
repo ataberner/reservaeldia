@@ -77,6 +77,23 @@ const artifacts = [
     ],
   },
   {
+    label: "Materializacion de presets de countdown",
+    sourcePath: path.resolve(
+      __dirname,
+      "../../shared/countdownPresetMaterialization.cjs"
+    ),
+    targetPaths: [
+      path.resolve(
+        __dirname,
+        "../shared/countdownPresetMaterialization.cjs"
+      ),
+      path.resolve(
+        __dirname,
+        "../lib/shared/countdownPresetMaterialization.cjs"
+      ),
+    ],
+  },
+  {
     label: "Configuracion de modalidad de evento",
     sourcePath: path.resolve(__dirname, "../../shared/eventDetailsConfig.cjs"),
     targetPaths: [

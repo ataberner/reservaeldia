@@ -20,6 +20,7 @@ contract.
 | Administrative catalog | `CountdownPresetList.jsx` |
 | Builder simulation shell | `CountdownPresetPreviewPanel.jsx` |
 | Existing builder countdown renderer | `CountdownPresetLivePreview.jsx` |
+| Canonical preset-to-canvas materialization | `shared/countdownPresetMaterialization.cjs` |
 | Canonical schema-v2 layout semantics | `shared/countdownLayoutContract.cjs` |
 | Frame upload UX and browser validation | `SvgUploadInspector.jsx`, `frameAssetInspector.js` |
 | Shared SVG/PNG frame contract | `shared/countdownFrameAssetContract.cjs` |
@@ -64,6 +65,15 @@ insert geometry and generated HTML consume `shared/countdownLayoutContract.cjs`
 for unit dimensions, distribution, `gap`, padding, container bounds and
 separator placement. Each surface remains a runtime-specific adapter; none may
 redefine those metrics.
+
+Builder simulation and the Functions public catalog also consume
+`shared/countdownPresetMaterialization.cjs` before layout. Persisted
+`layout.chipWidth: null` is the auto-width sentinel and materializes from
+`tamanoBase`, visible units and distribution; it must never be coerced to zero.
+The builder sends that same materialized object through
+`resolveCountdownInsertGeometry`, so its external box, internal area and visual
+bounds are the ones a newly inserted Canvas object receives. Serialization and
+reload do not introduce another materialization path.
 
 `layout.gap` has one meaning: editor pixels between adjacent units in
 `centered`, `vertical`, `grid` and `editorial` distributions. The persisted
@@ -166,6 +176,7 @@ normalized through the existing compatibility adapter and remains compatible.
 - `src/components/admin/countdown/countdownPresetFormInteraction.test.mjs`
 - `src/components/admin/countdown/countdownPresetPreviewPhase3.test.mjs`
 - `src/domain/countdownPresets/frameAssetInspector.test.mjs`
+- `src/domain/countdownPresets/countdownPresetGeometryParity.test.mjs`
 - `src/components/editor/countdown/countdownFramePngParity.test.mjs`
 - `shared/countdownFrameAssetContract.test.mjs`
 - `shared/countdownFrameGeometry.test.mjs`

@@ -11,6 +11,10 @@ const frameValidationSource = readFileSync(
   new URL("./src/countdownPresets/frameAssetValidation.ts", import.meta.url),
   "utf8"
 );
+const presetMaterializationSource = readFileSync(
+  new URL("../shared/countdownPresetMaterialization.cjs", import.meta.url),
+  "utf8"
+);
 
 function between(start, end) {
   const startIndex = serviceSource.indexOf(start);
@@ -89,7 +93,8 @@ test("frameScale is backward-compatible, range-validated, and materialized witho
     serviceSource,
     /numberInRangeWithDefault\(\s*layoutRaw\.frameScale[\s\S]*COUNTDOWN_FRAME_SCALE_LIMITS\.default/
   );
-  assert.match(serviceSource, /frameScale: config\.layout\.frameScale/);
+  assert.match(serviceSource, /buildSharedCountdownCanvasPatchFromPreset/);
+  assert.match(presetMaterializationSource, /frameScale,/);
   assert.doesNotMatch(serviceSource, /countdownSchemaVersion:\s*3/);
 });
 

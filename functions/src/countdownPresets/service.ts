@@ -59,6 +59,21 @@ const {
     default: number;
   };
 };
+const {
+  buildCountdownCanvasPatchFromPreset: buildSharedCountdownCanvasPatchFromPreset,
+} = require("../../shared/countdownPresetMaterialization.cjs") as {
+  buildCountdownCanvasPatchFromPreset: (params: {
+    presetId: string;
+    activeVersion: number;
+    layout: Config["layout"];
+    tipografia: Config["tipografia"];
+    colores: Config["colores"];
+    animaciones: Config["animaciones"];
+    unidad: Config["unidad"];
+    tamanoBase: number;
+    svgRef: SvgRef;
+  }) => Record<string, unknown>;
+};
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 type Estado = "draft" | "published" | "archived";
@@ -1061,15 +1076,6 @@ function serialize(value: unknown): unknown {
   }
   return value;
 }
-function estimateChipWidth(tamanoBase: number, visibleUnits: Unit[], distribution: Distribution): number {
-  const base = Math.max(220, tamanoBase);
-  const count = Math.max(1, visibleUnits.length);
-  if (distribution === "vertical") return Math.round(base * 0.48);
-  if (distribution === "grid") return Math.round(base * 0.42);
-  if (distribution === "editorial") return Math.round(base * (count <= 2 ? 0.45 : 0.34));
-  return Math.round(base / count) - 8;
-}
-
 function buildCanvasPatch(params: {
   presetId: string;
   activeVersion: number;
@@ -1077,67 +1083,17 @@ function buildCanvasPatch(params: {
   svgRef: SvgRef;
 }) {
   const { presetId, activeVersion, config, svgRef } = params;
-  const visibleUnits = config.layout.visibleUnits.length ? config.layout.visibleUnits : [...UNITS];
-  const chipWidth = Number.isFinite(config.layout.chipWidth)
-    ? Math.max(RANGES.chipWidth.min, Math.min(RANGES.chipWidth.max, Number(config.layout.chipWidth)))
-    : Math.max(34, estimateChipWidth(config.tamanoBase, visibleUnits, config.layout.distribution));
-  const unitStyle = config.unidad || {
-    showLabels: true,
-    separator: "",
-    boxBg: "transparent",
-    boxBorder: "transparent",
-    boxRadius: 10,
-    boxShadow: false,
-  };
-
-  return {
-    countdownSchemaVersion: 2,
+  return buildSharedCountdownCanvasPatchFromPreset({
     presetId,
-    presetVersion: activeVersion,
+    activeVersion,
+    layout: config.layout,
+    tipografia: config.tipografia,
+    colores: config.colores,
+    animaciones: config.animaciones,
+    unidad: config.unidad,
     tamanoBase: config.tamanoBase,
-    layoutType: config.layout.type,
-    distribution: config.layout.distribution,
-    visibleUnits,
-    gap: config.layout.gap,
-    framePadding: config.layout.framePadding,
-    frameScale: config.layout.frameScale,
-    frameSvgUrl: svgRef.downloadUrl,
-    frameAssetType: svgRef.downloadUrl ? svgRef.type || "svg" : null,
-    frameMimeType: svgRef.downloadUrl
-      ? svgRef.mimeType || COUNTDOWN_FRAME_MIME_TYPES.svg
-      : null,
-    frameIntrinsicWidth: svgRef.width,
-    frameIntrinsicHeight: svgRef.height,
-    frameColorMode: normalizeCountdownFrameColorMode(
-      svgRef.downloadUrl ? svgRef.type || "svg" : null,
-      svgRef.colorMode
-    ),
-    frameColor: config.colores.frameColor,
-    fontFamily: config.tipografia.fontFamily,
-    fontSize: config.tipografia.numberSize,
-    labelSize: config.tipografia.labelSize,
-    letterSpacing: config.tipografia.letterSpacing,
-    lineHeight: config.tipografia.lineHeight,
-    labelTransform: config.tipografia.labelTransform,
-    color: config.colores.numberColor,
-    labelColor: config.colores.labelColor,
-    entryAnimation: config.animaciones.entry,
-    tickAnimation: config.animaciones.tick,
-    frameAnimation: config.animaciones.frame,
-    showLabels: unitStyle.showLabels !== false,
-    padZero: true,
-    separator: unitStyle.separator || "",
-    paddingX: Math.max(4, Math.round(config.layout.framePadding * 0.52)),
-    paddingY: Math.max(4, Math.round(config.layout.framePadding * 0.4)),
-    chipWidth,
-    layout: "pills",
-    background: "transparent",
-    boxBg: unitStyle.boxBg || "transparent",
-    boxBorder: unitStyle.boxBorder || "transparent",
-    boxRadius: Number.isFinite(unitStyle.boxRadius) ? unitStyle.boxRadius : 10,
-    boxShadow: unitStyle.boxShadow === true,
-    presetPropsVersion: SCHEMA_VERSION,
-  };
+    svgRef,
+  });
 }
 
 function buildLegacyCanvasPatch(params: {

@@ -5,19 +5,17 @@ import {
   buildTextPaintStyle,
   buildFrameSvgMarkup,
   getCountdownParts,
-  resolveCountdownLayoutMetrics,
   resolveCanvasPaint,
   resolvePreviewPaint,
   transformLabel,
 } from "@/domain/countdownPresets/renderModel";
 import {
+  resolveCountdownInsertGeometry,
+} from "@/domain/countdownPresets/effectiveGeometry";
+import {
   recordCountdownAssetLoadError,
   recordCountdownRenderTelemetry,
 } from "@/domain/countdownObservability/telemetry";
-import {
-  resolveCountdownFrameVisualBounds,
-} from "@/domain/countdownPresets/frameGeometry";
-
 const LEGACY_LAYOUTS = new Set(["pills", "flip", "minimal"]);
 const GENERIC_FONT_NAMES = new Set([
   "serif",
@@ -113,6 +111,9 @@ export default function CountdownPresetLivePreview({
   svgText,
   frameUrl = "",
   frameAssetType = null,
+  frameMimeType = null,
+  frameIntrinsicWidth = null,
+  frameIntrinsicHeight = null,
   svgColorMode = "fixed",
   frameColor = "#773dbe",
   targetISO,
@@ -144,6 +145,8 @@ export default function CountdownPresetLivePreview({
   const animations = safeConfig.animaciones || {};
   const unidad = safeConfig.unidad || {};
   const legacyMode = useLegacyCanvasPreview === true;
+  const safeFrameUrl = String(frameUrl || "").trim();
+  const isPngFrame = frameAssetType === "png";
 
   const previewPatch = useMemo(
     () =>
@@ -158,9 +161,12 @@ export default function CountdownPresetLivePreview({
         tamanoBase: safeConfig?.tamanoBase,
         svgRef: {
           type: frameAssetType,
+          mimeType: frameMimeType,
           colorMode:
             frameAssetType === "png" ? "fixed" : svgColorMode,
-          downloadUrl: null,
+          downloadUrl: safeFrameUrl || (svgText ? "inline:svg" : null),
+          width: frameIntrinsicWidth,
+          height: frameIntrinsicHeight,
         },
       }),
     [
@@ -172,6 +178,11 @@ export default function CountdownPresetLivePreview({
       safeConfig?.tamanoBase,
       svgColorMode,
       frameAssetType,
+      frameMimeType,
+      frameIntrinsicWidth,
+      frameIntrinsicHeight,
+      safeFrameUrl,
+      svgText,
     ]
   );
 
@@ -198,16 +209,11 @@ export default function CountdownPresetLivePreview({
     "#e5e7eb"
   );
 
-  const layoutMetrics = useMemo(
-    () =>
-      resolveCountdownLayoutMetrics({
-        ...previewPatch,
-        frameSvgUrl:
-          String(frameUrl || "").trim() || (svgText ? "inline:svg" : ""),
-        frameAssetType,
-      }),
-    [previewPatch, frameUrl, svgText, frameAssetType]
+  const previewGeometry = useMemo(
+    () => resolveCountdownInsertGeometry(previewPatch),
+    [previewPatch]
   );
+  const layoutMetrics = previewGeometry.layoutMetrics;
   const visibleUnits = layoutMetrics.visibleUnits;
   const parts = useMemo(
     () =>
@@ -245,8 +251,6 @@ export default function CountdownPresetLivePreview({
       }),
     [svgText, svgColorMode, frameColor, frameAssetType]
   );
-  const safeFrameUrl = String(frameUrl || "").trim();
-  const isPngFrame = frameAssetType === "png";
   const canUseCurrentColor =
     !isPngFrame && svgColorMode === "currentColor";
 
@@ -277,15 +281,7 @@ export default function CountdownPresetLivePreview({
       })),
     [layoutMetrics, partsByUnit]
   );
-  const frameVisualBounds = resolveCountdownFrameVisualBounds({
-    width: containerW,
-    height: containerH,
-    frameScale:
-      frameSvgMarkup || safeFrameUrl
-        ? frameScale
-        : 1,
-    frameRects: useMultiUnitFrame ? unitLayouts : undefined,
-  });
+  const renderBounds = previewGeometry.selectionBounds;
 
   const displayTargetWidth = Math.max(220, Math.min(560, toFinite(safeConfig?.tamanoBase, 320)));
   const viewportWidth = Math.max(1, stageViewport.width || displayTargetWidth);
@@ -293,16 +289,16 @@ export default function CountdownPresetLivePreview({
   const constrainedTargetWidth = Math.min(displayTargetWidth, viewportWidth);
   const stageScale = Math.min(
     1,
-    constrainedTargetWidth / frameVisualBounds.width,
-    viewportHeight / frameVisualBounds.height
+    constrainedTargetWidth / renderBounds.width,
+    viewportHeight / renderBounds.height
   );
   const stageWidth = Math.max(
     1,
-    Math.round(frameVisualBounds.width * stageScale)
+    Math.round(renderBounds.width * stageScale)
   );
   const stageHeight = Math.max(
     1,
-    Math.round(frameVisualBounds.height * stageScale)
+    Math.round(renderBounds.height * stageScale)
   );
   const frameScaleStyle = {
     transform: `scale(${frameScale})`,
@@ -395,8 +391,8 @@ export default function CountdownPresetLivePreview({
           <div
             className="relative"
             style={{
-              width: `${frameVisualBounds.width}px`,
-              height: `${frameVisualBounds.height}px`,
+              width: `${renderBounds.width}px`,
+              height: `${renderBounds.height}px`,
               transform: `scale(${stageScale})`,
               transformOrigin: "top left",
             }}
@@ -404,8 +400,8 @@ export default function CountdownPresetLivePreview({
           <div
             className="absolute"
             style={{
-              left: `${frameVisualBounds.offsetX}px`,
-              top: `${frameVisualBounds.offsetY}px`,
+              left: `${-renderBounds.x}px`,
+              top: `${-renderBounds.y}px`,
               width: `${containerW}px`,
               height: `${containerH}px`,
             }}

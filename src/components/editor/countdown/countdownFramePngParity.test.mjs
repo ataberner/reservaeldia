@@ -238,7 +238,8 @@ test("builder, canvas, preview, publication and thumbnails share centered frame 
   assert.match(formSectionsSource, /type="range"/);
   assert.match(formSectionsSource, /Restablecer/);
   assert.match(formSectionsSource, /formState\.svgAsset \? \(/);
-  assert.match(livePreviewSource, /resolveCountdownFrameVisualBounds/);
+  assert.match(livePreviewSource, /resolveCountdownInsertGeometry/);
+  assert.match(livePreviewSource, /previewGeometry\.selectionBounds/);
   assert.match(livePreviewSource, /transform: `scale\(\$\{frameScale\}\)`/);
   assert.match(konvaSource, /resolveCountdownEffectiveGeometry/);
   assert.match(frameGeometrySource, /resolveCenteredScaledFrameRect/);
@@ -248,14 +249,14 @@ test("builder, canvas, preview, publication and thumbnails share centered frame 
   assert.match(publishSource, /resolveCountdownLayoutMetrics/);
   assert.match(publishSource, /data-frame-scale=/);
   assert.match(publishSource, /transform:scale\(/);
-  assert.match(livePreviewSource, /viewportHeight \/ frameVisualBounds\.height/);
-  assert.match(livePreviewSource, /constrainedTargetWidth \/ frameVisualBounds\.width/);
+  assert.match(livePreviewSource, /viewportHeight \/ renderBounds\.height/);
+  assert.match(livePreviewSource, /constrainedTargetWidth \/ renderBounds\.width/);
 });
 
 test("all live and published adapters consume the shared semantic layout contract", () => {
   assert.match(konvaSource, /resolveCountdownLayoutMetrics/);
   assert.match(previewSource, /resolveCountdownLayoutMetrics/);
-  assert.match(livePreviewSource, /resolveCountdownLayoutMetrics/);
+  assert.match(livePreviewSource, /resolveCountdownInsertGeometry/);
   assert.match(publishSource, /countdownLayoutContract\.cjs/);
   assert.match(insertDefaultsSource, /resolveCountdownInsertGeometry/);
   assert.match(effectiveGeometrySource, /resolveCountdownLayoutMetrics/);

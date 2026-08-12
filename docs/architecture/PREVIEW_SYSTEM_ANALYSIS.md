@@ -169,6 +169,17 @@ Native-scale preview keeps the generated image transform authoritative. The
 override changes neither image bounds nor parallax inputs; it is a
 scaled-iframe rasterization rule, not part of the invitation render contract.
 
+The same scaled-iframe boundary owns one narrower SVG raster correction for
+section dividers. On the embedded mobile mockups only, a generated `bottom`
+divider extends its SVG paint height by one logical pixel while its existing
+divider container and section continue to clip it. This keeps the path's closed
+bottom edge outside Chromium's fractional layout-zoom sample and avoids a
+full-width blended row at the section junction. It does not move or overlap
+sections, change divider paths, affect native-scale/fullscreen or desktop
+preview, or alter generated/published HTML. `top` dividers need no equivalent
+correction because the following section owns and paints that junction from the
+same side as its background.
+
 ## 6. Mobile Preview Parity Mode
 
 Mobile preview parity mode is the default.

@@ -160,6 +160,10 @@ Required assertions:
 - at non-native scale, background-image placement uses the same generated
   position/parallax variables through `left`/`top` and avoids a second
   transformed image layer; native scale retains the generated transform
+- scaled embedded mobile mockups keep a generated `bottom` wave's closed SVG
+  edge outside the fractional raster sample by extending only its internal
+  paint height; the existing divider/section clips remain authoritative, and
+  `top`, native-scale/fullscreen, desktop, and publish output remain unchanged
 - the generated preview and publish documents are measured before shell scaling
   and remain geometrically equivalent
 - published HTML remains byte-shape compatible because the correction is owned

@@ -10,6 +10,8 @@ import {
 } from "./previewPublishMobileGeometryParity.mjs";
 import {
   buildPreviewFrameSrcDoc,
+  buildScrollbarStyleText,
+  PREVIEW_FRAME_SCROLL_AUTHORITIES,
 } from "../src/components/preview/previewFrameRuntime.js";
 
 const NOIR_SECTION_JUNCTION_FIXTURE = Object.freeze([
@@ -214,6 +216,14 @@ test(
       { scale: 0.53, devicePixelRatio: 2 },
       { scale: 0.9, devicePixelRatio: 2 },
     ];
+    const waveScaleCases = [
+      { scale: 0.32, devicePixelRatio: 1 },
+      { scale: 0.32, devicePixelRatio: 2 },
+      { scale: 0.53, devicePixelRatio: 1 },
+      { scale: 0.53, devicePixelRatio: 2 },
+      { scale: 0.9, devicePixelRatio: 1 },
+      { scale: 0.9, devicePixelRatio: 2 },
+    ];
     const junctionCases = [
       {
         id: "noir-consecutive-dark",
@@ -267,6 +277,53 @@ test(
         expectedMaxChannel: null,
       },
     ];
+    const waveJunctionCases = [
+      "wave-soft",
+      "wave-wide",
+      "wave-double",
+      "wave-asymmetric",
+    ].flatMap((presetId) =>
+      ["top", "bottom", "both"].map((placement) => ({
+        id: `${presetId}-${placement}`,
+        presetId,
+        placement,
+        boundaryIndex: 0,
+        expectedBoundaryRgb:
+          placement === "bottom" ? [38, 53, 111] : [246, 209, 231],
+        sections: [
+          {
+            id: "wave-first",
+            orden: 0,
+            altoModo: "fijo",
+            altura: 503,
+            fondo: "#f6d1e7",
+            divisores: {
+              top: "none",
+              bottom:
+                placement === "bottom" || placement === "both"
+                  ? presetId
+                  : "none",
+              height: 84,
+            },
+          },
+          {
+            id: "wave-second",
+            orden: 1,
+            altoModo: "fijo",
+            altura: 497,
+            fondo: "#26356f",
+            divisores: {
+              top:
+                placement === "top" || placement === "both"
+                  ? presetId
+                  : "none",
+              bottom: "none",
+              height: 68,
+            },
+          },
+        ],
+      }))
+    );
 
     async function settleInvitation(target) {
       await target.evaluate(async () => {
@@ -334,7 +391,72 @@ test(
       return maxChannel;
     }
 
-    async function capturePublish(html, viewport, devicePixelRatio, boundaryIndex) {
+    async function readJunctionBandDeviation({
+      page,
+      boundaryY,
+      viewportWidth,
+      scale,
+      devicePixelRatio,
+      expectedRgb,
+      offset = 0,
+    }) {
+      const screenshot = await page.screenshot({ type: "png" });
+      const { data, info } = await sharp(screenshot)
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const startX = Math.max(
+        0,
+        Math.ceil((offset + 4 * scale) * devicePixelRatio)
+      );
+      const endX = Math.min(
+        info.width - 1,
+        Math.floor(
+          (offset + (viewportWidth - 4) * scale) * devicePixelRatio
+        )
+      );
+      const boundaryPhysicalY =
+        (offset + boundaryY * scale) * devicePixelRatio;
+      let maxUnexpectedCoverageRatio = 0;
+      let maxChannelDeviation = 0;
+
+      for (
+        let y = Math.floor(boundaryPhysicalY) - 1;
+        y <= Math.ceil(boundaryPhysicalY) + 1;
+        y += 1
+      ) {
+        let unexpectedPixels = 0;
+        let rowPixels = 0;
+        for (let x = startX; x <= endX; x += 1) {
+          const index = (y * info.width + x) * info.channels;
+          const deviation = Math.max(
+            Math.abs(data[index] - expectedRgb[0]),
+            Math.abs(data[index + 1] - expectedRgb[1]),
+            Math.abs(data[index + 2] - expectedRgb[2])
+          );
+          maxChannelDeviation = Math.max(maxChannelDeviation, deviation);
+          if (deviation > 8) unexpectedPixels += 1;
+          rowPixels += 1;
+        }
+        maxUnexpectedCoverageRatio = Math.max(
+          maxUnexpectedCoverageRatio,
+          rowPixels > 0 ? unexpectedPixels / rowPixels : 0
+        );
+      }
+
+      return {
+        maxChannelDeviation,
+        maxUnexpectedCoverageRatio,
+      };
+    }
+
+    async function capturePublish(
+      html,
+      viewport,
+      devicePixelRatio,
+      boundaryIndex,
+      expectedBoundaryRgb = null
+    ) {
       const page = await browser.newPage();
       await page.setViewport({
         width: viewport.width,
@@ -371,15 +493,26 @@ test(
         scale: 1,
         devicePixelRatio,
       });
+      const boundaryBand = expectedBoundaryRgb
+        ? await readJunctionBandDeviation({
+            page,
+            boundaryY: boundaryBottom - scrollTop,
+            viewportWidth: viewport.width,
+            scale: 1,
+            devicePixelRatio,
+            expectedRgb: expectedBoundaryRgb,
+          })
+        : null;
       await page.close();
-      return { maxChannel, snapshot };
+      return { boundaryBand, maxChannel, snapshot };
     }
 
     async function capturePreview(
       html,
       viewport,
       { scale, devicePixelRatio },
-      boundaryIndex
+      boundaryIndex,
+      expectedBoundaryRgb = null
     ) {
       const page = await browser.newPage();
       const offset = 8;
@@ -409,25 +542,25 @@ test(
         { waitUntil: "domcontentloaded" }
       );
 
+      const isMobilePreview = viewport.previewViewport === "mobile";
+      const scrollAuthority = isMobilePreview
+        ? PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY
+        : PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT;
       let srcDoc = buildPreviewFrameSrcDoc(html, {
         previewViewport: viewport.previewViewport,
         layoutMode: "parity",
+        previewSurface: isMobilePreview
+          ? "mobile-preview-paired"
+          : "desktop-preview-paired",
+        scrollAuthority,
+      });
+      const previewRuntimeStyle = buildScrollbarStyleText({
+        parityMobileScrollRoot: isMobilePreview,
+        scrollAuthority,
       });
       srcDoc = srcDoc.replace(
         /<\/head>/i,
-        `<style>
-          html[data-preview-raster-scale="scaled"] .sec-bg-image{
-            left:var(--bg-image-left,0px);
-            top:var(--bg-image-top,0px);
-            transform:none;
-            will-change:auto;
-          }
-          html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="soft"] .sec-bg-image,
-          html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="dynamic"] .sec-bg-image{
-            translate:0 var(--bg-parallax-y,0px);
-            will-change:translate;
-          }
-        </style></head>`
+        `<style>${previewRuntimeStyle}</style></head>`
       );
 
       await page.$eval("#preview", (iframe, value) => {
@@ -457,20 +590,37 @@ test(
       const boundaryBottom = Number(
         snapshot.sections?.[boundaryIndex]?.rect?.bottom || 0
       );
-      const maxScroll = await frame.evaluate(
-        () =>
-          Math.max(
-            0,
-            Number(document.documentElement.scrollHeight || 0) -
-              Number(window.innerHeight || 0)
-          )
-      );
+      const maxScroll = await frame.evaluate(() => {
+        const root =
+          document.documentElement?.getAttribute(
+            "data-preview-scroll-authority"
+          ) === "body"
+            ? document.body
+            : document.scrollingElement ||
+              document.documentElement ||
+              document.body;
+        return Math.max(
+          0,
+          Number(root?.scrollHeight || 0) -
+            Number(root?.clientHeight || window.innerHeight || 0)
+        );
+      });
       const requestedScroll = Math.max(
         0,
         Math.min(maxScroll, boundaryBottom - viewport.height / 2)
       );
-      await frame.evaluate((top) => window.scrollTo(0, top), requestedScroll);
-      const scrollTop = await frame.evaluate(() => window.scrollY || 0);
+      const scrollTop = await frame.evaluate((top) => {
+        const root =
+          document.documentElement?.getAttribute(
+            "data-preview-scroll-authority"
+          ) === "body"
+            ? document.body
+            : document.scrollingElement ||
+              document.documentElement ||
+              document.body;
+        if (root) root.scrollTop = top;
+        return Number(root?.scrollTop || 0);
+      }, requestedScroll);
       const maxChannel = await readJunctionMaxChannel({
         page,
         boundaryY: boundaryBottom - scrollTop,
@@ -479,8 +629,19 @@ test(
         devicePixelRatio,
         offset,
       });
+      const boundaryBand = expectedBoundaryRgb
+        ? await readJunctionBandDeviation({
+            page,
+            boundaryY: boundaryBottom - scrollTop,
+            viewportWidth: viewport.width,
+            scale,
+            devicePixelRatio,
+            expectedRgb: expectedBoundaryRgb,
+            offset,
+          })
+        : null;
       await page.close();
-      return { maxChannel, snapshot };
+      return { boundaryBand, maxChannel, snapshot };
     }
 
     for (const fixture of junctionCases) {
@@ -536,6 +697,63 @@ test(
               `${fixture.id} ${viewport.id} scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}: junction max ${preview.maxChannel}, allowed ${allowedMax}`
             );
           }
+        }
+      });
+    }
+
+    const mobileViewport = viewports.find(
+      (viewport) => viewport.previewViewport === "mobile"
+    );
+    assert.ok(mobileViewport);
+
+    for (const fixture of waveJunctionCases) {
+      await t.test(`wave-${fixture.id}`, async () => {
+        const prepared = await prepareRenderPayload({
+          secciones: fixture.sections,
+          objetos: [],
+        });
+        const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+          slug: `${fixture.id}-preview`,
+          isPreview: true,
+        });
+        const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+          slug: `${fixture.id}-publish`,
+        });
+        const publishByDpr = new Map();
+
+        for (const devicePixelRatio of [1, 2]) {
+          const publish = await capturePublish(
+            publishHtml,
+            mobileViewport,
+            devicePixelRatio,
+            fixture.boundaryIndex,
+            fixture.expectedBoundaryRgb
+          );
+          assert.ok(
+            publish.boundaryBand.maxUnexpectedCoverageRatio <= 0.01,
+            `${fixture.id} publish dpr=${devicePixelRatio}: unexpected full-width boundary coverage ${publish.boundaryBand.maxUnexpectedCoverageRatio}, max channel deviation ${publish.boundaryBand.maxChannelDeviation}`
+          );
+          publishByDpr.set(devicePixelRatio, publish);
+        }
+
+        for (const scaleCase of waveScaleCases) {
+          const preview = await capturePreview(
+            previewHtml,
+            mobileViewport,
+            scaleCase,
+            fixture.boundaryIndex,
+            fixture.expectedBoundaryRgb
+          );
+          const publish = publishByDpr.get(scaleCase.devicePixelRatio);
+          assert.deepEqual(
+            diffMobileGeometrySnapshots(preview.snapshot, publish.snapshot),
+            [],
+            `${fixture.id} mobile scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}`
+          );
+          assert.ok(
+            preview.boundaryBand.maxUnexpectedCoverageRatio < 0.5,
+            `${fixture.id} mobile scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}: unexpected full-width boundary coverage ${preview.boundaryBand.maxUnexpectedCoverageRatio}, publish ${publish.boundaryBand.maxUnexpectedCoverageRatio}, max channel deviation ${preview.boundaryBand.maxChannelDeviation}`
+          );
         }
       });
     }

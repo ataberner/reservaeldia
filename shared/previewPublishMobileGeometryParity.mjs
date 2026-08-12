@@ -108,6 +108,8 @@ export function collectMobileGeometrySnapshotFromDocument() {
 
   const root = document.documentElement;
   const body = document.body;
+  const scrollRoot =
+    pickDataset(root, "previewScrollAuthority") === "body" ? body : root;
   const sections = Array.from(document.querySelectorAll(".sec")).map((section, index) => {
     const content = section.querySelector(".sec-content");
     const bleed = section.querySelector(".sec-bleed");
@@ -190,7 +192,11 @@ export function collectMobileGeometrySnapshotFromDocument() {
       innerHeight: Math.round(Number(window.innerHeight || 0) * 100) / 100,
       visualViewportWidth: Math.round(Number(window.visualViewport?.width || 0) * 100) / 100,
       visualViewportHeight: Math.round(Number(window.visualViewport?.height || 0) * 100) / 100,
-      scrollHeight: Math.round(Number(root?.scrollHeight || body?.scrollHeight || 0) * 100) / 100,
+      scrollHeight:
+        Math.round(
+          Number(scrollRoot?.scrollHeight || root?.scrollHeight || body?.scrollHeight || 0) *
+            100
+        ) / 100,
       previewViewport: pickDataset(root, "previewViewport") || pickDataset(body, "previewViewport"),
       previewLayoutMode:
         pickDataset(root, "previewLayoutMode") || pickDataset(body, "previewLayoutMode"),

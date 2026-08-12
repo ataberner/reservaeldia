@@ -388,6 +388,14 @@ test("parity preview frame scale keeps the mobile iframe document scrollable", (
     stub.children[0].textContent,
     /top: calc\(var\(--bg-image-top, 0px\) \+ var\(--bg-parallax-y, 0px\)\)/
   );
+  assert.match(
+    stub.children[0].textContent,
+    /data-preview-raster-scale="scaled"[^}]*data-preview-viewport="mobile"[^}]*data-preview-surface="mobile-preview-paired"[^}]*\.sec-divider--bottom svg[\s\S]*height: calc\(100% \+ 1px\);/
+  );
+  assert.doesNotMatch(
+    stub.children[0].textContent,
+    /data-preview-viewport="desktop"[^}]*\.sec-divider--bottom svg/
+  );
   assert.deepEqual(stub.frameWindow.events, ["preview:mobile-scroll:enable", "resize"]);
 });
 
@@ -403,6 +411,10 @@ test("native-scale preview leaves generated image transforms authoritative", () 
   assert.doesNotMatch(
     stub.children[0].textContent,
     /html\[data-preview-raster-scale="native"\] \.sec-bg-image/
+  );
+  assert.doesNotMatch(
+    stub.children[0].textContent,
+    /data-preview-raster-scale="native"[^}]*\.sec-divider--bottom svg/
   );
 });
 

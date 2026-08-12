@@ -554,7 +554,7 @@ function applyParityMobileScrollRootStyles(
   frameDocument.body.style.overflowY = "visible";
 }
 
-function buildScrollbarStyleText({
+export function buildScrollbarStyleText({
   legacyMobileLayout = false,
   parityMobileScrollRoot = false,
   scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
@@ -638,6 +638,11 @@ function buildScrollbarStyleText({
         html[data-preview-raster-scale="scaled"] .sec[data-decor-parallax="dynamic"] .sec-bg-image {
           translate: 0 var(--bg-parallax-y, 0px);
           will-change: translate;
+        }
+        /* Keep the closed bottom path outside Chromium's fractional zoom sample. */
+        html[data-preview-raster-scale="scaled"][data-preview-viewport="mobile"][data-preview-layout-mode="parity"][data-preview-surface="mobile-preview-focused"] .sec-divider--bottom svg,
+        html[data-preview-raster-scale="scaled"][data-preview-viewport="mobile"][data-preview-layout-mode="parity"][data-preview-surface="mobile-preview-paired"] .sec-divider--bottom svg {
+          height: calc(100% + 1px);
         }
         html::-webkit-scrollbar,
         body::-webkit-scrollbar {

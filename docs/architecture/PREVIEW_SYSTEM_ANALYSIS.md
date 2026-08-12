@@ -125,6 +125,9 @@ Loading presentation has one shell authority per visible mockup:
 - the shell loading wrapper establishes `contain: layout paint`, so the shared
   presentation's published-page `position: fixed` loader is contained by the
   mockup from its first visible render and cannot cover the dashboard viewport
+- the desktop overlap wrapper establishes its own stacking context and the
+  mobile overlap wrapper is explicitly above it, so the desktop heart loader's
+  local `z-index` cannot paint over or cut the mobile mockup outline
 
 The generated loader remains part of the generated invitation contract. Inside
 the modal it is a readiness producer rather than a second visible loading

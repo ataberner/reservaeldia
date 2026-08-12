@@ -67,6 +67,17 @@ test("the shared fixed heart loader is contained by its preview frame from the f
   assert.doesNotMatch(loadingPresentationSource, /transform:\s*["'`]scale/);
 });
 
+test("the overlapping mobile mockup stays above the isolated desktop loader layer", () => {
+  assert.match(
+    modalSource,
+    /className="absolute left-0 top-0 isolate z-0">\s*\{desktopPreview\}/
+  );
+  assert.match(
+    modalSource,
+    /className="absolute isolate z-10"\s+style=\{\{ left: layout\.mobileLeft, top: layout\.mobileTop \}\}/
+  );
+});
+
 test("scaled preview mockups use layout zoom without changing the logical viewport", () => {
   assert.match(modalSource, /zoom: scale/);
   assert.doesNotMatch(modalSource, /transform: `scale\(\$\{scale\}\)`/);

@@ -1309,9 +1309,11 @@ export default function ModalVistaPrevia({
               >
                 <div className="relative" style={{ width: layout.sceneWidth, height: layout.sceneHeight }}>
                   <div className="absolute -inset-8 rounded-[48px] bg-[radial-gradient(circle_at_22%_22%,rgba(235,220,255,0.56),rgba(255,255,255,0)_54%),radial-gradient(circle_at_86%_82%,rgba(217,233,255,0.48),rgba(255,255,255,0)_52%)] blur-3xl" />
-                  <div className="absolute left-0 top-0">{desktopPreview}</div>
+                  <div className="absolute left-0 top-0 isolate z-0">
+                    {desktopPreview}
+                  </div>
                   <div
-                    className="absolute"
+                    className="absolute isolate z-10"
                     style={{ left: layout.mobileLeft, top: layout.mobileTop }}
                   >
                     {mobilePreview}

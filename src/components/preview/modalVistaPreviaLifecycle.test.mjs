@@ -76,16 +76,27 @@ test("scaled preview mockups use layout zoom without changing the logical viewpo
   );
 });
 
-test("only mobile-preview-focused requests body scroll authority", () => {
+test("only embedded mobile mockups request body scroll authority", () => {
   const bodyAuthorityMatches = modalSource.match(
     /scrollAuthority=\{PREVIEW_FRAME_SCROLL_AUTHORITIES\.BODY\}/g
   );
-  assert.equal(bodyAuthorityMatches?.length, 1);
+  assert.equal(bodyAuthorityMatches?.length, 2);
+  assert.match(
+    modalSource,
+    /previewSurface="mobile-preview-paired"\s+scrollAuthority=\{PREVIEW_FRAME_SCROLL_AUTHORITIES\.BODY\}/
+  );
   assert.match(
     modalSource,
     /previewSurface="mobile-preview-focused"\s+scrollAuthority=\{PREVIEW_FRAME_SCROLL_AUTHORITIES\.BODY\}/
   );
-  assert.doesNotMatch(modalSource, /mobile-preview-paired[\s\S]{0,200}SCROLL_AUTHORITIES\.BODY/);
+  assert.doesNotMatch(
+    modalSource,
+    /<DesktopPreviewShell[\s\S]{0,500}scrollAuthority=\{PREVIEW_FRAME_SCROLL_AUTHORITIES\.BODY\}/
+  );
+  assert.doesNotMatch(
+    modalSource,
+    /previewSurface=\{`fullscreen-\$\{fullscreenViewport\}`\}[\s\S]{0,300}scrollAuthority=\{PREVIEW_FRAME_SCROLL_AUTHORITIES\.BODY\}/
+  );
   assert.doesNotMatch(modalSource, /Copiar logs/);
   assert.doesNotMatch(modalSource, /previewScrollAB/);
   assert.doesNotMatch(modalSource, /setIframeKey/);

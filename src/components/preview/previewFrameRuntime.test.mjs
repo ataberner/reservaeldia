@@ -185,44 +185,50 @@ test("preview frame timing drains early runtime events and cleans its listener",
   );
 });
 
-test("focused mobile srcDoc installs body authority after generated CSS and adapts root lookup", () => {
+test("embedded mobile srcDocs install body authority after generated CSS and adapt root lookup", () => {
   const html =
     '<!doctype html><html><head><style data-runtime="generated">body{overflow-y:auto}</style></head>' +
     '<body><script>window.__previewMobileScrollAuthority = "document.scrollingElement";' +
     "function go(){var scrollRoot = document.scrollingElement || document.documentElement || document.body || null;return scrollRoot;}</script>" +
     "<main></main></body></html>";
-  const srcDoc = buildPreviewFrameSrcDoc(html, {
-    previewViewport: "mobile",
-    layoutMode: "parity",
-    previewSurface: "mobile-preview-focused",
-    scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
-  });
 
-  const generatedCssIndex = srcDoc.indexOf('data-runtime="generated"');
-  const contractIndex = srcDoc.indexOf('id="preview-focused-body-scroll-authority"');
-  assert.ok(generatedCssIndex >= 0);
-  assert.ok(contractIndex > generatedCssIndex);
-  assert.match(srcDoc, /data-preview-surface="mobile-preview-focused"/);
-  assert.match(srcDoc, /data-preview-scroll-authority="body"/);
-  assert.match(srcDoc, /<html[^>]*style="[^"]*overflow-y:hidden/);
-  assert.match(srcDoc, /<body[^>]*style="[^"]*overflow-y:auto/);
-  assert.match(srcDoc, /html[^}]*overflow-y: hidden !important/s);
-  assert.match(srcDoc, /body[^}]*overflow-y: auto/s);
-  assert.match(srcDoc, /__previewMobileScrollAuthority = "body"/);
-  assert.match(srcDoc, /window\.__resolvePreviewScrollRoot\(\)/);
-  assert.doesNotMatch(srcDoc, /__previewMobileScrollAuthority = "document\.scrollingElement"/);
+  for (const previewSurface of [
+    "mobile-preview-focused",
+    "mobile-preview-paired",
+  ]) {
+    const srcDoc = buildPreviewFrameSrcDoc(html, {
+      previewViewport: "mobile",
+      layoutMode: "parity",
+      previewSurface,
+      scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
+    });
+
+    const generatedCssIndex = srcDoc.indexOf('data-runtime="generated"');
+    const contractIndex = srcDoc.indexOf('id="preview-mobile-body-scroll-authority"');
+    assert.ok(generatedCssIndex >= 0);
+    assert.ok(contractIndex > generatedCssIndex);
+    assert.match(srcDoc, new RegExp(`data-preview-surface="${previewSurface}"`));
+    assert.match(srcDoc, /data-preview-scroll-authority="body"/);
+    assert.match(srcDoc, /<html[^>]*style="[^"]*overflow-y:hidden/);
+    assert.match(srcDoc, /<body[^>]*style="[^"]*overflow-y:auto/);
+    assert.match(srcDoc, /html[^}]*overflow-y: hidden !important/s);
+    assert.match(srcDoc, /body[^}]*overflow-y: auto/s);
+    assert.match(srcDoc, /__previewMobileScrollAuthority = "body"/);
+    assert.match(srcDoc, /window\.__resolvePreviewScrollRoot\(\)/);
+    assert.doesNotMatch(srcDoc, /__previewMobileScrollAuthority = "document\.scrollingElement"/);
+  }
 });
 
-test("non-focused srcDoc does not receive the body-root contract", () => {
+test("non-embedded mobile srcDoc does not receive the body-root contract", () => {
   const html = "<!doctype html><html><head></head><body></body></html>";
   const srcDoc = buildPreviewFrameSrcDoc(html, {
     previewViewport: "mobile",
     layoutMode: "parity",
-    previewSurface: "mobile-preview-paired",
+    previewSurface: "fullscreen-mobile",
     scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
   });
 
-  assert.doesNotMatch(srcDoc, /preview-focused-body-scroll-authority/);
+  assert.doesNotMatch(srcDoc, /preview-mobile-body-scroll-authority/);
   assert.doesNotMatch(srcDoc, /data-preview-scroll-authority="body"/);
 });
 
@@ -434,7 +440,7 @@ test("preview scale preserves native scroll positions without gesture listeners 
 
   applyPreviewFrameScale(mobile.event, 0.5, "mobile", {
     layoutMode: "parity",
-    previewSurface: "mobile-preview-focused",
+    previewSurface: "mobile-preview-paired",
     scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
   });
 
@@ -449,38 +455,43 @@ test("preview scale preserves native scroll positions without gesture listeners 
   assert.equal(mobile.children.length, 1);
 });
 
-test("body authority is applied only to the focused parity mobile surface", () => {
-  const stub = createFrameStub();
+test("body authority is applied only to embedded parity mobile surfaces", () => {
+  for (const previewSurface of [
+    "mobile-preview-focused",
+    "mobile-preview-paired",
+  ]) {
+    const stub = createFrameStub();
 
-  applyPreviewFrameScale(stub.event, 0.5, "mobile", {
-    layoutMode: "parity",
-    previewSurface: "mobile-preview-focused",
-    scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
-  });
+    applyPreviewFrameScale(stub.event, 0.5, "mobile", {
+      layoutMode: "parity",
+      previewSurface,
+      scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
+    });
 
-  assert.equal(stub.frameDocument.documentElement.style.height, "100%");
-  assert.equal(stub.frameDocument.documentElement.style.overflowY, "hidden");
-  assert.equal(stub.frameDocument.documentElement.scrollTop, 0);
-  assert.equal(stub.frameDocument.body.style.height, "100%");
-  assert.equal(stub.frameDocument.body.style.overflowY, "auto");
-  assert.equal(
-    stub.frameDocument.documentElement.attributes["data-preview-scroll-authority"],
-    "body"
-  );
-  assert.equal(stub.frameDocument.body.attributes["data-preview-scroll-authority"], "body");
-  assert.equal(stub.frameWindow.__previewMobileScrollAuthority, "body");
-  assert.equal(stub.frameWindow.__resolvePreviewScrollRoot(), stub.frameDocument.body);
-  assert.match(stub.children[0].textContent, /overflow-y: hidden !important/);
-  assert.match(stub.children[0].textContent, /overflow-y: auto;/);
-  assert.match(stub.children[0].textContent, /#modal-rsvp/);
+    assert.equal(stub.frameDocument.documentElement.style.height, "100%");
+    assert.equal(stub.frameDocument.documentElement.style.overflowY, "hidden");
+    assert.equal(stub.frameDocument.documentElement.scrollTop, 0);
+    assert.equal(stub.frameDocument.body.style.height, "100%");
+    assert.equal(stub.frameDocument.body.style.overflowY, "auto");
+    assert.equal(
+      stub.frameDocument.documentElement.attributes["data-preview-scroll-authority"],
+      "body"
+    );
+    assert.equal(stub.frameDocument.body.attributes["data-preview-scroll-authority"], "body");
+    assert.equal(stub.frameWindow.__previewMobileScrollAuthority, "body");
+    assert.equal(stub.frameWindow.__resolvePreviewScrollRoot(), stub.frameDocument.body);
+    assert.match(stub.children[0].textContent, /overflow-y: hidden !important/);
+    assert.match(stub.children[0].textContent, /overflow-y: auto;/);
+    assert.match(stub.children[0].textContent, /#modal-rsvp/);
+  }
 });
 
-test("body authority request is ignored outside mobile-preview-focused", () => {
+test("body authority request is ignored outside embedded mobile mockups", () => {
   const stub = createFrameStub();
 
   applyPreviewFrameScale(stub.event, 0.5, "mobile", {
     layoutMode: "parity",
-    previewSurface: "mobile-preview-paired",
+    previewSurface: "fullscreen-mobile",
     scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
   });
 

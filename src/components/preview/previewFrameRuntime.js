@@ -99,6 +99,14 @@ function normalizeScrollAuthority(value = "") {
     : PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT;
 }
 
+function supportsMobileBodyScrollAuthority(value = "") {
+  const surface = String(value || "").trim().toLowerCase();
+  return (
+    surface === "mobile-preview-focused" ||
+    surface === "mobile-preview-paired"
+  );
+}
+
 function adaptGeneratedPreviewScrollRoot(html) {
   return String(html || "")
     .replace(
@@ -118,10 +126,10 @@ function adaptGeneratedPreviewScrollRoot(html) {
     );
 }
 
-function injectFocusedBodyScrollContract(html) {
+function injectMobileBodyScrollContract(html) {
   const contract = `
-<style id="preview-focused-body-scroll-authority">
-  html[data-preview-surface="mobile-preview-focused"][data-preview-scroll-authority="body"] {
+<style id="preview-mobile-body-scroll-authority">
+  html[data-preview-viewport="mobile"][data-preview-layout-mode="parity"][data-preview-scroll-authority="body"] {
     height: 100% !important;
     min-height: 0 !important;
     overflow-x: hidden !important;
@@ -130,7 +138,7 @@ function injectFocusedBodyScrollContract(html) {
     overscroll-behavior-y: none !important;
     scroll-behavior: auto !important;
   }
-  body[data-preview-surface="mobile-preview-focused"][data-preview-scroll-authority="body"] {
+  body[data-preview-viewport="mobile"][data-preview-layout-mode="parity"][data-preview-scroll-authority="body"] {
     height: 100%;
     min-height: 100%;
     overflow-x: hidden;
@@ -138,7 +146,7 @@ function injectFocusedBodyScrollContract(html) {
     overscroll-behavior: contain;
     overscroll-behavior-y: contain;
   }
-  body[data-preview-surface="mobile-preview-focused"][data-preview-scroll-authority="body"]:has(#modal-rsvp[style*="display: flex"]) {
+  body[data-preview-scroll-authority="body"]:has(#modal-rsvp[style*="display: flex"]) {
     overflow-y: hidden !important;
   }
 </style>
@@ -311,13 +319,13 @@ export function buildPreviewFrameSrcDoc(
     next = injectDataAttribute(next, "body", "data-preview-surface", surfaceValue);
   }
 
-  const focusedBodyAuthority =
+  const mobileBodyAuthority =
     viewportValue === "mobile" &&
     modeValue === PREVIEW_FRAME_LAYOUT_MODES.PARITY &&
-    surfaceValue === "mobile-preview-focused" &&
+    supportsMobileBodyScrollAuthority(surfaceValue) &&
     authorityValue === PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY;
 
-  if (focusedBodyAuthority) {
+  if (mobileBodyAuthority) {
     next = injectDataAttribute(next, "html", "data-preview-scroll-authority", "body");
     next = injectDataAttribute(next, "body", "data-preview-scroll-authority", "body");
     next = injectInlineStyle(
@@ -330,7 +338,7 @@ export function buildPreviewFrameSrcDoc(
       "body",
       "height:100%;min-height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain"
     );
-    next = injectFocusedBodyScrollContract(next);
+    next = injectMobileBodyScrollContract(next);
   }
 
   if (timingSessionId) {
@@ -594,7 +602,7 @@ function buildScrollbarStyleText({
           overscroll-behavior: contain;
           overscroll-behavior-y: contain;
         }
-        body[data-preview-surface="mobile-preview-focused"][data-preview-scroll-authority="body"]:has(#modal-rsvp[style*="display: flex"]) {
+        body[data-preview-scroll-authority="body"]:has(#modal-rsvp[style*="display: flex"]) {
           overflow-y: hidden !important;
         }
       `
@@ -676,9 +684,9 @@ export function applyPreviewFrameScale(
     viewportValue === "mobile" &&
     resolvedLayoutMode === PREVIEW_FRAME_LAYOUT_MODES.PARITY;
   const resolvedScrollAuthority = normalizeScrollAuthority(scrollAuthority);
-  const focusedBodyAuthority =
+  const mobileBodyAuthority =
     parityMobileScrollRoot &&
-    String(previewSurface || "").trim().toLowerCase() === "mobile-preview-focused" &&
+    supportsMobileBodyScrollAuthority(previewSurface) &&
     resolvedScrollAuthority === PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY;
 
   frameDocument.documentElement?.setAttribute?.("data-preview-scale", scaleValue);
@@ -699,7 +707,7 @@ export function applyPreviewFrameScale(
     frameDocument.documentElement?.setAttribute?.("data-preview-surface", previewSurface);
     frameDocument.body?.setAttribute?.("data-preview-surface", previewSurface);
   }
-  if (focusedBodyAuthority) {
+  if (mobileBodyAuthority) {
     frameDocument.documentElement?.setAttribute?.("data-preview-scroll-authority", "body");
     frameDocument.body?.setAttribute?.("data-preview-scroll-authority", "body");
   }
@@ -715,7 +723,7 @@ export function applyPreviewFrameScale(
       applyLegacyMobileLayoutStyles(frameDocument);
     } else if (parityMobileScrollRoot) {
       applyParityMobileScrollRootStyles(frameDocument, {
-        scrollAuthority: focusedBodyAuthority
+        scrollAuthority: mobileBodyAuthority
           ? PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY
           : PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
       });
@@ -723,7 +731,7 @@ export function applyPreviewFrameScale(
     ensurePreviewFrameStyle(frameDocument, {
       legacyMobileLayout,
       parityMobileScrollRoot,
-      scrollAuthority: focusedBodyAuthority
+      scrollAuthority: mobileBodyAuthority
         ? PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY
         : PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
     });
@@ -736,14 +744,14 @@ export function applyPreviewFrameScale(
       frameWindow.__previewScale = safeScale;
       frameWindow.__previewViewportKind = viewportValue;
       frameWindow.__previewLayoutMode = resolvedLayoutMode;
-      if (focusedBodyAuthority) {
+      if (mobileBodyAuthority) {
         frameWindow.__previewMobileScrollAuthority = "body";
         frameWindow.__resolvePreviewScrollRoot = () => frameDocument.body || null;
       }
       if (dispatchMobileScrollEvent !== false) {
         frameWindow.dispatchEvent(new frameWindow.Event("preview:mobile-scroll:enable"));
       }
-      if (focusedBodyAuthority) {
+      if (mobileBodyAuthority) {
         frameWindow.__previewMobileScrollAuthority = "body";
       }
     }

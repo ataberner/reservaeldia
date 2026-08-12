@@ -1004,6 +1004,8 @@ export default function ModalVistaPrevia({
       variant={mobileVariant}
       onLoad={handleMobileLoad}
       announceLoading={false}
+      previewSurface="mobile-preview-paired"
+      scrollAuthority={PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY}
       previewTimingSessionId={previewTimingSessionId}
       timingSurface="mobile-mockup"
     />

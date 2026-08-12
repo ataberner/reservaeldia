@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-07-26.
+> Updated from code inspection on 2026-08-12.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -189,7 +189,8 @@ Parity mode means preview tries to match published mobile behavior. It does not 
 
 ## 7. Mobile Scroll Ownership
 
-The focused mobile mockup (`mobile-preview-focused`) uses `<body>` as its only
+The embedded mobile mockups (`mobile-preview-focused` on a mobile dashboard
+viewport and `mobile-preview-paired` beside desktop) use `<body>` as their only
 effective scroll authority:
 
 - `<html>` is a fixed-height viewport with `overflow-y:hidden`
@@ -200,9 +201,9 @@ effective scroll authority:
 This exception is owned by `buildPreviewFrameSrcDoc(...)` and
 `applyPreviewFrameScale(...)` in the frontend iframe shell. It is enabled only
 when the viewport is mobile, layout mode is parity, the surface is
-`mobile-preview-focused`, and the requested authority is `body`. Paired mobile
-preview, fullscreen preview, desktop preview, published HTML, share-image
-rendering, and dashboard captures retain their existing contracts.
+`mobile-preview-focused` or `mobile-preview-paired`, and the requested
+authority is `body`. Fullscreen preview, desktop preview, published HTML,
+share-image rendering, and dashboard captures retain their existing contracts.
 
 Physical Android 15 / Chrome 150 A/B evidence established the cause on
 2026-07-22: variants with both `<html>` and `<body>` effectively scrollable
@@ -215,15 +216,15 @@ surfaces, not iframe scaling.
 
 The generated preview-only mobile marker still performs no input handling. It
 does not intercept touch, pointer, wheel, or scroll events and never converts
-input into `scrollTop`, `scrollTo`, or `scrollBy` writes. The focused srcDoc
-adapter changes its authority marker to `body` and adapts generated preview
-target scrolling to the explicit effective-root resolver instead of trusting
-`document.scrollingElement` alone.
+input into `scrollTop`, `scrollTo`, or `scrollBy` writes. The embedded mobile
+srcDoc adapter changes its authority marker to `body` and adapts generated
+preview target scrolling to the explicit effective-root resolver instead of
+trusting `document.scrollingElement` alone.
 
 The preview shell itself installs no `wheel`, `touchmove`, `pointermove`, or
 `scroll` handlers in either viewport and performs no root-scroll writes.
-Desktop and paired previews retain the document root; focused mobile retains
-the explicit body root. Generated parallax observes native scroll sources with
+Desktop retains the document root; both embedded mobile mockups retain the
+explicit body root. Generated parallax observes native scroll sources with
 passive listeners and coalesces notifications into one RAF update. The scaled
 preview raster adapter must therefore keep that update compositor-only rather
 than turning `--bg-parallax-y` into a changing layout property.
@@ -237,11 +238,11 @@ Constraints:
 - a delayed or mirrored `body.scrollTop` value must not be treated as a new delta
 - hiding scrollbar chrome is allowed; disabling scroll is not
 - Gallery and gift modals keep using their existing `body` overflow lock and restoration
-- RSVP background locking is declared only by the focused body-root preview contract and preserves the current body position while the modal is open
+- RSVP background locking is declared only by the embedded body-root preview contract and preserves the current body position while the modal is open
 
 Generated base `html` and `body` use `height:auto; min-height:100%`, so the root can
 represent content taller than the viewport in preview and publication. The
-focused mobile shell overrides that base geometry with its body-root contract.
+embedded mobile shell overrides that base geometry with its body-root contract.
 The base section geometry runtime performs its first `compute()` synchronously
 after the generated invitation DOM is present. This establishes fixed-section
 heights and a root scroll range before the document becomes interactable;

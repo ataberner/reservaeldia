@@ -61,7 +61,13 @@ function buildHostHtml({
 function injectGestureTrace(html) {
   const trace = `<script data-native-scroll-test>
     window.__programmaticRootWrites = [];
-    window.__nativeGestureTrace = { touchStart: null, touchEnd: null, firstScroll: null, scrollEvents: 0 };
+    window.__nativeGestureTrace = {
+      touchStart: null,
+      touchEnd: null,
+      firstScroll: null,
+      scrollEvents: 0,
+      wheelEvents: 0
+    };
     var nativeScrollTo = window.scrollTo.bind(window);
     window.scrollTo = function(){
       window.__programmaticRootWrites.push({
@@ -132,6 +138,9 @@ function injectGestureTrace(html) {
         window.__nativeGestureTrace.touchEnd = performance.now();
       }
     }, { capture: true, passive: true });
+    window.addEventListener("wheel", function(){
+      window.__nativeGestureTrace.wheelEvents += 1;
+    }, { capture: true, passive: true });
     window.addEventListener("scroll", recordFirstScroll, { capture: true, passive: true });
     document.addEventListener("DOMContentLoaded", function(){
       document.body.addEventListener("scroll", recordFirstScroll, { passive: true });
@@ -156,10 +165,6 @@ async function dispatchFirstTouchGesture(page) {
   const startY = box.y + box.height * 0.78;
   const endY = box.y + box.height * 0.22;
   const client = await page.createCDPSession();
-  await client.send("Emulation.setTouchEmulationEnabled", {
-    enabled: true,
-    maxTouchPoints: 1,
-  });
   await client.send("Input.dispatchTouchEvent", {
     type: "touchStart",
     touchPoints: [{ x, y: startY }],
@@ -177,10 +182,31 @@ async function dispatchFirstTouchGesture(page) {
     touchPoints: [],
   });
   await wait(180);
+  await client.detach();
+  await wait(240);
+}
+
+async function dispatchTrackpadLikeWheelGesture(page, { deltaY = 18 } = {}) {
+  const frameBox = await page.$eval("#preview", (iframe) => {
+    const rect = iframe.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
+  await page.mouse.move(frameBox.x - 8, frameBox.y - 8);
+  await wait(40);
+  await page.mouse.move(
+    frameBox.x + frameBox.width / 2,
+    frameBox.y + frameBox.height / 2
+  );
+  await wait(40);
+  for (let index = 0; index < 8; index += 1) {
+    await page.mouse.wheel({ deltaY });
+    await wait(16);
+  }
+  await wait(120);
 }
 
 test(
-  "focused zoomed mobile preview keeps touch and wheel on the native body scroll owner",
+  "paired zoomed mobile mockup keeps wheel, touch, and post-touch wheel on the native body scroll owner",
   {
     skip:
       process.env.PREVIEW_MOBILE_NATIVE_SCROLL !== "1"
@@ -196,7 +222,7 @@ test(
     const srcDoc = buildPreviewFrameSrcDoc(generatedHtml, {
       previewViewport: "mobile",
       layoutMode: "parity",
-      previewSurface: "mobile-preview-focused",
+      previewSurface: "mobile-preview-paired",
       scrollAuthority: PREVIEW_FRAME_SCROLL_AUTHORITIES.BODY,
     });
 
@@ -212,11 +238,11 @@ test(
     });
     page.setDefaultTimeout(10_000);
     await page.setViewport({
-      width: 390,
-      height: 844,
-      deviceScaleFactor: 1,
-      isMobile: true,
-      hasTouch: true,
+      width: 1100,
+      height: 760,
+      deviceScaleFactor: 1.5,
+      isMobile: false,
+      hasTouch: false,
     });
     await page.setContent(buildHostHtml(), { waitUntil: "load" });
     await page.$eval("#preview", (iframe, value) => {
@@ -265,6 +291,32 @@ test(
     );
     assert.deepEqual(initial.writes, []);
 
+    await dispatchTrackpadLikeWheelGesture(page);
+    const afterInitialWheel = await frame.evaluate(() => ({
+      htmlScrollTop: document.documentElement.scrollTop,
+      bodyScrollTop: document.body.scrollTop,
+      writes: window.__programmaticRootWrites.slice(),
+      trace: { ...window.__nativeGestureTrace },
+    }));
+    assert.equal(afterInitialWheel.htmlScrollTop, 0);
+    assert.ok(afterInitialWheel.bodyScrollTop > 0, "trackpad-like wheel must move body");
+    assert.ok(afterInitialWheel.trace.wheelEvents > 0, "wheel events must reach the iframe");
+    assert.deepEqual(afterInitialWheel.writes, []);
+
+    await frame.evaluate(() => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      window.__programmaticRootWrites.length = 0;
+      window.__nativeGestureTrace = {
+        touchStart: null,
+        touchEnd: null,
+        firstScroll: null,
+        scrollEvents: 0,
+        wheelEvents: 0,
+      };
+    });
+    await wait(120);
+
     await dispatchFirstTouchGesture(page);
     const afterTouch = await frame.evaluate(() => ({
       htmlScrollTop: document.documentElement.scrollTop,
@@ -285,26 +337,19 @@ test(
       window.__programmaticRootWrites.length = 0;
     });
     const beforeWheel = await frame.evaluate(() => document.body.scrollTop);
-    const frameBox = await page.$eval("#preview", (iframe) => {
-      const rect = iframe.getBoundingClientRect();
-      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-    });
-    await page.mouse.move(
-      frameBox.x + frameBox.width / 2,
-      frameBox.y + frameBox.height / 2
-    );
-    for (let index = 0; index < 8; index += 1) {
-      await page.mouse.wheel({ deltaY: 18 });
-      await wait(16);
-    }
-    await wait(120);
+    await dispatchTrackpadLikeWheelGesture(page, { deltaY: -18 });
     const afterWheel = await frame.evaluate(() => ({
       htmlScrollTop: document.documentElement.scrollTop,
       bodyScrollTop: document.body.scrollTop,
       writes: window.__programmaticRootWrites.slice(),
+      trace: { ...window.__nativeGestureTrace },
     }));
     assert.equal(afterWheel.htmlScrollTop, 0);
-    assert.ok(afterWheel.bodyScrollTop > beforeWheel);
+    assert.ok(
+      afterWheel.bodyScrollTop < beforeWheel,
+      `wheel after touch must keep moving body: ${JSON.stringify({ beforeWheel, afterWheel })}`
+    );
+    assert.ok(afterWheel.trace.wheelEvents > 0, "post-touch wheel must reach the iframe");
     assert.deepEqual(afterWheel.writes, []);
 
     const modalLock = await frame.evaluate(() => {
@@ -348,7 +393,10 @@ test(
       writes: window.__programmaticRootWrites.slice(),
     }));
     assert.equal(afterDelayedLayout.htmlScrollTop, 0);
-    assert.ok(afterDelayedLayout.bodyScrollTop >= afterTouch.bodyScrollTop);
+    assert.ok(
+      Math.abs(afterDelayedLayout.bodyScrollTop - afterWheel.bodyScrollTop) < 2,
+      "deferred layout must not take ownership of the body scroll position"
+    );
     assert.deepEqual(afterDelayedLayout.writes, []);
   }
 );

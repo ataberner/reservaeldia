@@ -39,6 +39,10 @@ import {
   buildInlineEntrySelectionPlan,
 } from "@/components/editor/textSystem/runtime/inlineEntrySelectionMode";
 import {
+  createInlineCanvasRefocusIntent,
+  shouldHonorInlineCanvasRefocus,
+} from "@/components/editor/textSystem/runtime/inlineCanvasRefocusGuard";
+import {
   emitInlineCaretScrollDebugEvent,
   isInlineCaretScrollDebugEnabled,
 } from "@/components/editor/textSystem/debug/inlineCaretScrollDebug";
@@ -306,7 +310,6 @@ function buildCaretTextPreview(text, offset, radius = 12) {
   };
 }
 
-const CANVAS_REFOCUS_BLUR_GUARD_MS = 250;
 const ENTER_VISUAL_CARET_GRACE_MS = 250;
 
 export default function useTextEditInteractionController({
@@ -817,16 +820,15 @@ export default function useTextEditInteractionController({
     );
     const targetId = targetObj?.id || null;
     const isSameEditingTarget = !targetId || targetId === editingId;
+    const placed = focusEditorFromViewportPoint({ clientX, clientY });
     if (isSameEditingTarget) {
-      pendingCanvasRefocusRef.current = {
+      pendingCanvasRefocusRef.current = createInlineCanvasRefocusIntent({
         editingId,
         clientX,
         clientY,
         fallbackBoundary: "end",
-        armedAtMs: Date.now(),
-      };
+      });
     }
-    const placed = focusEditorFromViewportPoint({ clientX, clientY });
     onDebugEvent?.("semantic:canvas-pointer", {
       id: editingId,
       placed,
@@ -926,17 +928,15 @@ export default function useTextEditInteractionController({
 
   const handleBlur = useCallback(() => {
     const pendingCanvasRefocus = pendingCanvasRefocusRef.current;
-    const sameEditingSession =
-      pendingCanvasRefocus?.editingId === editingId;
-    const refocusStillFresh =
-      sameEditingSession &&
-      Number.isFinite(Number(pendingCanvasRefocus?.armedAtMs)) &&
-      Date.now() - Number(pendingCanvasRefocus.armedAtMs) <=
-        CANVAS_REFOCUS_BLUR_GUARD_MS;
+    const refocusStillFresh = shouldHonorInlineCanvasRefocus({
+      pendingRefocus: pendingCanvasRefocus,
+      editingId,
+    });
     if (refocusStillFresh) {
       window.requestAnimationFrame(() => {
         const latestPending = pendingCanvasRefocusRef.current;
-        if (latestPending?.editingId !== editingId) return;
+        if (latestPending !== pendingCanvasRefocus) return;
+        pendingCanvasRefocusRef.current = null;
         focusEditorFromViewportPoint({
           clientX: latestPending.clientX,
           clientY: latestPending.clientY,

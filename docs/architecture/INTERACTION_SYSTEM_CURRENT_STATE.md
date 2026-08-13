@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-07-20.
+> Updated from code inspection on 2026-08-12.
 >
 > Documentation routing corrected on 2026-05-19.
 >
@@ -480,6 +480,15 @@ Current entry path:
 3. `CanvasInlineEditingLayer.jsx` mounts the DOM-side backend for the active text node
 4. `HiddenSemanticTextBackend.jsx` computes projected geometry from the live Konva text node
 
+Current caret reposition path while the same inline session remains active:
+
+1. `ElementoCanvasRenderer.jsx` routes the canvas press to `useTextEditInteractionController.handleCanvasPointer(...)`
+2. the controller resolves a collapsed semantic caret range from the canvas client point
+3. only after that synchronous hit-test completes, the controller arms the short same-session blur/refocus intent
+4. a native blur caused by that same canvas press may consume the intent once; stale intents, newer intents, or a different `editing.id` cannot reclaim focus
+
+The post-hit-test arming order is required because the semantic fallback may inspect every logical text offset when the browser point API resolves the canvas rather than the hidden editor. Hit-test duration, including the higher cost of long multiline content, must not consume the blur/refocus window for the press that is still executing.
+
 Current phase-atomic swap path:
 
 1. `useInlinePhaseAtomicLifecycle.js` enters `prepare_fonts`
@@ -502,6 +511,7 @@ Current ambiguity / race conditions:
 - inline visibility depends on session id, token, mount state, swap acknowledgement, and authority phase
 - focus and caret ownership are not equivalent to mount alone
 - late or mismatched swap acknowledgements can create session resurrection risk if not ignored
+- the semantic point fallback is layout-sensitive and can be expensive for long text, so any future focus guard must continue to measure freshness after caret placement rather than from the start of the canvas press
 
 ### 5.7 Snapping and Centering Guides
 

@@ -186,6 +186,21 @@ Resultado esperado:
 - aparece caret activo dentro del editor inline
 - se puede escribir sin requerir un click adicional
 
+### [ ] Seleccion inicial y caret por tercer click
+
+1. En un texto de una sola linea, hacer click para seleccionarlo y un segundo click para entrar a inline edit.
+2. Confirmar que al entrar queda seleccionado todo el contenido.
+3. Hacer un tercer click en el inicio, medio y final del texto.
+4. Repetir la secuencia con un texto multilinea corto y con uno largo; clickear tambien en la primera, una intermedia y la ultima linea.
+
+Resultado esperado:
+
+- el segundo click conserva la seleccion completa inicial tanto en una linea como en multilinea
+- el tercer click quita la seleccion completa y deja un unico caret en la ubicacion clickeada
+- la sesion inline no se cierra ni vuelve a abrir durante el tercer click
+- no hay parpadeo entre caret, seleccion completa y seleccion de objeto
+- el comportamiento existente de una sola linea no cambia
+
 ### [ ] Commit por click afuera, `Escape` y `Tab`
 
 1. Editar un texto.

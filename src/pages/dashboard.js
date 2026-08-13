@@ -128,6 +128,10 @@ export default function Dashboard() {
     slugInvitacion,
     modoEditor,
     editorSession,
+    editorReadOnly: isEditorReadOnly,
+    administrativeDraftPreview: isAdminReadOnlyView
+      ? adminDraftView
+      : null,
   });
   const userUiPreferences = useUserUiPreferences(usuario?.uid);
   const tipoSeleccionado = DEFAULT_TIPO_INVITACION;
@@ -168,6 +172,7 @@ export default function Dashboard() {
   });
   const previewGateState = buildDashboardPreviewGateState({
     isTemplateEditorSession,
+    isEditorReadOnly,
     mostrarCheckoutPublicacion,
   });
   const toggleZoom = () => {
@@ -233,6 +238,7 @@ export default function Dashboard() {
     canManageSite,
     isSuperAdmin,
     loadingAdminAccess,
+    isAdminReadOnlyView,
     isEditorReadOnly,
     isResolvingEditorRoute,
     shouldRenderHomeStartupLoader,
@@ -519,7 +525,11 @@ export default function Dashboard() {
         previewTimingTarget={slugInvitacion}
         publicUrl={urlPublicaVistaPrevia}
         previewDisplayUrl={previewDisplayUrl}
-        onPublish={publicarDesdeVistaPrevia}
+        onPublish={
+          previewGateState.canPublishFromPreview
+            ? publicarDesdeVistaPrevia
+            : undefined
+        }
         showPublishActions={previewGateState.canPublishFromPreview}
         publishing={false}
         publishError={publicacionVistaPreviaError}

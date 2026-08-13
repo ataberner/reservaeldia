@@ -53,11 +53,16 @@ export async function validateDraftForPublication({
 export async function prepareDraftPreviewRender({
   draftSlug,
   slugPreview = "",
+  administrativeOwnerUid = "",
   previewTimingSessionId = "",
 }) {
   const safeDraftSlug = typeof draftSlug === "string" ? draftSlug.trim() : "";
   const safeSlugPreview =
     typeof slugPreview === "string" ? slugPreview.trim() : "";
+  const safeAdministrativeOwnerUid =
+    typeof administrativeOwnerUid === "string"
+      ? administrativeOwnerUid.trim()
+      : "";
   const safePreviewTimingSessionId =
     typeof previewTimingSessionId === "string"
       ? previewTimingSessionId.trim().slice(0, 96)
@@ -69,6 +74,9 @@ export async function prepareDraftPreviewRender({
   const result = await prepareDraftPreviewRenderCallable({
     draftSlug: safeDraftSlug,
     slugPreview: safeSlugPreview,
+    ...(safeAdministrativeOwnerUid
+      ? { administrativeOwnerUid: safeAdministrativeOwnerUid }
+      : {}),
     ...(safePreviewTimingSessionId
       ? {
           previewTiming: {

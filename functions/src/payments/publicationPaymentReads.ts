@@ -138,6 +138,56 @@ export async function ensureDraftOwnership<DocRef extends DocRefLike>(params: {
   };
 }
 
+export async function ensureDraftPreviewRead<DocRef extends DocRefLike>(params: {
+  db: FirestoreLike<DocRef>;
+  uid: string;
+  draftSlug: string;
+  administrativeOwnerUid?: string;
+  canReadAdministrativeDraft?: boolean;
+}): Promise<{
+  ref: DocRef;
+  data: UnknownRecord;
+}> {
+  const administrativeOwnerUid = getString(params.administrativeOwnerUid);
+  if (!administrativeOwnerUid) {
+    return ensureDraftOwnership({
+      db: params.db,
+      uid: params.uid,
+      draftSlug: params.draftSlug,
+    });
+  }
+
+  if (params.canReadAdministrativeDraft !== true) {
+    throw new HttpsError(
+      "permission-denied",
+      "No tenes permisos para previsualizar este borrador"
+    );
+  }
+
+  const draftRef = params.db
+    .collection(BORRADORES_COLLECTION)
+    .doc(params.draftSlug);
+  const draftSnap = await draftRef.get();
+
+  if (!draftSnap.exists) {
+    throw new HttpsError("not-found", "No se encontro el borrador");
+  }
+
+  const data = (draftSnap.data() || {}) as UnknownRecord;
+  const ownerUid = getString(data.userId);
+  if (!ownerUid || ownerUid !== administrativeOwnerUid) {
+    throw new HttpsError(
+      "permission-denied",
+      "El borrador no pertenece al usuario indicado"
+    );
+  }
+
+  return {
+    ref: draftRef,
+    data,
+  };
+}
+
 export async function resolveExistingPublicSlug(params: {
   draftSlug: string;
   loadDraftData(): Promise<UnknownRecord>;

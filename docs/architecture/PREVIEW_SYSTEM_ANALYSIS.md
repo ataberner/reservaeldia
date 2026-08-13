@@ -64,6 +64,23 @@ in-flight operation. Closing the modal invalidates that session; a late result
 may finish at the transport level but cannot commit HTML or loading state into
 a later opening.
 
+The superadmin user-directory flow is a read-only variant of this same draft
+preview path. `getAdminDraftSnapshot` remains the canvas hydration boundary.
+Because that editor cannot mutate or persist, preview skips inline settlement
+and persistence flush, uses the already authorized snapshot only for the
+frontend source/compatibility read, and calls the same backend prepared
+renderer with `administrativeOwnerUid`. The callable requires superadmin again,
+re-reads `borradores/{slug}`, and verifies that its stored `userId` matches the
+requested owner before preparation. This path is still
+`draft-authoritative`; it does not use the local fallback even when the normal
+prepared-preview rollback flag is disabled.
+
+Administrative read-only preview does not resolve publication-link metadata,
+run the separate publication validation callable, expose the publish action,
+or open checkout. Hiding those UI controls is backed by the controller and
+page-shell gates; normal ownership remains mandatory in every validation,
+checkout, and publish handler.
+
 ## 3. Template And Fallback Preview
 
 Template preview and rollback/local fallback preview still use the local preview generator path:
@@ -369,6 +386,8 @@ Focused loading/session coverage:
 - `shared/previewMobileNativeScrollRuntime.test.mjs`
 - `src/hooks/useDashboardPreviewController.controller.test.mjs`
 - `src/domain/dashboard/previewPipeline.test.mjs`
+- `src/components/editor/header/canvasEditorHeaderReadOnlyPreview.test.mjs`
+- `functions/publicationPaymentReads.test.mjs`
 - `src/domain/dashboard/previewTiming.test.mjs`
 - `src/domain/runtime/chunkLoadRecovery.test.mjs`
 - `scripts/retainNextStaticAssets.test.mjs`

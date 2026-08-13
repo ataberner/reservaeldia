@@ -269,6 +269,8 @@ async function runDashboardPreviewControllerPreviewPipeline({
   slugInvitacion,
   isTemplateSession = false,
   canUsePublishCompatibility = false,
+  shouldResolvePublicationLink = canUsePublishCompatibility,
+  administrativeDraftPreview = null,
   previewBoundarySnapshot = null,
   previewTimingContext = null,
   assertCurrentSession,
@@ -278,6 +280,17 @@ async function runDashboardPreviewControllerPreviewPipeline({
     previewTimingContext?.sessionId
   );
   const previewTiming = Boolean(previewTimingSessionId);
+  const administrativeOwnerUid = normalizeText(
+    administrativeDraftPreview?.ownerUid
+  );
+  const administrativeDraftData =
+    administrativeDraftPreview?.draftData &&
+    typeof administrativeDraftPreview.draftData === "object"
+      ? administrativeDraftPreview.draftData
+      : null;
+  const hasAdministrativeDraftPreview = Boolean(
+    administrativeOwnerUid && administrativeDraftData
+  );
   const recordPipelineStage = (timing) => {
     if (!previewTiming || !timing) return;
     recordPreviewTimingStage(previewTimingSessionId, {
@@ -301,12 +314,14 @@ async function runDashboardPreviewControllerPreviewPipeline({
   const useBackendPreparedDraftPreview =
     !isTemplateSession &&
     canUsePublishCompatibility &&
-    isPreparedDraftPreviewEnabled();
+    (isPreparedDraftPreviewEnabled() || hasAdministrativeDraftPreview);
 
   return runDashboardPreviewPipeline({
     slugInvitacion,
     isTemplateSession,
     canUsePublishCompatibility,
+    shouldResolvePublicationLink,
+    administrativeOwnerUid,
     previewBoundarySnapshot,
     readTemplateEditorDocument: async ({ templateId }) => {
       const result = await readEditorSessionDocument({
@@ -321,6 +336,10 @@ async function runDashboardPreviewControllerPreviewPipeline({
       };
     },
     readDraftDocument: async ({ draftSlug }) => {
+      if (hasAdministrativeDraftPreview) {
+        return administrativeDraftData;
+      }
+
       const result = await readEditorSessionDocument({
         session: {
           kind: "draft",
@@ -357,7 +376,7 @@ async function runDashboardPreviewControllerPreviewPipeline({
       );
     },
     prepareDraftPreviewRender: useBackendPreparedDraftPreview
-      ? async ({ draftSlug, slugPreview }) => {
+      ? async ({ draftSlug, slugPreview, administrativeOwnerUid: ownerUid }) => {
           const serviceModuleStartedAt = readPreviewPerformanceNow();
           const { prepareDraftPreviewRender } =
             await loadPublicationsServiceModule();
@@ -381,6 +400,7 @@ async function runDashboardPreviewControllerPreviewPipeline({
           const result = await prepareDraftPreviewRender({
             draftSlug,
             slugPreview,
+            administrativeOwnerUid: ownerUid,
             previewTimingSessionId,
           });
           const backendCallCompletedAt = readPreviewPerformanceNow();
@@ -595,6 +615,8 @@ export function canApplyDashboardPreviewControllerSession({
 export function buildDashboardPreviewCompatibilityState({
   slugInvitacion,
   editorSession,
+  editorReadOnly = false,
+  administrativeDraftPreview = null,
 } = {}) {
   const context = buildDashboardPreviewControllerContext({
     slugInvitacion,
@@ -603,15 +625,24 @@ export function buildDashboardPreviewCompatibilityState({
   const isTemplateSession = context.sessionKind === "template";
   const canUsePublishCompatibility = !isTemplateSession;
   const hasTargetId = Boolean(context.targetId);
+  const isReadOnly = editorReadOnly === true;
+  const administrativeOwnerUid = normalizeText(
+    administrativeDraftPreview?.ownerUid
+  );
+  const canValidateForPublication =
+    canUsePublishCompatibility && hasTargetId && !isReadOnly;
 
   return {
     isTemplateSession,
     canUsePublishCompatibility,
-    canOpenCheckoutFromPreview:
-      canUsePublishCompatibility && hasTargetId,
+    canValidateForPublication,
+    canOpenCheckoutFromPreview: canValidateForPublication,
     shouldRefreshPublishValidationAfterPreview:
-      canUsePublishCompatibility && hasTargetId,
-    publishValidationRefreshMode: canUsePublishCompatibility
+      canValidateForPublication,
+    shouldResolvePublicationLink:
+      canUsePublishCompatibility && hasTargetId && !isReadOnly,
+    administrativeOwnerUid,
+    publishValidationRefreshMode: canValidateForPublication
       ? "compatibility-side-effect"
       : "none",
   };
@@ -621,6 +652,8 @@ export function createDashboardPreviewControllerRuntime({
   slugInvitacion,
   modoEditor,
   editorSession,
+  editorReadOnly = false,
+  administrativeDraftPreview = null,
   dependencyOverrides = {},
   previewCompatibilityState,
   currentPreviewContextRef,
@@ -651,6 +684,8 @@ export function createDashboardPreviewControllerRuntime({
       : buildDashboardPreviewCompatibilityState({
           slugInvitacion,
           editorSession,
+          editorReadOnly,
+          administrativeDraftPreview,
         });
   const resolvedCurrentPreviewContextRef =
     currentPreviewContextRef && typeof currentPreviewContextRef === "object"
@@ -728,6 +763,31 @@ export function createDashboardPreviewControllerRuntime({
     { previewTimingSessionId = "" } = {}
   ) => {
     const safeSlug = sanitizeDraftSlug(slugInvitacion);
+    if (editorReadOnly === true) {
+      const compatibilitySnapshot =
+        administrativeDraftPreview?.draftData &&
+        typeof administrativeDraftPreview.draftData === "object"
+          ? administrativeDraftPreview.draftData
+          : null;
+
+      pushEditorBreadcrumb("critical-action-flush-skipped", {
+        slug: safeSlug || null,
+        reason,
+        sessionKind: editorSession?.kind || null,
+        skippedReason: "read-only",
+      });
+
+      return {
+        ok: true,
+        slug: safeSlug,
+        sessionKind: editorSession?.kind || null,
+        transport: "none",
+        skipped: true,
+        reason: "read-only",
+        compatibilitySnapshot,
+      };
+    }
+
     const inlineBoundaryStartedAt = previewTimingSessionId
       ? readPreviewPerformanceNow()
       : 0;
@@ -859,7 +919,7 @@ export function createDashboardPreviewControllerRuntime({
       return commitPreviewState(null, updater);
     };
 
-    if (!resolvedPreviewCompatibilityState.canUsePublishCompatibility) {
+    if (!resolvedPreviewCompatibilityState.canValidateForPublication) {
       commitIfCurrent((prev) => ({
         ...prev,
         ...buildDashboardPreviewPublishValidationIdleStatePatch(),
@@ -979,6 +1039,9 @@ export function createDashboardPreviewControllerRuntime({
         isTemplateSession: resolvedPreviewCompatibilityState.isTemplateSession,
         canUsePublishCompatibility:
           resolvedPreviewCompatibilityState.canUsePublishCompatibility,
+        shouldResolvePublicationLink:
+          resolvedPreviewCompatibilityState.shouldResolvePublicationLink,
+        administrativeDraftPreview,
         previewBoundarySnapshot,
         previewTimingContext: {
           sessionId: timingSessionId,
@@ -1225,7 +1288,7 @@ export function createDashboardPreviewControllerRuntime({
   };
 
   const handleCheckoutPublished = (payload) => {
-    if (!resolvedPreviewCompatibilityState.canUsePublishCompatibility) return;
+    if (!resolvedPreviewCompatibilityState.canOpenCheckoutFromPreview) return;
 
     setPreviewState((prev) => ({
       ...prev,
@@ -1280,6 +1343,8 @@ export function useDashboardPreviewControllerWithDependencies(
     slugInvitacion,
     modoEditor,
     editorSession,
+    editorReadOnly = false,
+    administrativeDraftPreview = null,
   } = {},
   dependencyOverrides = EMPTY_DASHBOARD_PREVIEW_DEPENDENCY_OVERRIDES
 ) {
@@ -1309,8 +1374,10 @@ export function useDashboardPreviewControllerWithDependencies(
       buildDashboardPreviewCompatibilityState({
         slugInvitacion,
         editorSession,
+        editorReadOnly,
+        administrativeDraftPreview,
       }),
-    [editorSession, slugInvitacion]
+    [administrativeDraftPreview, editorReadOnly, editorSession, slugInvitacion]
   );
 
   currentPreviewContextRef.current = currentPreviewContext;
@@ -1343,6 +1410,8 @@ export function useDashboardPreviewControllerWithDependencies(
         slugInvitacion,
         modoEditor,
         editorSession,
+        editorReadOnly,
+        administrativeDraftPreview,
         dependencyOverrides: controllerDependencies,
         previewCompatibilityState,
         currentPreviewContextRef,
@@ -1354,6 +1423,8 @@ export function useDashboardPreviewControllerWithDependencies(
       }),
     [
       controllerDependencies,
+      administrativeDraftPreview,
+      editorReadOnly,
       editorSession,
       modoEditor,
       previewCompatibilityState,

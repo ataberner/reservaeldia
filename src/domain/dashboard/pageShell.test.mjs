@@ -106,6 +106,7 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     canManageSite: true,
     isSuperAdmin: false,
     loadingAdminAccess: false,
+    isAdminReadOnlyView: false,
     isEditorReadOnly: false,
     isResolvingEditorRoute: false,
     shouldRenderHomeStartupLoader: true,
@@ -176,6 +177,7 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     shouldRenderEditorStartupLoader: true,
     isEditorStartupLoaderExiting: false,
     editorReadOnly: false,
+    allowReadOnlyPreview: false,
     draftDisplayName: "Template workspace",
     editorSession: {
       kind: "draft",
@@ -207,6 +209,23 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     buildDashboardLayoutProps({
       slugInvitacion: "draft-1",
       vista: "editor",
+      isAdminReadOnlyView: true,
+      isEditorReadOnly: true,
+      adminDraftView: {
+        draftName: "Admin name",
+      },
+      templateWorkspaceView: {
+        draftName: "Template name",
+      },
+    }).allowReadOnlyPreview,
+    true
+  );
+
+  assert.equal(
+    buildDashboardLayoutProps({
+      slugInvitacion: "draft-1",
+      vista: "editor",
+      isAdminReadOnlyView: true,
       isEditorReadOnly: true,
       adminDraftView: {
         draftName: "Admin name",
@@ -342,7 +361,7 @@ test("canvas editor props preserve current read-only and initial-data precedence
   );
 });
 
-test("preview gate state keeps template sessions from exposing publish and checkout actions", () => {
+test("preview gate state keeps template and read-only sessions from exposing publish and checkout actions", () => {
   assert.deepEqual(
     buildDashboardPreviewGateState({
       isTemplateEditorSession: false,
@@ -358,6 +377,19 @@ test("preview gate state keeps template sessions from exposing publish and check
   assert.deepEqual(
     buildDashboardPreviewGateState({
       isTemplateEditorSession: true,
+      mostrarCheckoutPublicacion: true,
+    }),
+    {
+      canPublishFromPreview: false,
+      previewCheckoutVisible: false,
+      checkoutModalVisible: false,
+    }
+  );
+
+  assert.deepEqual(
+    buildDashboardPreviewGateState({
+      isTemplateEditorSession: false,
+      isEditorReadOnly: true,
       mostrarCheckoutPublicacion: true,
     }),
     {

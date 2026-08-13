@@ -122,6 +122,8 @@ export async function runDashboardPreviewPipeline({
   slugInvitacion,
   isTemplateSession = false,
   canUsePublishCompatibility = false,
+  shouldResolvePublicationLink = canUsePublishCompatibility,
+  administrativeOwnerUid = "",
   previewBoundarySnapshot = null,
   readTemplateEditorDocument,
   readDraftDocument,
@@ -218,7 +220,7 @@ export async function runDashboardPreviewPipeline({
   let slugPublicoDetectado = "";
   let publicacionNoVigenteDetectada = false;
 
-  if (canUsePublishCompatibility) {
+  if (shouldResolvePublicationLink) {
     const publicationReadStartedAt = timingEnabled ? now() : 0;
     emitStageTiming("publication-link-read-start", publicationReadStartedAt, {
       durationMs: 0,
@@ -257,9 +259,15 @@ export async function runDashboardPreviewPipeline({
     emitStageTiming("prepared-render-request-start", preparedRenderStartedAt, {
       durationMs: 0,
     });
+    const normalizedAdministrativeOwnerUid = normalizeText(
+      administrativeOwnerUid
+    );
     const preparedPreviewResult = await prepareDraftPreviewRender({
       draftSlug: slugInvitacion,
       slugPreview,
+      ...(normalizedAdministrativeOwnerUid
+        ? { administrativeOwnerUid: normalizedAdministrativeOwnerUid }
+        : {}),
     });
     assertCurrentSession(assertCurrentSessionCallback);
     emitStageTiming("prepared-render-request", preparedRenderStartedAt, {

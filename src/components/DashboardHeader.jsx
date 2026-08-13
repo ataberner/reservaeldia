@@ -155,6 +155,7 @@ export default function DashboardHeader(props) {
         isSuperAdmin = false,
         loadingAdminAccess = false,
         editorReadOnly = false,
+        allowReadOnlyPreview = false,
         draftDisplayName = "",
         editorSession = null,
         templateSessionMeta = null,
@@ -772,7 +773,10 @@ export default function DashboardHeader(props) {
     const documentNameTitle = isTemplateSession
         ? "Editar nombre de la plantilla"
         : "Editar nombre del borrador";
-    const canShowReadOnlyPreview = editorReadOnly && isTemplateSession;
+    const canShowReadOnlyPreview =
+        editorReadOnly && (isTemplateSession || allowReadOnlyPreview);
+    const readOnlyPreviewOnly =
+        editorReadOnly && allowReadOnlyPreview && !isTemplateSession;
     const backNavigationTarget = isTemplateSession
         ? "/admin/plantillas/"
         : "/dashboard";
@@ -953,6 +957,7 @@ export default function DashboardHeader(props) {
                 <CanvasEditorHeader
                     isMobile={isMobile}
                     editorReadOnly={editorReadOnly}
+                    readOnlyPreviewOnly={readOnlyPreviewOnly}
                     historialExternos={historialExternos}
                     futurosExternos={futurosExternos}
                     documentDisplayName={documentDisplayName}

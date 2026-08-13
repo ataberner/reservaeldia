@@ -321,6 +321,60 @@ test("draft preview pipeline uses backend prepared render output when the previe
   );
 });
 
+test("administrative draft preview uses the prepared renderer without resolving publication links", async () => {
+  let prepareCall = null;
+  let publicationReadCalled = false;
+
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "draft-admin-preview",
+    canUsePublishCompatibility: true,
+    shouldResolvePublicationLink: false,
+    administrativeOwnerUid: "owner-2",
+    readDraftDocument: async () => ({
+      userId: "owner-2",
+      objetos: [{ id: "persisted-object", seccionId: "hero", tipo: "texto" }],
+      secciones: [{ id: "hero" }],
+    }),
+    readPublicationBySlug: async () => {
+      publicationReadCalled = true;
+      throw new Error("administrative preview must not read publication links");
+    },
+    queryPublicationBySlugOriginal: async () => {
+      publicationReadCalled = true;
+      throw new Error("administrative preview must not query publication links");
+    },
+    prepareDraftPreviewRender: async (input) => {
+      prepareCall = input;
+      return {
+        previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
+        htmlGenerado: "<html>admin-prepared-preview</html>",
+        previewPayload: {
+          objetos: [{ id: "prepared-object", seccionId: "hero", tipo: "texto" }],
+          secciones: [{ id: "hero" }],
+        },
+        validation: {
+          canPublish: true,
+          blockers: [],
+          warnings: [],
+        },
+      };
+    },
+  });
+
+  assert.equal(previewResult.status, "success");
+  assert.equal(
+    previewResult.previewAuthority,
+    PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE
+  );
+  assert.equal(previewResult.htmlGenerado, "<html>admin-prepared-preview</html>");
+  assert.equal(publicationReadCalled, false);
+  assert.deepEqual(prepareCall, {
+    draftSlug: "draft-admin-preview",
+    slugPreview: "draft-admin-preview",
+    administrativeOwnerUid: "owner-2",
+  });
+});
+
 test("draft preview pipeline blocks trusted preview html when backend prepared validation has blockers", async () => {
   const validation = {
     canPublish: false,

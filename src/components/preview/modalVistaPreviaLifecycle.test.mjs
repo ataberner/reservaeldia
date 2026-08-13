@@ -128,3 +128,29 @@ test("preview shell leaves gestures to the iframe and cleans lifecycle observers
   assert.match(modalSource, /window\.cancelAnimationFrame\(frameId\)/);
   assert.match(modalSource, /window\.removeEventListener\("resize", onResize\)/);
 });
+
+test("draft preview diagnostics keep their authority label when publication actions are hidden", () => {
+  assert.equal(
+    (
+      modalSource.match(
+        /stage: previewTimingType === "draft-authoritative"/g
+      ) || []
+    ).length,
+    2
+  );
+  assert.doesNotMatch(
+    modalSource,
+    /stage: showPublishActions\s*\? "draft-preview-/
+  );
+});
+
+test("read-only preview still surfaces prepared validation and render errors", () => {
+  assert.match(
+    modalSource,
+    /const showNoticeLayer =\s*showPublishActions \|\| publishNoticePresentation\.notices\.length > 0/
+  );
+  assert.match(
+    modalSource,
+    /\{showNoticeLayer \? \(\s*<PreviewPublishNoticeLayer/
+  );
+});

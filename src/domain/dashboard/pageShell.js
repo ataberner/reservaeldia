@@ -46,6 +46,7 @@ export function buildDashboardLayoutProps({
   canManageSite,
   isSuperAdmin,
   loadingAdminAccess,
+  isAdminReadOnlyView,
   isEditorReadOnly,
   isResolvingEditorRoute,
   shouldRenderHomeStartupLoader,
@@ -104,6 +105,7 @@ export function buildDashboardLayoutProps({
     isEditorStartupLoaderExiting:
       isEditorStartupLoaderExiting === true,
     editorReadOnly: isEditorReadOnly === true,
+    allowReadOnlyPreview: isAdminReadOnlyView === true,
     draftDisplayName:
       normalizeText(adminDraftView?.draftName) ||
       normalizeText(templateWorkspaceView?.draftName) ||
@@ -162,9 +164,11 @@ export function buildDashboardCanvasEditorProps({
 
 export function buildDashboardPreviewGateState({
   isTemplateEditorSession = false,
+  isEditorReadOnly = false,
   mostrarCheckoutPublicacion = false,
 } = {}) {
-  const canPublishFromPreview = isTemplateEditorSession !== true;
+  const canPublishFromPreview =
+    isTemplateEditorSession !== true && isEditorReadOnly !== true;
   const previewCheckoutVisible =
     canPublishFromPreview && mostrarCheckoutPublicacion === true;
 

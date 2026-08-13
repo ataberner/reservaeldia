@@ -6,7 +6,10 @@ import {
   createPublicationPreviewState,
   PREVIEW_AUTHORITY,
 } from "../domain/dashboard/previewSession.js";
-import { createDashboardPreviewControllerRuntime } from "./useDashboardPreviewController.js";
+import {
+  buildDashboardPreviewCompatibilityState,
+  createDashboardPreviewControllerRuntime,
+} from "./useDashboardPreviewController.js";
 
 const DEFAULT_TEST_OPTIONS = Object.freeze({
   slugInvitacion: "draft-1",
@@ -224,6 +227,104 @@ test("preview open success shows one loading session before flush settles and th
     })
   );
   assert.deepEqual(showAlertCalls, []);
+});
+
+test("administrative read-only preview skips persistence and keeps publication actions disabled", async () => {
+  const administrativeDraftPreview = {
+    ownerUid: "owner-2",
+    draftData: {
+      userId: "owner-2",
+      objetos: [{ id: "text-1", seccionId: "hero", tipo: "texto" }],
+      secciones: [{ id: "hero" }],
+    },
+  };
+  const compatibilityState = buildDashboardPreviewCompatibilityState({
+    slugInvitacion: "draft-admin-1",
+    editorSession: {
+      kind: "draft",
+      id: "draft-admin-1",
+    },
+    editorReadOnly: true,
+    administrativeDraftPreview,
+  });
+
+  assert.deepEqual(compatibilityState, {
+    isTemplateSession: false,
+    canUsePublishCompatibility: true,
+    canValidateForPublication: false,
+    canOpenCheckoutFromPreview: false,
+    shouldRefreshPublishValidationAfterPreview: false,
+    shouldResolvePublicationLink: false,
+    administrativeOwnerUid: "owner-2",
+    publishValidationRefreshMode: "none",
+  });
+
+  let inlineBoundaryCalled = false;
+  let flushCalled = false;
+  let validationCalled = false;
+  let previewPipelineCall = null;
+  const harness = createControllerHarness({
+    options: {
+      slugInvitacion: "draft-admin-1",
+      modoEditor: "konva",
+      editorSession: {
+        kind: "draft",
+        id: "draft-admin-1",
+      },
+      editorReadOnly: true,
+      administrativeDraftPreview,
+    },
+    dependencyOverrides: createTestDependencies({
+      runInlineCriticalBoundary: async () => {
+        inlineBoundaryCalled = true;
+        throw new Error("read-only preview must not settle inline editing");
+      },
+      runCriticalActionFlush: async () => {
+        flushCalled = true;
+        throw new Error("read-only preview must not flush persistence");
+      },
+      runPreviewPipeline: async (input) => {
+        previewPipelineCall = input;
+        return {
+          status: "success",
+          previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
+          htmlGenerado: "<html>admin-read-only-preview</html>",
+          urlPublicaDetectada: "",
+          slugPublicoDetectado: "",
+          publicacionNoVigenteDetectada: false,
+        };
+      },
+      runPublishValidation: async () => {
+        validationCalled = true;
+        return null;
+      },
+    }),
+  });
+
+  await harness.controller.generarVistaPrevia();
+  await flushMicrotasks();
+
+  assert.equal(inlineBoundaryCalled, false);
+  assert.equal(flushCalled, false);
+  assert.equal(previewPipelineCall.shouldResolvePublicationLink, false);
+  assert.equal(
+    previewPipelineCall.administrativeDraftPreview,
+    administrativeDraftPreview
+  );
+  assert.equal(
+    previewPipelineCall.previewBoundarySnapshot,
+    administrativeDraftPreview.draftData
+  );
+  assert.equal(
+    harness.getState().htmlVistaPrevia,
+    "<html>admin-read-only-preview</html>"
+  );
+
+  await harness.controller.publicarDesdeVistaPrevia();
+  await flushMicrotasks();
+
+  assert.equal(validationCalled, false);
+  assert.equal(harness.getState().mostrarCheckoutPublicacion, false);
 });
 
 test("preview open failure on flush keeps the preview closed and preserves the controller error path", async () => {

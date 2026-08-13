@@ -123,6 +123,7 @@ import {
   PUBLICADAS_COLLECTION,
   PUBLICADAS_HISTORIAL_COLLECTION,
   ensureDraftOwnership as ensureDraftOwnershipRead,
+  ensureDraftPreviewRead,
   extractDraftSlugCandidatesFromPublicationData,
   getDiscountCodeRef as buildDiscountCodeRef,
   getDiscountUsageRef as buildDiscountUsageRef,
@@ -1564,6 +1565,7 @@ export async function prepareDraftPreviewRenderHandler(
   request: CallableRequest<{
     draftSlug: string;
     slugPreview?: string;
+    administrativeOwnerUid?: string;
     previewTiming?: {
       sessionId?: string;
     };
@@ -1584,8 +1586,20 @@ export async function prepareDraftPreviewRenderHandler(
   try {
     const uid = requireAuth(request);
     const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
+    const administrativeOwnerUid = getString(
+      request.data?.administrativeOwnerUid
+    );
     draftSlugForLog = draftSlug;
-    const draft = await ensureDraftOwnership(uid, draftSlug);
+    const canReadAdministrativeDraft = administrativeOwnerUid
+      ? Boolean(requireSuperAdmin(request))
+      : false;
+    const draft = await ensureDraftPreviewRead({
+      db,
+      uid,
+      draftSlug,
+      administrativeOwnerUid,
+      canReadAdministrativeDraft,
+    });
     const draftReadCompletedAt = includeTiming ? readNow() : 0;
     const draftData = draft.data as Record<string, unknown>;
     const prepared = await prepareRenderPayload(draftData);

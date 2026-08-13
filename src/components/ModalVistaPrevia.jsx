@@ -712,6 +712,8 @@ export default function ModalVistaPrevia({
     publishError,
     publishSuccess,
   });
+  const showNoticeLayer =
+    showPublishActions || publishNoticePresentation.notices.length > 0;
 
   useEffect(() => {
     if (!visible || !previewTimingSessionId) return;
@@ -849,7 +851,7 @@ export default function ModalVistaPrevia({
   }, [visible]);
 
   useEffect(() => {
-    if (!visible || !showPublishActions || typeof window === "undefined") {
+    if (!visible || !showNoticeLayer || typeof window === "undefined") {
       setNoticePosition(null);
       return;
     }
@@ -917,7 +919,7 @@ export default function ModalVistaPrevia({
       window.removeEventListener("resize", onResize);
       observer.disconnect();
     };
-  }, [showPublishActions, toolbarInline, visible]);
+  }, [showNoticeLayer, toolbarInline, visible]);
 
   const confirmarPublicacion = () => {
     if (!showPublishActions) return;
@@ -940,7 +942,7 @@ export default function ModalVistaPrevia({
       layoutMode: previewLayoutMode,
     });
     captureCountdownAuditFromHtmlString(htmlContent, {
-      stage: showPublishActions
+      stage: previewTimingType === "draft-authoritative"
         ? "draft-preview-desktop"
         : "template-preview-desktop",
       renderer: "dom-generated",
@@ -964,7 +966,7 @@ export default function ModalVistaPrevia({
       scrollAuthority,
     });
     captureCountdownAuditFromHtmlString(htmlContent, {
-      stage: showPublishActions
+      stage: previewTimingType === "draft-authoritative"
         ? "draft-preview-mobile"
         : "template-preview-mobile",
       renderer: "dom-generated",
@@ -1277,7 +1279,7 @@ export default function ModalVistaPrevia({
             </div>
           </div>
 
-          {showPublishActions ? (
+          {showNoticeLayer ? (
             <PreviewPublishNoticeLayer
               notices={publishNoticePresentation.notices}
               position={noticePosition}

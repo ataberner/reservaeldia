@@ -34,6 +34,7 @@ const mobileIconButtonClass =
 export default function CanvasEditorHeader({
     isMobile,
     editorReadOnly,
+    readOnlyPreviewOnly = false,
     historialExternos,
     futurosExternos,
     documentDisplayName,
@@ -114,46 +115,56 @@ export default function CanvasEditorHeader({
 
                     {showDesktopPreviewButton ? (
                         <>
-                            <button
-                                onClick={triggerEditorUndo}
-                                disabled={!canUndo}
-                                className={`${desktopHistoryButtonClass} hidden md:inline-flex ${
-                                    canUndo
-                                        ? ""
-                                        : "cursor-not-allowed text-slate-300 hover:bg-transparent"
-                                }`}
-                                title="Deshacer"
-                            >
-                                <Undo2 className="h-6 w-6" />
-                            </button>
-                            <button
-                                onClick={triggerEditorRedo}
-                                disabled={!canRedo}
-                                className={`${desktopHistoryButtonClass} mr-[25px] hidden md:inline-flex ${
-                                    canRedo
-                                        ? ""
-                                        : "cursor-not-allowed text-slate-300 hover:bg-transparent"
-                                }`}
-                                title="Rehacer"
-                            >
-                                <Redo2 className="h-6 w-6" />
-                            </button>
-                            <span
-                                className={previewHeaderDivider}
-                                aria-hidden="true"
-                            />
+                            {!readOnlyPreviewOnly ? (
+                                <>
+                                    <button
+                                        onClick={triggerEditorUndo}
+                                        disabled={!canUndo}
+                                        className={`${desktopHistoryButtonClass} hidden md:inline-flex ${
+                                            canUndo
+                                                ? ""
+                                                : "cursor-not-allowed text-slate-300 hover:bg-transparent"
+                                        }`}
+                                        title="Deshacer"
+                                    >
+                                        <Undo2 className="h-6 w-6" />
+                                    </button>
+                                    <button
+                                        onClick={triggerEditorRedo}
+                                        disabled={!canRedo}
+                                        className={`${desktopHistoryButtonClass} mr-[25px] hidden md:inline-flex ${
+                                            canRedo
+                                                ? ""
+                                                : "cursor-not-allowed text-slate-300 hover:bg-transparent"
+                                        }`}
+                                        title="Rehacer"
+                                    >
+                                        <Redo2 className="h-6 w-6" />
+                                    </button>
+                                    <span
+                                        className={previewHeaderDivider}
+                                        aria-hidden="true"
+                                    />
+                                </>
+                            ) : null}
                             <button
                                 onClick={generarVistaPrevia}
-                                className={`${previewHeaderButton} hidden md:inline-flex`}
+                                className={
+                                    readOnlyPreviewOnly
+                                        ? `${primaryHeaderButton} hidden h-10 px-4 md:inline-flex`
+                                        : `${previewHeaderButton} hidden md:inline-flex`
+                                }
                             >
                                 Vista previa
                             </button>
-                            <button
-                                onClick={generarVistaPrevia}
-                                className={`${primaryHeaderButton} ml-[16px] hidden h-10 px-4 md:inline-flex`}
-                            >
-                                {previewButtonLabel}
-                            </button>
+                            {!readOnlyPreviewOnly ? (
+                                <button
+                                    onClick={generarVistaPrevia}
+                                    className={`${primaryHeaderButton} ml-[16px] hidden h-10 px-4 md:inline-flex`}
+                                >
+                                    {previewButtonLabel}
+                                </button>
+                            ) : null}
                         </>
                     ) : null}
 

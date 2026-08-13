@@ -12,6 +12,7 @@ const {
   PUBLICADAS_COLLECTION,
   extractDraftSlugCandidatesFromPublicationData,
   ensureDraftOwnership,
+  ensureDraftPreviewRead,
   getPublicationRef,
   inferDraftSlugFromPublicationData,
   resolveExistingPublicSlug,
@@ -139,6 +140,72 @@ test("ensureDraftOwnership keeps the current ownership success and error semanti
       assert.ok(error instanceof HttpsError);
       assert.equal(error.code, "permission-denied");
       assert.equal(error.message, "No tenes permisos sobre este borrador");
+      return true;
+    }
+  );
+});
+
+test("ensureDraftPreviewRead grants only an explicitly authorized administrative owner read", async () => {
+  const foreignDraftDb = {
+    collection() {
+      return {
+        doc(id) {
+          return createDocRef(`borradores/${id}`, {
+            userId: "owner-2",
+            nombre: "Draft ajeno",
+          });
+        },
+      };
+    },
+  };
+
+  const administrativeRead = await ensureDraftPreviewRead({
+    db: foreignDraftDb,
+    uid: "superadmin-1",
+    draftSlug: "draft-foreign",
+    administrativeOwnerUid: "owner-2",
+    canReadAdministrativeDraft: true,
+  });
+
+  assert.equal(administrativeRead.ref.path, "borradores/draft-foreign");
+  assert.equal(administrativeRead.data.nombre, "Draft ajeno");
+
+  await assert.rejects(
+    () =>
+      ensureDraftPreviewRead({
+        db: foreignDraftDb,
+        uid: "user-1",
+        draftSlug: "draft-foreign",
+        administrativeOwnerUid: "owner-2",
+        canReadAdministrativeDraft: false,
+      }),
+    (error) => {
+      assert.ok(error instanceof HttpsError);
+      assert.equal(error.code, "permission-denied");
+      assert.equal(
+        error.message,
+        "No tenes permisos para previsualizar este borrador"
+      );
+      return true;
+    }
+  );
+
+  await assert.rejects(
+    () =>
+      ensureDraftPreviewRead({
+        db: foreignDraftDb,
+        uid: "superadmin-1",
+        draftSlug: "draft-foreign",
+        administrativeOwnerUid: "owner-3",
+        canReadAdministrativeDraft: true,
+      }),
+    (error) => {
+      assert.ok(error instanceof HttpsError);
+      assert.equal(error.code, "permission-denied");
+      assert.equal(
+        error.message,
+        "El borrador no pertenece al usuario indicado"
+      );
       return true;
     }
   );

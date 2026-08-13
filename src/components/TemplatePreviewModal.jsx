@@ -271,6 +271,7 @@ export default function TemplatePreviewModal({
   showEventCustomization = true,
 }) {
   const modalPanelRef = useRef(null);
+  const closeButtonRef = useRef(null);
   const previewFrameRef = useRef(null);
   const previewActionPanelRef = useRef(null);
   const formRef = useRef(null);
@@ -343,7 +344,7 @@ export default function TemplatePreviewModal({
   useEffect(() => {
     if (!visible || typeof document === "undefined" || typeof window === "undefined") return undefined;
 
-    modalPanelRef.current?.focus?.({ preventScroll: true });
+    closeButtonRef.current?.focus?.({ preventScroll: true });
 
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || openingEditor) return;
@@ -358,6 +359,39 @@ export default function TemplatePreviewModal({
       window.removeEventListener("keydown", onKeyDown, true);
     };
   }, [onClose, openingEditor, visible]);
+
+  useEffect(() => {
+    if (!visible || typeof document === "undefined") return undefined;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const dashboardScrollRoot = document.querySelector(
+      '[data-dashboard-scroll-root="true"]'
+    );
+    const scrollRoots = [html, body, dashboardScrollRoot].filter(Boolean);
+    const previousStyles = scrollRoots.map((root) => ({
+      root,
+      overflow: root.style.overflow,
+      overscrollBehavior: root.style.overscrollBehavior,
+      overscrollBehaviorY: root.style.overscrollBehaviorY,
+    }));
+
+    scrollRoots.forEach((root) => {
+      root.style.overflow = "hidden";
+      root.style.overscrollBehavior = "none";
+      root.style.overscrollBehaviorY = "none";
+    });
+
+    return () => {
+      previousStyles.forEach(
+        ({ root, overflow, overscrollBehavior, overscrollBehaviorY }) => {
+          root.style.overflow = overflow;
+          root.style.overscrollBehavior = overscrollBehavior;
+          root.style.overscrollBehaviorY = overscrollBehaviorY;
+        }
+      );
+    };
+  }, [visible]);
 
   const postPreviewOperations = useCallback(
     (operations, options = {}) => {
@@ -459,10 +493,13 @@ export default function TemplatePreviewModal({
       <div className="flex h-[100dvh] w-full items-stretch justify-center px-4 py-0 max-sm:items-center max-sm:px-3 max-sm:py-4">
         <div
           ref={modalPanelRef}
-          tabIndex={-1}
-          className="relative flex h-[100dvh] max-h-none w-full max-w-[980px] flex-col overflow-hidden rounded-none border-x border-y-0 border-[#692B9A] bg-[linear-gradient(180deg,#fbf8ff_0%,#f4eeff_100%)] shadow-[0_20px_60px_rgba(0,0,0,0.25)] max-sm:h-[calc(100dvh-32px)] max-sm:max-h-[calc(100dvh-32px)] max-sm:rounded-[24px] max-sm:border max-sm:shadow-[0_22px_70px_rgba(0,0,0,0.32)]"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Vista previa de ${title}`}
+          className="relative isolate flex h-[100dvh] max-h-none w-full max-w-[980px] flex-col overflow-hidden rounded-none border-x border-y-0 border-[#692B9A] bg-[linear-gradient(180deg,#fbf8ff_0%,#f4eeff_100%)] outline-none shadow-[0_20px_60px_rgba(0,0,0,0.25)] max-sm:h-[calc(100dvh-32px)] max-sm:max-h-[calc(100dvh-32px)] max-sm:rounded-[24px] max-sm:border max-sm:[-webkit-mask-image:-webkit-radial-gradient(white,black)] max-sm:shadow-[0_22px_70px_rgba(0,0,0,0.32)]"
         >
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             disabled={openingEditor}

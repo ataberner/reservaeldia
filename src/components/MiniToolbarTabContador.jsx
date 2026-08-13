@@ -44,7 +44,49 @@ import {
 import activationStyles from "./MiniToolbarTabRegalos.module.css";
 
 const COUNTDOWN_PREVIEW_SURFACE_CLASS_NAME =
-  "rounded-xl bg-[radial-gradient(circle_at_50%_42%,#c9c3d2_0%,#ddd8e2_58%,#ebe7ee_100%)] shadow-[inset_0_0_0_1px_rgba(119,61,190,0.10)]";
+  "rounded-xl shadow-[inset_0_0_0_1px_rgba(119,61,190,0.10)]";
+const COUNTDOWN_PREVIEW_SURFACE_STYLE = Object.freeze({
+  "--checker-1": "#e1e4e8",
+  "--checker-2": "#c6cbd1",
+  backgroundColor: "var(--checker-1)",
+  backgroundImage:
+    "linear-gradient(45deg, var(--checker-2) 25%, transparent 25%), linear-gradient(-45deg, var(--checker-2) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--checker-2) 75%), linear-gradient(-45deg, transparent 75%, var(--checker-2) 75%)",
+  backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0",
+  backgroundSize: "16px 16px",
+});
+
+function CountdownPresetCatalogSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Cargando presets de contador"
+      className="flex flex-col gap-5"
+    >
+      {Array.from({ length: 3 }).map((_, cardIndex) => (
+        <div
+          key={`countdown-sidebar-skeleton-${cardIndex}`}
+          aria-hidden="true"
+          className="animate-pulse rounded-[18px] border-2 border-[#e8e2f1] bg-white px-[14px] py-3 motion-reduce:animate-none"
+        >
+          <div className="flex h-28 items-center justify-center gap-1.5 rounded-xl bg-zinc-100 px-3">
+            {Array.from({ length: 4 }).map((__, unitIndex) => (
+              <div
+                key={`countdown-sidebar-skeleton-${cardIndex}-unit-${unitIndex}`}
+                className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-lg bg-zinc-200/90"
+              >
+                <div className="h-4 w-7 rounded bg-zinc-300/90" />
+                <div className="h-1.5 w-8 rounded-full bg-zinc-300/70" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 h-3 w-2/5 rounded-full bg-zinc-200" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function readEventDetailsCountdownTarget(countdown, objetos) {
   const countdownTarget = resolveCountdownTargetIso(countdown || null).targetISO;
@@ -217,6 +259,7 @@ function CountdownPresetThumbnail({
       data-countdown-preview-surface="unified"
       className={`pointer-events-none flex w-full flex-none items-center justify-center overflow-hidden ${COUNTDOWN_PREVIEW_SURFACE_CLASS_NAME}`}
       style={{
+        ...COUNTDOWN_PREVIEW_SURFACE_STYLE,
         aspectRatio: sizing ? undefined : layout.viewportAspectRatio,
         height: sizing ? `${sizing.viewportHeight}px` : undefined,
         minHeight: `${COUNTDOWN_SIDEBAR_PREVIEW_HEIGHT_LIMITS.min}px`,
@@ -378,9 +421,7 @@ export default function MiniToolbarTabContador() {
 
         <div className="flex flex-col gap-5">
           {loadingCountdownPresets && (
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-4 text-xs text-zinc-500">
-              Cargando presets...
-            </div>
+            <CountdownPresetCatalogSkeleton />
           )}
 
           {!loadingCountdownPresets && countdownPresets.length === 0 && (

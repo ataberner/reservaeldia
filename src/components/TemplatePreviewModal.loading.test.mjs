@@ -46,6 +46,40 @@ test("template preview does not mediate iframe gestures and cleans its measureme
   assert.match(modalSource, /window\.removeEventListener\("resize", measure\)/);
 });
 
+test("template preview locks background scroll roots without disabling iframe gestures", () => {
+  assert.match(
+    modalSource,
+    /data-dashboard-scroll-root="true"/
+  );
+  assert.match(modalSource, /root\.style\.overflow = "hidden"/);
+  assert.match(modalSource, /root\.style\.overscrollBehavior = "none"/);
+  assert.match(modalSource, /root\.style\.overscrollBehaviorY = "none"/);
+  assert.match(modalSource, /root\.style\.overflow = overflow/);
+  assert.match(
+    modalSource,
+    /root\.style\.overscrollBehavior = overscrollBehavior/
+  );
+  assert.match(
+    modalSource,
+    /root\.style\.overscrollBehaviorY = overscrollBehaviorY/
+  );
+  assert.doesNotMatch(modalSource, /body\.style\.touchAction = "none"/);
+  assert.match(modalSource, /scrolling="yes"/);
+});
+
+test("template preview loader is clipped by the branded mobile dialog boundary", () => {
+  assert.match(modalSource, /role="dialog"/);
+  assert.match(modalSource, /aria-modal="true"/);
+  assert.match(modalSource, /closeButtonRef\.current\?\.focus/);
+  assert.match(modalSource, /border-\[#692B9A\]/);
+  assert.match(modalSource, /outline-none/);
+  assert.match(
+    modalSource,
+    /max-sm:\[-webkit-mask-image:-webkit-radial-gradient\(white,black\)\]/
+  );
+  assert.match(modalSource, /overflow-hidden/);
+});
+
 test("template preview only offers application refresh for a classified stale chunk", () => {
   assert.match(
     modalSource,

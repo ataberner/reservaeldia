@@ -57,6 +57,20 @@ test("countdown tab reads event details without keeping an editable date", () =>
   assert.doesNotMatch(source, /setFechaEventoStr|fechaStrToISO/);
 });
 
+test("countdown catalog loading uses a content-shaped accessible skeleton", () => {
+  assert.match(source, /function CountdownPresetCatalogSkeleton\(\)/);
+  assert.match(source, /aria-label="Cargando presets de contador"/);
+  assert.match(source, /aria-busy="true"/);
+  assert.match(source, /Array\.from\(\{ length: 3 \}\)/);
+  assert.match(source, /Array\.from\(\{ length: 4 \}\)/);
+  assert.match(source, /motion-reduce:animate-none/);
+  assert.match(
+    source,
+    /loadingCountdownPresets\s*&&\s*\(\s*<CountdownPresetCatalogSkeleton\s*\/>/
+  );
+  assert.doesNotMatch(source, />\s*Cargando presets\.\.\.\s*</);
+});
+
 test("countdown preset cards use adaptive visual geometry without changing selection states", () => {
   assert.doesNotMatch(source, /h-\[96px\]/);
   assert.doesNotMatch(source, /h-\[clamp\(132px,42vw,168px\)\]/);
@@ -264,11 +278,19 @@ test("async PNG load updates intrinsic geometry and keeps frame with countdown c
 });
 
 test("all countdown thumbnails use the same local preview surface", () => {
-  const surfaceRecipe =
-    /bg-\[radial-gradient\(circle_at_50%_42%,#c9c3d2_0%,#ddd8e2_58%,#ebe7ee_100%\)\]/g;
+  const checkerboardRecipe =
+    /linear-gradient\([^\n]+var\(--checker-2\)[^\n]+\)/g;
 
-  assert.equal(source.match(surfaceRecipe)?.length, 1);
+  assert.equal(source.match(checkerboardRecipe)?.length, 1);
   assert.match(source, /const COUNTDOWN_PREVIEW_SURFACE_CLASS_NAME\s*=/);
+  assert.match(source, /const COUNTDOWN_PREVIEW_SURFACE_STYLE\s*=\s*Object\.freeze/);
+  assert.match(source, /"--checker-1":\s*"#e1e4e8"/);
+  assert.match(source, /"--checker-2":\s*"#c6cbd1"/);
+  assert.match(source, /backgroundColor:\s*"var\(--checker-1\)"/);
+  assert.match(source, /backgroundPosition:\s*"0 0, 0 8px, 8px -8px, -8px 0"/);
+  assert.match(source, /backgroundSize:\s*"16px 16px"/);
+  assert.match(source, /\.\.\.COUNTDOWN_PREVIEW_SURFACE_STYLE/);
+  assert.doesNotMatch(source, /radial-gradient/);
   assert.match(source, /data-countdown-preview-surface="unified"/);
   assert.match(
     source,

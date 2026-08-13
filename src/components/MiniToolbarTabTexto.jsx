@@ -19,6 +19,42 @@ const storyTitleClass =
   "m-0 block w-full text-left font-['Source_Sans_Pro',sans-serif] text-[16px] font-semibold leading-[20px] tracking-[0px] text-[#262626]";
 const storyTextareaClass =
   "mt-1.5 block min-h-[112px] w-full resize-y rounded-md bg-white px-3 py-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
+const textPresetSkeletonLineWidths = Object.freeze([
+  ["w-3/5", "w-4/5", "w-2/5"],
+  ["w-2/5", "w-3/4", "w-1/2"],
+  ["w-1/2", "w-2/3", "w-1/3"],
+]);
+
+function TextPresetCatalogSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Cargando presets de texto"
+      className="flex flex-col gap-2"
+    >
+      {textPresetSkeletonLineWidths.map((lineWidths, cardIndex) => (
+        <div
+          key={`text-sidebar-skeleton-${cardIndex}`}
+          aria-hidden="true"
+          className="min-h-[104px] shrink-0 animate-pulse rounded-xl bg-gradient-to-br from-white via-zinc-50 to-zinc-100/80 p-2 ring-1 ring-zinc-200/90 motion-reduce:animate-none"
+        >
+          <div className="flex h-[84px] flex-col items-center justify-center gap-2 rounded-lg bg-zinc-200/70 px-5">
+            {lineWidths.map((widthClassName, lineIndex) => (
+              <div
+                key={`text-sidebar-skeleton-${cardIndex}-line-${lineIndex}`}
+                className={`rounded-full bg-zinc-300/90 ${widthClassName} ${
+                  lineIndex === 0 ? "h-4" : "h-2.5"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function normalizeTextProps(item = {}) {
   const fontSize = Number(item.fontSize ?? item.size ?? 24);
@@ -505,9 +541,7 @@ export default function MiniToolbarTabTexto({
       <div className="flex-1 min-h-[220px] overflow-y-auto pr-1">
         <div className="flex flex-col gap-2">
           {loading && (
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2 text-[11px] text-zinc-600">
-              Cargando presets de texto...
-            </div>
+            <TextPresetCatalogSkeleton />
           )}
 
           {!loading && error ? (
@@ -522,7 +556,7 @@ export default function MiniToolbarTabTexto({
             </div>
           ) : null}
 
-          {textPresets.map((preset) => (
+          {!loading && textPresets.map((preset) => (
             <button
               key={preset.id}
               onClick={() => insertarPresetTexto(preset, seccionActivaId)}

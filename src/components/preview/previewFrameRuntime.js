@@ -639,9 +639,17 @@ export function buildScrollbarStyleText({
           translate: 0 var(--bg-parallax-y, 0px);
           will-change: translate;
         }
-        /* Keep the closed bottom path outside Chromium's fractional zoom sample. */
-        html[data-preview-raster-scale="scaled"][data-preview-viewport="mobile"][data-preview-layout-mode="parity"][data-preview-surface="mobile-preview-focused"] .sec-divider--bottom svg,
-        html[data-preview-raster-scale="scaled"][data-preview-viewport="mobile"][data-preview-layout-mode="parity"][data-preview-surface="mobile-preview-paired"] .sec-divider--bottom svg {
+        /* Keep clipped SVG edges outside Chromium's fractional zoom sample. */
+        html[data-preview-raster-scale="scaled"] .sec-divider svg {
+          position: relative;
+          left: -1px;
+          width: calc(100% + 2px);
+        }
+        html[data-preview-raster-scale="scaled"] .sec-divider--top svg {
+          top: -1px;
+          height: calc(100% + 1px);
+        }
+        html[data-preview-raster-scale="scaled"] .sec-divider--bottom svg {
           height: calc(100% + 1px);
         }
         html::-webkit-scrollbar,

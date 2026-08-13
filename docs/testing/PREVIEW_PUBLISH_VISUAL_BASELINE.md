@@ -144,9 +144,9 @@ not a different preview or publish payload.
 The frozen reference includes the real section sequence from
 `Noir · Elegante oscura` (`nueva-invitacion-en-blanco-1774704789526`), including
 its consecutive `#2f3c62` fixed sections, plus synthetic consecutive dark,
-light-to-dark, and image-background junctions. The capture runs at logical
-desktop `1280x820` and mobile `390x844` viewports, multiple modal scales, and
-device-pixel ratios `1` and `2`.
+light-to-dark, image-background junctions, and a desktop `bottom` wave over an
+image background. The capture runs at logical desktop `1280x820` and mobile
+`390x844` viewports, multiple modal scales, and device-pixel ratios `1` and `2`.
 
 Required assertions:
 
@@ -160,10 +160,11 @@ Required assertions:
 - at non-native scale, background-image placement uses the same generated
   position/parallax variables through `left`/`top` and avoids a second
   transformed image layer; native scale retains the generated transform
-- scaled embedded mobile mockups keep a generated `bottom` wave's closed SVG
-  edge outside the fractional raster sample by extending only its internal
-  paint height; the existing divider/section clips remain authoritative, and
-  `top`, native-scale/fullscreen, desktop, and publish output remain unchanged
+- scaled embedded mockups keep generated wave SVG closed edges outside the
+  fractional raster sample by extending internal paint one logical pixel past
+  the clipped top/bottom owner edge and both lateral edges; the focused desktop
+  image-background case must expose neither a blended junction row nor vertical
+  background slivers, while native-scale and publish output remain unchanged
 - the generated preview and publish documents are measured before shell scaling
   and remain geometrically equivalent
 - published HTML remains byte-shape compatible because the correction is owned

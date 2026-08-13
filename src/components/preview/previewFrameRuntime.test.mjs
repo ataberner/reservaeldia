@@ -390,11 +390,15 @@ test("parity preview frame scale keeps the mobile iframe document scrollable", (
   );
   assert.match(
     stub.children[0].textContent,
-    /data-preview-raster-scale="scaled"[^}]*data-preview-viewport="mobile"[^}]*data-preview-surface="mobile-preview-paired"[^}]*\.sec-divider--bottom svg[\s\S]*height: calc\(100% \+ 1px\);/
+    /data-preview-raster-scale="scaled"[^}]*\.sec-divider svg[\s\S]*position: relative;[\s\S]*left: -1px;[\s\S]*width: calc\(100% \+ 2px\);/
   );
-  assert.doesNotMatch(
+  assert.match(
     stub.children[0].textContent,
-    /data-preview-viewport="desktop"[^}]*\.sec-divider--bottom svg/
+    /data-preview-raster-scale="scaled"[^}]*\.sec-divider--top svg[\s\S]*top: -1px;[\s\S]*height: calc\(100% \+ 1px\);/
+  );
+  assert.match(
+    stub.children[0].textContent,
+    /data-preview-raster-scale="scaled"[^}]*\.sec-divider--bottom svg[\s\S]*height: calc\(100% \+ 1px\);/
   );
   assert.deepEqual(stub.frameWindow.events, ["preview:mobile-scroll:enable", "resize"]);
 });

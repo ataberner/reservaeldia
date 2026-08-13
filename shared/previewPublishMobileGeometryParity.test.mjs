@@ -324,6 +324,36 @@ test(
         ],
       }))
     );
+    const desktopImageWaveJunctionCase = {
+      id: "wave-soft-bottom-image-background",
+      presetId: "wave-soft",
+      placement: "bottom",
+      boundaryIndex: 0,
+      expectedBoundaryRgb: [38, 53, 111],
+      sections: [
+        {
+          id: "wave-image-first",
+          orden: 0,
+          altoModo: "fijo",
+          altura: 503,
+          fondo: "#f6d1e7",
+          fondoTipo: "imagen",
+          fondoImagen: DARK_SECTION_IMAGE,
+          divisores: {
+            top: "none",
+            bottom: "wave-soft",
+            height: 84,
+          },
+        },
+        {
+          id: "wave-image-second",
+          orden: 1,
+          altoModo: "fijo",
+          altura: 497,
+          fondo: "#26356f",
+        },
+      ],
+    };
 
     async function settleInvitation(target) {
       await target.evaluate(async () => {
@@ -450,6 +480,77 @@ test(
       };
     }
 
+    async function readDividerSideBandDeviation({
+      page,
+      dividerRect,
+      viewportWidth,
+      scale,
+      devicePixelRatio,
+      expectedRgb,
+      slot,
+      offset = 0,
+    }) {
+      const screenshot = await page.screenshot({ type: "png" });
+      const { data, info } = await sharp(screenshot)
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const dividerTop = offset + Number(dividerRect?.top || 0) * scale;
+      const dividerHeight = Math.max(0, Number(dividerRect?.height || 0) * scale);
+      const solidBandTop =
+        slot === "top"
+          ? dividerTop + dividerHeight * 0.05
+          : dividerTop + dividerHeight * 0.8;
+      const solidBandBottom =
+        slot === "top"
+          ? dividerTop + dividerHeight * 0.2
+          : dividerTop + dividerHeight * 0.95;
+      const startY = Math.max(
+        0,
+        Math.ceil(solidBandTop * devicePixelRatio)
+      );
+      const endY = Math.min(
+        info.height - 1,
+        Math.floor(solidBandBottom * devicePixelRatio)
+      );
+      const leftX = Math.ceil(offset * devicePixelRatio);
+      const rightX = Math.min(
+        info.width - 1,
+        Math.floor(
+          (offset + viewportWidth * scale) * devicePixelRatio
+        ) - 1
+      );
+      const sampleColumns = [
+        leftX,
+        Math.min(info.width - 1, leftX + 1),
+        Math.max(0, rightX - 1),
+        rightX,
+      ];
+      let unexpectedPixels = 0;
+      let sampledPixels = 0;
+      let maxChannelDeviation = 0;
+
+      for (let y = startY; y <= endY; y += 1) {
+        for (const x of sampleColumns) {
+          const index = (y * info.width + x) * info.channels;
+          const deviation = Math.max(
+            Math.abs(data[index] - expectedRgb[0]),
+            Math.abs(data[index + 1] - expectedRgb[1]),
+            Math.abs(data[index + 2] - expectedRgb[2])
+          );
+          maxChannelDeviation = Math.max(maxChannelDeviation, deviation);
+          if (deviation > 8) unexpectedPixels += 1;
+          sampledPixels += 1;
+        }
+      }
+
+      return {
+        maxChannelDeviation,
+        unexpectedCoverageRatio:
+          sampledPixels > 0 ? unexpectedPixels / sampledPixels : 0,
+      };
+    }
+
     async function capturePublish(
       html,
       viewport,
@@ -512,7 +613,8 @@ test(
       viewport,
       { scale, devicePixelRatio },
       boundaryIndex,
-      expectedBoundaryRgb = null
+      expectedBoundaryRgb = null,
+      dividerSlot = ""
     ) {
       const page = await browser.newPage();
       const offset = 8;
@@ -621,6 +723,17 @@ test(
         if (root) root.scrollTop = top;
         return Number(root?.scrollTop || 0);
       }, requestedScroll);
+      const dividerRect = dividerSlot
+        ? await frame.evaluate((slot) => {
+            const node = document.querySelector(`.sec-divider--${slot}`);
+            if (!node) return null;
+            const rect = node.getBoundingClientRect();
+            return {
+              top: rect.top,
+              height: rect.height,
+            };
+          }, dividerSlot)
+        : null;
       const maxChannel = await readJunctionMaxChannel({
         page,
         boundaryY: boundaryBottom - scrollTop,
@@ -640,8 +753,20 @@ test(
             offset,
           })
         : null;
+      const dividerSideBand = expectedBoundaryRgb && dividerRect && dividerSlot
+        ? await readDividerSideBandDeviation({
+            page,
+            dividerRect,
+            viewportWidth: viewport.width,
+            scale,
+            devicePixelRatio,
+            expectedRgb: expectedBoundaryRgb,
+            slot: dividerSlot,
+            offset,
+          })
+        : null;
       await page.close();
-      return { boundaryBand, maxChannel, snapshot };
+      return { boundaryBand, dividerSideBand, maxChannel, snapshot };
     }
 
     for (const fixture of junctionCases) {
@@ -757,6 +882,64 @@ test(
         }
       });
     }
+
+    await t.test("desktop-image-background-wave", async () => {
+      const fixture = desktopImageWaveJunctionCase;
+      const desktopViewport = viewports.find(
+        (viewport) => viewport.previewViewport === "desktop"
+      );
+      assert.ok(desktopViewport);
+      const prepared = await prepareRenderPayload({
+        secciones: fixture.sections,
+        objetos: [],
+      });
+      const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+        slug: `${fixture.id}-preview`,
+        isPreview: true,
+      });
+      const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+        slug: `${fixture.id}-publish`,
+      });
+      const publishByDpr = new Map();
+
+      for (const devicePixelRatio of [1, 2]) {
+        publishByDpr.set(
+          devicePixelRatio,
+          await capturePublish(
+            publishHtml,
+            desktopViewport,
+            devicePixelRatio,
+            fixture.boundaryIndex,
+            fixture.expectedBoundaryRgb
+          )
+        );
+      }
+
+      for (const scaleCase of waveScaleCases) {
+        const preview = await capturePreview(
+          previewHtml,
+          desktopViewport,
+          scaleCase,
+          fixture.boundaryIndex,
+          fixture.expectedBoundaryRgb,
+          fixture.placement
+        );
+        const publish = publishByDpr.get(scaleCase.devicePixelRatio);
+        assert.deepEqual(
+          diffMobileGeometrySnapshots(preview.snapshot, publish.snapshot),
+          [],
+          `${fixture.id} desktop scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}`
+        );
+        assert.ok(
+          preview.boundaryBand.maxUnexpectedCoverageRatio < 0.5,
+          `${fixture.id} desktop scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}: unexpected horizontal boundary coverage ${preview.boundaryBand.maxUnexpectedCoverageRatio}, publish ${publish.boundaryBand.maxUnexpectedCoverageRatio}`
+        );
+        assert.ok(
+          preview.dividerSideBand.unexpectedCoverageRatio <= 0.1,
+          `${fixture.id} desktop scale=${scaleCase.scale} dpr=${scaleCase.devicePixelRatio}: unexpected side coverage ${preview.dividerSideBand.unexpectedCoverageRatio}, max channel deviation ${preview.dividerSideBand.maxChannelDeviation}`
+        );
+      }
+    });
   }
 );
 

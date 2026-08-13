@@ -1,4 +1,7 @@
 .root {
+  --landing-template-card-width: 293px;
+  --landing-template-preview-height: 410px;
+
   box-sizing: border-box;
   width: 100%;
   padding: 36px max(20px, calc((100vw - 1440px) / 2)) 88px;
@@ -155,9 +158,9 @@
 
 .templateCard {
   display: flex;
-  width: 293px;
+  width: var(--landing-template-card-width);
   min-height: 481px;
-  flex: 0 0 293px;
+  flex: 0 0 var(--landing-template-card-width);
   flex-direction: column;
   gap: 10px;
   opacity: 1;
@@ -165,8 +168,8 @@
 
 .previewButton {
   display: block;
-  width: 293px;
-  height: 410px;
+  width: var(--landing-template-card-width);
+  height: var(--landing-template-preview-height);
   overflow: hidden;
   border: 0;
   background: #fbf7f9;
@@ -188,8 +191,8 @@
 
 .previewImage {
   display: block;
-  width: 293px;
-  height: 410px;
+  width: var(--landing-template-card-width);
+  height: var(--landing-template-preview-height);
   object-fit: cover;
   object-position: top center;
   opacity: 1;
@@ -303,7 +306,6 @@
   transform: rotate(-90deg);
 }
 
-.loadingState,
 .emptyState {
   box-sizing: border-box;
   width: 100%;
@@ -316,6 +318,92 @@
   line-height: 24px;
   padding: 32px;
   text-align: center;
+}
+
+.loadingAnnouncement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skeletonHeading {
+  width: min(330px, calc(100vw - 80px));
+  height: 32px;
+  border-radius: 8px;
+  background: #e5e5e5;
+}
+
+.skeletonCard {
+  pointer-events: none;
+}
+
+.skeletonSurface {
+  position: relative;
+  overflow: hidden;
+  background: #e5e5e5;
+}
+
+.skeletonSurface::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.68) 48%,
+    transparent 76%
+  );
+  content: "";
+  transform: translateX(-100%);
+  animation: landingTemplateSkeletonShimmer 1.8s ease-in-out infinite;
+}
+
+.skeletonPreview {
+  width: var(--landing-template-card-width);
+  height: var(--landing-template-preview-height);
+  background: #ebe8ec;
+}
+
+.skeletonCopy {
+  display: grid;
+  gap: 8px;
+}
+
+.skeletonTitle {
+  width: 72%;
+  height: 18px;
+  border-radius: 5px;
+}
+
+.skeletonActions {
+  display: flex;
+  min-height: 23px;
+  align-items: center;
+  gap: 12px;
+}
+
+.skeletonActionPrimary,
+.skeletonActionSecondary {
+  display: block;
+  height: 11px;
+  border-radius: 4px;
+}
+
+.skeletonActionPrimary {
+  width: 112px;
+}
+
+.skeletonActionSecondary {
+  width: 86px;
+}
+
+@keyframes landingTemplateSkeletonShimmer {
+  to {
+    transform: translateX(100%);
+  }
 }
 
 .previewModalBackdrop {
@@ -452,5 +540,10 @@
 
   .previewButton:hover .previewImage {
     transform: none;
+  }
+
+  .skeletonSurface::after {
+    animation: none;
+    content: none;
   }
 }

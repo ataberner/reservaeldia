@@ -592,6 +592,11 @@ test("preview and publish html can be generated from the same prepared render pa
   assert.match(publishHtml, /data-rsvp-open/);
   assert.match(previewHtml, /data-mobile-cluster="isolated"/);
   assert.match(publishHtml, /data-mobile-cluster="isolated"/);
+  for (const html of [previewHtml, publishHtml]) {
+    assert.match(html, /class="inv-loader"/);
+    assert.match(html, /stroke:\s*#692B9A/i);
+    assert.doesNotMatch(html, /#cf4f89/i);
+  }
 });
 
 test("validates grouped countdown and gallery children through the normal publish contract", () => {

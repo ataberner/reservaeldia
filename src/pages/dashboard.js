@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
 import DashboardHomeView from "@/components/dashboard/home/DashboardHomeView";
+import DashboardHomeStartupLoader from "@/components/dashboard/home/DashboardHomeStartupLoader";
 import DashboardTrashSection from "@/components/DashboardTrashSection";
 import ModalVistaPrevia from '@/components/ModalVistaPrevia';
 import TemplatePreviewModal from "@/components/TemplatePreviewModal";
@@ -406,29 +407,9 @@ export default function Dashboard() {
       {pageViewState.isHomeView && (
         <div className="relative w-full bg-white">
           {shouldRenderHomeStartupLoader && (
-            <div
-              className={
-                "absolute inset-0 z-20 flex items-start justify-center bg-gradient-to-b from-white/85 via-white/65 to-white/35 pt-20 backdrop-blur-[1.5px] transition-all duration-300 ease-out " +
-                (isHomeStartupLoaderExiting
-                  ? "pointer-events-none opacity-0 backdrop-blur-0"
-                  : "opacity-100")
-              }
-            >
-              <div
-                className={
-                  "flex flex-col items-center gap-3 text-gray-600 transition-all duration-300 ease-out will-change-transform " +
-                  (isHomeStartupLoaderExiting
-                    ? "opacity-0 translate-y-7 scale-90 blur-[1.5px]"
-                    : "opacity-100 translate-y-0 scale-100 blur-0")
-                }
-              >
-                <div className="relative flex h-11 w-11 items-center justify-center">
-                  <span className="absolute inset-0 animate-ping rounded-full border border-[#6f3bc0]/25" />
-                  <span className="h-10 w-10 animate-spin rounded-full border-2 border-gray-300/80 border-t-[#6f3bc0]" />
-                </div>
-                <p className="text-sm font-medium tracking-[0.01em] text-gray-600/95">Afinando los detalles...</p>
-              </div>
-            </div>
+            <DashboardHomeStartupLoader
+              exiting={isHomeStartupLoaderExiting}
+            />
           )}
 
           <div
@@ -437,6 +418,8 @@ export default function Dashboard() {
                 ? "pointer-events-none opacity-0"
                 : "opacity-100 transition-opacity duration-200"
             }
+            aria-hidden={showHomeStartupLoader ? "true" : undefined}
+            inert={showHomeStartupLoader ? true : undefined}
           >
           <DashboardHomeView
             usuario={usuario}

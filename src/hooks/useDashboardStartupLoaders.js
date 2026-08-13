@@ -11,7 +11,6 @@ const FONT_PRELOAD_TIMEOUT_MS = 40000;
 const TOTAL_PRELOAD_TIMEOUT_MS = 90000;
 const SELECTOR_FONT_WARMUP_TIMEOUT_MS = 35000;
 const MIN_EDITOR_STARTUP_LOADER_MS = 1200;
-const HOME_DASHBOARD_LOADER_MAX_MS = 3200;
 const HOME_DASHBOARD_LOADER_EXIT_MS = 320;
 const EDITOR_STARTUP_LOADER_EXIT_MS = 520;
 
@@ -235,7 +234,6 @@ export function useDashboardStartupLoaders({
   homeResetKey,
 }) {
   const [homeViewReady, setHomeViewReady] = useState(false);
-  const [homeLoaderForcedDone, setHomeLoaderForcedDone] = useState(false);
   const [holdHomeStartupLoader, setHoldHomeStartupLoader] = useState(false);
   const [editorPreloadState, setEditorPreloadState] = useState(
     createEditorPreloadState()
@@ -250,7 +248,6 @@ export function useDashboardStartupLoaders({
   const editorLoaderStartedAtRef = useRef(0);
   const editorLoaderHideTimerRef = useRef(null);
   const editorLoaderExitTimerRef = useRef(null);
-  const homeLoaderForceTimerRef = useRef(null);
   const homeLoaderHideTimerRef = useRef(null);
 
   useEffect(() => {
@@ -262,10 +259,6 @@ export function useDashboardStartupLoaders({
       if (editorLoaderExitTimerRef.current) {
         clearTimeout(editorLoaderExitTimerRef.current);
         editorLoaderExitTimerRef.current = null;
-      }
-      if (homeLoaderForceTimerRef.current) {
-        clearTimeout(homeLoaderForceTimerRef.current);
-        homeLoaderForceTimerRef.current = null;
       }
       if (homeLoaderHideTimerRef.current) {
         clearTimeout(homeLoaderHideTimerRef.current);
@@ -705,39 +698,7 @@ export function useDashboardStartupLoaders({
   useEffect(() => {
     if (!isHomeView) return;
     setHomeViewReady(false);
-    setHomeLoaderForcedDone(false);
   }, [homeResetKey, isHomeView]);
-
-  useEffect(() => {
-    if (!isHomeView) {
-      if (homeLoaderForceTimerRef.current) {
-        clearTimeout(homeLoaderForceTimerRef.current);
-        homeLoaderForceTimerRef.current = null;
-      }
-      setHomeLoaderForcedDone(false);
-      return;
-    }
-
-    const waitingForHome = !homeViewReady;
-
-    if (!waitingForHome) {
-      if (homeLoaderForceTimerRef.current) {
-        clearTimeout(homeLoaderForceTimerRef.current);
-        homeLoaderForceTimerRef.current = null;
-      }
-      return;
-    }
-
-    if (homeLoaderForcedDone || homeLoaderForceTimerRef.current) return;
-
-    homeLoaderForceTimerRef.current = setTimeout(() => {
-      homeLoaderForceTimerRef.current = null;
-      setHomeLoaderForcedDone(true);
-      console.warn("[dashboard-home-loader] Timeout forzado:", {
-        homeViewReady,
-      });
-    }, HOME_DASHBOARD_LOADER_MAX_MS);
-  }, [homeLoaderForcedDone, homeViewReady, isHomeView]);
 
   const editorPreloadWarm =
     !slugInvitacion ||
@@ -862,8 +823,7 @@ export function useDashboardStartupLoaders({
     };
   }, [renderEditorStartupLoader, showEditorStartupLoader]);
 
-  const showHomeStartupLoader =
-    isHomeView && !homeLoaderForcedDone && !homeViewReady;
+  const showHomeStartupLoader = isHomeView && !homeViewReady;
   const shouldRenderHomeStartupLoader =
     showHomeStartupLoader || holdHomeStartupLoader;
   const isHomeStartupLoaderExiting =

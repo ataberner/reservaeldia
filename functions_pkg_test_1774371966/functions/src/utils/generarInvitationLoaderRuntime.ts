@@ -163,7 +163,7 @@ export function generarInvitationLoaderRuntimeHTML(): string {
       </svg>
     </span>
   </div>
-  <p class="inv-loader__label">Preparando invitacion...</p>
+  <p class="inv-loader__label">Preparando tu invitación...</p>
 </div>
 
 <script>

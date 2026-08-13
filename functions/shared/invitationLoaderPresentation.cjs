@@ -21,11 +21,11 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 18px;
+    gap: 16px;
     background:
-      radial-gradient(120% 90% at 80% 20%, rgba(255, 223, 236, 0.42) 0%, rgba(255, 223, 236, 0) 62%),
-      radial-gradient(120% 90% at 14% 82%, rgba(239, 208, 255, 0.34) 0%, rgba(239, 208, 255, 0) 66%),
-      linear-gradient(180deg, #fffafc 0%, #fff 100%);
+      radial-gradient(120% 90% at 80% 20%, rgba(239, 219, 255, 0.64) 0%, rgba(239, 219, 255, 0) 62%),
+      radial-gradient(120% 90% at 14% 82%, rgba(105, 43, 154, 0.12) 0%, rgba(105, 43, 154, 0) 66%),
+      linear-gradient(180deg, #FAF5FF 0%, #FFFFFF 100%);
     transition: opacity 420ms ease, visibility 420ms ease;
   }
 
@@ -47,9 +47,9 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
     position: absolute;
     inset: 10px;
     border-radius: 999px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(249, 206, 224, 0.74) 56%, rgba(244, 175, 204, 0.28) 100%);
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(239, 219, 255, 0.82) 56%, rgba(105, 43, 154, 0.14) 100%);
     box-shadow:
-      0 12px 30px rgba(230, 123, 168, 0.24),
+      0 12px 30px rgba(105, 43, 154, 0.2),
       inset 0 0 0 1px rgba(255, 255, 255, 0.64);
     animation: invLoaderHalo 2.3s ease-in-out infinite;
   }
@@ -58,13 +58,15 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
     position: absolute;
     inset: 0;
     border-radius: 999px;
-    border: 2px solid rgba(221, 126, 165, 0.2);
-    border-top-color: rgba(211, 70, 130, 0.84);
-    border-right-color: rgba(233, 145, 179, 0.58);
+    border: 2px solid rgba(105, 43, 154, 0.18);
+    border-top-color: rgba(105, 43, 154, 0.92);
+    border-right-color: rgba(105, 43, 154, 0.52);
     animation: invLoaderSpin 1.15s linear infinite;
   }
 
   .inv-loader__heart {
+    position: relative;
+    z-index: 1;
     width: 34px;
     height: 34px;
     display: block;
@@ -79,19 +81,20 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
 
   .inv-loader__heart-path {
     fill: none;
-    stroke: #cf4f89;
+    stroke: #692B9A;
     stroke-width: 2.15;
     stroke-linecap: round;
     stroke-linejoin: round;
-    filter: drop-shadow(0 3px 8px rgba(216, 61, 124, 0.18));
+    filter: drop-shadow(0 3px 8px rgba(105, 43, 154, 0.2));
   }
 
   .inv-loader__label {
     margin: 0;
-    font-family: "Playfair Display", Georgia, serif;
-    font-size: 16px;
-    letter-spacing: 0.2px;
-    color: #6d2a53;
+    font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+    color: #262626;
     text-align: center;
   }
 
@@ -114,13 +117,13 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
 
   @keyframes invLoaderBeat {
     0%, 100% {
-      transform: rotate(-45deg) scale(1);
+      transform: scale(1);
     }
     42% {
-      transform: rotate(-45deg) scale(1.12);
+      transform: scale(1.12);
     }
     64% {
-      transform: rotate(-45deg) scale(0.98);
+      transform: scale(0.98);
     }
   }
 
@@ -162,7 +165,7 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
       </svg>
     </span>
   </div>
-  <p class="inv-loader__label">Preparando invitacion...</p>
+  <p class="inv-loader__label">Preparando tu invitación...</p>
 </div>
 `.trim();
 

@@ -12,6 +12,7 @@ import {
 import styles from "./LandingTemplateShowcase.module.css";
 
 const PREFERRED_TAG_ORDER = ["populares", "boda"];
+const LANDING_TEMPLATE_SKELETON_COUNT = 4;
 const TEMPLATE_VISUAL_PREVIEW_AUTHORITY = "template-visual";
 const EMPTY_TEMPLATE_PREVIEW_MODAL = Object.freeze({
   visible: false,
@@ -161,6 +162,55 @@ function buildTemplateTagSections(templates) {
     .sort(compareTagSections);
 }
 
+function LandingTemplateShowcaseSkeleton() {
+  return (
+    <>
+      <p
+        className={styles.loadingAnnouncement}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        Cargando plantillas...
+      </p>
+
+      <div className={styles.railSection} aria-hidden="true">
+        <div className={styles.skeletonHeading} />
+
+        <div className={styles.railViewport}>
+          <div className={styles.railTrack}>
+            {Array.from({ length: LANDING_TEMPLATE_SKELETON_COUNT }).map(
+              (_, index) => (
+                <div
+                  key={`landing-template-skeleton-${index}`}
+                  className={`${styles.templateCard} ${styles.skeletonCard}`}
+                >
+                  <div
+                    className={`${styles.skeletonSurface} ${styles.skeletonPreview}`}
+                  />
+                  <div className={styles.skeletonCopy}>
+                    <div
+                      className={`${styles.skeletonSurface} ${styles.skeletonTitle}`}
+                    />
+                    <div className={styles.skeletonActions}>
+                      <span
+                        className={`${styles.skeletonSurface} ${styles.skeletonActionPrimary}`}
+                      />
+                      <span
+                        className={`${styles.skeletonSurface} ${styles.skeletonActionSecondary}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function LandingTemplateShowcase({
   tipo = "boda",
   onUseTemplate,
@@ -274,7 +324,7 @@ export default function LandingTemplateShowcase({
   if (loading) {
     return (
       <LandingTemplateCarouselBlock id="plantillas" ariaBusy>
-        <div className={styles.loadingState}>Cargando plantillas...</div>
+        <LandingTemplateShowcaseSkeleton />
       </LandingTemplateCarouselBlock>
     );
   }

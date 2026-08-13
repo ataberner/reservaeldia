@@ -7,6 +7,7 @@ import LandingHero from "@/components/landing/LandingHero";
 import LandingHowItWorks from "@/components/landing/LandingHowItWorks";
 import LandingPricing from "@/components/landing/LandingPricing";
 import LandingShareSection from "@/components/landing/LandingShareSection";
+import { isDashboardHomeContentReady } from "@/domain/dashboard/homeStartup";
 import { useDashboardDrafts } from "@/hooks/useDashboardDrafts";
 import { useDashboardHomeConfig } from "@/hooks/useDashboardHomeConfig";
 import { useDashboardHomeSections } from "@/hooks/useDashboardHomeSections";
@@ -70,11 +71,12 @@ export default function DashboardHomeView({
   });
 
   useEffect(() => {
-    const ready =
-      !loadingDrafts &&
-      !loadingPublications &&
-      !loadingTemplates &&
-      !loadingConfig;
+    const ready = isDashboardHomeContentReady({
+      loadingDrafts,
+      loadingPublications,
+      loadingTemplates,
+      loadingConfig,
+    });
     onReadyChange?.(ready);
   }, [
     loadingConfig,

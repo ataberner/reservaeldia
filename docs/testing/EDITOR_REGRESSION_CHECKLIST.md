@@ -414,6 +414,25 @@ Resultado esperado:
 - offsets, escala y configuracion responsive del fondo se conservan al cambiar la fuente
 - la seccion `Cambiar imagen de portada` desaparece si la primera seccion deja de tener fondo de imagen
 
+### [ ] Iconos SVG canonicos
+
+1. En el tab de iconos, insertar un SVG simple recoloreable y uno multicolor/no cuadrado aprobados.
+2. Cambiar el color del recoloreable; confirmar que el multicolor conserva sus pinturas y no ofrece una mutacion global engañosa.
+3. Seleccionar, arrastrar, redimensionar y rotar ambos iconos en desktop; repetir seleccion/drag/resize alcanzado en mobile.
+4. Guardar, recargar y abrir preview `draft-authoritative`.
+5. Generar el HTML de publicacion por el flujo preparado.
+6. Simular Firestore no disponible y verificar el tab; repetir intentando insertar un item que acaba de desactivarse.
+7. Abrir un borrador anterior con `tipo: "icono", formato: "svg", paths[]` y otro con `tipo: "icono-svg"`.
+
+Resultado esperado:
+
+- el catalogo muestra solo documentos explicitamente `active`; ante fallo de Firestore queda vacio y no enumera Storage
+- la frontera de insercion vuelve a verificar aprobacion y nunca crea un SVG sin `iconRender` valido
+- shapes, grupos, transforms, strokes, colores y proporcion del `viewBox` se conservan en canvas, preview y publicacion
+- solo las partes `currentColor` responden al selector; las pinturas fijas/multicolor permanecen intactas
+- drag, resize, seleccion, transformer y touch mantienen las autoridades de interaccion existentes
+- los dos contratos legacy siguen visibles y editables sin depender del estado actual del catalogo
+
 ## 6. Publish-adjacent checks
 
 ### [ ] Galerias: sidebar, presets y visor global

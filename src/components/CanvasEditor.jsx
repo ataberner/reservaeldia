@@ -997,6 +997,7 @@ export default function CanvasEditor({
     onCopiar,
     onPegar,
     onCambiarAlineacion,
+    onMoverSeleccion,
     onAgrupar,
     onDesagrupar,
   } = useEditorHandlers({
@@ -1198,13 +1199,24 @@ export default function CanvasEditor({
     onCopiar: readOnly ? () => {} : onCopiar,
     onPegar: readOnly ? () => {} : onPegar,
     onCambiarAlineacion: readOnly ? () => {} : onCambiarAlineacion,
+    onMoverSeleccion,
     isEditing: readOnly ? false : !!editing.id,
     tieneSeleccion:
       readOnly
         ? false
         : elementosSeleccionados.length > 0 ||
           Boolean(sectionDecorationEdit?.sectionId && sectionDecorationEdit?.decorationId) ||
-          Boolean(backgroundEditSectionId)
+          Boolean(backgroundEditSectionId),
+    puedeMoverSeleccion:
+      !readOnly &&
+      Boolean(objetoSeleccionado) &&
+      elementosSeleccionados.length === 1 &&
+      !editing.id &&
+      !canvasInteractionCoordinator.isInteractionActive &&
+      !canvasInteractionCoordinator.isSettling &&
+      !isBackgroundEditInteracting &&
+      !backgroundEditSectionId &&
+      !sectionDecorationEdit?.decorationId,
   });
 
 

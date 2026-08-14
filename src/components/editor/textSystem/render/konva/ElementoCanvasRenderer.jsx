@@ -48,6 +48,11 @@ import {
 import useSharedImage from "@/hooks/useSharedImage";
 import { resolveObjectPrimaryAssetUrl } from "../../../../../../shared/renderAssetContract.js";
 import {
+  buildIconSvgDataUrl,
+  computeIconContainRect,
+  normalizeIconRenderable,
+} from "../../../../../../shared/iconRenderableContract.js";
+import {
   FUNCTIONAL_RENDER_OFFSET_X_FIELD,
 } from "../../../../../../shared/functionalAssociations.js";
 import {
@@ -526,6 +531,19 @@ export default function ElementoCanvas({
       : null;
   const [img] = useSharedImage(imageAssetUrl, "anonymous");
   const [rasterIconImg] = useSharedImage(rasterIconAssetUrl, "anonymous");
+  const canonicalIconRenderable = useMemo(
+    () => (
+      obj.tipo === "icono" && obj.formato === "svg"
+        ? normalizeIconRenderable(obj.iconRender)
+        : null
+    ),
+    [obj.formato, obj.iconRender, obj.tipo]
+  );
+  const canonicalIconDataUrl = useMemo(
+    () => buildIconSvgDataUrl(canonicalIconRenderable, obj.color),
+    [canonicalIconRenderable, obj.color]
+  );
+  const [canonicalIconImg] = useSharedImage(canonicalIconDataUrl, null);
   const googleStaticMapApiKey =
     obj.tipo === "mapa-google" ? getGoogleMapsStaticApiKey() : "";
   const googleStaticMapSrc = useMemo(() => {
@@ -5069,8 +5087,55 @@ export default function ElementoCanvas({
   }
 
 
-  /* ---------------- ICONO SVG (tipo:"icono", formato:"svg") Ã¢â‚¬â€ CON HITBOX FUNCIONAL ---------------- */
-  if (obj.tipo === "icono" && obj.formato === "svg") {
+  /* ---------------- ICONO SVG CANONICO (snapshot backend v1) ---------------- */
+  if (obj.tipo === "icono" && obj.formato === "svg" && canonicalIconRenderable) {
+    const W = Number(obj.width) || 128;
+    const H = Number(obj.height) || 128;
+    const containRect = computeIconContainRect(canonicalIconRenderable, W, H) || {
+      x: 0,
+      y: 0,
+      width: W,
+      height: H,
+    };
+    return (
+      <Group
+        {...commonProps}
+        ref={handleRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        width={W}
+        height={H}
+      >
+        <Rect
+          x={0}
+          y={0}
+          width={W}
+          height={H}
+          fill="rgba(0,0,0,0.001)"
+          stroke="transparent"
+          listening={true}
+          draggable={false}
+          onMouseDown={!hasPointerEvents ? (e) => handleNestedHitboxPressStart(e, "mousedown") : undefined}
+          onTouchStart={!hasPointerEvents ? (e) => handleNestedHitboxPressStart(e, "touchstart") : undefined}
+          onPointerDown={(e) => handleNestedHitboxPressStart(e, "pointerdown")}
+        />
+        {canonicalIconImg ? (
+          <KonvaImage
+            image={canonicalIconImg}
+            x={containRect.x}
+            y={containRect.y}
+            width={containRect.width}
+            height={containRect.height}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+        ) : null}
+      </Group>
+    );
+  }
+
+  /* ---------------- COMPAT: ICONO SVG MODERNO LEGACY BASADO EN paths[] ---------------- */
+  if (obj.tipo === "icono" && obj.formato === "svg" && !obj.iconRender) {
     const color = obj.color || "#000000";
     const paths = Array.isArray(obj.paths) ? obj.paths : [];
     const W = Number(obj.width) || 128;

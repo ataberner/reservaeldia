@@ -15,6 +15,10 @@ const {
   normalizeRenderAssetObject,
 } = require("../../shared/renderAssetContract.cjs");
 const {
+  buildIconSvgDataUrl,
+  normalizeIconRenderable,
+} = require("../../shared/iconRenderableContract.cjs");
+const {
   applyGalleryLayoutPresetToRenderObject,
   resolveGalleryLayoutRenderCellLimit,
 } = require("../../shared/galleryLayoutPresets.cjs");
@@ -1021,6 +1025,25 @@ pointer-events: auto;
     )}" style="${style}">${pathsHtml}</svg>`;
   }
 
+  function renderIconoSvgCanonico(obj: any) {
+    const iconRender = normalizeIconRenderable(obj?.iconRender);
+    if (!iconRender) return "";
+    const src = buildIconSvgDataUrl(iconRender, obj?.color);
+    if (!src) return "";
+
+    const baseStyle = stylePosBase(obj);
+    const width = Number.isFinite(obj?.width) ? obj.width : 128;
+    const height = Number.isFinite(obj?.height) ? obj.height : 128;
+    const style = `
+${baseStyle}
+${styleSize(obj, width, height)}
+object-fit: contain;
+display: block;
+`.trim();
+
+    return `<img class="objeto icono-svg-canonico" src="${escapeAttr(src)}" alt="" draggable="false" style="${style}" />`;
+  }
+
   return objetos
     .map((obj) => {
       obj = inheritGroupLayoutFields(normalizeRenderAssetObject(obj));
@@ -1254,6 +1277,11 @@ pointer-events: none;
       // ---------------- ICONO (nuevo) ----------------
       if (tipo === "icono") {
         if (obj.formato === "svg") {
+          if (obj.iconRender) {
+            const canonicalSvgHtml = renderIconoSvgCanonico(obj);
+            if (!canonicalSvgHtml) return "";
+            return envolverSiEnlace(canonicalSvgHtml, obj);
+          }
           const svgHtml = renderIconoSvgNuevoInline(obj);
           if (!svgHtml) return "";
           return envolverSiEnlace(svgHtml, obj);

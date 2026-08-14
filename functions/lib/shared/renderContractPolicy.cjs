@@ -11,6 +11,10 @@ function normalizeLowerText(value) {
   return normalizeText(value).toLowerCase();
 }
 
+const {
+  normalizeIconRenderable,
+} = require("./iconRenderableContract.cjs");
+
 const RENDER_CONTRACT_STATUSES = Object.freeze({
   MODERN_SUPPORTED: "modern_supported",
   LEGACY_FROZEN_COMPAT: "legacy_frozen_compat",
@@ -50,7 +54,7 @@ const RENDER_CONTRACT_METADATA = Object.freeze({
     allowedForNewAuthoring: true,
     reason: "The modern icono contract is the supported path for new icon authoring.",
     replacementContractId: null,
-    notes: "Use tipo='icono' for both raster and inline SVG icon authoring.",
+    notes: "Use tipo='icono' with iconRender v1 for new SVG authoring; paths[] remains a compatibility adapter.",
   }),
   [RENDER_CONTRACT_IDS.ICONO_SVG_LEGACY]: Object.freeze({
     id: RENDER_CONTRACT_IDS.ICONO_SVG_LEGACY,
@@ -202,12 +206,17 @@ function classifyRenderObjectContract(value) {
   }
 
   if (tipo === "icono") {
+    const isSvg = normalizeLowerText(safeValue.formato) === "svg";
+    const canonicalIcon = isSvg ? normalizeIconRenderable(safeValue.iconRender) : null;
     return buildContractClassification({
       type: "icon",
       contractId: RENDER_CONTRACT_IDS.ICONO_MODERN,
-      contractVersion:
-        normalizeLowerText(safeValue.formato) === "svg" ? "svg" : "raster",
-      schemaVersion: null,
+      contractVersion: isSvg
+        ? canonicalIcon
+          ? "svg-canonical-v1"
+          : "svg-paths-compat"
+        : "raster",
+      schemaVersion: canonicalIcon?.schemaVersion ?? null,
     });
   }
 

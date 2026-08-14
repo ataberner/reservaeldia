@@ -1,3 +1,8 @@
+import {
+  DEFAULT_ICON_COLOR,
+  normalizeIconRenderable,
+} from "../../../shared/iconRenderableContract.js";
+
 const DEFAULT_SHAPE_COLOR = "#111827";
 
 const SHAPE_EXTRA_PROPS = {
@@ -55,6 +60,27 @@ export function buildRasterIconInsertPayload(src, format, timestamp = Date.now()
     formato: format || "png",
     colorizable: false,
     src,
+  };
+}
+
+export function buildSvgIconInsertPayload(item, timestamp = Date.now()) {
+  const iconRender = normalizeIconRenderable(item?.iconRender);
+  const src = String(item?.src || "").trim();
+  if (!iconRender || !src) return null;
+
+  const colorizable = iconRender.colorMode === "currentColor";
+  return {
+    id: `icono-${timestamp.toString(36)}`,
+    tipo: "icono",
+    formato: "svg",
+    iconRender,
+    colorizable,
+    ...(colorizable ? { color: DEFAULT_ICON_COLOR } : {}),
+    src,
+    url: src,
+    viewBox: iconRender.viewBox,
+    catalogIconId: String(item?.id || "").trim() || null,
+    catalogHashSha256: iconRender.hashSha256,
   };
 }
 

@@ -7,23 +7,22 @@ import {
   groupResultsByKind,
   mergeCatalogItems,
   normalizeCatalogIconItem,
+  isCatalogItemAvailableForNewInsertion,
   normalizeQueryText,
   normalizeRecentEntry,
   rankItemsByQuery,
   sortLibraryItemsDefault,
 } from "@/domain/elements/catalog";
 import {
-  fetchFirestoreCatalogPage,
   fetchFirestoreDecorCatalogPage,
-  fetchFirestorePopularCatalog,
-  fetchStorageCatalogPage,
+  subscribeFirestoreCatalog,
+  subscribeFirestorePopularCatalog,
 } from "@/domain/elements/service";
 
 const RECENT_STORAGE_KEY = "editor:elements:recent:v1";
 const RECENT_LIMIT = 24;
 const FIRESTORE_PAGE_SIZE = 96;
 const DECOR_PAGE_SIZE = 96;
-const STORAGE_PAGE_SIZE = 72;
 const CATALOG_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_AUTOLOAD_MAX_ATTEMPTS = 12;
 const SEARCH_AUTOLOAD_DELAY_MS = 140;
@@ -31,12 +30,6 @@ const SEARCH_CATEGORY_TARGET_MATCHES = 36;
 
 let catalogCache = {
   updatedAt: 0,
-  source: "firestore",
-  libraryBaseItems: [],
-  popularBaseItems: [],
-  hasMore: true,
-  firestoreCursor: null,
-  storageToken: undefined,
   decorBaseItems: [],
   hasMoreDecor: true,
   decorCursor: null,
@@ -76,7 +69,7 @@ function normalizeRawCatalogItems(rawItems = []) {
     (Array.isArray(rawItems) ? rawItems : [])
       .map((raw, index) => normalizeCatalogIconItem(raw, raw?.id || `raw-${index}`))
       .filter(Boolean)
-      .filter((item) => item.kind === "icon" || item.kind === "gif")
+      .filter(isCatalogItemAvailableForNewInsertion)
   );
 }
 
@@ -100,10 +93,7 @@ export default function useElementCatalog() {
   const decorLoadingRef = useRef(false);
   const initializedRef = useRef(false);
   const searchAutoloadStateRef = useRef({ query: "", attempts: 0 });
-  const firestoreCursorRef = useRef(null);
-  const storageTokenRef = useRef(undefined);
   const decorCursorRef = useRef(null);
-  const sourceRef = useRef("firestore");
 
   const [query, setQuery] = useState("");
   const [libraryBaseItems, setLibraryBaseItems] = useState([]);
@@ -116,6 +106,7 @@ export default function useElementCatalog() {
   const [loadingDecor, setLoadingDecor] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState("firestore");
+  const [catalogLimit, setCatalogLimit] = useState(FIRESTORE_PAGE_SIZE);
 
   const saveCacheSnapshot = useCallback((snapshot) => {
     catalogCache = {
@@ -137,221 +128,47 @@ export default function useElementCatalog() {
 
     const now = Date.now();
     const cacheIsFresh =
-      Array.isArray(catalogCache.libraryBaseItems) &&
       Array.isArray(catalogCache.decorBaseItems) &&
       now - (catalogCache.updatedAt || 0) < CATALOG_CACHE_TTL_MS;
     if (cacheIsFresh) {
-      setLibraryBaseItems(catalogCache.libraryBaseItems || []);
-      setPopularBaseItems(catalogCache.popularBaseItems || []);
       setDecorBaseItems(catalogCache.decorBaseItems || []);
-      setHasMore(Boolean(catalogCache.hasMore));
       setHasMoreDecor(Boolean(catalogCache.hasMoreDecor));
-      setSource(catalogCache.source || "firestore");
-      sourceRef.current = catalogCache.source || "firestore";
-      firestoreCursorRef.current = catalogCache.firestoreCursor || null;
-      storageTokenRef.current = catalogCache.storageToken;
       decorCursorRef.current = catalogCache.decorCursor || null;
-      setError("");
       return;
     }
 
-    loadingRef.current = true;
-    setLoading(true);
-    setError("");
-
-    const decorTask = fetchFirestoreDecorCatalogPage({
-      pageSize: DECOR_PAGE_SIZE,
-      cursor: null,
-    }).catch(() => null);
-
     try {
-      const [firstPage, popularPage] = await Promise.all([
-        fetchFirestoreCatalogPage({ pageSize: FIRESTORE_PAGE_SIZE, cursor: null }),
-        fetchFirestorePopularCatalog(),
-      ]);
-      const normalizedPage = normalizeRawCatalogItems(firstPage.items);
-      const normalizedPopular = normalizeRawCatalogItems(popularPage);
-      const mergedLibrary = sortLibraryItemsDefault(
-        mergeCatalogItems(normalizedPage, normalizedPopular)
-      );
-      const resolvedPopular = resolvePopularItems(mergedLibrary, normalizedPopular);
-
-      setLibraryBaseItems(mergedLibrary);
-      setPopularBaseItems(resolvedPopular);
-      firestoreCursorRef.current = firstPage.cursor || null;
-      storageTokenRef.current = undefined;
-      sourceRef.current = "firestore";
-      setSource("firestore");
-      setHasMore(Boolean(firstPage.hasMore));
-      saveCacheSnapshot({
-        source: "firestore",
-        libraryBaseItems: mergedLibrary,
-        popularBaseItems: resolvedPopular,
-        hasMore: Boolean(firstPage.hasMore),
-        firestoreCursor: firstPage.cursor || null,
-        storageToken: undefined,
+      const decorPage = await fetchFirestoreDecorCatalogPage({
+        pageSize: DECOR_PAGE_SIZE,
+        cursor: null,
       });
-
-      if (!mergedLibrary.length) {
-        throw new Error("Catalogo de Firestore vacio.");
-      }
+      const decorItems = sortLibraryItemsDefault(normalizeRawDecorItems(decorPage.items));
+      setDecorBaseItems(decorItems);
+      setHasMoreDecor(Boolean(decorPage.hasMore));
+      decorCursorRef.current = decorPage.cursor || null;
+      saveCacheSnapshot({
+        decorBaseItems: decorItems,
+        hasMoreDecor: Boolean(decorPage.hasMore),
+        decorCursor: decorPage.cursor || null,
+      });
     } catch {
-      try {
-        const fallbackPage = await fetchStorageCatalogPage({
-          pageSize: STORAGE_PAGE_SIZE,
-          pageToken: undefined,
-        });
-        const fallbackItems = sortLibraryItemsDefault(normalizeRawCatalogItems(fallbackPage.items));
-
-        setLibraryBaseItems(fallbackItems);
-        setPopularBaseItems([]);
-        firestoreCursorRef.current = null;
-        storageTokenRef.current = fallbackPage.nextPageToken || undefined;
-        sourceRef.current = "storage";
-        setSource("storage");
-        setHasMore(Boolean(fallbackPage.hasMore));
-        setError("Catalogo remoto no disponible. Mostrando biblioteca fallback.");
-        saveCacheSnapshot({
-          source: "storage",
-          libraryBaseItems: fallbackItems,
-          popularBaseItems: [],
-          hasMore: Boolean(fallbackPage.hasMore),
-          firestoreCursor: null,
-          storageToken: fallbackPage.nextPageToken || undefined,
-        });
-      } catch {
-        setLibraryBaseItems([]);
-        setPopularBaseItems([]);
-        firestoreCursorRef.current = null;
-        storageTokenRef.current = undefined;
-        sourceRef.current = "storage";
-        setSource("storage");
-        setHasMore(false);
-        setError("No se pudo cargar la biblioteca de elementos.");
-        saveCacheSnapshot({
-          source: "storage",
-          libraryBaseItems: [],
-          popularBaseItems: [],
-          hasMore: false,
-          firestoreCursor: null,
-          storageToken: undefined,
-        });
-      }
-    } finally {
-      const decorPage = await decorTask;
-      if (decorPage) {
-        const decorItems = sortLibraryItemsDefault(normalizeRawDecorItems(decorPage.items));
-        setDecorBaseItems(decorItems);
-        setHasMoreDecor(Boolean(decorPage.hasMore));
-        decorCursorRef.current = decorPage.cursor || null;
-        saveCacheSnapshot({
-          decorBaseItems: decorItems,
-          hasMoreDecor: Boolean(decorPage.hasMore),
-          decorCursor: decorPage.cursor || null,
-        });
-      } else {
-        setDecorBaseItems([]);
-        setHasMoreDecor(false);
-        decorCursorRef.current = null;
-        saveCacheSnapshot({
-          decorBaseItems: [],
-          hasMoreDecor: false,
-          decorCursor: null,
-        });
-      }
-
-      loadingRef.current = false;
-      setLoading(false);
+      setDecorBaseItems([]);
+      setHasMoreDecor(false);
+      decorCursorRef.current = null;
+      saveCacheSnapshot({
+        decorBaseItems: [],
+        hasMoreDecor: false,
+        decorCursor: null,
+      });
     }
-  }, [resolvePopularItems, saveCacheSnapshot]);
+  }, [saveCacheSnapshot]);
 
-  const loadMore = useCallback(async () => {
+  const loadMore = useCallback(() => {
     if (loadingRef.current || !hasMore) return;
     loadingRef.current = true;
     setLoading(true);
-
-    try {
-      if (sourceRef.current === "firestore") {
-        const nextPage = await fetchFirestoreCatalogPage({
-          pageSize: FIRESTORE_PAGE_SIZE,
-          cursor: firestoreCursorRef.current,
-        });
-        const normalizedNext = normalizeRawCatalogItems(nextPage.items);
-        firestoreCursorRef.current = nextPage.cursor || null;
-        setHasMore(Boolean(nextPage.hasMore));
-        setError("");
-        setLibraryBaseItems((previous) => {
-          const nextLibrary = sortLibraryItemsDefault(mergeCatalogItems(previous, normalizedNext));
-          saveCacheSnapshot({
-            source: "firestore",
-            libraryBaseItems: nextLibrary,
-            popularBaseItems,
-            hasMore: Boolean(nextPage.hasMore),
-            firestoreCursor: nextPage.cursor || null,
-            storageToken: undefined,
-          });
-          return nextLibrary;
-        });
-      } else {
-        const fallbackPage = await fetchStorageCatalogPage({
-          pageSize: STORAGE_PAGE_SIZE,
-          pageToken: storageTokenRef.current,
-        });
-        const normalizedNext = normalizeRawCatalogItems(fallbackPage.items);
-        storageTokenRef.current = fallbackPage.nextPageToken || undefined;
-        setHasMore(Boolean(fallbackPage.hasMore));
-        setError("");
-        setLibraryBaseItems((previous) => {
-          const nextLibrary = sortLibraryItemsDefault(mergeCatalogItems(previous, normalizedNext));
-          saveCacheSnapshot({
-            source: "storage",
-            libraryBaseItems: nextLibrary,
-            popularBaseItems,
-            hasMore: Boolean(fallbackPage.hasMore),
-            firestoreCursor: firestoreCursorRef.current,
-            storageToken: fallbackPage.nextPageToken || undefined,
-          });
-          return nextLibrary;
-        });
-      }
-    } catch {
-      if (sourceRef.current === "firestore") {
-        try {
-          const fallbackPage = await fetchStorageCatalogPage({
-            pageSize: STORAGE_PAGE_SIZE,
-            pageToken: storageTokenRef.current,
-          });
-          const normalizedNext = normalizeRawCatalogItems(fallbackPage.items);
-          sourceRef.current = "storage";
-          setSource("storage");
-          storageTokenRef.current = fallbackPage.nextPageToken || undefined;
-          setHasMore(Boolean(fallbackPage.hasMore));
-          setError("Firestore no respondio. Continuando con fallback de Storage.");
-          setLibraryBaseItems((previous) => {
-            const nextLibrary = sortLibraryItemsDefault(mergeCatalogItems(previous, normalizedNext));
-            saveCacheSnapshot({
-              source: "storage",
-              libraryBaseItems: nextLibrary,
-              popularBaseItems,
-              hasMore: Boolean(fallbackPage.hasMore),
-              firestoreCursor: null,
-              storageToken: fallbackPage.nextPageToken || undefined,
-            });
-            return nextLibrary;
-          });
-        } catch {
-          setHasMore(false);
-          setError("No se pudieron cargar mas elementos.");
-        }
-      } else {
-        setHasMore(false);
-        setError("No se pudieron cargar mas elementos.");
-      }
-    } finally {
-      loadingRef.current = false;
-      setLoading(false);
-    }
-  }, [hasMore, popularBaseItems, saveCacheSnapshot]);
+    setCatalogLimit((current) => current + FIRESTORE_PAGE_SIZE);
+  }, [hasMore]);
 
   const loadMoreDecor = useCallback(async () => {
     if (decorLoadingRef.current || !hasMoreDecor) return;
@@ -389,6 +206,47 @@ export default function useElementCatalog() {
     initializeCatalog();
   }, [initializeCatalog]);
 
+  useEffect(() => {
+    loadingRef.current = true;
+    setLoading(true);
+    setError("");
+
+    const unsubscribeCatalog = subscribeFirestoreCatalog({
+      maxItems: catalogLimit,
+      onData: ({ items, hasMore: nextHasMore }) => {
+        setLibraryBaseItems(sortLibraryItemsDefault(normalizeRawCatalogItems(items)));
+        setHasMore(Boolean(nextHasMore));
+        setSource("firestore");
+        setError("");
+        loadingRef.current = false;
+        setLoading(false);
+      },
+      onError: () => {
+        setLibraryBaseItems([]);
+        setPopularBaseItems([]);
+        setHasMore(false);
+        setSource("unavailable");
+        setError("No se pudo verificar el catalogo aprobado. No se muestran iconos por seguridad.");
+        loadingRef.current = false;
+        setLoading(false);
+      },
+    });
+
+    const unsubscribePopular = subscribeFirestorePopularCatalog({
+      onData: (items) => {
+        setPopularBaseItems(sortLibraryItemsDefault(normalizeRawCatalogItems(items)));
+      },
+      onError: () => {
+        setPopularBaseItems([]);
+      },
+    });
+
+    return () => {
+      unsubscribeCatalog?.();
+      unsubscribePopular?.();
+    };
+  }, [catalogLimit]);
+
   const registerRecent = useCallback((item) => {
     const normalizedEntry = normalizeRecentEntry({
       ...(item || {}),
@@ -411,8 +269,8 @@ export default function useElementCatalog() {
   const shapeItems = useMemo(() => SHAPE_LIBRARY.slice(), []);
 
   const libraryItems = useMemo(
-    () => sortLibraryItemsDefault(dedupeCatalogItems(libraryBaseItems)),
-    [libraryBaseItems]
+    () => sortLibraryItemsDefault(mergeCatalogItems(libraryBaseItems, popularBaseItems)),
+    [libraryBaseItems, popularBaseItems]
   );
 
   const popularItems = useMemo(
@@ -429,6 +287,28 @@ export default function useElementCatalog() {
     () => sortLibraryItemsDefault(mergeCatalogItems(libraryItems, decorItems)),
     [libraryItems, decorItems]
   );
+
+  const availableRecentItems = useMemo(() => {
+    const availableMedia = new Map(
+      combinedLibraryItems.map((item) => [toRecentIdentity(item), item])
+    );
+    return recentItems
+      .map((item) => {
+        if (item.kind === "shape") {
+          return shapeItems.find((shape) => shape.id === item.id) || null;
+        }
+        return availableMedia.get(toRecentIdentity(item)) || null;
+      })
+      .filter(Boolean)
+      .slice(0, RECENT_LIMIT);
+  }, [combinedLibraryItems, recentItems, shapeItems]);
+
+  const invalidateCatalogItem = useCallback((itemId) => {
+    const safeId = String(itemId || "").trim();
+    if (!safeId) return;
+    setLibraryBaseItems((items) => items.filter((item) => item.id !== safeId));
+    setPopularBaseItems((items) => items.filter((item) => item.id !== safeId));
+  }, []);
 
   const categories = useMemo(
     () => buildOrderedCategories(mergeCatalogItems(combinedLibraryItems, popularItems)),
@@ -543,7 +423,7 @@ export default function useElementCatalog() {
     shapeItems,
     libraryItems,
     popularItems,
-    recentItems,
+    recentItems: availableRecentItems,
     categories,
     query,
     setQuery,
@@ -556,6 +436,7 @@ export default function useElementCatalog() {
     loadingDecor,
     error,
     registerRecent,
+    invalidateCatalogItem,
     getLibraryByKind,
     source,
   };

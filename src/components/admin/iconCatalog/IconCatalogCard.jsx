@@ -1,5 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import { formatDateTime } from "./iconCatalogMappers";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import { Info } from "lucide-react";
+import {
+  formatDateTime,
+  getIconCatalogIssueHelp,
+} from "./iconCatalogMappers";
 
 function StatusBadge({ active }) {
   return (
@@ -51,6 +64,174 @@ function SecondaryStatusBadge({ status }) {
     );
   }
   return null;
+}
+
+function IssueInfoTooltip({ help }) {
+  const tooltipId = useId();
+  const triggerRef = useRef(null);
+  const tooltipRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState(null);
+
+  const cancelScheduledClose = useCallback(() => {
+    if (closeTimerRef.current === null) return;
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
+  const showTooltip = useCallback(() => {
+    cancelScheduledClose();
+    setOpen(true);
+  }, [cancelScheduledClose]);
+
+  const scheduleTooltipClose = useCallback(() => {
+    cancelScheduledClose();
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      closeTimerRef.current = null;
+    }, 120);
+  }, [cancelScheduledClose]);
+
+  const updateTooltipPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    const tooltip = tooltipRef.current;
+    if (!trigger || !tooltip || typeof window === "undefined") return;
+
+    const margin = 12;
+    const gap = 6;
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const maxLeft = Math.max(margin, window.innerWidth - tooltipRect.width - margin);
+    const left = Math.min(
+      maxLeft,
+      Math.max(
+        margin,
+        triggerRect.left + triggerRect.width / 2 - tooltipRect.width / 2
+      )
+    );
+    const belowTop = triggerRect.bottom + gap;
+    const aboveTop = triggerRect.top - tooltipRect.height - gap;
+    const fitsBelow = belowTop + tooltipRect.height <= window.innerHeight - margin;
+    const top = fitsBelow
+      ? belowTop
+      : Math.max(margin, Math.min(aboveTop, window.innerHeight - tooltipRect.height - margin));
+
+    setTooltipPosition({ left, top });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setTooltipPosition(null);
+      return undefined;
+    }
+
+    updateTooltipPosition();
+    window.addEventListener("resize", updateTooltipPosition);
+    window.addEventListener("scroll", updateTooltipPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateTooltipPosition);
+      window.removeEventListener("scroll", updateTooltipPosition, true);
+    };
+  }, [open, updateTooltipPosition]);
+
+  useEffect(() => () => cancelScheduledClose(), [cancelScheduledClose]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const closeFromOutside = (event) => {
+      if (triggerRef.current?.contains(event.target)) return;
+      if (tooltipRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const closeFromKeyboard = (event) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus?.();
+    };
+
+    document.addEventListener("pointerdown", closeFromOutside, true);
+    document.addEventListener("keydown", closeFromKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside, true);
+      document.removeEventListener("keydown", closeFromKeyboard);
+    };
+  }, [open]);
+
+  if (!help) return null;
+
+  const toneClasses =
+    help.tone === "error"
+      ? {
+          button: "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 focus:ring-rose-200",
+          panel: "border-rose-200",
+          title: "text-rose-800",
+        }
+      : help.tone === "processing"
+        ? {
+            button: "border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 focus:ring-cyan-200",
+            panel: "border-cyan-200",
+            title: "text-cyan-800",
+          }
+        : {
+            button: "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 focus:ring-amber-200",
+            panel: "border-amber-200",
+            title: "text-amber-800",
+          };
+
+  const tooltip =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={tooltipRef}
+            id={tooltipId}
+            role="tooltip"
+            onMouseEnter={showTooltip}
+            onMouseLeave={scheduleTooltipClose}
+            style={
+              tooltipPosition
+                ? { left: tooltipPosition.left, top: tooltipPosition.top }
+                : { left: -10000, top: -10000 }
+            }
+            className={`fixed z-[100] max-h-[calc(100dvh-1.5rem)] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-lg border bg-white p-2.5 text-left shadow-xl ${toneClasses.panel}`}
+          >
+            <p className={`text-xs font-semibold ${toneClasses.title}`}>{help.title}</p>
+            <ul className="mt-1.5 space-y-2 text-[11px] leading-4 text-slate-700">
+              {help.entries.map((entry, index) => (
+                <li key={`${entry.problem}-${index}`}>
+                  <p>{entry.problem}</p>
+                  <p className="mt-0.5">
+                    <strong>Como solucionarlo:</strong> {entry.solution}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={`Informacion: ${help.title}`}
+        aria-describedby={tooltipId}
+        aria-expanded={open}
+        onMouseEnter={showTooltip}
+        onMouseLeave={scheduleTooltipClose}
+        onFocus={showTooltip}
+        onBlur={scheduleTooltipClose}
+        onClick={showTooltip}
+        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border outline-none transition focus:ring-2 focus:ring-offset-1 motion-reduce:transition-none ${toneClasses.button}`}
+      >
+        <Info aria-hidden="true" size={14} strokeWidth={2.25} />
+      </button>
+      {tooltip}
+    </>
+  );
 }
 
 function TechnicalPreview({ url, forceBlack }) {
@@ -117,6 +298,7 @@ export default function IconCatalogCard({
   const validationErrors = Array.isArray(icon?.validation?.errors)
     ? icon.validation.errors.length
     : 0;
+  const issueHelp = useMemo(() => getIconCatalogIssueHelp(icon), [icon]);
   const categoryList = useMemo(() => {
     if (Array.isArray(icon?.categorias) && icon.categorias.length > 0) {
       return icon.categorias;
@@ -160,6 +342,7 @@ export default function IconCatalogCard({
           <StatusBadge active={icon?.isActive} />
           <ValidationBadge validationStatus={icon?.validationStatus} />
           <SecondaryStatusBadge status={icon?.status} />
+          <IssueInfoTooltip help={issueHelp} />
         </div>
         <p className="text-[10px] font-medium text-slate-500">{icon?.format ? icon.format.toUpperCase() : "-"}</p>
       </div>

@@ -251,6 +251,7 @@ function mapSnapshotToIconDoc(
       ? data.searchTokens.map((item) => String(item || "").trim()).filter(Boolean)
       : [],
     validation: (data.validation as IconCatalogDocWithId["validation"]) || null,
+    iconRender: (data.iconRender as IconCatalogDocWithId["iconRender"]) || null,
     quality: (data.quality as IconCatalogDocWithId["quality"]) || null,
     stats:
       (data.stats as IconCatalogDocWithId["stats"]) || {

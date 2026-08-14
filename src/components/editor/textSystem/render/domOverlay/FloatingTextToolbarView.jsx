@@ -925,6 +925,7 @@ export default function FloatingTextToolbar({
   if (!portalTarget) return null;
 
   if (objetoSeleccionado?.tipo === "icono") {
+    if (objetoSeleccionado.colorizable === false) return null;
     return createPortal(
       <div
         ref={toolbarRef}

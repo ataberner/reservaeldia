@@ -4,8 +4,10 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import {
   ICON_CATALOG_COLLECTION,
+  ICON_CATALOG_DAILY_RECONCILE_BATCH_LIMIT,
   ICON_CATALOG_DAILY_RECONCILE_CRON,
   ICON_CATALOG_DAILY_USAGE_SCAN_CRON,
+  ICON_CATALOG_PROCESSOR_VERSION,
   ICON_CATALOG_SCHEMA_VERSION,
   ICON_CATALOG_TRIGGER_OPTIONS,
   ICONOS_V2_ENABLED,
@@ -222,12 +224,15 @@ export const dailyIconCatalogReconcileV2 = onSchedule(
     ...ICON_CATALOG_TRIGGER_OPTIONS,
     schedule: ICON_CATALOG_DAILY_RECONCILE_CRON,
     timeZone: "UTC",
+    timeoutSeconds: 180,
   },
   async () => {
     if (!ICONOS_V2_ENABLED) return;
     const snap = await activeIconCollection().get();
     let normalized = 0;
+    let reprocessAttempted = 0;
     let reprocessed = 0;
+    let deferred = 0;
 
     for (const docItem of snap.docs) {
       const data = asObject(docItem.data());
@@ -252,7 +257,21 @@ export const dailyIconCatalogReconcileV2 = onSchedule(
         Object.assign(patch, metadataPatch);
       }
 
-      if (!data.validation || !data.hashSha256 || !data.storagePath) {
+      const processorVersion = normalizeString(asObject(data.audit).processorVersion);
+      const format = normalizeString(data.format || data.formato).toLowerCase();
+      const requiresSvgRenderable = format === "svg" && !data.iconRender;
+      const needsReprocessing =
+        !data.validation ||
+        !data.hashSha256 ||
+        !data.storagePath ||
+        processorVersion !== ICON_CATALOG_PROCESSOR_VERSION ||
+        requiresSvgRenderable;
+      if (needsReprocessing) {
+        if (reprocessAttempted >= ICON_CATALOG_DAILY_RECONCILE_BATCH_LIMIT) {
+          deferred += 1;
+          continue;
+        }
+        reprocessAttempted += 1;
         const processIconDocumentV2 = await loadProcessIconDocumentV2();
         const processed = await processIconDocumentV2({
           iconId: docItem.id,
@@ -272,6 +291,13 @@ export const dailyIconCatalogReconcileV2 = onSchedule(
           });
           continue;
         }
+
+        const processedStatus = normalizeString(processed.patch.status).toLowerCase();
+        if (processedStatus && processedStatus !== "active") {
+          continue;
+        }
+      } else if (normalizeString(data.status).toLowerCase() !== "active") {
+        continue;
       }
 
       if (Object.keys(patch).length > 0) {
@@ -294,7 +320,9 @@ export const dailyIconCatalogReconcileV2 = onSchedule(
       payload: {
         scanned: snap.size,
         normalized,
+        reprocessAttempted,
         reprocessed,
+        deferred,
       },
     });
   }

@@ -37,6 +37,15 @@ type ProcessIconDocResult = {
   archiveReason: string | null;
 };
 
+const SUPPORTED_RASTER_ICON_FORMATS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "avif",
+]);
+
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -73,12 +82,13 @@ function nonSvgValidation(params: {
 
   const mimeType = normalizeString(params.contentType || "application/octet-stream");
   const format = mimeType.startsWith("image/") ? mimeType.replace(/^image\//, "") : "";
-  if (mimeType && !mimeType.startsWith("image/")) {
-    warnings.push(
+  const normalizedFormat = format === "jpeg" ? "jpg" : format;
+  if (!SUPPORTED_RASTER_ICON_FORMATS.has(normalizedFormat)) {
+    errors.push(
       makeIssue(
-        "warning",
-        "ICON_ASSET_UNEXPECTED_MIME",
-        "El archivo no reporta un MIME de imagen."
+        "error",
+        "ICON_ASSET_FORMAT_UNSUPPORTED",
+        "El archivo no tiene un formato raster soportado por el editor."
       )
     );
   }
@@ -110,6 +120,7 @@ function nonSvgValidation(params: {
     },
     normalizedSvgText: null,
     normalizedBytes: null,
+    renderable: null,
   };
 }
 
@@ -134,7 +145,6 @@ function deriveProcessorFingerprint(raw: Record<string, unknown>): string {
 }
 
 function toValidationStatusForMode(report: IconValidationReport): IconCatalogStatus {
-  if (ICONOS_V2_ENFORCEMENT === "observe") return "active";
   if (report.status === "rejected") return "rejected";
   if (ICONOS_V2_ENFORCEMENT === "strict" && report.warnings.length > 0) {
     return "rejected";
@@ -151,6 +161,7 @@ async function findDuplicateIconId(iconId: string, hashSha256: string): Promise<
 
   for (const docItem of duplicateSnap.docs) {
     if (docItem.id === iconId) continue;
+    if (normalizeString(docItem.data()?.status).toLowerCase() !== "active") continue;
     return docItem.id;
   }
   return null;
@@ -233,6 +244,7 @@ export async function processIconDocumentV2(
       },
       normalizedSvgText: null,
       normalizedBytes: null,
+      renderable: null,
     };
 
     return {
@@ -293,6 +305,7 @@ export async function processIconDocumentV2(
       },
       normalizedSvgText: null,
       normalizedBytes: null,
+      renderable: null,
     };
 
     return {
@@ -336,9 +349,10 @@ export async function processIconDocumentV2(
   let canonicalUrl = normalizeString(raw.url);
   let pathCount = 0;
 
-  if (format === "svg" || storageFile.contentType === "image/svg+xml") {
+  const isSvgAsset = format === "svg" || storageFile.contentType === "image/svg+xml";
+  if (isSvgAsset) {
     const svgText = storageFile.buffer.toString("utf8");
-    validation = inspectAndNormalizeSvg({
+    validation = await inspectAndNormalizeSvg({
       svgText,
       fileName,
       bytes,
@@ -346,17 +360,17 @@ export async function processIconDocumentV2(
       normalizeCurrentColor: ICONOS_V2_AUTO_NORMALIZE_CURRENTCOLOR,
     });
 
-    if (validation.normalizedSvgText && validation.normalizedSvgText !== svgText) {
+    if (validation.renderable && validation.normalizedSvgText !== svgText) {
       const uploaded = await uploadNormalizedSvg({
         storagePath,
-        svgText: validation.normalizedSvgText,
+        svgText: validation.renderable.svgText,
         previousMetadata: storageFile.metadata,
       });
       canonicalUrl = uploaded.url;
       bytes = uploaded.bytes;
-      hashSha256 = sha256Hex(validation.normalizedSvgText);
-    } else if (validation.normalizedSvgText) {
-      hashSha256 = sha256Hex(validation.normalizedSvgText);
+      hashSha256 = sha256Hex(validation.renderable.svgText);
+    } else if (validation.renderable) {
+      hashSha256 = sha256Hex(validation.renderable.svgText);
     }
     pathCount = countPathNodes(validation.normalizedSvgText || svgText);
   } else {
@@ -368,7 +382,10 @@ export async function processIconDocumentV2(
     pathCount = 0;
   }
 
-  const statusFromValidation = toValidationStatusForMode(validation);
+  const statusFromValidation =
+    isSvgAsset && !validation.renderable
+      ? "rejected"
+      : toValidationStatusForMode(validation);
   const duplicateOf =
     statusFromValidation === "active"
       ? await findDuplicateIconId(iconId, hashSha256)
@@ -404,6 +421,7 @@ export async function processIconDocumentV2(
       warnings: validation.warnings,
       checks: validation.checks,
     },
+    iconRender: validation.renderable || admin.firestore.FieldValue.delete(),
     quality: {
       isColorizable: validation.checks.colorMode === "currentColor",
       pathCount,
@@ -449,4 +467,3 @@ export async function processIconDocumentV2(
       : null,
   };
 }
-

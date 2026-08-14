@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import useElementCatalog from "@/hooks/useElementCatalog";
-import { fetchSvgPaths } from "@/utils/parseSvg";
-import { normalizeQueryText } from "@/domain/elements/catalog";
+import {
+  isCatalogItemAvailableForNewInsertion,
+  normalizeCatalogIconItem,
+  normalizeQueryText,
+} from "@/domain/elements/catalog";
+import {
+  fetchActiveCatalogItemById,
+  requestIconCatalogRevalidation,
+} from "@/domain/elements/service";
 import {
   buildDecorImageInsertPayload,
   buildRasterIconInsertPayload,
   buildShapeInsertPayload,
+  buildSvgIconInsertPayload,
 } from "@/domain/elements/insertions";
 
-const DEFAULT_INSERTED_ICON_COLOR = "#111827";
 const SHAPE_PREVIEW_FILL = "#1f2937";
 const SHAPE_POLYGONS = {
   triangle: "50,14 86,84 14,84",
@@ -300,12 +307,13 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
     hasMoreDecor,
     loadMoreDecor,
     loadingDecor,
-    error,
     registerRecent,
+    invalidateCatalogItem,
     getLibraryByKind,
   } = useElementCatalog();
 
   const [focusedLibrary, setFocusedLibrary] = useState("none");
+  const [insertionError, setInsertionError] = useState("");
   const iconLoadMoreSentinelRef = useRef(null);
   const iconScrollContainerRef = useRef(null);
   const imageLoadMoreSentinelRef = useRef(null);
@@ -413,48 +421,61 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   const insertMedia = useCallback(
     async (item) => {
-      const src = String(item?.src || "").trim();
+      let verifiedItem = null;
+      try {
+        const rawItem = await fetchActiveCatalogItemById(item?.id);
+        verifiedItem = normalizeCatalogIconItem(rawItem, item?.id);
+        if (
+          isCatalogItemAvailableForNewInsertion(verifiedItem) &&
+          String(verifiedItem?.formato || "").toLowerCase() === "svg" &&
+          verifiedItem?.iconRender?.hashSha256 !== verifiedItem?.hashSha256
+        ) {
+          await requestIconCatalogRevalidation(item?.id).catch(() => {});
+          verifiedItem = null;
+        }
+      } catch {
+        verifiedItem = null;
+      }
+
+      if (!isCatalogItemAvailableForNewInsertion(verifiedItem)) {
+        invalidateCatalogItem(item?.id);
+        setInsertionError(
+          "Este icono ya no esta aprobado o no se pudo verificar. El catalogo se cerro sin insertarlo."
+        );
+        return;
+      }
+
+      const src = String(verifiedItem.src || "").trim();
       if (!src) return;
       const insertedAt = Date.now();
-
-      const format = toMediaFormat(item);
+      const format = toMediaFormat(verifiedItem);
 
       if (format === "svg") {
-        try {
-          const { paths, viewBox } = await fetchSvgPaths(src);
-          if (Array.isArray(paths) && paths.length > 0) {
-            dispatchInsert({
-              id: `icono-${insertedAt.toString(36)}`,
-              tipo: "icono",
-              formato: "svg",
-              colorizable: true,
-              color: DEFAULT_INSERTED_ICON_COLOR,
-              paths,
-              url: src,
-              viewBox: viewBox || null,
-            });
-            registerRecent({
-              ...item,
-              formato: "svg",
-              insertedAt,
-            });
-            return;
-          }
-        } catch {
-          // Fallback raster.
+        const payload = buildSvgIconInsertPayload(verifiedItem, insertedAt);
+        if (!payload) {
+          invalidateCatalogItem(item?.id);
+          setInsertionError(
+            "El icono no tiene una representacion SVG renderizable. No se inserto ningun objeto vacio."
+          );
+          return;
         }
+        dispatchInsert(payload);
+        registerRecent({ ...verifiedItem, insertedAt });
+        setInsertionError("");
+        return;
       }
 
       const safeFormat = format || "png";
       dispatchInsert(buildRasterIconInsertPayload(src, safeFormat, insertedAt));
 
       registerRecent({
-        ...item,
+        ...verifiedItem,
         formato: safeFormat,
         insertedAt,
       });
+      setInsertionError("");
     },
-    [dispatchInsert, registerRecent]
+    [dispatchInsert, invalidateCatalogItem, registerRecent]
   );
 
   const insertDecorImage = useCallback(
@@ -768,9 +789,9 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
         </section>
       ) : null}
 
-      {error ? (
+      {insertionError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-          {error}
+          {insertionError}
         </div>
       ) : null}
 

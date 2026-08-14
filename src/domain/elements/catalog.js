@@ -1,3 +1,5 @@
+import { normalizeIconRenderable } from "../../../shared/iconRenderableContract.js";
+
 /**
  * @typedef {Object} ElementCatalogItem
  * @property {string} id
@@ -14,6 +16,8 @@
  * @property {number|null} height
  * @property {string|null} assetType
  * @property {string|null} status
+ * @property {Object|null} iconRender
+ * @property {string|null} hashSha256
  */
 
 const CURATED_CATEGORY_ORDER = [
@@ -30,6 +34,15 @@ const CURATED_CATEGORY_ORDER = [
   "naturaleza",
   "social",
 ];
+const INSERTABLE_ICON_FORMATS = new Set([
+  "svg",
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "avif",
+]);
 
 export const SHAPE_LIBRARY = [
   { id: "shape-rect", label: "Rectangulo", kind: "shape", figura: "rect", formato: null, src: null, popular: true, categories: ["basicas"], keywords: ["rectangulo", "caja"], searchText: "rectangulo caja basicas", color: "#111827" },
@@ -177,9 +190,29 @@ export function normalizeCatalogIconItem(raw, fallbackId = "") {
     height: parseOptionalNumber(raw?.height),
     assetType: normalizeTextToken(raw?.assetType || raw?.tipoAsset) || null,
     status: normalizeTextToken(raw?.status) || null,
+    iconRender: normalizeIconRenderable(raw?.iconRender),
+    hashSha256: String(raw?.hashSha256 || "").trim().toLowerCase() || null,
   };
 
   return normalized;
+}
+
+export function isCatalogItemAvailableForNewInsertion(item) {
+  if (!item || (item.kind !== "icon" && item.kind !== "gif")) return false;
+  if (normalizeTextToken(item.status) !== "active") return false;
+  if (!String(item.src || "").trim()) return false;
+  const format = normalizeTextToken(item.formato);
+  if (!INSERTABLE_ICON_FORMATS.has(format)) return false;
+  if (format === "svg") {
+    const renderable = normalizeIconRenderable(item.iconRender);
+    const catalogHash = String(item.hashSha256 || "").trim().toLowerCase();
+    return Boolean(
+      renderable &&
+      catalogHash &&
+      renderable.hashSha256 === catalogHash
+    );
+  }
+  return true;
 }
 
 export function dedupeCatalogItems(items = []) {
@@ -192,7 +225,9 @@ export function dedupeCatalogItems(items = []) {
     const fallbackId = String(item.id || "").trim();
     const key = item.kind === "shape"
       ? `shape:${item.figura || fallbackId}`
-      : `${item.kind}:${srcKey || fallbackId}`;
+      : item.hashSha256
+        ? `${item.kind}:sha256:${item.hashSha256}`
+        : `${item.kind}:${srcKey || fallbackId}`;
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(item);

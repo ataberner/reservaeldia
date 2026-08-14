@@ -421,16 +421,37 @@ Current image objects use:
 | `cropHeight` | Optional | Source-space crop height. |
 
 ### `icono`
-Current icon objects have two active branches:
+Current icon objects have one catalog-authoring branch for raster assets, one
+canonical SVG branch for new insertions, and one frozen compatibility adapter
+for SVG objects inserted before the canonical snapshot contract:
 
 | Field | Status | Notes |
 | --- | --- | --- |
-| `src` / `url` | Optional branch | Raster-like icon path/URL when `formato !== "svg"`. |
-| `width` / `height` | Optional with fallback | HTML falls back to `24` for inline SVG branch. |
-| `color` | Optional with fallback | Used by inline SVG rendering. |
-| `formato` | Optional branch selector | `svg` enables inline SVG rendering. |
-| `paths` | Required for inline SVG branch | Array of `{ d }` path objects. |
-| `viewBox` | Optional with fallback | SVG view box. |
+| `src` / `url` | Required for raster; provenance for canonical SVG | Raster asset URL when `formato !== "svg"`. New SVG objects keep the approved catalog URL for identity/usage, but rendering is owned by the persisted snapshot. |
+| `width` / `height` | Optional with renderer fallback | Authored editor box. Canonical SVG content uses centered `contain` geometry so a non-square `viewBox` is not distorted. |
+| `formato` | Branch selector | `svg` selects either `iconRender` v1 or the legacy `paths[]` adapter. Other values use the raster asset branch. |
+| `iconRender` | Required for newly inserted SVG | Versioned backend-produced `icon_svg_snapshot_v1`; editor, draft-authoritative preview, and publish consume it without reparsing the catalog source. |
+| `colorizable` | Derived for canonical SVG | `true` only when `iconRender.colorMode === "currentColor"`; fixed/multicolor snapshots keep their original paints. |
+| `color` | Optional for recolorable canonical SVG and compatibility objects | Replaces only `currentColor`; it must not overwrite fixed multicolor paint. |
+| `paths` | Frozen compatibility only | Historical array of `{ d }`. It remains renderable for existing drafts/invitations but is not produced by new catalog insertion. |
+| `viewBox` | Compatibility/projection field | Canonical authority is `iconRender.viewBox`; the top-level value remains for compatibility. |
+
+`iconRender` v1 contains `schemaVersion`, `contractId`, `mediaType`, sanitized
+`svgText`, normalized `viewBox` plus its width/height, `colorMode`,
+`geometryCount`, UTF-8 `bytes`, and `hashSha256`. The backend is the only SVG
+interpretation/normalization authority. It accepts the supported SVG subset,
+normalizes safe inline presentation styles and fixed dimensions, preserves
+groups/transforms/local references/basic shapes/fill/stroke, and confirms a
+non-empty rasterization before activation. Unsupported or unsafe constructs and
+snapshots above the bounded persisted size are rejected instead of degrading.
+
+Catalog availability is fail-closed: only Firestore `iconos` documents with the
+explicit state `status: "active"` are eligible for new insertion. `processing`,
+missing/unknown status, archived, rejected, duplicate, and inactive records are
+not catalog options. Storage is an asset store, not approval authority, and is
+not a fallback catalog. The editor rechecks the Firestore document at insertion
+time. Once inserted, the `iconRender` snapshot is part of canonical draft render
+state, so later catalog deactivation does not erase an existing icon.
 
 ### `icono-svg` (legacy)
 Legacy icon objects still publish if they carry:

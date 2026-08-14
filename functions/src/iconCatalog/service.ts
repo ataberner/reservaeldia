@@ -185,7 +185,54 @@ export const adminSetIconActivationV2 = onCall(
     const reason = normalizeString(request.data?.reason) || "manual-toggle";
 
     if (active) {
-      await restoreIconFromArchived({ iconId, uid });
+      const existing = await getIconDocById({ iconId, allowArchived: true });
+      if (!existing?.snap.exists) {
+        throw new HttpsError("not-found", "No se encontro el icono.");
+      }
+
+      const currentData = asObject(existing.snap.data());
+      const processIconDocumentV2 = await loadProcessIconDocumentV2();
+      const processed = await processIconDocumentV2({
+        iconId,
+        rawData: currentData,
+        force: true,
+        triggeredByUid: uid,
+      });
+      const targetCollection =
+        existing.source === "active" ? activeIconCollection() : archivedIconCollection();
+      if (!processed.skip && Object.keys(processed.patch).length > 0) {
+        await targetCollection.doc(iconId).set(processed.patch, { merge: true });
+      }
+
+      const approved =
+        processed.shouldArchive !== true &&
+        normalizeString(processed.patch.status || currentData.status).toLowerCase() === "active";
+      if (!approved) {
+        if (existing.source === "active") {
+          await moveIconToArchived({
+            iconId,
+            reason: processed.archiveReason || "activation-validation-rejected",
+            uid,
+          });
+        }
+        await writeIconAuditEvent({
+          event: "adminSetIconActivationV2:rejected",
+          iconId,
+          uid,
+          payload: {
+            reason,
+            archiveReason: processed.archiveReason,
+          },
+        });
+        throw new HttpsError(
+          "failed-precondition",
+          "El icono no supero la validacion renderizable y no puede activarse."
+        );
+      }
+
+      if (existing.source === "archived") {
+        await restoreIconFromArchived({ iconId, uid });
+      }
       await writeIconAuditEvent({
         event: "adminSetIconActivationV2:restore",
         iconId,

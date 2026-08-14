@@ -1,5 +1,8 @@
 // src/hooks/useKeyboardShortcuts.js
 import { useEffect } from 'react';
+import {
+  resolveCanvasKeyboardNudgeIntent,
+} from '@/domain/editor/canvasObjectPositioning';
 
 export default function useKeyboardShortcuts({
   onDeshacer,
@@ -10,8 +13,10 @@ export default function useKeyboardShortcuts({
   onCopiar,
   onPegar,
   onCambiarAlineacion,
+  onMoverSeleccion,
   isEditing,
-  tieneSeleccion
+  tieneSeleccion,
+  puedeMoverSeleccion = false,
 }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -19,11 +24,30 @@ export default function useKeyboardShortcuts({
       if (!key) return;
 
       // 🔒 No ejecutar atajos si se está escribiendo en un input, textarea o contenteditable
-      const tag = document.activeElement?.tagName?.toLowerCase();
+      const activeElement = document.activeElement;
+      const eventTarget = e?.target && e.target !== document ? e.target : null;
+      const keyboardTarget = eventTarget || activeElement;
+      const tag = keyboardTarget?.tagName?.toLowerCase();
       const isTyping =
         tag === 'input' ||
         tag === 'textarea' ||
-        document.activeElement?.isContentEditable;
+        tag === 'select' ||
+        keyboardTarget?.isContentEditable ||
+        activeElement?.isContentEditable;
+
+      const keyboardNudge = resolveCanvasKeyboardNudgeIntent({
+        key,
+        canMoveSelection: puedeMoverSeleccion,
+        isEditing,
+        isTyping,
+        defaultPrevented: e.defaultPrevented,
+      });
+
+      if (keyboardNudge) {
+        e.preventDefault();
+        onMoverSeleccion?.(keyboardNudge);
+        return;
+      }
 
       if (isTyping) return;
 
@@ -86,7 +110,9 @@ export default function useKeyboardShortcuts({
     onCopiar,
     onPegar,
     onCambiarAlineacion,
+    onMoverSeleccion,
     isEditing,
-    tieneSeleccion
+    tieneSeleccion,
+    puedeMoverSeleccion,
   ]);
 }

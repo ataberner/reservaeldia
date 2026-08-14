@@ -69,7 +69,8 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `texto` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer/metricas | no bloquea por si solo | usar con checklist |
 | `imagen` | `si` | `soportado` | `parcial` | `parcial` | `parcial` | puede bloquear por `image-asset-unresolved` o `image-crop-not-materialized` | usar con restricciones |
 | `icono` raster | `si` | `soportado` | `soportado` | `parcial` | `alta` si `src` ya es publico | puede bloquear por `icon-asset-unresolved` | usar con restricciones |
-| `icono` SVG inline (`tipo='icono'`, `formato='svg'`) | `si` | `soportado` | `soportado` | `soportado` | `alta` | sin warning especifico | usar con checklist |
+| `icono` SVG canonico (`tipo='icono'`, `formato='svg'`, `iconRender` v1) | `si` | `soportado` como imagen del snapshot compartido | `soportado` | `soportado` | `alta`: misma composicion/data URL, `contain`, paints fijos y `currentColor` selectivo | bloquea por `icon-svg-canonical-invalid` | contrato moderno para inserciones nuevas |
+| `icono` SVG `paths[]` compat | `si` | `soportado` | `soportado` | `soportado` | `alta` dentro del contrato historico de paths/fill unico | bloquea por `icon-svg-geometry-missing` si queda vacio | adapter congelado; no usar para inserciones nuevas |
 | `icono-svg` legacy | `si` | `soportado` | `soportado` | `soportado` | `alta` | warning `legacy-icono-svg-frozen` | congelar contrato |
 | `galeria` fija | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `gallery-media-unresolved` | usar con restricciones |
 | `galeria` `dynamic_media` | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `gallery-media-unresolved` | usar con restricciones |
@@ -108,6 +109,7 @@ Gallery-specific behavior is summarized in [`GALLERY_SYSTEM_CONTRACT.md`](GALLER
 Bloqueadores de publish hoy:
 
 - assets sin resolver para `imagen`, `icono` raster, `galeria`, `countdown` v2, fondos de seccion, decoraciones de fondo y decoraciones de borde
+- snapshots SVG canonicos invalidos y objetos SVG compat sin geometria bloquean antes de generar publish; un catalog asset original no reemplaza el snapshot persistido
 - target de countdown faltante o invalido; una fecha valida ya vencida no bloquea y renderiza `freezeZero`
 - crop de imagen no materializable
 - CTA funcional visible sin config raiz completa o sin metodos utilizables queda como advertencia/no disponible; `rsvp.enabled` y `gifts.enabled` son la autoridad funcional para CTAs y asociaciones RSVP/Gifts. `eventDetails.mode` es la autoridad funcional para asociaciones Ceremony/Party y `eventDetails.dressCode.enabled` para Dress Code. El campo CTA `hidden` se conserva solo como compatibilidad y se normaliza desde `enabled` durante preparacion de render.

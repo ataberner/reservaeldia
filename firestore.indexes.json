@@ -33,6 +33,20 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "popular",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "iconos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "popular",
           "order": "DESCENDING"
         },

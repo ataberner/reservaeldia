@@ -36,6 +36,9 @@ const {
 const {
   isCountdownVisible,
 } = require("../../shared/countdownEventDetails.cjs");
+const {
+  normalizeIconRenderable,
+} = require("../../shared/iconRenderableContract.cjs");
 
 type UnknownRecord = Record<string, unknown>;
 const ALTURA_EDITOR_PANTALLA = 500;
@@ -818,6 +821,42 @@ export function validatePreparedPublicationRenderState(params: {
             objectId,
             sectionId,
             fieldPath: toFieldPath("crop"),
+          })
+        );
+      }
+    }
+
+    if (objectType === "icono" && normalizeText(rawObject.formato) === "svg") {
+      const rawHasCanonicalSnapshot = Object.prototype.hasOwnProperty.call(
+        rawObject,
+        "iconRender"
+      );
+      const rawCanonical = normalizeIconRenderable(rawObject.iconRender);
+      const finalCanonical = normalizeIconRenderable(finalObject.iconRender);
+      const legacyPaths = Array.isArray(finalObject.paths)
+        ? finalObject.paths.filter((entry) => getString(asRecord(entry).d))
+        : [];
+
+      if (rawHasCanonicalSnapshot && (!rawCanonical || !finalCanonical)) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "icon-svg-canonical-invalid",
+            message: `${objectLabel} tiene un snapshot SVG canonico invalido o incompleto.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath("iconRender"),
+          })
+        );
+      } else if (!rawHasCanonicalSnapshot && legacyPaths.length === 0) {
+        pushIssue(
+          createIssue({
+            severity: "blocking",
+            code: "icon-svg-geometry-missing",
+            message: `${objectLabel} no contiene geometria SVG renderizable.`,
+            objectId,
+            sectionId,
+            fieldPath: toFieldPath("paths"),
           })
         );
       }

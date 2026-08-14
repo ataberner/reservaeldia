@@ -19,6 +19,17 @@ import {
 import {
   resolveSelectionUnionRect,
 } from '@/components/editor/textSystem/render/konva/selectionBoundsGeometry';
+import {
+  applyKeyboardNudgeToCanvasSelection,
+} from '@/domain/editor/canvasObjectPositioning';
+import {
+  calcularOffsetY,
+  convertirAbsARel,
+  determinarNuevaSeccion,
+} from '@/utils/layout';
+import {
+  normalizarAltoModo,
+} from '@/components/editor/canvasEditor/canvasEditorCoreUtils';
 
 export default function useEditorHandlers({
   objetos,
@@ -115,6 +126,37 @@ const onEliminar = useCallback(() => {
     elementosSeleccionados,
     setObjetos
   }), [objetos, secciones, elementosSeleccionados]);
+
+  const onMoverSeleccion = useCallback(({ deltaX = 0, deltaY = 0 } = {}) => {
+    const seccionesOrdenadas = [...secciones].sort(
+      (left, right) => Number(left?.orden ?? 0) - Number(right?.orden ?? 0)
+    );
+    const esSeccionPantallaById = (seccionId) => {
+      const seccion = seccionesOrdenadas.find((item) => item?.id === seccionId);
+      return normalizarAltoModo(seccion?.altoModo) === "pantalla";
+    };
+
+    setObjetos((prev) => {
+      const result = applyKeyboardNudgeToCanvasSelection({
+        objetos: prev,
+        selectedIds: elementosSeleccionados,
+        seccionesOrdenadas,
+        deltaX,
+        deltaY,
+        calcularOffsetY,
+        determinarNuevaSeccion,
+        convertirAbsARel,
+        esSeccionPantallaById,
+        ALTURA_PANTALLA_EDITOR,
+      });
+      return result.changed ? result.objetos : prev;
+    });
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    elementosSeleccionados,
+    secciones,
+    setObjetos,
+  ]);
 
   const onAgrupar = useCallback((options = {}) => {
     const selectionFrame = resolveSelectionUnionRect({
@@ -232,6 +274,7 @@ const onEliminar = useCallback(() => {
     onCopiar,
     onPegar,
     onCambiarAlineacion,
+    onMoverSeleccion,
     onAgrupar,
     onDesagrupar,
   };

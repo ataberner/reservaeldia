@@ -1,18 +1,21 @@
 import {
   collection,
   documentId,
+  doc,
+  getDocFromServer,
   getDocs,
   limit,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
   orderBy,
   query,
   startAfter,
   where,
 } from "firebase/firestore";
-import { getDownloadURL, list, ref } from "firebase/storage";
-import { db, storage } from "@/firebase";
+import { db } from "@/firebase";
 
 const ICONS_COLLECTION = "iconos";
-const ICONS_STORAGE_FOLDER = "iconos";
 const DECOR_COLLECTION = "decoraciones";
 
 function normalizeToken(value) {
@@ -33,9 +36,13 @@ export async function fetchFirestoreCatalogPage({
   pageSize = 96,
   cursor = null,
 } = {}) {
-  const constraints = [orderBy(documentId()), limit(pageSize)];
+  const constraints = [
+    where("status", "==", "active"),
+    orderBy(documentId()),
+    limit(pageSize),
+  ];
   if (cursor) {
-    constraints.splice(1, 0, startAfter(cursor));
+    constraints.splice(2, 0, startAfter(cursor));
   }
 
   const pageQuery = query(collection(db, ICONS_COLLECTION), ...constraints);
@@ -61,6 +68,7 @@ export async function fetchFirestorePopularCatalog({
 } = {}) {
   const popularQuery = query(
     collection(db, ICONS_COLLECTION),
+    where("status", "==", "active"),
     where("popular", "==", true),
     limit(maxItems)
   );
@@ -108,38 +116,89 @@ export async function fetchFirestoreDecorCatalogPage({
   };
 }
 
-export async function fetchStorageCatalogPage({
-  pageSize = 72,
-  pageToken = undefined,
+export function subscribeFirestoreCatalog({
+  maxItems = 96,
+  onData,
+  onError,
 } = {}) {
-  const folderRef = ref(storage, ICONS_STORAGE_FOLDER);
-  const response = await list(folderRef, {
-    maxResults: pageSize,
-    pageToken,
-  });
-
-  const items = await Promise.all(
-    response.items.map(async (itemRef) => {
-      const url = await getDownloadURL(itemRef);
-      const lowerName = String(itemRef.name || "").toLowerCase();
-      const extension = lowerName.split(".").pop() || "";
-      const format = extension === "jpeg" ? "jpg" : extension;
-      return {
-        id: itemRef.name,
-        nombre: itemRef.name,
-        url,
-        formato: format,
-        tipo: format === "gif" ? "gif" : "icono",
-        popular: false,
-        categoria: "",
-        keywords: [],
-      };
-    })
+  const safeLimit = Math.max(1, Math.floor(Number(maxItems || 96)));
+  const catalogQuery = query(
+    collection(db, ICONS_COLLECTION),
+    where("status", "==", "active"),
+    orderBy(documentId()),
+    limit(safeLimit)
   );
 
+  return onSnapshot(
+    catalogQuery,
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      if (snapshot.metadata.fromCache) {
+        onError?.(new Error("Catalog snapshot not confirmed by Firestore server."));
+        return;
+      }
+      onData?.({
+        items: snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        })),
+        hasMore: snapshot.docs.length === safeLimit,
+      });
+    },
+    (error) => onError?.(error)
+  );
+}
+
+export function subscribeFirestorePopularCatalog({
+  maxItems = 64,
+  onData,
+  onError,
+} = {}) {
+  const safeLimit = Math.max(1, Math.min(200, Number(maxItems || 64)));
+  const popularQuery = query(
+    collection(db, ICONS_COLLECTION),
+    where("status", "==", "active"),
+    where("popular", "==", true),
+    limit(safeLimit)
+  );
+
+  return onSnapshot(
+    popularQuery,
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      if (snapshot.metadata.fromCache) {
+        onError?.(new Error("Popular catalog snapshot not confirmed by Firestore server."));
+        return;
+      }
+      onData?.(
+        snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        }))
+      );
+    },
+    (error) => onError?.(error)
+  );
+}
+
+export async function fetchActiveCatalogItemById(iconId) {
+  const safeId = String(iconId || "").trim();
+  if (!safeId) return null;
+  const snapshot = await getDocFromServer(doc(db, ICONS_COLLECTION, safeId));
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() || {};
+  if (normalizeToken(data.status) !== "active") return null;
   return {
-    items,
-    nextPageToken: response.nextPageToken || null,
-    hasMore: Boolean(response.nextPageToken),
+    id: snapshot.id,
+    ...data,
   };
+}
+
+export async function requestIconCatalogRevalidation(iconId) {
+  const safeId = String(iconId || "").trim();
+  if (!safeId) return;
+  await updateDoc(doc(db, ICONS_COLLECTION, safeId), {
+    status: "processing",
+    actualizadoEn: serverTimestamp(),
+  });
 }

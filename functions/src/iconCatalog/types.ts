@@ -50,6 +50,21 @@ export type IconValidationReport = {
   checks: IconValidationChecks;
   normalizedSvgText: string | null;
   normalizedBytes: number | null;
+  renderable: IconSvgRenderable | null;
+};
+
+export type IconSvgRenderable = {
+  schemaVersion: 1;
+  contractId: "icon_svg_snapshot_v1";
+  mediaType: "image/svg+xml";
+  svgText: string;
+  viewBox: string;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
+  colorMode: "currentColor" | "fixed";
+  geometryCount: number;
+  bytes: number;
+  hashSha256: string;
 };
 
 export type IconQualityData = {
@@ -100,6 +115,7 @@ export type IconCatalogDoc = {
   searchText: string;
   searchTokens: string[];
   validation: IconValidationReport | null;
+  iconRender: IconSvgRenderable | null;
   quality: IconQualityData | null;
   stats: IconStatsData;
   audit: IconAuditData;
@@ -134,4 +150,3 @@ export type IconUsageSnapshotDoc = {
   scannedPublications: number;
   source: "daily-scan" | "reconcile";
 };
-

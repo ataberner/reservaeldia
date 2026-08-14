@@ -52,9 +52,12 @@ import {
 } from "@/components/editor/textSystem/render/konva/imageCropStatePatch";
 import {
   canEditObject,
-  canInsertIntoSection,
   canMutateSection,
 } from "@/domain/editor/protectedSections";
+import {
+  canonicalizeFinalizedDragPatch,
+  clampNormalizedPosition,
+} from "@/domain/editor/canvasObjectPositioning";
 import {
   sanitizeMovedGroupFunctionalAssociation,
 } from "../../../../../../shared/functionalAssociations.js";
@@ -356,72 +359,6 @@ function withDefinedMetrics(source = {}) {
   return Object.fromEntries(
     Object.entries(source).filter(([, value]) => typeof value !== "undefined")
   );
-}
-
-function clampNormalizedPosition(value) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function canonicalizeFinalizedDragPatch({
-  objOriginal,
-  dragPatch,
-  seccionesOrdenadas,
-  determinarNuevaSeccion,
-  convertirAbsARel,
-  esSeccionPantallaById,
-  ALTURA_PANTALLA_EDITOR,
-}) {
-  if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) {
-    return {};
-  }
-
-  const { nuevaSeccion, coordenadasAjustadas } = determinarNuevaSeccion(
-    dragPatch.y,
-    objOriginal.seccionId,
-    seccionesOrdenadas
-  );
-  if (nuevaSeccion && !canInsertIntoSection(nuevaSeccion, seccionesOrdenadas)) {
-    return {
-      x: objOriginal.x,
-      y: objOriginal.y,
-      ...(objOriginal.yNorm != null ? { yNorm: objOriginal.yNorm } : {}),
-      seccionId: objOriginal.seccionId,
-    };
-  }
-
-  let nextPatch = { ...dragPatch };
-  delete nextPatch.finalizoDrag;
-
-  if (nuevaSeccion) {
-    nextPatch = {
-      ...nextPatch,
-      ...coordenadasAjustadas,
-      seccionId: nuevaSeccion,
-    };
-  } else {
-    nextPatch.y = convertirAbsARel(
-      dragPatch.y,
-      objOriginal.seccionId,
-      seccionesOrdenadas
-    );
-  }
-
-  const seccionFinalId = nextPatch.seccionId || objOriginal.seccionId;
-  const yRelPx = Number.isFinite(nextPatch.y) ? nextPatch.y : 0;
-
-  if (esSeccionPantallaById(seccionFinalId)) {
-    const safePantallaHeight =
-      Number.isFinite(ALTURA_PANTALLA_EDITOR) && ALTURA_PANTALLA_EDITOR > 0
-        ? ALTURA_PANTALLA_EDITOR
-        : 1;
-    nextPatch.yNorm = clampNormalizedPosition(yRelPx / safePantallaHeight);
-    delete nextPatch.y;
-  } else {
-    nextPatch.y = yRelPx;
-    delete nextPatch.yNorm;
-  }
-
-  return nextPatch;
 }
 
 function createEmptyDragSettleSession() {

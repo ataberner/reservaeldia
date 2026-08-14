@@ -142,6 +142,14 @@ const artifacts = [
     ],
   },
   {
+    label: "Contrato renderizable de iconos SVG",
+    sourcePath: path.resolve(__dirname, "../../shared/iconRenderableContract.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/iconRenderableContract.cjs"),
+      path.resolve(__dirname, "../lib/shared/iconRenderableContract.cjs"),
+    ],
+  },
+  {
     label: "Presets de layout de galerias",
     sourcePath: path.resolve(__dirname, "../../shared/galleryLayoutPresets.cjs"),
     targetPaths: [

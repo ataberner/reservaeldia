@@ -44,8 +44,42 @@ test("warning help explains the user-visible effect and a corrective action", ()
   assert.equal(help?.tone, "warning");
   assert.equal(help?.title, "Advertencia");
   assert.match(help?.entries[0]?.problem || "", /colores originales/i);
+  assert.match(help?.entries[0]?.solution || "", /podes activar/i);
   assert.match(help?.entries[0]?.solution || "", /editor/i);
   assert.match(help?.entries[1]?.problem || "", /proporcion rectangular/i);
+});
+
+test("current renderable validation overrides a stale rejection archive reason", () => {
+  const help = getIconCatalogIssueHelp(icon({
+    status: "active",
+    validationStatus: "warning",
+    archivedReason: "validation-rejected",
+    validation: {
+      status: "warning",
+      errors: [],
+      warnings: [{ code: "ICON_SVG_FIXED_COLOR", severity: "warning" }],
+    },
+  }));
+
+  assert.equal(help?.tone, "warning");
+  assert.equal(help?.title, "Advertencia");
+  assert.match(help?.entries[0]?.solution || "", /podes activar/i);
+});
+
+test("text-removal warning says what changed and confirms that activation is allowed", () => {
+  const help = getIconCatalogIssueHelp(icon({
+    validationStatus: "warning",
+    validation: {
+      status: "warning",
+      errors: [],
+      warnings: [{ code: "ICON_SVG_TEXT_REMOVED", severity: "warning" }],
+    },
+  }));
+
+  const copy = `${help?.entries[0]?.problem} ${help?.entries[0]?.solution}`;
+  assert.match(copy, /texto adicional/i);
+  assert.match(copy, /conservar solamente el dibujo/i);
+  assert.match(copy, /podes activar/i);
 });
 
 test("rejected, duplicate and processing states explain why activation is blocked", () => {
@@ -74,6 +108,27 @@ test("rejected, duplicate and processing states explain why activation is blocke
   const processing = getIconCatalogIssueHelp(icon({ status: "processing" }));
   assert.equal(processing?.tone, "processing");
   assert.match(processing?.entries[0]?.solution || "", /Rev/);
+});
+
+test("metadata normalization failures explain the visual safety check without technical codes", () => {
+  const help = getIconCatalogIssueHelp(icon({
+    validationStatus: "rejected",
+    validation: {
+      status: "rejected",
+      warnings: [],
+      errors: [
+        {
+          code: "ICON_SVG_METADATA_NORMALIZATION_MISMATCH",
+          severity: "error",
+        },
+      ],
+    },
+  }));
+
+  const copy = `${help?.entries[0]?.problem} ${help?.entries[0]?.solution}`;
+  assert.match(copy, /datos internos del programa de dise/i);
+  assert.match(copy, /SVG simple|PNG|WEBP/i);
+  assert.doesNotMatch(copy, /ICON_SVG_METADATA_NORMALIZATION_MISMATCH/);
 });
 
 test("unknown backend issues keep the explanation non-technical", () => {
@@ -158,4 +213,27 @@ test("card portals the information tooltip outside the clipped catalog scroller"
   assert.match(pageSource, /overflow-y-auto/);
   assert.doesNotMatch(source, /group-hover:visible|group-focus-within:visible/);
   assert.match(source, /motion-reduce:transition-none/);
+});
+
+test("admin reuses the existing callable to revalidate a selected group and refreshes reports", () => {
+  const bulkSource = readFileSync(
+    new URL("./IconCatalogBulkActionsBar.jsx", import.meta.url),
+    "utf8"
+  );
+  const pageSource = readFileSync(
+    new URL("./IconCatalogAdminPage.jsx", import.meta.url),
+    "utf8"
+  );
+  const stateSource = readFileSync(
+    new URL("./useIconCatalogAdminState.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(bulkSource, /onBulkRevalidate/);
+  assert.match(bulkSource, /Revalidar seleccion/);
+  assert.match(pageSource, /onBulkRevalidate=\{bulkRevalidateSelected\}/);
+  assert.match(stateSource, /const revalidateSelectedIcons = useCallback/);
+  assert.match(stateSource, /await revalidateIcon\(\{/);
+  assert.match(stateSource, /bulkRevalidateSelected: revalidateSelectedIcons/);
+  assert.match(stateSource, /catch \(error\)[\s\S]*?await reload\(\{ silent: true \}\)/);
 });

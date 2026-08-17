@@ -46,6 +46,12 @@ const SUPPORTED_RASTER_ICON_FORMATS = new Set([
   "avif",
 ]);
 
+const STRICT_NON_BLOCKING_WARNING_CODES = new Set([
+  "ICON_SVG_FIXED_COLOR",
+  "ICON_SVG_MULTICOLOR_SKIP_CURRENTCOLOR",
+  "ICON_SVG_TEXT_REMOVED",
+]);
+
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -146,7 +152,13 @@ function deriveProcessorFingerprint(raw: Record<string, unknown>): string {
 
 function toValidationStatusForMode(report: IconValidationReport): IconCatalogStatus {
   if (report.status === "rejected") return "rejected";
-  if (ICONOS_V2_ENFORCEMENT === "strict" && report.warnings.length > 0) {
+  const hasStrictBlockingWarning = report.warnings.some(
+    (warning) =>
+      !STRICT_NON_BLOCKING_WARNING_CODES.has(
+        normalizeString(warning?.code).toUpperCase()
+      )
+  );
+  if (ICONOS_V2_ENFORCEMENT === "strict" && hasStrictBlockingWarning) {
     return "rejected";
   }
   return "active";

@@ -817,6 +817,74 @@ export function useIconCatalogAdminState() {
     [bulkActionBusy, pushFlashMessage, selectedIcons]
   );
 
+  const revalidateSelectedIcons = useCallback(async () => {
+    if (bulkActionBusy) return;
+    const selectedSnapshot = Array.isArray(selectedIcons) ? selectedIcons.slice() : [];
+    if (selectedSnapshot.length === 0) {
+      pushFlashMessage("warning", "Selecciona al menos un icono.");
+      return;
+    }
+
+    setBulkActionBusy(true);
+    try {
+      const results = await runInBatches(selectedSnapshot, async (icon) => {
+        const iconId = normalizeString(icon?.id);
+        if (!iconId) return { iconId: "", ok: false, rejected: false };
+        try {
+          const result = await revalidateIcon({
+            iconId,
+            force: true,
+            archiveOnReject: true,
+          });
+          return {
+            iconId,
+            ok: true,
+            rejected: result?.shouldArchive === true,
+          };
+        } catch (error) {
+          return {
+            iconId,
+            ok: false,
+            rejected: false,
+            error: getErrorMessage(error, "No se pudo revalidar el icono."),
+          };
+        }
+      });
+
+      const failedIds = results
+        .filter((entry) => entry?.ok === false && entry?.iconId)
+        .map((entry) => entry.iconId);
+      const rejectedIds = results
+        .filter((entry) => entry?.ok && entry?.rejected && entry?.iconId)
+        .map((entry) => entry.iconId);
+      const processedCount = results.filter((entry) => entry?.ok).length;
+      setSelectedIconIds(
+        new Set(results.map((entry) => entry?.iconId).filter(Boolean))
+      );
+
+      if (failedIds.length > 0) {
+        pushFlashMessage(
+          "warning",
+          `Revalidacion parcial: ${processedCount} procesados y ${failedIds.length} con error.`
+        );
+      } else if (rejectedIds.length > 0) {
+        pushFlashMessage(
+          "warning",
+          `Revalidacion completada: ${processedCount} procesados y ${rejectedIds.length} siguen rechazados.`
+        );
+      } else {
+        pushFlashMessage(
+          "success",
+          `Revalidacion completada: ${processedCount} iconos procesados.`
+        );
+      }
+
+      await reload({ silent: true });
+    } finally {
+      setBulkActionBusy(false);
+    }
+  }, [bulkActionBusy, pushFlashMessage, reload, selectedIcons]);
+
   const applyBulkCategoryToSelected = useCallback(
     async ({ category, mode }) => {
       if (bulkActionBusy) return;
@@ -1175,13 +1243,14 @@ export function useIconCatalogAdminState() {
       } catch (error) {
         const message = getErrorMessage(error, "No se pudieron guardar los cambios.");
         pushFlashMessage("error", message);
+        await reload({ silent: true });
         return { ok: false, message };
       } finally {
         setSavingEdit(false);
         setBusy(normalizedId, "saving", false);
       }
     },
-    [items, pushFlashMessage, setBusy]
+    [items, pushFlashMessage, reload, setBusy]
   );
 
   const toggleActivationForIcon = useCallback(
@@ -1229,11 +1298,12 @@ export function useIconCatalogAdminState() {
           "error",
           getErrorMessage(error, "No se pudo cambiar el estado del icono.")
         );
+        await reload({ silent: true });
       } finally {
         setBusy(normalizedId, "activation", false);
       }
     },
-    [pushFlashMessage, setBusy]
+    [pushFlashMessage, reload, setBusy]
   );
 
   const updatePriorityForIcon = useCallback(
@@ -1384,6 +1454,7 @@ export function useIconCatalogAdminState() {
     toggleSelectAllFilteredLoaded,
     bulkActivateSelected: () => applyBulkActivationToSelected({ active: true }),
     bulkDeactivateSelected: () => applyBulkActivationToSelected({ active: false }),
+    bulkRevalidateSelected: revalidateSelectedIcons,
     bulkAssignCategorySelected: (category) =>
       applyBulkCategoryToSelected({ category, mode: "assign" }),
     bulkRemoveCategorySelected: (category) =>

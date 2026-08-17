@@ -16,6 +16,7 @@ export default function IconCatalogBulkActionsBar({
   onClearSelection,
   onBulkActivate,
   onBulkDeactivate,
+  onBulkRevalidate,
   onBulkAssignCategory,
   onBulkRemoveCategory,
 }) {
@@ -69,7 +70,7 @@ export default function IconCatalogBulkActionsBar({
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto]">
+      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto_auto]">
         <button
           type="button"
           onClick={onBulkActivate}
@@ -85,6 +86,14 @@ export default function IconCatalogBulkActionsBar({
           className="h-8 rounded-md border border-amber-600 bg-amber-600 px-2 text-xs font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
         >
           Desactivar seleccion
+        </button>
+        <button
+          type="button"
+          onClick={onBulkRevalidate}
+          disabled={disableBulkActions}
+          className="h-8 rounded-md border border-cyan-600 bg-cyan-600 px-2 text-xs font-semibold text-white transition hover:bg-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
+        >
+          Revalidar seleccion
         </button>
         <input
           type="text"

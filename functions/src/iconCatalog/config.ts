@@ -19,7 +19,7 @@ export const ICON_CATALOG_ASSET_TYPE_ICON = "icon";
 export const ICON_CATALOG_ASSET_TYPE_DECORATION = "decoracion";
 
 export const ICON_CATALOG_SCHEMA_VERSION = 3;
-export const ICON_CATALOG_PROCESSOR_VERSION = "icon-catalog-v3.0.0";
+export const ICON_CATALOG_PROCESSOR_VERSION = "icon-catalog-v3.7.0";
 
 export const ICON_CATALOG_MAX_SVG_BYTES_HARD = 500 * 1024;
 export const ICON_CATALOG_MAX_SVG_BYTES_WARN = 200 * 1024;

@@ -172,11 +172,15 @@ const VALIDATION_ISSUE_HELP = {
   },
   ICON_SVG_FIXED_COLOR: {
     problem: "El icono conserva sus colores originales y no se podra recolorear desde el editor.",
-    solution: "Si debe cambiar de color en el editor, exporta una version de un solo color preparada para tomar el color elegido. Si es multicolor, dejalo asi.",
+    solution: "Podes activarlo tal como esta. Si queres cambiarle el color desde el editor, exporta una version de un solo color preparada para tomar el color elegido.",
   },
   ICON_SVG_MULTICOLOR_SKIP_CURRENTCOLOR: {
     problem: "El icono tiene varios colores y el sistema los conservo para no alterar el diseño.",
     solution: "No hace falta corregirlo si debe seguir siendo multicolor. Si queres recolorearlo, crea y subi una version de un solo color.",
+  },
+  ICON_SVG_TEXT_REMOVED: {
+    problem: "El archivo incluia texto adicional y el sistema lo quito para conservar solamente el dibujo del icono.",
+    solution: "Revisa la vista previa. Si el dibujo esta completo, podes activar el icono sin hacer otros cambios.",
   },
   ICON_ASSET_STORAGE_PATH_MISSING: {
     problem: "El registro no tiene vinculado el archivo original, por lo que no puede validarse ni activarse.",
@@ -226,6 +230,22 @@ const VALIDATION_ISSUE_HELP = {
     problem: "El sistema no pudo generar una version visual confiable de este SVG.",
     solution: "Simplifica el dibujo o exportalo como PNG o WEBP y volve a subirlo.",
   },
+  ICON_SVG_STYLE_NORMALIZATION_MISMATCH: {
+    problem: "El sistema pudo leer los estilos, pero no pudo confirmar que el resultado conserve exactamente el mismo aspecto.",
+    solution: "Simplifica los estilos del SVG o usa PNG o WEBP para conservar el diseÃ±o sin cambios.",
+  },
+  ICON_SVG_STYLE_NORMALIZATION_FAILED: {
+    problem: "El sistema no pudo comprobar de forma confiable el resultado de convertir los estilos del SVG.",
+    solution: "Simplifica los estilos del SVG o usa PNG o WEBP y volve a subirlo.",
+  },
+  ICON_SVG_METADATA_NORMALIZATION_MISMATCH: {
+    problem: "El archivo incluye datos internos del programa de diseño y, al quitarlos, la imagen no quedo exactamente igual.",
+    solution: "Guarda una copia como SVG simple u optimizado, o usa PNG o WEBP para conservar el diseño sin cambios.",
+  },
+  ICON_SVG_METADATA_NORMALIZATION_FAILED: {
+    problem: "El sistema no pudo confirmar que sea seguro quitar los datos internos del programa de diseño.",
+    solution: "Guarda una copia como SVG simple u optimizado, o usa PNG o WEBP y volve a subirla.",
+  },
 };
 
 const UNSAFE_SVG_ISSUE_CODES = new Set([
@@ -241,6 +261,10 @@ const UNSUPPORTED_SVG_ISSUE_CODES = new Set([
   "ICON_SVG_UNSUPPORTED_ATTRIBUTE",
   "ICON_SVG_UNSUPPORTED_PAINT",
   "ICON_SVG_INVALID_TRANSFORM",
+  "ICON_SVG_STYLE_NORMALIZATION_MISMATCH",
+  "ICON_SVG_STYLE_NORMALIZATION_FAILED",
+  "ICON_SVG_METADATA_NORMALIZATION_MISMATCH",
+  "ICON_SVG_METADATA_NORMALIZATION_FAILED",
 ]);
 
 const BROKEN_SVG_REFERENCE_CODES = new Set([
@@ -431,17 +455,21 @@ export function getIconCatalogIssueHelp(icon) {
   const archivedReason = normalizeString(icon?.archivedReason).toLowerCase();
   const errors = Array.isArray(icon?.validation?.errors) ? icon.validation.errors : [];
   const warnings = Array.isArray(icon?.validation?.warnings) ? icon.validation.warnings : [];
+  const hasCurrentRenderableValidation =
+    (validationStatus === "passed" || validationStatus === "warning") &&
+    errors.length === 0;
   const isDuplicate =
     status === "duplicate" ||
     Boolean(normalizeString(icon?.duplicateOf)) ||
-    archivedReason.includes("duplicate");
+    (!hasCurrentRenderableValidation && archivedReason.includes("duplicate"));
   const isProcessing = status === "processing";
   const isRejected =
     status === "rejected" ||
     validationStatus === "rejected" ||
     errors.length > 0 ||
-    archivedReason.includes("validation-rejected") ||
-    archivedReason.includes("asset-not-found");
+    (!hasCurrentRenderableValidation &&
+      (archivedReason.includes("validation-rejected") ||
+        archivedReason.includes("asset-not-found")));
   const hasWarning = validationStatus === "warning" || warnings.length > 0;
 
   if (!isDuplicate && !isProcessing && !isRejected && !hasWarning) return null;

@@ -440,10 +440,37 @@ for SVG objects inserted before the canonical snapshot contract:
 `svgText`, normalized `viewBox` plus its width/height, `colorMode`,
 `geometryCount`, UTF-8 `bytes`, and `hashSha256`. The backend is the only SVG
 interpretation/normalization authority. It accepts the supported SVG subset,
-normalizes safe inline presentation styles and fixed dimensions, preserves
-groups/transforms/local references/basic shapes/fill/stroke, and confirms a
-non-empty rasterization before activation. Unsupported or unsafe constructs and
-snapshots above the bounded persisted size are rejected instead of degrading.
+removes inert root metadata (`version`, `xml:space`), materializes allowlisted
+simple class CSS into presentation attributes, removes the consumed `<style>`
+and `class` markup, canonicalizes an `svg:` prefix only when it resolves to the
+standard SVG namespace, and removes the allowlisted inert Inkscape/Sodipodi
+metadata (`sodipodi:namedview`, `inkscape:page`, `inkscape:groupmode`,
+`sodipodi:docname`, and `inkscape:label`) plus inert `data-name` export labels
+on SVG elements. Sketch exports may also lose the inert `sketch:type` metadata
+and its now-unused namespace declaration. Duplicate export IDs are removed only
+when no local `href` or `url(#id)` reference uses them; referenced duplicates
+remain rejected as ambiguous. It also removes SVG `<text>` subtrees and CSS
+rules proven to target only that removed text, strips inert outer-root
+positioning (`x`/`y`), normalizes safe
+inline presentation/rendering styles and fixed dimensions, and preserves
+groups/transforms/local references/basic shapes/fill/stroke. Text removal is an
+intentional catalog-authoring normalization: it emits the non-blocking
+`ICON_SVG_TEXT_REMOVED` warning and the remaining drawing must still contain
+supported geometry and visible pixels. The backend also recognizes the bounded
+Adobe Illustrator export pattern where one `<switch>` contains first a
+`<foreignObject>` metadata branch gated by the Illustrator namespace and then
+one SVG drawing branch: it removes that metadata branch, unwraps the drawing,
+and drops the now-unused `x`/`i`/`graph` namespace declarations plus
+`i:extraneous="self"`. Arbitrary `switch`/`foreignObject` content and ambiguous
+multiple drawing branches remain rejected. Every style or editor-metadata
+normalization outside these explicit policies must preserve the
+rasterized appearance before the backend can produce the canonical snapshot.
+Unknown namespace aliases, other Inkscape constructs, complex selectors,
+at-rules, unsupported CSS that still affects retained geometry, unsafe
+constructs, visual mismatches, and snapshots above the bounded persisted size
+are rejected instead of degrading. Fixed-color, preserved-multicolor, and text
+removal conditions are informational warnings and do not block activation by
+themselves.
 
 Catalog availability is fail-closed: only Firestore `iconos` documents with the
 explicit state `status: "active"` are eligible for new insertion. `processing`,

@@ -81,6 +81,7 @@ export default function IconCatalogAdminPage() {
     toggleSelectAllFilteredLoaded,
     bulkActivateSelected,
     bulkDeactivateSelected,
+    bulkRevalidateSelected,
     bulkAssignCategorySelected,
     bulkRemoveCategorySelected,
     uploadIcon,
@@ -219,6 +220,7 @@ export default function IconCatalogAdminPage() {
           onClearSelection={clearSelectedIcons}
           onBulkActivate={bulkActivateSelected}
           onBulkDeactivate={bulkDeactivateSelected}
+          onBulkRevalidate={bulkRevalidateSelected}
           onBulkAssignCategory={bulkAssignCategorySelected}
           onBulkRemoveCategory={bulkRemoveCategorySelected}
         />

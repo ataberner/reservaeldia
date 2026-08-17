@@ -32,6 +32,11 @@ type ValidateSvgInput = {
 
 type StyleEntry = [property: string, value: string];
 
+type SimpleClassStyleRule = {
+  classNames: string[];
+  declarations: StyleEntry[];
+};
+
 const ALLOWED_ELEMENTS = new Set([
   "svg",
   "g",
@@ -86,6 +91,10 @@ const COMMON_ATTRIBUTES = new Set([
   "color",
   "display",
   "visibility",
+  "enable-background",
+  "shape-rendering",
+  "text-rendering",
+  "image-rendering",
   "clip-path",
   "mask",
   "style",
@@ -150,6 +159,10 @@ const STYLE_PROPERTIES = new Set([
   "color",
   "display",
   "visibility",
+  "enable-background",
+  "shape-rendering",
+  "text-rendering",
+  "image-rendering",
   "clip-path",
   "mask",
   "stop-color",
@@ -163,6 +176,35 @@ const SAFE_ID_PATTERN = /^[A-Za-z_][\w:.-]*$/;
 const SAFE_COLOR_FUNCTION_PATTERN = /^(?:rgb|rgba|hsl|hsla)\([0-9.,%+\-\s]+\)$/i;
 const SAFE_COLOR_TOKEN_PATTERN = /^(?:#[0-9a-f]{3,8}|[a-z]+)$/i;
 const BLOCKED_XML_PATTERN = /<!\s*(?:doctype|entity)\b/i;
+const SAFE_CLASS_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+const INERT_ROOT_METADATA_ATTRIBUTES = new Set([
+  "version",
+  "xml:space",
+  "x",
+  "y",
+]);
+const INERT_ELEMENT_METADATA_ATTRIBUTES = new Set(["data-name"]);
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+const INKSCAPE_NAMESPACE = "http://www.inkscape.org/namespaces/inkscape";
+const SODIPODI_NAMESPACE = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd";
+const SKETCH_NAMESPACE = "http://www.bohemiancoding.com/sketch/ns";
+const ADOBE_EXTENSIBILITY_NAMESPACE = "http://ns.adobe.com/Extensibility/1.0/";
+const ADOBE_ILLUSTRATOR_NAMESPACE = "http://ns.adobe.com/AdobeIllustrator/10.0/";
+const ADOBE_GRAPHS_NAMESPACE = "http://ns.adobe.com/Graphs/1.0/";
+const ADOBE_EDITOR_NAMESPACES = new Set([
+  ADOBE_EXTENSIBILITY_NAMESPACE,
+  ADOBE_ILLUSTRATOR_NAMESPACE,
+  ADOBE_GRAPHS_NAMESPACE,
+]);
+const INERT_EDITOR_METADATA_ELEMENTS = new Map<string, Set<string>>([
+  [SODIPODI_NAMESPACE, new Set(["namedview"])],
+  [INKSCAPE_NAMESPACE, new Set(["page"])],
+]);
+const INERT_EDITOR_METADATA_ATTRIBUTES = new Map<string, Set<string>>([
+  [INKSCAPE_NAMESPACE, new Set(["groupmode", "label"])],
+  [SODIPODI_NAMESPACE, new Set(["docname"])],
+]);
 
 function issue(
   severity: "error" | "warning",
@@ -186,20 +228,641 @@ function parseViewBox(value: string | null): {
   return { raw: parts.join(" "), width, height };
 }
 
-function parseStyle(styleText: string): StyleEntry[] {
-  return String(styleText || "")
-    .split(";")
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((declaration) => {
-      const separator = declaration.indexOf(":");
-      if (separator <= 0) return null;
-      const property = declaration.slice(0, separator).trim().toLowerCase();
-      const value = declaration.slice(separator + 1).trim();
-      if (!property || !value) return null;
-      return [property, value] as StyleEntry;
-    })
-    .filter((entry): entry is StyleEntry => Boolean(entry));
+function parseStyle(styleText: string): StyleEntry[] | null {
+  const entries: StyleEntry[] = [];
+  for (const rawDeclaration of String(styleText || "").split(";")) {
+    const declaration = rawDeclaration.trim();
+    if (!declaration) continue;
+    const separator = declaration.indexOf(":");
+    if (separator <= 0) return null;
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const value = declaration.slice(separator + 1).trim();
+    if (!property || !value || /!\s*important\b/i.test(value)) return null;
+    entries.push([property, value]);
+  }
+  return entries.length > 0 ? entries : null;
+}
+
+function parseSimpleClassStyles(styleText: string): SimpleClassStyleRule[] | null {
+  const raw = String(styleText || "");
+  const withoutComments = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (withoutComments.includes("/*") || withoutComments.includes("*/")) return null;
+  if (!withoutComments.trim()) return [];
+
+  const rules: SimpleClassStyleRule[] = [];
+  const blockPattern = /([^{}]+)\{([^{}]*)\}/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockPattern.exec(withoutComments))) {
+    if (withoutComments.slice(cursor, match.index).trim()) return null;
+    const classNames = match[1]
+      .split(",")
+      .map((selector) => selector.trim())
+      .map((selector) => {
+        const selectorMatch = selector.match(/^\.([A-Za-z_][A-Za-z0-9_-]*)$/);
+        return selectorMatch?.[1] || null;
+      });
+    if (!classNames.length || classNames.some((className) => !className)) return null;
+
+    const declarations = parseStyle(match[2]);
+    if (
+      !declarations ||
+      declarations.some(([property]) => !STYLE_PROPERTIES.has(property))
+    ) {
+      return null;
+    }
+
+    rules.push({
+      classNames: classNames as string[],
+      declarations,
+    });
+    cursor = blockPattern.lastIndex;
+  }
+
+  if (withoutComments.slice(cursor).trim() || rules.length === 0) return null;
+  return rules;
+}
+
+function classNamesFromElement(element: Element): string[] {
+  return String(element.getAttribute("class") || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function selectorTargetsOnlyRemovedText(params: {
+  selector: string;
+  removedTextClasses: Set<string>;
+  retainedClasses: Set<string>;
+}): boolean {
+  const selector = params.selector.trim();
+  if (/^(?:text|tspan)(?:[.#][A-Za-z_][A-Za-z0-9_-]*)?$/i.test(selector)) {
+    return true;
+  }
+  const classSelector = selector.match(/^\.([A-Za-z_][A-Za-z0-9_-]*)$/);
+  if (!classSelector) return false;
+  return (
+    params.removedTextClasses.has(classSelector[1]) &&
+    !params.retainedClasses.has(classSelector[1])
+  );
+}
+
+function removeTextOnlyStyleRules(params: {
+  document: Document;
+  textElements: Element[];
+}): number {
+  const removedTextClasses = new Set<string>();
+  for (const textElement of params.textElements) {
+    for (const element of [
+      textElement,
+      ...Array.from(textElement.querySelectorAll("[class]")),
+    ]) {
+      for (const className of classNamesFromElement(element)) {
+        removedTextClasses.add(className);
+      }
+    }
+  }
+
+  const retainedClasses = new Set<string>();
+  for (const element of Array.from(params.document.querySelectorAll("[class]"))) {
+    const belongsToRemovedText = params.textElements.some(
+      (textElement) => textElement === element || textElement.contains(element)
+    );
+    if (belongsToRemovedText) continue;
+    for (const className of classNamesFromElement(element)) {
+      retainedClasses.add(className);
+    }
+  }
+
+  let removedRules = 0;
+  for (const styleElement of Array.from(params.document.querySelectorAll("style"))) {
+    const raw = String(styleElement.textContent || "");
+    const withoutComments = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+    if (withoutComments.includes("/*") || withoutComments.includes("*/")) continue;
+
+    const blockPattern = /([^{}]+)\{([^{}]*)\}/g;
+    const retainedRuleTexts: string[] = [];
+    let cursor = 0;
+    let parsedRuleCount = 0;
+    let textOnlyRuleCount = 0;
+    let parseable = true;
+    let match: RegExpExecArray | null;
+
+    while ((match = blockPattern.exec(withoutComments))) {
+      if (withoutComments.slice(cursor, match.index).trim()) {
+        parseable = false;
+        break;
+      }
+      parsedRuleCount += 1;
+      const selectors = match[1]
+        .split(",")
+        .map((selector) => selector.trim())
+        .filter(Boolean);
+      const textOnly =
+        selectors.length > 0 &&
+        selectors.every((selector) =>
+          selectorTargetsOnlyRemovedText({
+            selector,
+            removedTextClasses,
+            retainedClasses,
+          })
+        );
+      if (textOnly) {
+        textOnlyRuleCount += 1;
+      } else {
+        retainedRuleTexts.push(match[0]);
+      }
+      cursor = blockPattern.lastIndex;
+    }
+
+    if (
+      !parseable ||
+      parsedRuleCount === 0 ||
+      withoutComments.slice(cursor).trim()
+    ) {
+      continue;
+    }
+    if (retainedRuleTexts.length === parsedRuleCount) continue;
+    if (retainedRuleTexts.length === 0) {
+      styleElement.remove();
+    } else {
+      styleElement.textContent = retainedRuleTexts.join("");
+    }
+    removedRules += textOnlyRuleCount;
+  }
+  return removedRules;
+}
+
+function removeSvgText(params: {
+  document: Document;
+  warnings: IconValidationIssue[];
+  normalizationApplied: string[];
+  normalizeSafe: boolean;
+}): void {
+  if (!params.normalizeSafe) return;
+  const textElements = Array.from(
+    params.document.getElementsByTagNameNS(SVG_NAMESPACE, "text")
+  );
+  if (textElements.length === 0) return;
+
+  const removedStyleRules = removeTextOnlyStyleRules({
+    document: params.document,
+    textElements,
+  });
+  for (const textElement of textElements) textElement.remove();
+
+  params.normalizationApplied.push("remove-svg-text");
+  if (removedStyleRules > 0) {
+    params.normalizationApplied.push("remove-svg-text-styles");
+  }
+  params.warnings.push(
+    issue(
+      "warning",
+      "ICON_SVG_TEXT_REMOVED",
+      `El SVG incluia ${textElements.length} bloque${textElements.length === 1 ? "" : "s"} de texto; el backend los retiro y conserva solo el dibujo.`
+    )
+  );
+}
+
+function removeInertRootMetadata(params: {
+  root: Element;
+  normalizeSafe: boolean;
+  normalizationApplied: string[];
+}): void {
+  if (!params.normalizeSafe) return;
+  let removed = 0;
+  for (const attribute of Array.from(params.root.attributes || [])) {
+    if (!INERT_ROOT_METADATA_ATTRIBUTES.has(attribute.name.toLowerCase())) continue;
+    params.root.removeAttribute(attribute.name);
+    removed += 1;
+  }
+  if (removed > 0) params.normalizationApplied.push("remove-inert-svg-metadata");
+}
+
+function removeInertElementMetadata(params: {
+  document: Document;
+  normalizeSafe: boolean;
+  normalizationApplied: string[];
+}): void {
+  if (!params.normalizeSafe) return;
+  let removed = 0;
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    for (const attribute of Array.from(element.attributes || [])) {
+      if (!INERT_ELEMENT_METADATA_ATTRIBUTES.has(attribute.name.toLowerCase())) {
+        continue;
+      }
+      element.removeAttribute(attribute.name);
+      removed += 1;
+    }
+  }
+  if (removed > 0) {
+    params.normalizationApplied.push("remove-inert-svg-element-metadata");
+  }
+}
+
+function replacePrefixedSvgElements(document: Document): number {
+  const prefixedElements = Array.from(
+    document.getElementsByTagNameNS(SVG_NAMESPACE, "*")
+  ).filter((element) => String(element.prefix || "").toLowerCase() === "svg");
+  let replaced = 0;
+
+  for (const element of prefixedElements.reverse()) {
+    const parent = element.parentNode;
+    if (!parent) continue;
+
+    const replacement = document.createElementNS(SVG_NAMESPACE, element.localName);
+    for (const attribute of Array.from(element.attributes || [])) {
+      if (
+        attribute.namespaceURI === XMLNS_NAMESPACE &&
+        attribute.localName.toLowerCase() === "svg"
+      ) {
+        continue;
+      }
+      if (attribute.namespaceURI) {
+        replacement.setAttributeNS(
+          attribute.namespaceURI,
+          attribute.name,
+          attribute.value
+        );
+      } else {
+        replacement.setAttribute(attribute.name, attribute.value);
+      }
+    }
+    while (element.firstChild) replacement.appendChild(element.firstChild);
+    parent.replaceChild(replacement, element);
+    replaced += 1;
+  }
+
+  if (replaced > 0) {
+    document.documentElement?.setAttributeNS(
+      XMLNS_NAMESPACE,
+      "xmlns",
+      SVG_NAMESPACE
+    );
+  }
+  return replaced;
+}
+
+function namespacePrefixIsUsed(params: {
+  document: Document;
+  prefix: string;
+  namespace: string;
+}): boolean {
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    if (
+      element.namespaceURI === params.namespace &&
+      String(element.prefix || "").toLowerCase() === params.prefix
+    ) {
+      return true;
+    }
+    if (
+      Array.from(element.attributes || []).some(
+        (attribute) =>
+          attribute.namespaceURI === params.namespace &&
+          String(attribute.prefix || "").toLowerCase() === params.prefix
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function removeUnusedNamespaceDeclaration(params: {
+  root: Element;
+  document: Document;
+  prefix: string;
+  namespace: string;
+}): number {
+  if (namespacePrefixIsUsed(params)) return 0;
+  if (!params.root.hasAttributeNS(XMLNS_NAMESPACE, params.prefix)) return 0;
+  params.root.removeAttributeNS(XMLNS_NAMESPACE, params.prefix);
+  return 1;
+}
+
+function normalizeInkscapeMetadata(params: {
+  document: Document;
+  normalizeSafe: boolean;
+  normalizationApplied: string[];
+}): { requiresVisualVerification: boolean } {
+  if (!params.normalizeSafe) return { requiresVisualVerification: false };
+
+  const baselineRoot = params.document.documentElement;
+  const hasSupportedPrefixedRoot = Boolean(
+    baselineRoot &&
+      String(baselineRoot.prefix || "").toLowerCase() === "svg" &&
+      baselineRoot.localName.toLowerCase() === "svg" &&
+      baselineRoot.namespaceURI === SVG_NAMESPACE
+  );
+  const replacedSvgElements = hasSupportedPrefixedRoot
+    ? replacePrefixedSvgElements(params.document)
+    : 0;
+
+  let removedElements = 0;
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    const allowedLocalNames = INERT_EDITOR_METADATA_ELEMENTS.get(
+      String(element.namespaceURI || "")
+    );
+    if (!allowedLocalNames?.has(element.localName.toLowerCase())) continue;
+    element.remove();
+    removedElements += 1;
+  }
+
+  let removedAttributes = 0;
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    for (const attribute of Array.from(element.attributes || [])) {
+      const allowedLocalNames = INERT_EDITOR_METADATA_ATTRIBUTES.get(
+        String(attribute.namespaceURI || "")
+      );
+      if (!allowedLocalNames?.has(attribute.localName.toLowerCase())) continue;
+      element.removeAttributeNS(attribute.namespaceURI, attribute.localName);
+      removedAttributes += 1;
+    }
+  }
+
+  const normalizedRoot = params.document.documentElement;
+  let removedNamespaceDeclarations = 0;
+  if (normalizedRoot) {
+    removedNamespaceDeclarations += removeUnusedNamespaceDeclaration({
+      root: normalizedRoot,
+      document: params.document,
+      prefix: "svg",
+      namespace: SVG_NAMESPACE,
+    });
+    removedNamespaceDeclarations += removeUnusedNamespaceDeclaration({
+      root: normalizedRoot,
+      document: params.document,
+      prefix: "inkscape",
+      namespace: INKSCAPE_NAMESPACE,
+    });
+    removedNamespaceDeclarations += removeUnusedNamespaceDeclaration({
+      root: normalizedRoot,
+      document: params.document,
+      prefix: "sodipodi",
+      namespace: SODIPODI_NAMESPACE,
+    });
+  }
+
+  if (replacedSvgElements > 0) {
+    params.normalizationApplied.push("canonicalize-svg-namespace-prefix");
+  }
+  if (
+    removedElements > 0 ||
+    removedAttributes > 0 ||
+    removedNamespaceDeclarations > 0
+  ) {
+    params.normalizationApplied.push("remove-inkscape-metadata");
+  }
+
+  return {
+    requiresVisualVerification:
+      replacedSvgElements > 0 ||
+      removedElements > 0 ||
+      removedAttributes > 0 ||
+      removedNamespaceDeclarations > 0,
+  };
+}
+
+function normalizeSketchMetadata(params: {
+  document: Document;
+  normalizeSafe: boolean;
+  normalizationApplied: string[];
+}): { requiresVisualVerification: boolean } {
+  if (!params.normalizeSafe) return { requiresVisualVerification: false };
+
+  let removedAttributes = 0;
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    for (const attribute of Array.from(element.attributes || [])) {
+      if (
+        attribute.namespaceURI !== SKETCH_NAMESPACE ||
+        attribute.localName.toLowerCase() !== "type"
+      ) {
+        continue;
+      }
+      element.removeAttributeNS(attribute.namespaceURI, attribute.localName);
+      removedAttributes += 1;
+    }
+  }
+
+  const root = params.document.documentElement;
+  const removedNamespaceDeclarations = root
+    ? removeUnusedNamespaceDeclaration({
+        root,
+        document: params.document,
+        prefix: "sketch",
+        namespace: SKETCH_NAMESPACE,
+      })
+    : 0;
+
+  if (removedAttributes > 0 || removedNamespaceDeclarations > 0) {
+    params.normalizationApplied.push("remove-sketch-metadata");
+  }
+
+  return {
+    requiresVisualVerification:
+      removedAttributes > 0 || removedNamespaceDeclarations > 0,
+  };
+}
+
+function namespaceUriIsUsed(params: {
+  document: Document;
+  namespace: string;
+}): boolean {
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    if (element.namespaceURI === params.namespace) return true;
+    if (
+      Array.from(element.attributes || []).some(
+        (attribute) =>
+          attribute.namespaceURI === params.namespace &&
+          attribute.namespaceURI !== XMLNS_NAMESPACE
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isAdobeIllustratorMetadataForeignObject(element: Element): boolean {
+  if (
+    element.namespaceURI !== SVG_NAMESPACE ||
+    element.localName.toLowerCase() !== "foreignobject"
+  ) {
+    return false;
+  }
+  const requiredExtensions = String(
+    element.getAttribute("requiredExtensions") || ""
+  )
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return (
+    requiredExtensions.length > 0 &&
+    requiredExtensions.includes(ADOBE_ILLUSTRATOR_NAMESPACE) &&
+    requiredExtensions.every((namespace) => ADOBE_EDITOR_NAMESPACES.has(namespace))
+  );
+}
+
+function normalizeAdobeIllustratorMetadata(params: {
+  document: Document;
+  normalizeSafe: boolean;
+  normalizationApplied: string[];
+}): { requiresVisualVerification: boolean } {
+  if (!params.normalizeSafe) return { requiresVisualVerification: false };
+
+  let unwrappedSwitches = 0;
+  for (const switchElement of Array.from(
+    params.document.getElementsByTagNameNS(SVG_NAMESPACE, "switch")
+  )) {
+    const children = Array.from(switchElement.children);
+    if (children.length !== 2) continue;
+    const [metadataBranch, drawingBranch] = children;
+    const drawingTag = drawingBranch.localName.toLowerCase();
+    if (
+      !isAdobeIllustratorMetadataForeignObject(metadataBranch) ||
+      drawingBranch.namespaceURI !== SVG_NAMESPACE ||
+      !ALLOWED_ELEMENTS.has(drawingTag) ||
+      drawingTag === "svg" ||
+      drawingTag === "defs" ||
+      drawingTag === "title" ||
+      drawingTag === "desc"
+    ) {
+      continue;
+    }
+    const parent = switchElement.parentNode;
+    if (!parent) continue;
+    switchElement.removeChild(drawingBranch);
+    parent.replaceChild(drawingBranch, switchElement);
+    unwrappedSwitches += 1;
+  }
+
+  let removedAttributes = 0;
+  for (const element of Array.from(params.document.querySelectorAll("*"))) {
+    for (const attribute of Array.from(element.attributes || [])) {
+      if (
+        attribute.namespaceURI !== ADOBE_ILLUSTRATOR_NAMESPACE ||
+        attribute.localName.toLowerCase() !== "extraneous" ||
+        String(attribute.value || "").trim().toLowerCase() !== "self"
+      ) {
+        continue;
+      }
+      element.removeAttributeNS(attribute.namespaceURI, attribute.localName);
+      removedAttributes += 1;
+    }
+  }
+
+  const root = params.document.documentElement;
+  let removedNamespaceDeclarations = 0;
+  if (root) {
+    for (const attribute of Array.from(root.attributes || [])) {
+      const namespace = String(attribute.value || "").trim();
+      if (
+        attribute.namespaceURI !== XMLNS_NAMESPACE ||
+        !ADOBE_EDITOR_NAMESPACES.has(namespace) ||
+        namespaceUriIsUsed({ document: params.document, namespace })
+      ) {
+        continue;
+      }
+      root.removeAttributeNS(XMLNS_NAMESPACE, attribute.localName);
+      removedNamespaceDeclarations += 1;
+    }
+  }
+
+  if (unwrappedSwitches > 0) {
+    params.normalizationApplied.push("unwrap-adobe-illustrator-switch");
+  }
+  if (removedAttributes > 0 || removedNamespaceDeclarations > 0) {
+    params.normalizationApplied.push("remove-adobe-illustrator-metadata");
+  }
+
+  return {
+    requiresVisualVerification:
+      unwrappedSwitches > 0 ||
+      removedAttributes > 0 ||
+      removedNamespaceDeclarations > 0,
+  };
+}
+
+function materializeSimpleClassStyles(params: {
+  document: Document;
+  errors: IconValidationIssue[];
+  normalizationApplied: string[];
+  normalizeSafe: boolean;
+}): { requiresVisualVerification: boolean } {
+  const styleElements = Array.from(params.document.querySelectorAll("style"));
+  const classElements = Array.from(params.document.querySelectorAll("[class]"));
+  if (!params.normalizeSafe || (styleElements.length === 0 && classElements.length === 0)) {
+    return { requiresVisualVerification: false };
+  }
+
+  const rules: SimpleClassStyleRule[] = [];
+  let supported = true;
+
+  for (const styleElement of styleElements) {
+    const attributes = Array.from(styleElement.attributes || []);
+    const hasUnsupportedAttribute = attributes.some((attribute) => {
+      const name = attribute.name.toLowerCase();
+      if (name !== "type") return true;
+      return String(attribute.value || "").trim().toLowerCase() !== "text/css";
+    });
+    const parsed = hasUnsupportedAttribute
+      ? null
+      : parseSimpleClassStyles(styleElement.textContent || "");
+    if (!parsed) {
+      supported = false;
+      break;
+    }
+    rules.push(...parsed);
+  }
+
+  const classesByElement = new Map<Element, Set<string>>();
+  if (supported) {
+    for (const element of classElements) {
+      const classNames = String(element.getAttribute("class") || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      if (classNames.some((className) => !SAFE_CLASS_NAME_PATTERN.test(className))) {
+        supported = false;
+        break;
+      }
+      classesByElement.set(element, new Set(classNames));
+    }
+  }
+
+  if (!supported) {
+    params.errors.push(
+      issue(
+        "error",
+        "ICON_SVG_UNSUPPORTED_STYLE",
+        "El SVG usa reglas CSS que no pueden materializarse de forma segura."
+      )
+    );
+  } else {
+    for (const rule of rules) {
+      for (const [element, classNames] of classesByElement) {
+        if (!rule.classNames.some((className) => classNames.has(className))) continue;
+        for (const [property, value] of rule.declarations) {
+          element.setAttribute(property, value);
+        }
+      }
+    }
+  }
+
+  for (const styleElement of styleElements) styleElement.remove();
+  for (const element of classElements) element.removeAttribute("class");
+
+  if (supported && styleElements.length > 0) {
+    params.normalizationApplied.push("inline-simple-class-styles");
+  }
+  if (supported && classElements.length > 0) {
+    params.normalizationApplied.push("remove-materialized-svg-classes");
+  }
+
+  return {
+    requiresVisualVerification: supported && (styleElements.length > 0 || classElements.length > 0),
+  };
 }
 
 function isSafePaint(value: string): boolean {
@@ -236,6 +899,61 @@ function collectLocalReference(value: string): string | null {
   if (LOCAL_HREF_PATTERN.test(href)) return href.slice(1);
   const urlMatch = href.match(/^url\(\s*#([A-Za-z_][\w:.-]*)\s*\)$/i);
   return urlMatch ? urlMatch[1] : null;
+}
+
+function collectReferencedSvgIds(document: Document): Set<string> {
+  const references = new Set<string>();
+  const localUrlPattern = /url\(\s*#([A-Za-z_][\w:.-]*)\s*\)/gi;
+
+  for (const element of Array.from(document.querySelectorAll("*"))) {
+    for (const attribute of Array.from(element.attributes || [])) {
+      const name = String(attribute.name || "").toLowerCase();
+      const value = String(attribute.value || "").trim();
+      if ((name === "href" || name === "xlink:href") && LOCAL_HREF_PATTERN.test(value)) {
+        references.add(value.slice(1));
+      }
+      for (const match of value.matchAll(localUrlPattern)) references.add(match[1]);
+    }
+    if (element.localName.toLowerCase() === "style") {
+      for (const match of String(element.textContent || "").matchAll(localUrlPattern)) {
+        references.add(match[1]);
+      }
+    }
+  }
+
+  return references;
+}
+
+function removeUnreferencedDuplicateIds(params: {
+  document: Document;
+  normalizeSafe: boolean;
+  normalizationApplied: string[];
+}): { requiresVisualVerification: boolean } {
+  if (!params.normalizeSafe) return { requiresVisualVerification: false };
+
+  const elementsById = new Map<string, Element[]>();
+  for (const element of Array.from(params.document.querySelectorAll("[id]"))) {
+    const id = String(element.getAttribute("id") || "").trim();
+    if (!id) continue;
+    const elements = elementsById.get(id) || [];
+    elements.push(element);
+    elementsById.set(id, elements);
+  }
+
+  const references = collectReferencedSvgIds(params.document);
+  let removedIds = 0;
+  for (const [id, elements] of elementsById) {
+    if (elements.length <= 1 || references.has(id)) continue;
+    for (const element of elements) {
+      element.removeAttribute("id");
+      removedIds += 1;
+    }
+  }
+
+  if (removedIds > 0) {
+    params.normalizationApplied.push("remove-unreferenced-duplicate-svg-ids");
+  }
+  return { requiresVisualVerification: removedIds > 0 };
 }
 
 function isConvertiblePaint(value: string): boolean {
@@ -304,12 +1022,20 @@ function sanitizeSvgDocument(params: {
   document: Document;
   errors: IconValidationIssue[];
   normalizationApplied: string[];
-}): { geometryCount: number } {
+  normalizeSafe: boolean;
+}): { geometryCount: number; requiresVisualVerification: boolean } {
   const { document, errors, normalizationApplied } = params;
   const ids = new Set<string>();
   const references = new Set<string>();
   let geometryCount = 0;
   let styleAttributesNormalized = 0;
+
+  const classStyleResult = materializeSimpleClassStyles({
+    document,
+    errors,
+    normalizationApplied,
+    normalizeSafe: params.normalizeSafe,
+  });
 
   for (const element of Array.from(document.querySelectorAll("*"))) {
     const tagName = element.tagName.toLowerCase();
@@ -329,7 +1055,7 @@ function sanitizeSvgDocument(params: {
     const style = element.getAttribute("style");
     if (style) {
       const entries = parseStyle(style);
-      if (!entries.length || entries.some(([property]) => !STYLE_PROPERTIES.has(property))) {
+      if (!entries || entries.some(([property]) => !STYLE_PROPERTIES.has(property))) {
         errors.push(
           issue(
             "error",
@@ -457,11 +1183,21 @@ function sanitizeSvgDocument(params: {
     normalizationApplied.push("inline-supported-styles");
   }
 
-  return { geometryCount };
+  return {
+    geometryCount,
+    requiresVisualVerification:
+      classStyleResult.requiresVisualVerification || styleAttributesNormalized > 0,
+  };
 }
 
-async function hasVisiblePixels(svgText: string): Promise<boolean> {
-  const { data, info } = await sharp(Buffer.from(svgText, "utf8"), {
+async function rasterizeSvg(svgText: string): Promise<{ data: Buffer; channels: number }> {
+  const rasterDom = new JSDOM(svgText, { contentType: "image/svg+xml" });
+  const rasterRoot = rasterDom.window.document.documentElement;
+  rasterRoot.setAttribute("width", "128");
+  rasterRoot.setAttribute("height", "128");
+  const boundedSvgText = rasterRoot.outerHTML;
+
+  const { data, info } = await sharp(Buffer.from(boundedSvgText, "utf8"), {
     density: 144,
     failOn: "error",
   })
@@ -473,11 +1209,24 @@ async function hasVisiblePixels(svgText: string): Promise<boolean> {
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const channels = info.channels;
+  return { data, channels: info.channels };
+}
+
+async function hasVisiblePixels(svgText: string): Promise<boolean> {
+  const { data, channels } = await rasterizeSvg(svgText);
+
   for (let index = 3; index < data.length; index += channels) {
     if (data[index] > 0) return true;
   }
   return false;
+}
+
+async function hasEquivalentRaster(leftSvg: string, rightSvg: string): Promise<boolean> {
+  const [left, right] = await Promise.all([
+    rasterizeSvg(leftSvg),
+    rasterizeSvg(rightSvg),
+  ]);
+  return left.channels === right.channels && left.data.equals(right.data);
 }
 
 function emptyChecks(fileName: string | null, bytes: number): IconValidationChecks {
@@ -554,7 +1303,22 @@ export async function inspectAndNormalizeSvg(
   }
 
   const document = dom.window.document;
+  const parsedRoot = document.documentElement;
+  const inkscapeVisualBaselineSvgText = parsedRoot?.outerHTML || null;
+  const inkscapeNormalization = normalizeInkscapeMetadata({
+    document,
+    normalizeSafe: input.normalizeSafe,
+    normalizationApplied,
+  });
+  const inkscapeNormalizedSvgText = document.documentElement?.outerHTML || null;
+  const sketchVisualBaselineSvgText = document.documentElement?.outerHTML || null;
+  const sketchNormalization = normalizeSketchMetadata({
+    document,
+    normalizeSafe: input.normalizeSafe,
+    normalizationApplied,
+  });
   const root = document.documentElement;
+  const sketchNormalizedSvgText = root?.outerHTML || null;
   if (!root || root.tagName.toLowerCase() !== "svg") {
     errors.push(
       issue("error", "ICON_SVG_MISSING_ROOT", "El archivo no contiene un nodo SVG valido.")
@@ -591,7 +1355,7 @@ export async function inspectAndNormalizeSvg(
     }
   }
 
-  root.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  root.setAttributeNS(XMLNS_NAMESPACE, "xmlns", SVG_NAMESPACE);
   if (!root.hasAttribute("preserveAspectRatio")) {
     root.setAttribute("preserveAspectRatio", "xMidYMid meet");
     normalizationApplied.push("default-preserve-aspect-ratio");
@@ -604,10 +1368,42 @@ export async function inspectAndNormalizeSvg(
     );
   }
 
-  const { geometryCount } = sanitizeSvgDocument({
+  removeInertRootMetadata({
+    root,
+    normalizeSafe: input.normalizeSafe,
+    normalizationApplied,
+  });
+  removeInertElementMetadata({
+    document,
+    normalizeSafe: input.normalizeSafe,
+    normalizationApplied,
+  });
+  removeSvgText({
+    document,
+    warnings,
+    normalizationApplied,
+    normalizeSafe: input.normalizeSafe,
+  });
+  const adobeVisualBaselineSvgText = root?.outerHTML || null;
+  const adobeNormalization = normalizeAdobeIllustratorMetadata({
+    document,
+    normalizeSafe: input.normalizeSafe,
+    normalizationApplied,
+  });
+  const adobeNormalizedSvgText = root?.outerHTML || null;
+  const duplicateIdVisualBaselineSvgText = root?.outerHTML || null;
+  const duplicateIdNormalization = removeUnreferencedDuplicateIds({
+    document,
+    normalizeSafe: input.normalizeSafe,
+    normalizationApplied,
+  });
+  const duplicateIdNormalizedSvgText = root?.outerHTML || null;
+  const visualBaselineSvgText = root?.outerHTML || null;
+  const { geometryCount, requiresVisualVerification } = sanitizeSvgDocument({
     document,
     errors,
     normalizationApplied,
+    normalizeSafe: input.normalizeSafe,
   });
   const pathCount = document.querySelectorAll("path").length;
   if (geometryCount <= 0) {
@@ -622,6 +1418,148 @@ export async function inspectAndNormalizeSvg(
         "El SVG usa shapes o referencias en lugar de path; la composicion canonica los preserva."
       )
     );
+  }
+
+  if (
+    inkscapeVisualBaselineSvgText &&
+    inkscapeNormalizedSvgText &&
+    inkscapeNormalization.requiresVisualVerification &&
+    errors.length === 0
+  ) {
+    try {
+      if (!(await hasEquivalentRaster(
+        inkscapeVisualBaselineSvgText,
+        inkscapeNormalizedSvgText
+      ))) {
+        errors.push(
+          issue(
+            "error",
+            "ICON_SVG_METADATA_NORMALIZATION_MISMATCH",
+            "Los metadatos editoriales no pudieron retirarse conservando exactamente la apariencia del SVG."
+          )
+        );
+      }
+    } catch {
+      errors.push(
+        issue(
+          "error",
+          "ICON_SVG_METADATA_NORMALIZATION_FAILED",
+          "No se pudo comprobar de forma confiable la apariencia despues de retirar metadatos editoriales."
+        )
+      );
+    }
+  }
+
+  if (
+    sketchVisualBaselineSvgText &&
+    sketchNormalizedSvgText &&
+    sketchNormalization.requiresVisualVerification &&
+    errors.length === 0
+  ) {
+    try {
+      if (!(await hasEquivalentRaster(
+        sketchVisualBaselineSvgText,
+        sketchNormalizedSvgText
+      ))) {
+        errors.push(
+          issue(
+            "error",
+            "ICON_SVG_SKETCH_NORMALIZATION_MISMATCH",
+            "Los metadatos de Sketch no pudieron retirarse conservando exactamente la apariencia del SVG."
+          )
+        );
+      }
+    } catch {
+      errors.push(
+        issue(
+          "error",
+          "ICON_SVG_SKETCH_NORMALIZATION_FAILED",
+          "No se pudo comprobar de forma confiable la apariencia despues de retirar metadatos de Sketch."
+        )
+      );
+    }
+  }
+
+  if (
+    adobeVisualBaselineSvgText &&
+    adobeNormalizedSvgText &&
+    adobeNormalization.requiresVisualVerification &&
+    errors.length === 0
+  ) {
+    try {
+      if (!(await hasEquivalentRaster(
+        adobeVisualBaselineSvgText,
+        adobeNormalizedSvgText
+      ))) {
+        errors.push(
+          issue(
+            "error",
+            "ICON_SVG_ADOBE_NORMALIZATION_MISMATCH",
+            "Los metadatos de Illustrator no pudieron retirarse conservando exactamente la apariencia del SVG."
+          )
+        );
+      }
+    } catch {
+      errors.push(
+        issue(
+          "error",
+          "ICON_SVG_ADOBE_NORMALIZATION_FAILED",
+          "No se pudo comprobar de forma confiable la apariencia despues de retirar metadatos de Illustrator."
+        )
+      );
+    }
+  }
+
+  if (
+    duplicateIdVisualBaselineSvgText &&
+    duplicateIdNormalizedSvgText &&
+    duplicateIdNormalization.requiresVisualVerification &&
+    errors.length === 0
+  ) {
+    try {
+      if (!(await hasEquivalentRaster(
+        duplicateIdVisualBaselineSvgText,
+        duplicateIdNormalizedSvgText
+      ))) {
+        errors.push(
+          issue(
+            "error",
+            "ICON_SVG_ID_NORMALIZATION_MISMATCH",
+            "Los identificadores duplicados sin uso no pudieron retirarse conservando exactamente la apariencia del SVG."
+          )
+        );
+      }
+    } catch {
+      errors.push(
+        issue(
+          "error",
+          "ICON_SVG_ID_NORMALIZATION_FAILED",
+          "No se pudo comprobar de forma confiable la apariencia despues de retirar identificadores duplicados sin uso."
+        )
+      );
+    }
+  }
+
+  if (visualBaselineSvgText && requiresVisualVerification && errors.length === 0) {
+    try {
+      if (!(await hasEquivalentRaster(visualBaselineSvgText, root.outerHTML))) {
+        errors.push(
+          issue(
+            "error",
+            "ICON_SVG_STYLE_NORMALIZATION_MISMATCH",
+            "Los estilos simples no conservaron exactamente la apariencia del SVG."
+          )
+        );
+      }
+    } catch {
+      errors.push(
+        issue(
+          "error",
+          "ICON_SVG_STYLE_NORMALIZATION_FAILED",
+          "No se pudo comprobar de forma confiable la apariencia despues de materializar estilos."
+        )
+      );
+    }
   }
 
   if (input.normalizeCurrentColor && errors.length === 0) {

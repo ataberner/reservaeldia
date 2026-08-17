@@ -79,37 +79,37 @@ function buildOptions(templateOptions = [], incomingOptions = [], questionType =
     return undefined;
   }
 
-  const incomingById = new Map(
-    (Array.isArray(incomingOptions) ? incomingOptions : [])
+  const normalizedTemplateOptions = Array.isArray(templateOptions) ? templateOptions : [];
+  const templateById = new Map(
+    normalizedTemplateOptions
       .filter((option) => option && typeof option.id === "string")
       .map((option) => [option.id, option])
   );
+  const sourceOptions = Array.isArray(incomingOptions) && incomingOptions.length > 0
+    ? incomingOptions
+    : normalizedTemplateOptions;
+  const nextOptions = [];
 
-  const templateOptionIds = new Set(
-    (Array.isArray(templateOptions) ? templateOptions : [])
-      .filter((option) => option && typeof option.id === "string")
-      .map((option) => option.id)
-  );
-
-  const nextOptions = (Array.isArray(templateOptions) ? templateOptions : []).map((templateOption) => {
-    const incoming = incomingById.get(templateOption.id);
-    return {
-      id: templateOption.id,
-      label: sanitizeText(incoming?.label, templateOption.label, 80),
-      metricTag: templateOption.metricTag,
-    };
-  });
-
-  (Array.isArray(incomingOptions) ? incomingOptions : []).forEach((option, index) => {
+  sourceOptions.forEach((option, index) => {
     if (!option || typeof option !== "object") return;
     const id = sanitizeOptionId(option.id, `option_${index + 1}`);
-    if (templateOptionIds.has(id) || nextOptions.some((item) => item.id === id)) return;
+    if (nextOptions.some((item) => item.id === id)) return;
+    const templateOption = templateById.get(id);
+    const metricTag =
+      typeof templateOption?.metricTag === "string" && templateOption.metricTag
+        ? templateOption.metricTag
+        : typeof option.metricTag === "string" && option.metricTag
+          ? option.metricTag
+          : undefined;
+
     nextOptions.push({
       id,
-      label: sanitizeText(option.label, `Opcion ${nextOptions.length + 1}`, 80),
-      ...(typeof option.metricTag === "string" && option.metricTag
-        ? { metricTag: option.metricTag }
-        : {}),
+      label: sanitizeText(
+        option.label,
+        templateOption?.label || `Opcion ${nextOptions.length + 1}`,
+        80
+      ),
+      ...(metricTag ? { metricTag } : {}),
     });
   });
 

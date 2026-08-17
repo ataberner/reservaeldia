@@ -177,6 +177,26 @@ const REPRESENTATIVE_CASES = [
       ],
     },
   },
+  {
+    name: "explicit catalog select option membership",
+    input: {
+      version: 2,
+      presetId: "wedding_complete",
+      questions: [
+        {
+          id: "menu_type",
+          active: true,
+          type: "single_select",
+          label: "Tipo de menu",
+          order: 0,
+          options: [
+            { id: "vegan", label: "Menu vegano" },
+            { id: "option_2", label: "Menu infantil" },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 test("client and server RSVP normalization stay in parity for representative configs", () => {
@@ -270,4 +290,31 @@ test("editor-side RSVP normalization preserves editable field types and custom o
     { id: "morning", label: "Manana" },
     { id: "night", label: "Noche" },
   ]);
+});
+
+test("RSVP normalization preserves removals from catalog select options and keeps one-option configs valid", () => {
+  const input = {
+    version: 2,
+    presetId: "wedding_complete",
+    questions: [
+      {
+        id: "menu_type",
+        active: true,
+        type: "single_select",
+        label: "Tipo de menu",
+        order: 0,
+        options: [{ id: "vegan", label: "Solo vegano" }],
+      },
+    ],
+  };
+
+  const clientNormalized = normalizeClientRsvpConfig(input, { forceEnabled: false });
+  const serverNormalized = normalizeServerRsvpConfig(input);
+  const clientMenu = clientNormalized.questions.find((question) => question.id === "menu_type");
+  const serverMenu = serverNormalized.questions.find((question) => question.id === "menu_type");
+
+  assert.deepEqual(clientMenu.options, [
+    { id: "vegan", label: "Solo vegano", metricTag: "menu_vegan" },
+  ]);
+  assert.deepEqual(toComparable(clientMenu.options), toComparable(serverMenu.options));
 });

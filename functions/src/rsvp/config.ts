@@ -315,50 +315,40 @@ function buildOptions(
 ): RsvpQuestionOption[] | undefined {
   if (questionType !== "single_select") return undefined;
 
-  const incomingById = new Map<string, Record<string, unknown>>();
-  if (Array.isArray(incomingOptions)) {
-    for (const raw of incomingOptions) {
-      if (!raw || typeof raw !== "object") continue;
-      const rawId = (raw as Record<string, unknown>).id;
-      if (typeof rawId !== "string" || !rawId) continue;
-      incomingById.set(rawId, raw as Record<string, unknown>);
-    }
-  }
-
-  const templateOptionIds = new Set(
-    Array.isArray(templateOptions)
-      ? templateOptions
-          .filter((option) => option && typeof option.id === "string")
-          .map((option) => option.id)
-      : []
+  const normalizedTemplateOptions = Array.isArray(templateOptions) ? templateOptions : [];
+  const templateById = new Map(
+    normalizedTemplateOptions
+      .filter((option) => option && typeof option.id === "string")
+      .map((option) => [option.id, option])
   );
+  const sourceOptions = Array.isArray(incomingOptions) && incomingOptions.length > 0
+    ? incomingOptions
+    : normalizedTemplateOptions;
+  const nextOptions: RsvpQuestionOption[] = [];
 
-  const nextOptions = (Array.isArray(templateOptions) ? templateOptions : []).map((option) => {
-    const incoming = incomingById.get(option.id);
-    return {
-      id: option.id,
-      label: sanitizeText(incoming?.label, option.label, 80),
-      ...(typeof option.metricTag === "string" && option.metricTag
-        ? { metricTag: option.metricTag }
-        : {}),
-    };
-  });
+  sourceOptions.forEach((raw, index) => {
+    if (!raw || typeof raw !== "object") return;
+    const option = raw as Record<string, unknown>;
+    const id = sanitizeOptionId(option.id, `option_${index + 1}`);
+    if (nextOptions.some((item) => item.id === id)) return;
+    const templateOption = templateById.get(id);
+    const metricTag =
+      typeof templateOption?.metricTag === "string" && templateOption.metricTag
+        ? templateOption.metricTag
+        : typeof option.metricTag === "string" && option.metricTag
+          ? option.metricTag
+          : undefined;
 
-  if (Array.isArray(incomingOptions)) {
-    incomingOptions.forEach((raw, index) => {
-      if (!raw || typeof raw !== "object") return;
-      const option = raw as Record<string, unknown>;
-      const id = sanitizeOptionId(option.id, `option_${index + 1}`);
-      if (templateOptionIds.has(id) || nextOptions.some((item) => item.id === id)) return;
-      nextOptions.push({
-        id,
-        label: sanitizeText(option.label, `Opcion ${nextOptions.length + 1}`, 80),
-        ...(typeof option.metricTag === "string" && option.metricTag
-          ? { metricTag: option.metricTag }
-          : {}),
-      });
+    nextOptions.push({
+      id,
+      label: sanitizeText(
+        option.label,
+        templateOption?.label || `Opcion ${nextOptions.length + 1}`,
+        80
+      ),
+      ...(metricTag ? { metricTag } : {}),
     });
-  }
+  });
 
   return nextOptions.length
     ? nextOptions

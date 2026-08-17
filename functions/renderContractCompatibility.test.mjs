@@ -438,6 +438,12 @@ function renderRepresentativeDraft(draft) {
   });
 }
 
+function readSerializedRsvpConfig(html) {
+  const match = String(html || "").match(/var RSVP_CONFIG = (.+);/);
+  assert.ok(match, "generated HTML must serialize the RSVP config");
+  return JSON.parse(match[1]);
+}
+
 function countOccurrences(value, pattern) {
   return (String(value || "").match(pattern) || []).length;
 }
@@ -2017,6 +2023,48 @@ test("keeps RSVP modal generation tied to ready root config in representative dr
   assert.doesNotMatch(warningHtml, /id="modal-rsvp"/);
   assert.match(warningHtml, /data-cta-state="unavailable"/);
   assert.match(warningHtml, /data-cta-reason="missing-root"/);
+});
+
+test("keeps an explicit one-option RSVP menu in preview and publish HTML", () => {
+  const draft = createRepresentativePublishReadyDraftFixture();
+  draft.rsvp = {
+    ...draft.rsvp,
+    version: 2,
+    presetId: "wedding_complete",
+    questions: [
+      {
+        id: "menu_type",
+        active: true,
+        type: "single_select",
+        label: "Tipo de menu",
+        order: 0,
+        options: [{ id: "vegan", label: "Solo vegano" }],
+      },
+    ],
+  };
+
+  const hydrated = hydratePreviewAssetsIntoDraft(draft);
+  const publishHtml = generarHTMLDesdeSecciones(
+    hydrated.secciones,
+    hydrated.objetos,
+    hydrated.rsvp,
+    { gifts: hydrated.gifts }
+  );
+  const previewHtml = generarHTMLDesdeSecciones(
+    hydrated.secciones,
+    hydrated.objetos,
+    hydrated.rsvp,
+    { gifts: hydrated.gifts, isPreview: true }
+  );
+
+  for (const html of [previewHtml, publishHtml]) {
+    const rsvpConfig = readSerializedRsvpConfig(html);
+    const menuQuestion = rsvpConfig.questions.find((question) => question.id === "menu_type");
+
+    assert.deepEqual(menuQuestion.options, [
+      { id: "vegan", label: "Solo vegano", metricTag: "menu_vegan" },
+    ]);
+  }
 });
 
 test("keeps legacy icon svg output markers and path rendering stable", () => {

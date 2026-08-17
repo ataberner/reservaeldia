@@ -743,7 +743,7 @@ Current normalized RSVP config shape on both the client and server is:
 | `questions[].required` | Required | Required flag. |
 | `questions[].active` | Required | Active flag. |
 | `questions[].order` | Required | Ordering index. |
-| `questions[].options[]` | Optional | Present for select-like questions. |
+| `questions[].options[]` | Optional | Present for select-like questions. A non-empty explicit list owns option membership and must retain at least one entry. |
 | `sheetUrl` | Optional normalized field | Preserved by both normalizers and exposed to the RSVP modal runtime for the optional secondary sheet/webhook POST. It is not read by `publicRsvpSubmit`. |
 
 `enabled` is the single RSVP functional switch. It controls the RSVP CTA visibility and any section/group render derivation that uses `functionalAssociation: "rsvp"`.
@@ -761,7 +761,7 @@ Question normalization rules that matter for compatibility:
 
 - Only the known catalog IDs plus `custom_1` and `custom_2` are preserved.
 - Custom question types normalize to `short_text` or `long_text`.
-- Select option identity and `metricTag` stay template-defined; incoming option patches can only replace labels by matching option `id`.
+- For `single_select`, a non-empty explicit `options[]` list defines option membership and order; normalization must not restore omitted catalog defaults. Known catalog option IDs recover their template-owned `metricTag`, while missing or empty option lists fall back to defaults so normalized selects always retain at least one option.
 - Missing `enabled` on an existing RSVP object normalizes as enabled/active for compatibility with published/server behavior.
 
 ### Public RSVP Submission Payload: `publicRsvpSubmit`

@@ -1,5 +1,6 @@
 // components/MiniToolbarTabImagen.jsx
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Grid3X3, GripVertical, Loader2, Plus, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import {
@@ -1652,6 +1653,53 @@ export default function MiniToolbarTabImagen({
     onInsertarGaleria,
   ]);
 
+  const galleryDragPreview = galleryDragState && draggedGalleryPhoto ? (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed z-[100] flex min-h-[58px] items-center gap-2 rounded-lg border border-purple-300 bg-white p-1.5 shadow-xl ring-2 ring-purple-100"
+      style={{
+        left: `${resolveDragPreviewLeft(galleryDragState)}px`,
+        top: `${(galleryDragState.pointerY || 0) - (galleryDragState.grabOffsetY || 0)}px`,
+        width: galleryDragState.rowWidth ? `${galleryDragState.rowWidth}px` : undefined,
+      }}
+    >
+      <span className="flex h-10 w-8 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-500">
+        <GripVertical size={16} aria-hidden="true" />
+      </span>
+      <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+        <img
+          src={draggedGalleryPhoto.mediaUrl}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-zinc-700">
+          Mover a celda {Number(galleryDragState.toIndex || 0) + 1}
+        </span>
+        <span className="block truncate text-[11px] text-zinc-400">
+          Celda {Number(draggedGalleryPhoto.sourceIndex) + 1}
+          {visiblePhotoLimit !== null && Number(galleryDragState.toIndex) >= visiblePhotoLimit
+            ? " - oculta en este layout"
+            : ""}
+        </span>
+      </span>
+      {visiblePhotoLimit !== null && Number(galleryDragState.toIndex) >= visiblePhotoLimit && (
+        <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+          Oculta
+        </span>
+      )}
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600">
+        <Upload size={15} aria-hidden="true" />
+      </span>
+    </div>
+  ) : null;
+
+  const renderedGalleryDragPreview =
+    galleryDragPreview && isMobileViewport && typeof document !== "undefined" && document.body
+      ? createPortal(galleryDragPreview, document.body)
+      : galleryDragPreview;
+
   return (
     <div className={`flex flex-col flex-1 min-h-0 ${isMobileViewport ? "gap-2" : "gap-3"}`}>
       {shouldRenderCoverBlock && (
@@ -1970,47 +2018,7 @@ export default function MiniToolbarTabImagen({
                     </div>
                   );
                 })}
-                {galleryDragState && draggedGalleryPhoto && (
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none fixed z-[100] flex min-h-[58px] items-center gap-2 rounded-lg border border-purple-300 bg-white p-1.5 shadow-xl ring-2 ring-purple-100"
-                    style={{
-                      left: `${resolveDragPreviewLeft(galleryDragState)}px`,
-                      top: `${(galleryDragState.pointerY || 0) - (galleryDragState.grabOffsetY || 0)}px`,
-                      width: galleryDragState.rowWidth ? `${galleryDragState.rowWidth}px` : undefined,
-                    }}
-                  >
-                    <span className="flex h-10 w-8 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-500">
-                      <GripVertical size={16} aria-hidden="true" />
-                    </span>
-                    <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-                      <img
-                        src={draggedGalleryPhoto.mediaUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium text-zinc-700">
-                        Mover a celda {Number(galleryDragState.toIndex || 0) + 1}
-                      </span>
-                      <span className="block truncate text-[11px] text-zinc-400">
-                        Celda {Number(draggedGalleryPhoto.sourceIndex) + 1}
-                        {visiblePhotoLimit !== null && Number(galleryDragState.toIndex) >= visiblePhotoLimit
-                          ? " - oculta en este layout"
-                          : ""}
-                      </span>
-                    </span>
-                    {visiblePhotoLimit !== null && Number(galleryDragState.toIndex) >= visiblePhotoLimit && (
-                      <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                        Oculta
-                      </span>
-                    )}
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 text-zinc-600">
-                      <Upload size={15} aria-hidden="true" />
-                    </span>
-                  </div>
-                )}
+                {renderedGalleryDragPreview}
               </div>
             ) : (
               <p className="mt-2 rounded border border-dashed border-zinc-200 bg-zinc-50 px-2 py-2 text-xs text-zinc-500">

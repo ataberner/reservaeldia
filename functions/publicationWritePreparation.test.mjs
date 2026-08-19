@@ -45,6 +45,10 @@ test("history payload keeps mirrored lifecycle dates and finalized history field
     },
     draftSlug: "borrador-1",
     summary,
+    visitSummary: {
+      totalVisits: 42,
+      uniqueVisits: 31,
+    },
     firstPublishedAt: new Date("2025-05-01T10:00:00.000Z"),
     effectiveExpirationDate: new Date("2026-05-01T10:00:00.000Z"),
     lastPublishedAt: new Date("2025-06-01T10:00:00.000Z"),
@@ -74,6 +78,13 @@ test("history payload keeps mirrored lifecycle dates and finalized history field
   assert.equal(payload.urlPublica, null);
   assert.deepEqual(payload.rsvpSummary, summary);
   assert.equal(payload.totalRsvpsHistorico, 12);
+  assert.equal(payload.visitSummary.schemaVersion, 1);
+  assert.equal(payload.visitSummary.totalVisits, 42);
+  assert.equal(payload.visitSummary.uniqueVisits, 31);
+  assert.equal(
+    toIsoOrNull(payload.visitSummary.capturedAt),
+    "2026-04-01T12:00:00.000Z"
+  );
   assert.equal(payload.htmlPublicadoEliminado, true);
   assert.equal(payload.sourceCollection, "publicadas");
   assert.equal(payload.sourceSlug, "mi-slug");

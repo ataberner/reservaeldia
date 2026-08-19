@@ -27,6 +27,7 @@ const PUBLIC_INVITATION_ROBOTS_HEADERS = Object.freeze({
 });
 const PUBLIC_INVITATION_HTML_HEADERS = Object.freeze({
   "Content-Type": "text/html; charset=utf-8",
+  "Cache-Control": "private, no-store, max-age=0",
   "X-Robots-Tag": PUBLIC_INVITATION_ROBOTS_CONTENT,
 });
 const PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS = Object.freeze({

@@ -145,10 +145,50 @@ Observed publication fields include:
 | `iconUsage` / `iconUsageMeta` | `publicadas/{publicSlug}` | Publication-time icon analytics. |
 | `slugOriginal` | `publicadas/{publicSlug}` | Optional original draft slug when draft slug and public slug differ. |
 
+Visit measurement is stored below the active publication document and starts
+only when the public delivery runtime is deployed:
+
+| Path | Document ID / Shape | Authority / Notes |
+| --- | --- | --- |
+| `publicadas/{publicSlug}/visits/{eventHash}` | The ID is a SHA-256 hash derived from the public slug and the signed load nonce. The document stores `schemaVersion: 2`, `source: "public-delivery-runtime"`, and `createdAt`. | One document is one visible public HTML load that executed the delivery runtime. Reusing a signed load token is idempotent and does not create a second document. |
+| `publicadas/{publicSlug}/uniqueVisitors/{visitorHash}` | The ID is a SHA-256 hash derived from the public slug and the anonymous first-party visitor ID. The document stores `schemaVersion: 2` and `firstSeenAt`. | One document is one persistent browser identity for that publication. The raw cookie value is not stored, and its hash differs between slugs. |
+
+The backend obtains totals with Firestore `count()` aggregations. Clients do not
+read these subcollections directly; the authenticated owner callable returns
+only `{ totalVisits, uniqueVisits }` after ownership verification. A unique
+visit therefore means one anonymous first-party browser cookie per invitation,
+not one person, account, IP address, RSVP, or device.
+
+The raw 128-bit browser identity is transported in the `__session` cookie,
+scoped to `Path=/i`. That special transport name is required because Firebase
+Hosting strips other cookies before rewritten requests reach Cloud Functions;
+it does not represent authenticated application session state.
+
+Both active aggregates count only visit documents with `schemaVersion: 2`.
+Version 1 documents belong to the invalid pre-fix cookie transport epoch: they
+remain stored for auditability but are excluded from totals and uniques because
+their unique-browser identity cannot be reconstructed reliably.
+
+Finalization preserves the last available aggregate in
+`publicadas_historial/{historyId}.visitSummary`:
+
+```ts
+{
+  schemaVersion: 1,
+  totalVisits: number,
+  uniqueVisits: number,
+  capturedAt: Timestamp,
+}
+```
+
+Absence of `visitSummary` means that visit metrics were not available for that
+historical snapshot; it is not equivalent to zero.
+
 Relationship summary:
 
 - `borradores/{slug}` is the canonical editable source for draft invitations; template editor sessions use template editor documents and must be routed through `editorSessionPersistence`.
 - `publicadas/{publicSlug}` is a publication wrapper and lifecycle record.
+- its `visits` and `uniqueVisitors` subcollections are the active visit-count authorities.
 - `publicadas/{publicSlug}` is not a fallback source for `objetos` or `secciones`.
 - Published HTML is stored separately at `publicadas/{publicSlug}/index.html` in Firebase Storage.
 

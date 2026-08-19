@@ -4,9 +4,12 @@ import assert from "node:assert/strict";
 import {
   buildResponsesCsv,
   computeResponseMetrics,
+  formatPublicationVisitMetric,
   findInvitationById,
   filterInvitationRows,
   filterResponseRows,
+  hasEnabledRsvpSnapshot,
+  normalizePublicationVisitMetrics,
   paginateItems,
 } from "./myInvitationsView.js";
 
@@ -113,6 +116,41 @@ test("computeResponseMetrics derives confirmed declined and pending counts", () 
     computeResponseMetrics(rows, { invitedCount: 0 }).pendingResponses,
     1
   );
+});
+
+test("RSVP metrics require the normalized enabled flag", () => {
+  assert.equal(hasEnabledRsvpSnapshot({ enabled: true }), true);
+  assert.equal(hasEnabledRsvpSnapshot({ enabled: false }), false);
+  assert.equal(hasEnabledRsvpSnapshot({}), false);
+  assert.equal(hasEnabledRsvpSnapshot(null), false);
+});
+
+test("visit metrics distinguish active zero, legacy history, and read errors", () => {
+  const activeZero = normalizePublicationVisitMetrics(null);
+  const activeLarge = normalizePublicationVisitMetrics({
+    totalVisits: 1234567,
+    uniqueVisits: 765432,
+  });
+  const legacyHistory = normalizePublicationVisitMetrics(null, {
+    historical: true,
+  });
+  const failedRead = normalizePublicationVisitMetrics(null, {
+    hasReadError: true,
+  });
+
+  assert.deepEqual(activeZero, {
+    status: "ready",
+    totalVisits: 0,
+    uniqueVisits: 0,
+  });
+  assert.deepEqual(activeLarge, {
+    status: "ready",
+    totalVisits: 1234567,
+    uniqueVisits: 765432,
+  });
+  assert.equal(formatPublicationVisitMetric(legacyHistory, "uniqueVisits"), "Sin datos");
+  assert.equal(formatPublicationVisitMetric(failedRead, "totalVisits"), "—");
+  assert.equal(formatPublicationVisitMetric(activeZero, "totalVisits"), 0);
 });
 
 test("buildResponsesCsv uses BOM, semicolon separator and escaped cells", () => {

@@ -1,5 +1,6 @@
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";
+import { defineSecret } from "firebase-functions/params";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
@@ -50,6 +51,19 @@ import {
   resolvePublicShareImageResponse,
   type PublicDeliveryResponse,
 } from "./payments/publicDeliveryRoutes";
+import {
+  MAX_PUBLICATION_METRIC_SLUGS,
+  buildPublicVisitorCookieHeader,
+  buildPublicVisitEventId,
+  createPublicVisitToken,
+  hashPublicVisitorForSlug,
+  injectPublicVisitRuntime,
+  normalizePublicationMetricSlugs,
+  readPublicationVisitCounts,
+  recordPublicVisitAtomically,
+  resolvePublicVisitorIdentity,
+  verifyPublicVisitToken,
+} from "./payments/publicationVisitTracking";
 import {
   archiveCountdownPreset as archiveCountdownPresetHandler,
   deleteCountdownPreset as deleteCountdownPresetHandler,
@@ -221,6 +235,8 @@ setGlobalOptions({
   region: "us-central1",
   cpu: "gcf_gen1",
 });
+
+const publicVisitSigningSecret = defineSecret("PUBLIC_VISIT_SIGNING_SECRET");
 
 // Inicialización de Firebase Admin
 if (!admin.apps.length) {
@@ -1206,6 +1222,71 @@ app.get("/i/:slug/share.jpg", async (req: Request, res: Response) => {
   return sendPublicDeliveryResponse(res, result);
 });
 
+app.post("/i/:slug/visit", async (req: Request, res: Response) => {
+  const slug = normalizePublicSlug(req.params.slug);
+  if (!slug) {
+    res.status(400).end();
+    return;
+  }
+
+  try {
+    const identity = resolvePublicVisitorIdentity({
+      cookieHeader: req.headers.cookie,
+    });
+    if (identity.isNew) {
+      res.status(400).end();
+      return;
+    }
+
+    const visitorHash = hashPublicVisitorForSlug(slug, identity.visitorId);
+    const body =
+      req.body && typeof req.body === "object"
+        ? (req.body as Record<string, unknown>)
+        : {};
+    const verifiedToken = verifyPublicVisitToken({
+      token: body.token,
+      slug,
+      visitorHash,
+      secret: publicVisitSigningSecret.value(),
+    });
+    if (!verifiedToken) {
+      res.status(400).end();
+      return;
+    }
+
+    const access = await resolvePublicInvitationAccess(slug);
+    if (!access.ok) {
+      res.status(access.status).end();
+      return;
+    }
+
+    const publicationRef = db.collection("publicadas").doc(slug);
+    const recordStatus = await recordPublicVisitAtomically({
+      runTransaction: (callback) =>
+        db.runTransaction((transaction) => callback(transaction)),
+      publicationRef,
+      eventId: buildPublicVisitEventId(slug, verifiedToken.nonce),
+      visitorHash,
+      createdAtValue: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    if (recordStatus === "unavailable") {
+      res.status(404).end();
+      return;
+    }
+
+    res.status(204).end();
+  } catch (visitError) {
+    logger.error("No se pudo registrar una visita publica", {
+      slug,
+      error:
+        visitError instanceof Error
+          ? visitError.message
+          : String(visitError || ""),
+    });
+    res.status(503).end();
+  }
+});
+
 app.get("/i/:slug", async (req: Request, res: Response) => {
   const result = await resolvePublicInvitationHtmlResponse({
     slugInput: req.params.slug,
@@ -1220,12 +1301,103 @@ app.get("/i/:slug", async (req: Request, res: Response) => {
     },
     logger,
   });
+
+  const slug = normalizePublicSlug(req.params.slug);
+  if (result.status === 200 && slug) {
+    try {
+      const identity = resolvePublicVisitorIdentity({
+        cookieHeader: req.headers.cookie,
+      });
+      const visitorHash = hashPublicVisitorForSlug(slug, identity.visitorId);
+      const token = createPublicVisitToken({
+        slug,
+        visitorHash,
+        secret: publicVisitSigningSecret.value(),
+      });
+      result.body = injectPublicVisitRuntime(result.body, token);
+      result.headers = {
+        ...(result.headers || {}),
+        "Set-Cookie": buildPublicVisitorCookieHeader({
+          visitorId: identity.visitorId,
+          secure: process.env.FUNCTIONS_EMULATOR !== "true",
+        }),
+      };
+    } catch (visitRuntimeError) {
+      logger.error("No se pudo preparar el runtime de visitas publicas", {
+        slug,
+        error:
+          visitRuntimeError instanceof Error
+            ? visitRuntimeError.message
+            : String(visitRuntimeError || ""),
+      });
+    }
+  }
   return sendPublicDeliveryResponse(res, result);
 });
 
 export const verInvitacionPublicada = onRequest(
-  { region: "us-central1" },
+  {
+    region: "us-central1",
+    secrets: [publicVisitSigningSecret],
+  },
   app
+);
+
+export const getMyPublicationVisitMetrics = onCall(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (
+    request: CallableRequest<{ slugs?: unknown }>
+  ): Promise<{
+    metrics: Record<string, { totalVisits: number; uniqueVisits: number }>;
+  }> => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Debes iniciar sesion.");
+    }
+
+    const rawSlugs = request.data?.slugs;
+    if (!Array.isArray(rawSlugs)) {
+      throw new HttpsError("invalid-argument", "La lista de slugs es invalida.");
+    }
+    if (rawSlugs.length > MAX_PUBLICATION_METRIC_SLUGS) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Se permiten hasta ${MAX_PUBLICATION_METRIC_SLUGS} publicaciones por consulta.`
+      );
+    }
+
+    const slugs = normalizePublicationMetricSlugs(
+      rawSlugs.map((slug) => normalizePublicSlug(slug)).filter(Boolean)
+    );
+    if (!slugs.length) return { metrics: {} };
+
+    const publicationRefs = slugs.map((slug) =>
+      db.collection("publicadas").doc(slug)
+    );
+    const publicationSnapshots = await db.getAll(...publicationRefs);
+    publicationSnapshots.forEach((snapshot) => {
+      const data = (snapshot.data() || {}) as Record<string, unknown>;
+      if (!snapshot.exists || data.userId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "No puedes consultar una de las publicaciones solicitadas."
+        );
+      }
+    });
+
+    const entries = await Promise.all(
+      publicationRefs.map(async (publicationRef, index) => [
+        slugs[index],
+        await readPublicationVisitCounts(publicationRef),
+      ] as const)
+    );
+
+    return { metrics: Object.fromEntries(entries) };
+  }
 );
 
 

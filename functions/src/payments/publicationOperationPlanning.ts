@@ -26,6 +26,11 @@ type PublicationSummaryLike = {
   transportCount: number;
 };
 
+type PublicationVisitSummaryLike = {
+  totalVisits: number;
+  uniqueVisits: number;
+};
+
 type PublishOperation = "new" | "update";
 
 type PlannedPublicationDates = {
@@ -165,6 +170,7 @@ export function planPublicationFinalizationOperations(params: {
   draftSlug: string;
   dates: PlannedPublicationDates;
   summary: PublicationSummaryLike;
+  visitSummary: PublicationVisitSummaryLike;
   finalizedAt: Date;
   reason: string;
   historySourceCollection: string;
@@ -179,6 +185,7 @@ export function planPublicationFinalizationOperations(params: {
     draftSlug,
     dates,
     summary,
+    visitSummary,
     finalizedAt,
     reason,
     historySourceCollection,
@@ -200,6 +207,7 @@ export function planPublicationFinalizationOperations(params: {
       publicationData,
       draftSlug,
       summary,
+      visitSummary,
       firstPublishedAt: dates.firstPublishedAt,
       effectiveExpirationDate: dates.effectiveExpirationDate,
       lastPublishedAt: dates.lastPublishedAt,

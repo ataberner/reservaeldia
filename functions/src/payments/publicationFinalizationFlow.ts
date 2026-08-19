@@ -19,6 +19,11 @@ type PublicationSummary = {
   transportCount: number;
 };
 
+type PublicationVisitSummary = {
+  totalVisits: number;
+  uniqueVisits: number;
+};
+
 type PublicationFinalizationResult = {
   slug: string;
   historyId: string | null;
@@ -211,6 +216,7 @@ export async function finalizePublicationSnapshotFlow(params: {
   createHistoryUpdatedAtValue(): unknown;
   createDraftUpdatedAtValue(): unknown;
   createReservationUpdatedAtValue(): unknown;
+  readVisitCounts(ref: unknown): Promise<PublicationVisitSummary>;
   deleteStoragePrefix(prefix: string): Promise<unknown>;
   recursiveDelete(ref: unknown): Promise<unknown>;
   warn(message: string, context: Record<string, unknown>): void;
@@ -235,7 +241,10 @@ export async function finalizePublicationSnapshotFlow(params: {
     publicationSnap,
     now,
   });
-  const rsvpSnap = await publicationSnap.ref.collection("rsvps").get();
+  const [rsvpSnap, visitSummary] = await Promise.all([
+    publicationSnap.ref.collection("rsvps").get(),
+    params.readVisitCounts(publicationSnap.ref),
+  ]);
   const summary = buildPublicationSummary(
     rsvpSnap.docs.map((item) => asRecord(item.data()))
   );
@@ -249,6 +258,7 @@ export async function finalizePublicationSnapshotFlow(params: {
       lastPublishedAt: dates.lastPublishedAt,
     },
     summary,
+    visitSummary,
     finalizedAt: now,
     reason,
     historySourceCollection: PUBLICADAS_COLLECTION,

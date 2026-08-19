@@ -55,6 +55,10 @@ test("finalization planner freezes history, reservation, draft sync, and result 
       lastPublishedAt: new Date("2025-06-01T10:00:00.000Z"),
     },
     summary,
+    visitSummary: {
+      totalVisits: 42,
+      uniqueVisits: 31,
+    },
     finalizedAt: new Date("2026-04-01T12:00:00.000Z"),
     reason: "scheduled-expiration",
     historySourceCollection: "publicadas",
@@ -72,6 +76,18 @@ test("finalization planner freezes history, reservation, draft sync, and result 
   assert.equal(toIsoOrNull(plan.historyWrite.venceAt), "2026-05-01T10:00:00.000Z");
   assert.equal(toIsoOrNull(plan.historyWrite.ultimaPublicacionEn), "2025-06-01T10:00:00.000Z");
   assert.equal(toIsoOrNull(plan.historyWrite.finalizadaEn), "2026-04-01T12:00:00.000Z");
+  assert.deepEqual(
+    {
+      ...plan.historyWrite.visitSummary,
+      capturedAt: toIsoOrNull(plan.historyWrite.visitSummary.capturedAt),
+    },
+    {
+      schemaVersion: 1,
+      totalVisits: 42,
+      uniqueVisits: 31,
+      capturedAt: "2026-04-01T12:00:00.000Z",
+    }
+  );
   assert.equal(plan.historyWrite.createdAt, createdAtValue);
   assert.equal(plan.historyWrite.updatedAt, updatedAtValue);
   assert.ok(plan.draftFinalizeWrite);

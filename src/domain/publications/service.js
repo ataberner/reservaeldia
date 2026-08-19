@@ -13,6 +13,18 @@ const prepareDraftPreviewRenderCallable = httpsCallable(
   cloudFunctions,
   "prepareDraftPreviewRender"
 );
+const getMyPublicationVisitMetricsCallable = httpsCallable(
+  cloudFunctions,
+  "getMyPublicationVisitMetrics"
+);
+
+const PUBLICATION_METRICS_BATCH_SIZE = 25;
+
+function toNonNegativeInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed));
+}
 
 export async function transitionPublishedInvitationState({
   slug,
@@ -87,4 +99,54 @@ export async function prepareDraftPreviewRender({
   });
 
   return result?.data || null;
+}
+
+export async function getMyPublicationVisitMetrics({ slugs = [] } = {}) {
+  const normalizedSlugs = Array.from(
+    new Set(
+      (Array.isArray(slugs) ? slugs : [])
+        .map((slug) => (typeof slug === "string" ? slug.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+
+  if (!normalizedSlugs.length) return {};
+
+  const batches = [];
+  for (
+    let index = 0;
+    index < normalizedSlugs.length;
+    index += PUBLICATION_METRICS_BATCH_SIZE
+  ) {
+    batches.push(normalizedSlugs.slice(index, index + PUBLICATION_METRICS_BATCH_SIZE));
+  }
+
+  const results = await Promise.all(
+    batches.map((batch) => getMyPublicationVisitMetricsCallable({ slugs: batch }))
+  );
+
+  const metrics = results.reduce((allMetrics, result) => {
+    const rawMetrics =
+      result?.data?.metrics && typeof result.data.metrics === "object"
+        ? result.data.metrics
+        : null;
+    if (!rawMetrics) {
+      throw new Error("La respuesta de metricas de visitas es invalida.");
+    }
+
+    Object.entries(rawMetrics).forEach(([slug, rawMetric]) => {
+      allMetrics[slug] = {
+        totalVisits: toNonNegativeInteger(rawMetric?.totalVisits),
+        uniqueVisits: toNonNegativeInteger(rawMetric?.uniqueVisits),
+      };
+    });
+
+    return allMetrics;
+  }, {});
+
+  if (normalizedSlugs.some((slug) => !Object.hasOwn(metrics, slug))) {
+    throw new Error("Faltan metricas de una publicacion solicitada.");
+  }
+
+  return metrics;
 }

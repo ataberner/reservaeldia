@@ -17,6 +17,52 @@ function toNonNegativeInteger(value) {
   return Math.max(0, Math.round(parsed));
 }
 
+export function hasEnabledRsvpSnapshot(rsvp) {
+  return Boolean(rsvp && typeof rsvp === "object" && rsvp.enabled === true);
+}
+
+export function normalizePublicationVisitMetrics(
+  rawMetrics,
+  { historical = false, hasReadError = false } = {}
+) {
+  if (hasReadError) {
+    return {
+      status: "error",
+      totalVisits: null,
+      uniqueVisits: null,
+    };
+  }
+
+  if (
+    historical &&
+    (!rawMetrics || typeof rawMetrics !== "object" || rawMetrics.schemaVersion !== 1)
+  ) {
+    return {
+      status: "unavailable",
+      totalVisits: null,
+      uniqueVisits: null,
+    };
+  }
+
+  const totalVisits = toNonNegativeInteger(rawMetrics?.totalVisits);
+  const uniqueVisits = Math.min(
+    toNonNegativeInteger(rawMetrics?.uniqueVisits),
+    totalVisits
+  );
+
+  return {
+    status: "ready",
+    totalVisits,
+    uniqueVisits,
+  };
+}
+
+export function formatPublicationVisitMetric(metrics, field) {
+  if (metrics?.status === "unavailable") return "Sin datos";
+  if (metrics?.status === "error") return "—";
+  return toNonNegativeInteger(metrics?.[field]);
+}
+
 export function getInvitationStatusKey(row) {
   if (row?.isFinalized || row?.estado === "Finalizada") return "finalized";
   if (row?.isPaused || row?.estado === "Pausada") return "paused";

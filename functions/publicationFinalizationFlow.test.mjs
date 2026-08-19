@@ -98,6 +98,7 @@ function createFlowHarness() {
     recursiveDeletes: [],
     warnings: [],
     info: [],
+    visitReads: [],
   };
 
   return {
@@ -128,6 +129,13 @@ function createFlowHarness() {
       },
       createReservationUpdatedAtValue() {
         return "reservation-updated";
+      },
+      async readVisitCounts(ref) {
+        calls.visitReads.push(ref);
+        return {
+          totalVisits: 12,
+          uniqueVisits: 8,
+        };
       },
       async deleteStoragePrefix(prefix) {
         calls.deletedPrefixes.push(prefix);
@@ -171,6 +179,7 @@ test("finalizePublicationSnapshotFlow short-circuits missing snapshots without p
     alreadyMissing: true,
   });
   assert.equal(snapshot.state.rsvpReads, 0);
+  assert.deepEqual(harness.calls.visitReads, []);
   assert.deepEqual(harness.calls.historyIds, []);
   assert.deepEqual(harness.calls.draftSlugs, []);
   assert.deepEqual(harness.calls.deletedPrefixes, []);
@@ -239,6 +248,7 @@ test("finalizePublicationSnapshotFlow preserves current sequencing, fallback dat
     alreadyMissing: false,
   });
   assert.equal(snapshot.state.rsvpReads, 1);
+  assert.deepEqual(harness.calls.visitReads, [snapshot.snap.ref]);
   assert.deepEqual(harness.calls.historyIds, [expectedHistoryId]);
   assert.deepEqual(harness.calls.draftSlugs, ["draft-1"]);
   assert.deepEqual(harness.calls.deletedPrefixes, ["publicadas/mi-slug/"]);
@@ -273,6 +283,13 @@ test("finalizePublicationSnapshotFlow preserves current sequencing, fallback dat
     transportCount: 2,
   });
   assert.equal(historyWrite.totalRsvpsHistorico, 3);
+  assert.equal(historyWrite.visitSummary.schemaVersion, 1);
+  assert.equal(historyWrite.visitSummary.totalVisits, 12);
+  assert.equal(historyWrite.visitSummary.uniqueVisits, 8);
+  assert.equal(
+    toIsoOrNull(historyWrite.visitSummary.capturedAt),
+    toIsoOrNull(historyWrite.finalizadaEn)
+  );
 
   const draftWrite = harness.refs.draftRef.state.writes[0].payload;
   assert.equal(draftWrite.slugPublico, null);
@@ -308,4 +325,35 @@ test("finalizePublicationSnapshotFlow keeps linked draft finalization optional",
   assert.deepEqual(harness.refs.draftRef.state.writes, []);
   assert.equal(harness.refs.historyRef.state.writes.length, 1);
   assert.equal(harness.refs.reservationRef.state.writes.length, 1);
+});
+
+test("finalizePublicationSnapshotFlow preserves active data when visit aggregation fails", async () => {
+  const harness = createFlowHarness();
+  const snapshot = createPublicationSnapshot({
+    data: {
+      userId: "user-1",
+      nombre: "Fiesta protegida",
+    },
+  });
+
+  await assert.rejects(
+    finalizePublicationSnapshotFlow({
+      slug: "mi-slug",
+      publicationSnap: snapshot.snap,
+      reason: "scheduled-expiration",
+      draftSlug: "",
+      ...harness.deps,
+      async readVisitCounts(ref) {
+        harness.calls.visitReads.push(ref);
+        throw new Error("aggregation unavailable");
+      },
+    }),
+    /aggregation unavailable/
+  );
+
+  assert.deepEqual(harness.calls.visitReads, [snapshot.snap.ref]);
+  assert.deepEqual(harness.calls.deletedPrefixes, []);
+  assert.deepEqual(harness.calls.recursiveDeletes, []);
+  assert.deepEqual(harness.refs.historyRef.state.writes, []);
+  assert.deepEqual(harness.refs.reservationRef.state.writes, []);
 });

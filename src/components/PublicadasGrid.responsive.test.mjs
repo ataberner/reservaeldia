@@ -54,3 +54,14 @@ test("mobile preview shows the top cover raster and restores current desktop siz
   assert.doesNotMatch(source, /<iframe[\s>]/);
   assert.doesNotMatch(source, /srcDoc=/);
 });
+
+test("visit metrics are always visible while RSVP surfaces require normalized enablement", () => {
+  assert.match(source, /hasEnabledRsvpSnapshot\(raw\.rsvp\)/);
+  assert.match(source, /\{fila\.hasEnabledRsvp \? \(/);
+  assert.match(source, /\{publicacion\.hasEnabledRsvp \? \(/);
+  assert.match(source, /label="Confirmaron"/);
+  assert.match(source, /label="No asistirán"/);
+  assert.match(source, /label="Visitas únicas"/);
+  assert.match(source, /label="Visitas totales"/);
+  assert.doesNotMatch(source, /function MiniMetric/);
+});

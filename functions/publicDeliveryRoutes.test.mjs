@@ -82,6 +82,7 @@ test("public invitation route serves active html with noindex robots headers", a
   assert.equal(result.status, 200);
   assert.deepEqual(result.headers, {
     "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "private, no-store, max-age=0",
     "X-Robots-Tag": "noindex, noarchive",
   });
   assert.match(String(result.body), /<body>ok<\/body>/);

@@ -85,6 +85,9 @@ delivery source.
 `publicadas_historial`
 : Finalized publication snapshots. Finalization writes history before deleting
 the active public document/storage prefix and before updating the linked draft.
+It captures the active visit aggregates in `visitSummary` before recursive
+deletion; if those aggregates cannot be preserved, finalization must stop before
+deleting active publication data.
 
 `publicadas/{slug}/index.html`
 : Firebase Storage artifact served to public visitors. This is the final public
@@ -519,6 +522,37 @@ Public visitors hit `/i/{slug}`. Firebase Hosting rewrites to
 5. finalizes expired publications on access when needed
 6. reads `publicadas/{slug}/index.html`
 7. returns HTML only if the artifact exists
+8. decorates only that successful HTTP response with the non-visual visit
+   runtime; the Storage artifact remains the render authority and is not edited
+9. returns the HTML response with `Cache-Control: private, no-store`
+
+The response runtime sends `POST /i/{slug}/visit` only after the document is
+visible. The endpoint revalidates lifecycle and requires both the anonymous
+first-party visitor cookie and a short-lived, slug- and visitor-bound HMAC load
+token. A token is idempotent: repeated delivery signals return `204` without
+creating another total visit. Invalid or expired tokens are rejected. Tracking
+failure must never prevent the successful HTML response.
+
+The cookie transport is `__session`, the only cookie name Firebase Hosting
+forwards to a rewritten Cloud Function request. It carries 128 random bits and
+uses `HttpOnly`, `SameSite=Lax`, `Path=/i`, a one-year lifetime, and `Secure`
+outside the emulator. It is an anonymous visit identity, not an authentication
+session; arbitrary alternate cookie names must not become parallel authorities.
+A total visit is a visible public HTML load that executes this runtime. A unique
+visit is one persistent cookie identity per public slug; owner opens count
+because delivery is anonymous. Previews, share images, unavailable lifecycle
+states, 404 responses, and clients that do not execute JavaScript do not count.
+Active total and unique aggregates count only measurement `schemaVersion: 2`;
+version 1 documents from the invalid pre-fix cookie transport epoch are retained
+but excluded from both metrics so the two counters share one reliable start.
+The HMAC authority is the Functions secret `PUBLIC_VISIT_SIGNING_SECRET`, which
+must be configured with at least 32 characters before deployment.
+
+Before finalization recursively deletes `publicadas/{slug}` and its visit
+subcollections, the backend obtains both aggregate counts and writes
+`visitSummary: { schemaVersion: 1, totalVisits, uniqueVisits, capturedAt }` to
+the history snapshot. Historical snapshots without that field predate the
+measurement contract and expose the metric as unavailable rather than zero.
 
 Share image delivery uses `/i/{slug}/share.jpg?v={share.version}` and must
 validate both current lifecycle access and current generated share metadata
@@ -548,6 +582,7 @@ Automated anchors:
 - `functions/publicationLifecycle.test.mjs`
 - `functions/publicationFinalizationFlow.test.mjs`
 - `functions/publicationWritePreparation.test.mjs`
+- `functions/publicationVisitTracking.test.mjs`
 
 Required manual checks for production release:
 

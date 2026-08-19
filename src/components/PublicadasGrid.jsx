@@ -45,7 +45,10 @@ import {
   assembleDashboardPublicationItems,
   loadUserPublicationSourceRecords,
 } from "@/domain/publications/dashboardList";
-import { transitionPublishedInvitationState } from "@/domain/publications/service";
+import {
+  getMyPublicationVisitMetrics,
+  transitionPublishedInvitationState,
+} from "@/domain/publications/service";
 import {
   buildResponsesCsv,
   computeHistoricResponseMetrics,
@@ -53,11 +56,14 @@ import {
   findInvitationById,
   filterInvitationRows,
   filterResponseRows,
+  formatPublicationVisitMetric,
   getResponseAttendanceKey,
   getResponseAttendanceLabel,
   getResponseMessage,
   getResponsePartySize,
   getResponseShortAttendanceLabel,
+  hasEnabledRsvpSnapshot,
+  normalizePublicationVisitMetrics,
   paginateItems,
 } from "@/domain/publications/myInvitationsView";
 
@@ -186,31 +192,48 @@ function getCsvFilename(publicacion) {
   return `${sanitizeDownloadFilename(publicacion?.nombre)}.csv`;
 }
 
-function createMetricCards(metrics) {
-  return [
-    {
+function createMetricCards(metrics, visitMetrics, hasEnabledRsvp) {
+  const cards = [];
+
+  if (hasEnabledRsvp) {
+    cards.push({
       id: "confirmed",
-      label: "Confirmados",
+      label: "Confirmaron",
       value: metrics.confirmedResponses,
-      detail:
-        metrics.totalExpected > 0
-          ? `${Math.round((metrics.confirmedResponses / metrics.totalExpected) * 100)}% del total`
-          : "Sin invitados cargados",
-      icon: Users,
+      detail: "Formularios con respuesta afirmativa",
+      icon: CheckCircle2,
       tone: "brand",
-    },
-    {
+    });
+    cards.push({
       id: "declined",
-      label: "No asisten",
+      label: "No asistirán",
       value: metrics.declinedResponses,
-      detail:
-        metrics.totalExpected > 0
-          ? `${Math.round((metrics.declinedResponses / metrics.totalExpected) * 100)}% del total`
-          : "Sin invitados cargados",
+      detail: "Formularios con respuesta negativa",
       icon: XCircle,
       tone: "orange",
+    });
+  }
+
+  cards.push(
+    {
+      id: "unique-visits",
+      label: "Visitas únicas",
+      value: formatPublicationVisitMetric(visitMetrics, "uniqueVisits"),
+      detail: "Navegadores identificados en esta invitación",
+      icon: Users,
+      tone: "softBrand",
     },
-  ];
+    {
+      id: "total-visits",
+      label: "Visitas totales",
+      value: formatPublicationVisitMetric(visitMetrics, "totalVisits"),
+      detail: "Cargas públicas registradas",
+      icon: Eye,
+      tone: "softBrand",
+    }
+  );
+
+  return cards;
 }
 
 export default function PublicadasGrid({
@@ -263,15 +286,18 @@ export default function PublicadasGrid({
             const data =
               record?.data && typeof record.data === "object" ? record.data : {};
             const normalizedRsvp = normalizeRsvpSnapshot(data.rsvp);
-            const rsvpsSnap = await getDocs(
-              collection(db, "publicadas", record.id, "rsvps")
-            );
-            const responseRows = rsvpsSnap.docs.map((responseDoc) =>
-              adaptRsvpResponse(
-                { id: responseDoc.id, ...(responseDoc.data() || {}) },
-                normalizedRsvp
-              )
-            );
+            const responseRows = hasEnabledRsvpSnapshot(normalizedRsvp)
+              ? (
+                  await getDocs(
+                    collection(db, "publicadas", record.id, "rsvps")
+                  )
+                ).docs.map((responseDoc) =>
+                  adaptRsvpResponse(
+                    { id: responseDoc.id, ...(responseDoc.data() || {}) },
+                    normalizedRsvp
+                  )
+                )
+              : [];
             const responseMetrics = computeResponseMetrics(responseRows, {
               invitedCount: resolveInvitedCount(data),
             });
@@ -305,8 +331,40 @@ export default function PublicadasGrid({
             getDoc(doc(db, "borradores", draftSlug)),
         });
 
+        const activeSlugs = nextItems
+          .filter((item) => item?.source === "active" && !item?.isFinalized)
+          .map((item) => String(item?.publicSlug || item?.id || "").trim())
+          .filter(Boolean);
+        let visitMetricsBySlug = {};
+        let visitMetricsReadError = false;
+
+        try {
+          visitMetricsBySlug = await getMyPublicationVisitMetrics({
+            slugs: activeSlugs,
+          });
+        } catch (visitMetricsError) {
+          visitMetricsReadError = true;
+          console.error("No se pudieron cargar las metricas de visitas", {
+            error: visitMetricsError,
+          });
+        }
+
+        const itemsWithVisitMetrics = nextItems.map((item) => {
+          if (item?.source !== "active" || item?.isFinalized) return item;
+          const slug = String(item?.publicSlug || item?.id || "").trim();
+          return {
+            ...item,
+            raw: {
+              ...(item?.raw && typeof item.raw === "object" ? item.raw : {}),
+              dashboardVisitMetrics:
+                visitMetricsBySlug[slug] || { totalVisits: 0, uniqueVisits: 0 },
+              dashboardVisitMetricsReadError: visitMetricsReadError,
+            },
+          };
+        });
+
         if (!mounted) return;
-        setItems(nextItems);
+        setItems(itemsWithVisitMetrics);
       } catch (fetchError) {
         if (!mounted) return;
         setItems([]);
@@ -338,6 +396,15 @@ export default function PublicadasGrid({
         : raw.dashboardResponseMetrics || computeResponseMetrics([], {
             invitedCount: invitadosCount,
           });
+      const hasEnabledRsvp = hasEnabledRsvpSnapshot(raw.rsvp);
+      const visitMetrics = normalizePublicationVisitMetrics(
+        item.isFinalized ? raw.visitSummary : raw.dashboardVisitMetrics,
+        {
+          historical: item.isFinalized,
+          hasReadError:
+            !item.isFinalized && raw.dashboardVisitMetricsReadError === true,
+        }
+      );
 
       const fechaEvento = item.isFinalized
         ? finalizadaEn || vigenteHasta || publicadaEn
@@ -376,6 +443,8 @@ export default function PublicadasGrid({
         confirmados: responseMetrics.confirmedResponses,
         invitadosCount,
         responseMetrics,
+        hasEnabledRsvp,
+        visitMetrics,
         borradorSlug: item.borradorSlug,
         tipoLabel: normalizeTypeLabel(raw.tipo || raw.tipoInvitacion || raw.plantillaTipo),
         rsvp: raw.rsvp || null,
@@ -454,7 +523,8 @@ export default function PublicadasGrid({
     if (
       !publicacionSeleccionada?.id ||
       publicacionSeleccionada.isFinalized ||
-      publicacionSeleccionada.source !== "active"
+      publicacionSeleccionada.source !== "active" ||
+      !publicacionSeleccionada.hasEnabledRsvp
     ) {
       setRsvps([]);
       setCargandoRsvps(false);
@@ -483,7 +553,12 @@ export default function PublicadasGrid({
     );
 
     return () => unsubscribe();
-  }, [publicacionSeleccionada?.id, publicacionSeleccionada?.isFinalized, publicacionSeleccionada?.source]);
+  }, [
+    publicacionSeleccionada?.hasEnabledRsvp,
+    publicacionSeleccionada?.id,
+    publicacionSeleccionada?.isFinalized,
+    publicacionSeleccionada?.source,
+  ]);
 
   const handleHardDeleteLegacy = async (publicSlug) => {
     if (!publicSlug || deletingPublicSlug) return;
@@ -552,7 +627,8 @@ export default function PublicadasGrid({
 
   const adaptedResponses = useMemo(
     () =>
-      publicacionSeleccionada?.isFinalized
+      publicacionSeleccionada?.isFinalized ||
+      !publicacionSeleccionada?.hasEnabledRsvp
         ? []
         : rsvps
             .map((response) =>
@@ -563,7 +639,12 @@ export default function PublicadasGrid({
               const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
               return bTime - aTime;
             }),
-    [rsvps, publicacionSeleccionada?.rsvp, publicacionSeleccionada?.isFinalized]
+    [
+      rsvps,
+      publicacionSeleccionada?.hasEnabledRsvp,
+      publicacionSeleccionada?.rsvp,
+      publicacionSeleccionada?.isFinalized,
+    ]
   );
 
   const columns = useMemo(
@@ -654,7 +735,13 @@ export default function PublicadasGrid({
   };
 
   const handleExportResponses = () => {
-    if (!publicacionSeleccionada || publicacionSeleccionada.isFinalized) return;
+    if (
+      !publicacionSeleccionada ||
+      publicacionSeleccionada.isFinalized ||
+      !publicacionSeleccionada.hasEnabledRsvp
+    ) {
+      return;
+    }
     const csv = buildResponsesCsv(filteredResponses, columns, formatAnswerValue);
     downloadTextFile(
       getCsvFilename(publicacionSeleccionada),
@@ -819,7 +906,11 @@ export default function PublicadasGrid({
             <InvitationDetailPanel
               publicacion={publicacionSeleccionada}
               metrics={selectedMetrics}
-              metricCards={createMetricCards(selectedMetrics)}
+              metricCards={createMetricCards(
+                selectedMetrics,
+                publicacionSeleccionada?.visitMetrics,
+                publicacionSeleccionada?.hasEnabledRsvp === true
+              )}
               responses={adaptedResponses}
               filteredResponses={filteredResponses}
               responseRows={responsePagination.items}
@@ -1088,7 +1179,7 @@ function InvitationListItem({ fila, selected, onSelect }) {
       <button
         type="button"
         onClick={onSelect}
-        className={`grid w-full grid-cols-[88px_minmax(0,1fr)_42px] gap-2 rounded-2xl border p-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2 sm:grid-cols-[112px_minmax(0,1fr)_46px] sm:gap-3 ${
+        className={`grid w-full grid-cols-[88px_minmax(0,1fr)] gap-2 rounded-2xl border p-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#692B9A] focus-visible:ring-offset-2 sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-3 ${
           selected
             ? "border-[#692B9A] bg-[#FAF5FF] shadow-[0_10px_24px_rgba(105,43,154,0.16)]"
             : "border-transparent bg-white hover:border-[#EFDBFF] hover:bg-[#FBF7F9]"
@@ -1114,17 +1205,38 @@ function InvitationListItem({ fila, selected, onSelect }) {
             <EstadoPill valor={fila.estado} />
           </div>
         </div>
-        <div className="border-l border-[#EFDBFF] pl-2 text-xs">
-          <MiniMetric tone="success" value={metrics.confirmedResponses || 0} />
-          <MiniMetric tone="warning" value={metrics.declinedResponses || 0} />
-          <MiniMetric tone="brand" value={metrics.pendingResponses || 0} />
+        <div className="col-span-2 grid min-w-0 grid-cols-2 gap-1.5 border-t border-[#EFDBFF] pt-2">
+          {fila.hasEnabledRsvp ? (
+            <>
+              <CompactMetric
+                label="Confirmaron"
+                tone="success"
+                value={metrics.confirmedResponses || 0}
+              />
+              <CompactMetric
+                label="No asistirán"
+                tone="warning"
+                value={metrics.declinedResponses || 0}
+              />
+            </>
+          ) : null}
+          <CompactMetric
+            label="Visitas únicas"
+            tone="brand"
+            value={formatPublicationVisitMetric(fila.visitMetrics, "uniqueVisits")}
+          />
+          <CompactMetric
+            label="Visitas totales"
+            tone="brand"
+            value={formatPublicationVisitMetric(fila.visitMetrics, "totalVisits")}
+          />
         </div>
       </button>
     </li>
   );
 }
 
-function MiniMetric({ tone, value }) {
+function CompactMetric({ label, tone, value }) {
   const dotClass =
     tone === "success"
       ? "bg-[#029B4A]"
@@ -1133,9 +1245,12 @@ function MiniMetric({ tone, value }) {
         : "bg-[#692B9A]";
 
   return (
-    <div className="flex items-center justify-between gap-2 py-1 text-[#262626]/70">
-      <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-      <span>{value}</span>
+    <div className="flex min-w-0 items-center justify-between gap-1.5 rounded-lg bg-white/75 px-2 py-1.5 text-[11px] text-[#262626]/70">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="shrink-0 font-semibold text-[#262626]">{value}</span>
     </div>
   );
 }
@@ -1169,7 +1284,7 @@ function InvitationDetailPanel({
   if (!publicacion) {
     return (
       <div className="flex min-h-[540px] items-center justify-center rounded-[18px] border border-[#EFDBFF] bg-white p-6 text-center text-[#262626]/60 shadow-[0_16px_40px_rgba(38,38,38,0.06)]">
-        Selecciona una invitacion para ver sus respuestas.
+        Selecciona una invitacion para ver sus métricas.
       </div>
     );
   }
@@ -1220,9 +1335,11 @@ function InvitationDetailPanel({
           <p className="mt-2 text-sm text-[#262626]/54">{publicacion.tipoLabel}</p>
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#262626]/70">
             <InfoItem icon={CalendarDays}>{formatDate(publicacion.fechaEvento)}</InfoItem>
-            <InfoItem icon={Users}>
-              {metrics.totalExpected || publicacion.invitadosCount || 0} invitados
-            </InfoItem>
+            {publicacion.hasEnabledRsvp ? (
+              <InfoItem icon={Users}>
+                {metrics.totalExpected || publicacion.invitadosCount || 0} invitados
+              </InfoItem>
+            ) : null}
             <InfoItem icon={Link2}>{formatPublicUrlLabel(publicacion.url)}</InfoItem>
           </div>
         </div>
@@ -1322,41 +1439,42 @@ function InvitationDetailPanel({
         ))}
       </div>
 
-      <div className="mt-7 border-t border-[#EFDBFF] pt-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-[#262626]">
-              {publicacion.isFinalized ? "Resumen historico" : `Respuestas (${metrics.totalExpected || metrics.totalResponses})`}
-            </h3>
-            <p className="mt-1 text-sm text-[#262626]/54">
-              {publicacion.isFinalized
-                ? "Esta invitacion esta finalizada. Se conserva solo el resumen historico."
-                : `${filteredResponses.length} respuestas visibles con los filtros actuales.`}
-            </p>
-          </div>
-
-          {!publicacion.isFinalized ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#262626]/40" />
-                <input
-                  value={responseSearch}
-                  onChange={(event) => onResponseSearchChange(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#E5E5E5] bg-white pl-10 pr-3 text-sm outline-none transition placeholder:text-[#262626]/38 focus:border-[#692B9A] focus:ring-2 focus:ring-[#EFDBFF] sm:w-64"
-                  placeholder="Buscar invitado..."
-                />
-              </div>
-              <button
-                type="button"
-                onClick={onExport}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#E5E5E5] px-4 text-sm font-semibold text-[#262626] transition hover:bg-[#FBF7F9]"
-              >
-                <Download className="h-4 w-4" />
-                Exportar
-              </button>
+      {publicacion.hasEnabledRsvp ? (
+        <div className="mt-7 border-t border-[#EFDBFF] pt-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-[#262626]">
+                {publicacion.isFinalized ? "Resumen historico" : `Respuestas (${metrics.totalExpected || metrics.totalResponses})`}
+              </h3>
+              <p className="mt-1 text-sm text-[#262626]/54">
+                {publicacion.isFinalized
+                  ? "Esta invitacion esta finalizada. Se conserva solo el resumen historico."
+                  : `${filteredResponses.length} respuestas visibles con los filtros actuales.`}
+              </p>
             </div>
-          ) : null}
-        </div>
+
+            {!publicacion.isFinalized ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#262626]/40" />
+                  <input
+                    value={responseSearch}
+                    onChange={(event) => onResponseSearchChange(event.target.value)}
+                    className="h-11 w-full rounded-xl border border-[#E5E5E5] bg-white pl-10 pr-3 text-sm outline-none transition placeholder:text-[#262626]/38 focus:border-[#692B9A] focus:ring-2 focus:ring-[#EFDBFF] sm:w-64"
+                    placeholder="Buscar invitado..."
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={onExport}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#E5E5E5] px-4 text-sm font-semibold text-[#262626] transition hover:bg-[#FBF7F9]"
+                >
+                  <Download className="h-4 w-4" />
+                  Exportar
+                </button>
+              </div>
+            ) : null}
+          </div>
 
         {!publicacion.isFinalized ? (
           <>
@@ -1401,7 +1519,8 @@ function InvitationDetailPanel({
         ) : (
           <HistoricSummary summary={publicacion.rsvpSummary} />
         )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

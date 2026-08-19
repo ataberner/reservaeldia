@@ -85,6 +85,7 @@ import {
   readOwnedCheckoutSessionFlow,
 } from "./publicationCheckoutSessionFlow";
 import { finalizePublicationSnapshotFlow } from "./publicationFinalizationFlow";
+import { readPublicationVisitCounts } from "./publicationVisitTracking";
 import {
   isPublicationDueForTrashPurgeFlow,
   purgeTrashedPublicationFlow,
@@ -731,6 +732,8 @@ async function finalizePublicationSnapshot(params: {
     createHistoryUpdatedAtValue: () => serverTimestamp(),
     createDraftUpdatedAtValue: () => serverTimestamp(),
     createReservationUpdatedAtValue: () => serverTimestamp(),
+    readVisitCounts: (ref) =>
+      readPublicationVisitCounts(ref as FirebaseFirestore.DocumentReference),
     deleteStoragePrefix: (prefix) => bucket.deleteFiles({ prefix }),
     recursiveDelete: (ref) => db.recursiveDelete(ref as FirebaseFirestore.DocumentReference),
     warn: (message, context) => logger.warn(message, context),

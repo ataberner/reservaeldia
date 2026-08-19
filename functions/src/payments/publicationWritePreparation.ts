@@ -17,6 +17,11 @@ type PublicationSummaryLike = {
   transportCount: number;
 };
 
+type PublicationVisitSummaryLike = {
+  totalVisits: number;
+  uniqueVisits: number;
+};
+
 type PublishOperation = "new" | "update";
 
 function getString(value: unknown): string {
@@ -28,6 +33,7 @@ export function buildPublicationHistoryWrite(params: {
   publicationData: Record<string, unknown>;
   draftSlug: string;
   summary: PublicationSummaryLike;
+  visitSummary: PublicationVisitSummaryLike;
   firstPublishedAt: Date;
   effectiveExpirationDate: Date;
   lastPublishedAt: Date;
@@ -42,6 +48,7 @@ export function buildPublicationHistoryWrite(params: {
     publicationData,
     draftSlug,
     summary,
+    visitSummary,
     firstPublishedAt,
     effectiveExpirationDate,
     lastPublishedAt,
@@ -74,6 +81,12 @@ export function buildPublicationHistoryWrite(params: {
     gifts: publicationData.gifts || null,
     rsvpSummary: summary,
     totalRsvpsHistorico: summary.totalResponses,
+    visitSummary: {
+      schemaVersion: 1,
+      totalVisits: visitSummary.totalVisits,
+      uniqueVisits: visitSummary.uniqueVisits,
+      capturedAt: toFirestoreTimestampOrNull(finalizedAt),
+    },
     htmlPublicadoEliminado: true,
     sourceCollection,
     sourceSlug: slug,

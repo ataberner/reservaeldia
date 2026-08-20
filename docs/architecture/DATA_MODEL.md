@@ -247,7 +247,7 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `tipo` | Optional | Section classification used by creation/workflow code. |
 | `altoModo` | Optional but behavior-critical | Section layout mode. Current code uses values such as `pantalla` and `fijo`. |
 | `mobileLayoutMode` | Optional render-control enum | Mobile smart-layout participation. Missing/invalid/`auto` uses current automatic behavior. `preserve` opts the section out of smart reflow while keeping normal mobile viewport/fit-scale behavior. |
-| `functionalAssociation` | Optional render-control enum | Admin/template metadata for whole-section functional visibility. Supported values are `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, and `"dress_code"`. Missing/null means always visible/shared. When present and the matching functional state is inactive, editor, preview, and publish omit the entire section, including section-owned visuals and all objects in it. RSVP/Gifts use their root `enabled` switches; Ceremony/Party are derived from `eventDetails.mode`; Dress Code is derived from `eventDetails.dressCode.enabled`. |
+| `functionalAssociation` | Optional render-control enum | Admin/template metadata for whole-section functional visibility. Supported section values are `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, `"dress_code"`, and section-only `"countdown"`. Missing/null means always visible/shared. When present and the matching functional state is inactive, editor, preview, and publish omit the entire section, including section-owned visuals and all objects in it. RSVP/Gifts use their root `enabled` switches; Ceremony/Party are derived from `eventDetails.mode`; Dress Code is derived from `eventDetails.dressCode.enabled`; Countdown is active when the section contains at least one Countdown whose `mostrarCuentaRegresiva` is not `false`. |
 | `alturaFijoBackup` | Optional | Backup fixed height when toggling section modes. |
 | `fondoTipo` | Optional | Base background kind. Current HTML generator checks `"imagen"` explicitly. |
 | `fondoImagen` | Optional | Base background image URL/path. |
@@ -398,7 +398,7 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
 | `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
 
-`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority and `eventDetails.dressCode.value` is the dynamic text source for the Dress Code field. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
+`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority and `eventDetails.dressCode.value` is the dynamic text source for the Dress Code field. For section-only `functionalAssociation: "countdown"`, the existing Countdown field `mostrarCuentaRegresiva` is the authority and no root switch is added. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
 
 ### `grupo`
 Groups are preserved composition objects. The group root lives in `objetos` with
@@ -607,6 +607,7 @@ Observed countdown fields:
 | Versioning | `countdownSchemaVersion`, `presetId`, legacy `layout` |
 | Geometry | `width`, `height`, `tamanoBase`, `gap`, `paddingX`, `paddingY`, `chipWidth`, `boxRadius`, `framePadding`, additive `frameScale` |
 | Layout | `visibleUnits`, `distribution`, `layoutType`, `separator` |
+| Functional visibility | `mostrarCuentaRegresiva` |
 | Typography | `fontFamily`, `fontSize`, `labelSize`, `letterSpacing`, `lineHeight`, `showLabels`, `labelTransform` |
 | Styling | `color`, `labelColor`, `boxBg`, `boxBorder`, `boxShadow`, `separatorColor`, historical URL field `frameSvgUrl`, additive `frameAssetType`, `frameMimeType`, `frameIntrinsicWidth`, `frameIntrinsicHeight`, `frameColor`, `frameColorMode` |
 | Runtime animation | `entryAnimation`, `tickAnimation`, `frameAnimation` |
@@ -628,6 +629,14 @@ or invalid targets are publish-validation blockers. At runtime, invalid and
 expired targets keep the countdown structure visible and render all units as
 zero; there is no message, replacement, or hide lifecycle in the current
 contract.
+
+`mostrarCuentaRegresiva` is the existing Countdown visibility authority:
+explicit `false` is inactive and missing/`true` is visible for compatibility.
+For a section with `functionalAssociation: "countdown"`, render preparation
+keeps the complete section only while that same section contains at least one
+visible Countdown, including one nested in a preserved group. This derivation
+runs before Canvas, preview and publish rendering, does not add a root mirror,
+and does not mutate the section or Countdown snapshot.
 
 For schema v2, root `frameScale` is the materialized decorative-frame scale:
 `1` is the historical/default rendering and the accepted range is `0.5..5`.

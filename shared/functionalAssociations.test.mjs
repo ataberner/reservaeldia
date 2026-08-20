@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyFunctionalAssociationsToRenderState,
+  normalizeFunctionalAssociation,
   normalizeFunctionalConfigs,
+  normalizeSectionFunctionalAssociation,
   resolveGroupAbsoluteBounds,
   sanitizeMovedGroupFunctionalAssociation,
   setGroupFunctionalAssociation,
@@ -64,6 +66,72 @@ test("section association hides the entire inactive section and keeps always-vis
   assert.deepEqual(result.secciones.map((section) => section.id), ["hero", "rsvp"]);
   assert.deepEqual(result.objetos.map((object) => object.id), ["hero-text", "rsvp-text"]);
   assert.deepEqual(result.hiddenSectionIds, ["gifts"]);
+});
+
+test("countdown association is section-only and follows the countdown visibility flag", () => {
+  assert.equal(normalizeFunctionalAssociation("countdown"), null);
+  assert.equal(normalizeSectionFunctionalAssociation("Countdown"), "countdown");
+  assert.equal(normalizeSectionFunctionalAssociation("cuenta regresiva"), "countdown");
+
+  const secciones = [
+    { id: "hero", orden: 0, altura: 400 },
+    { id: "countdown-hidden", orden: 1, altura: 400, functionalAssociation: "countdown" },
+    { id: "countdown-visible", orden: 2, altura: 400, functionalAssociation: "countdown" },
+    { id: "countdown-missing", orden: 3, altura: 400, functionalAssociation: "countdown" },
+  ];
+  const objetos = [
+    { id: "hero-text", tipo: "texto", seccionId: "hero" },
+    { id: "hidden-copy", tipo: "texto", seccionId: "countdown-hidden" },
+    {
+      id: "hidden-countdown",
+      tipo: "countdown",
+      seccionId: "countdown-hidden",
+      mostrarCuentaRegresiva: false,
+    },
+    { id: "visible-copy", tipo: "texto", seccionId: "countdown-visible" },
+    {
+      id: "visible-countdown",
+      tipo: "countdown",
+      seccionId: "countdown-visible",
+    },
+    { id: "missing-copy", tipo: "texto", seccionId: "countdown-missing" },
+  ];
+
+  const result = applyFunctionalAssociationsToRenderState({ secciones, objetos });
+
+  assert.deepEqual(result.secciones.map((section) => section.id), ["hero", "countdown-visible"]);
+  assert.deepEqual(result.objetos.map((object) => object.id), [
+    "hero-text",
+    "visible-copy",
+    "visible-countdown",
+  ]);
+  assert.deepEqual(result.hiddenSectionIds, ["countdown-hidden", "countdown-missing"]);
+});
+
+test("countdown section association becomes visible again when Detalles del evento enables it", () => {
+  const secciones = [
+    { id: "countdown", orden: 0, altura: 400, functionalAssociation: "countdown" },
+  ];
+  const countdown = {
+    id: "countdown-object",
+    tipo: "countdown",
+    seccionId: "countdown",
+    mostrarCuentaRegresiva: false,
+  };
+
+  const hidden = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos: [countdown],
+  });
+  const visible = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos: [{ ...countdown, mostrarCuentaRegresiva: true }],
+  });
+
+  assert.deepEqual(hidden.secciones, []);
+  assert.deepEqual(hidden.objetos, []);
+  assert.deepEqual(visible.secciones.map((section) => section.id), ["countdown"]);
+  assert.deepEqual(visible.objetos.map((object) => object.id), ["countdown-object"]);
 });
 
 test("shared section renders both functional groups in original positions when both features are enabled", () => {

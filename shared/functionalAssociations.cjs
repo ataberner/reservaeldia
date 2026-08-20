@@ -2,6 +2,9 @@ const {
   normalizeEventDetailsConfig,
   resolveEventDetailsEnabledState,
 } = require("./eventDetailsConfig.cjs");
+const {
+  isCountdownVisible,
+} = require("./countdownEventDetails.cjs");
 
 const FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze(["rsvp", "gifts", "ceremony", "party", "dress_code"]);
 const FUNCTIONAL_ASSOCIATION_SET = new Set(FUNCTIONAL_ASSOCIATION_VALUES);
@@ -76,9 +79,28 @@ function normalizeFunctionalAssociation(value) {
   return null;
 }
 
-function setFunctionalAssociationField(record, association) {
+function normalizeSectionFunctionalAssociation(value) {
+  const normalized = normalizeFunctionalAssociation(value);
+  if (normalized) return normalized;
+
+  const normalizedToken = normalizeLowerText(value).replace(/[\s-]+/g, "_");
+  if (
+    normalizedToken === "countdown" ||
+    normalizedToken === "contador" ||
+    normalizedToken === "cuenta_regresiva"
+  ) {
+    return "countdown";
+  }
+  return null;
+}
+
+function setFunctionalAssociationField(
+  record,
+  association,
+  normalizeAssociation = normalizeFunctionalAssociation
+) {
   const safeRecord = asObject(record);
-  const normalized = normalizeFunctionalAssociation(association);
+  const normalized = normalizeAssociation(association);
   if (normalized) {
     return {
       ...safeRecord,
@@ -105,6 +127,10 @@ function isGiftCta(value) {
   return normalizeLowerText(asObject(value).tipo) === "regalo-boton";
 }
 
+function isCountdownObject(value) {
+  return normalizeLowerText(asObject(value).tipo) === "countdown";
+}
+
 function isFunctionalCta(value) {
   return isRsvpCta(value) || isGiftCta(value);
 }
@@ -126,6 +152,32 @@ function findVisibleFunctionalCta(items, predicate) {
     }
   }
   return false;
+}
+
+function findVisibleCountdown(items) {
+  if (!Array.isArray(items)) return false;
+  for (const item of items) {
+    const safeItem = asObject(item);
+    if (isCountdownObject(safeItem) && isCountdownVisible(safeItem)) {
+      return true;
+    }
+    if (Array.isArray(safeItem.children) && findVisibleCountdown(safeItem.children)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveSectionCountdownEnabled(objetos, sectionId) {
+  const safeSectionId = normalizeText(sectionId);
+  if (!safeSectionId || !Array.isArray(objetos)) return false;
+  return objetos.some((object) => {
+    const safeObject = asObject(object);
+    return (
+      normalizeText(safeObject.seccionId) === safeSectionId &&
+      findVisibleCountdown([safeObject])
+    );
+  });
 }
 
 function parseEnabledFlag(value, fallback = false) {
@@ -459,8 +511,11 @@ function applyFunctionalAssociationsToRenderState({
   safeSecciones.forEach((section) => {
     const sectionId = normalizeText(section?.id);
     if (!sectionId) return;
-    const association = normalizeFunctionalAssociation(section[FUNCTIONAL_ASSOCIATION_FIELD]);
-    if (association && enabled[association] !== true) {
+    const association = normalizeSectionFunctionalAssociation(section[FUNCTIONAL_ASSOCIATION_FIELD]);
+    const associationEnabled = association === "countdown"
+      ? resolveSectionCountdownEnabled(sourceObjetos, sectionId)
+      : enabled[association] === true;
+    if (association && !associationEnabled) {
       hiddenSectionIds.add(sectionId);
       return;
     }
@@ -471,7 +526,7 @@ function applyFunctionalAssociationsToRenderState({
 
   groupsBySection.forEach((groupSet, sectionId) => {
     const section = sectionLookup.get(sectionId);
-    const sectionAssociation = normalizeFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
+    const sectionAssociation = normalizeSectionFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (sectionAssociation) return;
 
     const activeGroupCount = FUNCTIONAL_ASSOCIATION_VALUES.reduce(
@@ -495,7 +550,7 @@ function applyFunctionalAssociationsToRenderState({
   groupsBySection.forEach((groupSet, sectionId) => {
     if (hiddenSectionIds.has(sectionId)) return;
     const section = sectionLookup.get(sectionId);
-    const sectionAssociation = normalizeFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
+    const sectionAssociation = normalizeSectionFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (sectionAssociation) return;
 
     const typesPresent = FUNCTIONAL_ASSOCIATION_VALUES.filter((association) => groupSet[association].length > 0);
@@ -529,7 +584,7 @@ function applyFunctionalAssociationsToRenderState({
     }
 
     const section = sectionLookup.get(sectionId);
-    const sectionAssociation = normalizeFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
+    const sectionAssociation = normalizeSectionFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     const objectAssociation = normalizeFunctionalAssociation(safeObject[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (!sectionAssociation && isGroupObject(safeObject) && objectAssociation && enabled[objectAssociation] !== true) {
       if (objectId) hiddenObjectIds.add(objectId);
@@ -558,14 +613,18 @@ function applyFunctionalAssociationsToRenderState({
 
 function setSectionFunctionalAssociation({ secciones, objetos, sectionId, association } = {}) {
   const safeSectionId = normalizeText(sectionId);
-  const normalized = normalizeFunctionalAssociation(association);
+  const normalized = normalizeSectionFunctionalAssociation(association);
   let changed = false;
 
   const nextSecciones = (Array.isArray(secciones) ? secciones : []).map((section) => {
     const safeSection = asObject(section);
     if (normalizeText(safeSection.id) !== safeSectionId) return section;
     changed = true;
-    return setFunctionalAssociationField(safeSection, normalized);
+    return setFunctionalAssociationField(
+      safeSection,
+      normalized,
+      normalizeSectionFunctionalAssociation
+    );
   });
 
   let nextObjetos = Array.isArray(objetos) ? objetos : [];
@@ -600,7 +659,7 @@ function setGroupFunctionalAssociation({ secciones, objetos, groupId, associatio
   const nextSecciones = (Array.isArray(secciones) ? secciones : []).map((section) => {
     const safeSection = asObject(section);
     if (!normalized || normalizeText(safeSection.id) !== targetSectionId) return section;
-    if (!normalizeFunctionalAssociation(safeSection[FUNCTIONAL_ASSOCIATION_FIELD])) return section;
+    if (!normalizeSectionFunctionalAssociation(safeSection[FUNCTIONAL_ASSOCIATION_FIELD])) return section;
     changed = true;
     return setFunctionalAssociationField(safeSection, null);
   });
@@ -667,7 +726,7 @@ function sanitizeMovedGroupFunctionalAssociation({
   const targetSection = (Array.isArray(secciones) ? secciones : []).find(
     (section) => normalizeText(section?.id) === targetSectionId
   );
-  const targetSectionAssociation = normalizeFunctionalAssociation(
+  const targetSectionAssociation = normalizeSectionFunctionalAssociation(
     targetSection?.[FUNCTIONAL_ASSOCIATION_FIELD]
   );
   const conflictsWithSection = Boolean(targetSectionAssociation);
@@ -706,6 +765,7 @@ module.exports = {
   FUNCTIONAL_RENDER_OFFSET_X_FIELD,
   applyFunctionalAssociationsToRenderState,
   normalizeFunctionalAssociation,
+  normalizeSectionFunctionalAssociation,
   normalizeFunctionalConfigs,
   resolveFunctionalEnabledState,
   resolveGroupAbsoluteBounds,

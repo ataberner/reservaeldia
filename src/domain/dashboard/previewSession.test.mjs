@@ -384,6 +384,51 @@ test("preview render payload applies functional associations before generation",
   assert.equal(payload.giftPreviewConfig.enabled, false);
 });
 
+test("preview render payload derives complete countdown section visibility from the existing flag", () => {
+  const buildPayload = (mostrarCuentaRegresiva) =>
+    buildDashboardPreviewRenderPayload({
+      secciones: [
+        { id: "hero", orden: 0, altura: 420 },
+        {
+          id: "countdown-section",
+          orden: 1,
+          altura: 420,
+          functionalAssociation: "countdown",
+        },
+      ],
+      objetos: [
+        { id: "hero-title", tipo: "texto", seccionId: "hero", texto: "Inicio" },
+        {
+          id: "countdown-copy",
+          tipo: "texto",
+          seccionId: "countdown-section",
+          texto: "Falta poco",
+        },
+        {
+          id: "countdown-object",
+          tipo: "countdown",
+          seccionId: "countdown-section",
+          mostrarCuentaRegresiva,
+        },
+      ],
+    });
+
+  const hidden = buildPayload(false);
+  const visible = buildPayload(true);
+
+  assert.deepEqual(hidden.secciones.map((section) => section.id), ["hero"]);
+  assert.deepEqual(hidden.objetos.map((object) => object.id), ["hero-title"]);
+  assert.deepEqual(visible.secciones.map((section) => section.id), [
+    "hero",
+    "countdown-section",
+  ]);
+  assert.deepEqual(visible.objetos.map((object) => object.id), [
+    "hero-title",
+    "countdown-copy",
+    "countdown-object",
+  ]);
+});
+
 test("preview render payload normalizes current draft render contracts for preview generation", () => {
   const payload = buildDashboardPreviewRenderPayload({
     objetos: [

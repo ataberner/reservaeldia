@@ -6,6 +6,7 @@ export const FUNCTIONAL_ASSOCIATION_VALUES = runtime.FUNCTIONAL_ASSOCIATION_VALU
 export const FUNCTIONAL_RENDER_OFFSET_X_FIELD = runtime.FUNCTIONAL_RENDER_OFFSET_X_FIELD;
 export const applyFunctionalAssociationsToRenderState = runtime.applyFunctionalAssociationsToRenderState;
 export const normalizeFunctionalAssociation = runtime.normalizeFunctionalAssociation;
+export const normalizeSectionFunctionalAssociation = runtime.normalizeSectionFunctionalAssociation;
 export const normalizeFunctionalConfigs = runtime.normalizeFunctionalConfigs;
 export const resolveFunctionalEnabledState = runtime.resolveFunctionalEnabledState;
 export const resolveGroupAbsoluteBounds = runtime.resolveGroupAbsoluteBounds;

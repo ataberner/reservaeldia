@@ -535,6 +535,69 @@ test("validation ignores a disabled functional section and its omitted objects",
   assert.deepEqual(validation.blockers, []);
 });
 
+test("prepared publish payload omits and restores a complete countdown-associated section", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {},
+  });
+  t.after(() => storageMock.restore());
+
+  const buildDraft = (mostrarCuentaRegresiva) => ({
+    secciones: [
+      { id: "hero", orden: 0, altura: 500 },
+      {
+        id: "countdown-section",
+        orden: 1,
+        altura: 500,
+        functionalAssociation: "countdown",
+      },
+    ],
+    objetos: [
+      { id: "hero-title", tipo: "texto", texto: "Nos casamos", seccionId: "hero" },
+      {
+        id: "countdown-copy",
+        tipo: "texto",
+        texto: "Cuenta regresiva funcional",
+        seccionId: "countdown-section",
+      },
+      {
+        id: "countdown-object",
+        tipo: "countdown",
+        seccionId: "countdown-section",
+        countdownSchemaVersion: 2,
+        fechaObjetivo: "2099-05-10T20:00:00.000Z",
+        mostrarCuentaRegresiva,
+        width: 320,
+        height: 120,
+      },
+    ],
+  });
+
+  const hidden = await prepareRenderPayload(buildDraft(false));
+  const visible = await prepareRenderPayload(buildDraft(true));
+
+  assert.deepEqual(hidden.seccionesFinales.map((section) => section.id), ["hero"]);
+  assert.deepEqual(hidden.objetosFinales.map((object) => object.id), ["hero-title"]);
+  assert.equal(validatePreparedRenderPayload(hidden).canPublish, true);
+
+  assert.deepEqual(visible.seccionesFinales.map((section) => section.id), [
+    "hero",
+    "countdown-section",
+  ]);
+  assert.deepEqual(visible.objetosFinales.map((object) => object.id), [
+    "hero-title",
+    "countdown-copy",
+    "countdown-object",
+  ]);
+
+  const hiddenHtml = generateHtmlFromPreparedRenderPayload(hidden);
+  const visibleHtml = generateHtmlFromPreparedRenderPayload(visible);
+  assert.doesNotMatch(hiddenHtml, /Cuenta regresiva funcional/);
+  assert.doesNotMatch(hiddenHtml, /data-countdown/);
+  assert.match(visibleHtml, /Cuenta regresiva funcional/);
+  assert.match(visibleHtml, /data-countdown/);
+});
+
 test("canonical prepared render payload preserves the publication wrapper and validation shape", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,

@@ -26,7 +26,7 @@ import {
 } from "@/domain/sections/backgrounds";
 import { canMutateSection } from "@/domain/editor/protectedSections";
 import {
-  normalizeFunctionalAssociation,
+  normalizeSectionFunctionalAssociation,
   setSectionFunctionalAssociation,
 } from "../../../../shared/functionalAssociations.js";
 
@@ -187,7 +187,7 @@ export default function SectionActionsOverlay({
       typeof setSecciones === "function"
   );
   const sectionFunctionalAssociation =
-    normalizeFunctionalAssociation(seccion?.functionalAssociation) || "";
+    normalizeSectionFunctionalAssociation(seccion?.functionalAssociation) || "";
   const mobileLayoutMode =
     String(seccion?.mobileLayoutMode || "").trim().toLowerCase() === "preserve"
       ? "preserve"
@@ -250,7 +250,7 @@ export default function SectionActionsOverlay({
       secciones,
       objetos,
       sectionId: seccion.id,
-      association: normalizeFunctionalAssociation(value),
+      association: normalizeSectionFunctionalAssociation(value),
     });
     if (!result?.changed) return;
     setSecciones(result.secciones);
@@ -374,6 +374,7 @@ export default function SectionActionsOverlay({
             <option value="ceremony">Ceremonia</option>
             <option value="party">Fiesta</option>
             <option value="dress_code">Dress Code</option>
+            <option value="countdown">Countdown</option>
           </select>
         </label>
       ) : null}
@@ -803,6 +804,7 @@ export default function SectionActionsOverlay({
                 <option value="ceremony">Ceremonia</option>
                 <option value="party">Fiesta</option>
                 <option value="dress_code">Dress</option>
+                <option value="countdown">Countdown</option>
               </select>
             </label>
           ) : null}

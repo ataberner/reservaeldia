@@ -852,6 +852,11 @@ export default function DashboardHeader(props) {
                         typeof creationResult.item === "object"
                             ? creationResult.item
                             : null,
+                    editorDocument:
+                        creationResult?.editorDocument &&
+                        typeof creationResult.editorDocument === "object"
+                            ? creationResult.editorDocument
+                            : null,
                 });
             }
 

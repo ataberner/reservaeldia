@@ -22,6 +22,8 @@ import {
 } from "./borradorSyncScheduling.js";
 import { loadBorradorSyncState } from "./borradorSyncLoad.js";
 import { persistBorradorSyncState } from "./borradorSyncPersist.js";
+import { isRetryableTemplatePersistError } from "./borradorSyncRetry.js";
+import { createBorradorSyncSessionLifecycle } from "./borradorSyncSessionLifecycle.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -74,6 +76,15 @@ export default function useBorradorSync({
   const persistInFlightRef = useRef(null);
   const persistCurrentStateRef = useRef(null);
   const persistSchedulerRef = useRef(null);
+  const sessionLifecycleRef = useRef(null);
+  if (!sessionLifecycleRef.current) {
+    sessionLifecycleRef.current = createBorradorSyncSessionLifecycle();
+  }
+  const normalizedEditorSession = normalizeEditorSession(editorSession, slug);
+  sessionLifecycleRef.current.observeSession({
+    session: normalizedEditorSession,
+    slug,
+  });
   const latestStateRef = useRef({
     slug: null,
     editorSession: { kind: "draft", id: null },
@@ -87,7 +98,7 @@ export default function useBorradorSync({
   });
   latestStateRef.current = {
     slug,
-    editorSession: normalizeEditorSession(editorSession, slug),
+    editorSession: normalizedEditorSession,
     userId,
     objetos,
     secciones,
@@ -117,12 +128,34 @@ export default function useBorradorSync({
 
   const persistCurrentState = useCallback(
     async ({ reason = "autosave", immediate = false } = {}) => {
+      const requestedState = latestStateRef.current;
+      const persistIntent = sessionLifecycleRef.current.capturePersistIntent({
+        session: requestedState.editorSession,
+        slug: requestedState.slug,
+      });
+
       const runPersistTask = async () => {
         // Compatibility boundary: queue draft writes first, then read the latest
         // editor state so flush/autosave do not replay stale render snapshots.
         const state = latestStateRef.current;
         const session = normalizeEditorSession(state.editorSession, state.slug);
         const safeSlug = normalizeText(session.id || state.slug);
+        const sessionBlockReason =
+          sessionLifecycleRef.current.getPersistBlockReason(persistIntent, {
+            session,
+            slug: state.slug,
+          });
+
+        if (sessionBlockReason) {
+          return {
+            ok: false,
+            reason: sessionBlockReason,
+            error:
+              sessionBlockReason === "draft-not-loaded"
+                ? "El borrador todavia no termino de cargar."
+                : "La sesion del editor cambio antes de ejecutar el guardado.",
+          };
+        }
 
         if (readOnly) {
           return {
@@ -156,8 +189,8 @@ export default function useBorradorSync({
           };
         }
 
-        try {
-          return await persistBorradorSyncState({
+        const persistOnce = () =>
+          persistBorradorSyncState({
             state,
             readOnly,
             reason,
@@ -166,6 +199,41 @@ export default function useBorradorSync({
             validarPuntosLinea,
             ALTURA_PANTALLA_EDITOR,
           });
+
+        try {
+          try {
+            return await persistOnce();
+          } catch (error) {
+            if (
+              session.kind !== "template" ||
+              !isRetryableTemplatePersistError(error)
+            ) {
+              throw error;
+            }
+
+            const retryState = latestStateRef.current;
+            const retryBlockReason =
+              sessionLifecycleRef.current.getPersistBlockReason(persistIntent, {
+                session: retryState.editorSession,
+                slug: retryState.slug,
+              });
+            if (retryBlockReason) {
+              return {
+                ok: false,
+                reason: retryBlockReason,
+                error: "La sesion del editor cambio antes de reintentar el guardado.",
+              };
+            }
+
+            pushEditorBreadcrumb("draft-persist-transient-retry", {
+              slug: safeSlug,
+              sessionKind: session.kind,
+              reason,
+              immediate,
+              code: error?.code || null,
+            });
+            return await persistOnce();
+          }
         } catch (error) {
           captureEditorIssue({
             source: "useBorradorSync.save",
@@ -175,6 +243,7 @@ export default function useBorradorSync({
               reason,
               immediate,
               sessionKind: session.kind,
+              code: error?.code || null,
               objetos: Array.isArray(state.objetos) ? state.objetos.length : null,
               secciones: Array.isArray(state.secciones) ? state.secciones.length : null,
               hasRsvp: Boolean(state.rsvp),
@@ -264,18 +333,30 @@ export default function useBorradorSync({
   // 1) Cargar borrador desde Firestore
   useEffect(() => {
     const session = normalizeEditorSession(editorSession, slug);
-    if (!session.id) return;
     let cancelled = false;
+
+    if (!session.id) {
+      clearScheduledPersist();
+      setCargado(false);
+      return undefined;
+    }
 
     if (
       session.kind === "draft" &&
       readOnly &&
       (!initialDraftData || typeof initialDraftData !== "object")
     ) {
-      return;
+      clearScheduledPersist();
+      setCargado(false);
+      return undefined;
     }
 
+    const loadToken = sessionLifecycleRef.current.beginLoad({
+      session,
+      slug,
+    });
     clearScheduledPersist();
+    setCargado(false);
 
     // Al cambiar de borrador, evitamos persistir inmediatamente tras hidratar estado.
     skipNextPersistRef.current = true;
@@ -381,9 +462,12 @@ export default function useBorradorSync({
           detail: { slug: session.id, sessionKind: session.kind },
           severity: "fatal",
         });
+        return;
       }
 
-      setCargado(true);
+      if (sessionLifecycleRef.current.completeLoad(loadToken)) {
+        setCargado(true);
+      }
     };
 
     void cargar();

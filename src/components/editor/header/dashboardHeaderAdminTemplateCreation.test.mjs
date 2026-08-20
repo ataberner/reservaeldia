@@ -34,6 +34,10 @@ test("administrative read-only template creation uses the real draft preparation
   assert.match(block, /capturarPreparacionPlantilla\(\{[\s\S]*?allowAuthoringRepair: false/);
   assert.match(block, /composeDraftTemplateCreationPayload\(\{/);
   assert.match(block, /createTemplateFromDraft\(\{[\s\S]*?draftSlug,[\s\S]*?templateId,/);
+  assert.match(
+    block,
+    /onOpenTemplateSession\(\{[\s\S]*?editorDocument:[\s\S]*?creationResult\?\.editorDocument/
+  );
   assert.doesNotMatch(block, /window\.confirm|convertDraftToTemplate|ensureEditorFlushBeforeAction/);
 });
 

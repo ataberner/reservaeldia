@@ -17,36 +17,66 @@ export function createBorradorSyncSchedulingController({
   debounceMs = BORRADOR_SYNC_PERSIST_DEBOUNCE_MS,
 } = {}) {
   let timeoutId = null;
-  let pendingReason = null;
+  let timerReason = null;
+  let deferredReason = null;
+  let scheduledPersistInFlight = null;
 
   const clearScheduledPersist = () => {
-    if (!timeoutId) return false;
-    clearTimer(timeoutId);
-    timeoutId = null;
-    pendingReason = null;
-    return true;
+    const hadScheduledPersist = Boolean(timeoutId || deferredReason);
+    if (timeoutId) {
+      clearTimer(timeoutId);
+      timeoutId = null;
+    }
+    timerReason = null;
+    deferredReason = null;
+    return hadScheduledPersist;
+  };
+
+  const runScheduledPersist = (reason) => {
+    if (scheduledPersistInFlight) {
+      deferredReason = normalizePersistReason(reason, "debounced-autosave");
+      return;
+    }
+
+    const persistPromise = Promise.resolve().then(() =>
+      typeof runPersistNow === "function"
+        ? runPersistNow({
+            reason: normalizePersistReason(reason, "debounced-autosave"),
+            immediate: false,
+          })
+        : null
+    );
+    scheduledPersistInFlight = persistPromise;
+
+    void persistPromise
+      .catch(() => undefined)
+      .finally(() => {
+        if (scheduledPersistInFlight !== persistPromise) return;
+        scheduledPersistInFlight = null;
+        if (!deferredReason) return;
+        const nextReason = deferredReason;
+        deferredReason = null;
+        runScheduledPersist(nextReason);
+      });
   };
 
   const scheduleDebouncedPersist = ({ reason = "debounced-autosave" } = {}) => {
-    clearScheduledPersist();
-    pendingReason = normalizePersistReason(reason, "debounced-autosave");
-    timeoutId = setTimer(() => {
-      const scheduledReason = pendingReason || "debounced-autosave";
+    if (timeoutId) {
+      clearTimer(timeoutId);
       timeoutId = null;
-      pendingReason = null;
-      void Promise.resolve(
-        typeof runPersistNow === "function"
-          ? runPersistNow({
-              reason: scheduledReason,
-              immediate: false,
-            })
-          : null
-      );
+    }
+    deferredReason = null;
+    timerReason = normalizePersistReason(reason, "debounced-autosave");
+    timeoutId = setTimer(() => {
+      const scheduledReason = timerReason || "debounced-autosave";
+      timeoutId = null;
+      timerReason = null;
+      runScheduledPersist(scheduledReason);
     }, debounceMs);
   };
 
   const flushPersistBoundary = async ({ reason = "manual-flush" } = {}) => {
-    const restoredReason = pendingReason || null;
+    const restoredReason = timerReason || deferredReason || null;
     const clearedScheduledPersist = clearScheduledPersist();
     const result =
       typeof runPersistNow === "function"
@@ -77,10 +107,10 @@ export function createBorradorSyncSchedulingController({
     scheduleDebouncedPersist,
     flushPersistBoundary,
     hasScheduledPersist() {
-      return Boolean(timeoutId);
+      return Boolean(timeoutId || deferredReason);
     },
     getPendingReason() {
-      return pendingReason || null;
+      return timerReason || deferredReason || null;
     },
   };
 }

@@ -7,6 +7,23 @@ import {
   shouldRestoreClearedPersistSchedule,
 } from "./borradorSyncScheduling.js";
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flushMicrotasks() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 test("flush with a pending debounced autosave clears the timer and performs one immediate persist", async () => {
   const persistCalls = [];
   const clearedTimers = [];
@@ -122,4 +139,81 @@ test("restore decisions stay limited to the current guard reasons", () => {
     }),
     false
   );
+});
+
+test("autosaves that expire while another autosave is in flight coalesce to one latest follow-up", async () => {
+  const firstPersist = createDeferred();
+  const timerCallbacks = [];
+  const persistCalls = [];
+  const controller = createBorradorSyncSchedulingController({
+    runPersistNow: async (options) => {
+      persistCalls.push(options);
+      if (persistCalls.length === 1) {
+        await firstPersist.promise;
+      }
+      return { ok: true };
+    },
+    setTimer: (fn) => {
+      timerCallbacks.push(fn);
+      return timerCallbacks.length;
+    },
+    clearTimer: () => {},
+  });
+
+  controller.scheduleDebouncedPersist({ reason: "autosave-a" });
+  timerCallbacks[0]();
+  await flushMicrotasks();
+  assert.equal(persistCalls.length, 1);
+
+  controller.scheduleDebouncedPersist({ reason: "autosave-b" });
+  timerCallbacks[1]();
+  controller.scheduleDebouncedPersist({ reason: "autosave-c" });
+  timerCallbacks[2]();
+  await flushMicrotasks();
+
+  assert.equal(persistCalls.length, 1);
+  assert.equal(controller.hasScheduledPersist(), true);
+  assert.equal(controller.getPendingReason(), "autosave-c");
+
+  firstPersist.resolve();
+  await flushMicrotasks();
+
+  assert.deepEqual(persistCalls, [
+    { reason: "autosave-a", immediate: false },
+    { reason: "autosave-c", immediate: false },
+  ]);
+  assert.equal(controller.hasScheduledPersist(), false);
+});
+
+test("clearing a deferred autosave prevents it from running after the active write settles", async () => {
+  const firstPersist = createDeferred();
+  const timerCallbacks = [];
+  const persistCalls = [];
+  const controller = createBorradorSyncSchedulingController({
+    runPersistNow: async (options) => {
+      persistCalls.push(options);
+      await firstPersist.promise;
+      return { ok: true };
+    },
+    setTimer: (fn) => {
+      timerCallbacks.push(fn);
+      return timerCallbacks.length;
+    },
+    clearTimer: () => {},
+  });
+
+  controller.scheduleDebouncedPersist({ reason: "autosave-active" });
+  timerCallbacks[0]();
+  await flushMicrotasks();
+  controller.scheduleDebouncedPersist({ reason: "autosave-stale" });
+  timerCallbacks[1]();
+
+  assert.equal(controller.clearScheduledPersist(), true);
+  firstPersist.resolve();
+  await flushMicrotasks();
+
+  assert.deepEqual(persistCalls, [
+    { reason: "autosave-active", immediate: false },
+  ]);
+  assert.equal(controller.hasScheduledPersist(), false);
 });

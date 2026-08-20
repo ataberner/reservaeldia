@@ -196,7 +196,12 @@ export async function loadBorradorSyncState({
   return {
     exists: true,
     session: safeSession,
-    source: readResult.source === "injected" ? "injected-readonly" : readResult.source,
+    source:
+      readResult.source === "injected"
+        ? readOnly
+          ? "injected-readonly"
+          : "injected"
+        : readResult.source,
     plantillaId: plantillaId || null,
     hydratedObjetos,
     hydratedSecciones,

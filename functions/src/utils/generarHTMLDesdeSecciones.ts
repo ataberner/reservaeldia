@@ -1613,6 +1613,17 @@ export function generarHTMLDesdeSecciones(
         -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
       }
+
+      /*
+       * Published mobile keeps the viewport/document root as the only vertical
+       * scroller. overflow-x:hidden makes the other axis compute to auto,
+       * so BODY must use clip horizontally to remain vertically non-scrollable
+       * once the loader releases its temporary overflow lock.
+       */
+      html:not([data-preview="1"]) body{
+        overflow-x: clip;
+        overflow-y: visible;
+      }
     }
 
     :root{

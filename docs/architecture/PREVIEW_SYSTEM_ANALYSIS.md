@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-08-12.
+> Updated from code inspection on 2026-08-19.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -236,6 +236,23 @@ when the viewport is mobile, layout mode is parity, the surface is
 authority is `body`. Fullscreen preview, desktop preview, published HTML,
 share-image rendering, and dashboard captures retain their existing contracts.
 
+Published mobile HTML keeps `<html>` / `document.documentElement` as its single
+effective vertical scroll authority. The generated mobile CSS keeps horizontal
+clipping on both roots without turning `<body>` into a second vertical scroller:
+`<body>` uses `overflow-x:clip` with `overflow-y:visible` after the invitation
+loader releases its temporary body lock. This rule is publish-only; desktop and
+preview root selection remain unchanged.
+
+Production evidence from `i/icon` on 2026-08-19 reproduced the failure with
+stable section geometry: the first touch moved `body.scrollTop` only 16 px while
+`documentElement.scrollTop` stayed at `0`; the next gesture transferred to the
+document root. Both nodes computed `overflow-y:auto` because the shared
+`overflow-x:hidden` declaration coerced the otherwise-visible vertical axis to
+`auto`. Keeping published `<body>` vertically non-scrollable made the first
+gesture move the document root directly, with unchanged section heights and
+scroll range. Smart layout, font/image readiness, and observer timing were not
+the divergence point.
+
 Physical Android 15 / Chrome 150 A/B evidence established the cause on
 2026-07-22: variants with both `<html>` and `<body>` effectively scrollable
 failed the first gesture while scroll transferred from small `bodyScrollTop`
@@ -263,6 +280,7 @@ than turning `--bg-parallax-y` into a changing layout property.
 Constraints:
 
 - scroll must work inside mobile preview
+- published mobile must keep `<html>` as its only effective vertical scroll root; `<body>` must not consume or mirror the first gesture
 - the preview shell must not distort invitation layout to make scroll work
 - wheel scrolling stays native on the iframe document root, including wheel events emitted on touch-capable devices
 - touch scroll must not rewrite `scrollTop` after the document root already consumed the gesture

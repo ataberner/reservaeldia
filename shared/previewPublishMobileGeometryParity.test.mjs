@@ -174,6 +174,143 @@ test("Noir section junction fixture keeps the consecutive dark baseline explicit
 });
 
 test(
+  "opt-in published mobile first touch stays on the native document root",
+  {
+    skip:
+      process.env.PREVIEW_PUBLISH_MOBILE_GEOMETRY !== "1"
+        ? "Set PREVIEW_PUBLISH_MOBILE_GEOMETRY=1 to run published mobile touch capture."
+        : false,
+  },
+  async (t) => {
+    const { default: puppeteer } = await import("puppeteer");
+    const generatorModule = (
+      await import("../functions/lib/utils/generarHTMLDesdeSecciones.js")
+    ).default;
+    const { generarHTMLDesdeSecciones } = generatorModule;
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+    });
+    t.after(async () => browser.close());
+
+    const sections = [
+      { id: "touch-hero", orden: 0, altoModo: "pantalla", altura: 500, fondo: "#f5f0ff" },
+      { id: "touch-details", orden: 1, altoModo: "fijo", altura: 900, fondo: "#ffffff" },
+      { id: "touch-gallery", orden: 2, altoModo: "fijo", altura: 900, fondo: "#efe7ff" },
+    ];
+    const objects = sections.flatMap((section, sectionIndex) => [
+      {
+        id: `${section.id}-title`,
+        tipo: "texto",
+        seccionId: section.id,
+        x: 120,
+        y: 90,
+        width: 560,
+        texto: `Section ${sectionIndex + 1}`,
+        fontSize: 42,
+        textAlign: "center",
+        role: "title",
+      },
+      {
+        id: `${section.id}-copy`,
+        tipo: "texto",
+        seccionId: section.id,
+        x: 140,
+        y: 260,
+        width: 520,
+        texto: "Representative published mobile content",
+        fontSize: 26,
+        textAlign: "center",
+      },
+    ]);
+    const html = generarHTMLDesdeSecciones(sections, objects, null, {
+      slug: "published-mobile-native-scroll",
+    });
+
+    async function dispatchTouchGesture(page) {
+      const client = await page.createCDPSession();
+      const x = Math.round(Number(page.viewport()?.width || 390) * 0.5);
+      const viewportHeight = Number(page.viewport()?.height || 844);
+      const startY = Math.round(viewportHeight * 0.78);
+      const endY = Math.round(viewportHeight * 0.22);
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x, y: startY }],
+      });
+      for (let step = 1; step <= 8; step += 1) {
+        const y = startY + ((endY - startY) * step) / 8;
+        await client.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x, y }],
+        });
+        await new Promise((resolve) => setTimeout(resolve, 24));
+      }
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 240));
+      await client.detach();
+    }
+
+    for (const viewport of MOBILE_GEOMETRY_PARITY_VIEWPORTS) {
+      await t.test(viewport.id, async () => {
+        const page = await browser.newPage();
+        await page.setViewport({
+          width: viewport.width,
+          height: viewport.height,
+          deviceScaleFactor: 2,
+          isMobile: true,
+          hasTouch: true,
+        });
+        await page.setContent(html, { waitUntil: "domcontentloaded" });
+        await page.waitForFunction(
+          () => document.body?.getAttribute("data-loader-ready") === "1",
+          { timeout: 15_000 }
+        );
+
+        const before = await page.evaluate(() => ({
+          htmlOverflowY: getComputedStyle(document.documentElement).overflowY,
+          bodyOverflowY: getComputedStyle(document.body).overflowY,
+          htmlScrollTop: document.documentElement.scrollTop,
+          bodyScrollTop: document.body.scrollTop,
+          scrollHeight: document.documentElement.scrollHeight,
+          sectionHeights: Array.from(document.querySelectorAll(".sec")).map(
+            (section) => Number(section.getBoundingClientRect().height.toFixed(2))
+          ),
+        }));
+
+        await dispatchTouchGesture(page);
+
+        const after = await page.evaluate(() => ({
+          htmlScrollTop: document.documentElement.scrollTop,
+          bodyScrollTop: document.body.scrollTop,
+          scrollHeight: document.documentElement.scrollHeight,
+          sectionHeights: Array.from(document.querySelectorAll(".sec")).map(
+            (section) => Number(section.getBoundingClientRect().height.toFixed(2))
+          ),
+        }));
+
+        assert.equal(before.htmlOverflowY, "auto", `${viewport.id}: HTML root overflow`);
+        assert.equal(before.bodyOverflowY, "visible", `${viewport.id}: BODY overflow`);
+        assert.ok(
+          after.htmlScrollTop > 100,
+          `${viewport.id}: first touch must move HTML, got ${after.htmlScrollTop}`
+        );
+        assert.equal(after.bodyScrollTop, 0, `${viewport.id}: BODY must not consume touch`);
+        assert.equal(after.scrollHeight, before.scrollHeight, `${viewport.id}: stable scroll range`);
+        assert.deepEqual(
+          after.sectionHeights,
+          before.sectionHeights,
+          `${viewport.id}: touch must not mutate section geometry`
+        );
+        await page.close();
+      });
+    }
+  }
+);
+
+test(
   "opt-in scaled iframe capture keeps section junctions covered without geometry drift",
   {
     skip:

@@ -41,6 +41,13 @@ Casos con paridad compartida caracterizada:
 - contrato de config `gifts`
 - geometria mobile/reflow opt-in para preview iframe vs publish en `390x844`, `375x812`, y `414x896`
 
+El ownership de scroll mobile conserva una sola autoridad efectiva por
+superficie. El publish mobile usa el root del documento (`<html>`) y mantiene
+`<body>` fuera del scroll vertical después del loader. Los mockups mobile
+embebidos que declaran `data-preview-scroll-authority="body"` usan el body-root
+del shell como excepción explícita. Ninguna rama intercepta el gesto ni escribe
+la posición para simular scroll.
+
 Drifts explicitamente reconocidos por fixtures:
 
 - `image-crop-materialization`

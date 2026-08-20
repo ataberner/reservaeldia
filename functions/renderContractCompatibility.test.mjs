@@ -1247,6 +1247,46 @@ test("keeps preview mobile parity mode out of legacy iframe layout overrides", (
   assert.match(html, /usePublishLikeHeightModel/);
 });
 
+test("published mobile keeps the document root as the only vertical scroll authority after loading", () => {
+  const html = generarHTMLDesdeSecciones(
+    FIXED_SECTION,
+    [
+      {
+        id: "published-mobile-scroll-text",
+        tipo: "texto",
+        seccionId: "section-1",
+        x: 72,
+        y: 96,
+        width: 320,
+        texto: "Published mobile scroll",
+        fontSize: 28,
+      },
+    ],
+    null,
+    {}
+  );
+
+  assert.match(
+    html,
+    /@media \(max-width: 767px\)\{[\s\S]*html:not\(\[data-preview="1"\]\) body\{\s*overflow-x: clip;\s*overflow-y: visible;/
+  );
+  assert.match(
+    html,
+    /html, body\s*\{[\s\S]*overflow-x:\s*hidden;/,
+    "the document root must retain horizontal clipping"
+  );
+  assert.match(
+    html,
+    /body\[data-loader-ready="0"\]\s*\{\s*overflow:\s*hidden;/,
+    "the loader must retain its temporary interaction lock"
+  );
+  assert.doesNotMatch(
+    html,
+    /html:not\(\[data-preview="1"\]\) body\{[\s\S]*?overflow-y:\s*auto;/,
+    "published BODY must not become a competing vertical scroller"
+  );
+});
+
 test("renders section mobile layout mode preserve as a smart reflow opt-out", () => {
   const section = {
     ...FIXED_SECTION[0],

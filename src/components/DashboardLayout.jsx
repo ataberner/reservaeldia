@@ -30,7 +30,9 @@ export default function DashboardLayout({
   loadingAdminAccess,
   lockMainScroll = false,
   editorReadOnly = false,
+  isAdminReadOnlyView = false,
   allowReadOnlyPreview = false,
+  administrativeDraftData = null,
   draftDisplayName = "",
   editorSession = null,
   templateSessionMeta = null,
@@ -211,7 +213,9 @@ export default function DashboardLayout({
         isSuperAdmin={isSuperAdmin}
         loadingAdminAccess={loadingAdminAccess}
         editorReadOnly={editorReadOnly}
+        isAdminReadOnlyView={isAdminReadOnlyView}
         allowReadOnlyPreview={allowReadOnlyPreview}
+        administrativeDraftData={administrativeDraftData}
         draftDisplayName={draftDisplayName}
         editorSession={editorSession}
         templateSessionMeta={templateSessionMeta}

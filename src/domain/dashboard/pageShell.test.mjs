@@ -177,7 +177,9 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     shouldRenderEditorStartupLoader: true,
     isEditorStartupLoaderExiting: false,
     editorReadOnly: false,
+    isAdminReadOnlyView: false,
     allowReadOnlyPreview: false,
+    administrativeDraftData: null,
     draftDisplayName: "Template workspace",
     editorSession: {
       kind: "draft",
@@ -205,6 +207,23 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
     true
   );
 
+  const administrativeDraftData = {
+    slug: "draft-1",
+    objetos: [{ id: "object-1" }],
+  };
+  assert.equal(
+    buildDashboardLayoutProps({
+      slugInvitacion: "draft-1",
+      vista: "editor",
+      isAdminReadOnlyView: true,
+      isEditorReadOnly: true,
+      adminDraftView: {
+        draftData: administrativeDraftData,
+      },
+    }).administrativeDraftData,
+    administrativeDraftData
+  );
+
   assert.equal(
     buildDashboardLayoutProps({
       slugInvitacion: "draft-1",
@@ -218,6 +237,16 @@ test("layout prop shaping preserves current shell flags and display-name fallbac
         draftName: "Template name",
       },
     }).allowReadOnlyPreview,
+    true
+  );
+
+  assert.equal(
+    buildDashboardLayoutProps({
+      slugInvitacion: "draft-1",
+      vista: "editor",
+      isAdminReadOnlyView: true,
+      isEditorReadOnly: true,
+    }).isAdminReadOnlyView,
     true
   );
 

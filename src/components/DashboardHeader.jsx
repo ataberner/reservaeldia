@@ -16,7 +16,15 @@ import { logAssistantTourDebug } from "@/components/editor/assistantTour/assista
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 import { normalizeEditorSession } from "@/domain/drafts/session";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
-import { convertDraftToTemplate } from "@/domain/templates/adminService";
+import {
+    convertDraftToTemplate,
+    createTemplateFromDraft,
+} from "@/domain/templates/adminService";
+import {
+    buildTemplateCopyId,
+    composeDraftTemplateCreationPayload,
+} from "@/domain/templates/draftTemplateCreation";
+import { resolveEditorUserMenuAccess } from "@/domain/dashboard/editorUserMenu";
 import {
     persistEditorSessionPatch,
     readEditorSessionDocument,
@@ -155,7 +163,9 @@ export default function DashboardHeader(props) {
         isSuperAdmin = false,
         loadingAdminAccess = false,
         editorReadOnly = false,
+        isAdminReadOnlyView = false,
         allowReadOnlyPreview = false,
+        administrativeDraftData = null,
         draftDisplayName = "",
         editorSession = null,
         templateSessionMeta = null,
@@ -447,11 +457,126 @@ export default function DashboardHeader(props) {
         }
     }, [isMobile, slugInvitacion]);
 
+    const capturarPreparacionPlantilla = async ({
+        templateId,
+        allowAuthoringRepair = true,
+    }) => {
+        const getTemplateAuthoringStatus = readCanvasEditorMethod(
+            "getTemplateAuthoringStatus"
+        );
+        const getTemplateAuthoringSnapshot = readCanvasEditorMethod(
+            "getTemplateAuthoringSnapshot"
+        );
+        const repairTemplateAuthoringState = readCanvasEditorMethod(
+            "repairTemplateAuthoringState"
+        );
+        let runtimeAuthoringStatus = getTemplateAuthoringStatus
+            ? getTemplateAuthoringStatus()
+            : null;
+        let runtimeAuthoringSnapshot = getTemplateAuthoringSnapshot
+            ? getTemplateAuthoringSnapshot()
+            : null;
+        let authoringRepairSummary = "";
+
+        if (
+            allowAuthoringRepair &&
+            runtimeAuthoringStatus &&
+            runtimeAuthoringStatus.isReady === false &&
+            typeof repairTemplateAuthoringState === "function"
+        ) {
+            const repairResult = await repairTemplateAuthoringState({
+                dropOrphans: true,
+            });
+
+            if (repairResult && typeof repairResult === "object") {
+                runtimeAuthoringStatus =
+                    repairResult.status && typeof repairResult.status === "object"
+                        ? repairResult.status
+                        : runtimeAuthoringStatus;
+                runtimeAuthoringSnapshot =
+                    repairResult.snapshot && typeof repairResult.snapshot === "object"
+                        ? repairResult.snapshot
+                        : runtimeAuthoringSnapshot;
+
+                const removedTargetCount = Array.isArray(repairResult.removedTargets)
+                    ? repairResult.removedTargets.length
+                    : 0;
+                const removedFieldCount = Array.isArray(repairResult.removedFieldKeys)
+                    ? repairResult.removedFieldKeys.length
+                    : 0;
+
+                if (removedTargetCount > 0 || removedFieldCount > 0) {
+                    const repairNotes = [];
+                    if (removedTargetCount > 0) {
+                        repairNotes.push(`${removedTargetCount} vinculo(s) roto(s)`);
+                    }
+                    if (removedFieldCount > 0) {
+                        repairNotes.push(`${removedFieldCount} campo(s) huerfano(s)`);
+                    }
+                    authoringRepairSummary = repairNotes.join(" y ");
+                }
+            }
+        }
+
+        if (runtimeAuthoringStatus && runtimeAuthoringStatus.isReady === false) {
+            const issues = Array.isArray(runtimeAuthoringStatus.issues)
+                ? runtimeAuthoringStatus.issues
+                : [];
+            const preview = issues.slice(0, 4);
+            const body = preview.length
+                ? `- ${preview.join("\n- ")}`
+                : "- Revisa defaults y applyTargets.";
+            const extra = issues.length > 4 ? `\n... y ${issues.length - 4} mas.` : "";
+            alert(
+                `No se puede guardar plantilla porque el schema dinamico no esta listo.\n${body}${extra}`
+            );
+            return null;
+        }
+
+        const stage = readCanvasEditorStage();
+        if (!stage) {
+            alert("El editor no esta listo todavia.");
+            return null;
+        }
+
+        const { exportDashboardImageFromStage } = await import(
+            "@/utils/dashboardCanvasExport"
+        );
+        const dataURL = await exportDashboardImageFromStage(stage, {
+            pixelRatio: 2,
+            mimeType: "image/png",
+        });
+        const res = await fetch(dataURL);
+        const blob = await res.blob();
+
+        const storage = (await import("firebase/storage")).getStorage();
+        const previewRef = (await import("firebase/storage")).ref(
+            storage,
+            `previews/plantillas/${templateId}.png`
+        );
+        await (await import("firebase/storage")).uploadBytes(previewRef, blob);
+
+        const portada = await (
+            await import("firebase/storage")
+        ).getDownloadURL(previewRef);
+
+        return {
+            authoringRepairSummary,
+            liveEditorSnapshot: readEditorRenderSnapshot(),
+            portada,
+            runtimeAuthoringSnapshot,
+            runtimeAuthoringStatus,
+        };
+    };
+
+    const pedirNombreNuevaPlantilla = () =>
+        prompt("Que nombre queres darle a la nueva plantilla?");
+
     const guardarPlantilla = async () => {
         const templateId = normalizeText(slugInvitacion);
         const nombre = isTemplateSession
             ? normalizeText(templateWorkspaceMeta.templateName) || "Plantilla"
-            : prompt("Que nombre queres darle a la nueva plantilla?");
+            : pedirNombreNuevaPlantilla();
         if (!nombre || !templateId) return;
 
         try {
@@ -469,110 +594,19 @@ export default function DashboardHeader(props) {
                 }
             }
 
-            const getTemplateAuthoringStatus = readCanvasEditorMethod(
-                "getTemplateAuthoringStatus"
-            );
-            const getTemplateAuthoringSnapshot = readCanvasEditorMethod(
-                "getTemplateAuthoringSnapshot"
-            );
-            const repairTemplateAuthoringState = readCanvasEditorMethod(
-                "repairTemplateAuthoringState"
-            );
-            let runtimeAuthoringStatus = getTemplateAuthoringStatus
-                ? getTemplateAuthoringStatus()
-                : null;
-            let runtimeAuthoringSnapshot = getTemplateAuthoringSnapshot
-                ? getTemplateAuthoringSnapshot()
-                : null;
-            let authoringRepairSummary = "";
-
-            if (
-                runtimeAuthoringStatus &&
-                runtimeAuthoringStatus.isReady === false &&
-                typeof repairTemplateAuthoringState === "function"
-            ) {
-                const repairResult =
-                    await repairTemplateAuthoringState({
-                        dropOrphans: true,
-                    });
-
-                if (repairResult && typeof repairResult === "object") {
-                    runtimeAuthoringStatus =
-                        repairResult.status && typeof repairResult.status === "object"
-                            ? repairResult.status
-                            : runtimeAuthoringStatus;
-                    runtimeAuthoringSnapshot =
-                        repairResult.snapshot && typeof repairResult.snapshot === "object"
-                            ? repairResult.snapshot
-                            : runtimeAuthoringSnapshot;
-
-                    const removedTargetCount = Array.isArray(repairResult.removedTargets)
-                        ? repairResult.removedTargets.length
-                        : 0;
-                    const removedFieldCount = Array.isArray(repairResult.removedFieldKeys)
-                        ? repairResult.removedFieldKeys.length
-                        : 0;
-
-                    if (removedTargetCount > 0 || removedFieldCount > 0) {
-                        const repairNotes = [];
-                        if (removedTargetCount > 0) {
-                            repairNotes.push(
-                                `${removedTargetCount} vinculo(s) roto(s)`
-                            );
-                        }
-                        if (removedFieldCount > 0) {
-                            repairNotes.push(
-                                `${removedFieldCount} campo(s) huerfano(s)`
-                            );
-                        }
-                        authoringRepairSummary = repairNotes.join(" y ");
-                    }
-                }
-            }
-
-            if (runtimeAuthoringStatus && runtimeAuthoringStatus.isReady === false) {
-                const issues = Array.isArray(runtimeAuthoringStatus.issues)
-                    ? runtimeAuthoringStatus.issues
-                    : [];
-                const preview = issues.slice(0, 4);
-                const body = preview.length
-                    ? `- ${preview.join("\n- ")}`
-                    : "- Revisa defaults y applyTargets.";
-                const extra =
-                    issues.length > 4 ? `\n... y ${issues.length - 4} mas.` : "";
-                alert(
-                    `No se puede guardar plantilla porque el schema dinamico no esta listo.\n${body}${extra}`
-                );
-                return;
-            }
-
-            const stage = readCanvasEditorStage();
-            if (!stage) {
-                alert("El editor no esta listo todavia.");
-                return;
-            }
-
-            const { exportDashboardImageFromStage } = await import(
-                "@/utils/dashboardCanvasExport"
-            );
-            const dataURL = await exportDashboardImageFromStage(stage, {
-                pixelRatio: 2,
-                mimeType: "image/png",
+            const preparation = await capturarPreparacionPlantilla({
+                templateId,
+                allowAuthoringRepair: true,
             });
-            const res = await fetch(dataURL);
-            const blob = await res.blob();
+            if (!preparation) return;
 
-            const storage = (await import("firebase/storage")).getStorage();
-            const previewRef = (await import("firebase/storage")).ref(
-                storage,
-                `previews/plantillas/${templateId}.png`
-            );
-            await (await import("firebase/storage")).uploadBytes(previewRef, blob);
-
-            const portada = await (
-                await import("firebase/storage")
-            ).getDownloadURL(previewRef);
-            const liveEditorSnapshot = readEditorRenderSnapshot();
+            const {
+                authoringRepairSummary,
+                liveEditorSnapshot,
+                portada,
+                runtimeAuthoringSnapshot,
+                runtimeAuthoringStatus,
+            } = preparation;
             if (liveEditorSnapshot) {
                 recordTemplateDashboardCardSnapshot(liveEditorSnapshot, templateId);
             }
@@ -622,31 +656,18 @@ export default function DashboardHeader(props) {
             if (!readResult.exists) throw new Error("No se encontro el borrador.");
 
             const dataBase = readResult.data || {};
-            const data =
-                liveEditorSnapshot && dataBase && typeof dataBase === "object"
-                    ? {
-                          ...dataBase,
-                          objetos: liveEditorSnapshot.objetos,
-                          secciones: liveEditorSnapshot.secciones,
-                          rsvp: liveEditorSnapshot.rsvp,
-                          gifts: liveEditorSnapshot.gifts,
-                      }
-                    : dataBase;
-            const stagedAuthoringSnapshot =
-                data?.templateAuthoringDraft &&
-                typeof data.templateAuthoringDraft === "object"
-                    ? data.templateAuthoringDraft
-                    : null;
-            const authoringStatusToValidate =
-                runtimeAuthoringStatus && typeof runtimeAuthoringStatus === "object"
-                    ? runtimeAuthoringStatus
-                    : stagedAuthoringSnapshot?.status || null;
-            const payload = buildTemplatePayloadFromAuthoring({
-                draftData: data,
-                authoringState:
-                    runtimeAuthoringSnapshot || stagedAuthoringSnapshot || null,
+            const {
+                preparedDraft,
+                authoringStatusToValidate,
+                payload,
+            } = composeDraftTemplateCreationPayload({
+                draftData: dataBase,
+                liveEditorSnapshot,
+                runtimeAuthoringStatus,
+                runtimeAuthoringSnapshot,
+                buildPayload: buildTemplatePayloadFromAuthoring,
             });
-            recordTemplateDashboardCardSnapshot(data, templateId);
+            recordTemplateDashboardCardSnapshot(preparedDraft, templateId);
 
             const conversionResult = await convertDraftToTemplate({
                 draftSlug: templateId,
@@ -759,8 +780,99 @@ export default function DashboardHeader(props) {
         window.dispatchEvent(new CustomEvent("dashboard-abrir-modal-seccion"));
     };
 
+    const crearPlantillaDesdeBorradorAdministrativo = async () => {
+        const draftSlug = normalizeText(slugInvitacion);
+        const sourceDraft =
+            administrativeDraftData && typeof administrativeDraftData === "object"
+                ? administrativeDraftData
+                : null;
+        if (
+            !draftSlug ||
+            !sourceDraft ||
+            !isAdminReadOnlyView ||
+            !editorReadOnly ||
+            !isSuperAdmin ||
+            !canManageSite
+        ) {
+            return;
+        }
+
+        const nombre = pedirNombreNuevaPlantilla();
+        if (!nombre) return;
+
+        const templateId = buildTemplateCopyId({ draftSlug });
+        if (!templateId) return;
+
+        try {
+            const preparation = await capturarPreparacionPlantilla({
+                templateId,
+                allowAuthoringRepair: false,
+            });
+            if (!preparation) return;
+
+            const {
+                liveEditorSnapshot,
+                portada,
+                runtimeAuthoringSnapshot,
+                runtimeAuthoringStatus,
+            } = preparation;
+            const {
+                preparedDraft,
+                authoringStatusToValidate,
+                payload,
+            } = composeDraftTemplateCreationPayload({
+                draftData: sourceDraft,
+                liveEditorSnapshot,
+                runtimeAuthoringStatus,
+                runtimeAuthoringSnapshot,
+                buildPayload: buildTemplatePayloadFromAuthoring,
+            });
+            recordTemplateDashboardCardSnapshot(preparedDraft, templateId);
+
+            const creationResult = await createTemplateFromDraft({
+                draftSlug,
+                templateId,
+                authoringStatus: authoringStatusToValidate || null,
+                datos: {
+                    ...payload,
+                    nombre,
+                    portada,
+                },
+            });
+            await captureCountdownAuditTemplateDocument(
+                templateId,
+                "template-persisted-document"
+            );
+
+            if (typeof onOpenTemplateSession === "function") {
+                onOpenTemplateSession({
+                    templateId,
+                    item:
+                        creationResult?.item &&
+                        typeof creationResult.item === "object"
+                            ? creationResult.item
+                            : null,
+                });
+            }
+
+            await router.replace(
+                `/dashboard?templateId=${encodeURIComponent(templateId)}`
+            );
+            window.alert("La plantilla se creo correctamente en estado En proceso.");
+        } catch (error) {
+            console.error("Error al crear plantilla desde borrador administrativo:", error);
+            window.alert(
+                error?.message || "Ocurrio un error al crear la plantilla."
+            );
+        }
+    };
+
     const crearPlantillaDesdeHeader = () => {
         if (typeof window === "undefined") return;
+        if (isAdminReadOnlyView && editorReadOnly) {
+            void crearPlantillaDesdeBorradorAdministrativo();
+            return;
+        }
         window.dispatchEvent(new CustomEvent("dashboard-crear-plantilla"));
     };
 
@@ -788,8 +900,14 @@ export default function DashboardHeader(props) {
     const showStandaloneUserMenu = !(slugInvitacion && isMobile);
     const showEditorStandaloneUserMenu =
         Boolean(slugInvitacion) && showStandaloneUserMenu;
-    const showEditorAdminMenuActions =
-        Boolean(slugInvitacion) && !loadingAdminAccess && canManageSite && !editorReadOnly;
+    const editorUserMenuAccess = resolveEditorUserMenuAccess({
+        hasActiveEditor: Boolean(slugInvitacion),
+        loadingAdminAccess,
+        canManageSite,
+        isSuperAdmin,
+        editorReadOnly,
+        isAdminReadOnlyView,
+    });
     const userMenuActionButton =
         "group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -1087,46 +1205,50 @@ export default function DashboardHeader(props) {
                                 </button>
                             ) : null}
 
-                            {showEditorAdminMenuActions ? (
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            abrirModalCrearSeccion();
-                                            setMenuAbierto(false);
-                                        }}
-                                        className={userMenuActionButton}
-                                    >
-                                        <Plus size={14} className="shrink-0" />
-                                        <span className="truncate">Anadir seccion</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            crearPlantillaDesdeHeader();
-                                            setMenuAbierto(false);
-                                        }}
-                                        className={userMenuActionButton}
-                                    >
-                                        <Sparkles size={14} className="shrink-0" />
-                                        <span className="truncate">Crear plantilla</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setMenuAbierto(false);
-                                            void guardarPlantilla();
-                                        }}
-                                        className={userMenuActionButton}
-                                    >
-                                        <Sparkles size={14} className="shrink-0" />
-                                        <span className="truncate">
-                                            {isTemplateSession
-                                                ? "Guardar cambios"
-                                                : "Guardar plantilla"}
-                                        </span>
-                                    </button>
-                                </>
+                            {editorUserMenuAccess.showAddSection ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        abrirModalCrearSeccion();
+                                        setMenuAbierto(false);
+                                    }}
+                                    className={userMenuActionButton}
+                                >
+                                    <Plus size={14} className="shrink-0" />
+                                    <span className="truncate">Anadir seccion</span>
+                                </button>
+                            ) : null}
+
+                            {editorUserMenuAccess.showCreateTemplate ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        void crearPlantillaDesdeHeader();
+                                        setMenuAbierto(false);
+                                    }}
+                                    className={userMenuActionButton}
+                                >
+                                    <Sparkles size={14} className="shrink-0" />
+                                    <span className="truncate">Crear plantilla</span>
+                                </button>
+                            ) : null}
+
+                            {editorUserMenuAccess.showSaveTemplate ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMenuAbierto(false);
+                                        void guardarPlantilla();
+                                    }}
+                                    className={userMenuActionButton}
+                                >
+                                    <Sparkles size={14} className="shrink-0" />
+                                    <span className="truncate">
+                                        {isTemplateSession
+                                            ? "Guardar cambios"
+                                            : "Guardar plantilla"}
+                                    </span>
+                                </button>
                             ) : null}
 
                             <button

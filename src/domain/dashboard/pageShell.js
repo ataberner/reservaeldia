@@ -105,7 +105,10 @@ export function buildDashboardLayoutProps({
     isEditorStartupLoaderExiting:
       isEditorStartupLoaderExiting === true,
     editorReadOnly: isEditorReadOnly === true,
+    isAdminReadOnlyView: isAdminReadOnlyView === true,
     allowReadOnlyPreview: isAdminReadOnlyView === true,
+    administrativeDraftData:
+      isAdminReadOnlyView === true ? adminDraftView?.draftData || null : null,
     draftDisplayName:
       normalizeText(adminDraftView?.draftName) ||
       normalizeText(templateWorkspaceView?.draftName) ||

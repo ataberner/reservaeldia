@@ -30,12 +30,20 @@ const landingFooterSource = readFileSync(
   new URL("../landing/LandingFooter.jsx", import.meta.url),
   "utf8"
 );
+const landingFooterStyles = readFileSync(
+  new URL("../landing/LandingFooter.module.css", import.meta.url),
+  "utf8"
+);
 const appHeaderStyles = readFileSync(
   new URL("./AppHeader.module.css", import.meta.url),
   "utf8"
 );
 const landingPageSource = readFileSync(
   new URL("../../pages/index.js", import.meta.url),
+  "utf8"
+);
+const faqPageSource = readFileSync(
+  new URL("../../pages/preguntas-frecuentes.js", import.meta.url),
   "utf8"
 );
 
@@ -128,6 +136,28 @@ test("shared public navigation routes FAQ links to the indexable FAQ page", () =
   assert.match(
     dashboardHomeSource,
     /Contacto",[\s\S]*href: "\/preguntas-frecuentes\/#contactar-equipo-reserva-el-dia"/
+  );
+});
+
+test("shared footer exposes the accessible Instagram link on landing, dashboard, and FAQ", () => {
+  assert.match(
+    landingFooterSource,
+    /const INSTAGRAM_PROFILE_URL = "https:\/\/www\.instagram\.com\/reservaeldia\.ok\/"/
+  );
+  assert.match(
+    landingFooterSource,
+    /href=\{INSTAGRAM_PROFILE_URL\}[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"[\s\S]*aria-label="Instagram de Reserva el Día \(se abre en una pestaña nueva\)"[\s\S]*src="\/ig\.png"/
+  );
+  [landingPageSource, dashboardHomeSource, faqPageSource].forEach((source) => {
+    assert.match(source, /<LandingFooter/);
+  });
+  assert.match(
+    landingFooterStyles,
+    /\.landingFooterInstagramLink\s*\{[\s\S]*width:\s*44px;[\s\S]*height:\s*44px;/
+  );
+  assert.match(
+    landingFooterStyles,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.landingFooterInstagramLink:hover\s*\{[\s\S]*transform:\s*none;/
   );
 });
 

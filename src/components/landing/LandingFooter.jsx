@@ -16,6 +16,8 @@ const LEGAL_LINKS = [
   { label: "Términos de uso", href: "#terminos-de-uso" },
 ];
 
+const INSTAGRAM_PROFILE_URL = "https://www.instagram.com/reservaeldia.ok/";
+
 export default function LandingFooter({
   id = "contacto",
   navItems = DEFAULT_NAV_ITEMS,
@@ -66,6 +68,22 @@ export default function LandingFooter({
             </span>
           ))}
         </nav>
+
+        <a
+          className={styles.landingFooterInstagramLink}
+          href={INSTAGRAM_PROFILE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Instagram de Reserva el Día (se abre en una pestaña nueva)"
+        >
+          <img
+            className={styles.landingFooterInstagramIcon}
+            src="/ig.png"
+            alt=""
+            width="40"
+            height="40"
+          />
+        </a>
 
         <div className={styles.landingFooterBottom}>
           <p className={styles.landingFooterCopyright}>

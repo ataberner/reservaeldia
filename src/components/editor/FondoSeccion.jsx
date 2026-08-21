@@ -14,7 +14,10 @@ import {
   resolveSectionBaseImageLayout,
 } from "@/domain/sections/backgrounds";
 import useSharedImage from "@/hooks/useSharedImage";
-import { getDashboardExportExcludedName } from "@/utils/dashboardCanvasExport";
+import {
+  dashboardExportSectionDividerProps,
+  getDashboardExportExcludedName,
+} from "@/utils/dashboardCanvasExport";
 import {
   resolveSectionDividerFillColor,
   resolveSectionDividerPreset,
@@ -456,6 +459,10 @@ export default function FondoSeccion({
       </Group>
 
       <Group
+        {...dashboardExportSectionDividerProps({
+          topFill: topDividerPreset.path ? topDividerFill : "",
+          bottomFill: bottomDividerPreset.path ? bottomDividerFill : "",
+        })}
         clipX={0}
         clipY={offsetY}
         clipWidth={canvasWidth}

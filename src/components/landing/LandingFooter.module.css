@@ -58,6 +58,7 @@
 
 .landingFooterLogo:focus-visible,
 .landingFooterNavLink:focus-visible,
+.landingFooterInstagramLink:focus-visible,
 .landingFooterLegalLinks a:focus-visible {
   outline: 2px solid rgba(105, 43, 154, 0.28);
   outline-offset: 4px;
@@ -115,6 +116,27 @@
 .landingFooterLegalSeparator {
   color: #262626;
   opacity: 0.45;
+}
+
+.landingFooterInstagramLink {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  margin-top: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: transform 160ms ease;
+}
+
+.landingFooterInstagramLink:hover {
+  transform: translateY(-2px);
+}
+
+.landingFooterInstagramIcon {
+  display: block;
+  width: 40px;
+  height: 40px;
 }
 
 .landingFooterBottom {
@@ -258,7 +280,12 @@
 @media (prefers-reduced-motion: reduce) {
   .landingFooterLogo,
   .landingFooterNavLink,
+  .landingFooterInstagramLink,
   .landingFooterLegalLinks a {
     transition: none;
+  }
+
+  .landingFooterInstagramLink:hover {
+    transform: none;
   }
 }

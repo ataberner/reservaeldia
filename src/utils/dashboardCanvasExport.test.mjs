@@ -3,14 +3,18 @@ import assert from "node:assert/strict";
 
 import {
   applyDashboardExportExclusions,
+  applyDashboardExportSectionDividerSeamRepair,
   cloneDashboardStageLayersForExport,
   dashboardExportExcludeProps,
+  dashboardExportSectionDividerProps,
   DASHBOARD_EXPORT_RASTER_LIMITS,
   exportDashboardImageFromStage,
   getDashboardExportExcludedName,
   isDashboardExportExcludedLayer,
   isDashboardExportExcludedNode,
+  isDashboardExportSectionDividerNode,
   resolveDashboardExportPixelRatio,
+  resolveDashboardExportSectionDividerOverlap,
 } from "./dashboardCanvasExport.js";
 
 class MockNode {
@@ -19,15 +23,19 @@ class MockNode {
     className = "Group",
     perfLabel = "",
     children = [],
+    attrs = {},
   } = {}) {
     this.attrs = {
+      ...attrs,
       ...(name ? { name } : {}),
       ...(perfLabel ? { perfLabel } : {}),
     };
     this.className = className;
-    this.children = children;
+    this.children = [];
+    this.parent = null;
     this.visibleValue = true;
     this.__canvasStagePerfLabel = perfLabel;
+    children.forEach((child) => this.add(child));
   }
 
   name() {
@@ -50,7 +58,16 @@ class MockNode {
     return this.children;
   }
 
+  getParent() {
+    return this.parent;
+  }
+
+  setAttrs(attrs = {}) {
+    Object.assign(this.attrs, attrs);
+  }
+
   add(child) {
+    child.parent = this;
     this.children.push(child);
   }
 
@@ -63,7 +80,10 @@ class MockNode {
 
   clone(attrs = {}) {
     return new MockNode({
-      name: attrs.name || this.name(),
+      attrs: {
+        ...this.attrs,
+        ...attrs,
+      },
       className: this.className,
       perfLabel: this.__canvasStagePerfLabel,
       children: this.children.map((child) => child.clone()),
@@ -83,6 +103,11 @@ test("dashboard export marker appends one reusable exclusion name", () => {
   assert.deepEqual(dashboardExportExcludeProps("canvas-guide-layer"), {
     name: "canvas-guide-layer dashboard-export-exclude",
   });
+  assert.deepEqual(dashboardExportSectionDividerProps({ bottomFill: "#ffffff" }), {
+    name: "dashboard-export-section-divider",
+    dashboardExportSectionDividerBottomFill: "#ffffff",
+  });
+  assert.deepEqual(dashboardExportSectionDividerProps(), {});
 });
 
 test("dashboard export predicate excludes editor-only nodes explicitly", () => {
@@ -106,6 +131,90 @@ test("dashboard export predicate excludes editor-only nodes explicitly", () => {
     true
   );
   assert.equal(isDashboardExportExcludedNode(new MockNode({ name: "ui-card" })), false);
+});
+
+test("dashboard export repairs only marked divider clips on the offscreen clone", () => {
+  const regularPath = new MockNode({
+    className: "Path",
+    attrs: { fill: "#101010" },
+  });
+  const dividerGroup = new MockNode({
+    attrs: {
+      ...dashboardExportSectionDividerProps({
+        topFill: "#f0f0f0",
+        bottomFill: "#ffffff",
+      }),
+      clipX: 0,
+      clipY: 100,
+      clipWidth: 800,
+      clipHeight: 600,
+    },
+    children: [
+      new MockNode({
+        className: "Path",
+        attrs: { fill: "#f0f0f0" },
+      }),
+      new MockNode({
+        className: "Path",
+        attrs: { fill: "#ffffff" },
+      }),
+      regularPath,
+    ],
+  });
+  const stageClone = new MockNode({ children: [dividerGroup] });
+
+  assert.equal(isDashboardExportSectionDividerNode(dividerGroup), true);
+  assert.equal(isDashboardExportSectionDividerNode(regularPath), false);
+  assert.equal(isDashboardExportExcludedNode(dividerGroup), false);
+
+  const result = applyDashboardExportSectionDividerSeamRepair(stageClone, {
+    createRect: (attrs) => new MockNode({ className: "Rect", attrs }),
+  });
+
+  assert.deepEqual(result, {
+    repairedGroupCount: 1,
+    seamCoverCount: 2,
+  });
+  assert.equal(dividerGroup.attrs.clipY, 99);
+  assert.equal(dividerGroup.attrs.clipHeight, 602);
+  assert.equal(dividerGroup.children.length, 5);
+  assert.deepEqual(dividerGroup.children[3].attrs, {
+    name: "dashboard-export-section-divider-seam-cover",
+    x: 0,
+    y: 99,
+    width: 800,
+    height: 2,
+    fill: "#f0f0f0",
+    listening: false,
+    perfectDrawEnabled: false,
+  });
+  assert.deepEqual(dividerGroup.children[4].attrs, {
+    name: "dashboard-export-section-divider-seam-cover",
+    x: 0,
+    y: 699,
+    width: 800,
+    height: 2,
+    fill: "#ffffff",
+    listening: false,
+    perfectDrawEnabled: false,
+  });
+  assert.deepEqual(regularPath.attrs, { fill: "#101010" });
+});
+
+test("dashboard export divider overlap always covers one output raster row", () => {
+  assert.equal(resolveDashboardExportSectionDividerOverlap(1), 1);
+  assert.equal(resolveDashboardExportSectionDividerOverlap(2), 1);
+  assert.equal(resolveDashboardExportSectionDividerOverlap(0.5), 2);
+
+  const coverRatio = resolveDashboardExportPixelRatio({
+    width: 800,
+    height: 2947,
+    requestedPixelRatio: 2,
+  });
+  const overlap = resolveDashboardExportSectionDividerOverlap(coverRatio);
+
+  assert.ok(coverRatio > 0 && coverRatio < 1);
+  assert.ok(overlap * coverRatio >= 1);
 });
 
 test("dashboard export skips editor-only layers before allocating their clone canvases", () => {

@@ -1,4 +1,13 @@
 const DASHBOARD_EXPORT_EXCLUDE_NAME = "dashboard-export-exclude";
+const DASHBOARD_EXPORT_SECTION_DIVIDER_NAME =
+  "dashboard-export-section-divider";
+const DASHBOARD_EXPORT_SECTION_DIVIDER_TOP_FILL_ATTR =
+  "dashboardExportSectionDividerTopFill";
+const DASHBOARD_EXPORT_SECTION_DIVIDER_BOTTOM_FILL_ATTR =
+  "dashboardExportSectionDividerBottomFill";
+const DASHBOARD_EXPORT_SECTION_DIVIDER_SEAM_COVER_NAME =
+  "dashboard-export-section-divider-seam-cover";
+const DASHBOARD_EXPORT_SECTION_DIVIDER_MIN_OVERLAP = 1;
 
 const EDITOR_ONLY_LAYER_LABELS = new Set([
   "ui-overlay",
@@ -54,6 +63,21 @@ function readNodeAttr(node, key) {
   } catch {}
 
   return node?.attrs?.[key];
+}
+
+function writeNodeAttrs(node, attrs) {
+  if (!node || !attrs || typeof attrs !== "object") return false;
+
+  try {
+    if (typeof node.setAttrs === "function") {
+      node.setAttrs(attrs);
+      return true;
+    }
+  } catch {}
+
+  if (!node.attrs || typeof node.attrs !== "object") return false;
+  Object.assign(node.attrs, attrs);
+  return true;
 }
 
 function nodeHasName(node, name) {
@@ -132,6 +156,9 @@ async function createKonvaStage({
         height,
         listening: false,
       }),
+      createRect(attrs) {
+        return new Konva.Rect(attrs);
+      },
       restorePixelRatio() {
         Konva.pixelRatio = previousPixelRatio;
       },
@@ -166,6 +193,25 @@ export function dashboardExportExcludeProps(existingName = "") {
   };
 }
 
+export function dashboardExportSectionDividerProps({
+  topFill = "",
+  bottomFill = "",
+} = {}) {
+  const safeTopFill = normalizeText(topFill);
+  const safeBottomFill = normalizeText(bottomFill);
+  if (!safeTopFill && !safeBottomFill) return {};
+
+  return {
+    name: DASHBOARD_EXPORT_SECTION_DIVIDER_NAME,
+    ...(safeTopFill
+      ? { [DASHBOARD_EXPORT_SECTION_DIVIDER_TOP_FILL_ATTR]: safeTopFill }
+      : {}),
+    ...(safeBottomFill
+      ? { [DASHBOARD_EXPORT_SECTION_DIVIDER_BOTTOM_FILL_ATTR]: safeBottomFill }
+      : {}),
+  };
+}
+
 export function isDashboardExportExcludedLayer(layer) {
   return EDITOR_ONLY_LAYER_LABELS.has(readLayerPerfLabel(layer));
 }
@@ -178,6 +224,10 @@ export function isDashboardExportExcludedNode(node) {
   }
 
   return EDITOR_ONLY_CLASS_NAMES.has(readNodeClassName(node));
+}
+
+export function isDashboardExportSectionDividerNode(node) {
+  return nodeHasName(node, DASHBOARD_EXPORT_SECTION_DIVIDER_NAME);
 }
 
 export function cloneDashboardStageLayersForExport(stage, stageClone) {
@@ -260,6 +310,113 @@ export function applyDashboardExportExclusions(stageClone) {
   };
 }
 
+export function applyDashboardExportSectionDividerSeamRepair(
+  stageClone,
+  { createRect, overlap = DASHBOARD_EXPORT_SECTION_DIVIDER_MIN_OVERLAP } = {}
+) {
+  if (typeof createRect !== "function") {
+    return {
+      repairedGroupCount: 0,
+      seamCoverCount: 0,
+    };
+  }
+
+  const safeOverlap = Number(overlap);
+  if (!Number.isFinite(safeOverlap) || safeOverlap <= 0) {
+    return {
+      repairedGroupCount: 0,
+      seamCoverCount: 0,
+    };
+  }
+
+  let repairedGroupCount = 0;
+  let seamCoverCount = 0;
+  walkKonvaTree(stageClone, (node) => {
+    if (!isDashboardExportSectionDividerNode(node)) return;
+    if (typeof node.add !== "function") return;
+
+    const topFill = normalizeText(
+      readNodeAttr(node, DASHBOARD_EXPORT_SECTION_DIVIDER_TOP_FILL_ATTR)
+    );
+    const bottomFill = normalizeText(
+      readNodeAttr(node, DASHBOARD_EXPORT_SECTION_DIVIDER_BOTTOM_FILL_ATTR)
+    );
+    if (!topFill && !bottomFill) return;
+
+    const clipX = Number(readNodeAttr(node, "clipX"));
+    const clipY = Number(readNodeAttr(node, "clipY"));
+    const clipWidth = Number(readNodeAttr(node, "clipWidth"));
+    const clipHeight = Number(readNodeAttr(node, "clipHeight"));
+    if (
+      !Number.isFinite(clipX) ||
+      !Number.isFinite(clipY) ||
+      !Number.isFinite(clipWidth) ||
+      clipWidth <= 0 ||
+      !Number.isFinite(clipHeight) ||
+      clipHeight <= 0
+    ) {
+      return;
+    }
+
+    const topOverlap = topFill ? safeOverlap : 0;
+    const bottomOverlap = bottomFill ? safeOverlap : 0;
+    // At fractional raster ratios, the exact clip edge can leave one blended
+    // row over the previous section. Extend only the offscreen clone's paint.
+    if (
+      !writeNodeAttrs(node, {
+        clipY: clipY - topOverlap,
+        clipHeight: clipHeight + topOverlap + bottomOverlap,
+      })
+    ) {
+      return;
+    }
+
+    const addSeamCover = (fill, y) => {
+      const seamCover = createRect({
+        name: DASHBOARD_EXPORT_SECTION_DIVIDER_SEAM_COVER_NAME,
+        x: clipX,
+        y,
+        width: clipWidth,
+        height: safeOverlap * 2,
+        fill,
+        listening: false,
+        perfectDrawEnabled: false,
+      });
+      if (!seamCover) return;
+      node.add(seamCover);
+      seamCoverCount += 1;
+    };
+
+    if (topFill) {
+      addSeamCover(topFill, clipY - safeOverlap);
+    }
+    if (bottomFill) {
+      addSeamCover(bottomFill, clipY + clipHeight - safeOverlap);
+    }
+    repairedGroupCount += 1;
+  });
+
+  return {
+    repairedGroupCount,
+    seamCoverCount,
+  };
+}
+
+export function resolveDashboardExportSectionDividerOverlap(pixelRatio) {
+  const safePixelRatio = Number(pixelRatio);
+  if (!Number.isFinite(safePixelRatio) || safePixelRatio <= 0) {
+    return DASHBOARD_EXPORT_SECTION_DIVIDER_MIN_OVERLAP;
+  }
+
+  // The Stage is commonly downscaled for tall dashboard covers. One logical
+  // unit can then cover less than one output row, so express the overlap in
+  // Stage units as exactly one raster pixel (with a 1-unit lower bound).
+  return Math.max(
+    DASHBOARD_EXPORT_SECTION_DIVIDER_MIN_OVERLAP,
+    1 / safePixelRatio
+  );
+}
+
 export async function exportDashboardImageFromStage(stageInput, options = {}) {
   const stage =
     typeof stageInput?.getStage === "function" ? stageInput.getStage() : stageInput;
@@ -277,6 +434,7 @@ export async function exportDashboardImageFromStage(stageInput, options = {}) {
   const offscreen = createOffscreenContainer({ width, height });
   const {
     stage: stageClone,
+    createRect,
     restorePixelRatio,
   } = await createKonvaStage({
     container: offscreen,
@@ -292,6 +450,10 @@ export async function exportDashboardImageFromStage(stageInput, options = {}) {
       restorePixelRatio();
     }
     applyDashboardExportExclusions(stageClone);
+    applyDashboardExportSectionDividerSeamRepair(stageClone, {
+      createRect,
+      overlap: resolveDashboardExportSectionDividerOverlap(pixelRatio),
+    });
     stageClone.draw();
     await waitForNextFrame();
 

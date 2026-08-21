@@ -28,6 +28,9 @@ test("template preview keeps one stable loading authority and mounts only final 
 });
 
 test("template preview scales the iframe during layout instead of resampling a transformed surface", () => {
+  assert.match(modalSource, /resolveTemplatePreviewViewportLayout\(/);
+  assert.match(modalSource, /hostViewportWidth/);
+  assert.match(modalSource, /layoutViewportHeight/);
   assert.match(modalSource, /zoom: scale/);
   assert.doesNotMatch(modalSource, /transform: `scale\(\$\{scale\}\)`/);
   assert.match(modalSource, /applyPreviewFrameScale\(/);

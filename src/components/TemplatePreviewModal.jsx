@@ -17,13 +17,10 @@ import {
   observePreviewFrameReadiness,
   resolvePreviewFrameLayoutMode,
 } from "@/components/preview/previewFrameRuntime";
+import { resolveTemplatePreviewViewportLayout } from "@/components/preview/templatePreviewModalLayout";
 import PreviewLoadingPresentation from "@/components/preview/PreviewLoadingPresentation";
 import { CHUNK_LOAD_RECOVERY_ACTION } from "@/domain/runtime/chunkLoadRecovery";
 
-const TEMPLATE_PREVIEW_VIEWPORT_WIDTH = 1280;
-const TEMPLATE_PREVIEW_VIEWPORT_HEIGHT = 820;
-const TEMPLATE_PREVIEW_MOBILE_VIEWPORT_WIDTH = 390;
-const TEMPLATE_PREVIEW_MOBILE_VIEWPORT_HEIGHT = 844;
 const TEMPLATE_PREVIEW_ACTION_PANEL_BOTTOM_GAP = 20;
 const TEMPLATE_PREVIEW_ACTION_PANEL_SCROLL_BUFFER = 24;
 const TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT = 116;
@@ -36,8 +33,9 @@ function toText(value, fallback = "") {
   return safe || fallback;
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function readHostViewportWidth() {
+  if (typeof window === "undefined") return 0;
+  return window.innerWidth || document.documentElement?.clientWidth || 0;
 }
 
 function applyTemplatePreviewScrollSpacer(iframe, insetPixels) {
@@ -89,6 +87,9 @@ function TemplatePreviewViewport({
   const readinessCleanupRef = useRef(null);
   const [stageWidth, setStageWidth] = useState(0);
   const [stageHeight, setStageHeight] = useState(0);
+  const [hostViewportWidth, setHostViewportWidth] = useState(
+    readHostViewportWidth
+  );
   const [readySource, setReadySource] = useState(null);
 
   useEffect(() => {
@@ -98,49 +99,47 @@ function TemplatePreviewViewport({
     const measure = () => {
       setStageWidth(node.clientWidth || 0);
       setStageHeight(node.clientHeight || 0);
+      setHostViewportWidth(readHostViewportWidth());
     };
 
     measure();
 
+    let observer = null;
     if (typeof ResizeObserver === "function") {
-      const observer = new ResizeObserver((entries) => {
-        const rect = entries?.[0]?.contentRect;
-        if (!rect) {
-          measure();
-          return;
-        }
-        setStageWidth(rect.width || 0);
-        setStageHeight(rect.height || 0);
-      });
+      observer = new ResizeObserver(measure);
       observer.observe(node);
-      return () => observer.disconnect();
     }
 
     if (typeof window !== "undefined") {
       window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
     }
 
-    return undefined;
+    return () => {
+      observer?.disconnect();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("resize", measure);
+      }
+    };
   }, []);
 
   const previewLayoutMode = resolvePreviewFrameLayoutMode();
-  const isMobileHost = stageWidth > 0 && stageWidth < 640;
-  const previewViewport = isMobileHost ? "mobile" : "desktop";
-  const viewportWidth = isMobileHost
-    ? TEMPLATE_PREVIEW_MOBILE_VIEWPORT_WIDTH
-    : TEMPLATE_PREVIEW_VIEWPORT_WIDTH;
-  const viewportHeight = isMobileHost
-    ? TEMPLATE_PREVIEW_MOBILE_VIEWPORT_HEIGHT
-    : TEMPLATE_PREVIEW_VIEWPORT_HEIGHT;
-  const widthBudget = Math.max(stageWidth, 240);
-  const scale = isMobileHost
-    ? clamp(widthBudget / viewportWidth, 0.42, 1)
-    : clamp(widthBudget / viewportWidth, 0.16, 1);
-  const scaledWidth = Math.round(viewportWidth * scale);
-  const scaledHeight = Math.round(viewportHeight * scale);
+  const {
+    previewViewport,
+    viewportWidth,
+    viewportHeight,
+    layoutViewportHeight,
+    scale,
+    scaledWidth,
+    scaledHeight,
+  } = resolveTemplatePreviewViewportLayout({
+    stageWidth,
+    stageHeight,
+    hostViewportWidth,
+  });
   const overlayHeightForScroll =
-    overlayHeight > 0 ? overlayHeight : TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT;
+    overlayHeight > 0
+      ? overlayHeight
+      : TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT;
   const bottomScrollInset = Math.ceil(
     (overlayHeightForScroll +
       TEMPLATE_PREVIEW_ACTION_PANEL_BOTTOM_GAP +
@@ -153,9 +152,10 @@ function TemplatePreviewViewport({
         ? buildPreviewFrameSrcDoc(srcDoc, {
             previewViewport: "",
             layoutMode: previewLayoutMode,
+            layoutViewportHeight,
           })
         : srcDoc,
-    [previewLayoutMode, srcDoc]
+    [layoutViewportHeight, previewLayoutMode, srcDoc]
   );
   const sourceIdentity = resolvedSrcDoc || src || "";
   const frameReady = Boolean(sourceIdentity && readySource === sourceIdentity);

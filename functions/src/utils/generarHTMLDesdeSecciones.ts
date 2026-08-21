@@ -2532,10 +2532,20 @@ export function generarHTMLDesdeSecciones(
           vw <= 767 ||
           (mobileSignals.isLikelyMobile && screenShortSide > 0 && screenShortSide <= 767);
 
+        // A scaled preview shell may expose a taller browsing viewport only to
+        // fill its host. Keep section layout tied to the canonical logical
+        // height supplied by that shell.
+        var previewLayoutViewportH =
+          embeddedContext
+            ? toPositiveNumber(docEl.getAttribute("data-preview-layout-viewport-height"))
+            : 0;
+
         // viewport real (más estable en mobile)
-        var viewportH = embeddedContext
-          ? minPositive([docH, innerH, vvH], innerH || docH || vvH || 0)
-          : (vvH || innerH || docH || 0);
+        var viewportH = previewLayoutViewportH || (
+          embeddedContext
+            ? minPositive([docH, innerH, vvH], innerH || docH || vvH || 0)
+            : (vvH || innerH || docH || 0)
+        );
         if (!isFinite(viewportH) || viewportH <= 0) {
           viewportH = innerH || docH || 0;
         }

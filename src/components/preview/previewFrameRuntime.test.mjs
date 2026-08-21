@@ -124,6 +124,20 @@ test("preview frame srcDoc injects viewport and layout metadata before iframe lo
   assert.match(srcDoc, /<body[^>]*data-preview-layout-mode="parity"/);
 });
 
+test("preview frame can decouple desktop section layout height from a taller iframe window", () => {
+  const html =
+    '<!doctype html><html><head></head><body><section class="sec" data-modo="pantalla"></section></body></html>';
+  const srcDoc = buildPreviewFrameSrcDoc(html, {
+    layoutViewportHeight: 820,
+  });
+
+  assert.match(srcDoc, /data-preview-layout-viewport-height="820"/);
+  assert.match(
+    srcDoc,
+    /\.sec\[data-modo="pantalla"\][^{]*\{[^}]*height: 820px !important/s
+  );
+});
+
 test("preview timing metadata and collector are injected only for a diagnostic session", () => {
   const html =
     "<!doctype html><html lang=\"es\"><head></head><body><main></main></body></html>";

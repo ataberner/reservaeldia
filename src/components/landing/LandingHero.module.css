@@ -166,6 +166,13 @@
   transform: translateY(0);
 }
 
+@media (min-width: 621px) and (max-width: 1024px) {
+  .heroDashboard {
+    /* Dashboard tablet image scale: increase the percentage to zoom in more. */
+    --landing-hero-bg-size: 300% auto;
+  }
+}
+
 @media (max-width: 620px) {
   .hero {
     --landing-hero-mobile-height: clamp(560px, 68dvh, 620px);

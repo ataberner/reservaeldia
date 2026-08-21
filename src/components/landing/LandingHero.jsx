@@ -32,6 +32,7 @@ export default function LandingHero({
   ctaLabel = "Elegir dise\u00f1o",
   onCtaClick,
   className = "",
+  variant = "landing",
 }) {
   const handleCtaClick = (event) => {
     if (typeof onCtaClick !== "function") return;
@@ -41,7 +42,14 @@ export default function LandingHero({
   };
 
   return (
-    <section className={joinClassNames("hero", styles.hero, className)}>
+    <section
+      className={joinClassNames(
+        "hero",
+        styles.hero,
+        variant === "dashboard" && styles.heroDashboard,
+        className
+      )}
+    >
       <div className={joinClassNames("hero-content", styles.heroContent)}>
         {HERO_CORNER_MARKERS.map(([key, globalClassName, cornerClassName]) => (
           <span

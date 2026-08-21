@@ -129,6 +129,7 @@ export default function DashboardHomeView({
       <LandingHero
         ctaHref={`#${heroTargetId || TEMPLATE_COLLECTIONS_ANCHOR_ID}`}
         onCtaClick={handleCreateInvitation}
+        variant="dashboard"
       />
 
       <div className="mx-auto w-full max-w-7xl">

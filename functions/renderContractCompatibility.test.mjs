@@ -1445,6 +1445,23 @@ test("generated geometry establishes section heights before deferred mobile layo
   assert.doesNotMatch(smartLayoutSource, /scrollBy\s*\(/);
 });
 
+test("generated iframe layout consumes an opt-in logical viewport height", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+
+  assert.match(
+    html,
+    /docEl\.getAttribute\("data-preview-layout-viewport-height"\)/
+  );
+  assert.match(html, /var viewportH = previewLayoutViewportH \|\| \(/);
+  assert.doesNotMatch(
+    html,
+    /<html[^>]*data-preview-layout-viewport-height=/i,
+    "the generated document must not opt itself into a shell-owned height"
+  );
+});
+
 test("mobile smart layout exposes logs only to explicit preview diagnostics or MSL flags", () => {
   const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
     isPreview: true,

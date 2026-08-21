@@ -12,6 +12,8 @@ export const PREVIEW_FRAME_READY_EVENT = "invitation-loader-hidden";
 export const PREVIEW_FRAME_TIMING_EVENT = "preview-timing-event";
 
 const PREVIEW_FRAME_HIDE_SCROLLBARS_STYLE_ID = "preview-frame-hide-scrollbars";
+const PREVIEW_FRAME_LAYOUT_VIEWPORT_STYLE_ID =
+  "preview-frame-layout-viewport-height";
 
 function normalizeViewport(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -90,6 +92,34 @@ function injectBeforeClosingHead(html, markup = "") {
   }
 
   return `${content}${source}`;
+}
+
+function injectLayoutViewportHeightContract(html, height) {
+  const safeHeight = Number(height);
+  if (!Number.isFinite(safeHeight) || safeHeight <= 0) return html;
+
+  const roundedHeight = Math.round(safeHeight);
+  let next = injectDataAttribute(
+    html,
+    "html",
+    "data-preview-layout-viewport-height",
+    roundedHeight
+  );
+  next = injectDataAttribute(
+    next,
+    "body",
+    "data-preview-layout-viewport-height",
+    roundedHeight
+  );
+
+  return injectBeforeClosingHead(
+    next,
+    `<style id="${PREVIEW_FRAME_LAYOUT_VIEWPORT_STYLE_ID}">
+html[data-preview-layout-viewport-height] .sec[data-modo="pantalla"] {
+  height: ${roundedHeight}px !important;
+}
+</style>`
+  );
 }
 
 function normalizeScrollAuthority(value = "") {
@@ -286,6 +316,7 @@ export function buildPreviewFrameSrcDoc(
     previewSurface = "",
     scrollAuthority = PREVIEW_FRAME_SCROLL_AUTHORITIES.DOCUMENT,
     previewTiming = null,
+    layoutViewportHeight = 0,
   } = {}
 ) {
   const source = String(htmlContent || "");
@@ -313,6 +344,8 @@ export function buildPreviewFrameSrcDoc(
 
   next = injectDataAttribute(next, "html", "data-preview-layout-mode", modeValue);
   next = injectDataAttribute(next, "body", "data-preview-layout-mode", modeValue);
+
+  next = injectLayoutViewportHeightContract(next, layoutViewportHeight);
 
   if (surfaceValue) {
     next = injectDataAttribute(next, "html", "data-preview-surface", surfaceValue);

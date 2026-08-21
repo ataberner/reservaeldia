@@ -167,9 +167,18 @@ After load, `applyPreviewFrameScale(...)`:
 
 These iframe mutations are preview-shell behavior. They must minimize layout distortion and should not be treated as changes to the invitation render contract.
 
-Scaled mockups use CSS `zoom` on the fixed-size logical iframe wrapper. They do
-not use `transform: scale(...)`: transform scaling makes Chromium resample the
-already-painted iframe surface and can independently antialias two contiguous
+Scaled mockups use CSS `zoom` on the logical iframe wrapper. `ModalVistaPrevia`
+keeps its fixed logical viewport sizes. `TemplatePreviewModal` keeps the same
+fixed logical widths and desktop/mobile layout heights. On tablet hosts from
+`640px` through `1024px`, it derives the iframe viewing height from the measured
+stage height and the existing width-owned scale, so the scaled wrapper occupies
+the full available modal height without changing modal or invitation width. The
+taller tablet iframe is only a viewing/scroll window: the
+generated desktop layout and `pantalla` sections remain anchored to the
+canonical `820px` logical height, so viewport-relative section geometry does
+not grow with the shell. They do not use `transform: scale(...)`: transform scaling
+makes Chromium resample the already-painted iframe surface and can
+independently antialias two contiguous
 section edges against the white document at fractional scale or
 `devicePixelRatio`. Layout zoom paints the same logical iframe viewport at the
 requested modal scale in one pass, so it preserves section bounds and scroll

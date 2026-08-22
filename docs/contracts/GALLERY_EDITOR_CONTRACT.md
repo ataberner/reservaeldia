@@ -136,7 +136,7 @@ This section owns the next sidebar UX iteration only. It does not change the Gal
 
 **Current:** `getGalleryPhotos(gallery)` returns populated Gallery usages with `displayIndex`, `sourceIndex`, optional `cellId`, resolved `mediaUrl`, and media identity metadata.
 
-**Future:** Reorder UI must pass `displayIndex` positions to `reorderGalleryPhotos(gallery, from, to)` and commit the returned Gallery object through the existing editor update path.
+**Current:** Sidebar slot reorder passes the dragged and destination slot positions to `moveGalleryPhotoToSlot(gallery, fromTarget, toTarget)` and commits the returned Gallery object through the existing editor update path. Dynamic-media Galleries delegate from that boundary to `reorderGalleryPhotos(gallery, from, to)`.
 
 **Future:** Reorder must preserve:
 
@@ -149,9 +149,9 @@ This section owns the next sidebar UX iteration only. It does not change the Gal
 - `alt`
 - any unknown compatible cell metadata
 
-**Current:** Fixed Gallery empty slots appear as explicit add targets in the Fotos tab only up to the visible cell count of the selected layout. They are not themselves photo usages, but populated visible photos can be moved into those visible empty slots through the Gallery mutation boundary. Moving into an occupied visible slot swaps photo content and preserves both slot identities.
+**Current:** Fixed Gallery empty slots appear as explicit add targets in the Fotos tab only up to the visible cell count of the selected layout. They are not themselves photo usages, but populated visible cells can be moved into any visible occupied or empty destination through the Gallery mutation boundary. Reorder uses insertion semantics: the dragged `cells[]` entry ends at the destination index and every intervening entry shifts one position to make room. The moved cell keeps its stable `cell.id`, media, styling, and compatible metadata; the fixed cell count and Gallery grid structure remain unchanged.
 
-**Future:** In fixed Galleries, populated rows follow fixed slot order while skipping empty slots. Reordering populated rows updates populated cell contents across occupied slots and preserves the fixed slot structure.
+**Future:** A filtered populated-only presentation for fixed Galleries may skip empty rows visually, but it must still map reorder targets back to the fixed source indexes and use the insertion semantics above. It must not collapse or delete empty entries, swap only the endpoints, or change the fixed cell count.
 
 **Future:** In dynamic-media Galleries, populated rows follow the filtered media-cell order used by the dynamic Gallery mutation helpers.
 
@@ -277,6 +277,7 @@ Required operations:
 | `removeGalleryPhoto(gallery, target)` | Remove one usage from the selected Gallery only. It must not delete the uploaded asset. |
 | `replaceGalleryPhoto(gallery, target, photo)` | Replace one usage in place while preserving local position and cell styling such as `fit` and `bg`. |
 | `reorderGalleryPhotos(gallery, from, to)` | Reorder populated usages inside the selected Gallery only while preserving Gallery layout identity. |
+| `moveGalleryPhotoToSlot(gallery, fromTarget, toTarget)` | Move the selected local cell entry to the destination and shift every intervening entry one position. Fixed Galleries preserve the moved entry's full metadata and cell count; dynamic Galleries delegate to their ordered reorder helper. |
 | `switchGalleryLayout(gallery, layoutId)` | Set `currentLayout` only when `layoutId` is a known selectable preset allowed by the Gallery and preserve all photo usages. For draft/legacy Galleries with no `allowedLayouts`, materialize the safe primary `allowedLayouts` fallback plus `defaultLayout` on first switch. Preset-to-render mapping is applied by render helpers, not by deleting or reshaping `cells[]`. |
 | `configureGalleryLayout(gallery, layoutId, options)` | Layout configuration helper used by Builder and by the normal Fotos-tab rows/columns matrix when materializing a known grid preset. Preserve all photo usages, ensure the selected layout is allowed, and keep `defaultLayout` / `currentLayout` valid without creating a new Gallery. |
 | `normalizeGalleryState(gallery, context)` | Normalize fixed/dynamic state, canonicalize cell media, and preserve backward compatibility with existing Gallery objects. |
@@ -310,7 +311,7 @@ Required operations:
 - With exactly one Gallery in the draft and no selected canvas Gallery, the normal Gallery sidebar auto-targets that Gallery and displays its local photo usages.
 - With multiple Galleries and no selected canvas Gallery, the normal Gallery sidebar shows a Gallery block selector; choosing one displays and mutates only that Gallery.
 - Future selected-Gallery photo list renders as a vertical ordered list derived from `cells[]`.
-- Future drag reorder starts only from a dedicated handle and commits through `reorderGalleryPhotos`.
+- Current drag reorder starts only from a dedicated handle and commits through `moveGalleryPhotoToSlot`; fixed preview order must equal the insertion order returned by that mutation.
 - Future thumbnail replacement preserves row/cell position and commits through `replaceGalleryPhoto`.
 - Hidden preset photos remain visible/manageable in the sidebar and are not deleted by layout switching.
 - Fixed Gallery empty slots are not draggable photo rows.

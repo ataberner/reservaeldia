@@ -4,6 +4,11 @@ import { createPortal } from "react-dom";
 import { Grid3X3, GripVertical, Loader2, Plus, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import {
+  buildGalleryDragPreviewRows,
+  createGalleryDragHitGeometry,
+  resolveGalleryDragDropIndex,
+} from "@/components/gallerySidebarDragGeometry";
+import {
   readCanvasEditorMethod,
   readEditorObjects,
   readEditorSections,
@@ -228,28 +233,6 @@ function orderRowsByKeys(rows, rowKeys) {
   const rowsByKey = new Map(rows.map((row) => [row.rowKey, row]));
   if (!rowKeys.every((rowKey) => rowsByKey.has(rowKey))) return rows;
   return rowKeys.map((rowKey) => rowsByKey.get(rowKey));
-}
-
-function moveRowsForDragPreview(rows, fromIndex, toIndex) {
-  if (!Array.isArray(rows) || rows.length < 2) return rows;
-  const from = Number(fromIndex);
-  const to = Number(toIndex);
-  if (
-    !Number.isInteger(from) ||
-    !Number.isInteger(to) ||
-    from < 0 ||
-    to < 0 ||
-    from >= rows.length ||
-    to >= rows.length ||
-    from === to
-  ) {
-    return rows;
-  }
-
-  const nextRows = [...rows];
-  const [draggedRow] = nextRows.splice(from, 1);
-  nextRows.splice(to, 0, draggedRow);
-  return nextRows;
 }
 
 function clampNumber(value, min, max) {
@@ -689,12 +672,16 @@ export default function MiniToolbarTabImagen({
       return orderedGallerySlotRows;
     }
 
-    return moveRowsForDragPreview(
+    return buildGalleryDragPreviewRows(
       orderedGallerySlotRows,
       galleryDragState.fromIndex,
       galleryDragState.toIndex
     );
-  }, [galeriaSeleccionada?.id, galleryDragState, orderedGallerySlotRows]);
+  }, [
+    galeriaSeleccionada?.id,
+    galleryDragState,
+    orderedGallerySlotRows,
+  ]);
 
   const draggedGallerySlotRow = useMemo(() => {
     if (!galleryDragState) return null;
@@ -1031,21 +1018,31 @@ export default function MiniToolbarTabImagen({
     setGalleryDragState(null);
   }, []);
 
-  const resolvePointerDropIndex = useCallback((clientY) => {
+  const captureGalleryDragHitGeometry = useCallback(() => {
+    const listNode = galleryPhotoListRef.current;
+    if (!listNode) return null;
+
+    const rows = Array.from(listNode.querySelectorAll("[data-gallery-photo-row='true']"));
+    if (rows.length === 0) return null;
+
+    const listRect = listNode.getBoundingClientRect();
+    return createGalleryDragHitGeometry({
+      listTop: listRect.top,
+      scrollTop: listNode.scrollTop,
+      rowRects: rows.map((row) => row.getBoundingClientRect()),
+    });
+  }, []);
+
+  const resolvePointerDropIndex = useCallback((clientY, geometry) => {
     const listNode = galleryPhotoListRef.current;
     if (!listNode) return -1;
 
-    const rows = Array.from(listNode.querySelectorAll("[data-gallery-photo-row='true']"));
-    if (rows.length === 0) return -1;
-
-    for (let index = 0; index < rows.length; index += 1) {
-      const rect = rows[index].getBoundingClientRect();
-      if (clientY < rect.top + rect.height / 2) {
-        return index;
-      }
-    }
-
-    return rows.length - 1;
+    return resolveGalleryDragDropIndex({
+      clientY,
+      geometry,
+      listTop: listNode.getBoundingClientRect().top,
+      scrollTop: listNode.scrollTop,
+    });
   }, []);
 
   const commitPhotoReorder = useCallback((from, to) => {
@@ -1136,6 +1133,7 @@ export default function MiniToolbarTabImagen({
     const rowRect = rowNode?.getBoundingClientRect?.();
     const photoKey = slotRow.rowKey;
     const galleryId = galeriaSeleccionada.id;
+    const hitGeometry = captureGalleryDragHitGeometry();
     galleryPhotoDragSessionRef.current = {
       pointerId: event.pointerId,
       galleryId,
@@ -1149,6 +1147,7 @@ export default function MiniToolbarTabImagen({
       rowHeight: rowRect?.height || 58,
       grabOffsetX: rowRect ? event.clientX - rowRect.left : 0,
       grabOffsetY: rowRect ? event.clientY - rowRect.top : 0,
+      hitGeometry,
     };
     setGalleryDragState({
       galleryId,
@@ -1169,13 +1168,16 @@ export default function MiniToolbarTabImagen({
       if (!session || moveEvent.pointerId !== session.pointerId) return;
 
       moveEvent.preventDefault();
-      const toIndex = resolvePointerDropIndex(moveEvent.clientY);
+      const toIndex = resolvePointerDropIndex(moveEvent.clientY, session.hitGeometry);
       const nextToIndex = toIndex >= 0 ? toIndex : session.toIndex;
+      const destinationChanged = nextToIndex !== session.toIndex;
 
       session.toIndex = nextToIndex;
       session.pointerX = moveEvent.clientX;
       session.pointerY = moveEvent.clientY;
-      captureGalleryPhotoRowRects();
+      if (destinationChanged) {
+        captureGalleryPhotoRowRects();
+      }
       setGalleryDragState({
         galleryId: session.galleryId,
         photoKey: session.photoKey,
@@ -1222,6 +1224,7 @@ export default function MiniToolbarTabImagen({
       window.removeEventListener("pointercancel", handleCancel, true);
     };
   }, [
+    captureGalleryDragHitGeometry,
     captureGalleryPhotoRowRects,
     cleanupGalleryPhotoDrag,
     commitPhotoReorder,

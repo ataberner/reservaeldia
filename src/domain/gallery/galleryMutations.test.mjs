@@ -183,7 +183,7 @@ test("addGalleryPhotos fills fixed empty slots and preserves storage identity", 
   assert.equal(gallery.cells[1].mediaUrl, null);
 });
 
-test("moveGalleryPhotoToSlot moves a fixed photo into an empty slot while preserving slot ids", () => {
+test("moveGalleryPhotoToSlot inserts a fixed cell at an empty target and shifts intervening cells", () => {
   const gallery = fixedGallery({
     rows: 1,
     cols: 3,
@@ -206,37 +206,60 @@ test("moveGalleryPhotoToSlot moves a fixed photo into an empty slot while preser
   );
 
   assert.equal(moved.changed, true);
-  assert.equal(moved.gallery.cells[0].id, "slot-a");
+  assert.equal(moved.gallery.cells[0].id, "slot-b");
   assert.equal(moved.gallery.cells[0].mediaUrl, null);
-  assert.equal(moved.gallery.cells[1].id, "slot-b");
+  assert.equal(moved.gallery.cells[1].id, "slot-a");
   assert.equal(moved.gallery.cells[1].mediaUrl, "https://cdn.test/a.jpg");
   assert.equal(moved.gallery.cells[1].storagePath, "usuarios/u/imagenes/a.jpg");
   assert.equal(moved.gallery.cells[1].assetId, "asset-a");
 });
 
-test("moveGalleryPhotoToSlot swaps fixed occupied slots without deleting photos", () => {
+test("moveGalleryPhotoToSlot inserts a fixed cell at an occupied target and shifts the range", () => {
   const gallery = fixedGallery({
     rows: 1,
-    cols: 2,
+    cols: 3,
     cells: [
-      { id: "slot-a", mediaUrl: "https://cdn.test/a.jpg", storagePath: "a-path" },
+      {
+        id: "slot-a",
+        mediaUrl: "https://cdn.test/a.jpg",
+        storagePath: "a-path",
+        fit: "contain",
+        bg: "#111",
+        alt: "Foto A",
+        focalPoint: { x: 0.25, y: 0.75 },
+      },
       { id: "slot-b", mediaUrl: "https://cdn.test/b.jpg", storagePath: "b-path" },
+      { id: "slot-c", mediaUrl: "https://cdn.test/c.jpg", storagePath: "c-path" },
     ],
   });
 
   const moved = moveGalleryPhotoToSlot(
     gallery,
     { sourceIndex: 0 },
-    { sourceIndex: 1 }
+    { sourceIndex: 2 }
   );
 
   assert.equal(moved.changed, true);
-  assert.equal(moved.gallery.cells[0].id, "slot-a");
-  assert.equal(moved.gallery.cells[0].mediaUrl, "https://cdn.test/b.jpg");
+  assert.deepEqual(
+    moved.gallery.cells.map((cell) => cell.id),
+    ["slot-b", "slot-c", "slot-a"]
+  );
+  assert.deepEqual(
+    moved.gallery.cells.map((cell) => cell.mediaUrl),
+    [
+      "https://cdn.test/b.jpg",
+      "https://cdn.test/c.jpg",
+      "https://cdn.test/a.jpg",
+    ]
+  );
   assert.equal(moved.gallery.cells[0].storagePath, "b-path");
-  assert.equal(moved.gallery.cells[1].id, "slot-b");
-  assert.equal(moved.gallery.cells[1].mediaUrl, "https://cdn.test/a.jpg");
-  assert.equal(moved.gallery.cells[1].storagePath, "a-path");
+  assert.equal(moved.gallery.cells[1].storagePath, "c-path");
+  assert.equal(moved.gallery.cells[2].storagePath, "a-path");
+  assert.equal(moved.gallery.cells[2].fit, "contain");
+  assert.equal(moved.gallery.cells[2].bg, "#111");
+  assert.equal(moved.gallery.cells[2].alt, "Foto A");
+  assert.deepEqual(moved.gallery.cells[2].focalPoint, { x: 0.25, y: 0.75 });
+  assert.deepEqual(gallery.cells.map((cell) => cell.id), ["slot-a", "slot-b", "slot-c"]);
 });
 
 test("fixed full galleries reject add without appending hidden cells", () => {

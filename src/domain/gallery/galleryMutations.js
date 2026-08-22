@@ -643,21 +643,15 @@ export function moveGalleryPhotoToSlot(gallery, fromTarget = {}, toTarget = {}) 
 
   const nextCells = normalizeFixedCellsForMutation(gallery);
   const fromCell = nextCells[fromIndex];
-  const toCell = nextCells[toIndex];
   if (!hasCellMedia(fromCell)) {
     return noop(gallery, "move-to-slot", "missing-media");
   }
-
-  nextCells[toIndex] = buildPopulatedCell(toCell, fromCell);
-  nextCells[fromIndex] = hasCellMedia(toCell)
-    ? buildPopulatedCell(fromCell, toCell)
-    : clearCellMedia(fromCell);
 
   return buildResult(
     gallery,
     {
       ...gallery,
-      cells: nextCells,
+      cells: moveArrayItem(nextCells, fromIndex, toIndex),
     },
     {
       action: "move-to-slot",

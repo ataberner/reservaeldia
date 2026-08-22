@@ -1,3 +1,7 @@
+import {
+  DEFAULT_TEXT_BOX_WIDTH,
+} from "../../../../../domain/elements/insertions.js";
+
 export const TEXT_BOX_WIDTH_RESIZE_ANCHOR = "middle-right";
 export const MIN_TEXT_BOX_WIDTH = 20;
 export const MAX_TEXT_BOX_WIDTH = 800;
@@ -97,6 +101,55 @@ export function resolveTextBoxWidthResize({
     scaleX: 1,
     scaleY: 1,
     originOffsetX,
+  };
+}
+
+export function resolveTextBoxCompatibilityUpgrade({
+  object,
+  liveWidth,
+  fallbackWidth = DEFAULT_TEXT_BOX_WIDTH,
+} = {}) {
+  if (object?.tipo !== "texto") return null;
+
+  const storedWidth = Number(object?.width);
+  const hasStoredWidth = Number.isFinite(storedWidth) && storedWidth > 0;
+  if (object.__autoWidth === false && hasStoredWidth) return null;
+
+  const measuredWidth = Number(liveWidth);
+  const hasLiveWidth = Number.isFinite(measuredWidth) && measuredWidth > 0;
+  const numericFallbackWidth = Number(fallbackWidth);
+  const widthCandidate = hasLiveWidth
+    ? measuredWidth
+    : hasStoredWidth
+      ? storedWidth
+      : numericFallbackWidth;
+  const layout = resolveTextBoxWidthResize({
+    baseWidth: widthCandidate,
+    scaleX: 1,
+    fontSize: object?.fontSize,
+    align:
+      object?.align ??
+      object?.textAlign ??
+      object?.alignment ??
+      object?.alineacion,
+    textWrapMode: object?.textWrapMode,
+  });
+  if (!layout) return null;
+
+  return {
+    width: layout.width,
+    textWrapMode: layout.textWrapMode,
+    originOffsetX: layout.originOffsetX,
+    widthSource: hasLiveWidth
+      ? "live-konva-node"
+      : hasStoredWidth
+        ? "stored-compatibility"
+        : "default",
+    patch: {
+      width: layout.width,
+      __autoWidth: false,
+      textWrapMode: layout.textWrapMode,
+    },
   };
 }
 

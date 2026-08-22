@@ -7,6 +7,7 @@ import {
   buildTextBoxWidthCommitPatch,
   isTextBoxWidthResizeGesture,
   resolveTextBoxWidthAnchorVisual,
+  resolveTextBoxCompatibilityUpgrade,
   resolveTextBoxWidthResize,
 } from "./textBoxWidthResize.js";
 
@@ -121,6 +122,86 @@ test("text box width resize rejects invalid geometry", () => {
   assert.equal(resolveTextBoxWidthResize({ baseWidth: 0, scaleX: 1 }), null);
   assert.equal(resolveTextBoxWidthResize({ baseWidth: 100, scaleX: 0 }), null);
   assert.equal(resolveTextBoxWidthResize({ baseWidth: 100, scaleX: NaN }), null);
+});
+
+test("legacy text without width freezes the current live Konva width", () => {
+  const upgrade = resolveTextBoxCompatibilityUpgrade({
+    object: {
+      tipo: "texto",
+      fontSize: 24,
+      align: "center",
+      __autoWidth: false,
+    },
+    liveWidth: 347.4,
+  });
+
+  assert.deepEqual(upgrade, {
+    width: 347.4,
+    textWrapMode: "word",
+    originOffsetX: 173.7,
+    widthSource: "live-konva-node",
+    patch: {
+      width: 347.4,
+      __autoWidth: false,
+      textWrapMode: "word",
+    },
+  });
+});
+
+test("legacy auto-width text prefers live geometry over a stale stored width", () => {
+  const upgrade = resolveTextBoxCompatibilityUpgrade({
+    object: {
+      tipo: "texto",
+      width: 180,
+      __autoWidth: true,
+      align: "right",
+      textWrapMode: "char",
+    },
+    liveWidth: 312,
+  });
+
+  assert.equal(upgrade.width, 312);
+  assert.equal(upgrade.originOffsetX, 312);
+  assert.equal(upgrade.textWrapMode, "char");
+  assert.equal(upgrade.widthSource, "live-konva-node");
+  assert.deepEqual(upgrade.patch, {
+    width: 312,
+    __autoWidth: false,
+    textWrapMode: "char",
+  });
+});
+
+test("legacy text falls back to the shared insertion width without live geometry", () => {
+  const upgrade = resolveTextBoxCompatibilityUpgrade({
+    object: {
+      tipo: "texto",
+      align: "left",
+    },
+    liveWidth: null,
+  });
+
+  assert.equal(upgrade.width, 260);
+  assert.equal(upgrade.widthSource, "default");
+  assert.deepEqual(upgrade.patch, {
+    width: 260,
+    __autoWidth: false,
+    textWrapMode: "word",
+  });
+});
+
+test("already fixed text does not enter the compatibility upgrade", () => {
+  assert.equal(
+    resolveTextBoxCompatibilityUpgrade({
+      object: {
+        tipo: "texto",
+        width: 260,
+        __autoWidth: false,
+        textWrapMode: "word",
+      },
+      liveWidth: 120,
+    }),
+    null
+  );
 });
 
 test("text box width commit persists fixed layout and keeps the stored font size", () => {

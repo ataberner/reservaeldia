@@ -1,7 +1,11 @@
 // src/components/editor/events/useEditorEvents.js
 import { useEffect } from "react";
 import computeInsertDefaults from "./computeInsertDefaults";
-import { resolveTextInsertAlignment } from "@/domain/elements/insertions";
+import {
+  DEFAULT_TEXT_BOX_WIDTH,
+  DEFAULT_TEXT_WRAP_MODE,
+  resolveTextInsertAlignment,
+} from "@/domain/elements/insertions";
 import {
   createDefaultRsvpConfig,
   isRsvpConfigV2,
@@ -590,6 +594,9 @@ export default function useEditorEvents({
         fontWeight: "normal",
         fontStyle: "normal",
         textDecoration: "none",
+        width: DEFAULT_TEXT_BOX_WIDTH,
+        __autoWidth: false,
+        textWrapMode: DEFAULT_TEXT_WRAP_MODE,
         align: resolveTextInsertAlignment(),
         rotation: 0,
         scaleX: 1,

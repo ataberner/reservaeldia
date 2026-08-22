@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 
 import {
   DEFAULT_TEXT_ALIGNMENT,
+  DEFAULT_TEXT_BOX_WIDTH,
+  DEFAULT_TEXT_WRAP_MODE,
   resolveTextInsertAlignment,
 } from "./insertions.js";
 
@@ -20,6 +22,23 @@ test("new text elements default to centered alignment", () => {
   assert.equal(DEFAULT_TEXT_ALIGNMENT, "center");
   assert.equal(resolveTextInsertAlignment(), "center");
   assert.equal(resolveTextInsertAlignment(null), "center");
+});
+
+test("new text elements share one fixed-width wrapping default", () => {
+  assert.equal(DEFAULT_TEXT_BOX_WIDTH, 260);
+  assert.equal(DEFAULT_TEXT_WRAP_MODE, "word");
+  assert.match(
+    computeInsertDefaultsSource,
+    /width:\s*incomingWidth\s*\?\?\s*DEFAULT_TEXT_BOX_WIDTH/
+  );
+  assert.match(
+    computeInsertDefaultsSource,
+    /textWrapMode:\s*payload\.textWrapMode\s*\?\?\s*DEFAULT_TEXT_WRAP_MODE/
+  );
+  assert.match(
+    editorEventsSource,
+    /width:\s*DEFAULT_TEXT_BOX_WIDTH[\s\S]*__autoWidth:\s*false[\s\S]*textWrapMode:\s*DEFAULT_TEXT_WRAP_MODE/
+  );
 });
 
 test("explicit text alignment from presets and insertion payloads is preserved", () => {

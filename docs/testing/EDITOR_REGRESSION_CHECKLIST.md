@@ -229,14 +229,15 @@ Resultado esperado:
 
 ### [ ] Multilinea y saltos de linea
 
-1. Editar un texto multilinea.
-2. Agregar y quitar saltos con `Enter`.
-3. Mover el caret con teclado.
-4. Confirmar la edicion.
+1. Editar un texto multilinea creado con la caja fija actual.
+2. Repetir con un texto legado de plantilla o borrador que no tenga `width` persistido.
+3. Escribir hasta superar el ancho visible y agregar o quitar saltos con `Enter`.
+4. Mover el caret con teclado y confirmar la edicion.
 
 Resultado esperado:
 
 - los saltos se preservan
+- tanto el texto nuevo como el legado conservan el ancho visual inicial y hacen wrap; el transformer no crece horizontalmente con cada caracter
 - el overlay sigue alineado con el texto visible
 - el commit final no salta de posicion
 

@@ -5,6 +5,8 @@ import {
 
 const DEFAULT_SHAPE_COLOR = "#111827";
 export const DEFAULT_TEXT_ALIGNMENT = "center";
+export const DEFAULT_TEXT_BOX_WIDTH = 260;
+export const DEFAULT_TEXT_WRAP_MODE = "word";
 
 export function resolveTextInsertAlignment(align) {
   return align ?? DEFAULT_TEXT_ALIGNMENT;

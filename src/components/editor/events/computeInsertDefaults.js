@@ -7,7 +7,11 @@ import {
 } from "@/domain/countdownPresets/effectiveGeometry";
 import { recordCountdownAuditSnapshot } from "@/domain/countdownAudit/runtime";
 import { applyGalleryLayoutPresetToRenderObject } from "@/domain/gallery/galleryLayoutPresets";
-import { resolveTextInsertAlignment } from "@/domain/elements/insertions";
+import {
+  DEFAULT_TEXT_BOX_WIDTH,
+  DEFAULT_TEXT_WRAP_MODE,
+  resolveTextInsertAlignment,
+} from "@/domain/elements/insertions";
 import {
   MIDNIGHT_RSVP_BUTTON_STYLE_ID,
   createRsvpButtonStylePatch,
@@ -125,9 +129,9 @@ export default function computeInsertDefaults({
       fontWeight: payload.fontWeight ?? variant.fontWeight,
       fontStyle: payload.fontStyle ?? variant.fontStyle,
       textDecoration: payload.textDecoration ?? "none",
-      width: incomingWidth ?? 260, // cambiá 260 para probar
+      width: incomingWidth ?? DEFAULT_TEXT_BOX_WIDTH,
       __autoWidth: payload.__autoWidth ?? false,
-      textWrapMode: payload.textWrapMode ?? "word",
+      textWrapMode: payload.textWrapMode ?? DEFAULT_TEXT_WRAP_MODE,
       align: resolveTextInsertAlignment(payload.align),
       ...(Number.isFinite(Number(payload.lineHeight))
         ? { lineHeight: Number(payload.lineHeight) }

@@ -426,7 +426,7 @@ Current text objects use these fields:
 | Field | Status | Notes |
 | --- | --- | --- |
 | `texto` | Required in practice | Text content. Fallback is an empty string. |
-| `width` | Optional but important | Controls wrapping width in both editor and HTML. |
+| `width` | Required for fixed text boxes; legacy-compatible on editor entry | Controls wrapping width in both editor and HTML. Generic new insertions persist a fixed width. When an older editable text lacks an effective fixed width, inline entry materializes the current authoritative live Konva width before the DOM handoff so the existing visual width is preserved and subsequent input wraps instead of expanding horizontally. |
 | `fontSize` | Optional with fallback | Default HTML fallback is `24`. |
 | `fontFamily` | Optional with fallback | Default fallback is `sans-serif`. |
 | `fontWeight` | Optional with fallback | Default fallback is `normal`. |
@@ -435,6 +435,8 @@ Current text objects use these fields:
 | `align` / `textAlign` | Optional with fallback | HTML normalizes to left/center/right behavior. New default text insertions persist `align: "center"`; insertion payloads and presets with an explicit alignment keep that value. |
 | `lineHeight` | Optional with fallback | HTML derives a safe line-height when absent. |
 | `letterSpacing` | Optional | Preserved into HTML. |
+| `__autoWidth` | Compatibility marker | Generic new and upgraded editable text boxes persist `false`. Older texts with missing or auto-width geometry are upgraded from their current live Konva width when inline editing begins; this adapter does not introduce a second geometry authority. |
+| `textWrapMode` | Optional with fallback | Fixed text boxes default to `word`; explicit `char` remains compatible. |
 | `colorTexto` / `color` / `fill` | Optional with fallback | Current save path normalizes `texto` color compatibility fields. |
 | `stroke` | Optional | Preserved into HTML with `strokeWidth`. |
 | `strokeWidth` | Optional | Text stroke width. |

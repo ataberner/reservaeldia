@@ -59,6 +59,9 @@ import {
   clampNormalizedPosition,
 } from "@/domain/editor/canvasObjectPositioning";
 import {
+  applyObjectUpdateById,
+} from "@/components/editor/canvasEditor/objectUpdateUtils";
+import {
   sanitizeMovedGroupFunctionalAssociation,
 } from "../../../../../../shared/functionalAssociations.js";
 import {
@@ -110,7 +113,10 @@ import {
   resolveStageSelectionVisualMode,
   resolvePredragOverlayStartupPolicy,
 } from "./selectionVisualModes.js";
-import { buildTextBoxWidthCommitPatch } from "./textBoxWidthResize.js";
+import {
+  buildTextBoxWidthCommitPatch,
+  resolveTextBoxCompatibilityUpgrade,
+} from "./textBoxWidthResize.js";
 import {
   createDragOverlayDriftPairingState,
   finalizeDragOverlayDriftPairingState,
@@ -9459,10 +9465,47 @@ export default function CanvasStageContent({
 
     const node = elementRefs.current[id];
     const nodeMetrics = obtenerMetricasNodoInline(node);
+    const liveNodeWidth =
+      typeof node?.width === "function"
+        ? Number(node.width())
+        : Number(nodeMetrics?.textWidth);
+    const textBoxCompatibilityUpgrade = resolveTextBoxCompatibilityUpgrade({
+      object: targetObj,
+      liveWidth: liveNodeWidth,
+    });
+    const inlineTargetObj = textBoxCompatibilityUpgrade
+      ? {
+          ...targetObj,
+          ...textBoxCompatibilityUpgrade.patch,
+        }
+      : targetObj;
+
+    if (textBoxCompatibilityUpgrade) {
+      const canonicalPose = resolveCanonicalNodePose(node, targetObj);
+      try {
+        node?.width?.(textBoxCompatibilityUpgrade.width);
+        node?.wrap?.(textBoxCompatibilityUpgrade.textWrapMode);
+        node?.offsetX?.(textBoxCompatibilityUpgrade.originOffsetX);
+        if (Number.isFinite(canonicalPose?.x)) {
+          node?.x?.(
+            canonicalPose.x + textBoxCompatibilityUpgrade.originOffsetX
+          );
+        }
+        node?.getLayer?.()?.batchDraw?.();
+      } catch {}
+
+      setObjetos((previousObjects) =>
+        applyObjectUpdateById(
+          previousObjects,
+          id,
+          textBoxCompatibilityUpgrade.patch
+        )
+      );
+    }
     const shouldKeepCenterXDuringEdit =
-      shouldPreserveTextCenterPosition(targetObj);
+      shouldPreserveTextCenterPosition(inlineTargetObj);
     const centerXLock = shouldKeepCenterXDuringEdit
-      ? obtenerCentroVisualTextoX(targetObj, node)
+      ? obtenerCentroVisualTextoX(inlineTargetObj, node)
       : null;
     const previousCurrentEditingId = getCurrentInlineEditingId();
     setInlineOverlayMountedId(null);
@@ -9515,6 +9558,8 @@ export default function CanvasStageContent({
       nextCurrentEditingId: getCurrentInlineEditingId(),
       sourceGesture,
       nodeMetrics,
+      textBoxCompatibilityUpgrade:
+        textBoxCompatibilityUpgrade?.widthSource || null,
     });
     logInlineIntent("start-inline-commit", {
       id,
@@ -9555,6 +9600,7 @@ export default function CanvasStageContent({
     obtenerCentroVisualTextoX,
     obtenerMetricasNodoInline,
     pendingInlineStartRef,
+    setObjetos,
     setInlineOverlayMountedId,
     setInlineOverlayMountSession,
     setInlineSwapAck,

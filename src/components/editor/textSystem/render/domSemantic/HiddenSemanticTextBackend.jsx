@@ -500,15 +500,16 @@ function HiddenSemanticTextBackend({
   const lineHeightPx = Math.max(1, fontSizePx * Number(nodeProps.lineHeight || 1.2));
   const letterSpacingPx = Number(nodeProps.letterSpacing || 0) * backendMetricScaleX;
   const normalizedValueForMeasure = sessionValue.replace(/[ \t]+$/gm, "");
-  const isSingleLine = !normalizedValueForMeasure.includes("\n");
+  const hasSingleSourceLine = !normalizedValueForMeasure.includes("\n");
   const domTextFlow = useMemo(
     () =>
       resolveInlineDomTextFlow({
-        isSingleLine,
+        isSingleLine: hasSingleSourceLine,
         konvaWrapMode: nodeProps.wrapMode,
       }),
-    [isSingleLine, nodeProps.wrapMode]
+    [hasSingleSourceLine, nodeProps.wrapMode]
   );
+  const isSingleLine = domTextFlow.isSingleVisualLine;
 
   const domPerceptualScaleModel = useMemo(
     () =>

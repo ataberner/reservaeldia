@@ -432,7 +432,7 @@ Current text objects use these fields:
 | `fontWeight` | Optional with fallback | Default fallback is `normal`. |
 | `fontStyle` | Optional with fallback | Default fallback is `normal`. |
 | `textDecoration` | Optional with fallback | Default fallback is `none`. |
-| `align` / `textAlign` | Optional with fallback | HTML normalizes to left/center/right behavior. |
+| `align` / `textAlign` | Optional with fallback | HTML normalizes to left/center/right behavior. New default text insertions persist `align: "center"`; insertion payloads and presets with an explicit alignment keep that value. |
 | `lineHeight` | Optional with fallback | HTML derives a safe line-height when absent. |
 | `letterSpacing` | Optional | Preserved into HTML. |
 | `colorTexto` / `color` / `fill` | Optional with fallback | Current save path normalizes `texto` color compatibility fields. |

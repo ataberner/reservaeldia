@@ -1,6 +1,7 @@
 // src/components/editor/events/useEditorEvents.js
 import { useEffect } from "react";
 import computeInsertDefaults from "./computeInsertDefaults";
+import { resolveTextInsertAlignment } from "@/domain/elements/insertions";
 import {
   createDefaultRsvpConfig,
   isRsvpConfigV2,
@@ -589,7 +590,7 @@ export default function useEditorEvents({
         fontWeight: "normal",
         fontStyle: "normal",
         textDecoration: "none",
-        align: "left",
+        align: resolveTextInsertAlignment(),
         rotation: 0,
         scaleX: 1,
         scaleY: 1,

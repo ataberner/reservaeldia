@@ -263,7 +263,7 @@ test("transformer visual mode keeps preserved group selections on the passive in
   assert.equal(mode.shouldUseGenericTransformer, false);
 });
 
-test("transformer visual mode resolves idle non-line selection to the generic transformer", () => {
+test("transformer visual mode adds the lateral width anchor for one selected text", () => {
   const mode = resolveTransformerVisualMode({
     selectedIds: ["obj-1"],
     selectedObjects: [{ id: "obj-1", tipo: "texto" }],
@@ -275,9 +275,34 @@ test("transformer visual mode resolves idle non-line selection to the generic tr
 
   assert.equal(mode.renderMode, "transformer");
   assert.equal(mode.shouldUseGenericTransformer, true);
-  assert.deepEqual(mode.enabledAnchors, ["bottom-right"]);
+  assert.deepEqual(mode.enabledAnchors, ["bottom-right", "middle-right"]);
   assert.equal(mode.rotateEnabled, true);
   assert.equal(mode.borderEnabled, true);
+});
+
+test("transformer visual mode keeps non-text and multi-selection anchors unchanged", () => {
+  const imageMode = resolveTransformerVisualMode({
+    selectedIds: ["image-1"],
+    selectedObjects: [{ id: "image-1", tipo: "imagen" }],
+    interactionLocked: false,
+    effectiveDragging: false,
+    isGallerySelection: false,
+    shouldUseLightweightRotateOverlay: false,
+  });
+  const multiTextMode = resolveTransformerVisualMode({
+    selectedIds: ["text-1", "text-2"],
+    selectedObjects: [
+      { id: "text-1", tipo: "texto" },
+      { id: "text-2", tipo: "texto" },
+    ],
+    interactionLocked: false,
+    effectiveDragging: false,
+    isGallerySelection: false,
+    shouldUseLightweightRotateOverlay: false,
+  });
+
+  assert.deepEqual(imageMode.enabledAnchors, ["bottom-right"]);
+  assert.deepEqual(multiTextMode.enabledAnchors, ["bottom-right"]);
 });
 
 test("transformer visual mode suppresses rendering during deferred drag handoff", () => {

@@ -137,6 +137,19 @@ Resultado esperado:
 - el objeto puede volver a seleccionarse sin bloqueo temporal
 - no reaparece una seleccion vieja
 
+### [ ] Alineacion inicial de texto
+
+1. Insertar un titulo, subtitulo o parrafo mediante las acciones genericas de Texto.
+2. Confirmar la seleccion y ampliar su caja desde la barra vertical lateral derecha del transformer.
+3. Insertar tambien un preset que declare explicitamente alineacion izquierda o derecha.
+
+Resultado esperado:
+
+- el texto generico nuevo nace centrado dentro de su transformer y conserva esa alineacion al cambiar el ancho de la caja
+- el control lateral de ancho se representa como una barra vertical, no como un circulo
+- el resize lateral modifica solo el ancho de la caja, no el tamano del texto
+- la alineacion explicita de un preset no es reemplazada por el default centrado
+
 ### [ ] Scroll tactil vs marquee
 
 1. En mobile o emulacion tactil, hacer scroll vertical sobre el canvas sin intentar seleccionar.

@@ -8,6 +8,9 @@ import {
 import {
   resolveInlineStageViewportMetrics,
 } from "@/components/editor/overlays/inlineGeometry";
+import {
+  isInlineDomSoftWrapEnabled,
+} from "@/components/editor/overlays/inlineEditor/inlineEditorWrapParity";
 import projectSemanticRectToStage from "@/components/editor/textSystem/adapters/konvaDom/projectSemanticRectToStage";
 import { measureTextWidthCanvas } from "@/components/editor/textSystem/metricsLayout/services/textMeasureService";
 import {
@@ -101,7 +104,10 @@ function resolveSingleLineMetricCaretFallbackRect(
   }
 
   const rawText = String(editorEl.innerText || "");
-  if (rawText.includes("\n")) return null;
+  const computedStyle = window.getComputedStyle?.(editorEl) || null;
+  if (rawText.includes("\n") || isInlineDomSoftWrapEnabled(computedStyle)) {
+    return null;
+  }
 
   const editorRect = editorEl.getBoundingClientRect?.() || null;
   if (!editorRect) return null;
@@ -118,7 +124,6 @@ function resolveSingleLineMetricCaretFallbackRect(
     );
   if (!Number.isFinite(globalOffset)) return null;
 
-  const computedStyle = window.getComputedStyle?.(editorEl) || null;
   const fontSize = parseCssPixelValue(computedStyle?.fontSize, null);
   const letterSpacing = parseCssPixelValue(computedStyle?.letterSpacing, 0) || 0;
   if (!Number.isFinite(fontSize) || fontSize <= 0) return null;

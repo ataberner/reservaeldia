@@ -1,3 +1,5 @@
+import { TEXT_BOX_WIDTH_RESIZE_ANCHOR } from "./textBoxWidthResize.js";
+
 function normalizeSelectionIds(value) {
   if (!Array.isArray(value)) return [];
 
@@ -26,6 +28,10 @@ function isPreservedGroupObject(obj) {
 
 const NO_ANCHORS = Object.freeze([]);
 const BOTTOM_RIGHT_ANCHOR = Object.freeze(["bottom-right"]);
+const TEXT_RESIZE_ANCHORS = Object.freeze([
+  "bottom-right",
+  TEXT_BOX_WIDTH_RESIZE_ANCHOR,
+]);
 
 export function hasDragOverlayVisualOwnership(input = {}) {
   const selectedIds = normalizeSelectionIds(input.selectedIds);
@@ -186,6 +192,11 @@ export function resolveTransformerVisualMode(input = {}) {
     input.hasLineSelection === true || selectedObjects.some(isLineObject);
   const hasPreservedGroupSelection = selectedObjects.some(isPreservedGroupObject);
   const transformableObjects = selectedObjects.filter((obj) => !isLineObject(obj));
+  const hasSingleTextSelection = Boolean(
+    selectedIds.length === 1 &&
+      selectedObjects.length === 1 &&
+      selectedObjects[0]?.tipo === "texto"
+  );
   const shouldUseGenericTransformer = Boolean(
     selectedIds.length > 0 &&
       !hasPreservedGroupSelection &&
@@ -239,7 +250,9 @@ export function resolveTransformerVisualMode(input = {}) {
     (input.effectiveDragging === true && input.isResizeGestureActive !== true) ||
     input.shouldUseLightweightRotateOverlay === true
       ? NO_ANCHORS
-      : BOTTOM_RIGHT_ANCHOR;
+      : hasSingleTextSelection
+        ? TEXT_RESIZE_ANCHORS
+        : BOTTOM_RIGHT_ANCHOR;
 
   const rotateEnabled = Boolean(
     !shouldSuppressTransformerVisualsForDragOverlay &&

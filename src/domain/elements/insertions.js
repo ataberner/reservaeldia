@@ -4,6 +4,11 @@ import {
 } from "../../../shared/iconRenderableContract.js";
 
 const DEFAULT_SHAPE_COLOR = "#111827";
+export const DEFAULT_TEXT_ALIGNMENT = "center";
+
+export function resolveTextInsertAlignment(align) {
+  return align ?? DEFAULT_TEXT_ALIGNMENT;
+}
 
 const SHAPE_EXTRA_PROPS = {
   line: { points: [0, 0, 120, 0], strokeWidth: 3 },

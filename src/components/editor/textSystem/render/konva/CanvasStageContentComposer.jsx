@@ -110,6 +110,7 @@ import {
   resolveStageSelectionVisualMode,
   resolvePredragOverlayStartupPolicy,
 } from "./selectionVisualModes.js";
+import { buildTextBoxWidthCommitPatch } from "./textBoxWidthResize.js";
 import {
   createDragOverlayDriftPairingState,
   finalizeDragOverlayDriftPairingState,
@@ -12040,7 +12041,10 @@ export default function CanvasStageContent({
                                 // Final: actualizaciÃ³n completa
                                 window._resizeData = { isResizing: false };
 
+                                const isTextBoxWidthResizeCommit =
+                                  newAttrs.textBoxWidthResize === true;
                                 const { isPreview, isFinal, ...cleanAttrs } = newAttrs;
+                                delete cleanAttrs.textBoxWidthResize;
 
                                 // ?? CONVERTIR coordenadas absolutas a relativas ANTES de guardar
                                 const objOriginal = objetos[objIndex];
@@ -12052,7 +12056,32 @@ export default function CanvasStageContent({
 
                                 // ? COUNTDOWN: conservar escala final del drag (sin reconversiÃ³n a chipWidth)
                                 // para que el tamaÃ±o final coincida exactamente con lo soltado.
-                                if (objOriginal.tipo === "texto" && Number.isFinite(cleanAttrs.fontSize)) {
+                                if (
+                                  objOriginal.tipo === "texto" &&
+                                  isTextBoxWidthResizeCommit &&
+                                  Number.isFinite(cleanAttrs.width) &&
+                                  cleanAttrs.width > 0
+                                ) {
+                                  const textBoxWidthPatch = buildTextBoxWidthCommitPatch({
+                                    object: objOriginal,
+                                    transformAttrs: cleanAttrs,
+                                  });
+                                  finalAttrs = {
+                                    ...finalAttrs,
+                                    ...(textBoxWidthPatch || {}),
+                                    x: Number.isFinite(textBoxWidthPatch?.x)
+                                      ? textBoxWidthPatch.x
+                                      : (Number.isFinite(objOriginal.x) ? objOriginal.x : 0),
+                                  };
+                                  textResizeDebug("transform-final:text-box-width", {
+                                    id: objOriginal?.id ?? null,
+                                    width: finalAttrs.width,
+                                    fontSize: finalAttrs.fontSize,
+                                    x: finalAttrs.x,
+                                    y: finalAttrs.y,
+                                    textWrapMode: finalAttrs.textWrapMode,
+                                  });
+                                } else if (objOriginal.tipo === "texto" && Number.isFinite(cleanAttrs.fontSize)) {
                                   const requestedFontSize = Math.max(6, Number(cleanAttrs.fontSize) || 6);
                                   const originalFontSize = Number.isFinite(objOriginal.fontSize)
                                     ? objOriginal.fontSize

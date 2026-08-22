@@ -74,6 +74,12 @@ import {
   resolveTransformerVisualMode,
 } from "./selectionVisualModes.js";
 import {
+  TEXT_BOX_WIDTH_RESIZE_ANCHOR,
+  isTextBoxWidthResizeGesture,
+  resolveTextBoxWidthAnchorVisual,
+  resolveTextBoxWidthResize,
+} from "./textBoxWidthResize.js";
+import {
   applyGalleryLayoutPresetToRenderObject,
 } from "@/domain/gallery/galleryLayoutPresets";
 
@@ -379,6 +385,57 @@ function areSelectionIdsEqual(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right)) return false;
   if (left.length !== right.length) return false;
   return left.every((id, index) => id === right[index]);
+}
+
+function applyTextBoxWidthResizeToNode(node, object) {
+  if (!node || object?.tipo !== "texto") return null;
+
+  const baseWidth =
+    typeof node.width === "function"
+      ? Number(node.width())
+      : Number(node?.attrs?.width);
+  const scaleX =
+    typeof node.scaleX === "function"
+      ? Number(node.scaleX())
+      : Number(node?.attrs?.scaleX ?? 1);
+  const resize = resolveTextBoxWidthResize({
+    baseWidth,
+    scaleX,
+    fontSize: object?.fontSize,
+    align:
+      object?.align ??
+      object?.textAlign ??
+      object?.alignment ??
+      object?.alineacion,
+    textWrapMode: object?.textWrapMode,
+  });
+  if (!resize) return null;
+
+  try {
+    node.width?.(resize.width);
+    node.scaleX?.(1);
+    node.scaleY?.(1);
+    node.wrap?.(resize.textWrapMode);
+    node.offsetX?.(resize.originOffsetX);
+  } catch {
+    return null;
+  }
+
+  const pose = resolveCanonicalNodePose(node, object);
+  node.getLayer?.()?.batchDraw?.();
+
+  return {
+    x: pose.x,
+    y: pose.y,
+    rotation: pose.rotation,
+    width: resize.width,
+    fontSize: resize.fontSize,
+    __autoWidth: resize.__autoWidth,
+    textWrapMode: resize.textWrapMode,
+    scaleX: resize.scaleX,
+    scaleY: resize.scaleY,
+    textBoxWidthResize: true,
+  };
 }
 
 
@@ -2204,8 +2261,11 @@ export default function SelectionBounds({
   };
 
   const clearResizeAnchorPressFeedback = useCallback(() => {
+    try {
+      transformerRef.current?.centeredScaling?.(lockAspectText);
+    } catch {}
     setPressedResizeAnchorName((current) => (current ? null : current));
-  }, []);
+  }, [lockAspectText]);
 
   const resetTransformerGestureUiState = useCallback(({
     syncOverlay = true,
@@ -2587,6 +2647,11 @@ export default function SelectionBounds({
       resizeGestureActive: Boolean(isResizeGestureActive),
     });
     if (!anchorName) return;
+    try {
+      transformerRef.current?.centeredScaling?.(
+        lockAspectText && anchorName !== TEXT_BOX_WIDTH_RESIZE_ANCHOR
+      );
+    } catch {}
     setIsResizeGestureActive(true);
     setPressedResizeAnchorName((current) =>
       current === anchorName ? current : anchorName
@@ -4285,9 +4350,25 @@ export default function SelectionBounds({
         anchor.strokeWidth(anchorStrokeWidth);
         anchor.opacity(isResizeHintAnchor || isPressedResizeAnchor ? 1 : 0.98);
         anchor.scale({ x: anchorScale, y: anchorScale });
+        if (
+          lockAspectText &&
+          anchorName === TEXT_BOX_WIDTH_RESIZE_ANCHOR
+        ) {
+          const widthAnchorVisual = resolveTextBoxWidthAnchorVisual({
+            isMobile,
+            padding: transformerPaddingForRender,
+          });
+          anchor.width(widthAnchorVisual.width);
+          anchor.height(widthAnchorVisual.height);
+          anchor.offsetX(widthAnchorVisual.offsetX);
+          anchor.offsetY(widthAnchorVisual.offsetY);
+          anchor.cornerRadius(widthAnchorVisual.cornerRadius);
+        }
       }}
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
-      centeredScaling={selectedElements.length === 1 && esTexto}
+      centeredScaling={
+        lockAspectText && pressedResizeAnchorName !== TEXT_BOX_WIDTH_RESIZE_ANCHOR
+      }
       flipEnabled={false}
       resizeEnabled={!interactionLocked && (!effectiveDragging || isResizeGestureActive)}
       rotationSnaps={transformerRotationSnaps}
@@ -4297,6 +4378,22 @@ export default function SelectionBounds({
       boundBoxFunc={(oldBox, newBox) => {
         const minSize = esTexto ? 20 : 10;
         const maxSize = 800;
+        const activeAnchor =
+          typeof transformerRef.current?.getActiveAnchor === "function"
+            ? transformerRef.current.getActiveAnchor()
+            : null;
+        if (
+          isTextBoxWidthResizeGesture({
+            activeAnchor,
+            selectedCount: selectedElements.length,
+            object: primerElemento,
+          })
+        ) {
+          return resolveStageBoundBox(oldBox, {
+            ...newBox,
+            width: Math.min(Math.max(Math.abs(newBox.width), minSize), maxSize),
+          });
+        }
         if (esGaleria) {
           const currentRenderGallery =
             applyGalleryLayoutPresetToRenderObject(primerElemento) || primerElemento;
@@ -4619,6 +4716,11 @@ export default function SelectionBounds({
             clearRotatePreviewState: true,
           });
         }
+        try {
+          tr?.centeredScaling?.(
+            lockAspectText && activeAnchor !== TEXT_BOX_WIDTH_RESIZE_ANCHOR
+          );
+        } catch {}
         setIsResizeGestureActive(true);
         if (activeAnchor) {
           setPressedResizeAnchorName((current) =>
@@ -4765,8 +4867,21 @@ export default function SelectionBounds({
             rotation: pose.rotation,
             isPreview: true,
           };
+          const textBoxWidthResizeData =
+            isTextBoxWidthResizeGesture({
+              activeAnchor: transformGestureRef.current?.activeAnchor,
+              selectedCount: selectedElements.length,
+              object: primerElemento,
+            })
+              ? applyTextBoxWidthResizeToNode(node, primerElemento)
+              : null;
 
-          if (esTexto) {
+          if (textBoxWidthResizeData) {
+            Object.assign(transformData, textBoxWidthResizeData, {
+              isPreview: true,
+            });
+            transformerRef.current?.forceUpdate?.();
+          } else if (esTexto) {
             const originalFontSize = primerElemento.fontSize || 24;
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;
@@ -5285,8 +5400,22 @@ export default function SelectionBounds({
             isFinal: true,
           };
           let textPreviewEndSnapshot = null;
+          const textBoxWidthResizeData =
+            isTextBoxWidthResizeGesture({
+              activeAnchor: transformGestureRef.current?.activeAnchor,
+              selectedCount: selectedElements.length,
+              object: primerElemento,
+            })
+              ? applyTextBoxWidthResizeToNode(node, primerElemento)
+              : null;
 
-          if (esTexto) {
+          if (textBoxWidthResizeData) {
+            Object.assign(finalData, textBoxWidthResizeData, {
+              isFinal: true,
+            });
+            textTransformAnchorRef.current = null;
+            transformerRef.current?.forceUpdate?.();
+          } else if (esTexto) {
             const originalFontSize = primerElemento.fontSize || 24;
             const scaleX = typeof node.scaleX === "function" ? node.scaleX() : 1;
             const scaleY = typeof node.scaleY === "function" ? node.scaleY() : 1;

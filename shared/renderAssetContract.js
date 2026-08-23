@@ -12,5 +12,6 @@ export const normalizeSectionDecorationRecord = runtime.normalizeSectionDecorati
 export const normalizeSectionEdgeDecorationRecord = runtime.normalizeSectionEdgeDecorationRecord;
 export const normalizeRenderAssetSection = runtime.normalizeRenderAssetSection;
 export const normalizeRenderAssetState = runtime.normalizeRenderAssetState;
+export const collectDuplicateRenderObjectIds = runtime.collectDuplicateRenderObjectIds;
 
 export default runtime;

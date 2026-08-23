@@ -15,7 +15,10 @@ import {
   type TemplateAssetCopyCache,
 } from "./storageAssets";
 import { normalizeCountdownGeometryDeep } from "../utils/normalizeCountdownGeometry";
-const { normalizeRenderAssetState } = require("../../shared/renderAssetContract.cjs");
+const {
+  collectDuplicateRenderObjectIds,
+  normalizeRenderAssetState,
+} = require("../../shared/renderAssetContract.cjs");
 
 const OPTIONS = {
   region: "us-central1" as const,
@@ -82,6 +85,18 @@ function asObject(value: unknown): Record<string, unknown> {
 
 function normalizeText(value: unknown): string {
   return String(value || "").trim();
+}
+
+function assertTemplateRenderObjectIdsUnique(payload: Record<string, unknown>) {
+  const duplicateIds = Array.from(
+    collectDuplicateRenderObjectIds(asObject(payload).objetos)
+  ) as string[];
+  if (duplicateIds.length === 0) return;
+
+  throw new HttpsError(
+    "failed-precondition",
+    `El borrador contiene ids de objeto duplicados y no puede convertirse en plantilla: ${duplicateIds.join(", ")}.`
+  );
 }
 
 function normalizeLower(value: unknown): string {
@@ -1449,6 +1464,8 @@ export const adminConvertDraftToTemplateV1 = onCall(
             editor: "konva",
           });
 
+    assertTemplateRenderObjectIdsUnique(currentPayload);
+
     const { labels: canonicalTags } = await ensureTagCatalogEntries(
       currentPayload.tags,
       uid
@@ -1692,6 +1709,8 @@ export const adminCreateTemplateFromDraftV1 = onCall(
             portada: normalizeText(draftData.portada) || null,
             editor: "konva",
           });
+
+    assertTemplateRenderObjectIdsUnique(currentPayload);
 
     const { labels: canonicalTags } = await ensureTagCatalogEntries(
       currentPayload.tags,

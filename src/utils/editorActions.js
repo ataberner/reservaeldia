@@ -14,6 +14,7 @@ import {
   canInsertIntoSection,
   filterEditableObjectIds,
 } from "@/domain/editor/protectedSections";
+import { cloneRenderObjectWithFreshIdentity } from "@/domain/editor/renderObjectTree";
 
 export function ejecutarDeshacer({
   historial,
@@ -105,11 +106,11 @@ export function duplicarElemento({ objetos, secciones, elementosSeleccionados, s
 
   if (duplicables.length === 0) return;
 
-  const duplicados = duplicables.map((original, i) => {
+  const duplicados = duplicables.map((original) => {
     const cloneSource = stripFunctionalAssociationFromClonedObject(original);
+    const clonedObject = cloneRenderObjectWithFreshIdentity(cloneSource);
     return {
-      ...cloneSource,
-      id: `obj-${Date.now()}-${i}`,
+      ...clonedObject,
       x: original.x + 20,
       y: original.y + 20,
     };
@@ -152,7 +153,7 @@ export function pegarElemento({ objetos, secciones, setObjetos, setElementosSele
   let pastedCountdown = false;
   const nuevos = [];
 
-  copiados.forEach((c, i) => {
+  copiados.forEach((c) => {
     if (!canInsertIntoSection(c?.seccionId, secciones)) {
       return;
     }
@@ -167,9 +168,9 @@ export function pegarElemento({ objetos, secciones, setObjetos, setElementosSele
     }
 
     const cloneSource = stripFunctionalAssociationFromClonedObject(c);
+    const clonedObject = cloneRenderObjectWithFreshIdentity(cloneSource);
     nuevos.push({
-      ...cloneSource,
-      id: `obj-${Date.now()}-${i}`,
+      ...clonedObject,
       x: (c.x || 100) + offset,
       y: (c.y || 100) + offset,
     });

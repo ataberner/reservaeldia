@@ -38,6 +38,9 @@ families), with these group-local differences:
 - `yNorm` belongs to the group in `altoModo: "pantalla"` sections, not the child.
 - Nested groups are not supported in the v1 contract.
 - `functionalAssociation` is supported only on the group root. Children must not carry their own functional association.
+- Group-root and child `id` values are globally unique within the render-object tree. Duplicating or pasting a group must allocate a fresh identity for the wrapper and every child; ungrouping must never expose child IDs that alias another root or grouped child.
+- Draft-to-template creation validates that uniqueness again at the client payload boundary and at the backend persistence boundary. A read-only administrative copy must reject ambiguous identities; it must not silently re-key them because existing selection and dynamic-field targets cannot be reassigned safely without authoring context.
+- Dynamic-field `applyTargets` remain attached to the original object identities when a group is cloned. A cloned child is unlinked until authoring explicitly assigns its fresh ID to a field.
 
 ## 3. Render Invariants
 

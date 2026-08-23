@@ -229,6 +229,39 @@ function normalizeRenderAssetState(value) {
   };
 }
 
+function collectDuplicateRenderObjectIds(value, options = {}) {
+  const safeValue = asObject(value);
+  const objetos = Array.isArray(value)
+    ? value
+    : Array.isArray(safeValue.objetos)
+      ? safeValue.objetos
+      : [];
+  const includeGroups = options.includeGroups !== false;
+  const seen = new Set();
+  const duplicateIds = new Set();
+
+  const visit = (object) => {
+    const safeObject = asObject(object);
+    if (Object.keys(safeObject).length === 0) return;
+
+    const isGroup =
+      normalizeLowerText(safeObject.tipo) === "grupo" &&
+      Array.isArray(safeObject.children);
+    const id = normalizeText(safeObject.id);
+    if ((includeGroups || !isGroup) && id) {
+      if (seen.has(id)) {
+        duplicateIds.add(id);
+      } else {
+        seen.add(id);
+      }
+    }
+    if (isGroup) safeObject.children.forEach(visit);
+  };
+
+  objetos.forEach(visit);
+  return duplicateIds;
+}
+
 module.exports = {
   isRasterIconObject,
   resolveObjectPrimaryAssetUrl,
@@ -242,4 +275,5 @@ module.exports = {
   normalizeSectionEdgeDecorationRecord,
   normalizeRenderAssetSection,
   normalizeRenderAssetState,
+  collectDuplicateRenderObjectIds,
 };

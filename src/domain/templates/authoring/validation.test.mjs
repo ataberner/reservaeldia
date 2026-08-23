@@ -61,3 +61,19 @@ test("authoring schema repair keeps grouped-child targets", () => {
   assert.equal(repaired.changed, false);
   assert.equal(repaired.fieldsSchema[0].applyTargets[0].id, "grouped-primary-name");
 });
+
+test("authoring validation rejects duplicate identities before they can alias targets", () => {
+  const status = validateAuthoringState({
+    fieldsSchema: [],
+    defaults: {},
+    objetos: [
+      { id: "shared-text", tipo: "texto", texto: "Ceremonia" },
+      { id: "shared-text", tipo: "texto", texto: "Fiesta" },
+    ],
+  });
+
+  assert.equal(status.isReady, false);
+  assert.deepEqual(status.issues, [
+    "Elemento 'shared-text': id duplicado en objetos actuales.",
+  ]);
+});

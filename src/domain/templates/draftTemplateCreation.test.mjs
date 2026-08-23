@@ -71,3 +71,28 @@ test("stored authoring remains the fallback when read-only runtime state is abse
   assert.deepEqual(result.authoringStatusToValidate, storedAuthoring.status);
   assert.deepEqual(result.payload.authoringState, storedAuthoring);
 });
+
+test("template creation rejects duplicate identities from a read-only live snapshot", () => {
+  assert.throws(
+    () =>
+      composeDraftTemplateCreationPayload({
+        draftData: {
+          objetos: [{ id: "stored-object", tipo: "texto" }],
+          secciones: [],
+        },
+        liveEditorSnapshot: {
+          objetos: [
+            {
+              id: "group-1",
+              tipo: "grupo",
+              children: [{ id: "duplicated-text", tipo: "texto" }],
+            },
+            { id: "duplicated-text", tipo: "texto" },
+          ],
+          secciones: [],
+        },
+        buildPayload: () => ({ nombre: "No debe crearse" }),
+      }),
+    /borrador contiene ids de objeto duplicados \(duplicated-text\)/
+  );
+});

@@ -1,3 +1,5 @@
+import { collectDuplicateRenderObjectIds } from "../../../shared/renderAssetContract.js";
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
@@ -38,6 +40,14 @@ export function composeDraftTemplateCreationPayload({
         gifts: liveSnapshot.gifts,
       }
     : sourceDraft;
+  const duplicateObjectIds = Array.from(
+    collectDuplicateRenderObjectIds(preparedDraft.objetos)
+  );
+  if (duplicateObjectIds.length > 0) {
+    throw new Error(
+      `No se puede crear la plantilla: el borrador contiene ids de objeto duplicados (${duplicateObjectIds.join(", ")}).`
+    );
+  }
   const stagedAuthoringSnapshot = asObject(
     preparedDraft.templateAuthoringDraft
   );

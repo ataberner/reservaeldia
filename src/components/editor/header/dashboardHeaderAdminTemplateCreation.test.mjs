@@ -70,6 +70,7 @@ test("the backend copy authority permits superadmin ownership override and never
   );
 
   assert.match(block, /draftOwnerUid !== uid && role !== "superadmin"/);
+  assert.match(block, /assertTemplateRenderObjectIdsUnique\(currentPayload\)/);
   assert.match(block, /writeTemplateAndCatalog\(\{/);
   assert.doesNotMatch(block, /draftRef\.delete\(/);
   assert.match(
@@ -83,5 +84,25 @@ test("the backend copy authority permits superadmin ownership override and never
       "\n}"
     ),
     /crearPlantilla|convertDraftToTemplateCallable/
+  );
+});
+
+test("both draft-to-template backend paths reject duplicate render identities", () => {
+  const convertBlock = readFunctionBlock(
+    editorialBackendSource,
+    "export const adminConvertDraftToTemplateV1",
+    "export const adminOpenTemplateWorkspaceV1"
+  );
+  const copyBlock = readFunctionBlock(
+    editorialBackendSource,
+    "export const adminCreateTemplateFromDraftV1",
+    "return {\n      item: buildTemplateResponse"
+  );
+
+  assert.match(convertBlock, /assertTemplateRenderObjectIdsUnique\(currentPayload\)/);
+  assert.match(copyBlock, /assertTemplateRenderObjectIdsUnique\(currentPayload\)/);
+  assert.match(
+    editorialBackendSource,
+    /function assertTemplateRenderObjectIdsUnique[\s\S]*?collectDuplicateRenderObjectIds/
   );
 });

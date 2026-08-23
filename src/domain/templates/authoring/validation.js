@@ -8,7 +8,10 @@ import { isEventPersonNameField } from "../../eventDetails/personNames.js";
 import { isEventLocationField } from "../../eventDetails/location.js";
 import { isEventTimeField } from "../../eventDetails/time.js";
 import { isEventDateField } from "../../eventDetails/date.js";
-import { collectRenderObjectIds } from "../../editor/renderObjectTree.js";
+import {
+  collectDuplicateRenderObjectIds,
+  collectRenderObjectIds,
+} from "../../editor/renderObjectTree.js";
 
 const ALLOWED_FIELD_TYPES = new Set([
   "text",
@@ -60,6 +63,10 @@ export function validateAuthoringState({
   const seenFieldKeys = new Set();
   const elementFieldMap = new Map();
   let targetCount = 0;
+
+  collectDuplicateRenderObjectIds(objetos).forEach((objectId) => {
+    issues.push(`Elemento '${objectId}': id duplicado en objetos actuales.`);
+  });
 
   fields.forEach((field, index) => {
     const safeField = asObject(field);

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  collectDuplicateRenderObjectIds,
   normalizeRenderAssetObject,
   normalizeRenderAssetState,
   normalizeRenderAssetSection,
@@ -28,6 +29,23 @@ test("normalizes image objects with legacy url into canonical src", () => {
   assert.equal(resolveObjectPrimaryAssetUrl(normalized), "https://cdn.example.com/photo.jpg");
   assert.equal(normalized.src, "https://cdn.example.com/photo.jpg");
   assert.equal(normalized.url, "https://cdn.example.com/photo.jpg");
+});
+
+test("detects duplicate render identities across roots and grouped children", () => {
+  const duplicateIds = collectDuplicateRenderObjectIds([
+    {
+      id: "group-a",
+      tipo: "grupo",
+      children: [
+        { id: "child-shared", tipo: "texto" },
+        { id: "child-unique", tipo: "texto" },
+      ],
+    },
+    { id: "child-shared", tipo: "texto" },
+    { id: "group-a", tipo: "imagen" },
+  ]);
+
+  assert.deepEqual(Array.from(duplicateIds).sort(), ["child-shared", "group-a"]);
 });
 
 test("normalizes raster icon objects with legacy url into canonical src", () => {

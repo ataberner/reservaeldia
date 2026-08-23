@@ -1,3 +1,7 @@
+import {
+  collectDuplicateRenderObjectIds as collectDuplicateRenderObjectIdsFromContract,
+} from "../../../shared/renderAssetContract.js";
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
@@ -8,6 +12,18 @@ function isObjectLike(value) {
 
 function toObjectArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+let cloneIdentitySequence = 0;
+
+function createDefaultCloneIdentity(object) {
+  cloneIdentitySequence = (cloneIdentitySequence + 1) % Number.MAX_SAFE_INTEGER;
+  const typeToken = normalizeText(object?.tipo)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "obj";
+  const randomToken = Math.random().toString(36).slice(2, 10);
+  return `${typeToken}-${Date.now().toString(36)}-${cloneIdentitySequence.toString(36)}-${randomToken}`;
 }
 
 export function isGroupRenderObject(object) {
@@ -72,6 +88,41 @@ export function collectRenderObjectIds(objetos, options = {}) {
     options
   );
   return ids;
+}
+
+export function collectDuplicateRenderObjectIds(objetos, options = {}) {
+  return collectDuplicateRenderObjectIdsFromContract(objetos, options);
+}
+
+export function cloneRenderObjectWithFreshIdentity(object, options = {}) {
+  if (!isObjectLike(object)) return object;
+
+  const createIdentity =
+    typeof options.createIdentity === "function"
+      ? options.createIdentity
+      : createDefaultCloneIdentity;
+  const cloneObject = (current, context) => {
+    if (!isObjectLike(current)) return current;
+
+    const cloned = {
+      ...current,
+      id: normalizeText(createIdentity(current, context)) || createDefaultCloneIdentity(current),
+    };
+    if (!isGroupRenderObject(current)) return cloned;
+
+    cloned.children = current.children.map((child, childIndex) =>
+      cloneObject(child, {
+        parentGroupId: normalizeText(cloned.id) || null,
+        childIndex,
+      })
+    );
+    return cloned;
+  };
+
+  return cloneObject(object, {
+    parentGroupId: null,
+    childIndex: null,
+  });
 }
 
 export function updateRenderObjectById(objetos, id, updater) {

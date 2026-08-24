@@ -4,7 +4,9 @@ const admin = require("firebase-admin");
 const path = require("path");
 const { pathToFileURL } = require("url");
 
-const TEMPLATE_ID = "eterno-fotografica-natural-1785377814714-template-1787237663252";
+const DEFAULT_TEMPLATE_ID = "eterno-fotografica-natural-1785377814714-template-1787237663252";
+const ACTIVE_TEMPLATE_ID = "eterno-fotografica-natural-1785377814714-template-1787252092900";
+const ALLOWED_TEMPLATE_IDS = new Set([DEFAULT_TEMPLATE_ID, ACTIVE_TEMPLATE_ID]);
 const TEMPLATE_NAME = "Magnolia · Botánica elegante";
 const DETAILS_SECTION_ID = "seccion-1775407672285";
 
@@ -43,6 +45,15 @@ const OBJECT_PAIRS = [
 
 function normalizeText(value) {
   return String(value || "").trim();
+}
+
+function resolveTemplateId(argv = process.argv) {
+  const argument = argv.find((entry) => String(entry).startsWith("--template-id="));
+  const templateId = normalizeText(argument ? argument.slice("--template-id=".length) : "") || DEFAULT_TEMPLATE_ID;
+  if (!ALLOWED_TEMPLATE_IDS.has(templateId)) {
+    throw new Error(`El templateId '${templateId}' no pertenece a los documentos Magnolia auditados.`);
+  }
+  return templateId;
 }
 
 function asObject(value) {
@@ -190,6 +201,7 @@ function buildMagnoliaRepairPlan(
     buildTemplateAuthoringTargetPatches,
     updateRenderObjectById,
     collectDuplicateRenderObjectIds,
+    templateId = DEFAULT_TEMPLATE_ID,
   } = {}
 ) {
   if (
@@ -268,7 +280,7 @@ function buildMagnoliaRepairPlan(
     fieldsSchema,
     templateAuthoringDraft,
     summary: {
-      templateId: TEMPLATE_ID,
+      templateId,
       repairedIdentityPairs: OBJECT_PAIRS.length,
       linkedFieldKeys,
       duplicateIdsAfter: duplicateIds,
@@ -315,10 +327,14 @@ async function initAdmin() {
 
 async function run() {
   const apply = process.argv.includes("--apply");
+  const templateId = resolveTemplateId();
   await initAdmin();
-  const canonicalOwners = await loadCanonicalOwners();
+  const canonicalOwners = {
+    ...(await loadCanonicalOwners()),
+    templateId,
+  };
   const db = admin.firestore();
-  const ref = db.collection("plantillas").doc(TEMPLATE_ID);
+  const ref = db.collection("plantillas").doc(templateId);
 
   if (!apply) {
     const snapshot = await ref.get();

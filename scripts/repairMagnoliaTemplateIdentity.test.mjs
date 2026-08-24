@@ -158,3 +158,13 @@ test("Magnolia repair is idempotent after the first plan is applied", () => {
 
   assert.equal(second.changed, false);
 });
+
+test("Magnolia repair reports the exact audited document selected by the caller", () => {
+  const templateId = "eterno-fotografica-natural-1785377814714-template-1787252092900";
+  const plan = buildMagnoliaRepairPlan(createFixture(), {
+    ...dependencies,
+    templateId,
+  });
+
+  assert.equal(plan.summary.templateId, templateId);
+});

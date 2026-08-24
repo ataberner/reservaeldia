@@ -12,7 +12,10 @@ import {
   type FunctionalCtaContract,
 } from "../utils/functionalCtaContract";
 import { generarHTMLDesdeSecciones } from "../utils/generarHTMLDesdeSecciones";
-import { normalizePublishRenderStateAssets } from "../utils/publishAssetNormalization";
+import {
+  normalizePublishRenderStateAssets,
+  type PublishAssetNormalizationDiagnostics,
+} from "../utils/publishAssetNormalization";
 import { resolvePublishImageCropState } from "../utils/publishImageCrop";
 const {
   resolveGalleryCellMediaUrl,
@@ -95,6 +98,7 @@ export type PreparedRenderPayload = {
   preparedRenderContract: UnknownRecord | null;
   contractIssues: unknown[];
   runtimeSupport: UnknownRecord;
+  assetNormalizationDiagnostics: PublishAssetNormalizationDiagnostics;
 };
 
 export type PreparedPublicationRenderState = PreparedRenderPayload;
@@ -292,7 +296,10 @@ function findFinalRecordByIdOrIndex(
 }
 
 export async function prepareRenderPayload(
-  draftData: UnknownRecord
+  draftData: UnknownRecord,
+  options: {
+    purpose?: string;
+  } = {}
 ): Promise<PreparedRenderPayload> {
   const draftRenderState = normalizeDraftRenderState(draftData);
   let normalizedAssets;
@@ -301,6 +308,8 @@ export async function prepareRenderPayload(
     normalizedAssets = await normalizePublishRenderStateAssets({
       objetos: draftRenderState.objetos,
       secciones: draftRenderState.secciones,
+    }, {
+      purpose: options.purpose,
     });
   } catch (error) {
     recordBackendCountdownError({
@@ -365,6 +374,7 @@ export async function prepareRenderPayload(
       groupAwareState.runtimeSupport && typeof groupAwareState.runtimeSupport === "object"
         ? groupAwareState.runtimeSupport
         : { canRenderCurrentHtmlRuntime: true, reasonCodes: [] },
+    assetNormalizationDiagnostics: normalizedAssets.diagnostics,
   };
 }
 

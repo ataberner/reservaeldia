@@ -10,7 +10,7 @@ test("preview shells reuse the canonical invitation loader presentation", () => 
   assert.match(INVITATION_LOADER_PRESENTATION_HTML, /inv-loader__heart/);
   assert.match(
     INVITATION_LOADER_PRESENTATION_HTML,
-    /Preparando invitacion\.\.\./
+    /Preparando tu invitación\.\.\./
   );
   assert.doesNotMatch(
     INVITATION_LOADER_PRESENTATION_HTML,
@@ -46,5 +46,10 @@ test("the branded loader preserves accessibility and reduced-motion behavior", (
   assert.match(
     INVITATION_LOADER_PRESENTATION_HTML,
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation:\s*none !important;/
+  );
+  assert.match(INVITATION_LOADER_PRESENTATION_HTML, /inv-loader__error/);
+  assert.match(
+    INVITATION_LOADER_PRESENTATION_HTML,
+    /data-invitation-retry="true"/
   );
 });

@@ -86,6 +86,39 @@ test("normalizes representative publish assets and rebuilds section decorations"
   );
   assert.equal("superior" in heroSection.decoracionesFondo, false);
   assert.equal("inferior" in heroSection.decoracionesFondo, false);
+  assert.equal(storageMock.downloadReads.length, 0);
+  assert.equal(normalizedState.diagnostics.dimensionDownloadCount, 0);
+});
+
+test("does not download full image bytes for a legacy crop without dimensions", async (t) => {
+  const path = "usuarios/u-legacy/imagenes/cropped.webp";
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: { [path]: {} },
+  });
+  t.after(() => storageMock.restore());
+
+  const normalizedState = await normalizePublishRenderStateAssets({
+    objetos: [
+      {
+        id: "legacy-crop",
+        tipo: "imagen",
+        src: path,
+        storagePath: path,
+        cropX: 10,
+        cropY: 12,
+        cropWidth: 120,
+        cropHeight: 80,
+      },
+    ],
+    secciones: [],
+  }, { purpose: "draft-preview" });
+
+  assert.equal(normalizedState.objetos[0].ancho, undefined);
+  assert.equal(normalizedState.objetos[0].alto, undefined);
+  assert.equal(normalizedState.diagnostics.legacyMissingDimensionCount, 1);
+  assert.equal(normalizedState.diagnostics.dimensionDownloadCount, 0);
+  assert.equal(storageMock.downloadReads.length, 0);
 });
 
 test("normalizes section edge decoration assets", async (t) => {
@@ -144,4 +177,130 @@ test("normalizes section edge decoration assets", async (t) => {
     buildMockSignedUrl(FIXTURE_BUCKET, FIXTURE_PATHS.decorBottom)
   );
   assert.equal(section.decoracionesBorde.bottom.enabled, false);
+});
+
+test("reuses a verified Firebase download URL without signing the asset again", async (t) => {
+  const token = "persisted-download-token";
+  const path = "usuarios/u-1/imagenes/hero.webp";
+  const encodedPath = encodeURIComponent(path);
+  const downloadUrl =
+    `https://firebasestorage.googleapis.com/v0/b/${FIXTURE_BUCKET}/o/` +
+    `${encodedPath}?alt=media&token=${token}`;
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {
+      [path]: {
+        metadata: {
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+          },
+        },
+      },
+    },
+  });
+  t.after(() => storageMock.restore());
+
+  const normalizedState = await normalizePublishRenderStateAssets({
+    objetos: [
+      {
+        id: "hero",
+        tipo: "imagen",
+        src: downloadUrl,
+        url: downloadUrl,
+        storagePath: path,
+      },
+    ],
+    secciones: [],
+  });
+
+  assert.equal(normalizedState.objetos[0].src, downloadUrl);
+  assert.equal(normalizedState.objetos[0].url, downloadUrl);
+  assert.equal(storageMock.metadataReads.length, 1);
+  assert.equal(storageMock.existsReads.length, 0);
+  assert.equal(storageMock.signedUrlReads.length, 0);
+});
+
+test("trusts a canonical upload descriptor without repeating metadata or signing reads", async (t) => {
+  const token = "canonical-download-token";
+  const generation = "1777000000000000";
+  const path = "usuarios/u-1/imagenes/canonical.webp";
+  const downloadUrl =
+    `https://firebasestorage.googleapis.com/v0/b/${FIXTURE_BUCKET}/o/` +
+    `${encodeURIComponent(path)}?alt=media&token=${token}`;
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {
+      [path]: {
+        metadata: {
+          generation,
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+          },
+        },
+      },
+    },
+  });
+  t.after(() => storageMock.restore());
+
+  const normalizedState = await normalizePublishRenderStateAssets({
+    objetos: [
+      {
+        id: "canonical",
+        tipo: "imagen",
+        src: downloadUrl,
+        url: downloadUrl,
+        storagePath: path,
+        storageGeneration: generation,
+        storageDownloadToken: token,
+        ancho: 1600,
+        alto: 1067,
+        cropX: 10,
+        cropY: 12,
+        cropWidth: 800,
+        cropHeight: 600,
+      },
+    ],
+    secciones: [],
+  }, { purpose: "draft-preview" });
+
+  assert.equal(normalizedState.objetos[0].src, downloadUrl);
+  assert.equal(normalizedState.objetos[0].url, downloadUrl);
+  assert.equal(storageMock.metadataReads.length, 0);
+  assert.equal(storageMock.signedUrlReads.length, 0);
+  assert.equal(storageMock.downloadReads.length, 0);
+  assert.equal(normalizedState.diagnostics.canonicalDescriptorReuseCount, 2);
+  assert.equal(normalizedState.diagnostics.persistedDimensionCount, 1);
+  assert.equal(normalizedState.diagnostics.dimensionDownloadCount, 0);
+});
+
+test("falls back to a signed URL when the persisted download token is stale", async (t) => {
+  const path = "usuarios/u-1/imagenes/stale.webp";
+  const staleUrl =
+    `https://firebasestorage.googleapis.com/v0/b/${FIXTURE_BUCKET}/o/` +
+    `${encodeURIComponent(path)}?alt=media&token=stale-token`;
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {
+      [path]: {
+        metadata: {
+          metadata: {
+            firebaseStorageDownloadTokens: "current-token",
+          },
+        },
+      },
+    },
+  });
+  t.after(() => storageMock.restore());
+
+  const normalizedState = await normalizePublishRenderStateAssets({
+    objetos: [{ id: "stale", tipo: "imagen", src: staleUrl }],
+    secciones: [],
+  });
+
+  assert.equal(
+    normalizedState.objetos[0].src,
+    buildMockSignedUrl(FIXTURE_BUCKET, path)
+  );
+  assert.equal(storageMock.metadataReads.length, 1);
+  assert.equal(storageMock.signedUrlReads.length, 1);
 });

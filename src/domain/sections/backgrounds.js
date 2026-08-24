@@ -6,6 +6,10 @@ import {
 import {
   normalizeSectionDividers,
 } from "../../../shared/sectionDividerPresets.js";
+import {
+  pickStorageAssetDescriptorFields,
+  resolveStorageAssetUrl,
+} from "../assets/storageAssetDescriptor.js";
 const CANVAS_WIDTH = 800;
 const DEFAULT_SECTION_HEIGHT = 600;
 const DEFAULT_DECORATION_WIDTH = 220;
@@ -511,6 +515,12 @@ export function normalizeBackgroundDecoration(
     decorId: normalizeText(safeRaw.decorId) || null,
     src,
     storagePath: normalizeText(safeRaw.storagePath) || null,
+    ...(normalizeText(safeRaw.storageGeneration)
+      ? { storageGeneration: normalizeText(safeRaw.storageGeneration) }
+      : {}),
+    ...(normalizeText(safeRaw.storageDownloadToken)
+      ? { storageDownloadToken: normalizeText(safeRaw.storageDownloadToken) }
+      : {}),
     nombre: normalizeText(safeRaw.nombre || safeRaw.label) || "Decoracion",
     x: toFiniteNumber(safeRaw.x, 0),
     y: toFiniteNumber(safeRaw.y, 0),
@@ -641,6 +651,12 @@ export function normalizeEdgeDecorationSlot(rawSlot, slot) {
     enabled: safeRaw.enabled === false ? false : true,
     src,
     storagePath: normalizeText(safeRaw.storagePath) || null,
+    ...(normalizeText(safeRaw.storageGeneration)
+      ? { storageGeneration: normalizeText(safeRaw.storageGeneration) }
+      : {}),
+    ...(normalizeText(safeRaw.storageDownloadToken)
+      ? { storageDownloadToken: normalizeText(safeRaw.storageDownloadToken) }
+      : {}),
     decorId: normalizeText(safeRaw.decorId) || null,
     nombre:
       normalizeText(safeRaw.nombre || safeRaw.label) ||
@@ -959,6 +975,12 @@ export function buildEdgeDecorationFromImageObject(imageObject, slot = "top") {
       enabled: true,
       src,
       storagePath: normalizeText(safeImage.storagePath) || null,
+      ...(normalizeText(safeImage.storageGeneration)
+        ? { storageGeneration: normalizeText(safeImage.storageGeneration) }
+        : {}),
+      ...(normalizeText(safeImage.storageDownloadToken)
+        ? { storageDownloadToken: normalizeText(safeImage.storageDownloadToken) }
+        : {}),
       decorId: normalizeText(safeImage.decorId || safeImage.catalogItemId) || null,
       intrinsicWidth:
         normalizeEdgeDecorationDimension(safeImage.naturalWidth) ||
@@ -1413,6 +1435,12 @@ export function buildBackgroundDecorationFromImageObject(
       decorId: normalizeText(safeImage.decorId || safeImage.catalogItemId) || null,
       src,
       storagePath: normalizeText(safeImage.storagePath) || null,
+      ...(normalizeText(safeImage.storageGeneration)
+        ? { storageGeneration: normalizeText(safeImage.storageGeneration) }
+        : {}),
+      ...(normalizeText(safeImage.storageDownloadToken)
+        ? { storageDownloadToken: normalizeText(safeImage.storageDownloadToken) }
+        : {}),
       nombre: normalizeText(safeImage.nombre || safeImage.label) || "Decoracion",
       x: decorationPose.x,
       y: decorationPose.y,
@@ -1518,14 +1546,21 @@ export function buildImageObjectFromBackgroundDecoration(
     seccionId: normalizeText(sectionId) || null,
     decorId: normalizedDecoration.decorId || null,
     storagePath: normalizedDecoration.storagePath || null,
+    ...(normalizedDecoration.storageGeneration
+      ? { storageGeneration: normalizedDecoration.storageGeneration }
+      : {}),
+    ...(normalizedDecoration.storageDownloadToken
+      ? { storageDownloadToken: normalizedDecoration.storageDownloadToken }
+      : {}),
     nombre: normalizedDecoration.nombre || "Decoracion",
   };
 }
 
-export function applySectionBaseImage(sections, sectionId, imageUrl, options = {}) {
-  const src = normalizeText(imageUrl);
+export function applySectionBaseImage(sections, sectionId, imageInput, options = {}) {
+  const src = resolveStorageAssetUrl(imageInput);
   if (!src) return Array.isArray(sections) ? sections : [];
   const preservePlacement = options?.preservePlacement === true;
+  const descriptorFields = pickStorageAssetDescriptorFields(imageInput);
 
   return (Array.isArray(sections) ? sections : []).map((section) => {
     if (section?.id !== sectionId) return section;
@@ -1536,6 +1571,9 @@ export function applySectionBaseImage(sections, sectionId, imageUrl, options = {
       ...section,
       fondoTipo: "imagen",
       fondoImagen: src,
+      fondoImagenStoragePath: descriptorFields.storagePath || null,
+      fondoImagenStorageGeneration: descriptorFields.storageGeneration || null,
+      fondoImagenDownloadToken: descriptorFields.storageDownloadToken || null,
       fondoImagenOffsetX: preservePlacement
         ? backgroundModel.base.fondoImagenOffsetX
         : 0,
@@ -1591,6 +1629,9 @@ export function clearSectionBaseImage(section) {
   };
   delete next.fondoTipo;
   delete next.fondoImagen;
+  delete next.fondoImagenStoragePath;
+  delete next.fondoImagenStorageGeneration;
+  delete next.fondoImagenDownloadToken;
   delete next.fondoImagenOffsetX;
   delete next.fondoImagenOffsetY;
   delete next.fondoImagenScale;

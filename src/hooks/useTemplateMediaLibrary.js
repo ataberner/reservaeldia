@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useMisImagenes from "@/hooks/useMisImagenes";
 import { validateGalleryFiles } from "@/domain/templates/galleryUpload";
+import { resolveStorageAssetUrl } from "@/domain/assets/storageAssetDescriptor";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -15,6 +16,11 @@ function normalizeLibraryImage(image) {
     url,
     thumbnailUrl: normalizeText(image?.thumbnailUrl || url) || url,
     name: normalizeText(image?.nombre || image?.name || "Imagen"),
+    storagePath: normalizeText(image?.storagePath),
+    storageGeneration: normalizeText(image?.storageGeneration),
+    storageDownloadToken: normalizeText(image?.storageDownloadToken),
+    ancho: Number(image?.ancho) || null,
+    alto: Number(image?.alto) || null,
   };
 }
 
@@ -69,9 +75,10 @@ export default function useTemplateMediaLibrary({ enabled = false, reloadKey = "
       const uploadedUrls = [];
 
       for (const file of validatedFiles) {
-        const nextUrl = await actionsRef.current.subirImagen?.(file);
-        if (normalizeText(nextUrl)) {
-          uploadedUrls.push(normalizeText(nextUrl));
+        const uploadedImage = await actionsRef.current.subirImagen?.(file);
+        const nextUrl = resolveStorageAssetUrl(uploadedImage);
+        if (nextUrl) {
+          uploadedUrls.push(nextUrl);
         }
       }
 

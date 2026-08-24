@@ -1,30 +1,37 @@
 import { useState } from "react";
 import {
+  deleteObject,
   getDownloadURL,
   ref,
-  deleteObject,
   uploadBytes,
 } from "firebase/storage";
 import {
+  addDoc,
   collection,
   deleteDoc,
   doc,
-  addDoc,
-  query,
-  orderBy,
   getDocs,
-  serverTimestamp,
   limit,
+  orderBy,
+  query,
+  serverTimestamp,
   startAfter,
 } from "firebase/firestore";
-import { auth, db, storage } from "../firebase";
 import imageCompression from "browser-image-compression";
 import pica from "pica";
+import { auth, db, storage } from "../firebase";
+import {
+  buildStorageAssetDescriptor,
+  resolveStorageDownloadToken,
+} from "@/domain/assets/storageAssetDescriptor";
 
-const generarThumbnail = async (file, maxSize = 200) => {
+const PAGE_SIZE = 12;
+
+async function generarThumbnail(file, maxSize = 200) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.src = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
 
     img.onload = async () => {
       const canvas = document.createElement("canvas");
@@ -37,128 +44,151 @@ const generarThumbnail = async (file, maxSize = 200) => {
         await picaInstance.resize(img, canvas);
         const blob = await picaInstance.toBlob(canvas, "image/webp", 0.8);
         resolve({ blob, img });
-      } catch (err) {
-        reject(err);
+      } catch (error) {
+        reject(error);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
       }
     };
 
-    img.onerror = reject;
+    img.onerror = (error) => {
+      URL.revokeObjectURL(objectUrl);
+      reject(error);
+    };
   });
-};
-
-const PAGE_SIZE = 12;
+}
 
 export default function useMisImagenes() {
   const [imagenes, setImagenes] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [ultimaImagen, setUltimaImagen] = useState(null);
   const [hayMas, setHayMas] = useState(true);
-  const uid = auth.currentUser?.uid;
   const [imagenesEnProceso, setImagenesEnProceso] = useState([]);
+  const uid = auth.currentUser?.uid;
 
   const cargarImagenes = async (reset = false) => {
     if (!uid) return;
     if (!reset && !hayMas) return;
 
     setCargando(true);
+    try {
+      const refCol = collection(db, "usuarios", uid, "imagenes");
+      let imagesQuery = query(
+        refCol,
+        orderBy("fechaSubida", "desc"),
+        limit(PAGE_SIZE)
+      );
 
-    const refCol = collection(db, "usuarios", uid, "imagenes");
-    let q = query(refCol, orderBy("fechaSubida", "desc"), limit(PAGE_SIZE));
+      if (!reset && ultimaImagen) {
+        imagesQuery = query(
+          refCol,
+          orderBy("fechaSubida", "desc"),
+          startAfter(ultimaImagen),
+          limit(PAGE_SIZE)
+        );
+      }
 
-    if (!reset && ultimaImagen) {
-      q = query(refCol, orderBy("fechaSubida", "desc"), startAfter(ultimaImagen), limit(PAGE_SIZE));
+      const snapshot = await getDocs(imagesQuery);
+      const nuevos = snapshot.docs.map((imageDoc) => ({
+        id: imageDoc.id,
+        ...imageDoc.data(),
+      }));
+
+      setImagenes((previous) => (reset ? nuevos : [...previous, ...nuevos]));
+      if (snapshot.docs.length < PAGE_SIZE) {
+        setHayMas(false);
+      } else {
+        setUltimaImagen(snapshot.docs[snapshot.docs.length - 1]);
+      }
+    } finally {
+      setCargando(false);
     }
-
-    const snap = await getDocs(q);
-    const nuevos = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-    if (reset) {
-      setImagenes(nuevos);
-    } else {
-      setImagenes((prev) => [...prev, ...nuevos]);
-    }
-
-    if (snap.docs.length < PAGE_SIZE) {
-      setHayMas(false);
-    } else {
-      setUltimaImagen(snap.docs[snap.docs.length - 1]);
-    }
-
-    setCargando(false);
   };
 
   const subirImagen = async (archivoOriginal) => {
-  if (!uid || !archivoOriginal) return;
+    if (!uid || !archivoOriginal) return undefined;
 
-  // 1️⃣ Comprimir imagen
-  const archivoComprimido = await imageCompression(archivoOriginal, {
-    maxSizeMB: 1,
-    maxWidthOrHeight: 1024,
-    useWebWorker: true,
-  });
-
-  const timestamp = Date.now();
-  const fileName = `${timestamp}_${archivoComprimido.name}`;
-  setImagenesEnProceso((prev) => [...prev, fileName]);
-  try {
-
-  // 2️⃣ Subir imagen principal a Storage
-  const storageRef = ref(storage, `usuarios/${uid}/imagenes/${fileName}`);
-  await uploadBytes(storageRef, archivoComprimido);
-
-  // Obtener URL principal para usar en canvas o galería
-  const url = await getDownloadURL(storageRef);
-
-  // 3️⃣ Generar thumbnail y subirlo
-  const { blob: thumbnailBlob, img } = await generarThumbnail(archivoComprimido);
-  const thumbRef = ref(storage, `usuarios/${uid}/thumbnails/${fileName}_thumb.webp`);
-  await uploadBytes(thumbRef, thumbnailBlob);
-  const thumbUrl = await getDownloadURL(thumbRef);
-
-  // 4️⃣ Guardar metadata en Firestore
-  const metadata = {
-    fileName,
-    url,                     // URL de la imagen principal
-    thumbnailUrl: thumbUrl,  // URL del thumbnail
-    nombre: archivoComprimido.name,
-    nombreCompleto: fileName,
-    fechaSubida: serverTimestamp(),
-    pesoKb: Math.round(archivoComprimido.size / 1024),
-    ancho: img.width,
-    alto: img.height,
-  };
-
-  const refCol = collection(db, "usuarios", uid, "imagenes");
-  const docRef = await addDoc(refCol, metadata);
-  const nuevoId = docRef.id;
-
-  // 5️⃣ Actualizar estado en galería
-  setImagenes((prev) => [{ id: nuevoId, ...metadata }, ...prev]);
-
-  // 6️⃣ Retornar URL principal para que useUploaderDeImagen la use
-  return url;
-  } finally {
-    setImagenesEnProceso((prev) => prev.filter((f) => f !== fileName));
-  }
-};
-
-
-  const borrarImagen = async (img) => {
-    if (!uid || !img?.fileName) return;
-
-    const refOriginal = ref(storage, `usuarios/${uid}/imagenes/${img.fileName}`);
-    const refThumb = ref(storage, `usuarios/${uid}/thumbnails/${img.fileName}_thumb.webp`);
+    const archivoComprimido = await imageCompression(archivoOriginal, {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1024,
+      useWebWorker: true,
+    });
+    const fileName = `${Date.now()}_${archivoComprimido.name}`;
+    setImagenesEnProceso((previous) => [...previous, fileName]);
 
     try {
-      await Promise.all([deleteObject(refOriginal), deleteObject(refThumb)]);
-    } catch (err) {
-      console.error("Error borrando archivos de Storage:", err);
+      const { blob: thumbnailBlob, img } = await generarThumbnail(
+        archivoComprimido
+      );
+      const sourceWidth = Number(img.naturalWidth || img.width || 0);
+      const sourceHeight = Number(img.naturalHeight || img.height || 0);
+      const imageRef = ref(storage, `usuarios/${uid}/imagenes/${fileName}`);
+      const uploadResult = await uploadBytes(imageRef, archivoComprimido, {
+        contentType: archivoComprimido.type || undefined,
+        customMetadata: {
+          sourceWidth: String(Math.max(1, Math.round(sourceWidth))),
+          sourceHeight: String(Math.max(1, Math.round(sourceHeight))),
+          uploadedFrom: "editor-media-library-v2",
+        },
+      });
+      const url = await getDownloadURL(imageRef);
+
+      const thumbRef = ref(
+        storage,
+        `usuarios/${uid}/thumbnails/${fileName}_thumb.webp`
+      );
+      await uploadBytes(thumbRef, thumbnailBlob);
+      const thumbnailUrl = await getDownloadURL(thumbRef);
+
+      const metadata = buildStorageAssetDescriptor({
+        fileName,
+        url,
+        storagePath: imageRef.fullPath,
+        storageGeneration: uploadResult?.metadata?.generation,
+        storageDownloadToken: resolveStorageDownloadToken(url),
+        thumbnailUrl,
+        nombre: archivoComprimido.name,
+        nombreCompleto: fileName,
+        fechaSubida: serverTimestamp(),
+        pesoKb: Math.round(archivoComprimido.size / 1024),
+        width: sourceWidth,
+        height: sourceHeight,
+      });
+      if (!metadata) {
+        throw new Error("No se pudo construir la referencia de la imagen subida.");
+      }
+
+      const refCol = collection(db, "usuarios", uid, "imagenes");
+      const imageDoc = await addDoc(refCol, metadata);
+      const uploadedImage = { id: imageDoc.id, ...metadata };
+      setImagenes((previous) => [uploadedImage, ...previous]);
+      return uploadedImage;
+    } finally {
+      setImagenesEnProceso((previous) =>
+        previous.filter((pendingFileName) => pendingFileName !== fileName)
+      );
+    }
+  };
+
+  const borrarImagen = async (image) => {
+    if (!uid || !image?.fileName) return;
+
+    const imageRef = ref(storage, `usuarios/${uid}/imagenes/${image.fileName}`);
+    const thumbRef = ref(
+      storage,
+      `usuarios/${uid}/thumbnails/${image.fileName}_thumb.webp`
+    );
+
+    try {
+      await Promise.all([deleteObject(imageRef), deleteObject(thumbRef)]);
+    } catch (error) {
+      console.error("Error borrando archivos de Storage:", error);
     }
 
-    const docRef = doc(db, "usuarios", uid, "imagenes", img.id);
-    await deleteDoc(docRef);
-
-    setImagenes((prev) => prev.filter((i) => i.id !== img.id));
+    await deleteDoc(doc(db, "usuarios", uid, "imagenes", image.id));
+    setImagenes((previous) =>
+      previous.filter((currentImage) => currentImage.id !== image.id)
+    );
   };
 
   return {

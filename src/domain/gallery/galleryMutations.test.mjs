@@ -170,6 +170,8 @@ test("addGalleryPhotos fills fixed empty slots and preserves storage identity", 
   const result = addGalleryPhotos(gallery, {
     mediaUrl: "https://cdn.test/b.jpg",
     storagePath: "usuarios/u/imagenes/b.jpg",
+    storageGeneration: "1777000000000000",
+    storageDownloadToken: "token-b",
     assetId: "asset-b",
     fit: "cover",
   });
@@ -179,6 +181,8 @@ test("addGalleryPhotos fills fixed empty slots and preserves storage identity", 
   assert.equal(result.gallery.cells[1].id, "slot-b");
   assert.equal(result.gallery.cells[1].mediaUrl, "https://cdn.test/b.jpg");
   assert.equal(result.gallery.cells[1].storagePath, "usuarios/u/imagenes/b.jpg");
+  assert.equal(result.gallery.cells[1].storageGeneration, "1777000000000000");
+  assert.equal(result.gallery.cells[1].storageDownloadToken, "token-b");
   assert.equal(result.gallery.cells[1].assetId, "asset-b");
   assert.equal(gallery.cells[1].mediaUrl, null);
 });

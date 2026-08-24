@@ -312,6 +312,138 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+type DraftPreviewPublicationResolution = {
+  publicSlug: string;
+  publicUrl: string;
+  matchedInactive: boolean;
+  source: "direct" | "slugOriginal" | null;
+};
+
+function getRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function uniqueNormalizedPublicSlugs(values: unknown[]): string[] {
+  return Array.from(
+    new Set(values.map((value) => normalizePublicSlug(value)).filter(Boolean))
+  );
+}
+
+function isPublicationReadableForDraftPreview(
+  publicationData: Record<string, unknown>
+): boolean {
+  const snapshot = resolvePublicationLifecycleSnapshotFromData(publicationData);
+  return Boolean(
+    !snapshot.isExpired &&
+    !snapshot.isExplicitlyFinalized &&
+    (
+      snapshot.rawPublicState === PUBLICATION_PUBLIC_STATES.ACTIVE ||
+      snapshot.rawPublicState === PUBLICATION_PUBLIC_STATES.PAUSED
+    )
+  );
+}
+
+function buildDraftPreviewPublicationResolution(
+  publicSlug: string,
+  publicationData: Record<string, unknown>,
+  source: DraftPreviewPublicationResolution["source"]
+): DraftPreviewPublicationResolution {
+  const resolvedSlug =
+    normalizePublicSlug(publicationData.slug) ||
+    normalizePublicSlug(publicSlug);
+  const explicitUrl = getString(publicationData.urlPublica);
+
+  return {
+    publicSlug: resolvedSlug,
+    publicUrl:
+      explicitUrl ||
+      (resolvedSlug
+        ? `https://reservaeldia.com.ar/i/${resolvedSlug}`
+        : ""),
+    matchedInactive: false,
+    source,
+  };
+}
+
+async function resolveDraftPreviewPublication(
+  draftSlug: string,
+  draftData: Record<string, unknown>
+): Promise<DraftPreviewPublicationResolution> {
+  const lifecycle = getRecord(draftData.publicationLifecycle);
+  const directSlugs = uniqueNormalizedPublicSlugs([
+    draftData.slugPublico,
+    lifecycle.activePublicSlug,
+    lifecycle.publicSlug,
+    lifecycle.slug,
+    draftSlug,
+  ]);
+  let matchedInactive = false;
+
+  const directMatches = await Promise.all(
+    directSlugs.map(async (publicSlug) => {
+      try {
+        const snapshot = await getPublicationRef(publicSlug).get();
+        if (!snapshot.exists) return null;
+        const publicationData = getRecord(snapshot.data());
+        return {
+          publicSlug: snapshot.id || publicSlug,
+          publicationData,
+          readable: isPublicationReadableForDraftPreview(publicationData),
+        };
+      } catch (error) {
+        logger.warn("No se pudo resolver publicacion directa para preview", {
+          draftSlug,
+          publicSlug,
+          error: error instanceof Error ? error.message : String(error || ""),
+        });
+        return null;
+      }
+    })
+  );
+  const readableDirectMatch = directMatches.find((match) => match?.readable);
+  if (readableDirectMatch) {
+    return buildDraftPreviewPublicationResolution(
+      readableDirectMatch.publicSlug,
+      readableDirectMatch.publicationData,
+      "direct"
+    );
+  }
+  matchedInactive = directMatches.some((match) => match?.readable === false);
+
+  try {
+    const querySnapshot = await db
+      .collection(PUBLICADAS_COLLECTION)
+      .where("slugOriginal", "==", draftSlug)
+      .limit(5)
+      .get();
+
+    for (const snapshot of querySnapshot.docs) {
+      const publicationData = getRecord(snapshot.data());
+      if (isPublicationReadableForDraftPreview(publicationData)) {
+        return buildDraftPreviewPublicationResolution(
+          snapshot.id,
+          publicationData,
+          "slugOriginal"
+        );
+      }
+      matchedInactive = true;
+    }
+  } catch (error) {
+    logger.warn("No se pudo resolver publicacion legacy para preview", {
+      draftSlug,
+      error: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+
+  return {
+    publicSlug: "",
+    publicUrl: "",
+    matchedInactive,
+    source: null,
+  };
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || "");
 }
@@ -1202,7 +1334,9 @@ async function buildPublicationRenderArtifacts(
     objectCount: Array.isArray(draftData.objetos) ? draftData.objetos.length : null,
     sectionCount: Array.isArray(draftData.secciones) ? draftData.secciones.length : null,
   });
-  const prepared = await prepareRenderPayload(draftData);
+  const prepared = await prepareRenderPayload(draftData, {
+    purpose: assertCanPublish ? "publish" : "publication-validation",
+  });
   await progress?.complete("preparing_invitation", {
     objectCount: prepared.draftRenderState.objetos.length,
     sectionCount: prepared.draftRenderState.secciones.length,
@@ -1568,10 +1702,12 @@ export async function prepareDraftPreviewRenderHandler(
   request: CallableRequest<{
     draftSlug: string;
     slugPreview?: string;
+    resolvePublicationLink?: boolean;
     administrativeOwnerUid?: string;
     previewTiming?: {
       sessionId?: string;
     };
+    includeDebugPayload?: boolean;
   }>
 ) {
   const previewTimingSessionId = getString(
@@ -1605,15 +1741,46 @@ export async function prepareDraftPreviewRenderHandler(
     });
     const draftReadCompletedAt = includeTiming ? readNow() : 0;
     const draftData = draft.data as Record<string, unknown>;
-    const prepared = await prepareRenderPayload(draftData);
-    const preparationCompletedAt = includeTiming ? readNow() : 0;
+    const parallelPreparationStartedAt = includeTiming ? readNow() : 0;
+    let preparationCompletedAt = parallelPreparationStartedAt;
+    let publicationResolutionCompletedAt = parallelPreparationStartedAt;
+    const shouldResolvePublicationLink =
+      !administrativeOwnerUid && request.data?.resolvePublicationLink !== false;
+    const preparedPromise = prepareRenderPayload(draftData, {
+      purpose: "draft-preview",
+    }).then((value) => {
+      if (includeTiming) preparationCompletedAt = readNow();
+      return value;
+    });
+    const publicationResolutionPromise = shouldResolvePublicationLink
+      ? resolveDraftPreviewPublication(draftSlug, draftData).then((value) => {
+          if (includeTiming) publicationResolutionCompletedAt = readNow();
+          return value;
+        })
+      : Promise.resolve<DraftPreviewPublicationResolution>({
+          publicSlug: "",
+          publicUrl: "",
+          matchedInactive: false,
+          source: null,
+        });
+    const [prepared, publicationResolution] = await Promise.all([
+      preparedPromise,
+      publicationResolutionPromise,
+    ]);
+    if (includeTiming && !shouldResolvePublicationLink) {
+      publicationResolutionCompletedAt = parallelPreparationStartedAt;
+    }
+    const validationStartedAt = includeTiming ? readNow() : 0;
     const validation = validatePreparedRenderPayload(prepared);
     const validationCompletedAt = includeTiming ? readNow() : 0;
-    const previewPayload = buildPreviewRenderPayloadFromPreparedPayload(prepared);
+    const previewPayload = request.data?.includeDebugPayload === true
+      ? buildPreviewRenderPayloadFromPreparedPayload(prepared)
+      : null;
     const previewPayloadCompletedAt = includeTiming ? readNow() : 0;
     const slugPreview =
-      normalizePublicSlug(request.data?.slugPreview) ||
+      normalizePublicSlug(publicationResolution.publicSlug) ||
       normalizePublicSlug(draftData.slugPublico) ||
+      normalizePublicSlug(request.data?.slugPreview) ||
       draftSlug;
     const htmlGenerationStartedAt = includeTiming ? readNow() : 0;
     const htmlGenerado = validation.canPublish
@@ -1623,16 +1790,22 @@ export async function prepareDraftPreviewRenderHandler(
         })
       : null;
     const htmlGenerationCompletedAt = includeTiming ? readNow() : 0;
-    const safePreviewPayload = cloneFirestoreSafe(previewPayload);
     const safeValidation = cloneFirestoreSafe(validation);
     const responsePayload = {
       draftSlug,
       slugPreview,
       previewAuthority: DRAFT_AUTHORITATIVE_PREVIEW_AUTHORITY,
       htmlGenerado,
-      previewPayload: safePreviewPayload,
       validation: safeValidation,
       blocked: !validation.canPublish,
+      urlPublicaDetectada: publicationResolution.publicUrl,
+      slugPublicoDetectado: publicationResolution.publicSlug,
+      publicacionNoVigenteDetectada:
+        publicationResolution.matchedInactive,
+      publicationResolutionSource: publicationResolution.source,
+      ...(previewPayload
+        ? { previewPayload: cloneFirestoreSafe(previewPayload) }
+        : {}),
     };
     const requestCompletedAt = includeTiming ? readNow() : 0;
     const previewTiming = includeTiming
@@ -1642,10 +1815,13 @@ export async function prepareDraftPreviewRenderHandler(
             draftReadCompletedAt - requestStartedAt
           ),
           prepareRenderPayloadMs: roundTimingMs(
-            preparationCompletedAt - draftReadCompletedAt
+            preparationCompletedAt - parallelPreparationStartedAt
+          ),
+          resolvePublicationLinkMs: roundTimingMs(
+            publicationResolutionCompletedAt - parallelPreparationStartedAt
           ),
           validatePreparedRenderPayloadMs: roundTimingMs(
-            validationCompletedAt - preparationCompletedAt
+            validationCompletedAt - validationStartedAt
           ),
           buildPreviewPayloadMs: roundTimingMs(
             previewPayloadCompletedAt - validationCompletedAt
@@ -1659,6 +1835,7 @@ export async function prepareDraftPreviewRenderHandler(
           totalBackendMs: roundTimingMs(
             requestCompletedAt - requestStartedAt
           ),
+          assetNormalization: prepared.assetNormalizationDiagnostics,
         }
       : null;
 

@@ -137,11 +137,19 @@ test("applySectionBaseImage preserves existing placement when requested", () => 
   const result = applySectionBaseImage(
     sections,
     "cover",
-    "https://cdn.example.com/new.jpg",
+    {
+      url: "https://cdn.example.com/new.jpg",
+      storagePath: "usuarios/u/imagenes/new.jpg",
+      storageGeneration: "1777000000000000",
+      storageDownloadToken: "token-new",
+    },
     { preservePlacement: true }
   );
 
   assert.equal(result[0].fondoImagen, "https://cdn.example.com/new.jpg");
+  assert.equal(result[0].fondoImagenStoragePath, "usuarios/u/imagenes/new.jpg");
+  assert.equal(result[0].fondoImagenStorageGeneration, "1777000000000000");
+  assert.equal(result[0].fondoImagenDownloadToken, "token-new");
   assert.equal(result[0].fondoImagenOffsetX, 24);
   assert.equal(result[0].fondoImagenOffsetY, -18);
   assert.equal(result[0].fondoImagenScale, 1.35);

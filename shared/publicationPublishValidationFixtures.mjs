@@ -126,6 +126,8 @@ function withHeroCrop(objects, overrides = {}) {
           cropY: 1,
           cropWidth: 2,
           cropHeight: 2,
+          ancho: 4,
+          alto: 4,
           ...deepClone(overrides),
         }
       : entry
@@ -344,6 +346,8 @@ export function createRepresentativeBlockingDraftFixture() {
         ...withHeroCrop(baseObjects, {
           y: 120,
           anclaje: "fullbleed",
+          ancho: null,
+          alto: null,
         }),
         buildRsvpButton(),
         buildGiftButton(),

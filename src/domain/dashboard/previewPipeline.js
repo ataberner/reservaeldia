@@ -1,5 +1,4 @@
 import {
-  buildDashboardPreviewGeneratorInput,
   buildDashboardPreviewRenderPayload,
   generateDashboardPreviewHtmlFromRenderState,
   isPublicacionActiva,
@@ -138,6 +137,7 @@ export async function runDashboardPreviewPipeline({
   assertCurrentSession: assertCurrentSessionCallback,
 } = {}) {
   let data = null;
+  let preparedTemplatePreview = null;
   const timingEnabled = typeof onStageTiming === "function";
   const now = resolveTimingNow(readNow);
   const pipelineStartedAt = timingEnabled ? now() : 0;
@@ -159,102 +159,14 @@ export async function runDashboardPreviewPipeline({
     canUsePublishCompatibility &&
     typeof prepareDraftPreviewRender === "function";
   const sourceReadStartedAt = timingEnabled ? now() : 0;
-  emitStageTiming("source-read-start", sourceReadStartedAt, {
-    durationMs: 0,
-    source: isTemplateSession ? "template" : "draft",
-  });
-
-  if (isTemplateSession) {
-    const result =
-      typeof readTemplateEditorDocument === "function"
-        ? await readTemplateEditorDocument({
-            templateId: slugInvitacion,
-          })
-        : null;
-    assertCurrentSession(assertCurrentSessionCallback);
-
-    data = resolveTemplateEditorDocument(result);
-    emitStageTiming("source-read", sourceReadStartedAt, {
-      source: "template",
-      found: Boolean(data),
-    });
-    if (!data) {
-      return {
-        status: "missing-template",
-        previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
-      };
-    }
-  } else {
-    const result =
-      typeof readDraftDocument === "function"
-        ? await readDraftDocument({
-            draftSlug: slugInvitacion,
-          })
-        : null;
-    assertCurrentSession(assertCurrentSessionCallback);
-
-    data = resolveDraftDocumentData(result);
-    emitStageTiming("source-read", sourceReadStartedAt, {
-      source: "draft",
-      found: Boolean(data),
-    });
-    if (!data) {
-      return {
-        status: "missing-draft",
-        previewAuthority: PREVIEW_AUTHORITY.LOCAL_FALLBACK,
-      };
-    }
-  }
-
-  const previewSourceData = usePreparedDraftPreview
-    ? data
-    : overlayLiveEditorSnapshot(
-        data,
-        previewBoundarySnapshot ||
-          (typeof readLiveEditorSnapshot === "function"
-            ? readLiveEditorSnapshot()
-            : null)
-      );
-
-  let urlPublicaDetectada = "";
-  let slugPublicoDetectado = "";
-  let publicacionNoVigenteDetectada = false;
-
-  if (shouldResolvePublicationLink) {
-    const publicationReadStartedAt = timingEnabled ? now() : 0;
-    emitStageTiming("publication-link-read-start", publicationReadStartedAt, {
+  if (!usePreparedDraftPreview) {
+    emitStageTiming("source-read-start", sourceReadStartedAt, {
       durationMs: 0,
-    });
-    const publicationRead = await resolvePublicationLinkForDraftRead({
-      draftSlug: slugInvitacion,
-      draftData: previewSourceData,
-      readPublicationBySlug: async (publicSlug) =>
-        (typeof readPublicationBySlug === "function"
-          ? readPublicationBySlug(publicSlug)
-          : null),
-      queryPublicationBySlugOriginal: async (draftSlug) =>
-        (typeof queryPublicationBySlugOriginal === "function"
-          ? queryPublicationBySlugOriginal(draftSlug)
-          : null),
-      isPublicationReadable: (publicationData) =>
-        isPublicacionActiva(publicationData),
-    });
-    assertCurrentSession(assertCurrentSessionCallback);
-
-    slugPublicoDetectado = normalizeText(publicationRead?.publicSlug);
-    urlPublicaDetectada = normalizeText(publicationRead?.publicUrl);
-    publicacionNoVigenteDetectada = publicationRead?.matchedInactive === true;
-    emitStageTiming("publication-link-read", publicationReadStartedAt, {
-      matched: Boolean(slugPublicoDetectado || urlPublicaDetectada),
+      source: isTemplateSession ? "template" : "draft",
     });
   }
 
   if (usePreparedDraftPreview) {
-    const { slugPreview } = buildDashboardPreviewGeneratorInput({
-      slugPublicoDetectado,
-      urlPublicaDetectada,
-      slugInvitacion,
-    });
     const preparedRenderStartedAt = timingEnabled ? now() : 0;
     emitStageTiming("prepared-render-request-start", preparedRenderStartedAt, {
       durationMs: 0,
@@ -264,7 +176,7 @@ export async function runDashboardPreviewPipeline({
     );
     const preparedPreviewResult = await prepareDraftPreviewRender({
       draftSlug: slugInvitacion,
-      slugPreview,
+      resolvePublicationLink: shouldResolvePublicationLink,
       ...(normalizedAdministrativeOwnerUid
         ? { administrativeOwnerUid: normalizedAdministrativeOwnerUid }
         : {}),
@@ -282,12 +194,18 @@ export async function runDashboardPreviewPipeline({
       preparedPreviewResult?.previewPayload &&
       typeof preparedPreviewResult.previewPayload === "object"
         ? preparedPreviewResult.previewPayload
-        : buildDashboardPreviewRenderPayload(previewSourceData);
+        : null;
+    const urlPublicaDetectada = normalizeText(
+      preparedPreviewResult?.urlPublicaDetectada
+    );
+    const slugPublicoDetectado = normalizeText(
+      preparedPreviewResult?.slugPublicoDetectado
+    );
+    const publicacionNoVigenteDetectada =
+      preparedPreviewResult?.publicacionNoVigenteDetectada === true;
 
     if (typeof onBeforeGenerateHtml === "function") {
-      onBeforeGenerateHtml({
-        previewPayload,
-      });
+      onBeforeGenerateHtml({ previewPayload });
     }
 
     if (preparedPreviewResult?.blocked === true || validation?.canPublish === false) {
@@ -326,6 +244,147 @@ export async function runDashboardPreviewPipeline({
       slugPublicoDetectado,
       publicacionNoVigenteDetectada,
     };
+  }
+
+  if (isTemplateSession) {
+    const result =
+      typeof readTemplateEditorDocument === "function"
+        ? await readTemplateEditorDocument({
+            templateId: slugInvitacion,
+          })
+        : null;
+    assertCurrentSession(assertCurrentSessionCallback);
+
+    data = resolveTemplateEditorDocument(result);
+    preparedTemplatePreview =
+      result?.preparedPreview && typeof result.preparedPreview === "object"
+        ? result.preparedPreview
+        : null;
+    emitStageTiming("source-read", sourceReadStartedAt, {
+      source: "template",
+      found: Boolean(data || preparedTemplatePreview),
+    });
+    if (!data && !preparedTemplatePreview) {
+      return {
+        status: "missing-template",
+        previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+      };
+    }
+    if (!preparedTemplatePreview) {
+      throw new Error("El backend no devolvio una vista previa preparada de la plantilla.");
+    }
+
+    const validation = preparedTemplatePreview.validation || null;
+    const previewPayload =
+      preparedTemplatePreview.previewPayload &&
+      typeof preparedTemplatePreview.previewPayload === "object"
+        ? preparedTemplatePreview.previewPayload
+        : null;
+
+    if (typeof onBeforeGenerateHtml === "function" && previewPayload) {
+      onBeforeGenerateHtml({ previewPayload });
+    }
+
+    if (
+      preparedTemplatePreview.blocked === true ||
+      validation?.canPublish === false
+    ) {
+      emitStageTiming("pipeline-total", pipelineStartedAt, {
+        status: "blocked",
+      });
+      return {
+        status: "blocked",
+        previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+        previewPayload,
+        htmlGenerado: "",
+        validation,
+        blockingMessage: validation?.summary?.blockingMessage || "",
+        urlPublicaDetectada: "",
+        slugPublicoDetectado: "",
+        publicacionNoVigenteDetectada: false,
+      };
+    }
+
+    const htmlGenerado = String(preparedTemplatePreview.htmlGenerado || "");
+    if (!htmlGenerado) {
+      throw new Error("No se pudo generar la vista previa preparada de la plantilla.");
+    }
+
+    emitStageTiming("pipeline-total", pipelineStartedAt, {
+      status: "success",
+      htmlBytes: htmlGenerado.length,
+    });
+    return {
+      status: "success",
+      previewAuthority: PREVIEW_AUTHORITY.TEMPLATE_VISUAL,
+      previewPayload,
+      htmlGenerado,
+      validation,
+      urlPublicaDetectada: "",
+      slugPublicoDetectado: "",
+      publicacionNoVigenteDetectada: false,
+    };
+  } else {
+    const result =
+      typeof readDraftDocument === "function"
+        ? await readDraftDocument({
+            draftSlug: slugInvitacion,
+          })
+        : null;
+    assertCurrentSession(assertCurrentSessionCallback);
+
+    data = resolveDraftDocumentData(result);
+    emitStageTiming("source-read", sourceReadStartedAt, {
+      source: "draft",
+      found: Boolean(data),
+    });
+    if (!data) {
+      return {
+        status: "missing-draft",
+        previewAuthority: PREVIEW_AUTHORITY.LOCAL_FALLBACK,
+      };
+    }
+  }
+
+  const previewSourceData = overlayLiveEditorSnapshot(
+    data,
+    previewBoundarySnapshot ||
+      (typeof readLiveEditorSnapshot === "function"
+        ? readLiveEditorSnapshot()
+        : null)
+  );
+
+  let urlPublicaDetectada = "";
+  let slugPublicoDetectado = "";
+  let publicacionNoVigenteDetectada = false;
+
+  if (shouldResolvePublicationLink) {
+    const publicationReadStartedAt = timingEnabled ? now() : 0;
+    emitStageTiming("publication-link-read-start", publicationReadStartedAt, {
+      durationMs: 0,
+    });
+    const publicationRead = await resolvePublicationLinkForDraftRead({
+      draftSlug: slugInvitacion,
+      draftData: previewSourceData,
+      readPublicationBySlug: async (publicSlug) =>
+        (typeof readPublicationBySlug === "function"
+          ? readPublicationBySlug(publicSlug)
+          : null),
+      queryPublicationBySlugOriginal: async (draftSlug) =>
+        (typeof queryPublicationBySlugOriginal === "function"
+          ? queryPublicationBySlugOriginal(draftSlug)
+          : null),
+      isPublicationReadable: (publicationData) =>
+        isPublicacionActiva(publicationData),
+    });
+    assertCurrentSession(assertCurrentSessionCallback);
+
+    slugPublicoDetectado = normalizeText(publicationRead?.publicSlug);
+    urlPublicaDetectada = normalizeText(publicationRead?.publicUrl);
+    publicacionNoVigenteDetectada = publicationRead?.matchedInactive === true;
+    emitStageTiming("publication-link-read", publicationReadStartedAt, {
+      matched: Boolean(slugPublicoDetectado || urlPublicaDetectada),
+    });
   }
 
   const previewPayload = buildDashboardPreviewRenderPayload(previewSourceData);

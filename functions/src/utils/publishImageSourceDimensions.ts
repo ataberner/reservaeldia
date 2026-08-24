@@ -1,23 +1,14 @@
-import { getStorage } from "firebase-admin/storage";
-import * as logger from "firebase-functions/logger";
-import sharp from "sharp";
-
 import { resolvePublishImageCropState } from "./publishImageCrop";
-import {
-  areEquivalentStorageBuckets,
-  normalizeStoragePathCandidate,
-  parseBucketAndPathFromStorageValue,
-} from "./storageAssetValue";
-const {
-  resolveObjectPrimaryAssetUrl,
-} = require("../../shared/renderAssetContract.cjs");
 
 type UnknownRecord = Record<string, unknown>;
-type PublishImageSourceSize = {
-  width: number | null;
-  height: number | null;
+
+export type PublishImageSourceDimensionDiagnostics = {
+  croppedImageCount: number;
+  persistedDimensionCount: number;
+  legacyMissingDimensionCount: number;
+  dimensionDownloadCount: number;
+  dimensionDownloadMs: number;
 };
-type PublishImageSizeCache = Map<string, Promise<PublishImageSourceSize>>;
 
 function asRecord(value: unknown): UnknownRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -33,151 +24,52 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function toPositiveInteger(value: unknown): number | null {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  return Math.round(numeric);
-}
-
-function resolveImageStoragePath(
+function inspectObject(
   object: UnknownRecord,
-  defaultBucketName: string
-): string {
-  const candidates = [
-    getString(object.storagePath),
-    resolveObjectPrimaryAssetUrl(object),
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-
-    const parsed = parseBucketAndPathFromStorageValue(candidate, defaultBucketName);
-    if (!parsed) continue;
-    if (!areEquivalentStorageBuckets(parsed.bucketName, defaultBucketName)) continue;
-
-    const normalizedPath = normalizeStoragePathCandidate(parsed.path);
-    if (normalizedPath) return normalizedPath;
-  }
-
-  return "";
-}
-
-async function resolveStorageImageSourceSize(
-  storagePath: string,
-  cache: PublishImageSizeCache
-): Promise<PublishImageSourceSize> {
-  const bucket = getStorage().bucket();
-  const safePath = normalizeStoragePathCandidate(storagePath);
-  if (!safePath) {
-    return {
-      width: null,
-      height: null,
-    };
-  }
-
-  const cacheKey = `${bucket.name}/${safePath}`;
-  if (!cache.has(cacheKey)) {
-    const resolution = (async (): Promise<PublishImageSourceSize> => {
-      try {
-        const [buffer] = await bucket.file(safePath).download();
-        const metadata = await sharp(buffer, {
-          animated: false,
-          failOnError: false,
-        }).metadata();
-
-        return {
-          width: toPositiveInteger(metadata.width),
-          height: toPositiveInteger(metadata.height),
-        };
-      } catch (error) {
-        logger.warn("No se pudo resolver el tamano origen de una imagen para publish", {
-          storagePath: safePath,
-          error: error instanceof Error ? error.message : String(error || ""),
-        });
-
-        return {
-          width: null,
-          height: null,
-        };
-      }
-    })();
-
-    cache.set(cacheKey, resolution);
-  }
-
-  return cache.get(cacheKey) as Promise<PublishImageSourceSize>;
-}
-
-async function backfillPublishImageSourceDimensionsForObject(
-  object: UnknownRecord,
-  defaultBucketName: string,
-  cache: PublishImageSizeCache
-): Promise<UnknownRecord> {
+  diagnostics: PublishImageSourceDimensionDiagnostics
+): void {
   if (getString(object.tipo).toLowerCase() === "grupo") {
     const children = Array.isArray(object.children) ? object.children : [];
-    if (children.length === 0) return object;
-
-    const nextChildren = await Promise.all(
-      children.map((child) =>
-        backfillPublishImageSourceDimensionsForObject(
-          asRecord(child),
-          defaultBucketName,
-          cache
-        )
-      )
-    );
-
-    return {
-      ...object,
-      children: nextChildren,
-    };
+    children.forEach((child) => inspectObject(asRecord(child), diagnostics));
+    return;
   }
 
-  if (getString(object.tipo).toLowerCase() !== "imagen") {
-    return object;
-  }
+  if (getString(object.tipo).toLowerCase() !== "imagen") return;
 
   const cropState = resolvePublishImageCropState(object);
-  if (!cropState.hasMeaningfulCrop) {
-    return object;
-  }
+  if (!cropState.hasMeaningfulCrop) return;
 
+  diagnostics.croppedImageCount += 1;
   if (cropState.sourceWidth !== null && cropState.sourceHeight !== null) {
-    return object;
+    diagnostics.persistedDimensionCount += 1;
+    return;
   }
 
-  const storagePath = resolveImageStoragePath(object, defaultBucketName);
-  if (!storagePath) {
-    return object;
-  }
-
-  const sourceSize = await resolveStorageImageSourceSize(storagePath, cache);
-  const nextWidth = cropState.sourceWidth ?? sourceSize.width;
-  const nextHeight = cropState.sourceHeight ?? sourceSize.height;
-
-  if (nextWidth === cropState.sourceWidth && nextHeight === cropState.sourceHeight) {
-    return object;
-  }
-
-  return {
-    ...object,
-    ...(nextWidth ? { ancho: nextWidth } : {}),
-    ...(nextHeight ? { alto: nextHeight } : {}),
-  };
+  diagnostics.legacyMissingDimensionCount += 1;
 }
 
+/**
+ * Prepared render must be a metadata-only operation. Source dimensions are
+ * authored by the upload/editor owners and are never recovered by downloading
+ * full image bytes here. The compatibility name is retained for callers while
+ * legacy gaps are surfaced to validation through the unchanged object shape.
+ */
 export async function backfillPublishImageSourceDimensions(
-  objects: unknown[]
+  objects: unknown[],
+  options: {
+    onDiagnostics?: (diagnostics: PublishImageSourceDimensionDiagnostics) => void;
+  } = {}
 ): Promise<UnknownRecord[]> {
   const safeObjects = asRecordList(objects);
-  if (safeObjects.length === 0) return [];
+  const diagnostics: PublishImageSourceDimensionDiagnostics = {
+    croppedImageCount: 0,
+    persistedDimensionCount: 0,
+    legacyMissingDimensionCount: 0,
+    dimensionDownloadCount: 0,
+    dimensionDownloadMs: 0,
+  };
 
-  const bucket = getStorage().bucket();
-  const cache: PublishImageSizeCache = new Map();
-
-  return Promise.all(
-    safeObjects.map((object) =>
-      backfillPublishImageSourceDimensionsForObject(object, bucket.name, cache)
-    )
-  );
+  safeObjects.forEach((object) => inspectObject(object, diagnostics));
+  options.onDiagnostics?.(diagnostics);
+  return safeObjects;
 }

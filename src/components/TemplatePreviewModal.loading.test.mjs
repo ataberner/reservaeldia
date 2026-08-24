@@ -19,7 +19,9 @@ test("template preview keeps one stable loading authority and mounts only final 
     /srcDoc=\{shouldShowGeneratedPreview \? previewHtml : null\}/
   );
   assert.match(modalSource, /observePreviewFrameReadiness\(/);
-  assert.match(modalSource, /!frameReady \? <PreviewLoadingPresentation \/> : null/);
+  assert.match(modalSource, /!frameReady \? \([\s\S]*?<PreviewLoadingPresentation/);
+  assert.match(modalSource, /error=\{Boolean\(frameError\)\}/);
+  assert.match(modalSource, /setReloadAttempt\(\(current\) => current \+ 1\)/);
   assert.match(modalSource, /\{sourceIdentity \? \(\s*<iframe/);
   assert.equal(
     (modalSource.match(/<TemplatePreviewViewport\b/g) || []).length,

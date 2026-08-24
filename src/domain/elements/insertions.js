@@ -2,6 +2,7 @@ import {
   DEFAULT_ICON_COLOR,
   normalizeIconRenderable,
 } from "../../../shared/iconRenderableContract.js";
+import { pickStorageAssetDescriptorFields } from "../assets/storageAssetDescriptor.js";
 
 const DEFAULT_SHAPE_COLOR = "#111827";
 export const DEFAULT_TEXT_ALIGNMENT = "center";
@@ -101,6 +102,7 @@ export function buildDecorImageInsertPayload(item, timestamp = Date.now()) {
     id: `imagen-${timestamp.toString(36)}`,
     tipo: "imagen",
     src,
+    ...pickStorageAssetDescriptorFields(item),
   };
 
   if (width) payload.ancho = width;

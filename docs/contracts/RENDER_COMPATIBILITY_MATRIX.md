@@ -8,7 +8,8 @@ Este documento resume la compatibilidad real entre:
 
 - editor (`CanvasEditor.jsx` + Konva)
 - publishable draft preview HTML (`prepareRenderPayload` + `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })`)
-- template/fallback preview HTML (`generarHTMLDesdeSecciones(..., { isPreview: true })`)
+- admin template-editor preview HTML (`prepareRenderPayload` + `validatePreparedRenderPayload` + `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })`)
+- template-card/fallback preview HTML (`generarHTMLDesdeSecciones(..., { isPreview: true })`)
 - publish HTML (`prepareRenderPayload` + `generateHtmlFromPreparedRenderPayload`)
 - published share image (`publicadas/{slug}/share.jpg`) derived from the first section of generated publish HTML
 
@@ -25,7 +26,7 @@ La compatibilidad preview vs publish ya no es difusa. Hoy existe caracterizacion
 - `functions/renderContractCompatibility.test.mjs`
 - `functions/publicationPublishValidation.test.mjs`
 
-La columna `Preview` indica que existe salida HTML de preview para esa rama. La paridad publish solo aplica a preview de borrador `draft-authoritative`; template preview (`template-visual`) y fallback local (`local-fallback`) son visuales y no deben usarse como prueba de publish.
+La columna `Preview` indica que existe salida HTML de preview para esa rama. La paridad publish solo aplica a preview de borrador `draft-authoritative`; template preview (`template-visual`) y fallback local (`local-fallback`) son visuales y no deben usarse como prueba de publish. El editor admin de plantillas comparte el backend `prepare -> validate -> generate` y bloquea HTML invalido, pero conserva `template-visual` porque no recorre el estado personalizado ni el lifecycle de publicacion de un borrador.
 
 Para la imagen social publicada, la ancla de compatibilidad es el HTML de publish generado, no el canvas, no el template preview y no una estructura simplificada. La primera seccion se identifica en el DOM renderizado como el primer `.inv > .sec`.
 
@@ -48,9 +49,33 @@ embebidos que declaran `data-preview-scroll-authority="body"` usan el body-root
 del shell como excepción explícita. Ninguna rama intercepta el gesto ni escribe
 la posición para simular scroll.
 
+Initial generated-HTML readiness is shared by draft-authoritative preview and
+publish. The generated runtime waits for parsed DOM/base geometry and only the
+critical render resources in the first section: its base background, edge
+decorations, countdown frames, ordinary image objects, gallery cells, and a
+bounded request for fonts used there. All first-section network images are
+emitted eager/high-priority and as head preloads; subsequent-section images are
+lazy/low-priority. It must not gate the invitation loader on global
+`window.load`, global font readiness, or resources in later sections. Critical
+failure and the single bounded timeout fail closed: the invitation stays
+hidden, the canonical loader presents an error and retry action, and a late
+readiness event cannot reveal that failed document. The outer preview shell
+consumes both `invitation-loader-hidden` and `invitation-runtime-failed`; retry
+reloads the public document or remounts the preview iframe.
+
+Prepared asset normalization keeps Storage as authority. It reads object
+metadata at most once per path for compatibility assets. A canonical persisted
+descriptor (`storagePath`, `storageGeneration`, `storageDownloadToken`) whose
+token matches the Firebase download URL skips both metadata and signing reads;
+otherwise normalization verifies metadata and falls back to a signed read URL
+when necessary. Cropped image source dimensions (`ancho`, `alto`) are persisted
+by upload/editor owners. Prepared preview must never download full image bytes
+to infer them; a legacy crop without dimensions remains blocked until the
+editor migration is flushed. Preview responses omit the duplicated prepared
+render payload by default and include it only for explicit diagnostics.
+
 Drifts explicitamente reconocidos por fixtures:
 
-- `image-crop-materialization`
 - `object-asset-identity`
 - `rsvp-config-contract`
 - `gifts-config-contract`

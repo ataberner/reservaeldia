@@ -46,6 +46,10 @@ import {
   markTemplateDraftRenderLogged,
 } from "@/domain/templates/draftPersonalizationDebug";
 import useSharedImage from "@/hooks/useSharedImage";
+import {
+  hasCompleteStorageAssetDescriptor,
+  resolveStorageAssetDescriptorFromMetadata,
+} from "@/utils/storageAssetMetadata";
 import { resolveObjectPrimaryAssetUrl } from "../../../../../../shared/renderAssetContract.js";
 import {
   buildIconSvgDataUrl,
@@ -514,6 +518,7 @@ export default function ElementoCanvas({
   onPredragVisualSelectionCancel = null,
   selectionRuntime = null,
   isPassiveRender = false,
+  onResolveImageSourceDimensions = null,
 }) {
   const primaryAssetUrl = resolveObjectPrimaryAssetUrl(obj) || null;
   const imageAssetUrl = obj.tipo === "imagen" ? primaryAssetUrl : null;
@@ -1053,6 +1058,83 @@ export default function ElementoCanvas({
       throttleKey: `render:ElementoCanvas:${obj.id}`,
     });
   });
+  const sourceDimensionMigrationRef = useRef("");
+
+  useEffect(() => {
+    if (obj.tipo !== "imagen" || !img) return;
+
+    const sourceWidth = Math.round(Number(img.naturalWidth || img.width || 0));
+    const sourceHeight = Math.round(Number(img.naturalHeight || img.height || 0));
+    if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+    const hasWidth = Number.isFinite(Number(obj.ancho)) && Number(obj.ancho) > 0;
+    const hasHeight = Number.isFinite(Number(obj.alto)) && Number(obj.alto) > 0;
+    const hasCompleteDescriptor = hasCompleteStorageAssetDescriptor(obj);
+    if (hasWidth && hasHeight && hasCompleteDescriptor) return;
+
+    const migrationKey = `${obj.id || "image"}:${imageAssetUrl || ""}:${sourceWidth}x${sourceHeight}:${hasWidth ? 1 : 0}${hasHeight ? 1 : 0}:${hasCompleteDescriptor ? 1 : 0}`;
+    if (sourceDimensionMigrationRef.current === migrationKey) return;
+    sourceDimensionMigrationRef.current = migrationKey;
+
+    const dimensionPatch = {
+      ...(!hasWidth ? { ancho: sourceWidth } : {}),
+      ...(!hasHeight ? { alto: sourceHeight } : {}),
+    };
+
+    const emitPatch = (patch) => {
+      if (!patch || Object.keys(patch).length === 0) return;
+      if (typeof onResolveImageSourceDimensions === "function") {
+        onResolveImageSourceDimensions(obj.id, patch);
+        return;
+      }
+      if (!isPassiveRender && typeof onChange === "function") {
+        onChange(obj.id, patch);
+      }
+    };
+
+    emitPatch(dimensionPatch);
+    if (hasCompleteDescriptor) return;
+
+    let active = true;
+    void resolveStorageAssetDescriptorFromMetadata(obj).then((descriptor) => {
+      if (!active || !descriptor) return;
+      emitPatch({
+        ...(descriptor.storagePath
+          ? { storagePath: descriptor.storagePath }
+          : {}),
+        ...(descriptor.storageGeneration
+          ? { storageGeneration: descriptor.storageGeneration }
+          : {}),
+        ...(descriptor.storageDownloadToken
+          ? { storageDownloadToken: descriptor.storageDownloadToken }
+          : {}),
+        ...(!hasWidth && descriptor.ancho
+          ? { ancho: descriptor.ancho }
+          : {}),
+        ...(!hasHeight && descriptor.alto
+          ? { alto: descriptor.alto }
+          : {}),
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    imageAssetUrl,
+    img,
+    isPassiveRender,
+    obj.alto,
+    obj.ancho,
+    obj.id,
+    obj.src,
+    obj.storageDownloadToken,
+    obj.storageGeneration,
+    obj.storagePath,
+    obj.tipo,
+    onChange,
+    onResolveImageSourceDimensions,
+  ]);
 
   useEffect(() => {
     if (obj.tipo !== "imagen" || !img || !imageCropData) return;
@@ -4541,6 +4623,12 @@ export default function ElementoCanvas({
                 isInEditMode={false}
                 onSelect={null}
                 onChange={undefined}
+                onResolveImageSourceDimensions={(childId, patch) => {
+                  if (isPassiveRender || typeof onChange !== "function") return;
+                  onChange(obj.id, {
+                    imageSourceMigration: { childId, patch },
+                  });
+                }}
                 editingId={null}
                 registerRef={null}
                 onHover={null}

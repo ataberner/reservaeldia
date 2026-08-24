@@ -10,7 +10,7 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
 
   body[data-loader-ready="1"] .inv {
     opacity: 1;
-    transition: opacity 360ms ease;
+    transition: opacity 180ms ease;
   }
 
   .inv-loader {
@@ -26,7 +26,7 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
       radial-gradient(120% 90% at 80% 20%, rgba(239, 219, 255, 0.64) 0%, rgba(239, 219, 255, 0) 62%),
       radial-gradient(120% 90% at 14% 82%, rgba(105, 43, 154, 0.12) 0%, rgba(105, 43, 154, 0) 66%),
       linear-gradient(180deg, #FAF5FF 0%, #FFFFFF 100%);
-    transition: opacity 420ms ease, visibility 420ms ease;
+    transition: opacity 220ms ease, visibility 220ms ease;
   }
 
   .inv-loader--exit {
@@ -98,6 +98,63 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
     text-align: center;
   }
 
+  .inv-loader__error,
+  .inv-loader__retry {
+    display: none;
+  }
+
+  .inv-loader__error {
+    max-width: 320px;
+    margin: -4px 24px 0;
+    font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #5f3a75;
+    text-align: center;
+  }
+
+  .inv-loader__retry {
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 18px;
+    border: 1px solid rgba(105, 43, 154, 0.28);
+    border-radius: 999px;
+    background: #692B9A;
+    color: #fff;
+    font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(105, 43, 154, 0.2);
+  }
+
+  .inv-loader__retry:focus-visible {
+    outline: 3px solid rgba(105, 43, 154, 0.24);
+    outline-offset: 3px;
+  }
+
+  .inv-loader--error .inv-loader__ring,
+  [data-preview-loader-error="1"] .inv-loader__ring {
+    animation: none;
+    border-color: rgba(105, 43, 154, 0.3);
+  }
+
+  .inv-loader--error .inv-loader__label,
+  [data-preview-loader-error="1"] .inv-loader__label {
+    font-weight: 650;
+  }
+
+  .inv-loader--error .inv-loader__error,
+  [data-preview-loader-error="1"] .inv-loader__error {
+    display: block;
+  }
+
+  .inv-loader--error .inv-loader__retry,
+  [data-preview-loader-error="1"] .inv-loader__retry {
+    display: inline-flex;
+  }
+
   @keyframes invLoaderSpin {
     to {
       transform: rotate(360deg);
@@ -166,6 +223,8 @@ const INVITATION_LOADER_PRESENTATION_HTML = `
     </span>
   </div>
   <p class="inv-loader__label">Preparando tu invitación...</p>
+  <p class="inv-loader__error">No pudimos completar la carga de los recursos esenciales. La invitacion sigue oculta para evitar mostrarla incompleta.</p>
+  <button type="button" class="inv-loader__retry" data-invitation-retry="true">Reintentar</button>
 </div>
 `.trim();
 

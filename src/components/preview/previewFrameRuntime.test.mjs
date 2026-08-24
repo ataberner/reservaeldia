@@ -323,6 +323,49 @@ test("preview frame readiness resolves on load when HTML has no loader protocol"
   assert.equal(readyEvents[0].reason, "frame-load");
 });
 
+test("preview frame readiness reports runtime failure without revealing the frame", () => {
+  const frameWindow = new EventTarget();
+  const loaderNode = {
+    classList: {
+      contains() {
+        return false;
+      },
+    },
+  };
+  const frameDocument = {
+    body: {
+      getAttribute(name) {
+        return name === "data-loader-ready" ? "0" : null;
+      },
+    },
+    getElementById(id) {
+      return id === "inv-loader" ? loaderNode : null;
+    },
+  };
+  const iframe = {
+    contentDocument: frameDocument,
+    contentWindow: frameWindow,
+  };
+  const readyEvents = [];
+  const failureEvents = [];
+
+  observePreviewFrameReadiness(
+    iframe,
+    (event) => readyEvents.push(event),
+    { onError: (event) => failureEvents.push(event) }
+  );
+
+  const failedEvent = new Event("invitation-runtime-failed");
+  Object.defineProperty(failedEvent, "detail", {
+    value: { reason: "first-background-failed" },
+  });
+  frameWindow.dispatchEvent(failedEvent);
+
+  assert.equal(readyEvents.length, 0);
+  assert.equal(failureEvents.length, 1);
+  assert.equal(failureEvents[0].reason, "first-background-failed");
+});
+
 test("preview frame readiness cleanup ignores a late result from an obsolete session", () => {
   const frameWindow = new EventTarget();
   let loaderNode = {};

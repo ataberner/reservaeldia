@@ -285,10 +285,19 @@ export default function useEditorWindowBridge({
     return scrollToViewportRect(targetRect, options);
   };
 
-  const replaceFirstSectionBackgroundImage = (imageUrl, options = {}) => {
+  const replaceFirstSectionBackgroundImage = (imageInput, options = {}) => {
     if (typeof window === "undefined" || readOnly) return false;
     if (typeof setSecciones !== "function") return false;
-    const src = String(imageUrl || "").trim();
+    const src =
+      typeof imageInput === "string"
+        ? imageInput.trim()
+        : String(
+            imageInput?.url ||
+              imageInput?.src ||
+              imageInput?.downloadURL ||
+              imageInput?.mediaUrl ||
+              ""
+          ).trim();
     if (!src) return false;
     const expectedSectionId = String(options?.sectionId || options?.expectedSectionId || "").trim();
 
@@ -330,7 +339,7 @@ export default function useEditorWindowBridge({
       return applySectionBaseImage(
         current,
         currentFirstSection.id,
-        src,
+        imageInput,
         { preservePlacement: options?.preservePlacement !== false }
       );
     });

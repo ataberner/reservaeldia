@@ -22,6 +22,7 @@ import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
+import { resolveStorageAssetUrl } from "@/domain/assets/storageAssetDescriptor";
 import { functions } from "@/firebase";
 import {
     triggerEditorRedo,
@@ -1720,13 +1721,14 @@ export default function DashboardSidebar({
 
                         try {
                             uploadRequest?.onUploadStart?.({ file: selectedFile });
-                            const uploadedUrl = await handleSeleccion(e);
-                            if (typeof uploadedUrl !== "string" || !uploadedUrl) {
+                            const uploadedImage = await handleSeleccion(e);
+                            const uploadedUrl = resolveStorageAssetUrl(uploadedImage);
+                            if (!uploadedUrl) {
                                 throw new Error("No se pudo obtener la URL de la imagen subida.");
                             }
 
                             if (typeof uploadedImageHandler === "function") {
-                                const result = await uploadedImageHandler(uploadedUrl, {
+                                const result = await uploadedImageHandler(uploadedImage, {
                                     file: selectedFile,
                                 });
                                 if (result === false) {
@@ -1751,7 +1753,7 @@ export default function DashboardSidebar({
                             if (validGalleryCellSelection) {
                                 const assignedToGalleryCell =
                                     typeof window.asignarImagenACelda === "function" &&
-                                    window.asignarImagenACelda(uploadedUrl, "cover") === true;
+                                    window.asignarImagenACelda(uploadedImage, "cover") === true;
                                 if (assignedToGalleryCell) {
                                     return;
                                 }
@@ -1759,7 +1761,7 @@ export default function DashboardSidebar({
                                 throw new Error("No se pudo asignar la imagen a la celda seleccionada.");
                             }
 
-                            const imageElement = buildCanvasImageElementFromLibraryImage(uploadedUrl, {
+                            const imageElement = buildCanvasImageElementFromLibraryImage(uploadedImage, {
                                 id: `img-${Date.now()}`,
                                 seccionActivaId,
                             });

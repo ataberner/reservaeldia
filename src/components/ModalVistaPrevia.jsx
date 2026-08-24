@@ -177,6 +177,8 @@ function PreviewDocumentSurface({
   iframeStyle,
 }) {
   const [readyHtmlContent, setReadyHtmlContent] = useState(null);
+  const [frameError, setFrameError] = useState("");
+  const [reloadAttempt, setReloadAttempt] = useState(0);
   const readinessCleanupRef = useRef(null);
   const timingCleanupRef = useRef(null);
   const frameTimingRef = useRef(null);
@@ -184,6 +186,12 @@ function PreviewDocumentSurface({
   const frameReady = Boolean(
     htmlContent && readyHtmlContent === htmlContent
   );
+
+  useEffect(() => {
+    setFrameError("");
+    setReloadAttempt(0);
+    setReadyHtmlContent(null);
+  }, [htmlContent]);
 
   if (htmlContent && frameTimingRef.current?.htmlContent !== htmlContent) {
     frameTimingRef.current = {
@@ -336,6 +344,13 @@ function PreviewDocumentSurface({
           recordKey: `invitation-loader-hidden-received:${surface}`,
         });
         setReadyHtmlContent(htmlContent);
+      },
+      {
+        onError: ({ reason }) => {
+          if (iframe?.contentDocument !== loadedDocument) return;
+          setFrameError(reason || "runtime-failed");
+          setReadyHtmlContent(null);
+        },
       }
     );
   };
@@ -348,6 +363,7 @@ function PreviewDocumentSurface({
       {htmlContent ? (
         // The final srcDoc mounts once. The stable outer loader owns presentation until runtime readiness.
         <PreviewIframeDocument
+          key={`${previewSurface || previewViewport}:${reloadAttempt}`}
           htmlContent={htmlContent}
           iframeTitle={iframeTitle}
           previewViewport={previewViewport}
@@ -369,7 +385,19 @@ function PreviewDocumentSurface({
         />
       ) : null}
       {!frameReady ? (
-        <PreviewLoadingPresentation announce={announceLoading} />
+        <PreviewLoadingPresentation
+          announce={announceLoading}
+          error={Boolean(frameError)}
+          onRetry={() => {
+            readinessCleanupRef.current?.();
+            readinessCleanupRef.current = null;
+            timingCleanupRef.current?.();
+            timingCleanupRef.current = null;
+            setFrameError("");
+            setReadyHtmlContent(null);
+            setReloadAttempt((current) => current + 1);
+          }}
+        />
       ) : null}
     </div>
   );

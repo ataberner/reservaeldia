@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, functions, storage } from "@/firebase";
+import { resolveStorageDownloadToken } from "@/domain/assets/storageAssetDescriptor";
 
 const DECOR_CATALOG_COLLECTION = "decoraciones";
 const DECOR_CATALOG_ARCHIVED_COLLECTION = "decoraciones_archived";
@@ -228,7 +229,7 @@ export async function uploadDecorBootstrap({
   const storagePath = buildStoragePath(file, normalizedName);
   const storageRef = ref(storage, storagePath);
 
-  await uploadBytes(storageRef, file, {
+  const uploadResult = await uploadBytes(storageRef, file, {
     contentType: file.type || undefined,
     customMetadata: {
       uploadedFrom: "admin-decor-catalog-v1",
@@ -236,6 +237,10 @@ export async function uploadDecorBootstrap({
   });
 
   const url = await getDownloadURL(storageRef);
+  const storageGeneration = String(
+    uploadResult?.metadata?.generation || ""
+  ).trim();
+  const storageDownloadToken = resolveStorageDownloadToken(url);
   const format = inferExtensionFromFile(file);
 
   const docRef = await addDoc(collection(db, DECOR_CATALOG_COLLECTION), {
@@ -251,6 +256,8 @@ export async function uploadDecorBootstrap({
     assetType: "decoracion",
     status: "processing",
     storagePath,
+    storageGeneration: storageGeneration || null,
+    storageDownloadToken: storageDownloadToken || null,
     contentType: file.type || null,
     bytes: Number(file.size || 0),
     format,
@@ -267,6 +274,8 @@ export async function uploadDecorBootstrap({
   return {
     decorId: docRef.id,
     storagePath,
+    storageGeneration,
+    storageDownloadToken,
     url,
   };
 }

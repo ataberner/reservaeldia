@@ -267,7 +267,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
   var RUNTIME_FAIL_EVENT = "invitation-runtime-failed";
   var LOADER_HIDDEN_EVENT = "invitation-loader-hidden";
   var LOADER_WAIT_TIMEOUT_MS = 2400;
-  var READY_TIMEOUT_MS = 2600;
+  var CRITICAL_READY_TIMEOUT_MS = 2600;
   var FONTS_TIMEOUT_MS = 1200;
   var DECOR_PARALLAX_MODES = { none: 1, soft: 1, dynamic: 1 };
   var DECOR_PARALLAX_DISTANCE = {
@@ -275,6 +275,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
     dynamic: { mobile: 16, desktop: 26 }
   };
   var bootStarted = false;
+  var criticalReadyStartedAt = 0;
   var decorParallaxEntries = [];
   var decorParallaxFrame = 0;
   var decorParallaxStarted = false;
@@ -429,110 +430,203 @@ export function generarMotionEffectsRuntimeHTML(): string {
     }
   }
 
-  function waitForWindowLoad(maxWaitMs){
+  function remainingCriticalReadyMs(){
+    return Math.max(0, CRITICAL_READY_TIMEOUT_MS - (Date.now() - criticalReadyStartedAt));
+  }
+
+  function waitForDomReady(maxWaitMs){
     return new Promise(function(resolve){
-      if (document.readyState === "complete") {
-        resolve();
+      if (document.readyState !== "loading") {
+        resolve("ready");
         return;
       }
 
       var finished = false;
-      var onLoad = function(){
+      var timer = 0;
+      var finish = function(status){
         if (finished) return;
         finished = true;
-        resolve();
+        document.removeEventListener("DOMContentLoaded", onReady);
+        if (timer) window.clearTimeout(timer);
+        resolve(status);
       };
+      var onReady = function(){ finish("ready"); };
 
-      window.addEventListener("load", onLoad, { once: true });
-      window.setTimeout(function(){
-        if (finished) return;
-        finished = true;
-        resolve();
-      }, maxWaitMs);
+      document.addEventListener("DOMContentLoaded", onReady, { once: true });
+      timer = window.setTimeout(function(){ finish("timeout"); }, Math.max(0, maxWaitMs));
     });
   }
 
-  function waitForFonts(maxWaitMs){
-    if (!document.fonts || !document.fonts.ready) {
-      return Promise.resolve();
-    }
-
-    return Promise.race([
-      document.fonts.ready.catch(function(){ return null; }),
-      new Promise(function(resolve){
-        window.setTimeout(resolve, maxWaitMs);
-      })
-    ]).then(function(){ return null; });
-  }
-
-  function waitForRuntimeReady(){
-    return Promise.all([
-      waitForWindowLoad(READY_TIMEOUT_MS),
-      waitForFonts(FONTS_TIMEOUT_MS)
-    ]).then(function(){ return null; });
-  }
-
-  function extractFirstUrl(value){
-    var raw = String(value || "");
-    if (!raw || raw === "none") return "";
-    var match = raw.match(/url\((['"]?)(.*?)\\1\)/i);
-    if (!match || !match[2]) return "";
-    return match[2].trim();
-  }
-
-  function getFirstSectionBackgroundUrl(){
-    var firstSection = document.querySelector(".sec");
-    if (!firstSection) return "";
-    var bgNode = firstSection.querySelector(".sec-bg");
-    if (!bgNode) return "";
-
-    var bgImageNode = bgNode.querySelector(".sec-bg-image");
-    if (bgImageNode) {
-      var imageSrc = String(bgImageNode.getAttribute("src") || "").trim();
-      if (imageSrc) return imageSrc;
-    }
-
-    var inlineUrl = extractFirstUrl(bgNode.getAttribute("style"));
-    if (inlineUrl) return inlineUrl;
-
-    try {
-      var computedUrl = extractFirstUrl(window.getComputedStyle(bgNode).backgroundImage);
-      return computedUrl;
-    } catch (_error) {
-      return "";
-    }
-  }
-
-  function loadImage(url){
+  function settleWithin(promise, maxWaitMs, timeoutValue){
     return new Promise(function(resolve){
-      if (!url) {
-        resolve(true);
-        return;
+      var finished = false;
+      var timer = window.setTimeout(function(){
+        if (finished) return;
+        finished = true;
+        resolve(timeoutValue);
+      }, Math.max(0, maxWaitMs));
+
+      Promise.resolve(promise).then(function(value){
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        resolve(value);
+      }, function(){
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        resolve(null);
+      });
+    });
+  }
+
+  function getFirstSectionFontRequests(){
+    var firstSection = document.querySelector(".sec");
+    if (!firstSection) return [];
+
+    var nodes = [firstSection].concat(Array.from(firstSection.querySelectorAll(
+      "h1,h2,h3,h4,h5,h6,p,span,a,button,li,label,[data-type='texto']"
+    )));
+    var seen = {};
+    var requests = [];
+
+    nodes.forEach(function(node){
+      var sample = String(node.textContent || "").replace(/\s+/g, " ").trim();
+      if (!sample) return;
+
+      try {
+        var style = window.getComputedStyle(node);
+        var family = String(style.fontFamily || "").trim();
+        if (!family) return;
+        var descriptor = [
+          style.fontStyle || "normal",
+          style.fontWeight || "400",
+          "16px",
+          family
+        ].join(" ");
+        if (seen[descriptor]) return;
+        seen[descriptor] = true;
+        requests.push({ descriptor: descriptor, sample: sample.slice(0, 32) });
+      } catch (_error) {
+        // Ignore styles that cannot be resolved; geometry is already available.
+      }
+    });
+
+    return requests;
+  }
+
+  function waitForFirstSectionFonts(maxWaitMs){
+    if (!document.fonts || typeof document.fonts.load !== "function") {
+      return Promise.resolve("unsupported");
+    }
+
+    var requests = getFirstSectionFontRequests();
+    if (!requests.length) return Promise.resolve("ready");
+
+    var loads = requests.map(function(request){
+      try {
+        return Promise.resolve(
+          document.fonts.load(request.descriptor, request.sample)
+        ).catch(function(){ return null; });
+      } catch (_error) {
+        return Promise.resolve(null);
+      }
+    });
+
+    return settleWithin(Promise.all(loads).then(function(){ return "ready"; }), maxWaitMs, "timeout")
+      .then(function(status){ return status || "error"; });
+  }
+
+  function collectFirstSectionCriticalImages(){
+    var firstSection = document.querySelector(".sec");
+    if (!firstSection) return { images: [], backgroundImage: null };
+
+    var backgroundImage = firstSection.querySelector(".sec-bg-image");
+    var images = [];
+    Array.from(firstSection.querySelectorAll("img")).forEach(function(img){
+      var explicitlyCritical =
+        img.classList.contains("sec-bg-image") ||
+        img.classList.contains("sec-edge-decor-img") ||
+        img.classList.contains("cdv2-frame-preload");
+      var isLazy = String(img.getAttribute("loading") || "").toLowerCase() === "lazy";
+      if ((explicitlyCritical || !isLazy) && images.indexOf(img) === -1) {
+        images.push(img);
+      }
+    });
+
+    return { images: images, backgroundImage: backgroundImage };
+  }
+
+  function waitForImageNode(img, maxWaitMs){
+    return new Promise(function(resolve){
+      var finished = false;
+      var timer = 0;
+
+      function finish(status){
+        if (finished) return;
+        finished = true;
+        img.removeEventListener("load", onLoad);
+        img.removeEventListener("error", onError);
+        if (timer) window.clearTimeout(timer);
+        resolve(status);
       }
 
-      var img = new Image();
-      img.decoding = "async";
-      img.loading = "eager";
+      function finishLoaded(){
+        if (!(img.naturalWidth > 0)) {
+          finish("error");
+          return;
+        }
+        if (typeof img.decode !== "function") {
+          finish("ready");
+          return;
+        }
+        Promise.resolve(img.decode()).then(function(){
+          finish("ready");
+        }, function(){
+          // A loaded image remains renderable even when decode() rejects.
+          finish("ready");
+        });
+      }
 
-      img.onload = function(){
-        resolve(true);
-      };
+      function onLoad(){
+        finishLoaded();
+      }
 
-      img.onerror = function(){
-        resolve(false);
-      };
+      function onError(){
+        finish("error");
+      }
 
-      img.src = url;
+      img.addEventListener("load", onLoad, { once: true });
+      img.addEventListener("error", onError, { once: true });
+      timer = window.setTimeout(function(){ finish("timeout"); }, Math.max(0, maxWaitMs));
 
-      if (img.complete && img.naturalWidth > 0) {
-        resolve(true);
+      if (img.complete) {
+        finishLoaded();
+      } else if (!String(img.currentSrc || img.getAttribute("src") || "").trim()) {
+        finish("error");
       }
     });
   }
 
-  function waitForFirstSectionBackground(){
-    var backgroundUrl = getFirstSectionBackgroundUrl();
-    return loadImage(backgroundUrl);
+  function waitForFirstSectionCriticalImages(maxWaitMs){
+    var critical = collectFirstSectionCriticalImages();
+    return Promise.all(critical.images.map(function(img){
+      return waitForImageNode(img, maxWaitMs);
+    })).then(function(statuses){
+      var backgroundIndex = critical.images.indexOf(critical.backgroundImage);
+      var backgroundStatus = critical.backgroundImage
+        ? (backgroundIndex >= 0 ? statuses[backgroundIndex] : "error")
+        : "ready";
+      var timedOut = statuses.some(function(status){ return status === "timeout"; });
+      var failedCount = statuses.filter(function(status){ return status === "error"; }).length;
+
+      return {
+        backgroundStatus: backgroundStatus,
+        failedCount: failedCount,
+        imageCount: statuses.length,
+        timedOut: timedOut
+      };
+    });
   }
 
   function waitForLoaderHidden(){
@@ -997,16 +1091,38 @@ export function generarMotionEffectsRuntimeHTML(): string {
   function startBoot(){
     if (bootStarted) return;
     bootStarted = true;
+    criticalReadyStartedAt = Date.now();
 
-    waitForRuntimeReady().then(function(){
-      waitForFirstSectionBackground().then(function(backgroundReady){
-        if (!backgroundReady) {
+    waitForDomReady(remainingCriticalReadyMs()).then(function(domStatus){
+      if (domStatus !== "ready") {
+        dispatchRuntimeEvent(RUNTIME_FAIL_EVENT, { reason: "dom-ready-timeout" });
+        return;
+      }
+
+      var remainingMs = remainingCriticalReadyMs();
+      return Promise.all([
+        waitForFirstSectionCriticalImages(remainingMs),
+        waitForFirstSectionFonts(Math.min(FONTS_TIMEOUT_MS, remainingMs))
+      ]).then(function(results){
+        var criticalImages = results[0];
+        var fontsStatus = results[1];
+
+        if (criticalImages.backgroundStatus === "error") {
           dispatchRuntimeEvent(RUNTIME_FAIL_EVENT, { reason: "first-background-failed" });
+          return;
+        }
+        if (criticalImages.timedOut) {
+          dispatchRuntimeEvent(RUNTIME_FAIL_EVENT, { reason: "critical-assets-timeout" });
           return;
         }
 
         var preparedElements = prepareAllElements() || [];
-        dispatchRuntimeEvent(RUNTIME_READY_EVENT, { source: "motion-effects-runtime" });
+        dispatchRuntimeEvent(RUNTIME_READY_EVENT, {
+          source: "motion-effects-runtime",
+          criticalImageCount: criticalImages.imageCount,
+          criticalImageFailures: criticalImages.failedCount,
+          fonts: fontsStatus
+        });
         waitForLoaderHidden().then(function(){
           requestAnimationFrame(function(){
             requestAnimationFrame(function(){

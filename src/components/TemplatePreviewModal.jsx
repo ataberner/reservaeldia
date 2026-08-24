@@ -91,6 +91,8 @@ function TemplatePreviewViewport({
     readHostViewportWidth
   );
   const [readySource, setReadySource] = useState(null);
+  const [frameError, setFrameError] = useState("");
+  const [reloadAttempt, setReloadAttempt] = useState(0);
 
   useEffect(() => {
     const node = stageRef.current;
@@ -161,6 +163,12 @@ function TemplatePreviewViewport({
   const frameReady = Boolean(sourceIdentity && readySource === sourceIdentity);
 
   useEffect(() => {
+    setReadySource(null);
+    setFrameError("");
+    setReloadAttempt(0);
+  }, [sourceIdentity]);
+
+  useEffect(() => {
     const cleanupCurrentReadiness = () => {
       readinessCleanupRef.current?.();
       readinessCleanupRef.current = null;
@@ -204,6 +212,7 @@ function TemplatePreviewViewport({
         >
           {sourceIdentity ? (
             <iframe
+              key={`${sourceIdentity}:${reloadAttempt}`}
               ref={iframeRef}
               src={src}
               srcDoc={resolvedSrcDoc}
@@ -240,12 +249,30 @@ function TemplatePreviewViewport({
                   () => {
                     if (iframe?.contentDocument !== loadedDocument) return;
                     setReadySource(sourceIdentity);
+                  },
+                  {
+                    onError: ({ reason }) => {
+                      if (iframe?.contentDocument !== loadedDocument) return;
+                      setReadySource(null);
+                      setFrameError(reason || "runtime-failed");
+                    },
                   }
                 );
               }}
             />
           ) : null}
-          {!frameReady ? <PreviewLoadingPresentation /> : null}
+          {!frameReady ? (
+            <PreviewLoadingPresentation
+              error={Boolean(frameError)}
+              onRetry={() => {
+                readinessCleanupRef.current?.();
+                readinessCleanupRef.current = null;
+                setReadySource(null);
+                setFrameError("");
+                setReloadAttempt((current) => current + 1);
+              }}
+            />
+          ) : null}
         </div>
       </div>
     </div>

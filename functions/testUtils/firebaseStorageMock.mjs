@@ -51,6 +51,10 @@ export function installFirebaseStorageMock({
 
   const fileStates = new Map();
   const copies = [];
+  const existsReads = [];
+  const metadataReads = [];
+  const signedUrlReads = [];
+  const downloadReads = [];
   const metadataWrites = [];
   const mockApp = { name: "__firebase-storage-mock__" };
 
@@ -109,9 +113,11 @@ export function installFirebaseStorageMock({
             __bucketName: safeBucketName,
             __path: safePath,
             async exists() {
+              existsReads.push({ bucketName: safeBucketName, path: safePath });
               return [getFileState(safeBucketName, safePath).exists === true];
             },
             async getSignedUrl() {
+              signedUrlReads.push({ bucketName: safeBucketName, path: safePath });
               const state = getFileState(safeBucketName, safePath);
               return [state.signedUrl || buildMockSignedUrl(safeBucketName, safePath)];
             },
@@ -137,7 +143,12 @@ export function installFirebaseStorageMock({
               return [destinationFile];
             },
             async getMetadata() {
-              return [getFileState(safeBucketName, safePath).metadata || {}];
+              metadataReads.push({ bucketName: safeBucketName, path: safePath });
+              const state = getFileState(safeBucketName, safePath);
+              if (state.exists !== true) {
+                throw new Error(`No such object: ${safeBucketName}/${safePath}`);
+              }
+              return [state.metadata || {}];
             },
             async setMetadata(metadata) {
               const current = getFileState(safeBucketName, safePath);
@@ -152,6 +163,7 @@ export function installFirebaseStorageMock({
               });
             },
             async download() {
+              downloadReads.push({ bucketName: safeBucketName, path: safePath });
               const state = getFileState(safeBucketName, safePath);
               return [state.downloadBuffer || Buffer.alloc(0)];
             },
@@ -163,6 +175,10 @@ export function installFirebaseStorageMock({
 
   return {
     copies,
+    existsReads,
+    metadataReads,
+    signedUrlReads,
+    downloadReads,
     metadataWrites,
     restore() {
       storageModule.getStorage = originalGetStorage;
@@ -181,4 +197,3 @@ export function installFirebaseStorageMock({
     },
   };
 }
-

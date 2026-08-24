@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-08-19.
+> Updated from code inspection on 2026-08-24.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -26,7 +26,7 @@ Preview has three explicit authority classes:
 | Authority | Path | Meaning |
 | --- | --- | --- |
 | `draft-authoritative` | backend `prepareDraftPreviewRender` | Publish-faithful draft preview. It uses the same prepared render payload contract as publish. |
-| `template-visual` | template preview local generation | Pre-draft visual preview only. It is not publish parity. |
+| `template-visual` | template preview | Pre-draft visual preview only. The admin editor uses backend preparation/validation; other template surfaces can use their documented visual path. It is not publish parity. |
 | `local-fallback` | rollback/emergency local generation | Visual fallback only. It is not authoritative. |
 
 Only `draft-authoritative` preview participates in publish parity. Template preview must never be described as publish-faithful.
@@ -51,11 +51,29 @@ The draft preview path is:
 
 1. The dashboard starts a guarded preview session and opens the modal in its loading state.
 2. `ensureDraftFlushBeforeCriticalAction("preview-before-open")` waits for inline editing to settle and forces persistence flush.
-3. The pipeline re-reads `borradores/{slug}` mainly to keep metadata and publication-link compatibility state current.
-4. If publish compatibility is enabled, the pipeline resolves the public slug/URL used for preview display and `slugPreview`.
-5. The pipeline calls `prepareDraftPreviewRender({ draftSlug, slugPreview })`.
-6. The backend reads the owned draft, builds `prepareRenderPayload(...)`, validates it with `validatePreparedRenderPayload(...)`, and generates preview HTML through `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })` only when validation allows it.
-7. The result is classified as `previewAuthority: "draft-authoritative"` and the final HTML is committed to the active guarded session.
+3. The pipeline calls `prepareDraftPreviewRender({ draftSlug, resolvePublicationLink })`; the prepared branch does not re-read the draft or publication documents in the browser.
+4. The backend performs the single owned-draft read. In parallel it prepares the render payload and, when requested, resolves publication metadata from `publicadas` for the preview link.
+5. The backend validates with `validatePreparedRenderPayload(...)` and generates preview HTML through `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })` only when validation allows it.
+6. The result is classified as `previewAuthority: "draft-authoritative"` and the final HTML is committed to the active guarded session.
+
+New upload/editor writes persist a canonical asset descriptor alongside the
+render URL: Storage path, object generation, download token, and source image
+dimensions where crop materialization needs them. If those persisted values
+match the Firebase download URL, prepared normalization reuses the URL without
+calling `getMetadata()` or signing it again. Compatibility assets without a
+complete descriptor still perform at most one metadata read and one signing
+operation per Storage path during a preparation request. Prepared preview never
+downloads complete image bytes to discover dimensions; legacy cropped images
+are migrated by the editor after the browser image has loaded and remain a
+validation blocker until their source dimensions are durably saved.
+
+`normalizePublishRenderStateAssets` logs counts and aggregate timings for
+descriptor reuse, metadata reads/cache hits, signed URLs/cache hits, cropped
+images, missing/persisted source dimensions, and dimension downloads. The last
+count must stay zero for preview preparation.
+Normal preview responses contain generated HTML and validation; the duplicated
+prepared debug payload is opt-in and must not be transported unless preview
+diagnostics request it.
 
 The live editor snapshot still exists as a compatibility aid inside the local preview pipeline, but backend-prepared draft HTML is generated from the backend-owned draft read after the critical flush. Draft preview authority comes from the backend prepared payload, not from the frontend snapshot overlay.
 
@@ -63,6 +81,11 @@ Repeated open actions while the same session is still preparing share one
 in-flight operation. Closing the modal invalidates that session; a late result
 may finish at the transport level but cannot commit HTML or loading state into
 a later opening.
+
+Both private preparation callables used by the editor preview path keep one warm
+instance with one CPU: `prepareDraftPreviewRender` and
+`adminGetTemplateEditorDocumentV1`. This removes the measured cold
+start/preflight penalty at the explicit cost of always-on Function capacity.
 
 The superadmin user-directory flow is a read-only variant of this same draft
 preview path. `getAdminDraftSnapshot` remains the canvas hydration boundary.
@@ -83,18 +106,30 @@ checkout, and publish handler.
 
 ## 3. Template And Fallback Preview
 
-Template preview and rollback/local fallback preview still use the local preview generator path:
+The template admin editor uses the same backend render boundary as authoritative
+draft preview, without acquiring draft authority:
 
-- the source document is re-read from the template admin service or Firestore
-- a compatible flush-boundary snapshot may be overlaid for visual recency
-- the frontend path calls `generarHTMLDesdeSecciones(..., { isPreview: true })`
+1. the controller completes the critical editor flush
+2. `adminGetTemplateEditorDocumentV1({ includePreparedPreview: true })` re-reads
+   the normalized persisted template document
+3. the backend runs `prepareRenderPayload(...)`,
+   `validatePreparedRenderPayload(...)`, and
+   `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })`
+4. the frontend consumes that prepared result and fails closed when validation
+   blocks it; it does not overlay a browser snapshot or regenerate template HTML
+   locally
 
-These paths are intentionally visual-only:
+This removes the separate renderer from the admin edit flow, but the result is
+still `template-visual`: a template is pre-draft and does not exercise the
+personalized draft, publication metadata, final artifact writes, or delivery
+lifecycle. Backend preparation here is render compatibility evidence, not proof
+that a later derived draft can publish.
 
-- `template-visual`: pre-draft template preview
-- `local-fallback`: emergency local draft preview fallback
-
-Neither path performs publish asset preparation, publish validation, or publish-faithful CTA/config reconciliation. A successful template or fallback preview is not evidence that publish will pass.
+Dashboard template-card preview and rollback/local fallback preview retain their
+existing visual paths. The card reads the template document and uses the lazy
+browser generator; the fallback can overlay a compatible boundary snapshot for
+visual recency. `preparePublicTemplatePreview` is the backend visual endpoint for
+the public template-preview surface. None of these paths is publish authority.
 
 ## 4. Publish Contract Relationship
 
@@ -136,7 +171,7 @@ Loading presentation has one shell authority per visible mockup:
 - no provisional loading document is assigned to iframe `srcDoc`
 - the final iframe mounts only after final generated HTML exists, so receiving that HTML does not replace a provisional iframe document
 - the shell keeps the final iframe non-focusable and hidden from accessibility APIs until generated runtime readiness
-- generated HTML retains its normal invitation loader and publish-compatible runtime unchanged
+- generated HTML retains the same invitation loader and publish-compatible runtime used by public delivery; preview does not add a separate readiness branch
 - the shell observes the generated `invitation-loader-hidden` event, with DOM-state fallback, and removes the stable outer presentation only after the final invitation has completed its loader exit
 - HTML without the generated loader protocol becomes ready on iframe `load`
 - the shell loading wrapper establishes `contain: layout paint`, so the shared
@@ -150,6 +185,22 @@ The generated loader remains part of the generated invitation contract. Inside
 the modal it is a readiness producer rather than a second visible loading
 authority. This prevents the old sequence of provisional iframe load, `srcDoc`
 replacement, blank navigation commit, and generated loader restart.
+
+Generated runtime readiness is first-viewport scoped. It waits for parsed DOM
+and established base geometry, the first section's critical images, and a
+bounded first-section font request. It does not wait for global `window.load`
+or for resources owned by later sections. Every rendered network image in the
+first section, including ordinary image objects and gallery cells, is
+eager/high-priority and is emitted as a head preload; corresponding resources
+in later sections are lazy/low-priority. The loader can therefore reveal the
+invitation atomically after the first section is renderable instead of exposing
+late object images. On a critical resource failure or the bounded timeout, the
+invitation remains hidden and the loader changes to an error state with an
+explicit retry. That failed document is sealed: a resource that completes
+later cannot reveal it. The preview shell observes the same error protocol and
+keeps its outer loader; retry remounts/reloads the document. The durable
+cross-surface contract is owned by
+[`RENDER_COMPATIBILITY_MATRIX.md`](../contracts/RENDER_COMPATIBILITY_MATRIX.md).
 
 Before iframe scripts run, `buildPreviewFrameSrcDoc(...)` injects:
 
@@ -341,7 +392,7 @@ Functional group centering is a generation/prepared-payload derivation that runs
 
 ## 9. Runtime Version And Deployment Compatibility
 
-Template preview keeps the HTML generator behind a browser `import()`:
+Dashboard template-card preview keeps the HTML generator behind a browser `import()`:
 
 1. the dashboard template card calls `openTemplateModal(...)`
 2. the controller opens the modal and reads the full template document
@@ -349,6 +400,10 @@ Template preview keeps the HTML generator behind a browser `import()`:
    `generateDashboardPreviewHtmlFromRenderState(...)`
 4. `previewSession.js` imports
    `functions/src/utils/generarHTMLDesdeSecciones` on demand
+
+The template admin editor does not consume this lazy generator path; it receives
+prepared HTML from `adminGetTemplateEditorDocumentV1`. The retained-chunk rules
+still apply to the template-card surface and the explicit local fallback.
 
 Next.js assigns that generator to a content-hashed lazy chunk. A dashboard tab
 retains the Webpack chunk map from the build that originally loaded the page.
@@ -404,6 +459,8 @@ Use these references for parity work:
 - `shared/previewPublishParity.test.mjs`
 - `shared/previewPublishMobileGeometryParity.test.mjs`
 - `functions/renderContractCompatibility.test.mjs`
+- `functions/invitationRuntimeReadiness.test.mjs`
+- `functions/templateEditorPreview.test.mjs`
 - `functions/publicationPublishValidation.test.mjs`
 
 Focused loading/session coverage:

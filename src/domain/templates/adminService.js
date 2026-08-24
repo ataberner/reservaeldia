@@ -1,5 +1,5 @@
 import { httpsCallable } from "firebase/functions";
-import { functions } from "@/firebase";
+import { functions } from "../../firebase.js";
 
 const listTemplatesCallable = httpsCallable(functions, "adminListTemplatesV1");
 const listTemplateTrashCallable = httpsCallable(functions, "adminListTemplateTrashV1");
@@ -72,6 +72,13 @@ export async function hardDeleteTemplateFromTrash(payload) {
 
 export async function getTemplateEditorDocument(payload) {
   return unwrap(await getTemplateEditorDocumentCallable(payload || {}));
+}
+
+export async function getPreparedTemplateEditorPreview(payload) {
+  return getTemplateEditorDocument({
+    ...(payload && typeof payload === "object" ? payload : {}),
+    includePreparedPreview: true,
+  });
 }
 
 export async function saveTemplateEditorDocument(payload) {

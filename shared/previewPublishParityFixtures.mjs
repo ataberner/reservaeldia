@@ -167,15 +167,15 @@ export const previewPublishSharedParityFixtures = Object.freeze([
     publishDraft: sharedParityBaseDraft,
     expectedMismatchCodes: [],
   },
+  {
+    id: "preview-publish-persisted-image-crop-parity",
+    previewDraft: mergePreviewAssetsIntoDraft(createRepresentativePublishReadyDraftFixture()),
+    publishDraft: createRepresentativePublishReadyDraftFixture(),
+    expectedMismatchCodes: [],
+  },
 ]);
 
 export const previewPublishExplicitDriftFixtures = Object.freeze([
-  {
-    id: "preview-publish-image-crop-materialization-drift",
-    previewDraft: mergePreviewAssetsIntoDraft(createRepresentativePublishReadyDraftFixture()),
-    publishDraft: createRepresentativePublishReadyDraftFixture(),
-    expectedMismatchCodes: ["image-crop-materialization"],
-  },
   {
     id: "preview-publish-preview-asset-unresolved-drift",
     previewDraft: clearPreviewHeroAsset(sharedParityBaseDraft),

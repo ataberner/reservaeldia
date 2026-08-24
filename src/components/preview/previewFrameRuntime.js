@@ -9,6 +9,7 @@ export const PREVIEW_FRAME_SCROLL_AUTHORITIES = Object.freeze({
 });
 
 export const PREVIEW_FRAME_READY_EVENT = "invitation-loader-hidden";
+export const PREVIEW_FRAME_ERROR_EVENT = "invitation-runtime-failed";
 export const PREVIEW_FRAME_TIMING_EVENT = "preview-timing-event";
 
 const PREVIEW_FRAME_HIDE_SCROLLBARS_STYLE_ID = "preview-frame-hide-scrollbars";
@@ -437,7 +438,7 @@ export function observePreviewFrameTiming(iframe, onTiming) {
   };
 }
 
-export function observePreviewFrameReadiness(iframe, onReady) {
+export function observePreviewFrameReadiness(iframe, onReady, options = {}) {
   const frameDocument = iframe?.contentDocument || null;
   const frameWindow = iframe?.contentWindow || null;
   if (!frameDocument || !frameWindow || typeof onReady !== "function") {
@@ -452,6 +453,7 @@ export function observePreviewFrameReadiness(iframe, onReady) {
     const body = frameDocument.body || null;
     const loader = frameDocument.getElementById?.("inv-loader") || null;
     const loaderState = body?.getAttribute?.("data-loader-ready");
+    const errorState = body?.getAttribute?.("data-loader-error");
     const hasLoaderProtocol =
       Boolean(loader) || loaderState === "0" || loaderState === "1";
 
@@ -460,6 +462,7 @@ export function observePreviewFrameReadiness(iframe, onReady) {
       loader,
       loaderState,
       hasLoaderProtocol,
+      failed: errorState === "1" || loader?.classList?.contains?.("inv-loader--error"),
       ready:
         !hasLoaderProtocol ||
         (loaderState === "1" && !loader),
@@ -470,6 +473,10 @@ export function observePreviewFrameReadiness(iframe, onReady) {
     frameWindow.removeEventListener?.(
       PREVIEW_FRAME_READY_EVENT,
       handleLoaderHidden
+    );
+    frameWindow.removeEventListener?.(
+      PREVIEW_FRAME_ERROR_EVENT,
+      handleRuntimeFailed
     );
     bodyObserver?.disconnect?.();
     bodyObserver = null;
@@ -485,6 +492,16 @@ export function observePreviewFrameReadiness(iframe, onReady) {
     });
   };
 
+  const fail = (reason) => {
+    if (settled || !isCurrentDocument()) return;
+    settled = true;
+    cleanup();
+    options?.onError?.({
+      document: frameDocument,
+      reason: String(reason || "runtime-failed"),
+    });
+  };
+
   function handleLoaderHidden() {
     const runtimeState = readRuntimeState();
     if (runtimeState.loaderState === "1" && !runtimeState.loader) {
@@ -492,13 +509,26 @@ export function observePreviewFrameReadiness(iframe, onReady) {
     }
   }
 
+  function handleRuntimeFailed(event) {
+    fail(event?.detail?.reason || "runtime-failed-event");
+  }
+
   frameWindow.addEventListener?.(
     PREVIEW_FRAME_READY_EVENT,
     handleLoaderHidden,
     { once: true }
   );
+  frameWindow.addEventListener?.(
+    PREVIEW_FRAME_ERROR_EVENT,
+    handleRuntimeFailed,
+    { once: true }
+  );
 
   const initialState = readRuntimeState();
+  if (initialState.failed) {
+    fail("runtime-failed-before-observer");
+    return cleanup;
+  }
   if (initialState.ready) {
     finish(
       initialState.hasLoaderProtocol
@@ -515,12 +545,18 @@ export function observePreviewFrameReadiness(iframe, onReady) {
   ) {
     bodyObserver = new MutationObserverConstructor(() => {
       const runtimeState = readRuntimeState();
+      if (runtimeState.failed) {
+        fail("runtime-failed-dom-state");
+        return;
+      }
       if (runtimeState.ready) {
         finish("loader-removed");
       }
     });
     bodyObserver.observe(initialState.body, {
       childList: true,
+      attributes: true,
+      attributeFilter: ["data-loader-ready", "data-loader-error"],
     });
   }
 

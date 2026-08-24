@@ -1,5 +1,6 @@
 import { getGalleryPhotos, getGallerySlots } from "./galleryMutations.js";
 import { getGalleryLayoutPreset, resolveGalleryLayoutSelectionForEditor } from "./galleryLayoutPresets.js";
+import { pickStorageAssetDescriptorFields } from "../assets/storageAssetDescriptor.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -118,6 +119,8 @@ export function getSelectedGalleryPhotoUsages(gallery) {
     cellId: photo.cellId,
     mediaUrl: photo.mediaUrl,
     storagePath: photo.storagePath,
+    storageGeneration: photo.storageGeneration,
+    storageDownloadToken: photo.storageDownloadToken,
     assetId: photo.assetId,
     fit: photo.fit === "contain" ? "contain" : "cover",
     bg: normalizeText(photo.bg) || "#f3f4f6",
@@ -184,6 +187,7 @@ export function buildCanvasImageElementFromLibraryImage(image, options = {}) {
     id,
     tipo: "imagen",
     src,
+    ...pickStorageAssetDescriptorFields(image),
     ...(width ? { ancho: width } : {}),
     ...(height ? { alto: height } : {}),
     ...(seccionId ? { seccionId } : {}),

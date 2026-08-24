@@ -15,6 +15,7 @@ import {
   type TemplateAssetCopyCache,
 } from "./storageAssets";
 import { normalizeCountdownGeometryDeep } from "../utils/normalizeCountdownGeometry";
+import { prepareTemplateEditorPreview } from "./templateEditorPreview";
 const {
   collectDuplicateRenderObjectIds,
   normalizeRenderAssetState,
@@ -24,6 +25,12 @@ const OPTIONS = {
   region: "us-central1" as const,
   cpu: "gcf_gen1" as const,
   cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+};
+
+const PRIVATE_TEMPLATE_PREVIEW_OPTIONS = {
+  ...OPTIONS,
+  cpu: 1 as const,
+  minInstances: 1,
 };
 
 const TEMPLATE_COLLECTION = "plantillas";
@@ -1337,7 +1344,7 @@ export const adminHardDeleteTemplateFromTrashV1 = onCall(
 );
 
 export const adminGetTemplateEditorDocumentV1 = onCall(
-  OPTIONS,
+  PRIVATE_TEMPLATE_PREVIEW_OPTIONS,
   async (request: CallableRequest<Record<string, unknown>>) => {
     const { uid, role } = resolveRole(request);
     const data = asObject(request.data);
@@ -1350,10 +1357,30 @@ export const adminGetTemplateEditorDocumentV1 = onCall(
       );
     }
     const permissions = resolveTemplatePermissions(role, uid, loaded.normalized);
+    const editorDocument = buildTemplateEditorDocument(
+      role,
+      uid,
+      loaded.id,
+      loaded.normalized
+    );
+    const preparedPreview = data.includePreparedPreview === true
+      ? await prepareTemplateEditorPreview({
+          templateId: loaded.id,
+          editorDocument,
+          includeDebugPayload: data.includeDebugPayload === true,
+          previewTimingSessionId: normalizeText(
+            asObject(data.previewTiming).sessionId
+          ),
+        })
+      : null;
+
+    if (preparedPreview) {
+      return { preparedPreview };
+    }
 
     return {
       item: buildTemplateResponse(role, uid, loaded.id, loaded.normalized),
-      editorDocument: buildTemplateEditorDocument(role, uid, loaded.id, loaded.normalized),
+      editorDocument,
       readOnly: permissions.readOnly,
       permissions,
     };

@@ -70,8 +70,28 @@ function buildGoogleFontsLink(fonts: string[]): string {
   if (!familias) return "";
 
   return `
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?${familias}&display=swap" rel="stylesheet">`.trim();
+}
+
+function buildCriticalImagePreloads(sectionHtml: string): string {
+  const urls = new Set<string>();
+  const imagePattern = /<img\b[^>]*\bsrc="([^"]+)"/gi;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = imagePattern.exec(sectionHtml)) !== null) {
+    const url = String(match[1] || "").trim();
+    if (!url || /^(?:data|blob):/i.test(url)) continue;
+    urls.add(url);
+  }
+
+  return Array.from(urls)
+    .map(
+      (url) =>
+        `<link rel="preload" as="image" href="${url}" fetchpriority="high">`
+    )
+    .join("\n");
 }
 
 type GenerarHTMLOpciones = {
@@ -151,7 +171,8 @@ function buildFondoStyle(seccion: any, backgroundModel = normalizeSectionBackgro
 
 function renderSectionBackgroundLayer(
   seccion: any,
-  backgroundModel = normalizeSectionBackgroundModel(seccion)
+  backgroundModel = normalizeSectionBackgroundModel(seccion),
+  isCritical = false
 ): string {
   const fondoStyle = buildFondoStyle(seccion, backgroundModel);
   const hasBaseImage =
@@ -168,7 +189,7 @@ function renderSectionBackgroundLayer(
 
   return `
 <div class="sec-bg" data-bg-kind="image" data-bg-offset-x="${escapeAttr(String(offsetX))}" data-bg-offset-y="${escapeAttr(String(offsetY))}" data-bg-scale="${escapeAttr(String(imageScale))}" style="${fondoStyle}">
-  <img class="sec-bg-image" data-bg-parallax-item="true" src="${escapeAttr(imageUrl)}" alt="" decoding="async" loading="eager" draggable="false" />
+  <img class="sec-bg-image" data-bg-parallax-item="true" src="${escapeAttr(imageUrl)}" alt="" decoding="async" loading="${isCritical ? "eager" : "lazy"}" fetchpriority="${isCritical ? "high" : "low"}" draggable="false" />
 </div>
 `.trim();
 }
@@ -402,7 +423,10 @@ function renderSectionDecorations(decorations: any[], mode: string): string {
   `.trim();
 }
 
-function renderSectionEdgeDecorations(decoracionesBorde: any): string {
+function renderSectionEdgeDecorations(
+  decoracionesBorde: any,
+  isCritical = false
+): string {
   const source =
     decoracionesBorde && typeof decoracionesBorde === "object"
       ? decoracionesBorde
@@ -430,7 +454,7 @@ function renderSectionEdgeDecorations(decoracionesBorde: any): string {
         .join(" ");
       return `
         <div class="sec-edge-decor ${slotClass}" data-edge-slot="${slot}" data-edge-mode="${mode}" data-edge-height-model="${heightModel}" ${intrinsicAttrs} style="${style}">
-          <img class="sec-edge-decor-img" src="${src}" alt="" loading="eager" decoding="async" draggable="false" />
+          <img class="sec-edge-decor-img" src="${src}" alt="" loading="${isCritical ? "eager" : "lazy"}" fetchpriority="${isCritical ? "high" : "low"}" decoding="async" draggable="false" />
         </div>
       `.trim();
     })
@@ -1377,7 +1401,7 @@ export function generarHTMLDesdeSecciones(
   );
 
 
-  const htmlSecciones = seccionesOrdenadas
+  const htmlSeccionesList = seccionesOrdenadas
     .map((seccion, sectionIndex) => {
       const backgroundModel = normalizeSectionBackgroundModel(seccion);
       const previousBackgroundModel =
@@ -1409,9 +1433,15 @@ export function generarHTMLDesdeSecciones(
         (o) => String(o?.anclaje || "").toLowerCase() !== "fullbleed"
       );
 
-      const fondoLayerHtml = renderSectionBackgroundLayer(seccion, backgroundModel);
+      const isCriticalSection = sectionIndex === 0;
+      const fondoLayerHtml = renderSectionBackgroundLayer(
+        seccion,
+        backgroundModel,
+        isCriticalSection
+      );
       const htmlDecoracionesBorde = renderSectionEdgeDecorations(
-        backgroundModel.decoracionesBorde
+        backgroundModel.decoracionesBorde,
+        isCriticalSection
       );
       const htmlDivisores = renderSectionDividers(
         backgroundModel.divisores,
@@ -1427,9 +1457,11 @@ export function generarHTMLDesdeSecciones(
 
       const htmlBleed = generarHTMLDesdeObjetos(objsBleed, seccionesOrdenadas, {
         functionalCtaContract,
+        criticalSection: isCriticalSection,
       });
       const htmlContenido = generarHTMLDesdeObjetos(objsContenido, seccionesOrdenadas, {
         functionalCtaContract,
+        criticalSection: isCriticalSection,
       });
 
 
@@ -1449,8 +1481,11 @@ export function generarHTMLDesdeSecciones(
   </div>
 </section>
 `.trim();
-    })
-    .join("\n");
+    });
+  const criticalImagePreloads = buildCriticalImagePreloads(
+    htmlSeccionesList[0] || ""
+  );
+  const htmlSecciones = htmlSeccionesList.join("\n");
 
   const scriptMobileSmart = buildMobileSmartSectionLayoutScript({
     enabled: ENABLE_MOBILE_SMART_LAYOUT,
@@ -1557,6 +1592,7 @@ export function generarHTMLDesdeSecciones(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Invitación</title>
+  ${criticalImagePreloads}
   ${googleFontsLink}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }

@@ -264,6 +264,12 @@ function mapSnapshotToDecorDoc(
         ? data.status
         : "active",
     storagePath: typeof data.storagePath === "string" ? data.storagePath : null,
+    storageGeneration:
+      typeof data.storageGeneration === "string" ? data.storageGeneration : null,
+    storageDownloadToken:
+      typeof data.storageDownloadToken === "string"
+        ? data.storageDownloadToken
+        : null,
     contentType: typeof data.contentType === "string" ? data.contentType : null,
     bytes: Number.isFinite(Number(data.bytes)) ? Number(data.bytes) : null,
     hashSha256: typeof data.hashSha256 === "string" ? data.hashSha256 : null,

@@ -458,6 +458,106 @@ function extractBetween(html, startToken, endToken) {
   return html.slice(startIndex, endIndex);
 }
 
+test("prioritizes only first-section render assets for initial readiness", () => {
+  const html = generarHTMLDesdeSecciones(
+    [
+      {
+        id: "section-critical",
+        orden: 1,
+        altoModo: "pantalla",
+        altura: 500,
+        fondoTipo: "imagen",
+        fondoImagen: "https://cdn.example.com/hero.jpg",
+        decoracionesBorde: {
+          top: {
+            enabled: true,
+            src: "https://cdn.example.com/hero-edge.png",
+          },
+        },
+      },
+      {
+        id: "section-deferred",
+        orden: 2,
+        altoModo: "fijo",
+        altura: 600,
+        fondoTipo: "imagen",
+        fondoImagen: "https://cdn.example.com/details.jpg",
+        decoracionesBorde: {
+          bottom: {
+            enabled: true,
+            src: "https://cdn.example.com/details-edge.png",
+          },
+        },
+      },
+    ],
+    [
+      {
+        id: "critical-object-image",
+        tipo: "imagen",
+        seccionId: "section-critical",
+        src: "https://cdn.example.com/critical-object.png",
+        x: 40,
+        y: 60,
+        width: 240,
+        height: 180,
+      },
+      {
+        id: "deferred-object-image",
+        tipo: "imagen",
+        seccionId: "section-deferred",
+        src: "https://cdn.example.com/deferred-object.png",
+        x: 40,
+        y: 60,
+        width: 240,
+        height: 180,
+      },
+    ]
+  );
+  const dom = new JSDOM(html);
+  const sectionNodes = Array.from(dom.window.document.querySelectorAll(".sec"));
+
+  assert.equal(sectionNodes.length, 2);
+  for (const selector of [".sec-bg-image", ".sec-edge-decor-img"]) {
+    const criticalImage = sectionNodes[0].querySelector(selector);
+    const deferredImage = sectionNodes[1].querySelector(selector);
+    assert.ok(criticalImage, `Missing critical ${selector}`);
+    assert.ok(deferredImage, `Missing deferred ${selector}`);
+    assert.equal(criticalImage.getAttribute("loading"), "eager");
+    assert.equal(criticalImage.getAttribute("fetchpriority"), "high");
+    assert.equal(deferredImage.getAttribute("loading"), "lazy");
+    assert.equal(deferredImage.getAttribute("fetchpriority"), "low");
+  }
+  const criticalObjectImage = sectionNodes[0].querySelector(".image-object img");
+  const deferredObjectImage = sectionNodes[1].querySelector(".image-object img");
+  assert.equal(criticalObjectImage?.getAttribute("loading"), "eager");
+  assert.equal(criticalObjectImage?.getAttribute("fetchpriority"), "high");
+  assert.equal(deferredObjectImage?.getAttribute("loading"), "lazy");
+  assert.equal(deferredObjectImage?.getAttribute("fetchpriority"), "low");
+
+  assert.ok(
+    dom.window.document.querySelector(
+      'link[rel="preload"][as="image"][href="https://cdn.example.com/critical-object.png"]'
+    )
+  );
+  assert.equal(
+    dom.window.document.querySelector(
+      'link[rel="preload"][href="https://cdn.example.com/deferred-object.png"]'
+    ),
+    null
+  );
+
+  const readinessRuntime = Array.from(
+    html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)
+  )
+    .map((match) => match[1])
+    .find((source) => source.includes("waitForFirstSectionCriticalImages"));
+  assert.ok(readinessRuntime, "Missing generated readiness runtime");
+  assert.match(readinessRuntime, /CRITICAL_READY_TIMEOUT_MS/);
+  assert.doesNotMatch(readinessRuntime, /waitForWindowLoad/);
+  assert.doesNotMatch(readinessRuntime, /document\.fonts\.ready/);
+  dom.window.close();
+});
+
 test("renders edge decorations as section-owned non-object layer", () => {
   const html = generarHTMLDesdeSecciones(
     [
@@ -1739,6 +1839,23 @@ test("global gallery viewer collects all galleries and maps duplicate clicks to 
     "https://cdn.example.com/shared-first.jpg"
   );
   assert.equal(counter?.textContent, "2 / 3");
+
+  await new Promise((resolve) => {
+    if (!document.getElementById("inv-loader")) {
+      resolve();
+      return;
+    }
+    const fallback = dom.window.setTimeout(resolve, 1_000);
+    dom.window.addEventListener(
+      "invitation-loader-hidden",
+      () => {
+        dom.window.clearTimeout(fallback);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
 
   dom.window.close();
 });

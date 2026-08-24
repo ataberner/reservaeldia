@@ -49,6 +49,7 @@ import { readCanvasEditorMethod } from "../lib/editorRuntimeBridge.js";
 import { readEditorRenderSnapshot } from "../lib/editorSnapshotAdapter.js";
 import { pushEditorBreadcrumb } from "../lib/monitoring/editorIssueReporter.js";
 import { readEditorSessionDocument } from "../components/editor/persistence/editorSessionPersistence.js";
+import { getPreparedTemplateEditorPreview } from "../domain/templates/adminService.js";
 
 const EMPTY_PREVIEW_CONTROLLER_SESSION = Object.freeze({
   targetId: "",
@@ -324,16 +325,42 @@ async function runDashboardPreviewControllerPreviewPipeline({
     administrativeOwnerUid,
     previewBoundarySnapshot,
     readTemplateEditorDocument: async ({ templateId }) => {
-      const result = await readEditorSessionDocument({
-        session: {
-          kind: "template",
-          id: templateId,
-        },
-        slug: templateId,
+      const backendCallStartedAt = readPreviewPerformanceNow();
+      const result = await getPreparedTemplateEditorPreview({
+        templateId,
+        includeDebugPayload: previewDebug,
+        ...(previewTimingSessionId
+          ? { previewTiming: { sessionId: previewTimingSessionId } }
+          : {}),
       });
-      return {
-        editorDocument: result.data,
-      };
+      const backendCallCompletedAt = readPreviewPerformanceNow();
+      const frontendRoundTripMs = Math.max(
+        0,
+        backendCallCompletedAt - backendCallStartedAt
+      );
+      recordPreviewTimingStage(previewTimingSessionId, {
+        stage: "backend-call-roundtrip",
+        label: "Llamada de red al backend",
+        durationMs: frontendRoundTripMs,
+        completedAt: backendCallCompletedAt,
+        source: "network",
+        recordKey: "backend-call-roundtrip",
+      });
+      recordBackendTimingBreakdown(
+        previewTimingContext,
+        result?.preparedPreview?.previewTiming,
+        frontendRoundTripMs
+      );
+      recordPreviewTimingStage(previewTimingSessionId, {
+        stage: "html-received",
+        label: PREVIEW_PIPELINE_TIMING_LABELS["html-received"],
+        durationMs: 0,
+        completedAt: backendCallCompletedAt,
+        source: "frontend",
+        htmlBytes: String(result?.preparedPreview?.htmlGenerado || "").length,
+        recordKey: "html-received",
+      });
+      return result;
     },
     readDraftDocument: async ({ draftSlug }) => {
       if (hasAdministrativeDraftPreview) {
@@ -376,7 +403,11 @@ async function runDashboardPreviewControllerPreviewPipeline({
       );
     },
     prepareDraftPreviewRender: useBackendPreparedDraftPreview
-      ? async ({ draftSlug, slugPreview, administrativeOwnerUid: ownerUid }) => {
+      ? async ({
+          draftSlug,
+          administrativeOwnerUid: ownerUid,
+          resolvePublicationLink,
+        }) => {
           const serviceModuleStartedAt = readPreviewPerformanceNow();
           const { prepareDraftPreviewRender } =
             await loadPublicationsServiceModule();
@@ -399,9 +430,10 @@ async function runDashboardPreviewControllerPreviewPipeline({
           });
           const result = await prepareDraftPreviewRender({
             draftSlug,
-            slugPreview,
             administrativeOwnerUid: ownerUid,
+            resolvePublicationLink,
             previewTimingSessionId,
+            includeDebugPayload: previewDebug,
           });
           const backendCallCompletedAt = readPreviewPerformanceNow();
           const frontendRoundTripMs = Math.max(
@@ -433,9 +465,7 @@ async function runDashboardPreviewControllerPreviewPipeline({
           return result;
         }
       : null,
-    onBeforeGenerateHtml: ({ previewPayload }) => {
-      if (!previewDebug) return;
-
+    onBeforeGenerateHtml: previewDebug ? ({ previewPayload }) => {
       try {
         const viewportWidth =
           typeof window !== "undefined"
@@ -462,7 +492,7 @@ async function runDashboardPreviewControllerPreviewPipeline({
       } catch (error) {
         console.warn("[PREVIEW] no se pudo armar resumen de objetos", error);
       }
-    },
+    } : null,
     onStageTiming: previewTiming ? recordPipelineStage : null,
     assertCurrentSession,
   });

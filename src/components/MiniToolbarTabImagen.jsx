@@ -57,6 +57,8 @@ function buildGalleryPhotoFromLibraryImage(img) {
   return {
     mediaUrl,
     storagePath: img?.storagePath,
+    storageGeneration: img?.storageGeneration,
+    storageDownloadToken: img?.storageDownloadToken,
     assetId: img?.assetId || img?.id,
     alt: img?.alt || img?.nombre,
     fit: "cover",
@@ -911,13 +913,13 @@ export default function MiniToolbarTabImagen({
     return galeriaSeleccionada?.id === safeGalleryId ? galeriaSeleccionada : null;
   }, [galeriaSeleccionada]);
 
-  const replaceGalleryPhotoTargetWithUpload = useCallback((galleryId, target, uploadedUrl) => {
+  const replaceGalleryPhotoTargetWithUpload = useCallback((galleryId, target, uploadedImage) => {
     const targetGallery = resolveLatestGalleryById(galleryId);
     if (!targetGallery || !target) return false;
-    if (typeof uploadedUrl !== "string" || !uploadedUrl) return false;
+    if (!resolveLibraryImageUrl(uploadedImage)) return false;
 
     const committed = commitGalleryMutation(
-      replaceGalleryPhoto(targetGallery, target, uploadedUrl),
+      replaceGalleryPhoto(targetGallery, target, uploadedImage),
       target?.isEmpty ? "Foto agregada a esta celda." : "Foto reemplazada en esta galeria.",
       targetGallery
     );
@@ -1328,7 +1330,7 @@ export default function MiniToolbarTabImagen({
       return false;
     }
 
-    const ok = replaceCoverImage(imageUrl, {
+    const ok = replaceCoverImage(imageInput, {
       preservePlacement: true,
       sectionId: options.sectionId || options.expectedSectionId || "",
     });
@@ -1419,8 +1421,8 @@ export default function MiniToolbarTabImagen({
     });
   }, []);
 
-  const applyUploadedImageToDefaultDestination = useCallback((uploadedUrl) => {
-    if (typeof uploadedUrl !== "string" || !uploadedUrl) {
+  const applyUploadedImageToDefaultDestination = useCallback((uploadedImage) => {
+    if (!resolveLibraryImageUrl(uploadedImage)) {
       setPanelNoticeSafe("No se encontro una imagen valida para insertar.");
       return false;
     }
@@ -1433,7 +1435,7 @@ export default function MiniToolbarTabImagen({
       }
 
       const ok = window.asignarImagenACelda(
-        { mediaUrl: uploadedUrl, fit: "cover" },
+        buildGalleryPhotoFromLibraryImage(uploadedImage),
         "cover"
       );
       if (ok) {
@@ -1445,7 +1447,7 @@ export default function MiniToolbarTabImagen({
       return false;
     }
 
-    return insertAvailableImageIntoCanvas(uploadedUrl);
+    return insertAvailableImageIntoCanvas(uploadedImage);
   }, [
     insertAvailableImageIntoCanvas,
     resolveCurrentValidGalleryCellSelection,

@@ -102,6 +102,8 @@ export type DecorCatalogDoc = {
   assetType: "decoracion";
   status: DecorCatalogStatus;
   storagePath: string | null;
+  storageGeneration: string | null;
+  storageDownloadToken: string | null;
   contentType: string | null;
   bytes: number | null;
   hashSha256: string | null;

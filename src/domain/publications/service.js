@@ -64,13 +64,12 @@ export async function validateDraftForPublication({
 
 export async function prepareDraftPreviewRender({
   draftSlug,
-  slugPreview = "",
   administrativeOwnerUid = "",
+  resolvePublicationLink = true,
   previewTimingSessionId = "",
+  includeDebugPayload = false,
 }) {
   const safeDraftSlug = typeof draftSlug === "string" ? draftSlug.trim() : "";
-  const safeSlugPreview =
-    typeof slugPreview === "string" ? slugPreview.trim() : "";
   const safeAdministrativeOwnerUid =
     typeof administrativeOwnerUid === "string"
       ? administrativeOwnerUid.trim()
@@ -85,7 +84,8 @@ export async function prepareDraftPreviewRender({
 
   const result = await prepareDraftPreviewRenderCallable({
     draftSlug: safeDraftSlug,
-    slugPreview: safeSlugPreview,
+    resolvePublicationLink: resolvePublicationLink !== false,
+    includeDebugPayload: includeDebugPayload === true,
     ...(safeAdministrativeOwnerUid
       ? { administrativeOwnerUid: safeAdministrativeOwnerUid }
       : {}),

@@ -1585,7 +1585,12 @@ export const validateDraftForPublication = onCall(
 );
 
 export const prepareDraftPreviewRender = onCall(
-  { region: "us-central1", memory: "512MiB" },
+  {
+    region: "us-central1",
+    memory: "512MiB",
+    cpu: 1,
+    minInstances: 1,
+  },
   async (request) => prepareDraftPreviewRenderHandler(request)
 );
 

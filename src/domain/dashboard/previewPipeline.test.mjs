@@ -211,6 +211,8 @@ test("draft preview pipeline uses backend prepared render output when the previe
   let prepareCall = null;
   let debugPayload = null;
   let liveSnapshotReads = 0;
+  let frontendDraftReads = 0;
+  let frontendPublicationReads = 0;
   const stageTimings = [];
 
   const validation = {
@@ -232,14 +234,16 @@ test("draft preview pipeline uses backend prepared render output when the previe
       objetos: [{ id: "live-local-only", seccionId: "hero", tipo: "texto" }],
       secciones: [{ id: "hero" }],
     },
-    readDraftDocument: async () =>
-      createSnapshotRecord("draft-backend-preview", {
+    readDraftDocument: async () => {
+      frontendDraftReads += 1;
+      return createSnapshotRecord("draft-backend-preview", {
         publicationLifecycle: {
           activePublicSlug: "Backend Slug",
         },
         objetos: [{ id: "persisted-local-only", seccionId: "hero", tipo: "texto" }],
         secciones: [{ id: "hero" }],
-      }),
+      });
+    },
     readLiveEditorSnapshot: () => {
       liveSnapshotReads += 1;
       return {
@@ -247,10 +251,12 @@ test("draft preview pipeline uses backend prepared render output when the previe
         secciones: [{ id: "unused-live-section" }],
       };
     },
-    readPublicationBySlug: async (publicSlug) =>
-      createSnapshotRecord(publicSlug, {
+    readPublicationBySlug: async (publicSlug) => {
+      frontendPublicationReads += 1;
+      return createSnapshotRecord(publicSlug, {
         urlPublica: "https://reservaeldia.com.ar/i/backend-slug",
-      }),
+      });
+    },
     prepareDraftPreviewRender: async (input) => {
       prepareCall = input;
       return {
@@ -261,6 +267,9 @@ test("draft preview pipeline uses backend prepared render output when the previe
           secciones: [{ id: "hero" }],
         },
         validation,
+        slugPublicoDetectado: "backend-slug",
+        urlPublicaDetectada: "https://reservaeldia.com.ar/i/backend-slug",
+        publicacionNoVigenteDetectada: false,
         previewTiming: {
           sessionId: "session-backend-1",
           readDraftMs: 12,
@@ -293,11 +302,18 @@ test("draft preview pipeline uses backend prepared render output when the previe
   assert.equal(previewResult.validation, validation);
   assert.deepEqual(prepareCall, {
     draftSlug: "draft-backend-preview",
-    slugPreview: "backend-slug",
+    resolvePublicationLink: true,
   });
   assert.equal(debugPayload.objetos[0].id, "prepared-object");
   assert.equal(previewResult.previewPayload.objetos[0].id, "prepared-object");
   assert.equal(liveSnapshotReads, 0);
+  assert.equal(frontendDraftReads, 0);
+  assert.equal(frontendPublicationReads, 0);
+  assert.equal(previewResult.slugPublicoDetectado, "backend-slug");
+  assert.equal(
+    previewResult.urlPublicaDetectada,
+    "https://reservaeldia.com.ar/i/backend-slug"
+  );
   assert.equal(
     stageTimings.some(
       (timing) => timing.stage === "prepared-render-request-start"
@@ -370,7 +386,7 @@ test("administrative draft preview uses the prepared renderer without resolving 
   assert.equal(publicationReadCalled, false);
   assert.deepEqual(prepareCall, {
     draftSlug: "draft-admin-preview",
-    slugPreview: "draft-admin-preview",
+    resolvePublicationLink: false,
     administrativeOwnerUid: "owner-2",
   });
 });
@@ -642,12 +658,11 @@ test("draft preview pipeline keeps gifts CTA root config unavailable when a stal
   assert.equal(generatorCall.generatorOptions.giftsSource.bank.alias, "");
 });
 
-test("template preview pipeline reads the template document and skips publication compatibility lookups", async () => {
+test("template preview pipeline consumes backend-prepared HTML and skips local generation", async () => {
   let liveSnapshotReads = 0;
   let publicationLookupCalls = 0;
   let slugOriginalQueries = 0;
   let generatorCall = null;
-
   const previewResult = await runDashboardPreviewPipeline({
     slugInvitacion: "template-workspace-1",
     isTemplateSession: true,
@@ -655,19 +670,20 @@ test("template preview pipeline reads the template document and skips publicatio
     readTemplateEditorDocument: async ({ templateId }) => {
       assert.equal(templateId, "template-workspace-1");
       return {
-        editorDocument: {
-          objetos: [
-            {
-              id: "template-text-1",
-              seccionId: "hero",
-              tipo: "texto",
+        preparedPreview: {
+          blocked: false,
+          htmlGenerado: "<html>preview-template-prepared</html>",
+          validation: {
+            canPublish: true,
+            blockers: [],
+            warnings: [],
+            summary: {
+              blockerCount: 0,
+              warningCount: 0,
+              blockingMessage: "",
+              warningMessage: "",
             },
-          ],
-          secciones: [
-            {
-              id: "hero",
-            },
-          ],
+          },
         },
       };
     },
@@ -704,22 +720,72 @@ test("template preview pipeline reads the template document and skips publicatio
     previewResult.previewAuthority,
     PREVIEW_AUTHORITY.TEMPLATE_VISUAL
   );
-  assert.equal(previewResult.htmlGenerado, "<html>preview-template</html>");
+  assert.equal(
+    previewResult.htmlGenerado,
+    "<html>preview-template-prepared</html>"
+  );
+  assert.equal(previewResult.validation.canPublish, true);
+  assert.equal(previewResult.previewPayload, null);
   assert.equal(previewResult.slugPublicoDetectado, "");
   assert.equal(previewResult.urlPublicaDetectada, "");
   assert.equal(previewResult.publicacionNoVigenteDetectada, false);
-  assert.equal(liveSnapshotReads, 1);
+  assert.equal(liveSnapshotReads, 0);
   assert.equal(publicationLookupCalls, 0);
   assert.equal(slugOriginalQueries, 0);
-  assert.equal(generatorCall.generatorOptions.slug, "template-workspace-1");
-  assert.deepEqual(generatorCall.secciones, [{ id: "hero" }]);
-  assert.deepEqual(generatorCall.objetos, [
-    {
-      id: "template-text-1",
-      seccionId: "hero",
-      tipo: "texto",
+  assert.equal(generatorCall, null);
+});
+
+test("template preview pipeline exposes backend prepared validation blockers", async () => {
+  const previewResult = await runDashboardPreviewPipeline({
+    slugInvitacion: "template-workspace-blocked",
+    isTemplateSession: true,
+    readTemplateEditorDocument: async () => ({
+      preparedPreview: {
+        blocked: true,
+        htmlGenerado: "",
+        validation: {
+          canPublish: false,
+          blockers: [{ code: "missing-section-reference" }],
+          warnings: [],
+          summary: {
+            blockerCount: 1,
+            warningCount: 0,
+            blockingMessage: "La plantilla tiene contenido no renderizable.",
+            warningMessage: "",
+          },
+        },
+      },
+    }),
+    generateHtmlFromSections: async () => {
+      throw new Error("local template generation must not run");
     },
-  ]);
+  });
+
+  assert.equal(previewResult.status, "blocked");
+  assert.equal(previewResult.previewAuthority, PREVIEW_AUTHORITY.TEMPLATE_VISUAL);
+  assert.equal(previewResult.htmlGenerado, "");
+  assert.equal(previewResult.validation.canPublish, false);
+  assert.equal(
+    previewResult.blockingMessage,
+    "La plantilla tiene contenido no renderizable."
+  );
+});
+
+test("template preview pipeline rejects a response without the prepared backend protocol", async () => {
+  await assert.rejects(
+    runDashboardPreviewPipeline({
+      slugInvitacion: "template-workspace-unprepared",
+      isTemplateSession: true,
+      readTemplateEditorDocument: async () => ({
+        editorDocument: {
+          objetos: [],
+          secciones: [{ id: "hero" }],
+        },
+      }),
+      generateHtmlFromSections: async () => "<html>local-fallback</html>",
+    }),
+    /no devolvio una vista previa preparada/i
+  );
 });
 
 test("preview pipeline returns missing-template when the template editor document cannot be read", async () => {

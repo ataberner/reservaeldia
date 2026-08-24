@@ -614,6 +614,7 @@ type GenerarHTMLDesdeObjetosOptions = {
   inheritedSectionId?: string | null;
   inheritedAnchor?: string | null;
   groupId?: string | null;
+  criticalSection?: boolean;
 };
 
 export function generarHTMLDesdeObjetos(
@@ -625,6 +626,9 @@ export function generarHTMLDesdeObjetos(
   const isGroupChildRender = renderMode === "group-child";
   const inheritedSectionId = String(options.inheritedSectionId || "").trim();
   const inheritedAnchor = String(options.inheritedAnchor || "").trim();
+  const imageLoadingAttrs = options.criticalSection === true
+    ? 'loading="eager" fetchpriority="high" decoding="async"'
+    : 'loading="lazy" fetchpriority="low" decoding="async"';
   const parentGroupId = String(options.groupId || "").trim();
   const altoModoPorSeccion = new Map(
     (_secciones || []).map((s: any) => [s.id, String(s.altoModo || "fijo").toLowerCase()])
@@ -1228,7 +1232,7 @@ max-width: none;
 `.trim();
 
           return envolverSiEnlace(
-            `<img class="objeto" src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" draggable="false" style="${fallbackStyle}" />`,
+            `<img class="objeto" src="${escapeAttr(src)}" alt="" ${imageLoadingAttrs} draggable="false" style="${fallbackStyle}" />`,
             obj
           );
         }
@@ -1267,7 +1271,7 @@ pointer-events: none;
         return envolverSiEnlace(
           `
 <div class="objeto image-object" style="${wrapperStyle}">
-  <img src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" draggable="false" style="${innerImageStyle}" />
+  <img src="${escapeAttr(src)}" alt="" ${imageLoadingAttrs} draggable="false" style="${innerImageStyle}" />
 </div>
 `.trim(),
           obj
@@ -1301,7 +1305,7 @@ object-fit: contain;
 display: block;
 `.trim();
 
-        return envolverSiEnlace(`<img class="objeto" src="${escapeAttr(src)}" style="${style}" />`, obj);
+        return envolverSiEnlace(`<img class="objeto" src="${escapeAttr(src)}" alt="" ${imageLoadingAttrs} draggable="false" style="${style}" />`, obj);
       }
 
       // ---------------- ICONO LEGACY (icono-svg) ----------------
@@ -1445,8 +1449,8 @@ ${buildTextPaintStyleCss(labelPaint, "#6b7280")}
           const frameScaleStyle = `transform:scale(${toCssNumber(layout.frameScale)});transform-origin:center;pointer-events:none;`;
           const buildFrameVisualHtml = (frameClassName: string): string =>
             frameColorMode === "currentcolor"
-              ? `<span class="${frameClassName}" aria-hidden="true" style="position:absolute;inset:0;display:block;background:${escapeAttr(frameColor)};-webkit-mask-image:url(${escapeAttr(frameUrl)});mask-image:url(${escapeAttr(frameUrl)});-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:100% 100%;mask-size:100% 100%;"><img class="cdv2-frame-preload" src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="eager" decoding="async" style="display:none;" /></span>`
-              : `<img class="${frameClassName}" src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async" style="position:absolute;inset:0;width:100%;height:100%;object-fit:${frameAssetType === "png" ? "contain" : "fill"};display:block;pointer-events:none;" />`;
+              ? `<span class="${frameClassName}" aria-hidden="true" style="position:absolute;inset:0;display:block;background:${escapeAttr(frameColor)};-webkit-mask-image:url(${escapeAttr(frameUrl)});mask-image:url(${escapeAttr(frameUrl)});-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:100% 100%;mask-size:100% 100%;"><img class="cdv2-frame-preload" src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" ${imageLoadingAttrs} style="display:none;" /></span>`
+              : `<img class="${frameClassName}" src="${escapeAttr(frameUrl)}" alt="" aria-hidden="true" ${imageLoadingAttrs} style="position:absolute;inset:0;width:100%;height:100%;object-fit:${frameAssetType === "png" ? "contain" : "fill"};display:block;pointer-events:none;" />`;
 
           const singleFrameHtml =
             layout.useSingleFrameLayout && layout.hasFrameConfigured
@@ -1869,7 +1873,7 @@ background:${safeBg};
      tabindex="0"
      aria-label="Ver imagen en pantalla completa"
      style="${celdaStyle}">
-  <img src="${safeSrc}" alt="" loading="lazy" decoding="async"
+  <img src="${safeSrc}" alt="" ${imageLoadingAttrs}
        style="width:100%;height:100%;object-fit:${safeFit};display:block;" />
 </div>
 `.trim();
@@ -1946,7 +1950,7 @@ background: ${cell.bg};
      tabindex="0"
      aria-label="Ver imagen en pantalla completa"
      style="${celdaStyle}">
-  <img src="${safeSrc}" alt="" loading="lazy" decoding="async"
+  <img src="${safeSrc}" alt="" ${imageLoadingAttrs}
        style="width:100%;height:100%;object-fit:${cell.fit};display:block;" />
 </div>
 `.trim();

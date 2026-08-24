@@ -251,6 +251,9 @@ Sections are stored in the `secciones` array inside the draft document. The edit
 | `alturaFijoBackup` | Optional | Backup fixed height when toggling section modes. |
 | `fondoTipo` | Optional | Base background kind. Current HTML generator checks `"imagen"` explicitly. |
 | `fondoImagen` | Optional | Base background image URL/path. |
+| `fondoImagenStoragePath` | Optional canonical asset descriptor | Storage object path owned by the upload/editor write. |
+| `fondoImagenStorageGeneration` | Optional canonical asset descriptor | Storage generation corresponding to `fondoImagen`. |
+| `fondoImagenDownloadToken` | Optional canonical asset descriptor | Firebase download token corresponding to `fondoImagen`. |
 | `fondoImagenOffsetX` | Optional | Base image X offset. |
 | `fondoImagenOffsetY` | Optional | Base image Y offset. |
 | `fondoImagenScale` | Optional | Base image scale. Section normalizers clamp it to `>= 1`. |
@@ -279,6 +282,8 @@ Each normalized background decoration item uses:
 | `decorId` | Optional | Catalog/reference identifier when present. |
 | `src` | Required after normalization | Decoration image URL/path. |
 | `storagePath` | Optional | Storage path used by publish-time URL resolution. |
+| `storageGeneration` | Optional | Storage object generation persisted by the upload/editor owner. |
+| `storageDownloadToken` | Optional | Firebase download token persisted with the render URL. |
 | `nombre` | Optional with fallback | Human-readable label. Falls back to `"Decoracion"`. |
 | `x` | Required after normalization | Section-local X position. |
 | `y` | Required after normalization | Section-local Y position. |
@@ -304,6 +309,8 @@ type EdgeDecorationSlot = {
   enabled?: boolean,
   src: string,
   storagePath?: string | null,
+  storageGeneration?: string | null,
+  storageDownloadToken?: string | null,
   decorId?: string | null,
   nombre?: string | null,
   heightModel?: "intrinsic-clamp" | "ratio-band",
@@ -451,8 +458,11 @@ Current image objects use:
 
 | Field | Status | Notes |
 | --- | --- | --- |
-| `src` | Required for stable publish behavior | Main image URL/path. Publish-time URL resolution only rewrites `src`. |
+| `src` | Required for stable publish behavior | Main image URL/path and preferred prepared-render asset field. |
 | `url` | Optional fallback | HTML generator uses `src || url`. |
+| `storagePath` | Optional canonical asset descriptor | Storage object path corresponding to `src`/`url`. |
+| `storageGeneration` | Optional canonical asset descriptor | Immutable Storage generation captured by the upload/editor owner. |
+| `storageDownloadToken` | Optional canonical asset descriptor | Firebase download token captured with the current URL. |
 | `width` | Optional | HTML renders it when present. |
 | `height` | Optional | HTML renders it when present. |
 | `ancho` | Optional but required for crop-safe publish | Source image width used to materialize crop consistently in preview/publish HTML. |
@@ -588,6 +598,7 @@ Gallery cell payload:
 | --- | --- | --- |
 | `mediaUrl` | Preferred | Main cell media URL. |
 | `url` / `src` | Compatibility fallback | Dynamic gallery rendering falls back to these when `mediaUrl` is absent. |
+| `storagePath` / `storageGeneration` / `storageDownloadToken` | Optional canonical asset descriptor | Persisted provenance used by prepared normalization to avoid repeated metadata/signing reads. |
 | `fit` | Optional | `cover` or `contain`. |
 | `bg` | Optional | Cell background color. |
 
@@ -951,6 +962,16 @@ and passes the guarded project/credential checks. Their default/local dry-runs
 do not write Firebase, enrichment dry-run is remote-read-only, and no provider
 script makes a provider visible or publishes a directory route.
 
+### `usuarios/{uid}/imagenes`
+
+The editor media library is the upload owner for user images. Each new image
+document stores its download `url`, thumbnail metadata, `storagePath`,
+`storageGeneration`, `storageDownloadToken`, and source pixel dimensions in
+`ancho` / `alto`. The Storage object's custom metadata mirrors the source
+dimensions so legacy editor migration can recover metadata without downloading
+the image body. When an image is inserted or replaces a crop-capable render
+object, these descriptor fields and dimensions travel with the render state.
+
 ### `borradores`
 The modern draft schema is embedded in a single Firestore document:
 
@@ -1135,15 +1156,15 @@ Output:
 Input:
 
 - publishable draft preview: owned draft read by the backend after the critical flush
-- template/fallback preview: persisted template/draft re-read plus an optional critical-flush boundary snapshot
+- admin template preview: persisted template re-read and prepared by its backend callable
+- local fallback preview: persisted draft re-read plus an optional critical-flush boundary snapshot
 
 Transformation:
 
 - preview requests a critical flush before opening
-- preview re-reads through `readEditorSessionDocument`, which routes by `editorSession.kind`
-- publishable draft preview calls `prepareDraftPreviewRender`, which uses `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`
+- publishable draft preview calls `prepareDraftPreviewRender`; that backend owns the single draft read and optional publication-link resolution, then uses `prepareRenderPayload(...)`, `validatePreparedRenderPayload(...)`, and `generateHtmlFromPreparedRenderPayload(...)`
 - if backend validation has blockers, preview receives validation without trusted HTML
-- template/fallback preview can still overlay a compatible editor boundary snapshot and call the shared section/object HTML generator locally
+- admin template preview uses the same backend prepare/validate/generate boundary but remains visual-only; local fallback can still overlay a compatible editor boundary snapshot and call the shared section/object HTML generator locally
 - preview results carry explicit authority:
   - `draft-authoritative`: backend prepared draft preview, publish-faithful
   - `template-visual`: pre-draft template preview, visual-only
@@ -1238,15 +1259,15 @@ These are the current code-grounded rules that must not be broken:
 - Current deep normalization rewrites these keys when found anywhere in the template payload: `src`, `url`, `mediaUrl`, `fondoImagen`.
 
 ### Publish-Time Asset Resolution
-- Publish resolves section base images and section decoration images before generating HTML.
-- Publish resolves top-level `imagen` and `icono` object `src` values when they are Storage paths.
-- Publish does not perform deep asset resolution for every possible nested object field.
+- Prepared preview and publish resolve supported asset fields recursively through objects, group children, Gallery cells, and section-owned visuals before generating HTML.
+- A complete canonical descriptor matching the Firebase download URL skips `getMetadata()` and signing. Compatibility path-only, `gs://`, stale-token, or incomplete descriptors use a request-local metadata/signing cache keyed by Storage path.
+- Prepared preview and publish never download image bodies to infer crop dimensions. `ancho` / `alto` are authored by upload/editor persistence; a meaningful crop without them is not publish-ready.
 
 Practical rule:
 
 - Storage-backed media should be persisted in the field that the publish path actually resolves.
 - For top-level image/icon objects, that stable field is `src`.
-- For gallery cells and other nested asset structures, URLs should already be public or already normalized before publish.
+- Gallery cells and other nested asset structures should preserve their canonical descriptor with the URL so prepared normalization can use the zero-metadata fast path.
 
 ### Data Identity vs URL Identity
 Storage-backed asset fields can be rewritten across load, template cloning, and publish:

@@ -10970,6 +10970,47 @@ export default function CanvasStageContent({
         onSelect={isInEditMode || !objectEditable ? null : handleElementSelectIntent}
         onChange={(id, nuevo) => {
           if (!objectEditable) return;
+          if (nuevo?.imageSourceMigration) {
+            const childId = String(
+              nuevo.imageSourceMigration.childId || ""
+            ).trim();
+            const migrationPatch =
+              nuevo.imageSourceMigration.patch &&
+              typeof nuevo.imageSourceMigration.patch === "object"
+                ? nuevo.imageSourceMigration.patch
+                : null;
+            if (!childId || !migrationPatch) return;
+
+            setObjetos((prev) => {
+              const index = prev.findIndex((current) => current.id === id);
+              if (index === -1) return prev;
+              const currentGroup = prev[index];
+              if (
+                currentGroup?.tipo !== "grupo" ||
+                !Array.isArray(currentGroup.children) ||
+                !canEditObject(currentGroup, { secciones: seccionesOrdenadas })
+              ) {
+                return prev;
+              }
+
+              let changed = false;
+              const nextChildren = currentGroup.children.map((child) => {
+                if (child?.id !== childId) return child;
+                const hasDifference = Object.entries(migrationPatch).some(
+                  ([key, value]) => child?.[key] !== value
+                );
+                if (!hasDifference) return child;
+                changed = true;
+                return { ...child, ...migrationPatch };
+              });
+              if (!changed) return prev;
+
+              const updated = [...prev];
+              updated[index] = { ...currentGroup, children: nextChildren };
+              return updated;
+            });
+            return;
+          }
           if (nuevo.isDragPreview) {
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);

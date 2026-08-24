@@ -234,6 +234,8 @@ export function mapDecorDocToViewModel(doc, source = "active") {
     url,
     thumbnailUrl: normalizeString(thumb) || url,
     storagePath: normalizeString(doc?.storagePath),
+    storageGeneration: normalizeString(doc?.storageGeneration),
+    storageDownloadToken: normalizeString(doc?.storageDownloadToken),
     assetType: normalizeString(doc?.assetType || "decoracion") || "decoracion",
     format: normalizeString(doc?.format || ""),
     width: parseNullableNumber(doc?.width),

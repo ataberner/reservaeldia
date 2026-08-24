@@ -108,6 +108,8 @@ function clearCellMedia(cell) {
   delete next.url;
   delete next.src;
   delete next.storagePath;
+  delete next.storageGeneration;
+  delete next.storageDownloadToken;
   delete next.assetId;
   delete next.alt;
 
@@ -143,6 +145,12 @@ export function normalizeGalleryPhotoInput(photo, defaults = {}) {
   const storagePath = normalizeText(safePhoto.storagePath);
   if (storagePath) next.storagePath = storagePath;
 
+  const storageGeneration = normalizeText(safePhoto.storageGeneration);
+  if (storageGeneration) next.storageGeneration = storageGeneration;
+
+  const storageDownloadToken = normalizeText(safePhoto.storageDownloadToken);
+  if (storageDownloadToken) next.storageDownloadToken = storageDownloadToken;
+
   const assetId = normalizeText(safePhoto.assetId);
   if (assetId) next.assetId = assetId;
 
@@ -167,6 +175,8 @@ function buildPopulatedCell(previousCell, photo) {
   delete next.url;
   delete next.src;
   delete next.storagePath;
+  delete next.storageGeneration;
+  delete next.storageDownloadToken;
   delete next.assetId;
   delete next.alt;
 
@@ -174,6 +184,12 @@ function buildPopulatedCell(previousCell, photo) {
     next.id = normalizeText(safePrevious.id) || normalizedPhoto.id;
   }
   if (normalizedPhoto.storagePath) next.storagePath = normalizedPhoto.storagePath;
+  if (normalizedPhoto.storageGeneration) {
+    next.storageGeneration = normalizedPhoto.storageGeneration;
+  }
+  if (normalizedPhoto.storageDownloadToken) {
+    next.storageDownloadToken = normalizedPhoto.storageDownloadToken;
+  }
   if (normalizedPhoto.assetId) next.assetId = normalizedPhoto.assetId;
   if (normalizedPhoto.alt) next.alt = normalizedPhoto.alt;
 
@@ -323,6 +339,8 @@ export function getGalleryPhotos(gallery) {
       cellId: normalizeText(cell.id),
       mediaUrl,
       storagePath: normalizeText(cell.storagePath),
+      storageGeneration: normalizeText(cell.storageGeneration),
+      storageDownloadToken: normalizeText(cell.storageDownloadToken),
       assetId: normalizeText(cell.assetId),
       fit: normalizeText(cell.fit) || DEFAULT_CELL_FIT,
       bg: normalizeText(cell.bg) || DEFAULT_CELL_BG,
@@ -365,6 +383,8 @@ export function getGallerySlots(gallery, options = {}) {
       cellId: normalizeText(cell.id),
       mediaUrl: mediaUrl || "",
       storagePath: normalizeText(cell.storagePath),
+      storageGeneration: normalizeText(cell.storageGeneration),
+      storageDownloadToken: normalizeText(cell.storageDownloadToken),
       assetId: normalizeText(cell.assetId),
       fit: normalizeText(cell.fit) || DEFAULT_CELL_FIT,
       bg: normalizeText(cell.bg) || DEFAULT_CELL_BG,

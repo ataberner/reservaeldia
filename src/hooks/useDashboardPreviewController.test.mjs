@@ -104,15 +104,21 @@ test("template sessions never enable publish or checkout compatibility paths", (
   assert.deepEqual(templateState, {
     isTemplateSession: true,
     canUsePublishCompatibility: false,
+    canValidateForPublication: false,
     canOpenCheckoutFromPreview: false,
     shouldRefreshPublishValidationAfterPreview: false,
+    shouldResolvePublicationLink: false,
+    administrativeOwnerUid: "",
     publishValidationRefreshMode: "none",
   });
   assert.deepEqual(draftState, {
     isTemplateSession: false,
     canUsePublishCompatibility: true,
+    canValidateForPublication: true,
     canOpenCheckoutFromPreview: true,
     shouldRefreshPublishValidationAfterPreview: true,
+    shouldResolvePublicationLink: true,
+    administrativeOwnerUid: "",
     publishValidationRefreshMode: "compatibility-side-effect",
   });
 });

@@ -7,7 +7,6 @@ import {
   buildGsUrl,
 } from "../shared/renderAssetContractFixtures.mjs";
 import {
-  createPublishValidationImageDownloadBuffer,
   createRepresentativeBlockingDraftFixture,
   createRepresentativeCompatibilityWarningDraftFixture,
   createRepresentativeGiftNoUsableMethodsDraftFixture,
@@ -32,7 +31,6 @@ const FIXED_SECTION = [{ id: "section-1", orden: 1, altoModo: "fijo", altura: 60
 function createRepresentativeStorageFiles() {
   return {
     [FIXTURE_PATHS.heroImage]: {
-      downloadBuffer: createPublishValidationImageDownloadBuffer(),
     },
     [FIXTURE_PATHS.rasterIcon]: {},
     [FIXTURE_PATHS.galleryOne]: {},
@@ -69,6 +67,8 @@ function createGroupedImageCaptionObject(overrides = {}) {
         cropY: 1,
         cropWidth: 2,
         cropHeight: 2,
+        ancho: 4,
+        alto: 4,
       },
       {
         id: "photo-caption-text",
@@ -405,6 +405,8 @@ test("prepares a representative clean draft into a publish-ready state without w
   assert.equal(prepared.functionalCtaContract.gifts.reason, "ready");
   assert.equal(heroImage.ancho, 4);
   assert.equal(heroImage.alto, 4);
+  assert.equal(prepared.assetNormalizationDiagnostics.dimensionDownloadCount, 0);
+  assert.equal(storageMock.downloadReads.length, 0);
 });
 
 test("prepares grouped image compositions recursively so publish validates the child assets too", async (t) => {
@@ -426,6 +428,8 @@ test("prepares grouped image compositions recursively so publish validates the c
   assert.deepEqual(issueKeys(result.blockers), []);
   assert.equal(groupedImage.ancho, 4);
   assert.equal(groupedImage.alto, 4);
+  assert.equal(prepared.assetNormalizationDiagnostics.dimensionDownloadCount, 0);
+  assert.equal(storageMock.downloadReads.length, 0);
 });
 
 test("prepared render payload applies functional group visibility and centering before HTML generation", async (t) => {
@@ -619,7 +623,18 @@ test("canonical prepared render payload preserves the publication wrapper and va
     functionalCtaContract: compatibility.functionalCtaContract,
   });
 
-  assert.deepEqual(canonical, compatibility);
+  assert.deepEqual(
+    {
+      ...canonical,
+      assetNormalizationDiagnostics: undefined,
+    },
+    {
+      ...compatibility,
+      assetNormalizationDiagnostics: undefined,
+    }
+  );
+  assert.equal(canonical.assetNormalizationDiagnostics.dimensionDownloadCount, 0);
+  assert.equal(compatibility.assetNormalizationDiagnostics.dimensionDownloadCount, 0);
   assert.deepEqual(canonicalValidation, compatibilityValidation);
 });
 

@@ -180,6 +180,63 @@ test("post-copy personalization patch projects venue address targets as fixed wr
   assert.equal(addressObject.textWrapMode, "word");
 });
 
+test("post-copy personalization keeps venue names inside the authored text box", () => {
+  const longVenueName =
+    "Centro Cultural y de Convenciones del Jardin Botanico";
+  const template = {
+    fieldsSchema: [
+      {
+        key: "event_party_venue_name",
+        label: "Lugar de la fiesta",
+        type: "text",
+        group: "Fiesta",
+        eventDetailsRole: "party_venue_name",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "venue-name-text",
+            path: "texto",
+            mode: "set",
+          },
+        ],
+      },
+    ],
+    defaults: {
+      event_party_venue_name: "Salon Jardin",
+    },
+  };
+  const draftData = {
+    objetos: [
+      {
+        id: "venue-name-text",
+        tipo: "texto",
+        texto: "Salon Jardin",
+        width: 210,
+        align: "center",
+        fontSize: 24,
+      },
+    ],
+    secciones: [{ id: "party", orden: 0, altura: 500 }],
+  };
+
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template,
+    draftData,
+    resolvedValues: {
+      event_party_venue_name: longVenueName,
+    },
+  });
+
+  const venueNameObject = patch.objetos.find(
+    (entry) => entry.id === "venue-name-text"
+  );
+  assert.equal(venueNameObject.texto, longVenueName);
+  assert.equal(venueNameObject.width, 210);
+  assert.equal(venueNameObject.align, "center");
+  assert.equal(venueNameObject.__autoWidth, false);
+  assert.equal(venueNameObject.textWrapMode, "word");
+});
+
 test("post-copy personalization patch keeps story text inside the linked text box", () => {
   const fieldKey = getStoryTextFieldKey();
   const longStory =

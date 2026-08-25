@@ -863,6 +863,60 @@ test("party venue address text targets use the same fixed-width projection", () 
   ]);
 });
 
+test("venue name text targets keep the template width and enable word wrapping", () => {
+  const field = {
+    key: "event_ceremony_venue_name",
+    type: "text",
+    eventDetailsRole: "ceremony_venue_name",
+    applyTargets: [
+      {
+        scope: "objeto",
+        id: "venue-name-text",
+        path: "texto",
+        mode: "set",
+      },
+    ],
+  };
+  const longVenueName =
+    "Centro Cultural y de Convenciones del Jardin Botanico";
+
+  const patches = buildTemplateAuthoringTargetPatches({
+    field,
+    value: longVenueName,
+    objetos: [
+      {
+        id: "venue-name-text",
+        tipo: "texto",
+        texto: "Salon Jardin",
+        width: 210,
+        align: "center",
+        fontSize: 24,
+      },
+    ],
+  });
+
+  assert.deepEqual(patches, [
+    {
+      objectId: "venue-name-text",
+      patch: {
+        texto: longVenueName,
+        __autoWidth: false,
+        textWrapMode: "word",
+      },
+    },
+  ]);
+
+  const mergedVenueName = {
+    id: "venue-name-text",
+    tipo: "texto",
+    width: 210,
+    align: "center",
+    ...patches[0].patch,
+  };
+  assert.equal(mergedVenueName.width, 210);
+  assert.equal(mergedVenueName.align, "center");
+});
+
 test("story text targets keep the linked text box width and alignment when projected", () => {
   const field = {
     key: getStoryTextFieldKey(),

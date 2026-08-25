@@ -98,7 +98,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 
 | Item | Persistencia | Editor | Preview | Publish | Paridad hoy | Preflight publish | Decision operativa |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `texto` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer/metricas | no bloquea por si solo | usar con checklist |
+| `texto` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer/metricas | no bloquea por si solo | usar con checklist; la personalizacion de lugar/direccion conserva `width` y wrap del objeto vinculado |
 | `imagen` | `si` | `soportado` | `parcial` | `parcial` | `parcial` | puede bloquear por `image-asset-unresolved` o `image-crop-not-materialized` | usar con restricciones |
 | `icono` raster | `si` | `soportado` | `soportado` | `parcial` | `alta` si `src` ya es publico | puede bloquear por `icon-asset-unresolved` | usar con restricciones |
 | `icono` SVG canonico (`tipo='icono'`, `formato='svg'`, `iconRender` v1) | `si` | `soportado` como imagen del snapshot compartido | `soportado` | `soportado` | `alta`: misma composicion/data URL, `contain`, paints fijos y `currentColor` selectivo | bloquea por `icon-svg-canonical-invalid` | contrato moderno para inserciones nuevas |

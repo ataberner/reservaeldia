@@ -17,7 +17,7 @@ import {
   resolveDressCodeTargetOptions,
   resolveStoryTextTargetOptions,
 } from "./storyText.js";
-import { isEventVenueAddressField } from "../eventDetails/location.js";
+import { isEventLocationField } from "../eventDetails/location.js";
 import {
   findRenderObjectById,
   forEachRenderObject,
@@ -442,7 +442,7 @@ function applyTarget({
     storyTextTargetOptions ||
     dressCodeTargetOptions ||
     (
-      isEventVenueAddressField(field) && isDirectTextContentPath(safePath)
+      isEventLocationField(field) && isDirectTextContentPath(safePath)
       ? {
           fixedTextBox: true,
           wrapMode: "word",

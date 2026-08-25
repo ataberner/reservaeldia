@@ -16,7 +16,7 @@ import {
   resolveEventDateValueFromTextTargets,
 } from "../../eventDetails/date.js";
 import {
-  isEventVenueAddressField,
+  isEventLocationField,
 } from "../../eventDetails/location.js";
 import {
   resolveDressCodeTargetOptions,
@@ -319,7 +319,7 @@ export function buildTemplateAuthoringTargetPatches({
       storyTextTargetOptions ||
       dressCodeTargetOptions ||
       (
-        isEventVenueAddressField(safeField) &&
+        isEventLocationField(safeField) &&
         isTextualTemplateTargetPath(target?.path)
         ? {
             fixedTextBox: true,

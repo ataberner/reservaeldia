@@ -561,6 +561,8 @@ Resultado esperado:
 5. Volver a `Un solo evento` y luego a `Ceremonia y fiesta`.
 6. Activar `Mostrar Dress Code`, editar el texto y verificar que el canvas vinculado se actualiza.
 7. Desactivar `Mostrar Dress Code` y volver a activarlo.
+8. Elegir una sugerencia de Google Maps cuyo nombre y direccion sean mas largos que los textos iniciales de la plantilla; verificar el resultado en Ceremonia y Fiesta.
+9. Redimensionar cada texto vinculado desde el nodo lateral y volver a reemplazar la ubicacion.
 
 Resultado esperado:
 
@@ -569,6 +571,7 @@ Resultado esperado:
 - los datos de Fiesta se conservan aunque el bloque no se muestre
 - `eventDetails.dressCode.value` se conserva aunque Dress Code este desactivado
 - los campos dinamicos `event_ceremony_*` y `event_party_*` sincronizan tab, canvas, preview y HTML publico
+- nombre y direccion conservan inicialmente el ancho definido en la plantilla, envuelven valores largos creciendo en altura y aceptan cambios posteriores de ancho desde el nodo lateral
 - el campo dinamico `event_dress_code` sincroniza tab, canvas, preview y HTML publico
 - los campos legacy `event_date`, `event_start_time`, `event_end_time`, `event_venue_name` y `event_venue_address` aparecen migrados a Ceremonia al cargar
 

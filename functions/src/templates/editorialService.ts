@@ -90,6 +90,18 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function resolvePortadaSource(
+  ...candidates: Array<Record<string, unknown> | null | undefined>
+): unknown {
+  for (const candidate of candidates) {
+    const source = asObject(candidate);
+    if (Object.prototype.hasOwnProperty.call(source, "portadaSource")) {
+      return source.portadaSource ?? null;
+    }
+  }
+  return null;
+}
+
 function normalizeText(value: unknown): string {
   return String(value || "").trim();
 }
@@ -796,6 +808,7 @@ function buildTemplateEditorDocument(
     objetos: renderAssetState.objetos,
     secciones: renderAssetState.secciones,
     portada: normalizeText(template.portada) || null,
+    portadaSource: resolvePortadaSource(template),
     tipoInvitacion: normalizeInvitationType(template.tipo),
     nombre: normalizeText(template.nombre) || "Plantilla",
     estadoBorrador: "active",
@@ -864,6 +877,7 @@ function buildTemplatePayloadFromDraft(
       normalizeText(currentTemplate.portada) ||
       normalizeText(draftData.portada) ||
       null,
+    portadaSource: resolvePortadaSource(overrides, draftData, currentTemplate),
     objetos: renderAssetState.objetos,
     secciones: renderAssetState.secciones,
     fieldsSchema,
@@ -922,6 +936,7 @@ function buildTemplatePayloadFromEditorDocument(
       normalizeText(source.portada) ||
       normalizeText(currentTemplate.portada) ||
       null,
+    portadaSource: resolvePortadaSource(overrides, source, currentTemplate),
     objetos: renderAssetState.objetos,
     secciones: renderAssetState.secciones,
     fieldsSchema: Array.isArray(templateAuthoringDraft.fieldsSchema)
@@ -1483,7 +1498,10 @@ export const adminConvertDraftToTemplateV1 = onCall(
       "Plantilla";
     const currentPayload: Record<string, unknown> =
       Object.keys(incomingPayload).length > 0
-        ? incomingPayload
+        ? {
+            ...incomingPayload,
+            portadaSource: resolvePortadaSource(incomingPayload, draftData),
+          }
         : buildTemplatePayloadFromDraft(draftData, {}, {
             nombre: templateName,
             tipo: normalizeInvitationType(draftData.tipoInvitacion),
@@ -1556,6 +1574,7 @@ export const adminOpenTemplateWorkspaceV1 = onCall(
       objetos: Array.isArray(loaded.normalized.objetos) ? loaded.normalized.objetos : [],
       secciones: Array.isArray(loaded.normalized.secciones) ? loaded.normalized.secciones : [],
       portada: normalizeText(loaded.normalized.portada) || null,
+      portadaSource: resolvePortadaSource(loaded.normalized),
       tipoInvitacion: normalizeInvitationType(loaded.normalized.tipo),
       nombre: normalizeText(loaded.normalized.nombre) || "Plantilla",
       estadoBorrador: "active",
@@ -1729,7 +1748,10 @@ export const adminCreateTemplateFromDraftV1 = onCall(
 
     const currentPayload: Record<string, unknown> =
       Object.keys(incomingPayload).length > 0
-        ? incomingPayload
+        ? {
+            ...incomingPayload,
+            portadaSource: resolvePortadaSource(incomingPayload, draftData),
+          }
         : buildTemplatePayloadFromDraft(draftData, {}, {
             nombre: templateName,
             tipo: normalizeInvitationType(draftData.tipoInvitacion),

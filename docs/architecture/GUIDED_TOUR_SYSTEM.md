@@ -671,6 +671,17 @@ La tab de detalles tiene integración especial:
 
 El resto de tabs no emite señales específicas para el tour. Para ellas, el avance de `content` a `next` se basa en eventos DOM confiables dentro de `assistant-tour-content`.
 
+El substep `imagen/cover` existe cuando el editor expone una portada efectiva. En
+plantillas y borradores derivados requiere una `portadaSource` que resuelva a un
+visual real; el fallback legacy `portada` aplica sólo a borradores independientes.
+No se infiere desde el fondo de la primera sección. Los cambios de portada se
+notifican mediante
+`EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE`, de modo que el Asistente y el tour siguen
+observando el substep real sin crear otra autoridad.
+En borradores creados desde plantilla, `copiarPlantilla` conserva la referencia y los
+IDs de render para que el substep observe la imagen marcada durante la edición de la
+plantilla, no su thumbnail de catálogo.
+
 ## Interacción con Preview
 
 Cuando el Asistente llega a la última acción, `DashboardSidebar` marca el botón del footer como `assistant-tour-preview` y `assistantNextIsPreview` pasa a `true`.
@@ -876,7 +887,7 @@ flowchart LR
   - disponibilidad de `visualViewport`.
 
 - Acoplamiento a contenido dinámico:
-  - los substeps de imagen/story dependen de `readEditorObjects`, `readEditorSections` y eventos del editor bridge.
+  - los substeps de imagen/story dependen de `readEditorObjects`, `readEditorCoverImage` y eventos del editor bridge.
   - el progreso puede cambiar si cambia el contenido del editor durante el tour.
 
 - Acoplamiento a runtime del editor:

@@ -67,7 +67,8 @@ These fields coexist with the render state in `borradores/{slug}`, but they are 
 | `tipoInvitacion` | UI, template workflows | Auxiliary metadata. Modern invitation-type field, normalized to values such as `boda`, `quince`, `cumple`, `empresarial`, `general`. |
 | `tipo` | publish and template compatibility flows | Auxiliary compatibility metadata. Some server flows still read this instead of `tipoInvitacion`. |
 | `plantillaTipo` | publish compatibility flow | Auxiliary compatibility metadata. Current publish code still checks it as a fallback for publication `tipo`. |
-| `portada` | dashboard/template UI | Auxiliary metadata. Preview image candidate. |
+| `portada` | dashboard/template UI and Assistant photo step | Auxiliary metadata. Draft cover URL projection and legacy fallback; template workflows may also use it as the catalog/card preview. It is independent from `secciones[].fondoImagen`. |
+| `portadaSource` | editor, full template document, template-derived drafts, and Assistant photo step | Auxiliary identity authority for the canvas visual explicitly marked as cover. Supported shapes are `{ kind: "canvas-object", objectId }` and `{ kind: "section-background", sectionId }`. |
 | `thumbnailUrl` | dashboard UI | Auxiliary metadata. Another preview image candidate. |
 | `previewUrl` | dashboard/template preview UI | Auxiliary metadata. Also treated as a preview-image candidate. |
 | `thumbnailUpdatedAt` | draft listing UI | Auxiliary metadata. Used as a thumbnail cache-busting/version source. |
@@ -99,6 +100,21 @@ Preview metadata is not fully canonical today. Draft preview helpers still scan 
 - `previewurl`
 - `preview_url`
 - `previewURL`
+
+Cover identity does not derive from the first section background. Editor persistence
+stores `portadaSource` as the exact canvas object or section background explicitly
+marked as cover. The full `plantillas/{id}` document and its editor document preserve
+that field; `plantillas_catalog` omits it because the catalog is not an editor-state
+authority. `copiarPlantilla` transfers the normalized source to the new draft while
+preserving render IDs. Template sessions and template-derived drafts require that
+source to resolve before exposing Assistant cover controls; their catalog/card
+`portada` is not a cover fallback. Only standalone legacy drafts may use `portada`
+without an explicit source.
+
+Selecting a cover image updates auxiliary metadata without converting or removing an
+object or section visual. Replacing the cover through the Assistant updates that
+source plus matching canvas images and base section backgrounds; unrelated visuals
+remain unchanged.
 
 `draftContentMeta` is especially important because it records how the render state was last written:
 

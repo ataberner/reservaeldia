@@ -46,6 +46,48 @@ test("template catalog normalization does not expose editor section lock metadat
   assert.equal("secciones" in catalog, false);
 });
 
+test("full template normalization preserves the exact cover source but catalog omits it", () => {
+  const source = {
+    id: "template-cover",
+    nombre: "Template cover",
+    portada: "https://example.test/template-preview.jpg",
+    portadaSource: {
+      kind: "canvas-object",
+      objectId: "hero-image",
+    },
+    objetos: [
+      {
+        id: "hero-image",
+        tipo: "imagen",
+        src: "https://example.test/canvas-cover.jpg",
+      },
+    ],
+  };
+
+  const normalized = normalizeTemplateDocument(source, source.id);
+  const catalog = buildCatalogFromTemplate(source);
+
+  assert.deepEqual(normalized.portadaSource, {
+    kind: "canvas-object",
+    objectId: "hero-image",
+  });
+  assert.equal(normalized.portada, source.portada);
+  assert.equal("portadaSource" in catalog, false);
+});
+
+test("full template normalization rejects an invalid cover source", () => {
+  const normalized = normalizeTemplateDocument({
+    id: "template-invalid-cover",
+    nombre: "Template invalid cover",
+    portadaSource: {
+      kind: "canvas-object",
+      objectId: "",
+    },
+  });
+
+  assert.equal(normalized.portadaSource, null);
+});
+
 test("template normalization preserves date text format presets", () => {
   const normalized = normalizeTemplateDocument(
     {

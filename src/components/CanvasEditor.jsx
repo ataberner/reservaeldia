@@ -314,6 +314,8 @@ export default function CanvasEditor({
   const fuentesDisponibles = ALL_FONTS;
   const [draftMeta, setDraftMeta] = useState({
     plantillaId: null,
+    portada: "",
+    portadaSource: null,
     templateWorkspace: null,
     templateAuthoringDraft: null,
     loadedAt: 0,
@@ -340,11 +342,20 @@ export default function CanvasEditor({
     templateWorkspace,
     canOpenTemplateEditorialPanel,
     handleTemplateEditorialSaved,
+    coverImage,
+    updateCoverImage,
   } = useCanvasEditorDraftMeta({
     slug,
+    editorSession,
+    readOnly,
     canManageSite,
     draftMeta,
     setDraftMeta,
+    secciones,
+    setSecciones,
+    objetos,
+    setObjetos,
+    enqueueDraftWrite: draftWriteCoordinator.enqueueDraftWrite,
     setTemplateEditorialPanelOpen,
     setSectionDecorationEdit,
   });
@@ -1548,11 +1559,9 @@ export default function CanvasEditor({
   useEditorWindowBridge({
     seccionesOrdenadas: renderSeccionesOrdenadas,
     secciones,
-    setSecciones,
     seccionActivaId,
     objetos,
     altoCanvas,
-    readOnly,
     calcularOffsetY,
 
     cambiarColorFondoSeccion,
@@ -1580,6 +1589,8 @@ export default function CanvasEditor({
     flushPersistenceNow: flushEditorPersistence,
     hasPendingDraftWrites: draftWriteCoordinator.hasPendingDraftWrites,
     selectionRuntime,
+    coverImage,
+    updateCoverImage,
   });
 
   useCanvasEditorRuntimeEffects({
@@ -2084,6 +2095,7 @@ export default function CanvasEditor({
           onActualizarMovimientoDecoracionFondo={handleActualizarMovimientoDecoracionFondo}
           onDesanclarImagenFondoBase={handleDesanclarImagenFondoBase}
           onFinalizarAjusteFondoBase={handleFinalizarAjusteFondoBase}
+          onSetCoverImage={updateCoverImage}
           canvasUiSuppressed={
             canvasInteractionCoordinator.isCanvasUiSuppressed() ||
             isBackgroundEditInteracting

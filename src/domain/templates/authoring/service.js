@@ -11,6 +11,7 @@ import {
   ensureDefaultsForSchema,
   normalizeTemplateDocument,
 } from "../../../../shared/templates/contract.js";
+import { normalizeCoverImageSource } from "../../../../shared/coverImageContract.mjs";
 import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
 
 export const AUTHORING_DRAFT_VERSION = 1;
@@ -289,6 +290,7 @@ export function buildTemplatePayloadFromAuthoring({
     tipo: normalizedType || "general",
     editor: "konva",
     portada: normalizeText(safeDraftData.portada) || null,
+    portadaSource: normalizeCoverImageSource(safeDraftData.portadaSource),
     objetos: normalizedRenderState.objetos,
     secciones: normalizedRenderState.secciones,
     fieldsSchema,

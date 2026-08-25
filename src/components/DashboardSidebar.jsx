@@ -73,8 +73,8 @@ import { useEditorPanelCoordinator } from "@/components/editor/panels/EditorPane
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import {
     readCanvasEditorMethod,
+    readEditorCoverImage,
     readEditorObjects,
-    readEditorSections,
     readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 
@@ -480,7 +480,7 @@ export default function DashboardSidebar({
         () =>
             hasAssistantPhotoStepContent({
                 objects: readEditorObjects(),
-                sections: readEditorSections(),
+                coverImage: readEditorCoverImage(),
             }),
         [assistantContentVersion]
     );
@@ -545,7 +545,7 @@ export default function DashboardSidebar({
         includeStoryText: syncAssistantStoryTextStep(),
         includePhotos: hasAssistantPhotoStepContent({
             objects: readEditorObjects(),
-            sections: readEditorSections(),
+            coverImage: readEditorCoverImage(),
         }),
     }), [syncAssistantStoryTextStep]);
 
@@ -606,6 +606,7 @@ export default function DashboardSidebar({
             EDITOR_BRIDGE_EVENTS.RSVP_CONFIG_CHANGED,
             EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_CHANGED,
             EDITOR_BRIDGE_EVENTS.ACTIVE_SECTION_CHANGE,
+            EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE,
             "abrir-borrador",
         ];
 
@@ -853,7 +854,7 @@ export default function DashboardSidebar({
             navigation.currentStep.id,
             {
                 objects: readEditorObjects(),
-                sections: readEditorSections(),
+                coverImage: readEditorCoverImage(),
             }
         );
         const currentSubstepIndex = clampAssistantSubstepIndex(
@@ -880,7 +881,7 @@ export default function DashboardSidebar({
             previousStep.id,
             {
                 objects: readEditorObjects(),
-                sections: readEditorSections(),
+                coverImage: readEditorCoverImage(),
             }
         );
         openAssistantAtStep(navigation.previousStepIndex, {
@@ -900,7 +901,7 @@ export default function DashboardSidebar({
             navigation.currentStep.id,
             {
                 objects: readEditorObjects(),
-                sections: readEditorSections(),
+                coverImage: readEditorCoverImage(),
             }
         );
         const currentSubstepIndex = clampAssistantSubstepIndex(
@@ -1571,7 +1572,7 @@ export default function DashboardSidebar({
         shouldShowAssistantControls
             ? resolveAssistantSubstepsForStep(assistantCurrentStep.id, {
             objects: readEditorObjects(),
-            sections: readEditorSections(),
+            coverImage: readEditorCoverImage(),
         })
             : []
     ), [
@@ -1591,7 +1592,7 @@ export default function DashboardSidebar({
         if (!shouldShowAssistantControls) return [];
         const context = {
             objects: readEditorObjects(),
-            sections: readEditorSections(),
+            coverImage: readEditorCoverImage(),
         };
         return getAssistantSteps(assistantFlowOptions).map((step) =>
             resolveAssistantSubstepsForStep(step.id, context).length

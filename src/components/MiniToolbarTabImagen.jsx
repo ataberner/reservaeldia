@@ -10,12 +10,13 @@ import {
 } from "@/components/gallerySidebarDragGeometry";
 import {
   readCanvasEditorMethod,
+  readEditorCoverImage,
   readEditorObjects,
   readEditorSections,
   readEditorSelectionSnapshot,
 } from "@/lib/editorRuntimeBridge";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
-import { resolveFirstSectionBaseImage } from "@/domain/sections/backgrounds";
+import { resolveCoverImageState } from "@/domain/editor/coverImage";
 import {
   getGalleryGridSizeLayoutSelectorIds,
   resolveGalleryGridSizeSelection,
@@ -268,9 +269,8 @@ function buildGalleryReplacementUploadKey(galleryId, target) {
   return targetKey ? `gallery:${safeGalleryId}:${targetKey}` : "";
 }
 
-function buildCoverReplacementUploadKey(sectionId) {
-  const safeSectionId = normalizeUploadKeyPart(sectionId);
-  return safeSectionId ? `cover:${safeSectionId}` : "";
+function buildCoverReplacementUploadKey() {
+  return "cover:metadata";
 }
 
 function ImageReplacementOverlay({ text = "Subiendo imagen..." }) {
@@ -458,10 +458,12 @@ export default function MiniToolbarTabImagen({
 
     window.addEventListener("editor-selection-change", syncSelection);
     window.addEventListener("editor-gallery-cell-change", syncSelection);
+    window.addEventListener(EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE, syncSelection);
 
     return () => {
       window.removeEventListener("editor-selection-change", syncSelection);
       window.removeEventListener("editor-gallery-cell-change", syncSelection);
+      window.removeEventListener(EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE, syncSelection);
     };
   }, []);
 
@@ -473,18 +475,19 @@ export default function MiniToolbarTabImagen({
     () => readEditorSections(),
     [editorSnapshotToken, selectionRefreshToken]
   );
-  const firstSectionCover = useMemo(
-    () => resolveFirstSectionBaseImage(editorSections),
-    [editorSections]
+  const coverState = useMemo(
+    () =>
+      resolveCoverImageState({
+        coverImage: readEditorCoverImage(),
+        sections: editorSections,
+      }),
+    [editorSections, editorSnapshotToken, selectionRefreshToken]
   );
   const replacementUploadState =
     controlledReplacementUploadState && typeof controlledReplacementUploadState === "object"
       ? controlledReplacementUploadState
       : localReplacementUploadState;
-  const coverReplacementUploadKey = useMemo(
-    () => buildCoverReplacementUploadKey(firstSectionCover.sectionId),
-    [firstSectionCover.sectionId]
-  );
+  const coverReplacementUploadKey = buildCoverReplacementUploadKey();
   const isCoverReplacementUploading = Boolean(
     coverReplacementUploadKey && replacementUploadState[coverReplacementUploadKey]
   );
@@ -496,7 +499,7 @@ export default function MiniToolbarTabImagen({
       ? String(assistantSubstep?.galleryId || "").trim()
       : "";
   const shouldRenderCoverBlock =
-    firstSectionCover.hasImage &&
+    coverState.hasImage &&
     (!simplifiedForAssistant || !assistantScope || assistantScope === "cover");
   const shouldRenderGalleryBlock =
     !simplifiedForAssistant || !assistantScope || assistantScope === "gallery";
@@ -1317,24 +1320,23 @@ export default function MiniToolbarTabImagen({
     closeGalleryGridSelector();
   }, [closeGalleryGridSelector, commitGalleryMutation, galeriaSeleccionada]);
 
-  const replaceFirstSectionCoverImage = useCallback((imageInput, options = {}) => {
+  const updateCoverImage = useCallback(async (imageInput, options = {}) => {
     const imageUrl = resolveLibraryImageUrl(imageInput);
     if (!imageUrl) {
       setPanelNoticeSafe("No se encontro una imagen valida para usar como portada.");
       return false;
     }
 
-    const replaceCoverImage = readCanvasEditorMethod("replaceFirstSectionBackgroundImage");
-    if (typeof replaceCoverImage !== "function") {
-      setPanelNoticeSafe("No se encontro el flujo de fondo de portada del editor.");
+    const persistCoverImage = readCanvasEditorMethod("updateCoverImage");
+    if (typeof persistCoverImage !== "function") {
+      setPanelNoticeSafe("No se encontro el flujo de portada del editor.");
       return false;
     }
 
-    const ok = replaceCoverImage(imageInput, {
-      preservePlacement: true,
-      sectionId: options.sectionId || options.expectedSectionId || "",
+    const result = await persistCoverImage(imageInput, {
+      syncLinkedVisuals: options.syncLinkedVisuals === true,
     });
-    if (!ok) {
+    if (!result?.ok) {
       setPanelNoticeSafe("No se pudo actualizar la imagen de portada.");
       return false;
     }
@@ -1347,10 +1349,9 @@ export default function MiniToolbarTabImagen({
   }, [setPanelNoticeSafe]);
 
   const handleCoverUploadClick = useCallback(() => {
-    const sectionId = firstSectionCover.sectionId;
-    const uploadKey = buildCoverReplacementUploadKey(sectionId);
-    if (!sectionId || !uploadKey) {
-      setPanelNoticeSafe("No se encontro la seccion de portada para reemplazar.");
+    const uploadKey = buildCoverReplacementUploadKey();
+    if (!coverState.hasImage || !uploadKey) {
+      setPanelNoticeSafe("No se encontro una foto de portada para reemplazar.");
       return;
     }
 
@@ -1369,12 +1370,11 @@ export default function MiniToolbarTabImagen({
         beginReplacementUpload({
           key: uploadKey,
           kind: "cover",
-          sectionId,
         });
         setPanelNoticeSafe("Subiendo imagen de portada...");
       },
       onUploadedImage: (uploadedUrl) =>
-        replaceFirstSectionCoverImage(uploadedUrl, { sectionId }),
+        updateCoverImage(uploadedUrl, { syncLinkedVisuals: true }),
       onUploadError: () => {
         setPanelNoticeSafe("No se pudo actualizar la portada. Conservamos la imagen anterior.");
       },
@@ -1386,9 +1386,9 @@ export default function MiniToolbarTabImagen({
     abrirSelector,
     beginReplacementUpload,
     clearReplacementUpload,
-    firstSectionCover.sectionId,
+    coverState.hasImage,
     isReplacementUploadActive,
-    replaceFirstSectionCoverImage,
+    updateCoverImage,
     setPanelNoticeSafe,
   ]);
 
@@ -1453,10 +1453,6 @@ export default function MiniToolbarTabImagen({
     resolveCurrentValidGalleryCellSelection,
     setPanelNoticeSafe,
   ]);
-
-  const handleAvailableImageCoverAction = useCallback((img) => {
-    replaceFirstSectionCoverImage(img);
-  }, [replaceFirstSectionCoverImage]);
 
   const handleAvailableImageGalleryAction = useCallback((img) => {
     const photo = buildGalleryPhotoFromLibraryImage(img);
@@ -1547,15 +1543,6 @@ export default function MiniToolbarTabImagen({
     });
 
     const actions = [];
-    if (firstSectionCover.hasImage) {
-      actions.push({
-        key: "replace-first-section-cover",
-        label: "Usar como portada",
-        title: "Reemplazar la imagen de portada con esta foto",
-        onClick: handleAvailableImageCoverAction,
-      });
-    }
-
     if (galleryAction.action !== "none") {
       actions.push({
         key: "insert-canvas",
@@ -1568,9 +1555,7 @@ export default function MiniToolbarTabImagen({
     return actions;
   }, [
     celdaActiva,
-    firstSectionCover.hasImage,
     galeriaSeleccionada,
-    handleAvailableImageCoverAction,
     insertAvailableImageIntoCanvas,
     selectedPhotoTarget,
   ]);
@@ -1725,7 +1710,7 @@ export default function MiniToolbarTabImagen({
           >
             <span className="relative block aspect-[16/10] w-full overflow-hidden rounded-md bg-zinc-100">
               <img
-                src={firstSectionCover.imageUrl}
+                src={coverState.imageUrl}
                 alt="Imagen de portada"
                 className="h-full w-full object-cover"
               />

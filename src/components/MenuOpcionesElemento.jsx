@@ -138,6 +138,7 @@ export default function MenuOpcionesElemento({
     onCerrar,                    // cierra el menú en el padre (setMostrarPanelZ(false))
     // Image role conversion actions.
     reemplazarFondo,
+    onSetCoverImage,
     secciones,
     objetos,
     setSecciones,
@@ -362,6 +363,11 @@ export default function MenuOpcionesElemento({
     });
     const [efectosReady, setEfectosReady] = useState(false);
     const [mostrarSubmenuUso, setMostrarSubmenuUso] = useState(false);
+    const [coverMutationState, setCoverMutationState] = useState({
+        saving: false,
+        error: "",
+    });
+    const coverMutationSessionRef = useRef(0);
     const btnUsoRef = useRef(null);
     const submenuUsoRef = useRef(null);
     const [usoPos, setUsoPos] = useState({
@@ -392,6 +398,74 @@ export default function MenuOpcionesElemento({
         setMostrarSubmenuEfectos(false);
         setMostrarSubmenuUso(false);
     }, [isOpen]);
+
+    useEffect(() => {
+        coverMutationSessionRef.current += 1;
+        setCoverMutationState({ saving: false, error: "" });
+    }, [elementoSeleccionado?.id, isOpen]);
+
+    useEffect(
+        () => () => {
+            coverMutationSessionRef.current += 1;
+        },
+        []
+    );
+
+    const handleSetCoverImage = useCallback(async () => {
+        if (
+            !canManageSite ||
+            !(esImagen || esImagenFondoSeccion) ||
+            typeof onSetCoverImage !== "function" ||
+            coverMutationState.saving
+        ) {
+            return;
+        }
+
+        const mutationSession = coverMutationSessionRef.current + 1;
+        coverMutationSessionRef.current = mutationSession;
+        setCoverMutationState({ saving: true, error: "" });
+
+        try {
+            const coverSource = esImagenFondoSeccion
+                ? {
+                    kind: "section-background",
+                    sectionId: String(elementoSeleccionado?.seccionId || "").trim(),
+                }
+                : {
+                    kind: "canvas-object",
+                    objectId: String(elementoSeleccionado?.id || "").trim(),
+                };
+            const result = await onSetCoverImage(elementoSeleccionado, {
+                syncLinkedVisuals: false,
+                coverSource,
+            });
+            if (coverMutationSessionRef.current !== mutationSession) return;
+            if (!result?.ok) {
+                setCoverMutationState({
+                    saving: false,
+                    error: "No se pudo actualizar la foto de portada.",
+                });
+                return;
+            }
+
+            setMostrarSubmenuUso(false);
+            onCerrar();
+        } catch {
+            if (coverMutationSessionRef.current !== mutationSession) return;
+            setCoverMutationState({
+                saving: false,
+                error: "No se pudo actualizar la foto de portada.",
+            });
+        }
+    }, [
+        canManageSite,
+        coverMutationState.saving,
+        elementoSeleccionado,
+        esImagen,
+        esImagenFondoSeccion,
+        onCerrar,
+        onSetCoverImage,
+    ]);
 
     // Posicionar los flyouts
     const recalcularSubmenuEnlacePos = useCallback(() => {
@@ -893,6 +967,30 @@ export default function MenuOpcionesElemento({
                         </div>
                     </div>
 
+                    {canManageSite && typeof onSetCoverImage === "function" ? (
+                        <button
+                            type="button"
+                            disabled={coverMutationState.saving}
+                            aria-busy={coverMutationState.saving}
+                            onClick={handleSetCoverImage}
+                            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60"
+                        >
+                            <ImageIcon className="h-4 w-4 text-[#773dbe]" />
+                            {coverMutationState.saving
+                                ? "Guardando portada..."
+                                : "Usar como portada"}
+                        </button>
+                    ) : null}
+
+                    {coverMutationState.error ? (
+                        <p
+                            role="status"
+                            className="rounded bg-red-50 px-3 py-2 text-[11px] text-red-700"
+                        >
+                            {coverMutationState.error}
+                        </p>
+                    ) : null}
+
                     <button
                         onClick={() => {
                             onDesanclarImagenFondoBase?.();
@@ -1382,6 +1480,40 @@ export default function MenuOpcionesElemento({
                                         </span>
                                     </span>
                                 </button>
+
+                                {canManageSite && typeof onSetCoverImage === "function" ? (
+                                    <button
+                                        type="button"
+                                        title="Configurar esta imagen como foto de portada."
+                                        disabled={coverMutationState.saving}
+                                        aria-busy={coverMutationState.saving}
+                                        onClick={handleSetCoverImage}
+                                        className="flex w-full items-start gap-3 rounded px-3 py-2 text-left transition hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60"
+                                    >
+                                        <span className="mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded border border-[#dccaf7] bg-[#f7f1ff]">
+                                            <ImageIcon className="h-3 w-3 text-[#773dbe]" />
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-medium text-slate-800">
+                                                {coverMutationState.saving
+                                                    ? "Guardando portada..."
+                                                    : "Usar como portada"}
+                                            </span>
+                                            <span className="block text-[11px] leading-snug text-slate-500">
+                                                La imagen sigue en el canvas y pasa a ser la foto de portada.
+                                            </span>
+                                        </span>
+                                    </button>
+                                ) : null}
+
+                                {coverMutationState.error ? (
+                                    <p
+                                        role="status"
+                                        className="rounded bg-red-50 px-3 py-2 text-[11px] text-red-700"
+                                    >
+                                        {coverMutationState.error}
+                                    </p>
+                                ) : null}
 
                                 {canUseAdvancedDecorations ? (
                                     <button

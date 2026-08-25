@@ -18,6 +18,7 @@ import {
 test("editor bridge contract helpers preserve active event names and payload shapes", () => {
   assert.equal(EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE, "editor-selection-change");
   assert.equal(EDITOR_BRIDGE_EVENTS.DRAGGING_END, "dragging-end");
+  assert.equal(EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE, "editor-cover-image-change");
 
   assert.deepEqual(
     buildEditorSelectionChangeDetail({
@@ -196,6 +197,10 @@ test("editor bridge contract does not formalize transient scratch globals", () =
     EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.canvasEditor.includes(
       "ensureInlineEditSettledBeforeCriticalAction"
     ),
+    true
+  );
+  assert.equal(
+    EDITOR_RUNTIME_COMPATIBILITY_CONTRACT.canvasEditor.includes("updateCoverImage"),
     true
   );
 

@@ -175,9 +175,10 @@ export async function loadBorradorSyncState({
   }
 
   const refreshCache = new Map();
-  const [seccionesRefrescadas, objetosRefrescados] = await Promise.all([
+  const [seccionesRefrescadas, objetosRefrescados, portadaRefrescada] = await Promise.all([
     refreshUrlsDeep(renderState.secciones, refreshCache),
     refreshUrlsDeep(renderState.objetos, refreshCache),
+    refreshUrlsDeep(normalizeText(data?.portada), refreshCache),
   ]);
   const loadedRenderState = buildLoadedEditorRenderState({
     objetos: objetosRefrescados,
@@ -203,6 +204,11 @@ export async function loadBorradorSyncState({
           : "injected"
         : readResult.source,
     plantillaId: plantillaId || null,
+    portada: normalizeText(portadaRefrescada),
+    portadaSource:
+      data?.portadaSource && typeof data.portadaSource === "object"
+        ? data.portadaSource
+        : null,
     hydratedObjetos,
     hydratedSecciones,
     rsvpForSetter:

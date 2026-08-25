@@ -409,6 +409,8 @@ export default function useBorradorSync({
             onDraftLoaded({
               slug: loadResult.session.id,
               plantillaId: loadResult.plantillaId,
+              portada: loadResult.portada,
+              portadaSource: loadResult.portadaSource,
               templateWorkspace: loadResult.templateWorkspace,
               templateAuthoringDraft: loadResult.templateAuthoringDraft,
               objetos: loadResult.hydratedObjetos,
@@ -443,6 +445,8 @@ export default function useBorradorSync({
             onDraftLoaded({
               slug: loadResult.session.id,
               plantillaId: null,
+              portada: "",
+              portadaSource: null,
               templateWorkspace: null,
               templateAuthoringDraft: null,
               objetos: [],

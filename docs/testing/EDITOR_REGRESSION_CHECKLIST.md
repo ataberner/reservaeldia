@@ -408,25 +408,37 @@ Resultado esperado:
 2. Mover la imagen base.
 3. Salir del modo.
 4. Recargar el borrador.
-5. Abrir el Tab Fotos en un borrador cuya primera seccion tenga fondo de imagen.
+5. Abrir el Tab Fotos en un borrador que tenga `portada`, aunque la primera seccion use color u otra imagen de fondo.
 6. Confirmar que aparece `Cambiar imagen de portada` antes de `Galeria`.
-7. Reemplazar la portada desde la tarjeta subiendo una imagen nueva.
-8. Reemplazar la portada desde una miniatura ya subida usando `Usar como portada`.
-9. Repetir el reemplazo de portada con una imagen pesada desde el dispositivo.
-10. Cambiar el fondo de la primera seccion a color y volver al Tab Fotos.
+7. Como admin/superadmin, seleccionar varias imagenes del canvas y una imagen base de seccion, abrir sus engranajes y confirmar que todas ofrecen `Usar como portada`; repetir como usuario regular y confirmar que esa accion no aparece.
+8. Usar `Usar como portada` sobre una imagen de canvas que no sea fondo y verificar que el objeto y el fondo existente no cambian.
+9. Reemplazar esa portada desde la tarjeta subiendo una imagen nueva y confirmar que el objeto de canvas que representaba la portada usa la nueva fuente sin cambiar su geometria.
+10. Configurar otra portada que use la misma URL que un fondo base y reemplazarla desde el Asistente con una miniatura ya subida.
+11. Repetir el reemplazo de portada con una imagen pesada desde el dispositivo.
+12. Probar un fondo de primera seccion sin `portada` persistida.
+13. En Editar plantilla, marcar una imagen de canvas como portada, guardar y volver a abrir la plantilla; confirmar que el Asistente muestra esa imagen aunque el thumbnail de la tarjeta sea distinto.
+14. Crear un borrador desde esa plantilla y confirmar que el Asistente sigue mostrando el objeto marcado; cambiar la foto desde `Cambiar imagen de portada` y verificar que ese mismo objeto se actualiza en el canvas del borrador.
+15. Abrir una plantilla y un borrador derivado sin `portadaSource`; aunque tengan una miniatura `portada`, confirmar que no muestran el substep ni la sección `Cambiar imagen de portada`.
 
 Resultado esperado:
 
 - el fondo queda ligado a su seccion correcta
 - salir del modo devuelve el editor a interaccion normal
 - la transformacion persiste
-- el Tab Fotos muestra la vista previa solo si la primera seccion tiene `fondoTipo: "imagen"` y `fondoImagen`
-- reemplazar la portada cambia el fondo real de la primera seccion, no crea un objeto `imagen`
+- el Tab Fotos y el substep del Asistente muestran la vista previa en plantillas y borradores derivados solo si existe una `portadaSource` valida, independientemente del fondo de la primera seccion
+- un borrador independiente legacy puede seguir mostrando una `portada` sin fuente explicita
+- si existe `portadaSource` valida, la tarjeta del Asistente muestra siempre la fuente actual del objeto o fondo de canvas marcado, aunque la URL `portada` legacy estuviera desactualizada
+- guardar/reabrir una plantilla y copiarla a un borrador conserva `portadaSource` y los IDs referenciados; el thumbnail de catálogo no reemplaza esa autoridad
+- un fondo de primera seccion sin `portada` no habilita por si solo la tarjeta ni el substep de portada
+- `Usar como portada` persiste metadata solamente y conserva el objeto `imagen` seleccionado sin convertirlo, eliminarlo ni duplicarlo
+- `Usar como portada` queda oculto para usuarios regulares y no depende de que ya exista una portada o un fondo de imagen
+- reemplazar desde el Asistente cambia siempre `portada` y reemplaza los objetos `imagen` que usaban la fuente anterior sin cambiar su geometria
+- si la portada anterior tambien era un fondo base, reemplaza ese fondo en su lugar; los objetos y fondos que no coinciden permanecen sin cambios
 - durante la subida desde el dispositivo, la tarjeta conserva la portada anterior y muestra `Subiendo imagen...`
 - el control de portada queda temporalmente deshabilitado y se reactiva al terminar o fallar
 - si falla la subida o el reemplazo, la portada anterior se conserva y no queda loader permanente
 - offsets, escala y configuracion responsive del fondo se conservan al cambiar la fuente
-- la seccion `Cambiar imagen de portada` desaparece si la primera seccion deja de tener fondo de imagen
+- la seccion `Cambiar imagen de portada` permanece mientras la fuente marcada siga resolviendo a un visual real y desaparece cuando la plantilla o borrador derivado no tiene una portada valida
 
 ### [ ] Iconos SVG canonicos
 

@@ -124,6 +124,17 @@ export function readEditorInvitationType(targetWindow) {
   );
 }
 
+export function readEditorCoverImage(targetWindow) {
+  const getCoverImage = readCanvasEditorMethod("getCoverImage", targetWindow);
+  if (!getCoverImage) return "";
+
+  try {
+    return normalizeText(getCoverImage());
+  } catch {
+    return "";
+  }
+}
+
 export function readEditorSelectionSnapshot(targetWindow) {
   const resolvedWindow = resolveTargetWindow(targetWindow);
   if (!resolvedWindow) {

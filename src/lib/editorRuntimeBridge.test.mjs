@@ -7,6 +7,7 @@ import {
   readCanvasEditorMethod,
   readCanvasEditorStage,
   readEditorActiveSectionId,
+  readEditorCoverImage,
   readEditorInvitationType,
   readEditorObjectById,
   readEditorObjectByType,
@@ -146,6 +147,22 @@ test("editor runtime bridge preserves legacy precedence for active section and i
   );
 
   assert.equal(readEditorActiveSectionId(fakeWindow), "section-from-snapshot");
+});
+
+test("editor runtime bridge reads cover metadata from its single editor owner", () => {
+  const fakeWindow = {
+    canvasEditor: {
+      getCoverImage() {
+        return " https://example.test/cover.jpg ";
+      },
+    },
+  };
+
+  assert.equal(
+    readEditorCoverImage(fakeWindow),
+    "https://example.test/cover.jpg"
+  );
+  assert.equal(readEditorCoverImage({}), "");
 });
 
 test("editor runtime bridge exposes documented compatibility globals and cloned selection snapshots", () => {

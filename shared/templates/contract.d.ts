@@ -1,3 +1,5 @@
+import type { CoverImageSource } from "../coverImageContract.mjs";
+
 export type TemplateType =
   | "boda"
   | "bautismo"
@@ -159,6 +161,7 @@ export interface TemplateDocument {
   defaults: TemplateDefaults;
   galleryRules?: TemplateGalleryRules | null;
   portada?: string | null;
+  portadaSource?: CoverImageSource | null;
   editor?: string | null;
   objetos?: unknown[];
   secciones?: unknown[];

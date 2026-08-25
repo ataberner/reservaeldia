@@ -1,5 +1,4 @@
 import { getGallerySidebarCandidates } from "../gallery/sidebarModel.js";
-import { resolveFirstSectionBaseImage } from "../sections/backgrounds.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -14,11 +13,10 @@ function createSubstep(id, label, scope, extra = {}) {
   };
 }
 
-function resolveImageAssistantSubsteps({ objects = [], sections = [] } = {}) {
+function resolveImageAssistantSubsteps({ objects = [], coverImage = "" } = {}) {
   const substeps = [];
-  const firstSectionCover = resolveFirstSectionBaseImage(sections);
 
-  if (firstSectionCover.hasImage) {
+  if (normalizeText(coverImage)) {
     substeps.push(
       createSubstep("cover", "Portada", "cover", {
         tourNextMessage:

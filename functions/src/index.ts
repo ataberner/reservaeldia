@@ -2076,6 +2076,11 @@ export const copiarPlantilla = onCall(
       plantillaNormalizada.eventDetails && typeof plantillaNormalizada.eventDetails === "object"
         ? plantillaNormalizada.eventDetails
         : { mode: "single" };
+    const portadaSource =
+      plantillaNormalizada.portadaSource &&
+      typeof plantillaNormalizada.portadaSource === "object"
+        ? plantillaNormalizada.portadaSource
+        : null;
 
     await db.collection("borradores").doc(slug).set({
       slug,
@@ -2086,6 +2091,7 @@ export const copiarPlantilla = onCall(
       objetos: normalizeCountdownGeometryDeep(renderAssetState.objetos) as unknown[],
       secciones: renderAssetState.secciones,
       portada: portadaNormalizada,
+      portadaSource,
       tipoInvitacion,
       nombre:
         typeof datosPlantilla.nombre === "string" && datosPlantilla.nombre.trim()

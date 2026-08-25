@@ -72,6 +72,7 @@ export default function CanvasEditorOverlays({
   onActualizarMovimientoDecoracionFondo,
   onDesanclarImagenFondoBase,
   onFinalizarAjusteFondoBase,
+  onSetCoverImage,
   canvasUiSuppressed = false,
   backgroundEditSectionId = null,
 }) {
@@ -215,6 +216,7 @@ export default function CanvasEditorOverlays({
           onActualizarMovimientoDecoracionFondo={onActualizarMovimientoDecoracionFondo}
           onDesanclarImagenFondoBase={onDesanclarImagenFondoBase}
           onFinalizarAjusteFondoBase={onFinalizarAjusteFondoBase}
+          onSetCoverImage={onSetCoverImage}
           onConfigurarRsvp={() => abrirPanelRsvp({ forcePresetSelection: false })}
           onConfigurarRegalos={() => abrirPanelRegalos()}
           canManageSite={canManageSite}

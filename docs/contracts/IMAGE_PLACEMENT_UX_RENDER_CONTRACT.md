@@ -109,6 +109,41 @@ Intended behavior:
 - The resulting state MUST contain exactly one representation of that visual image.
 - The editor SHOULD activate the owning section or the relevant section-owned edit mode after conversion.
 
+## Cover Photo Metadata Contract
+
+`portadaSource` identifies the canvas visual explicitly marked as cover. `portada` is
+the draft URL projection and legacy fallback; template catalog/card workflows may
+store a different preview image in that field. Neither is inferred from the ordered
+first section's base background.
+
+Normative rules:
+
+- A base section background MUST NOT make an image a cover photo by itself.
+- A cover photo MAY be a canvas image object or a base section background. The
+  cover identity authority is `portadaSource`; the visual continues to be owned by
+  `objetos[]` or `secciones[]` respectively.
+- The gear menu for a selected canvas image object or base section background MUST
+  offer `Usar como portada` only to admin/superadmin users through `canManageSite`.
+- Selecting `Usar como portada` updates `portadaSource` and the `portada` URL
+  projection. It MUST NOT convert, remove, duplicate, alter selection, or otherwise
+  mutate the selected canvas object or a section visual.
+- The Assistant cover card MUST resolve the current image from `portadaSource` when
+  that reference is valid. Template sessions and template-derived drafts MUST NOT
+  expose the card or cover substep without a resolved source, even when `portada`
+  contains a catalog/card thumbnail. Only standalone legacy drafts MAY use
+  `portada` without an explicit source.
+- The full template document and template editor document MUST preserve
+  `portadaSource`. Template catalog documents MUST NOT become the identity authority.
+  Creating a draft from a template MUST copy the normalized source together with the
+  render state whose object/section IDs it references.
+- Replacing the current cover through the Assistant MUST always update `portada`.
+  If the previous cover URL also identifies canvas image objects or one or more
+  base section backgrounds, the replacement MUST update those matching visuals
+  through their existing authorities while preserving object geometry and
+  background placement. Unrelated visuals MUST remain unchanged.
+- Cover metadata and linked visual replacements MUST be persisted through the
+  existing editor-session persistence authority and write FIFO.
+
 ## Contextual Menu Contract
 
 El menú previsto es:
@@ -116,6 +151,7 @@ El menú previsto es:
 Usar como:
 
 - Imagen (contenido). Texto de ayuda: "Elemento de contenido. Podés moverlo, redimensionarlo, rotarlo y superponerlo con otros elementos."
+- Usar como portada. Texto de ayuda: "La imagen sigue en el canvas y pasa a ser la foto de portada."
 - Decoración. Texto de ayuda: "Elemento visual que queda detrás del contenido y no afecta el diseño en mobile."
 - Fondo de la sección. Texto de ayuda: "Imagen principal que cubre toda la sección."
 - Decoración arriba. Texto de ayuda: "Decoración anclada en la parte superior que se adapta al ancho de la pantalla."
@@ -124,6 +160,7 @@ Usar como:
 La implementación actual en `MenuOpcionesElemento.jsx` expone un submenú agrupado `Usar como` para objetos de imagen normales:
 
 - `Imagen (contenido)`
+- `Usar como portada`
 - `Decoración`
 - `Fondo de la sección`
 - `Decoración arriba`
@@ -132,10 +169,14 @@ La implementación actual en `MenuOpcionesElemento.jsx` expone un submenú agrup
 Visibilidad por rol:
 
 - Usuarios regulares ven `Imagen (contenido)` y `Fondo de la sección`.
-- Usuarios `admin` y `superadmin` ven además `Decoración`, `Decoración arriba` y `Decoración abajo`.
+- Usuarios `admin` y `superadmin` ven además `Usar como portada`, `Decoración`, `Decoración arriba` y `Decoración abajo`.
 - La fuente de permisos del editor es `canManageSite`, derivada de `isAdmin || isSuperAdmin` en `useAdminAccess()`.
 
 Para una imagen que ya es normal, `Imagen (contenido)` no cambia el rol del objeto. La conversión de visuales propios de sección de vuelta a imágenes normales se maneja con affordances específicas de cada rol, no desde este submenú de imagen normal.
+
+El menú de una imagen base de sección expone `Usar como portada` como acción
+directa para admin/superadmin y persiste una referencia
+`{ kind: "section-background", sectionId }`.
 
 ## Decoration Permissions
 
@@ -241,6 +282,14 @@ Selection rule:
 
 ## Current Behavior Summary
 
+- Cover-photo identity is read from `portadaSource`; only standalone legacy drafts
+  use auxiliary `portada` metadata as a fallback. It is not inferred from the first
+  section, and template/card thumbnails do not enable Assistant cover controls.
+- The gear menus for a selected canvas image or base section background expose
+  `Usar como portada` to admin/superadmin users. Regular users do not see it.
+- Assistant cover replacement updates matching canvas image objects and preserves
+  an existing dual cover/background role by replacing matching base section
+  sources with geometry and placement preserved.
 - Normal image/content is represented as an object in `objetos`.
 - Base background, free background decoration, and top/bottom edge decorations are represented as section data in `secciones`.
 - The data model already distinguishes base background, free decoration, and edge decoration as separate primitives.

@@ -148,7 +148,29 @@ These are active system boundaries, not incidental implementation details.
 
 `window.canvasEditor.scrollToDynamicFieldTarget(fieldKeyOrKeys, options?)` is a sidebar-to-canvas navigation bridge for dynamic-field editing. It may scroll the dashboard viewport toward the first linked render object for the requested field, but it must not mutate render data, selection state, hover state, inline edit state, or overlay ownership.
 
-`window.canvasEditor.replaceFirstSectionBackgroundImage(imageUrl, options?)` is a sidebar-to-editor bridge for the Fotos tab. It may replace only the base background image source of the ordered first section when that section already has an image background. It writes through the editor-owned `secciones` state, preserves existing background placement by default, and must not create or select an `objetos[]` image.
+`window.canvasEditor.getCoverImage()` exposes the effective editor-session cover to
+the Sidebar. It resolves the visual referenced by `portadaSource`. Template sessions
+and template-derived drafts return no effective cover when that reference is absent
+or stale; standalone legacy drafts may use `portada` as a compatibility fallback.
+
+Template editing preserves `portadaSource` in the full template editor document and
+`copiarPlantilla` carries it into template-derived drafts. Object and section IDs are
+the stable identity boundary for this transfer; the template catalog thumbnail is
+not a cover-selection authority and cannot enable the Assistant cover block.
+
+`window.canvasEditor.updateCoverImage(imageInput, options?)` is the single
+sidebar-to-editor cover mutation. It persists through `editorSessionPersistence`
+and the shared draft-write FIFO. `options.coverSource` may bind the cover to a
+specific canvas object or section background. With `syncLinkedVisuals: false`, it
+changes only cover metadata. With `syncLinkedVisuals: true`, it also replaces the
+bound visual plus canvas image objects and base section backgrounds whose previous
+source matched the old cover, preserving geometry/placement and leaving unrelated
+visuals unchanged. It must
+not create or select an `objetos[]` image.
+
+`window.canvasEditor.replaceFirstSectionBackgroundImage(...)` remains a compatibility
+adapter for callers migrating to `updateCoverImage`; it delegates to the same cover
+owner with linked-visual synchronization and is not a second mutation path.
 
 ## 5. Related Documents
 

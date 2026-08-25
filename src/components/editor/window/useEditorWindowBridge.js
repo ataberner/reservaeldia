@@ -2,11 +2,6 @@
 import { useEffect, useRef } from "react";
 import { registerCountdownAuditContext } from "@/domain/countdownAudit/runtime";
 import { isCountdownVisible } from "@/domain/eventDetails/countdownEventDetails";
-import { canMutateSection } from "@/domain/editor/protectedSections";
-import {
-  applySectionBaseImage,
-  normalizeSectionBackgroundModel,
-} from "@/domain/sections/backgrounds";
 import {
   CANVAS_EDITOR_COMPATIBILITY_KEYS,
   EDITOR_BRIDGE_EVENTS,
@@ -31,11 +26,9 @@ import {
 export default function useEditorWindowBridge({
   seccionesOrdenadas,
   secciones,
-  setSecciones,
   seccionActivaId,
   objetos,
   altoCanvas,
-  readOnly = false,
   calcularOffsetY,
   cambiarColorFondoSeccion,
   onDeshacer,
@@ -59,6 +52,8 @@ export default function useEditorWindowBridge({
   flushPersistenceNow,
   hasPendingDraftWrites,
   selectionRuntime,
+  coverImage = "",
+  updateCoverImage,
 }) {
   const EXTRA_CANVAS_EDITOR_COMPATIBILITY_KEYS = [
     "cambiarColorFondoSeccion",
@@ -286,65 +281,13 @@ export default function useEditorWindowBridge({
   };
 
   const replaceFirstSectionBackgroundImage = (imageInput, options = {}) => {
-    if (typeof window === "undefined" || readOnly) return false;
-    if (typeof setSecciones !== "function") return false;
-    const src =
-      typeof imageInput === "string"
-        ? imageInput.trim()
-        : String(
-            imageInput?.url ||
-              imageInput?.src ||
-              imageInput?.downloadURL ||
-              imageInput?.mediaUrl ||
-              ""
-          ).trim();
-    if (!src) return false;
-    const expectedSectionId = String(options?.sectionId || options?.expectedSectionId || "").trim();
-
-    const firstSection = Array.isArray(seccionesOrdenadas)
-      ? seccionesOrdenadas[0]
-      : null;
-    const backgroundModel = normalizeSectionBackgroundModel(firstSection, {
-      sectionHeight: firstSection?.altura,
-    });
-    if (
-      !firstSection?.id ||
-      (expectedSectionId && String(firstSection.id) !== expectedSectionId) ||
-      backgroundModel.base.fondoTipo !== "imagen" ||
-      !backgroundModel.base.fondoImagen ||
-      !canMutateSection(firstSection)
-    ) {
-      return false;
+    if (typeof updateCoverImage !== "function") {
+      return Promise.resolve({ ok: false, reason: "cover-image-owner-unavailable" });
     }
-
-    setSecciones((previous) => {
-      const current = Array.isArray(previous) ? previous : [];
-      const currentFirstSection = [...current].sort(
-        (left, right) => Number(left?.orden ?? 0) - Number(right?.orden ?? 0)
-      )[0];
-      const currentBackgroundModel = normalizeSectionBackgroundModel(currentFirstSection, {
-        sectionHeight: currentFirstSection?.altura,
-      });
-
-      if (
-        !currentFirstSection?.id ||
-        (expectedSectionId && String(currentFirstSection.id) !== expectedSectionId) ||
-        currentBackgroundModel.base.fondoTipo !== "imagen" ||
-        !currentBackgroundModel.base.fondoImagen ||
-        !canMutateSection(currentFirstSection)
-      ) {
-        return previous;
-      }
-
-      return applySectionBaseImage(
-        current,
-        currentFirstSection.id,
-        imageInput,
-        { preservePlacement: options?.preservePlacement !== false }
-      );
+    return updateCoverImage(imageInput, {
+      ...options,
+      syncLinkedVisuals: true,
     });
-
-    return true;
   };
 
   if (typeof window !== "undefined") {
@@ -375,6 +318,9 @@ export default function useEditorWindowBridge({
       scrollToDynamicFieldTarget,
       scrollToEditorObjectById,
       focusEditorObjectById,
+      getCoverImage: () => String(coverImage || "").trim(),
+      updateCoverImage:
+        typeof updateCoverImage === "function" ? updateCoverImage : undefined,
       replaceFirstSectionBackgroundImage,
       updateTemplateAuthoringDefault:
         typeof updateTemplateAuthoringDefault === "function"
@@ -454,11 +400,9 @@ export default function useEditorWindowBridge({
     cambiarColorFondoSeccion,
     calcularOffsetY,
     objetos,
-    readOnly,
     seccionActivaId,
     secciones,
     seccionesOrdenadas,
-    setSecciones,
     altoCanvas,
     onDeshacer,
     onRehacer,
@@ -481,7 +425,19 @@ export default function useEditorWindowBridge({
     flushPersistenceNow,
     hasPendingDraftWrites,
     selectionRuntime,
+    coverImage,
+    updateCoverImage,
   ]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE, {
+        detail: {
+          imageUrl: String(coverImage || "").trim(),
+        },
+      })
+    );
+  }, [coverImage]);
 
   useEffect(() => {
     registerCountdownAuditContext({

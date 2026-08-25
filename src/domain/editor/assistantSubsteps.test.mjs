@@ -32,9 +32,14 @@ test("assistant photo step splits cover and existing galleries into semantic sub
     { id: "gallery-two", tipo: "galeria" },
   ];
 
-  const substeps = resolveAssistantSubstepsForStep("imagen", { objects, sections });
+  const coverImage = "https://example.test/cover.jpg";
+  const substeps = resolveAssistantSubstepsForStep("imagen", {
+    objects,
+    sections,
+    coverImage,
+  });
 
-  assert.equal(hasAssistantPhotoStepContent({ objects, sections }), true);
+  assert.equal(hasAssistantPhotoStepContent({ objects, sections, coverImage }), true);
   assert.deepEqual(
     substeps.map(({ id, label, scope, galleryId }) => ({
       id,
@@ -70,6 +75,34 @@ test("assistant photo step has no substeps when there is no cover or gallery", (
   assert.equal(hasAssistantPhotoStepContent({}), false);
 });
 
+test("assistant cover substep follows cover metadata instead of section background usage", () => {
+  const imageBackgroundOnly = {
+    sections: [
+      {
+        id: "first",
+        orden: 1,
+        fondoTipo: "imagen",
+        fondoImagen: "https://example.test/background-only.jpg",
+      },
+    ],
+  };
+  const independentCover = {
+    coverImage: "https://example.test/cover-only.jpg",
+    sections: [{ id: "first", orden: 1, fondo: "#ffffff" }],
+  };
+
+  assert.deepEqual(resolveAssistantSubstepsForStep("imagen", imageBackgroundOnly), []);
+  assert.equal(hasAssistantPhotoStepContent(imageBackgroundOnly), false);
+  assert.deepEqual(
+    resolveAssistantSubstepsForStep("imagen", independentCover).map(({ id, scope }) => ({
+      id,
+      scope,
+    })),
+    [{ id: "cover", scope: "cover" }]
+  );
+  assert.equal(hasAssistantPhotoStepContent(independentCover), true);
+});
+
 test("assistant substep helpers clamp indices and expose progress only for split steps", () => {
   const substeps = resolveAssistantSubstepsForStep("detalles");
 
@@ -95,6 +128,7 @@ test("assistant substep helpers clamp indices and expose progress only for split
 test("assistant substeps own contextual guided-tour Next copy", () => {
   const detalles = resolveAssistantSubstepsForStep("detalles");
   const imagen = resolveAssistantSubstepsForStep("imagen", {
+    coverImage: "https://example.test/cover.jpg",
     sections: [
       {
         id: "cover-section",

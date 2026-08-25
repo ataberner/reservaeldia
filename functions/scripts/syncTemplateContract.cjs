@@ -4,6 +4,14 @@ const path = require("path");
 
 const artifacts = [
   {
+    label: "Contrato de identidad de portada",
+    sourcePath: path.resolve(__dirname, "../../shared/coverImageContract.mjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/coverImageContract.mjs"),
+      path.resolve(__dirname, "../lib/shared/coverImageContract.mjs"),
+    ],
+  },
+  {
     label: "Contrato de plantillas",
     sourcePath: path.resolve(__dirname, "../../shared/templates/contract.js"),
     targetPaths: [

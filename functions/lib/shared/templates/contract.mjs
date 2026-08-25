@@ -1,4 +1,5 @@
 import { normalizeEventDetailsDocumentContract } from "../eventDetailsMigration.js";
+import { normalizeCoverImageSource } from "../coverImageContract.mjs";
 
 const TEMPLATE_TYPES = new Set([
   "boda",
@@ -633,6 +634,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
   const preview = normalizePreview(source);
   const galleryRules = normalizeGalleryRules(source);
   const portada = normalizeText(source.portada) || null;
+  const portadaSource = normalizeCoverImageSource(source.portadaSource);
   const editor = normalizeText(source.editor) || null;
   const objetos = Array.isArray(source.objetos) ? source.objetos : [];
   const secciones = normalizeTemplateSections(source.secciones);
@@ -666,6 +668,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
     defaults,
     galleryRules,
     portada,
+    portadaSource,
     editor,
     objetos,
     secciones,

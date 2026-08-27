@@ -9,12 +9,11 @@ import {
   getOrderedQuestions,
   normalizeRsvpConfig,
 } from "@/domain/rsvp/config";
-import {
-  MIDNIGHT_RSVP_BUTTON_STYLE_ID,
-  createRsvpButtonStylePatch,
-} from "@/domain/rsvp/buttonStyles";
 import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
-import { isFunctionalCtaHidden } from "@/domain/functionalCtaButtons";
+import {
+  buildFunctionalCtaButtonPayload,
+  isFunctionalCtaHidden,
+} from "@/domain/functionalCtaButtons";
 import {
   addQuestionOption,
   removeQuestionOption,
@@ -111,21 +110,7 @@ function inputClassName() {
 }
 
 function buildDefaultRsvpButtonPayload() {
-  const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
-
-  return {
-    id: `rsvp-${Date.now()}`,
-    tipo: "rsvp-boton",
-    texto: "Confirmar asistencia",
-    x: 300,
-    y: 100,
-    ancho: 220,
-    alto: 50,
-    fontSize: 18,
-    fontFamily: "sans-serif",
-    align: "center",
-    ...defaultButtonStyle,
-  };
+  return buildFunctionalCtaButtonPayload("rsvp-boton");
 }
 
 function insertDefaultRsvpButton() {

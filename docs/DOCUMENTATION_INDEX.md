@@ -54,6 +54,7 @@ likely to be used as an authority by humans or AI agents.
 | Product and system architecture | [ARCHITECTURE_GUIDELINES.md](architecture/ARCHITECTURE_GUIDELINES.md), [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md) | Product/architecture rules and whole-system map. |
 | Data and persistence | [DATA_MODEL.md](architecture/DATA_MODEL.md), [PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) | Canonical draft/publication/render-state data model and the provider persistence, import, image-enrichment, and durable-resume contract. |
 | Editor subsystem | [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), [INTERACTION_CONTRACT.md](architecture/INTERACTION_CONTRACT.md), [INTERACTION_SYSTEM_CURRENT_STATE.md](architecture/INTERACTION_SYSTEM_CURRENT_STATE.md) | Editor boundary, normative interaction rules, and current implementation map. |
+| Assistant / Designer AI | [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md), [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) | Canonical Designer AI capability/security boundary and current Assistant Guided Tour implementation map. |
 | Preview/publish/render | [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md), [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) | Preview authority model and cross-runtime render compatibility. |
 | Checkout/publication lifecycle | [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md) | Checkout, payment approval, slug reservation, publish execution, retry, and public delivery lifecycle. |
 | Public interactivity | [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) | Functional CTA behavior across preview and publish. |
@@ -121,6 +122,7 @@ Audits and historical records must not be treated as current contracts:
 Add focused contracts when the editor change touches those surfaces:
 
 - Assistant/guided tour: [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) as a current implementation map, plus `src/domain/editor/assistantGuidedTour.test.mjs` and `src/domain/editor/assistantSubsteps.test.mjs` as code-level anchors
+- Designer AI: [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md), then [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) to preserve explicit tour isolation
 - image roles/decorations: [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md)
 - grouping: [GROUP_RENDER_MODEL.md](architecture/GROUP_RENDER_MODEL.md)
 - Gallery: [GALLERY_SYSTEM_CONTRACT.md](contracts/GALLERY_SYSTEM_CONTRACT.md) and [GALLERY_EDITOR_CONTRACT.md](contracts/GALLERY_EDITOR_CONTRACT.md)

@@ -42,6 +42,7 @@ import {
     DASHBOARD_DOCUMENT_NAME_EVENTS,
     publishDashboardDocumentNameState,
 } from "@/lib/dashboardDocumentNameBridge";
+import { normalizeDesignerAiConversationState } from "../../shared/designerAiConversationLedger.js";
 import {
     createAssistantGuidedTourPreferencePatch,
     resolveAssistantGuidedTourRestoreMenuItemState,
@@ -184,6 +185,13 @@ export default function DashboardHeader(props) {
     const [documentNameHydration, setDocumentNameHydration] = useState({
         documentId: "",
         hydrated: false,
+    });
+    const [designerAiConversation, setDesignerAiConversation] = useState(() =>
+        normalizeDesignerAiConversationState(null)
+    );
+    const [designerAiSourceContext, setDesignerAiSourceContext] = useState({
+        templateDerived: false,
+        changedKeys: [],
     });
     const [templateWorkspaceMeta, setTemplateWorkspaceMeta] = useState(() =>
         normalizeTemplateWorkspaceMeta(null)
@@ -333,6 +341,8 @@ export default function DashboardHeader(props) {
                     draftDisplayName,
                 }));
                 setNombreBorrador("");
+                setDesignerAiConversation(normalizeDesignerAiConversationState(null));
+                setDesignerAiSourceContext({ templateDerived: false, changedKeys: [] });
                 setTemplateWorkspaceMeta(normalizeTemplateWorkspaceMeta(null));
                 return;
             }
@@ -352,6 +362,8 @@ export default function DashboardHeader(props) {
                         normalizeText(draftDisplayName) ||
                         "Plantilla"
                 );
+                setDesignerAiConversation(normalizeDesignerAiConversationState(null));
+                setDesignerAiSourceContext({ templateDerived: true, changedKeys: [] });
                 setTemplateWorkspaceMeta(
                     normalizeTemplateWorkspaceMeta(templateSessionMeta)
                 );
@@ -376,6 +388,19 @@ export default function DashboardHeader(props) {
                     setNombreBorrador(
                         typeof data?.nombre === "string" ? data.nombre : ""
                     );
+                    setDesignerAiConversation(
+                        normalizeDesignerAiConversationState(data?.designerAiConversation)
+                    );
+                    setDesignerAiSourceContext({
+                        templateDerived: Boolean(
+                            normalizeText(data?.plantillaId) ||
+                            normalizeText(data?.templateId) ||
+                            (data?.templateInput && typeof data.templateInput === "object")
+                        ),
+                        changedKeys: Array.isArray(data?.templateInput?.changedKeys)
+                            ? data.templateInput.changedKeys
+                            : [],
+                    });
                     setTemplateWorkspaceMeta(
                         normalizeTemplateWorkspaceMeta(data?.templateWorkspace)
                     );
@@ -392,6 +417,8 @@ export default function DashboardHeader(props) {
                 draftDisplayName,
             }));
             setNombreBorrador(normalizeText(draftDisplayName));
+            setDesignerAiConversation(normalizeDesignerAiConversationState(null));
+            setDesignerAiSourceContext({ templateDerived: false, changedKeys: [] });
             setTemplateWorkspaceMeta(normalizeTemplateWorkspaceMeta(null));
             markDocumentNameHydrated();
         };
@@ -430,12 +457,16 @@ export default function DashboardHeader(props) {
             documentKind: isTemplateSession ? "template" : "draft",
             editable: Boolean(slugInvitacion) && !editorReadOnly,
             hydrated: documentNameHydrated,
+            designerAiConversation,
+            designerAiSourceContext,
         });
     }, [
         documentNameHydration,
         editorReadOnly,
         isTemplateSession,
         nombreBorrador,
+        designerAiConversation,
+        designerAiSourceContext,
         slugInvitacion,
     ]);
 
@@ -710,16 +741,30 @@ export default function DashboardHeader(props) {
     };
 
     const guardarNombreDocumento = useCallback(
-        async (nombreDocumento = nombreBorrador) => {
+        async (nombreDocumento = nombreBorrador, options = {}) => {
             const currentId = normalizeText(slugInvitacion);
             if (!currentId) return;
             const nextName = String(nombreDocumento ?? "");
+            const nextConversation = isTemplateSession
+                ? null
+                : options.designerAiConversation
+                    ? normalizeDesignerAiConversationState(options.designerAiConversation)
+                    : normalizeDesignerAiConversationState({
+                        ...designerAiConversation,
+                        namePolicy: {
+                            ...designerAiConversation.namePolicy,
+                            mode: "explicit",
+                        },
+                    });
 
             await persistEditorSessionPatch({
                 session: normalizedEditorSession,
                 slug: currentId,
                 patch: {
                     nombre: nextName,
+                    ...(nextConversation
+                        ? { designerAiConversation: nextConversation }
+                        : {}),
                 },
                 reason: "document-name",
             });
@@ -734,8 +779,9 @@ export default function DashboardHeader(props) {
             }
 
             setNombreBorrador(nextName);
+            if (nextConversation) setDesignerAiConversation(nextConversation);
         },
-        [isTemplateSession, normalizedEditorSession, nombreBorrador, slugInvitacion]
+        [designerAiConversation, isTemplateSession, normalizedEditorSession, nombreBorrador, slugInvitacion]
     );
 
     useEffect(() => {
@@ -744,7 +790,13 @@ export default function DashboardHeader(props) {
         const handleDocumentNameUpdateRequest = (event) => {
             if (editorReadOnly || !slugInvitacion) return;
 
+            const hasName = event?.detail?.hasName === true;
             const nextName = String(event?.detail?.name ?? "");
+            const requestedConversation = event?.detail?.designerAiConversation
+                ? normalizeDesignerAiConversationState(
+                    event.detail.designerAiConversation
+                )
+                : null;
             logAssistantTourDebug("header-document-name-update-request", () => ({
                 eventType: event?.type || "",
                 eventIsTrusted: event?.isTrusted === true,
@@ -753,13 +805,31 @@ export default function DashboardHeader(props) {
                 slugInvitacion,
                 persist: event?.detail?.persist !== false,
             }));
-            setNombreBorrador(nextName);
+            if (hasName) setNombreBorrador(nextName);
+            if (requestedConversation) {
+                setDesignerAiConversation(requestedConversation);
+            }
 
             if (event?.detail?.persist === false) return;
 
-            void guardarNombreDocumento(nextName).catch((error) => {
-                console.error("Error guardando nombre del borrador:", error);
-            });
+            if (hasName) {
+                void guardarNombreDocumento(nextName, {
+                    designerAiConversation: requestedConversation,
+                }).catch((error) => {
+                    console.error("Error guardando nombre del borrador:", error);
+                });
+                return;
+            }
+            if (requestedConversation) {
+                void persistEditorSessionPatch({
+                    session: normalizedEditorSession,
+                    slug: slugInvitacion,
+                    patch: { designerAiConversation: requestedConversation },
+                    reason: "designer-ai-conversation",
+                }).catch((error) => {
+                    console.error("Error guardando estado conversacional:", error);
+                });
+            }
         };
 
         window.addEventListener(
@@ -773,7 +843,7 @@ export default function DashboardHeader(props) {
                 handleDocumentNameUpdateRequest
             );
         };
-    }, [editorReadOnly, guardarNombreDocumento, slugInvitacion]);
+    }, [editorReadOnly, guardarNombreDocumento, normalizedEditorSession, slugInvitacion]);
 
     const abrirModalCrearSeccion = () => {
         if (typeof window === "undefined") return;

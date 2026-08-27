@@ -1,3 +1,8 @@
+import {
+  MIDNIGHT_RSVP_BUTTON_STYLE_ID,
+  createRsvpButtonStylePatch,
+} from "./rsvp/buttonStyles.js";
+
 const FUNCTIONAL_CTA_BUTTON_TYPES = Object.freeze(["rsvp-boton", "regalo-boton"]);
 
 function normalizeType(value) {
@@ -28,6 +33,32 @@ export function getFunctionalCtaDefaultText(value) {
   if (isRsvpButton(value)) return "Confirmar asistencia";
   if (isGiftButton(value)) return "Ver regalos";
   return "";
+}
+
+export function buildFunctionalCtaButtonPayload(
+  type,
+  { id = "", text = "", now = Date.now() } = {}
+) {
+  const normalizedType = normalizeType(type);
+  if (!isFunctionalCtaType(normalizedType)) return null;
+  const prefix = normalizedType === "rsvp-boton" ? "rsvp" : "gift";
+  return {
+    id: String(id || "").trim() || `${prefix}-${now}`,
+    tipo: normalizedType,
+    texto: String(text || "").trim() || getFunctionalCtaDefaultText(normalizedType),
+    x: 300,
+    y: 100,
+    ancho: 220,
+    alto: 50,
+    fontSize: 18,
+    fontFamily: "sans-serif",
+    align: "center",
+    ...createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID),
+  };
+}
+
+export function buildFunctionalCtaVisibilityPatch(enabled) {
+  return { hidden: enabled !== true };
 }
 
 function findFunctionalCtaButtonByTypeInEntry(entry, normalizedType, predicate = null) {

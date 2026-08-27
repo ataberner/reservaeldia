@@ -157,6 +157,11 @@ import { buildUserUiPreferencesMergePayload } from "./userUiPreferencesPersisten
 import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 
 import * as logger from "firebase-functions/logger";
+import {
+  DesignerAiServiceError,
+  createDesignerAiOpenAiClient,
+  interpretDesignerAiChat,
+} from "./designerAi/service";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
 const { prepareGroupAwareRenderState } = require("../shared/groupRenderContract.cjs");
 const {
@@ -237,6 +242,7 @@ setGlobalOptions({
 });
 
 const publicVisitSigningSecret = defineSecret("PUBLIC_VISIT_SIGNING_SECRET");
+const openAiApiKey = defineSecret("OPENAI_API_KEY");
 
 // Inicialización de Firebase Admin
 if (!admin.apps.length) {
@@ -3011,6 +3017,85 @@ function escapeHTML(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
+
+/**
+ * ================================
+ * Diseñador AI: interpretación protegida
+ * ================================
+ *
+ * Solo interpreta acciones de la allowlist. Las mutaciones ocurren en el
+ * editor mediante sus bridges y persistencia existentes.
+ */
+export const designerAiChat = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+    secrets: [openAiApiKey],
+    timeoutSeconds: 45,
+  },
+  async (request: CallableRequest<unknown>) => {
+    const uid = requireSuperAdmin(request);
+    const fallbackTraceId = randomUUID();
+    const startedAt = Date.now();
+
+    try {
+      let secretValue = "";
+      try {
+        secretValue = openAiApiKey.value();
+      } catch {
+        throw new DesignerAiServiceError(
+          "missing-secret",
+          "OPENAI_API_KEY no está disponible en este runtime."
+        );
+      }
+      const client = createDesignerAiOpenAiClient(secretValue);
+      const result = await interpretDesignerAiChat({
+        payload: request.data,
+        client,
+      });
+      const {
+        traceId,
+        openAiRequestId,
+        latencyMs,
+        ...publicResult
+      } = result;
+      logger.info("designerAiChat completado", {
+        uid,
+        traceId,
+        batchId: publicResult.batchId,
+        latencyMs,
+        result: publicResult.intent,
+        actionCount: publicResult.actions.length,
+        controlRequested: Boolean(publicResult.controlRequest),
+        openAiRequestId,
+      });
+      return publicResult;
+    } catch (error) {
+      const serviceError = error instanceof DesignerAiServiceError ? error : null;
+      logger.error("designerAiChat falló", {
+        uid,
+        traceId: fallbackTraceId,
+        latencyMs: Math.max(0, Date.now() - startedAt),
+        result: serviceError?.kind || "unknown",
+        openAiRequestId: serviceError?.openAiRequestId || null,
+      });
+
+      if (serviceError?.kind === "invalid-payload") {
+        throw new HttpsError("invalid-argument", "La solicitud de Diseñador AI es inválida.");
+      }
+      if (serviceError?.kind === "missing-secret") {
+        throw new HttpsError("failed-precondition", "Diseñador AI no está configurado.");
+      }
+      if (serviceError?.kind === "timeout") {
+        throw new HttpsError("deadline-exceeded", "Diseñador AI excedió el tiempo de respuesta.");
+      }
+      if (serviceError?.kind === "rate-limit") {
+        throw new HttpsError("resource-exhausted", "Diseñador AI alcanzó su límite temporal.");
+      }
+      throw new HttpsError("internal", "Diseñador AI no pudo procesar la solicitud.");
+    }
+  }
+);
 
 /**
  * ================================

@@ -1,9 +1,9 @@
-﻿import { normalizeRsvpConfig, getOrderedQuestions } from "@/domain/rsvp/config";
+import { normalizeRsvpConfig, getOrderedQuestions } from "./config.js";
 import {
   createQuestionsForPreset,
   getQuestionTemplate,
   resolvePresetId,
-} from "@/domain/rsvp/catalog";
+} from "./catalog.js";
 
 const RSVP_FIELD_TYPES = new Set([
   "short_text",

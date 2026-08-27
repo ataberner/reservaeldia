@@ -250,6 +250,8 @@ export default function DashboardLayout({
             futurosExternos={futurosExternos}
             editorReadOnly={editorReadOnly}
             canManageSite={canManageSite}
+            isSuperAdmin={isSuperAdmin}
+            loadingAdminAccess={loadingAdminAccess}
             editorSession={editorSession}
             templateSessionMeta={templateSessionMeta}
             userUid={usuario?.uid || ""}

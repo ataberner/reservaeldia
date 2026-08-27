@@ -3,14 +3,11 @@ import { createPortal } from "react-dom";
 import { Check, Copy, Eye, ExternalLink, Gift, Pencil, Plus, Settings2, X } from "lucide-react";
 import { createDefaultGiftConfig, hasVisibleGiftMethods, normalizeGiftConfig } from "@/domain/gifts/config";
 import {
+  buildFunctionalCtaButtonPayload,
   getFunctionalCtaDefaultText,
   isFunctionalCtaHidden,
 } from "@/domain/functionalCtaButtons";
 import { readEditorObjectByType } from "@/lib/editorRuntimeBridge";
-import {
-  MIDNIGHT_RSVP_BUTTON_STYLE_ID,
-  createRsvpButtonStylePatch,
-} from "@/domain/rsvp/buttonStyles";
 import styles from "./MiniToolbarTabRegalos.module.css";
 
 const DEFAULT_GIFT_BUTTON_TEXT = getFunctionalCtaDefaultText("regalo-boton") || "Ver regalos";
@@ -116,21 +113,9 @@ function findGiftButton() {
 }
 
 function buildDefaultGiftButtonPayload(buttonText) {
-  const defaultButtonStyle = createRsvpButtonStylePatch(MIDNIGHT_RSVP_BUTTON_STYLE_ID);
-
-  return {
-    id: `gift-${Date.now()}`,
-    tipo: "regalo-boton",
-    texto: String(buttonText || "").trim() || DEFAULT_GIFT_BUTTON_TEXT,
-    x: 300,
-    y: 100,
-    ancho: 220,
-    alto: 50,
-    fontSize: 18,
-    fontFamily: "sans-serif",
-    align: "center",
-    ...defaultButtonStyle,
-  };
+  return buildFunctionalCtaButtonPayload("regalo-boton", {
+    text: String(buttonText || "").trim() || DEFAULT_GIFT_BUTTON_TEXT,
+  });
 }
 
 function insertDefaultGiftButton(buttonText) {

@@ -85,6 +85,7 @@ These fields coexist with the render state in `borradores/{slug}`, but they are 
 | `templateWorkspace` | template editor sessions | Auxiliary metadata. Template workspace state, not invitation render state. |
 | `templateAuthoringDraft` | template authoring | Auxiliary metadata. Field-authoring payload, not invitation render state. |
 | `templateInput` | template personalization flow | Auxiliary metadata. Stores applied input values and apply report. |
+| `designerAiConversation` | Designer AI conversation planning | Auxiliary metadata. Stores ledger version, value fingerprints/provenance, documented resolution rules, and automatic/explicit document-name policy. It does not mirror invitation values or chat history. |
 | `draftContentMeta` | source-of-truth tracking | Auxiliary metadata. Writes `policyVersion`, `canonicalSource`, `lastWriter`, optional `lastReason`, and `updatedAt`. |
 | `ultimaEdicion` | UI ordering, persistence | Auxiliary metadata. Current editor updates it on save. |
 | `creado` / `createdAt` / `updatedAt` | draft creation and maintenance | Auxiliary metadata. Observed in different creation and lifecycle flows. |
@@ -892,6 +893,7 @@ These fields are real Firestore data, but they are not part of the canonical inv
 | `templateWorkspace` | Template editor session metadata. Observed fields include `templateId`, `mode`, `readOnly`, `openedByUid`, `openedAt`, `lastCommittedAt`, `estadoEditorial`, `tags`, `templateName`, `permissions`. |
 | `templateAuthoringDraft` | Template-authoring payload. Current workspace creation writes `version`, `sourceTemplateId`, `fieldsSchema`, `defaults`, `status`, `updatedAt`, `updatedByUid`. |
 | `templateInput` | Template-personalization snapshot. Current modal flow writes `initialValues`, `values`, `defaults`, `changedKeys`, `applyReport`, `appliedAt`, `updatedAt`, `policyVersion`. |
+| `designerAiConversation` | Designer AI planning metadata. Shape: `{ version, namePolicy: { mode: "automatic" | "explicit" | "unknown", lastAutomaticName }, baseline[], resolutions[] }`. Records contain leaf IDs, opaque value fingerprints, provenance/status, and an optional documented rule; they contain no canvas objects, media URLs, Places metadata, or chat transcript. |
 | `eventDetails` | Render-state configuration for the Detalles del evento flow. Normalized shape is `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`; missing/invalid values normalize to `"single"` and disabled Dress Code with empty value. |
 
 `templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current standardized fields are:

@@ -72,6 +72,10 @@ import {
   resolveDressCodeSidebarBinding,
 } from "@/domain/templates/storyText";
 import activationStyles from "./MiniToolbarTabRegalos.module.css";
+import {
+  buildAutomaticEventName,
+  normalizeDesignerAiConversationState,
+} from "../../shared/designerAiConversationLedger.js";
 
 const inputClass =
   "mt-2 block h-[38px] w-full max-w-[361px] box-border bg-white px-3 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none placeholder:text-[#9b9b9b] [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
@@ -813,6 +817,7 @@ export default function MiniToolbarTabDetallesEvento({
   const activeLocationSearchFieldRef = useRef("");
   const eventNameRef = useRef(eventName);
   const eventPersonNamesRef = useRef(eventPersonNames);
+  const documentNameStateRef = useRef(documentNameState);
   const eventLocationRef = useRef(eventLocation);
   const partyEventLocationRef = useRef(partyEventLocation);
   const eventTimesRef = useRef(eventTimes);
@@ -1136,6 +1141,10 @@ export default function MiniToolbarTabDetallesEvento({
   }, [eventName]);
 
   useEffect(() => {
+    documentNameStateRef.current = documentNameState;
+  }, [documentNameState]);
+
+  useEffect(() => {
     logAssistantTourDebug("details-fields-state", () => ({
       source: "MiniToolbarTabDetallesEvento.state",
       simplifiedForAssistant,
@@ -1422,6 +1431,28 @@ export default function MiniToolbarTabDetallesEvento({
     pendingEventPersonNamesSignatureRef.current = signature;
     void updateLinkedEventPersonNames(nextNames).then((ok) => {
       if (!ok) return;
+      const currentDocumentState = documentNameStateRef.current;
+      if (currentDocumentState?.designerAiConversation?.namePolicy?.mode === "automatic") {
+        const automaticName = buildAutomaticEventName(
+          nextNames.primaryName,
+          nextNames.secondaryName
+        );
+        if (automaticName) {
+          const nextConversation = normalizeDesignerAiConversationState({
+            ...currentDocumentState.designerAiConversation,
+            namePolicy: {
+              mode: "automatic",
+              lastAutomaticName: automaticName,
+            },
+          });
+          requestDashboardDocumentNameUpdate({
+            name: automaticName,
+            persist: true,
+            source: "assistant-automatic-name",
+            designerAiConversation: nextConversation,
+          });
+        }
+      }
       if (pendingEventPersonNamesSignatureRef.current === signature) {
         pendingEventPersonNamesSignatureRef.current = "";
       }

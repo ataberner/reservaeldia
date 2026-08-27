@@ -1,6 +1,7 @@
 // src/components/DashboardSidebar.jsx
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import AssistantGuidedTour from "@/components/editor/assistantTour/AssistantGuidedTour";
+import DesignerAiPanel from "@/components/editor/designerAi/DesignerAiPanel";
 import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import MiniToolbar from "./MiniToolbar";
 import PanelDeFormas from "./PanelDeFormas";
@@ -17,7 +18,7 @@ import {
     FaShapes,
     FaTimes,
 } from "react-icons/fa";
-import { GripHorizontal, Redo2, Sparkles, Undo2 } from "lucide-react";
+import { Bot, GripHorizontal, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -71,6 +72,8 @@ import { shouldPreventMobileScrollChain } from "@/domain/dashboard/mobileScrollC
 import { EDITOR_PANEL_IDS } from "@/domain/editor/editorPanelCoordinator";
 import { useEditorPanelCoordinator } from "@/components/editor/panels/EditorPanelCoordinatorContext";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
+import { DASHBOARD_DOCUMENT_NAME_EVENTS } from "@/lib/dashboardDocumentNameBridge";
+import { canAccessDesignerAi } from "@/domain/editor/designerAiAccess";
 import {
     readCanvasEditorMethod,
     readEditorCoverImage,
@@ -343,6 +346,8 @@ export default function DashboardSidebar({
     futurosExternos = [],
     editorReadOnly = false,
     canManageSite = false,
+    isSuperAdmin = false,
+    loadingAdminAccess = true,
     editorSession = null,
     templateSessionMeta = null,
     userUid = "",
@@ -469,6 +474,13 @@ export default function DashboardSidebar({
     });
     const canUseCountdown = canManageSite === true;
     const canUseEffects = canManageSite === true;
+    const canUseDesignerAi = canAccessDesignerAi({
+        loadingAdminAccess,
+        isSuperAdmin,
+        editorReadOnly,
+        editorSession,
+        modoSelector,
+    });
     const assistantStoryTextStepState =
         typeof window !== "undefined"
             ? readStoryTextAssistantStepState(window)
@@ -607,6 +619,7 @@ export default function DashboardSidebar({
             EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_CHANGED,
             EDITOR_BRIDGE_EVENTS.ACTIVE_SECTION_CHANGE,
             EDITOR_BRIDGE_EVENTS.COVER_IMAGE_CHANGE,
+            DASHBOARD_DOCUMENT_NAME_EVENTS.STATE_CHANGE,
             "abrir-borrador",
         ];
 
@@ -1496,6 +1509,28 @@ export default function DashboardSidebar({
         alternarSidebarConBoton(boton, { forceOpen: shouldForceOpenNormalTab });
     };
 
+    const handleDesignerAiAccessClick = useCallback(() => {
+        if (!canUseDesignerAi) return;
+        setAssistantActive(false);
+        setRsvpForcePresetSelection(false);
+        setBotonActivo("designer-ai");
+        setFijadoSidebar(true);
+        setHoverSidebar(true);
+        openEditorPanel(EDITOR_PANEL_IDS.LEFT);
+        if (isMobileViewport) {
+            setMobilePanelHeight(resolveMobilePanelHeightBounds().max);
+        }
+    }, [canUseDesignerAi, isMobileViewport, openEditorPanel]);
+
+    useEffect(() => {
+        if (canUseDesignerAi || botonActivo !== "designer-ai") return;
+        setAssistantActive(false);
+        setBotonActivo(null);
+        setFijadoSidebar(false);
+        setHoverSidebar(false);
+        closeEditorPanel(EDITOR_PANEL_IDS.LEFT);
+    }, [botonActivo, canUseDesignerAi, closeEditorPanel]);
+
     // Runtime-sensitive shell contract: the header-height variable keeps the
     // editor tool rail aligned with the fixed dashboard header.
     const sidebarShellClass = `
@@ -1682,6 +1717,10 @@ export default function DashboardSidebar({
         assistantActive
             ? "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-transparent bg-[#692B9A] px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-white shadow-[0_12px_24px_rgba(105,43,154,0.18)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]"
             : "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-[#eadff8] bg-white px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-[#692B9A] transition hover:bg-[#EFDFFB] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]";
+    const designerAiActive = canUseDesignerAi && !assistantActive && botonActivo === "designer-ai";
+    const designerAiButtonClass = designerAiActive
+        ? "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-transparent bg-gradient-to-r from-[#4c1d95] to-[#c25b45] px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-white shadow-[0_12px_24px_rgba(76,29,149,0.2)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]"
+        : "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-[#eadff8] bg-white px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-[#4c1d95] transition hover:bg-[#fff4ef] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]";
     const assistantStepButtonBase =
         "inline-flex min-h-10 items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1] disabled:cursor-not-allowed disabled:opacity-45";
     const assistantStepButtonSecondary =
@@ -1813,6 +1852,19 @@ export default function DashboardSidebar({
                             {assistantAccessLabel}
                         </span>
                     </button>
+                    {canUseDesignerAi ? (
+                        <button
+                            type="button"
+                            onClick={handleDesignerAiAccessClick}
+                            className={designerAiButtonClass}
+                            title="Diseñador AI"
+                            aria-label="Abrir Diseñador AI"
+                            aria-pressed={designerAiActive}
+                        >
+                            <Bot className="h-4 w-4 shrink-0" aria-hidden="true" />
+                            <span className="whitespace-nowrap">Diseñador AI</span>
+                        </button>
+                    ) : null}
                     <div className="h-px w-[158px] bg-[#efe5fb]" />
 
                     {availableSidebarTabs.map((tab) => {
@@ -1898,6 +1950,28 @@ export default function DashboardSidebar({
                                     {assistantAccessLabel}
                                 </span>
                             </div>
+
+                            {canUseDesignerAi ? (
+                                <div className="flex min-w-[76px] shrink-0 flex-col items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={handleDesignerAiAccessClick}
+                                        className={`${mobileHistoryButtonBase} ${
+                                            designerAiActive
+                                                ? "border-white/70 bg-gradient-to-br from-[#4c1d95] to-[#c25b45] text-white shadow-[0_12px_24px_rgba(76,29,149,0.24)] ring-2 ring-white/55"
+                                                : "border-[#eadff8] bg-white text-[#4c1d95] shadow-[0_10px_20px_rgba(95,53,150,0.12)] hover:bg-[#fff4ef]"
+                                        }`}
+                                        title="Diseñador AI"
+                                        aria-label="Abrir Diseñador AI"
+                                        aria-pressed={designerAiActive}
+                                    >
+                                        <Bot className="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
+                                        Diseñador AI
+                                    </span>
+                                </div>
+                            ) : null}
 
                             {availableSidebarTabs.map((tab) => (
                                 <div
@@ -2007,6 +2081,8 @@ export default function DashboardSidebar({
                         className={`relative w-full min-h-0 flex flex-1 flex-col text-slate-700 ${
                             botonActivo === "forma"
                                 ? "gap-0 px-2.5 pb-0.5 pt-8"
+                                : botonActivo === "designer-ai"
+                                    ? "gap-0 px-2.5 pb-2 pt-10"
                                 : botonActivo === "detalles"
                                     ? "gap-3 px-0 pb-3 pt-10"
                                 : "gap-3 px-2.5 pb-3 pt-10"
@@ -2015,7 +2091,7 @@ export default function DashboardSidebar({
                             flex: 1,
                             minHeight: 0,
                             height: "auto",
-                            overflowY: shouldShowAssistantControls ? "hidden" : "auto",
+                            overflowY: shouldShowAssistantControls || designerAiActive ? "hidden" : "auto",
                             WebkitOverflowScrolling: "touch",
                             overscrollBehaviorY: "contain",
                         }}
@@ -2045,7 +2121,22 @@ export default function DashboardSidebar({
                             />
                         )}
 
-                        {/* MiniToolbar con todas las acciones */}
+                        {designerAiActive ? (
+                            <DesignerAiPanel
+                                sessionKey={assistantTourDraftKey || slugInvitacion}
+                                contentVersion={assistantContentVersion}
+                                abrirSelector={abrirSelectorImagen}
+                                imagenes={imagenes}
+                                imagenesEnProceso={imagenesEnProceso}
+                                cargarImagenes={cargarImagenes}
+                                borrarImagen={borrarImagen}
+                                hayMas={hayMas}
+                                cargando={cargando}
+                                seccionActivaId={seccionActivaId}
+                                setMostrarGaleria={setMostrarGaleria}
+                                setImagenesSeleccionadas={setImagenesSeleccionadas}
+                            />
+                        ) : (
                         <MiniToolbar
                             botonActivo={botonActivo}
                             onAgregarTitulo={() => {
@@ -2119,6 +2210,7 @@ export default function DashboardSidebar({
                             assistantSubstep={assistantCurrentSubstep}
                             onAssistantTourFieldEdit={handleAssistantTourFieldEdit}
                         />
+                        )}
                     </div>
                     {shouldShowAssistantControls && (
                         <div

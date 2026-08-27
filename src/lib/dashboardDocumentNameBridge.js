@@ -1,3 +1,5 @@
+import { normalizeDesignerAiConversationState } from "../../shared/designerAiConversationLedger.js";
+
 export const DASHBOARD_DOCUMENT_NAME_EVENTS = Object.freeze({
   STATE_CHANGE: "dashboard-document-name-state-change",
   UPDATE_REQUEST: "dashboard-document-name-update-request",
@@ -45,6 +47,8 @@ export function buildDashboardDocumentNameState({
   documentKind = "draft",
   editable = false,
   hydrated = false,
+  designerAiConversation = null,
+  designerAiSourceContext = null,
 } = {}) {
   const normalizedKind = normalizeText(documentKind).toLowerCase();
 
@@ -54,6 +58,16 @@ export function buildDashboardDocumentNameState({
     documentKind: normalizedKind === "template" ? "template" : "draft",
     editable: editable === true,
     hydrated: hydrated === true,
+    designerAiConversation: normalizeDesignerAiConversationState(designerAiConversation),
+    designerAiSourceContext: {
+      templateDerived: designerAiSourceContext?.templateDerived === true,
+      changedKeys: (Array.isArray(designerAiSourceContext?.changedKeys)
+        ? designerAiSourceContext.changedKeys
+        : [])
+        .map((key) => normalizeText(key))
+        .filter(Boolean)
+        .slice(0, 200),
+    },
   };
 }
 
@@ -89,8 +103,13 @@ export function requestDashboardDocumentNameUpdate(detail, targetWindow) {
 
   const safeDetail = asObject(detail) || {};
   const updateDetail = {
+    hasName: Object.prototype.hasOwnProperty.call(safeDetail, "name"),
     name: normalizeDocumentName(safeDetail.name),
     persist: safeDetail.persist !== false,
+    source: normalizeText(safeDetail.source) || "editor",
+    designerAiConversation: Object.prototype.hasOwnProperty.call(safeDetail, "designerAiConversation")
+      ? normalizeDesignerAiConversationState(safeDetail.designerAiConversation)
+      : null,
   };
 
   resolvedWindow.dispatchEvent(

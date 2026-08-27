@@ -101,7 +101,24 @@ The opt-out preference is user-scoped under `usuarios/{uid}.uiPreferences.assist
 
 Section-owned visuals are authored through `secciones`, not `objetos`. The editor renders base backgrounds, `decoracionesFondo`, `decoracionesBorde`, and generated SVG `divisores` in the section background surface. `decoracionesBorde` can be assigned from an existing image asset into the top or bottom slot; sizing follows the same bounded edge-decoration model documented in `DATA_MODEL.md`. A double click opens the section-owned decoration edit/settings flow for users with `canManageSite` access. The edge overlay commits `offsetDesktopPx`; it does not make the edge decoration a normal selectable object, and it does not enter resize, rotation, grouping, z-index, or smart-layout object flows. `divisores` is also pointer-inert and is rendered from the shared preset geometry without an edit overlay.
 
-### 3.3.2 Section Design Panel
+### 3.3.2 Designer AI Adapter
+
+`Diseñador AI` is a superadmin-only conversational adapter mounted by
+`DashboardSidebar` in writable draft sessions. It reads the same draft and
+delegates to the same authoring/configuration/Gallery/CTA owners as Assistant;
+it owns no canvas state or render values. A leaf-level conversational ledger is
+reconciled from the current draft after each turn. Persisted
+`designerAiConversation` metadata stores only provenance, value fingerprints,
+document-name policy, and documented decisions; editor owners and their normal
+persistence remain authoritative for every effective value. Its versioned allowlist, complete
+capability inventory, minimal OpenAI context, trusted-control boundary and
+backend authorization are canonical in
+[`DESIGNER_AI_CAPABILITY_CONTRACT.md`](../contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md).
+
+Opening this panel deactivates Assistant, so the Guided Tour remains unmounted.
+The panel and its reused local controls must not expose Assistant tour targets.
+
+### 3.3.3 Section Design Panel
 
 `DashboardLayout` mounts `EditorPanelCoordinatorProvider`, whose `activePanel` is the only mutual-exclusion authority for `"left"`, `"section-design"`, or `null`. `DashboardSidebar` keeps its existing hover, pinned-tab, assistant, and responsive state, but its panel is effective only while the coordinator selects `"left"`. Opening any left tab/assistant path selects `"left"`; the section action `Diseño` selects `"section-design"`. Closing either side clears only its own active panel, so a stale close cannot close the opposite side. This coordination uses React context/reducer state, not window events, globals, duplicated open flags, or competing effects.
 
@@ -174,6 +191,7 @@ owner with linked-visual synchronization and is not a second mutation path.
 
 ## 5. Related Documents
 
+- Designer AI capability/security contract: `docs/contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md`
 - Whole product architecture: `docs/architecture/ARCHITECTURE_OVERVIEW.md`
 - Current interaction/rendering source of truth: `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`
 - Current preview pipeline: `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`

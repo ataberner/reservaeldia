@@ -725,7 +725,60 @@ Resultado esperado:
 - el Asistente sigue siendo la autoridad de navegación
 - desktop no cambia visual ni funcionalmente
 
-## 8. Senales de alerta
+## 8. Diseñador AI (solo superadmin)
+
+Aplicar cuando el cambio toque el tab, contrato compartido, snapshot, ejecutor,
+callable, controles confiables o cualquiera de los owners compartidos con
+Asistente.
+
+### [ ] Autorizacion y ciclo de sesion
+
+1. En desktop y en 320, 390 y 430 px, abrir un borrador writable como superadmin y confirmar que aparece `Diseñador AI` junto a `Asistente`.
+2. Repetir como admin comun y usuario comun, durante `loadingAdminAccess`, en template workspace, modo selector y borrador read-only: el tab no aparece.
+3. Intentar llamar `designerAiChat` como admin comun y sin auth: ambos reciben el error correspondiente.
+4. Con el panel abierto, cambiar de borrador o perder el rol y confirmar cleanup de chat, control activo, request tardio y batch IDs.
+5. Alternar Asistente/Diseñador AI: los valores cambian inmediatamente en ambos y el chat se conserva solo durante esa sesion.
+6. Abrir una sesion nueva: el mensaje interno de inicio no aparece en el historial y la primera intervencion visible incluye una bienvenida breve orientada a preparar la invitacion, sin presentarse como IA ni empezar por confirmar el nombre actual.
+7. Usar un borrador con valores completos, incompletos y vacios: pregunta solo por lo pendiente/incompleto, agrupa fecha-horario-lugar por fase sin enumerar campos y no pide conservar sistematicamente valores completos validos.
+8. Responder con datos de varios bloques: todos los valores validos se aplican en un unico lote y la siguiente pregunta se limita a lo que todavia falta.
+9. Completar lo pendiente: cierra brevemente indicando que la invitacion quedo preparada y no inventa otra pregunta.
+10. Inspeccionar el ledger: cada hoja disponible tiene estado/procedencia y el cierre solo ocurre con cero hojas no terminales; mencionar o saltear un bloque no lo completa.
+11. Partir de valores de template, placeholders y defaults: ninguno cuenta como personalizacion real sin evidencia; un dato registrado en `templateInput.changedKeys` si puede contar como dato previo.
+
+### [ ] Allowlist, sincronizacion y persistencia
+
+1. Enviar nombre, personas, modalidad, fecha/hora, ubicacion manual y Dress Code en un mensaje; confirmar targets dinamicos y countdown.
+2. Corregir un valor y verificar que manda el borrador actual, no una copia del chat.
+3. Probar `texto_historia` con/sin binding; solo el primero cambia y conserva width/alineacion/wrapping.
+4. Probar RSVP completo: activacion, catalogo/custom, orden, label, type, required, opciones, modal, CTA y reload.
+5. Probar Regalos completo: activacion, metodos/visibilidad, lista externa, intro, boton, CTA y reload.
+6. Reordenar fotos de una Gallery existente y verificar targeting, `cells[]`, reload y preview.
+7. Enviar un lote valido+invalido: no se aplica nada. Reenviar el mismo `batchId`: no se duplica.
+8. Cambiar la identidad del borrador durante una respuesta: el lote tardio se cancela.
+9. Reload/preview despues de cambios mixtos; confirmar autosave, FIFO y flush critico existentes.
+10. Pedir tipografia, posicion o layout: no genera acciones y responde naturalmente que ese cambio se hace desde el editor, mencionando brevemente con que datos permitidos puede ayudar.
+11. Informar ambos nombres: se guarda `Casamiento {Nombre 1} y {Nombre 2}`; corregir un nombre recalcula mientras la politica sea automatica. Escribir un nombre de evento manual y repetir la correccion: el nombre explicito se preserva, incluso despues de reload.
+12. Desactivar RSVP/Regalos y decidir no configurarlos: cada hoja interna queda `preserve_while_inactive`; al activar cualquiera, sus hojas visibles se reabren.
+
+### [ ] Controles locales y errores de OpenAI
+
+1. Pedir portada: se abre el uploader actual solo si existe portada; archivo, URL y metadata no llegan a OpenAI.
+2. Pedir una celda Gallery: se monta el control simplificado actual, no Builder/biblioteca/insercion libre.
+3. Pedir Google Places: seleccionar una sugerencia real y verificar texto, mapa oculto y persistencia por el owner actual.
+4. Confirmar un solo control activo y cleanup al cerrar o cambiar sesion.
+5. Simular secret ausente, timeout, rate limit y salida malformada: error seguro y cero mutacion.
+6. Revisar logs: UID, trace/batch, latencia, resultado y request ID; nunca prompt, valores, snapshot, URL privada ni clave.
+
+### [ ] Guided Tour, responsive y accesibilidad
+
+1. Abrir Diseñador AI: no aparecen overlay, anchors ni `data-assistant-tour-*` nuevos.
+2. Volver a Asistente y ejecutar el tour completo: steps, substeps, footer, targets y preferencia no cambian.
+3. Inspeccionar DOM con controles locales y confirmar que no hay targets duplicados.
+4. Verificar historial, `aria-live`, textarea, Enter/Shift+Enter, foco, touch y composer fijo en desktop/320/390/430 px.
+5. Repetir con `prefers-reduced-motion`; loaders y uso no deben depender de animaciones.
+6. Confirmar que la superficie normal contiene solo conversacion y composer: no hay card/titulo descriptivo, boton `Recorrer Todo Asistente`, action types ni avisos tecnicos de aplicado/no-op.
+
+## 9. Senales de alerta
 
 Bloquear validacion si aparece cualquiera de estas:
 

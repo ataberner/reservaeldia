@@ -4,6 +4,22 @@ const path = require("path");
 
 const artifacts = [
   {
+    label: "Ledger conversacional de Disenador AI",
+    sourcePath: path.resolve(__dirname, "../../shared/designerAiConversationLedger.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/designerAiConversationLedger.cjs"),
+      path.resolve(__dirname, "../lib/shared/designerAiConversationLedger.cjs"),
+    ],
+  },
+  {
+    label: "Contrato de capacidades de Disenador AI",
+    sourcePath: path.resolve(__dirname, "../../shared/designerAiCapabilityContract.cjs"),
+    targetPaths: [
+      path.resolve(__dirname, "../shared/designerAiCapabilityContract.cjs"),
+      path.resolve(__dirname, "../lib/shared/designerAiCapabilityContract.cjs"),
+    ],
+  },
+  {
     label: "Contrato de identidad de portada",
     sourcePath: path.resolve(__dirname, "../../shared/coverImageContract.mjs"),
     targetPaths: [

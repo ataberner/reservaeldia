@@ -54,10 +54,12 @@ likely to be used as an authority by humans or AI agents.
 | Product and system architecture | [ARCHITECTURE_GUIDELINES.md](architecture/ARCHITECTURE_GUIDELINES.md), [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md) | Product/architecture rules and whole-system map. |
 | Data and persistence | [DATA_MODEL.md](architecture/DATA_MODEL.md), [PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) | Canonical draft/publication/render-state data model and the provider persistence, import, image-enrichment, and durable-resume contract. |
 | Editor subsystem | [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), [INTERACTION_CONTRACT.md](architecture/INTERACTION_CONTRACT.md), [INTERACTION_SYSTEM_CURRENT_STATE.md](architecture/INTERACTION_SYSTEM_CURRENT_STATE.md) | Editor boundary, normative interaction rules, and current implementation map. |
-| Assistant / Designer AI | [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md), [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) | Canonical Designer AI capability/security boundary and current Assistant Guided Tour implementation map. |
+| Assistant / Designer AI | [AI_ASSISTANT_CONVERSATION_CONTRACT.md](contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md), [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md), [AI_ASSISTANT_SYSTEM.md](architecture/AI_ASSISTANT_SYSTEM.md), [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) | Conversation policy, executable capability boundary, technical owner map, and the independent Assistant Guided Tour implementation map. |
 | Preview/publish/render | [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md), [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) | Preview authority model and cross-runtime render compatibility. |
 | Checkout/publication lifecycle | [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md) | Checkout, payment approval, slug reservation, publish execution, retry, and public delivery lifecycle. |
 | Public interactivity | [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) | Functional CTA behavior across preview and publish. |
+| Regalos | [GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md), [DATA_MODEL.md](architecture/DATA_MODEL.md), [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) | Functional entry point for Gifts, persisted shape, visibility/completitud, editor controls, and CTA/modal integration. |
+| Event details and locations | [DATA_MODEL.md](architecture/DATA_MODEL.md), [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) | Ceremony/Party fields and persisted manual/Google location shape, editor owner boundary, and preview/publish map compatibility. Designer AI accessibility remains owned by its capability contract. |
 | Share image | [PUBLISHED_SHARE_IMAGE_CONTRACT.md](contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md) | Published `share.jpg` and Open Graph contract. |
 | SEO and AEO route policy | [SEO_ROUTE_INVENTORY.md](architecture/SEO_ROUTE_INVENTORY.md), [AEO_ROUTE_INVENTORY.md](architecture/AEO_ROUTE_INVENTORY.md) | Crawlability, indexability, sitemap inclusion, metadata policy, answer-engine semantics, and structured-data policy by public route. |
 | Image roles and decorations | [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md) | Image role conversion, section backgrounds, free decorations, and edge decorations. |
@@ -75,10 +77,13 @@ Normative contracts define rules future work must preserve:
 
 - [INTERACTION_CONTRACT.md](architecture/INTERACTION_CONTRACT.md)
 - [DATA_MODEL.md](architecture/DATA_MODEL.md)
+- [AI_ASSISTANT_CONVERSATION_CONTRACT.md](contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md)
+- [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md)
 - [CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md](contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md)
 - [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md)
 - [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md)
 - [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md)
+- [GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md)
 - [PUBLISHED_SHARE_IMAGE_CONTRACT.md](contracts/PUBLISHED_SHARE_IMAGE_CONTRACT.md)
 - [GROUP_RENDER_MODEL.md](architecture/GROUP_RENDER_MODEL.md)
 - Gallery focused contracts under `docs/contracts/GALLERY_*`
@@ -88,6 +93,7 @@ Current implementation maps describe observed behavior and known compatibility p
 
 - [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md)
 - [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md)
+- [AI_ASSISTANT_SYSTEM.md](architecture/AI_ASSISTANT_SYSTEM.md)
 - [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md)
 - [INTERACTION_SYSTEM_CURRENT_STATE.md](architecture/INTERACTION_SYSTEM_CURRENT_STATE.md)
 - [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md)
@@ -122,11 +128,26 @@ Audits and historical records must not be treated as current contracts:
 Add focused contracts when the editor change touches those surfaces:
 
 - Assistant/guided tour: [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) as a current implementation map, plus `src/domain/editor/assistantGuidedTour.test.mjs` and `src/domain/editor/assistantSubsteps.test.mjs` as code-level anchors
-- Designer AI: [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md), then [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) to preserve explicit tour isolation
+- Designer AI: use the dedicated reading order below; add [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) only when preserving explicit tour isolation
 - image roles/decorations: [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](contracts/IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md)
 - grouping: [GROUP_RENDER_MODEL.md](architecture/GROUP_RENDER_MODEL.md)
 - Gallery: [GALLERY_SYSTEM_CONTRACT.md](contracts/GALLERY_SYSTEM_CONTRACT.md) and [GALLERY_EDITOR_CONTRACT.md](contracts/GALLERY_EDITOR_CONTRACT.md)
+- Regalos: [GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md)
 - preview/publish output: [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md) and [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md)
+
+### Designer AI
+
+1. [AI_ASSISTANT_SYSTEM.md](architecture/AI_ASSISTANT_SYSTEM.md) for owners, flow, trust boundaries, sessions, persistence, streaming/cancellation, security, and current gaps.
+2. [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md) for actions, controls, required information, validation, completitud, and limits.
+3. [AI_ASSISTANT_CONVERSATION_CONTRACT.md](contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md) for response behavior, approved language/personality/treatment rules, and the style decisions that remain pending.
+4. Load the canonical product document for every affected domain; for Regalos use [GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md), for Gallery use its focused contracts, for portada use the image-placement contract, and for event/Dress Code use [DATA_MODEL.md](architecture/DATA_MODEL.md). Do not treat the assistant docs as a copy of product knowledge.
+5. [GUIDED_TOUR_SYSTEM.md](architecture/GUIDED_TOUR_SYSTEM.md) when changes touch Assistant isolation, sidebar mounting, or shared controls.
+6. [EDITOR_REGRESSION_CHECKLIST.md](testing/EDITOR_REGRESSION_CHECKLIST.md) and the code-level tests listed in the three documents above.
+
+There is no `AI_ASSISTANT_RESPONSE_EVALUATION.md` yet. Create it only after a
+versioned case matrix, reproducible graders, model/config identity, thresholds,
+and result-recording workflow exist. Until then, durable examples belong to the
+conversation contract and executable/manual checks remain with their owners.
 
 ### Preview And Publish Pipeline
 
@@ -153,6 +174,12 @@ Add focused contracts:
 Use focused contracts for object-family details instead of duplicating schema
 rules in `DATA_MODEL.md`.
 
+For `gifts`, continue with
+[GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md) for functional
+semantics and with
+[PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md)
+when CTA/modal behavior is involved.
+
 For the provider database, continue with
 [PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) and the operational
 runbook at `scripts/providers/README.md`. The provider contract is independent
@@ -169,6 +196,13 @@ Phase 0 operational runbook.
 3. [GALLERY_LAYOUT_PRESETS_CONTRACT.md](contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md) for preset availability and layout semantics.
 4. [GALLERY_VIEWER_RENDER_CONTRACT.md](contracts/GALLERY_VIEWER_RENDER_CONTRACT.md) for generated HTML and public viewer behavior.
 5. [DATA_MODEL.md](architecture/DATA_MODEL.md), [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), and [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) for integration boundaries.
+
+### Regalos
+
+1. [GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md) for domain semantics, methods, visibility, completeness and owner routing.
+2. [DATA_MODEL.md](architecture/DATA_MODEL.md) for the exact root `gifts` shape and persistence.
+3. [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](contracts/PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) for `regalo-boton`, modal readiness and preview/publish behavior.
+4. [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md) only when changing the portion accessible to Diseñador AI.
 
 ### Mobile And Reflow
 

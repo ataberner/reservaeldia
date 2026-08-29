@@ -788,7 +788,13 @@ export default function DashboardHeader(props) {
         if (typeof window === "undefined") return;
 
         const handleDocumentNameUpdateRequest = (event) => {
-            if (editorReadOnly || !slugInvitacion) return;
+            const onPersistenceError = typeof event?.detail?.onPersistenceError === "function"
+                ? event.detail.onPersistenceError
+                : null;
+            if (editorReadOnly || !slugInvitacion) {
+                onPersistenceError?.(new Error("El borrador no está disponible para persistencia."));
+                return;
+            }
 
             const hasName = event?.detail?.hasName === true;
             const nextName = String(event?.detail?.name ?? "");
@@ -797,10 +803,14 @@ export default function DashboardHeader(props) {
                     event.detail.designerAiConversation
                 )
                 : null;
+            const onPersisted = typeof event?.detail?.onPersisted === "function"
+                ? event.detail.onPersisted
+                : null;
             logAssistantTourDebug("header-document-name-update-request", () => ({
                 eventType: event?.type || "",
                 eventIsTrusted: event?.isTrusted === true,
-                detail: event?.detail || null,
+                hasName,
+                hasDesignerAiConversation: Boolean(requestedConversation),
                 nextName,
                 slugInvitacion,
                 persist: event?.detail?.persist !== false,
@@ -810,14 +820,20 @@ export default function DashboardHeader(props) {
                 setDesignerAiConversation(requestedConversation);
             }
 
-            if (event?.detail?.persist === false) return;
+            if (event?.detail?.persist === false) {
+                onPersisted?.();
+                return;
+            }
 
             if (hasName) {
                 void guardarNombreDocumento(nextName, {
                     designerAiConversation: requestedConversation,
-                }).catch((error) => {
-                    console.error("Error guardando nombre del borrador:", error);
-                });
+                })
+                    .then(() => onPersisted?.())
+                    .catch((error) => {
+                        console.error("Error guardando nombre del borrador:", error);
+                        onPersistenceError?.(error);
+                    });
                 return;
             }
             if (requestedConversation) {
@@ -826,10 +842,15 @@ export default function DashboardHeader(props) {
                     slug: slugInvitacion,
                     patch: { designerAiConversation: requestedConversation },
                     reason: "designer-ai-conversation",
-                }).catch((error) => {
-                    console.error("Error guardando estado conversacional:", error);
-                });
+                })
+                    .then(() => onPersisted?.())
+                    .catch((error) => {
+                        console.error("Error guardando estado conversacional:", error);
+                        onPersistenceError?.(error);
+                    });
+                return;
             }
+            onPersisted?.();
         };
 
         window.addEventListener(

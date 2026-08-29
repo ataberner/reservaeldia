@@ -162,6 +162,68 @@ test("event datetime uses authoring owners and keeps the linked countdown aligne
   assert.equal(updates[0].cambios.fechaObjetivo, calls[1][2]);
 });
 
+test("manual event location uses the shared owner and removes stale Google metadata", async () => {
+  const target = new EventTarget();
+  target.CustomEvent = TestCustomEvent;
+  target.Event = Event;
+  const calls = [];
+  const updates = [];
+  const authoring = {
+    fieldsSchema: [
+      { key: "event_ceremony_venue_name", eventDetailsRole: "ceremony_venue_name", type: "text", applyTargets: [] },
+      { key: "event_ceremony_venue_address", eventDetailsRole: "ceremony_venue_address", type: "location", applyTargets: [] },
+    ],
+    defaults: {
+      event_ceremony_venue_name: "Anterior",
+      event_ceremony_venue_address: "Dirección anterior",
+    },
+  };
+  target.canvasEditor = {
+    getTemplateAuthoringSnapshot: () => authoring,
+    updateTemplateAuthoringEventLocation: async (...args) => calls.push(args),
+  };
+  target.addEventListener("actualizar-elemento", (event) => updates.push(event.detail));
+  syncEditorSnapshotRenderState({
+    objetos: [{
+      id: "map-ceremony",
+      tipo: "mapa-google",
+      eventDetailsFeature: "ceremony",
+      googlePlaceId: "old-place",
+      googleDisplayName: "Anterior",
+      googleFormattedAddress: "Dirección anterior",
+      mostrarMapa: true,
+    }],
+    secciones: [],
+    eventDetails: { mode: "single" },
+  }, target);
+  const current = sanitizeCapabilitySnapshot({
+    revision: "location-rev",
+    availability: { ceremonyLocation: true },
+    values: {
+      eventMode: "single",
+      ceremony: { venueName: "Anterior", address: "Dirección anterior", placeSelected: true },
+    },
+  });
+
+  await executeDesignerAiActionBatch([{
+    type: "event.set_location_text",
+    arguments: {
+      phase: "ceremony",
+      venueName: "Salón Los Robles",
+      address: "Av. Ejemplo 1234",
+    },
+  }], { snapshot: current, targetWindow: target });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0].venueName, "Salón Los Robles");
+  assert.equal(calls[0][0].address, "Av. Ejemplo 1234");
+  assert.equal(calls[0][0].googlePlaceId, "");
+  assert.deepEqual(calls[0][1], { feature: "ceremony" });
+  assert.equal(updates[0].id, "map-ceremony");
+  assert.equal(updates[0].cambios.googlePlaceId, "");
+  assert.equal(updates[0].cambios.mostrarMapa, false);
+});
+
 test("Gallery, RSVP and Gifts delegate to existing mutation/config/CTA events", async () => {
   const target = new EventTarget();
   target.CustomEvent = TestCustomEvent;

@@ -347,6 +347,7 @@ export default function MiniToolbarTabImagen({
   const galleryResizeSelectorRef = useRef(null);
   const galleryPhotoListRef = useRef(null);
   const galleryPhotoRowNodesRef = useRef(new Map());
+  const assistantFocusedGalleryTargetRef = useRef("");
   const galleryPhotoRowRectsBeforeUpdateRef = useRef(null);
   const galleryPhotoRowAnimationFrameRef = useRef(null);
   const galleryPhotoDragSessionRef = useRef(null);
@@ -498,6 +499,12 @@ export default function MiniToolbarTabImagen({
     simplifiedForAssistant && assistantScope === "gallery"
       ? String(assistantSubstep?.galleryId || "").trim()
       : "";
+  const assistantGalleryCellId = assistantGalleryId
+    ? String(assistantSubstep?.cellId || "").trim()
+    : "";
+  const assistantGalleryCellIndex = assistantGalleryId && Number.isInteger(Number(assistantSubstep?.cellIndex))
+    ? Number(assistantSubstep.cellIndex)
+    : null;
   const shouldRenderCoverBlock =
     coverState.hasImage &&
     (!simplifiedForAssistant || !assistantScope || assistantScope === "cover");
@@ -1037,6 +1044,31 @@ export default function MiniToolbarTabImagen({
       rowRects: rows.map((row) => row.getBoundingClientRect()),
     });
   }, []);
+
+  useEffect(() => {
+    if (!assistantGalleryId || (!assistantGalleryCellId && assistantGalleryCellIndex === null)) return;
+    const targetKey = `${assistantGalleryId}:${assistantGalleryCellId || assistantGalleryCellIndex}`;
+    if (assistantFocusedGalleryTargetRef.current === targetKey) return;
+    const targetRow = selectedGallerySlotRows.find(({ slot }) => (
+      assistantGalleryCellId && slot?.cellId
+        ? String(slot.cellId) === assistantGalleryCellId
+        : Number(slot?.sourceIndex) === assistantGalleryCellIndex
+    ));
+    if (!targetRow?.slot) return;
+
+    assistantFocusedGalleryTargetRef.current = targetKey;
+    selectGallerySlot(targetRow.slot);
+    focusGalleryInCanvas(assistantGalleryId);
+    const rowNode = galleryPhotoRowNodesRef.current.get(targetRow.rowKey);
+    rowNode?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    rowNode?.querySelector?.("[data-gallery-slot-select='true']")?.focus?.({ preventScroll: true });
+  }, [
+    assistantGalleryCellId,
+    assistantGalleryCellIndex,
+    assistantGalleryId,
+    selectGallerySlot,
+    selectedGallerySlotRows,
+  ]);
 
   const resolvePointerDropIndex = useCallback((clientY, geometry) => {
     const listNode = galleryPhotoListRef.current;
@@ -1970,6 +2002,7 @@ export default function MiniToolbarTabImagen({
                       <button
                         type="button"
                         onClick={() => selectGallerySlot(slot)}
+                        data-gallery-slot-select="true"
                         className="min-w-0 flex-1 text-left"
                         aria-label={`Seleccionar ${positionLabel}`}
                       >

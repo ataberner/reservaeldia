@@ -2090,7 +2090,7 @@ export default function DashboardSidebar({
                         style={{
                             flex: 1,
                             minHeight: 0,
-                            height: "auto",
+                            height: designerAiActive ? "100%" : "auto",
                             overflowY: shouldShowAssistantControls || designerAiActive ? "hidden" : "auto",
                             WebkitOverflowScrolling: "touch",
                             overscrollBehaviorY: "contain",

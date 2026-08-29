@@ -42,6 +42,19 @@ Keep one canonical owner for each rule. Do not copy detailed editor rules into t
 
 **Current:** Gallery cell assignment keeps compatibility side channels: `celdaGaleriaActiva`, `editor-gallery-cell-change`, and `window.asignarImagenACelda`. New selected-Gallery photo operations route through `src/domain/gallery/galleryMutations.js`.
 
+**Current:** The simplified Designer AI control reuses the Fotos-tab Gallery
+editor. A validated `gallery_cell_upload` passes the existing `galleryId` plus
+`cellId`/index; the control selects that Gallery, marks the exact visible slot,
+scrolls it into view and focuses its local selector. All add/remove/replace/order
+operations continue through the same Gallery mutation owners; Designer AI adds
+no setter or Gallery data model. The focused slot is only an initial editing
+target. Opening, focusing or mutating the Gallery does not mean the user finished
+that guided step. The specialized context exposes an explicit completion action;
+closing it without that action preserves real mutations and leaves the step
+pending. Guided ordering, durability and completion semantics are owned by
+[DESIGNER_AI_CAPABILITY_CONTRACT.md](DESIGNER_AI_CAPABILITY_CONTRACT.md), not by
+`cells[]` or Gallery fingerprints.
+
 **Current:** Generated HTML renders clickable Gallery image cells as `.galeria-celda[data-gallery-image="1"]` with Gallery id, cell index/id where available, and media key markers. The public lightbox collects clickable Gallery cells globally from the generated invitation DOM and de-duplicates by media identity.
 
 **Current:** Draft-authoritative preview and publish share the backend prepared render path. Publish validation can block Gallery media with `gallery-media-unresolved`.
@@ -60,6 +73,9 @@ These invariants apply to current behavior and future implementation:
 - Preserve current publish validation blockers, especially `gallery-media-unresolved`.
 - Preserve current generated HTML base markers: `.galeria-celda` and `data-gallery-image="1"` for clickable image cells.
 - Do not mix Gallery objects with section-owned image roles. Section backgrounds, free decorations, and edge decorations remain governed by [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md).
+- Do not persist Designer AI guided-flow completion inside a Gallery object.
+  `cells[]`, media identity and order represent Gallery content, never evidence
+  that the user explicitly finished the guided editing step.
 
 ## Implemented Architecture Summary
 

@@ -85,10 +85,17 @@ These fields coexist with the render state in `borradores/{slug}`, but they are 
 | `templateWorkspace` | template editor sessions | Auxiliary metadata. Template workspace state, not invitation render state. |
 | `templateAuthoringDraft` | template authoring | Auxiliary metadata. Field-authoring payload, not invitation render state. |
 | `templateInput` | template personalization flow | Auxiliary metadata. Stores applied input values and apply report. |
-| `designerAiConversation` | Designer AI conversation planning | Auxiliary metadata. Stores ledger version, value fingerprints/provenance, documented resolution rules, and automatic/explicit document-name policy. It does not mirror invitation values or chat history. |
+| `designerAiConversation` | Designer AI conversation planning | Auxiliary metadata. Stores ledger version, durable `usage.hasStarted`, value fingerprints/provenance, documented resolution rules (including explicit per-Gallery guided completion), and automatic/explicit document-name policy. It does not mirror invitation values or chat history. |
 | `draftContentMeta` | source-of-truth tracking | Auxiliary metadata. Writes `policyVersion`, `canonicalSource`, `lastWriter`, optional `lastReason`, and `updatedAt`. |
 | `ultimaEdicion` | UI ordering, persistence | Auxiliary metadata. Current editor updates it on save. |
 | `creado` / `createdAt` / `updatedAt` | draft creation and maintenance | Auxiliary metadata. Observed in different creation and lifecycle flows. |
+
+`designerAiConversation` is governed structurally by
+`shared/designerAiConversationLedger.cjs` and architecturally by
+[AI_ASSISTANT_SYSTEM.md](AI_ASSISTANT_SYSTEM.md). It follows the draft document's
+current lifecycle: no separate retention, expiry, archival, or deletion policy
+was found in the repository. Visible chat messages are not stored in this field
+or elsewhere by the current Designer AI implementation.
 
 Preview metadata is not fully canonical today. Draft preview helpers still scan these compatibility keys when looking for an image candidate:
 
@@ -423,6 +430,40 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
 
 `rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority and `eventDetails.dressCode.value` is the dynamic text source for the Dress Code field. For section-only `functionalAssociation: "countdown"`, the existing Countdown field `mostrarCuentaRegresiva` is the authority and no root switch is added. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
+
+### `mapa-google`
+
+La ubicación visible y el vínculo con Google son conceptos separados dentro del
+modelo vigente:
+
+- el lugar y la dirección canónicos de cada phase viven en los defaults/targets
+  de `event_ceremony_venue_*` o `event_party_venue_*`;
+- una ubicación manual tiene esos textos y no tiene `googlePlaceId` efectivo;
+- una ubicación elegida en Places conserva esos mismos textos y agrega un objeto
+  `tipo: "mapa-google"` de la phase con metadata del resultado seleccionado;
+- volver a escribir manualmente la ubicación limpia la metadata Google y oculta
+  el mapa. El objeto puede conservar su identidad/geometry con fields Google
+  vacíos; esa presencia inerte no significa que la ubicación esté vinculada.
+
+Campos específicos normalizados del objeto:
+
+| Field | Status | Notes |
+| --- | --- | --- |
+| `eventDetailsFeature` | Required in modern flow | `ceremony` o `party`; evita aplicar una selección a otra phase. |
+| `googlePlaceId` | Required for a linked Google location | ID devuelto por el resultado seleccionado; vacío significa ubicación manual/no vinculada. |
+| `googleDisplayName` | Optional provider value | Nombre del resultado seleccionado. |
+| `googleFormattedAddress` | Optional provider value | Dirección completa del resultado seleccionado. |
+| `googleAddressComponents` | Optional normalized list | Componentes usados por el formato de dirección del field. |
+| `googleLat` / `googleLng` | Optional coordinates | Coordenadas del resultado seleccionado; nunca se inventan para ubicación manual. |
+| `mostrarMapa` | Optional boolean | Solo puede ser `true` con `googlePlaceId`; seleccionar un Place desde Diseñador AI lo deja oculto por defecto. |
+| `width` / `height` | Render geometry | Se preservan al reemplazar una selección y no pertenecen al modelo conversacional. |
+
+`src/domain/eventDetails/location.js` normaliza el shape y
+`src/domain/eventDetails/locationAuthoring.js` coordina tanto la escritura manual
+como la selección Google a través de `updateTemplateAuthoringEventLocation` y
+los eventos normales del editor. Los controles manual y de Diseñador AI deben
+usar ese mismo owner; no pueden mantener autocomplete, setters o metadata
+paralelos.
 
 ### `grupo`
 Groups are preserved composition objects. The group root lives in `objetos` with
@@ -885,6 +926,11 @@ Current normalized gifts config shape is:
 
 `enabled` is the single Gifts functional switch. It controls the gifts CTA visibility and any section/group render derivation that uses `functionalAssociation: "gifts"`.
 
+The cross-surface semantics of bank methods, the external list, independent
+visibility, completeness and editor/Designer AI integration are governed by
+[`GIFTS_SYSTEM_CONTRACT.md`](../contracts/GIFTS_SYSTEM_CONTRACT.md). This section
+remains the authority for the persisted shape.
+
 ### Template Workspace and Personalization Metadata
 These fields are real Firestore data, but they are not part of the canonical invitation render state:
 
@@ -893,8 +939,22 @@ These fields are real Firestore data, but they are not part of the canonical inv
 | `templateWorkspace` | Template editor session metadata. Observed fields include `templateId`, `mode`, `readOnly`, `openedByUid`, `openedAt`, `lastCommittedAt`, `estadoEditorial`, `tags`, `templateName`, `permissions`. |
 | `templateAuthoringDraft` | Template-authoring payload. Current workspace creation writes `version`, `sourceTemplateId`, `fieldsSchema`, `defaults`, `status`, `updatedAt`, `updatedByUid`. |
 | `templateInput` | Template-personalization snapshot. Current modal flow writes `initialValues`, `values`, `defaults`, `changedKeys`, `applyReport`, `appliedAt`, `updatedAt`, `policyVersion`. |
-| `designerAiConversation` | Designer AI planning metadata. Shape: `{ version, namePolicy: { mode: "automatic" | "explicit" | "unknown", lastAutomaticName }, baseline[], resolutions[] }`. Records contain leaf IDs, opaque value fingerprints, provenance/status, and an optional documented rule; they contain no canvas objects, media URLs, Places metadata, or chat transcript. |
+| `designerAiConversation` | Designer AI planning metadata. Shape: `{ version, usage: { hasStarted: boolean }, namePolicy: { mode: "automatic" | "explicit" | "unknown", lastAutomaticName }, baseline[], resolutions[] }`. Records contain leaf IDs, opaque value fingerprints, provenance/status, and an optional documented rule; they contain no canvas objects, media URLs, Places metadata or chat transcript. |
 | `eventDetails` | Render-state configuration for the Detalles del evento flow. Normalized shape is `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`; missing/invalid values normalize to `"single"` and disabled Dress Code with empty value. |
+
+Ledger v3 represents an explicit Designer AI Gallery finalization as a resolution
+for `media.gallery.{galleryId}.guided_completion`. It does not add a field to the
+`tipo: "galeria"` object. A legacy draft without that resolution leaves the
+Gallery pending in the guided flow regardless of how its `cells[]` differ from a
+template; existing Gallery content remains untouched.
+
+`designerAiConversation.usage.hasStarted` es la señal durable y exclusiva para
+distinguir primer ingreso de reingreso al tab en ese draft. Un documento legacy
+sin `usage` normaliza `hasStarted:false`: su próxima apertura se trata como primer
+ingreso y persiste `true` antes de enviar el turno automático. Baseline,
+resolutions, valores completados y cantidad de mensajes no son evidencia de uso.
+No se persisten fecha de ingreso, historial visible ni una segunda identidad de
+conversación.
 
 `templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current standardized fields are:
 
@@ -918,6 +978,12 @@ These fields are real Firestore data, but they are not part of the canonical inv
 When `texto_historia` is applied to a text object through template authoring or personalization, the linked text object keeps ownership of layout. The object stores the text box width and alignment (`width`, `align`) and dynamic updates set `__autoWidth: false` with word wrapping so longer story text wraps inside the existing box. Canvas transformer edits may still change that box width directly on the object.
 
 The same layout ownership applies when `event_ceremony_venue_name`, `event_ceremony_venue_address`, `event_party_venue_name`, or `event_party_venue_address` is applied to a text target. Manual input and Google Maps selection preserve the target object's authored `width` and alignment, set `__autoWidth: false`, and use word wrapping so longer values grow vertically inside that box. The canvas transformer's lateral width handle remains the authority for later width changes.
+
+Manual and Google location completion use one persisted model. Manual authoring
+writes the applicable venue/address defaults and clears the phase's Google
+metadata. Places authoring writes those same defaults from the selected result
+and stores provider metadata only on the phase's `mapa-google` object. Chat or
+ledger state is never a render authority for either representation.
 
 Event-detail dynamic fields use explicit `eventDetailsRole` values such as `ceremony_date`, `party_start_time`, `party_venue_address`, and `dress_code`; runtime code must not infer Ceremony/Party/Dress Code permanently from legacy keys. Legacy fields (`event_date`, `event_start_time`, `event_end_time`, `event_venue_name`, `event_venue_address`) are migrated idempotently to their Ceremony equivalents and the document is normalized to `eventDetails.mode: "single"`. Party defaults and targets are preserved when switching back to single-event mode, but Party render associations are inactive until `eventDetails.mode` is `"ceremony_party"`. Dress Code text is preserved when disabled; only visibility is derived from `eventDetails.dressCode.enabled`.
 

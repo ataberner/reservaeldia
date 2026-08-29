@@ -2,7 +2,7 @@
 
 > Status: Current Architecture/System Map.
 >
-> Updated from code inspection on 2026-04-07.
+> Updated from code inspection on 2026-08-27.
 >
 > This document is a high-level overview of the current editor runtime. Detailed interaction/rendering behavior lives in `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`.
 
@@ -110,13 +110,26 @@ it owns no canvas state or render values. A leaf-level conversational ledger is
 reconciled from the current draft after each turn. Persisted
 `designerAiConversation` metadata stores only provenance, value fingerprints,
 document-name policy, and documented decisions; editor owners and their normal
-persistence remain authoritative for every effective value. Its versioned allowlist, complete
-capability inventory, minimal OpenAI context, trusted-control boundary and
-backend authorization are canonical in
+persistence remain authoritative for every effective value. The versioned
+allowlist, capability inventory and trusted-control boundary are canonical in
 [`DESIGNER_AI_CAPABILITY_CONTRACT.md`](../contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md).
+Conversation policy lives in
+[`AI_ASSISTANT_CONVERSATION_CONTRACT.md`](../contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md),
+while context construction, backend authorization, sessions, persistence,
+security guarantees and current gaps live in
+[`AI_ASSISTANT_SYSTEM.md`](AI_ASSISTANT_SYSTEM.md).
 
 Opening this panel deactivates Assistant, so the Guided Tour remains unmounted.
 The panel and its reused local controls must not expose Assistant tour targets.
+
+When Designer AI needs a precise visual/provider-backed choice, the panel keeps
+the conversation mounted and inserts only the relevant specialized control in
+the chat log. The location implementation uses
+`DesignerAiLocationControl.jsx`, while both that control and
+`MiniToolbarTabDetallesEvento.jsx` share `googlePlaces.js` and
+`locationAuthoring.js`; neither surface owns a second autocomplete or mutation
+shape. The inline location control must not mount unrelated event fields, and
+opening/canceling it does not count as an editor mutation.
 
 ### 3.3.3 Section Design Panel
 
@@ -191,7 +204,9 @@ owner with linked-visual synchronization and is not a second mutation path.
 
 ## 5. Related Documents
 
-- Designer AI capability/security contract: `docs/contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md`
+- Designer AI technical architecture and owners: `docs/architecture/AI_ASSISTANT_SYSTEM.md`
+- Designer AI capability/tool contract: `docs/contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md`
+- Designer AI conversation contract: `docs/contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md`
 - Whole product architecture: `docs/architecture/ARCHITECTURE_OVERVIEW.md`
 - Current interaction/rendering source of truth: `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`
 - Current preview pipeline: `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`

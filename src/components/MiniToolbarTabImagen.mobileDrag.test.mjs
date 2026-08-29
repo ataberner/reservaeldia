@@ -27,3 +27,12 @@ test("Gallery drag preview escapes the transformed sidebar only on mobile", () =
   assert.match(previewMountSelection, /: galleryDragPreview;/);
   assert.match(source, /\{renderedGalleryDragPreview\}/);
 });
+
+test("Designer AI targets and focuses the exact requested Gallery slot", () => {
+  assert.match(source, /assistantGalleryCellId/);
+  assert.match(source, /assistantGalleryCellIndex/);
+  assert.match(source, /selectedGallerySlotRows\.find/);
+  assert.match(source, /selectGallerySlot\(targetRow\.slot\)/);
+  assert.match(source, /scrollIntoView\?\.\(\{ block: "nearest", behavior: "smooth" \}\)/);
+  assert.match(source, /data-gallery-slot-select="true"/);
+});

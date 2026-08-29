@@ -22,3 +22,9 @@ test("manual document-name commits persist explicit authority", () => {
   assert.match(headerSource, /designerAiConversation: nextConversation/);
   assert.match(headerSource, /reason: "document-name"/);
 });
+
+test("Designer AI metadata persistence acknowledges success or failure", () => {
+  assert.match(headerSource, /reason: "designer-ai-conversation"/);
+  assert.match(headerSource, /\.then\(\(\) => onPersisted\?\.\(\)\)/);
+  assert.match(headerSource, /onPersistenceError\?\.\(error\)/);
+});

@@ -1,807 +1,610 @@
-# Designer AI Capability and Conversation Contract
+# Designer AI Capability Contract
 
 Status: Canonical Contract.
 
-## 1. Objetivo y alcance
+## 1. Autoridad y alcance
+
+Este documento es la autoridad normativa humana para:
+
+- las capacidades operativas de `Diseñador AI`;
+- la equivalencia con controles existentes de `Asistente`;
+- las actions y controles confiables permitidos;
+- la información y validaciones requeridas por cada familia de acción;
+- el ledger de completitud, procedencia y dependencias;
+- los límites y operaciones explícitamente fuera de alcance.
+
+La autoridad ejecutable versionada es
+`shared/designerAiCapabilityContract.cjs`. Si este documento, la copia de
+Functions y el source compartido difieren, el source compartido y el código
+vigente describen lo que el runtime realmente acepta; la discrepancia debe
+corregirse en el mismo cambio.
+
+Este documento **no** define voz, tono, saludo, idioma, longitud, emojis,
+estructura de respuesta ni ejemplos de copy. Esas decisiones pertenecen a
+[AI_ASSISTANT_CONVERSATION_CONTRACT.md](AI_ASSISTANT_CONVERSATION_CONTRACT.md).
+La arquitectura, contexto, auth, persistencia y seguridad pertenecen a
+[AI_ASSISTANT_SYSTEM.md](../architecture/AI_ASSISTANT_SYSTEM.md).
+
+## 2. Invariante de producto
 
 `Diseñador AI` es un adaptador conversacional, exclusivo para superadmins, sobre
-las capacidades que ya expone el tab `Asistente` del editor de borradores. No es
-un segundo editor, un agente con acceso libre al canvas ni una nueva autoridad de
-persistencia.
-
-La equivalencia normativa es:
+capacidades ya expuestas por `Asistente`. No es una segunda autoridad del editor
+ni una vía genérica al canvas.
 
 ```text
-Asistente -> controles -> todos sus valores disponibles
-Diseñador AI -> conversación y controles confiables -> esos mismos valores
+Asistente -> controles existentes -> valores disponibles
+Diseñador AI -> actions allowlisted o controles locales -> esos mismos owners
 ```
 
-La conversación puede resolver varios valores a la vez, inferir únicamente lo
-que sea seguro y aplicar reglas automáticas documentadas. No puede omitir una
-capacidad por el solo hecho de que resulte incómoda de preguntar. La regla de
-producto es:
+Una capacidad solo existe para Designer AI cuando el snapshot vigente demuestra
+que el control/binding equivalente está disponible. El prompt no puede ampliar
+esta superficie. Que una capacidad quede fuera del interrogatorio proactivo no
+la elimina: puede seguir disponible ante un pedido explícito. El conjunto de
+capabilities y el conjunto de pendientes del recorrido guiado son contratos
+relacionados, pero no idénticos.
 
-> Reducir la cantidad de preguntas no significa reducir la cantidad de
-> información que Diseñador AI debe completar. El objetivo es cubrir el 100 % de
-> las capacidades disponibles de Asistente mediante una conversación más
-> inteligente, agrupando preguntas, reutilizando información ya recibida y
-> derivando automáticamente aquellos valores para los que exista una regla
-> segura.
+V1 solo se monta en una sesión autenticada, editable, `draft`, no selector y con
+rol superadmin. Los templates, vistas administrativas read-only y usuarios no
+superadmin quedan fuera.
 
-V1 está disponible únicamente en sesiones autenticadas, editables y de tipo
-`draft`. No aparece en template workspaces, selector mode, vistas administrativas
-read-only ni sesiones que no sean de superadmin.
+## 3. Fuentes de disponibilidad y owners
 
-Este documento es normativo para capacidad, completitud y experiencia
-conversacional. La allowlist ejecutable versionada continúa en
-`shared/designerAiCapabilityContract.cjs`; este contrato de UX no agrega acciones
-ni cambia sus argumentos.
+La navegación de `Asistente` se deriva de
+`src/domain/editor/assistantMode.js` y
+`src/domain/editor/assistantSubsteps.js`; `DashboardSidebar.jsx` monta los
+controles reales en `MiniToolbar`.
 
-## 2. Evidencia y autoridades actuales
+Designer AI calcula su snapshot desde:
 
-La navegación real de Asistente se define en `assistantMode.js` y
-`assistantSubsteps.js`, y `DashboardSidebar.jsx` monta el control correspondiente
-en `MiniToolbar`. El orden actual es Evento, Texto cuando existe el binding de
-historia, Fotos cuando existe portada o alguna Gallery, Asistencia y Regalos.
+- nombre/metadata: `dashboardDocumentNameBridge` y `DashboardHeader`;
+- render state: `editorSnapshotAdapter` y bridges de `CanvasEditor`;
+- authoring fields/defaults/targets: `getTemplateAuthoringSnapshot`;
+- portada: cover bridge existente;
+- dominios: normalizadores de event details, RSVP, Gifts, Gallery y CTAs.
 
-Dentro de Evento, los substeps reales son Nombres, Fecha y hora y Ubicación. En
-Fotos hay un substep de portada solo si ya existe una portada efectiva y uno por
-cada objeto Gallery real. Designer AI debe calcular su universo desde estas
-mismas condiciones, no desde una lista estática de campos supuestos.
+El borrador vigente es la fuente de verdad para valores. El ledger conserva
+procedencia y decisiones, pero no reemplaza el dato efectivo ni su owner.
 
-El borrador vigente es siempre la fuente de verdad. El historial del chat solo
-ayuda a resolver referencias conversacionales y procedencia durante la sesión;
-no reemplaza valores, owners, bridges ni persistencia.
+## 4. Inventario de capacidades V1
 
-El flujo de runtime autorizado sigue siendo:
+La tabla declara superficie y condición operativa. La semántica completa de cada
+funcionalidad continúa en su documentación/código de dominio, según la sección 13.
 
-1. `DesignerAiPanel.jsx` relee un snapshot mínimo desde los bridges existentes.
-2. `designerAiChat` valida autenticación, superadmin, versión y shape antes de
-   interpretar el mensaje.
-3. OpenAI devuelve una única llamada estructurada a
-   `submit_designer_ai_result`.
-4. Backend y frontend validan acciones y controles contra el contrato compartido
-   y contra el snapshot vigente.
-5. `designerAiActionExecutor.js` delega en los owners existentes. Autosave,
-   coordinación FIFO y persistencia permanecen intactos.
+### 4.1 Documento y evento
 
-Designer AI nunca recibe `setObjetos`, `setSecciones`, handles de Firestore,
-credenciales de Storage, setters genéricos, strings de eventos arbitrarios ni un
-transport alternativo.
-
-## 3. Inventario completo de Asistente
-
-### 3.1 Regla de disponibilidad
-
-El inventario siguiente es el límite absoluto de V1. Un valor forma parte de la
-conversación solo cuando el control equivalente existe realmente en Asistente
-para el borrador actual:
-
-- los campos dinámicos dependen de `fieldsSchema`, `applyTargets` y bindings
-  reales;
-- Party es estructuralmente disponible cuando existen sus bindings; su
-  aplicabilidad depende de `eventDetails.mode === "ceremony_party"`;
-- Historia depende del binding textual de `texto_historia`;
-- Portada depende de que ya exista una portada efectiva;
-- Galería depende de objetos reales `tipo: "galeria"` y sus slots visibles;
-- RSVP y Regalos están siempre disponibles en un borrador editable.
-
-`unavailable` significa que el valor no existe en el Asistente de ese borrador y
-queda fuera del denominador de completitud. No autoriza a crearlo.
-
-### 3.2 Identidad, pareja y evento
-
-| Valor funcional | Dónde vive / owner actual | Cómo se modifica en Asistente | Resolución permitida | Tratamiento conversacional |
-| --- | --- | --- | --- | --- |
-| Nombre visible del borrador | `dashboardDocumentNameBridge`, `DashboardHeader` y patch de sesión | Input `Nombre del evento` | Elección explícita o regla automática de la sección 6 | No se pregunta por defecto. Se deriva de los nombres salvo que exista un nombre personalizado explícito. |
-| Nombre de la primera persona | Default dinámico `event_primary_person_name` y targets vinculados; `updateTemplateAuthoringEventPersonNames` | Input `Nombre de la primera persona` | Usuario o dato personalizado previo confiable | Preguntar junto con el segundo nombre; aceptar nombre simple o completo. |
-| Nombre de la segunda persona | Default dinámico `event_secondary_person_name` y targets vinculados; mismo owner | Input `Nombre de la segunda persona` | Usuario o dato personalizado previo confiable | Igual que el anterior; actualizar también formatos combinados vinculados. |
-| Modalidad del evento | Root `eventDetails.mode` normalizado | Select `single` / `ceremony_party` | Usuario, dato previo o inferencia inequívoca | Inferir `ceremony_party` si el relato distingue ceremonia y fiesta; inferir `single` solo si habla inequívocamente de un único evento. En otro caso preguntar. |
-| Fecha de ceremonia/evento único | Default dinámico y target countdown de Ceremony | Input `Fecha` | Usuario, dato previo o inferencia contextual inequívoca | Conversar junto con horarios y lugar de la misma fase. |
-| Hora de inicio de ceremonia/evento único | Default dinámico de Ceremony y fallback del countdown | Input `Hora de inicio` | Usuario o dato previo | Es necesaria cuando la superficie está disponible. Una hora ambigua requiere aclaración. |
-| Hora de fin de ceremonia/evento único | Default dinámico de Ceremony | Input opcional `Hora Fin` | Usuario, dato previo o regla de omisión opcional | Si no se menciona, puede quedar vacía mediante la regla documentada “no mostrar hora de fin”; no exige una pregunta aislada. |
-| Fecha de fiesta | Default dinámico y target countdown de Party | Input `Fecha`, solo en `ceremony_party` | Usuario, dato previo o derivación segura | Puede copiar la fecha de ceremonia solo cuando expresiones como “después”, “ese mismo día” o equivalentes lo hagan inequívoco. |
-| Hora de inicio de fiesta | Default dinámico de Party y fallback del countdown | Input `Hora de inicio`, solo en `ceremony_party` | Usuario o dato previo | Preguntar junto con fecha y lugar de fiesta si falta. |
-| Hora de fin de fiesta | Default dinámico de Party | Input opcional `Hora Fin` | Usuario, dato previo o regla de omisión opcional | Mismo criterio que la hora de fin de ceremonia. |
-| Nombre del lugar de ceremonia/evento único | Default y targets con rol `ceremony_venue_name` | Input opcional `Nombre del lugar` | Usuario, dato previo, Places o regla de omisión opcional | Puede quedar vacío si existe una dirección suficiente y el usuario no indicó un nombre. |
-| Dirección de ceremonia/evento único | Default y targets con rol `ceremony_venue_address` | Input `Dirección` | Usuario, dato previo o selección de Places | Debe quedar inequívoca o pasar a `requires_control`; no se inventan direcciones. |
-| Selección precisa de Google Places para ceremonia | Configuración de ubicación y asociación con el mapa oculto existente/permitido | Lista de sugerencias bajo lugar o dirección | Solo control local confiable | El modelo solicita el selector. `placeId`, coordenadas y metadata no entran al chat ni a OpenAI. |
-| Nombre del lugar de fiesta | Default y targets con rol `party_venue_name` | Input opcional `Nombre del lugar` | Usuario, dato previo, Places o regla de omisión opcional | Mismo criterio que Ceremony, con feature `party`. |
-| Dirección de fiesta | Default y targets con rol `party_venue_address` | Input `Dirección` | Usuario, dato previo o selección de Places | Mismo criterio que Ceremony, sin mezclar asociaciones entre fases. |
-| Selección precisa de Google Places para fiesta | Configuración Party y asociación de mapa | Lista de sugerencias Party | Solo control local confiable | Mismo criterio de privacidad y control local. |
-| Mostrar Dress Code | `eventDetails.dressCode.enabled` | Switch `Dress Code` | Decisión del usuario o dato previo personalizado | Un `false` heredado/default no equivale por sí solo a una decisión. Preguntar una vez dentro de “información para invitados”. |
-| Texto de Dress Code | Default/target con rol `dress_code` y `eventDetails.dressCode.value` | Input `Texto del Dress Code`, cuando está activo | Usuario, dato previo o inferencia literal segura | “Vamos de elegante sport” puede activar y establecer el texto. Al desactivar se preserva el texto, pero queda no aplicable. |
-
-Las mutaciones de nombres, fechas, horarios, ubicación, Dress Code y story deben
-seguir aplicando `applyTargets` mediante sus owners actuales. Los objetos de
-texto vinculados conservan width, alineación, wrapping, tipografía y geometría.
-El countdown vinculado conserva la fecha objetivo a través de su owner actual;
-esto no habilita a conversar sobre visibilidad o formato del countdown.
-
-### 3.3 Texto e imágenes
-
-| Valor funcional | Dónde vive / owner actual | Cómo se modifica en Asistente | Resolución permitida | Tratamiento conversacional |
-| --- | --- | --- | --- | --- |
-| Texto de historia | `templateAuthoringDraft.defaults.texto_historia` y objeto de texto vinculado, con el objeto como autoridad visual | Textarea `Texto historia`, solo si hay binding | Texto del usuario, dato personalizado previo o decisión explícita de no usarlo | Pedir una idea o un texto en un bloque breve. No editar otros textos ni alterar layout. |
-| Portada existente | Owner de portada y bridge/upload actual de `MiniToolbarTabImagen` | `Cambiar imagen de portada` | Dato personalizado previo aceptado o control local | Si la portada proviene de plantilla, ofrecer conservarla o reemplazarla. Si se reemplaza, abrir el uploader existente. Nunca crear una portada ausente. |
-| Contenido de cada slot visible de cada Gallery existente | `cells[]` local del objeto `tipo: "galeria"`; `galleryMutations` | Reemplazo/upload por celda, incluidas celdas vacías | Dato personalizado previo aceptado, decisión de dejar vacío o control local | Tratar cada slot existente sin enviar media URL. Una negativa puede resolver la celda como “se deja como está/vacía”. |
-| Orden de fotos pobladas de cada Gallery existente | Orden de slots/cells de la Gallery; `moveGalleryPhotoToSlot` | Drag, teclado y handles de reordenamiento | Orden previo aceptado o instrucción inequívoca | Preguntar por el orden una sola vez por Gallery cuando haya más de una foto, o aplicar la corrección indicada. No cambia layout ni preset. |
-
-Asistente simplificado no permite crear/eliminar Galleries, cambiar su grilla o
-layout, quitar fotos mediante la barra avanzada, insertar imágenes libres ni
-usar la biblioteca como vía alternativa. Esas operaciones tampoco pertenecen a
-Designer AI.
-
-### 3.4 Asistencia (RSVP)
-
-RSVP vive en la configuración root normalizada por `src/domain/rsvp/config.js`.
-Los helpers de `editorOps.js` son la autoridad de preguntas, opciones y orden.
-La activación crea, muestra u oculta el CTA funcional por el mecanismo actual;
-no habilita texto o estilo del CTA RSVP.
-
-| Valor funcional | Cómo se modifica en Asistente | Resolución permitida | Tratamiento conversacional |
+| Capacidad | Disponibilidad | Owner/mutación | Información o condición requerida |
 | --- | --- | --- | --- |
-| RSVP habilitado | Switch `Pedir confirmación de asistencia` | Decisión del usuario o dato previo personalizado | Preguntar una sola vez si el estado no tiene procedencia de usuario. Apagarlo no borra ni vuelve inaccesible su configuración en Asistente. |
-| Activación de cada pregunta disponible | Agregar/Quitar campo | Elección explícita, dato previo o conjunto recomendado aceptado explícitamente | Una frase exhaustiva como “solo nombre, asistencia y alergias” resuelve como activas esas preguntas y como inactivas todas las demás. |
-| Orden de preguntas activas | Drag/teclado | Orden explícito, dato previo o regla de orden recomendado aceptada | No preguntar posición por posición. Proponer o conservar un orden completo y permitir correcciones. |
-| Label de cada pregunta activa | Editor `Nombre del campo` | Usuario, dato previo o default de catálogo aceptado por regla | Los defaults de catálogo pueden usarse tras aceptar el conjunto recomendado; labels propios de plantilla requieren procedencia o confirmación. |
-| Tipo de cada pregunta activa | Select `Tipo de respuesta` | Usuario, dato previo o tipo de catálogo aceptado por regla | Valores: `short_text`, `long_text`, `single_select`, `boolean`, `number`, `phone`. No mostrar nombres internos al usuario. |
-| Required de cada pregunta activa | Checkbox `Obligatorio` | Usuario, dato previo o default de catálogo aceptado por regla | Resolver en conjunto: por ejemplo, “nombre y asistencia obligatorios; alergias opcional”. |
-| Existencia y label de cada opción de `single_select` | Agregar, renombrar y quitar opción | Usuario, dato previo u opciones de catálogo aceptadas por regla | Tratar el conjunto completo; conservar al menos una opción. No preguntar opción por opción si el usuario acepta las estándar. |
-| Título del modal | `Ajustes del formulario` -> `Título principal` | Usuario, dato previo o default de sistema documentado | El default `Confirmar asistencia` puede resolverse por regla si no fue reemplazado por copy de plantilla. |
-| Subtítulo del modal | `Texto de ayuda` | Usuario, dato previo o default de sistema documentado | Mismo criterio de procedencia. |
-| Etiqueta de envío | `Texto del botón` dentro de ajustes del modal | Usuario, dato previo o default de sistema documentado | El default `Enviar` puede resolverse por regla. No confundir con el CTA RSVP del canvas. |
-| Color primario del modal | Picker `Color botón` | Usuario, dato previo o token/default de sistema documentado | Es la única capacidad de color RSVP autorizada. No habilita colores genéricos del canvas. |
+| Nombre visible del borrador | Draft editable, nunca template | `document.set_name` -> document-name bridge/header | Nombre explícito o regla automática segura. |
+| Nombres de las dos personas | Existen fields/bindings de personas | `event.set_people` -> `updateTemplateAuthoringEventPersonNames` | Ambos strings; se actualizan targets vinculados. |
+| Modalidad | Siempre en draft V1 | `event.set_mode` -> `eventDetails.mode` | `single` o `ceremony_party`; inferencia solo inequívoca. |
+| Fecha/inicio/fin de Ceremony | Binding de fecha o fields de horario Ceremony | `event.set_datetime` -> authoring owners + countdown vinculado | Phase + al menos un valor; fecha `YYYY-MM-DD`, hora `HH:MM`. |
+| Fecha/inicio/fin de Party | Binding/fields Party y modo efectivo `ceremony_party` | Mismo owner con feature Party | Party debe estar activa antes o en el mismo lote. |
+| Lugar/dirección manual de Ceremony | Fields de ubicación Ceremony | `event.set_location_text` -> `locationAuthoring` -> authoring owner | Phase, venue name y address strings; no inventar dirección. La escritura manual desvincula metadata Google previa. |
+| Lugar/dirección manual de Party | Fields de ubicación Party y Party activa | Mismo owner con feature Party | No mezclar targets de Ceremony y Party. |
+| Selección precisa de Places | Ubicación de la phase disponible | Control local `google_place_picker` -> control especializado -> `locationAuthoring` | El modelo solo indica phase; búsqueda, selección y metadata permanecen locales. |
+| Dress Code visible/texto | Binding Dress Code existente | `event.set_dress_code` -> root config + target dinámico | `enabled` y texto; al desactivar se preserva valor normalizado. |
 
-El catálogo real que Asistente puede activar, sujeto a `maxQuestions: 12`, es:
+`event.set_datetime` conserva el countdown vinculado mediante el owner de fecha.
+Eso no habilita visibilidad, formato, layout ni preset del countdown.
 
-| ID estable | Nombre visible inicial | Tipo inicial | Required inicial |
+### 4.2 Texto e imágenes
+
+| Capacidad | Disponibilidad | Owner/mutación | Información o condición requerida |
 | --- | --- | --- | --- |
-| `full_name` | Nombre y apellido | Texto corto | Sí |
-| `attendance` | ¿Asistís? | Opciones Sí/No | Sí |
-| `party_size` | Cantidad de personas | Número | No |
-| `event_scope` | Ceremonia / Fiesta / Ambos | Opciones | No |
-| `menu_type` | Tipo de menú | Opciones | No |
-| `dietary_notes` | Alergias o restricciones alimentarias | Texto largo | No |
-| `phone_whatsapp` | Teléfono / WhatsApp | Teléfono | No |
-| `plus_one` | ¿Vas con acompañante? | Sí/No | No |
-| `plus_one_name` | Nombre del acompañante | Texto corto | No |
-| `children_count` | Cantidad de niños | Número | No |
-| `host_message` | Mensaje para los anfitriones | Texto largo | No |
-| `song_suggestion` | Canción sugerida | Texto corto | No |
-| `needs_transport` | ¿Necesitás transporte? | Sí/No | No |
-| `custom_1`, `custom_2` | Pregunta personalizada 1/2 | Texto corto | No |
+| Texto de historia | Binding real `texto_historia` | `story.set_text` -> default con `applyTargets:true` | Texto de hasta el límite ejecutable; conserva geometría/estilo del objeto vinculado. |
+| Reemplazo de portada | Portada efectiva resuelta | Control local `cover_upload` | No acepta URL/media del modelo; no crea portada ausente. |
+| Contenido de slot Gallery | Gallery real y slot visible vigente | Control local `gallery_cell_upload` | `galleryId`, `cellId`/índice existentes; media queda local. |
+| Orden de fotos Gallery | Gallery real con origen poblado y destino distinto | `gallery.move_photo` -> `galleryMutations` | IDs/índices del snapshot; no cambia layout/preset. |
 
-Los dos slots custom están además sujetos a `maxCustomQuestions: 2`. Los presets
-del catálogo son defaults internos, no una capacidad conversacional adicional:
-Designer AI resuelve sus valores a través de las acciones RSVP existentes.
+V1 no crea/elimina Galleries, no cambia grilla/layout/presets, no elimina media
+por una ruta alternativa y no inserta imágenes libres.
 
-### 3.5 Regalos
+### 4.3 RSVP
 
-Regalos vive en la configuración root normalizada por
-`src/domain/gifts/config.js`. La activación usa el CTA funcional actual y puede
-crear el botón permitido por esa activación.
+RSVP usa root config normalizada por `src/domain/rsvp/config.js` y operaciones de
+`src/domain/rsvp/editorOps.js`. Las questions/options válidas son únicamente las
+que existen en el snapshot vigente.
 
-| Valor funcional | Cómo se modifica en Asistente | Resolución permitida | Tratamiento conversacional |
-| --- | --- | --- | --- |
-| Regalos habilitado | Switch `Mostrar opciones de regalos` | Decisión del usuario o dato previo personalizado | Preguntar una vez. Apagarlo no borra ni vuelve inaccesibles métodos y copy en Asistente. |
-| Titular: valor y visibilidad | Agregar/editar/ocultar `Titular` | Usuario, dato previo o decisión explícita de ocultar | Tratar valor y visibilidad como dos hojas dependientes. |
-| Banco: valor y visibilidad | Agregar/editar/ocultar `Banco` | Igual | Igual. |
-| Alias: valor y visibilidad | Agregar/editar/ocultar `Alias` | Igual | Igual. |
-| CBU/CVU: valor y visibilidad | Agregar/editar/ocultar `CBU / CVU` | Igual | Igual; no inferir números. |
-| CUIT: valor y visibilidad | Agregar/editar/ocultar `CUIT` | Igual | Igual; no inferir identificadores. |
-| Lista externa: URL y visibilidad | Agregar/editar/ocultar `Lista externa` | Usuario, dato previo o decisión de ocultar | Solo HTTP(S) válido por el normalizador existente. La URL no se registra en logs. |
-| Texto introductorio | `Ajustes de regalos` -> `Texto introductorio` | Usuario, dato previo o default de sistema documentado | El default del sistema puede resolverse por regla; copy de plantilla no se acepta como personalizado sin procedencia. |
-| Texto del botón de regalos | `Ajustes de regalos` -> `Texto del botón` | Usuario, dato previo o default funcional documentado | `Ver regalos` puede resolverse por regla. Se actualiza el CTA existente o el creado al activar. |
+| Capacidad | Action | Validación mínima |
+| --- | --- | --- |
+| Habilitar/deshabilitar | `rsvp.set_enabled` | Boolean. Sincroniza visibilidad/creación permitida del CTA. |
+| Activar/desactivar pregunta | `rsvp.set_question_active` | `questionId` vigente + boolean. |
+| Label/tipo/required | `rsvp.update_question` | ID vigente; al menos un campo no null; tipo en `short_text`, `long_text`, `single_select`, `boolean`, `number`, `phone`. |
+| Orden | `rsvp.move_question` | IDs distintos y `before`/`after`. |
+| Agregar opción | `rsvp.add_option` | Pregunta vigente de tipo `single_select`; label válido. |
+| Renombrar opción | `rsvp.rename_option` | Pregunta/opción vigentes. |
+| Quitar opción | `rsvp.remove_option` | Opción vigente y al menos una opción restante. |
+| Modal | `rsvp.update_modal` | Uno o más de title, subtitle, submit label y color; color no null usa `#RRGGBB`. |
 
-Si Regalos está activo, el flujo solo es funcional al publicar cuando existe al
-menos un método visible y completo. La conversación no puede declararlo completo
-con un método visible vacío.
+La configuración pertenece al root `rsvp`; el objeto `rsvp-boton` es un CTA
+visual/funcional y no contiene las preguntas. Diseñador AI no puede cambiar el
+texto/estilo del CTA salvo los efectos que el owner actual derive al activar la
+funcionalidad.
 
-### 3.6 Capacidades explícitamente excluidas
+### 4.4 Regalos
 
-Aunque existan en otros tabs del editor, no pertenecen a Asistente simplificado
-y el validador debe rechazarlas: posiciones, geometría, fuentes, tamaños,
-colores genéricos, layouts, texto libre fuera de bindings verificados,
-creación/eliminación de objetos o secciones, creación/eliminación/layout/presets
-de Gallery, imágenes libres o biblioteca, visibilidad/formato del countdown,
-visibilidad del mapa, formato de fecha o dirección, texto/estilo del CTA RSVP,
-propiedades genéricas del canvas, código, Firestore o Storage directos.
+Regalos usa root config normalizada por `src/domain/gifts/config.js` y los helpers
+de CTA existentes. Su semántica funcional completa está en
+[GIFTS_SYSTEM_CONTRACT.md](GIFTS_SYSTEM_CONTRACT.md).
 
-Los únicos side effects acotados de creación siguen siendo el CTA funcional de
-RSVP/Regalos creado por su activación y el mapa oculto creado por una selección
-real de Places.
+| Capacidad | Action | Validación mínima |
+| --- | --- | --- |
+| Habilitar/deshabilitar | `gifts.set_enabled` | Boolean. Sincroniza visibilidad/creación permitida del CTA. |
+| Método y visibilidad | `gifts.set_method` | Método en `holder`, `bank`, `alias`, `cbu`, `cuit`, `giftListLink`; valor nullable y boolean visible. |
+| Texto introductorio | `gifts.set_intro_text` | String dentro del límite del schema. |
+| Texto del botón | `gifts.set_button_text` | String no vacío; el CTA debe existir o crearse activando Gifts en el mismo lote. |
 
-## 4. Allowlist versionada sin cambios
+Si Regalos queda activo, la configuración solo puede considerarse funcional con
+al menos un método visible y completo. Los números bancarios y URLs nunca se
+infieren. La normalización/validez funcional final continúa perteneciendo al
+dominio Gifts y al contrato de interactividad de preview/publicación.
 
-Las acciones originadas por el modelo son exclusivamente:
+No existe ni se necesita una action de “modalidad”: lista externa frente a datos
+bancarios es una decisión del recorrido que se materializa con
+`gifts.set_enabled` y uno o más `gifts.set_method`. La misma action permite
+ocultar un valor sin borrarlo. `gifts.set_intro_text` y
+`gifts.set_button_text` permanecen disponibles ante pedidos explícitos, pero no
+forman parte de la completitud guiada. La semántica de qué campos quedan visibles
+y cuándo el bloque termina pertenece exclusivamente a
+`GIFTS_SYSTEM_CONTRACT.md`.
+
+## 5. Flujo guiado funcional principal
+
+Esta sección es la autoridad de producto para el **orden de pendientes** del
+recorrido guiado principal. El contrato conversacional decide cómo expresarlo;
+los owners de cada dominio deciden qué significan y cómo se validan sus datos.
+El owner ejecutable de priorización debe ser
+`shared/designerAiConversationLedger.cjs`, no una lista libre duplicada en el
+prompt.
+
+### 5.1 Orden canónico
+
+El orden de alto nivel es:
+
+1. **Nombres** de quienes se casan.
+2. **Estructura del evento**: un evento único o Ceremony + Party.
+3. **Datos del evento** aplicables a la estructura resuelta.
+4. **Regalos**.
+5. **Dress Code**.
+6. **Portada**, si existe una portada editable.
+7. **Galerías**, si existe al menos una Gallery aplicable.
+8. **Cierre** del recorrido guiado principal.
+
+La prioridad se calcula sobre el borrador releído. Solo se propone el primer
+bloque aplicable que todavía tenga una decisión o dato necesario pendiente; el
+sistema puede conocer otros pendientes, pero no debe convertirlos en un listado
+proactivo extenso.
+
+### 5.2 Reglas por bloque
+
+- **Nombres:** si ambos nombres tienen valor y procedencia confiable, no se
+  preguntan otra vez. Un placeholder, muestra o valor heredado no confirmado no
+  resuelve el bloque. El nombre automático del documento es un efecto derivado
+  seguro de los nombres, no otro interrogatorio previo.
+- **Estructura:** `eventDetails.mode` debe resolverse como `single` o
+  `ceremony_party` antes de pedir indiscriminadamente fechas, horarios o lugares.
+  `single` vuelve Party no aplicable; `ceremony_party` habilita los fields reales
+  disponibles para ambas fases.
+- **Datos del evento:** se completan únicamente los bindings existentes de fecha,
+  inicio, fin, lugar y dirección para las fases aplicables. End time y venue name
+  pueden resolverse solo mediante las reglas seguras ya versionadas. Lugar y
+  dirección aportados por chat se escriben inmediatamente como ubicación manual.
+  Luego debe quedar una decisión explícita: buscar/verificar mediante Places o
+  conservar los datos manuales. Places requiere el control local; rechazarlo usa
+  `leave_empty` sobre `place_selection` y no resuelve una dirección ausente.
+  La acción inline de carga manual registra esa decisión directamente en el
+  ledger y la persiste antes de continuar; no se transforma en una orden
+  sintética para que el modelo vuelva a interpretarla. Con solo nombre de lugar,
+  la alternativa manual significa ingresar la dirección y no puede presentarse
+  como si ya existieran ambos datos.
+- **Regalos:** la primera decisión proactiva elige entre una lista externa y
+  datos bancarios. No se empiezan a pedir campos antes de resolver esa elección.
+  Una negativa completa del usuario resuelve el bloque sin pedir datos internos.
+  Modalidad, visibilidad, tratamiento de defaults y completitud continúan según
+  `GIFTS_SYSTEM_CONTRACT.md`; intro y texto del botón son capabilities reactivas,
+  no pendientes del recorrido.
+- **Dress Code:** se consulta si se desea mostrar. Una negativa conserva el valor
+  normalizado oculto y continúa. Una afirmativa requiere el texto real y el
+  binding disponible.
+- **Portada:** se omite si `availability.cover` es falso. Si existe, el cambio usa
+  `cover_upload` y solo queda resuelto ante cambio real del fingerprint.
+- **Galerías:** se omiten si no hay una Gallery real con slots editables. Las
+  Galleries aplicables se recorren de a una y en el orden vigente del snapshot.
+  `gallery_cell_upload` conserva `galleryId` y slot para seleccionar la Gallery
+  correcta y enfocar un target inicial, pero ese slot no define completitud. Un
+  reemplazo, agregado, eliminación o reordenamiento solo modifica la Gallery:
+  la etapa queda terminal únicamente cuando el usuario activa la finalización
+  explícita dentro de su control especializado. Cerrar el control conserva las
+  mutaciones ya aplicadas y mantiene esa Gallery pendiente.
+
+La fuente única de cuál Gallery sigue pendiente es el orden de hojas
+`guided_completion` del ledger. `activeControl` identifica de forma transitoria
+la Gallery en edición. El estado “hubo cambios” también es transitorio y se
+deriva contra el snapshot de apertura; sirve para la UX, pero no terminaliza la
+hoja. Solo la resolución `resolved_by_control` persistida representa “el usuario
+terminó esta Gallery”. No se agrega ese estado al objeto `tipo: "galeria"`.
+
+Una hoja terminal por control local conserva esa autoridad frente a la
+continuación conversacional: una `resolution` redundante del modelo se descarta
+para esa hoja y nunca degrada `resolved_by_control`. Esto no relaja la validación
+de hojas pendientes ni permite generalizar evidencia a otra phase.
+
+La decisión de producto actual pide reemplazar las imágenes existentes al final
+del recorrido; no define como preguntas proactivas llenar slots vacíos ni
+reordenar fotos. `gallery.move_photo` continúa disponible ante un pedido
+explícito. De forma equivalente, `story.set_text` sigue siendo una capability
+reactiva: no tiene posición aprobada dentro del orden anterior y no debe
+insertarse silenciosamente como bloque proactivo.
+
+### 5.3 Adaptación y procedencia
+
+- No se pregunta otra vez una hoja terminal respaldada por evidencia vigente.
+- Si el usuario adelanta varios datos válidos, se validan y aprovechan en el
+  mismo turno aunque correspondan a bloques posteriores.
+- Si un turno contiene datos ejecutables y además deja otro dato pendiente, las
+  actions válidas se conservan y el resultado operativo es `apply`; la respuesta
+  puede preguntar inmediatamente por lo faltante. `clarify` queda reservado
+  para resultados sin actions ni controles locales.
+- Tras cada lote se relee el borrador y se recalcula el primer pendiente; el chat
+  no reemplaza ese estado.
+- Una corrección explícita reabre y actualiza la hoja afectada y sus dependencias
+  documentadas.
+- Los bloques no disponibles por template/configuración se saltan.
+- Se solicita solamente información necesaria para una action, control o
+  resolución válida. Nunca se completan huecos con inferencias no allowlisted.
+- Una postergación explícita del usuario no vuelve terminal la hoja ni cambia el
+  orden canónico. Durante la conversación activa puede omitirse temporalmente
+  esa pregunta y avanzar a otro dato aplicable; el ledger conserva el pendiente
+  para retomarlo más adelante. No se persiste un segundo orden ni un estado
+  funcional ficticio de completitud.
+
+### 5.4 RSVP y cierre funcional
+
+RSVP **no forma parte del interrogatorio proactivo del recorrido guiado
+principal**. Sus capabilities V1 permanecen disponibles si el usuario pide
+configurarlo; esta exclusión no desactiva ni modifica RSVP en el producto.
+
+El cierre del recorrido principal depende solo de los bloques aprobados en 5.1,
+no de haber recorrido todas las capabilities existentes. El texto de cierre debe
+comunicar fin del recorrido, no completitud absoluta de la invitación, según el
+contrato conversacional.
+
+Estado de implementación al 2026-08-28: el **orden entre bloques** está
+implementado en el owner ejecutable.
+`shared/designerAiConversationLedger.cjs` expone `GUIDED_FLOW_BLOCKS` en el orden
+de 5.1 y construye `ledger.guidedFlow` con las hojas aplicables. Su
+`guidedFlow.completion.complete` gobierna el cierre del recorrido; la
+`completion` global se conserva para diagnóstico y estado operacional sin poder
+bloquear ese cierre. Cada Gallery aplicable aporta exactamente una hoja
+`media.gallery.{galleryId}.guided_completion`, ordenada según el snapshot. Los
+slots, sus fingerprints y `media.gallery.{galleryId}.order` quedan fuera de
+`guidedFlow` y mantienen sus estados/capabilities reales; por eso una mutación
+no puede avanzar el recorrido. RSVP e historia también permanecen fuera. El
+prompt consume el `nextBlock` derivado y no mantiene otra lista ejecutable.
+
+Existe un gap acotado dentro de Regalos: cuando `gifts.enabled` queda terminal y
+activo, el ledger vigente incorpora todas las hojas `gifts.method.*`,
+`gifts.intro_text` y `gifts.button_text` al recorrido. Debe evolucionar para que
+la completitud se derive de la modalidad elegida y de las condiciones del owner
+Gifts, sin convertir campos bancarios no aportados ni copies opcionales en
+pendientes. Las actions existentes ya alcanzan para expresar los cambios; esta
+corrección no autoriza un segundo estado de modalidad ni otra prioridad en el
+prompt.
+
+## 6. Actions originadas por el modelo
+
+La allowlist exacta V1 es:
 
 - `document.set_name`
-- `event.set_people`, `event.set_mode`, `event.set_datetime`,
-  `event.set_location_text`, `event.set_dress_code`
+- `event.set_people`
+- `event.set_mode`
+- `event.set_datetime`
+- `event.set_location_text`
+- `event.set_dress_code`
 - `story.set_text`
 - `gallery.move_photo`
-- `rsvp.set_enabled`, `rsvp.set_question_active`, `rsvp.update_question`,
-  `rsvp.move_question`, `rsvp.add_option`, `rsvp.rename_option`,
-  `rsvp.remove_option`, `rsvp.update_modal`
-- `gifts.set_enabled`, `gifts.set_method`, `gifts.set_intro_text`,
-  `gifts.set_button_text`
+- `rsvp.set_enabled`
+- `rsvp.set_question_active`
+- `rsvp.update_question`
+- `rsvp.move_question`
+- `rsvp.add_option`
+- `rsvp.rename_option`
+- `rsvp.remove_option`
+- `rsvp.update_modal`
+- `gifts.set_enabled`
+- `gifts.set_method`
+- `gifts.set_intro_text`
+- `gifts.set_button_text`
 
-Los controles locales confiables poseen exclusivamente:
+La tool estricta acepta hasta 19 actions en una salida. Cada action usa
+`additionalProperties:false`; los argumentos y límites exactos viven en el
+schema ejecutable para evitar duplicar otra definición de shapes en prose.
 
-- `media.replace_cover`
-- `media.set_gallery_cell`
-- `event.select_google_place`
+## 7. Controles locales confiables
 
-El modelo puede pedir el control correspondiente, pero no proporcionar media
-URLs, assets, metadata de Storage, `placeId`, coordenadas o metadata de Google.
-Cada acción conserva su shape exacto (`additionalProperties:false`), origen,
-límites y validación de IDs contra el snapshot. Un prompt no puede ampliar esta
-lista.
+El modelo puede solicitar, pero no ejecutar ni completar por sí solo:
 
-## 5. Modelo de estado conversacional y completitud
-
-### 5.1 Ledger por valor
-
-La unidad de completitud es cada hoja disponible del inventario, no el bloque
-grueso ni una respuesta del chat. Para cada hoja, el planificador debe poder
-representar al menos estos estados semánticos (los nombres de implementación
-pueden variar):
-
-| Estado | Significado | ¿Terminal? |
+| Control solicitado | Acción local representada | Datos permitidos desde el modelo |
 | --- | --- | --- |
-| `unavailable` | El control/binding no existe en Asistente para este borrador. | Fuera del denominador |
-| `pending` | Disponible, pero sin valor ni decisión confiable. | No |
-| `needs_clarification` | Hay un dato parcial, ambiguo o conflictivo. | No |
-| `requires_control` | Solo puede resolverse mediante uploader, Gallery o Places. | No |
-| `resolved_from_user` | El usuario lo informó o decidió explícitamente. | Sí |
-| `resolved_from_existing_user_data` | Existe evidencia confiable de personalización previa. | Sí |
-| `resolved_by_rule` | Una regla segura y documentada fijó el valor. | Sí |
-| `resolved_by_control` | El control confiable completó la interacción y el borrador refleja el resultado. | Sí |
-| `not_applicable_by_dependency` | Una decisión terminal de su parent lo vuelve inoperante; por ejemplo, Party en modo single u opciones de una pregunta que no es `single_select`. | Sí |
+| `cover_upload` | `media.replace_cover` | Solo el type. |
+| `gallery_cell_upload` | `media.set_gallery_cell` | Gallery y slot ya presentes en snapshot. |
+| `google_place_picker` | `event.select_google_place` | Solo `ceremony` o `party`. |
 
-`completed` es solo un estado agregado. No reemplaza la procedencia anterior.
-`coveredCapabilityIds` o una negativa almacenada en el chat tampoco prueban por
-sí solos completitud: tras cada turno se relee el borrador y se reconcilia el
-ledger.
+Media URLs, assets, tokens, paths, `placeId`, coordenadas y metadata no son
+argumentos del modelo. Para ubicación, el panel conserva el chat, muestra inline
+solo la superficie especializada de Places para la phase exacta y precarga la
+búsqueda desde el lugar/dirección ya persistidos. El usuario debe elegir un
+resultado; no existe selección automática ante múltiples sugerencias. El
+frontend marca `resolved_by_control` solo después de comprobar la evidencia que
+corresponde al dominio. Portada exige un cambio real del fingerprint. Gallery
+exige la acción explícita de finalización del usuario y la persistencia
+confirmada de su hoja `guided_completion`; los fingerprints de slots se usan
+solo para distinguir cambios durante la edición. Places exige que la selección
+esperada se refleje en el owner. Abrir, cerrar o cancelar cualquier control no
+completa nada.
 
-### 5.2 Definición formal de completitud
+En `ceremony_party`, `event.ceremony.{venue_name,address,place_selection}` y
+`event.party.{venue_name,address,place_selection}` son hojas independientes. La
+verificación de Places debe coincidir simultáneamente con el owner local y con el
+snapshot de capabilities releído para la phase solicitada; nunca terminaliza las
+hojas hermanas de la otra phase. Después de reconciliar el control, la
+continuación se deriva nuevamente del primer pendiente de `guidedFlow`. Regalos
+solo puede ser el siguiente bloque proactivo cuando no queda ninguna hoja
+aplicable de `event_data`.
 
-Sea `A(draft)` el conjunto de hojas estructuralmente disponibles del inventario:
-sus bindings/targets existen o pertenecen a una configuración siempre editable
-de Asistente. Incluye hojas temporalmente inoperantes por un parent, como Party
-en modo single. El flujo está completo solo si para todo `v` en `A(draft)` se
-cumple una de estas condiciones:
+La decisión de no usar Maps no inventa `placeId`, coordenadas ni metadata. Si
+existen lugar y dirección suficientes, conserva esa ubicación manual y continúa;
+si falta la dirección, permanece pendiente y se solicita solamente ese dato.
+El estado transitorio de decisión/control vive en el panel y el ledger; el draft
+persiste solo los fields manuales o el shape Google canónico, no una segunda
+máquina de estados de ubicación.
 
-1. `v` tiene un estado terminal con procedencia válida; o
-2. `v` quedó `not_applicable_by_dependency` por una decisión terminal de su
-   parent.
+## 8. Validación, confirmación e inferencia
 
-En forma compacta:
+### 8.1 Validación obligatoria
+
+Antes de la primera mutación, el lote completo debe superar:
+
+1. versión de contrato;
+2. origen permitido (`model` o `trusted_control`);
+3. type allowlisted y shape exacto;
+4. capability disponible en snapshot;
+5. IDs de Gallery/question/option vigentes;
+6. formatos de fecha/hora/color;
+7. dependencias secuenciales de Party, Gifts y opciones RSVP;
+8. validación de resolutions contra leaves/rules vigentes.
+
+Backend y frontend aplican el mismo contrato. El executor vuelve a prevalidar
+antes de delegar en owners. La validación no vuelve transaccionales a varios
+owners: si uno falla después de otro ya aplicado, se reporta ejecución parcial y
+no se afirma rollback.
+
+Como recuperación defensiva y *fail closed* por hoja, el backend descarta una
+resolución `resolved_by_rule` cuando tanto la hoja como la regla existen pero esa
+regla no está autorizada para ese `leafId` exacto. La hoja permanece pendiente y
+las actions válidas del mismo turno todavía pueden superar la validación. No se
+reinterpreta la regla, no se marca la hoja como resuelta y no se toleran por esta
+vía shapes inválidos, hojas desconocidas, estados desconocidos ni reglas fuera de
+la allowlist: esos casos continúan invalidando la salida completa.
+
+### 8.2 Cuándo se requiere decisión del usuario
+
+No hace falta una confirmación adicional cuando el usuario pidió de forma
+explícita una action no destructiva, aportó todos sus datos y no existe
+ambigüedad. Sí se requiere aclaración o control antes de mutar cuando:
+
+- hay dos phases/targets plausibles;
+- falta un dato requerido;
+- un valor heredado no tiene procedencia confiable;
+- se necesita elegir media o un Place real;
+- la inferencia no está cubierta por una regla segura de la sección 10;
+- la action modificaría una capacidad distinta de la mencionada, salvo una
+  dependencia documentada y necesaria.
+
+La forma lingüística de esa aclaración pertenece al contrato conversacional.
+
+## 9. Capacidades explícitamente excluidas
+
+El validador debe rechazar:
+
+- posiciones, geometría, selección, orden Z y propiedades genéricas del canvas;
+- fuentes, tamaños y colores genéricos;
+- layouts y estilos de objetos/secciones;
+- creación/eliminación genérica de objetos o secciones;
+- creación/eliminación/layout/presets de Gallery;
+- imágenes libres, biblioteca, URLs o metadata de media;
+- visibilidad/formato/preset del countdown;
+- visibilidad/formato del mapa y metadata precisa de Places;
+- formato de fecha/dirección;
+- texto/estilo genérico de CTAs;
+- código, comandos, Firestore, Storage, secrets o eventos arbitrarios.
+
+Los únicos side effects acotados de creación son los ya pertenecientes a owners
+existentes: CTA RSVP/Gifts al activar su root config y mapa oculto tras una
+selección local real de Places.
+
+## 10. Ledger, procedencia y completitud
+
+### 10.1 Estados
+
+| Estado | Semántica | Terminal |
+| --- | --- | --- |
+| `unavailable` | El control/binding no existe en este draft. | Fuera del denominador. |
+| `pending` | Existe pero no tiene valor/decisión confiable. | No. |
+| `needs_clarification` | Dato parcial, ambiguo o conflictivo. | No. |
+| `requires_control` | Requiere uploader/Gallery/Places local. | No. |
+| `resolved_from_user` | Informado o decidido explícitamente. | Sí. |
+| `resolved_from_existing_user_data` | Personalización previa demostrable. | Sí. |
+| `resolved_by_rule` | Regla segura versionada. | Sí. |
+| `resolved_by_control` | Control local aportó la evidencia exigida por su dominio: cambio funcional verificado o finalización explícita durable. | Sí. |
+| `not_applicable_by_dependency` | Parent terminal vuelve inoperante la hoja. | Sí. |
 
 ```text
-complete(draft) = every(value in A(draft), isTerminal(value.status))
+complete(draft) = every(available leaf, isTerminal(status))
 ```
 
-La pregunta “¿qué valores de Asistente todavía no fueron correctamente
-tratados?” se responde con todas las hojas no terminales. La conversación solo
-cierra cuando esa lista es vacía.
+Esa fórmula describe `ledger.completion.complete` y su completitud operacional
+total. El mismo ledger expone además:
 
-Dependencias relevantes:
+```text
+guidedComplete(draft) = every(ledger.guidedFlow.leafIds, isTerminal(status))
+```
 
-- Party queda no aplicable en `single`, pero vuelve a evaluarse si el modo cambia
-  a `ceremony_party`;
-- el texto de Dress Code queda no aplicable mientras Dress Code está apagado,
-  aunque se preserve su valor;
-- con RSVP apagado, la visibilidad funcional del CTA queda inactiva, pero
-  preguntas, orden y modal siguen siendo capacidades editables de Asistente. Si
-  el usuario decide no personalizarlas mientras RSVP está apagado, se resuelven
-  mediante la regla documentada de preservar su configuración normalizada, no
-  como `not_applicable_by_dependency`;
-- propiedades de una pregunta inactiva quedan no aplicables, sin borrar su
-  configuración;
-- opciones quedan no aplicables si el tipo no es `single_select`;
-- con Regalos apagado, el CTA queda inactivo, pero métodos, intro y texto del
-  botón siguen siendo editables. Una decisión de no personalizarlos los resuelve
-  mediante la regla de preservar su configuración normalizada;
-- ocultar un método resuelve su visibilidad; su valor conservado debe quedar
-  resuelto por una decisión previa o por la regla explícita de preservación, no
-  desaparecer del ledger;
-- la decisión de orden de Gallery solo aplica cuando hay al menos dos fotos
-  pobladas.
+`ledger.guidedFlow.leafIds` se deriva de los bloques de 5.1, dependencias,
+availability y medios realmente aplicables. Para Galleries contiene una hoja
+durable de finalización por Gallery, no sus slots. Excluye RSVP, historia, orden
+Gallery, fingerprints de contenido, slots y capabilities reactivas sin posición
+aprobada.
+`ledger.guidedFlow.completion.complete` es el único criterio ejecutable de cierre
+del recorrido principal; no marca esas otras hojas como completadas.
 
-Cambiar un parent reabre todas las hojas que vuelvan a ser aplicables. Un error
-de validación o de control nunca transforma una hoja en terminal.
+No existe completitud por “capability mencionada”, bloque visitado ni chat
+recorrido. Tanto la completitud total como la del recorrido deben derivarse de
+hojas aplicables y terminales después de releer el borrador.
 
-### 5.3 Procedencia de valores existentes
+### 10.2 Procedencia
 
-Un valor no vacío no es sinónimo de un dato real de la pareja. El planificador
-debe distinguir, sin enviar canvas completo:
+El ledger distingue:
 
-- `user_current_session`: informado o decidido en la conversación actual;
-- `existing_user_data`: personalización previa demostrable;
-- `automatic_rule`: producido por una regla de este contrato;
-- `system_default`: default estable del producto que una regla permite aceptar;
-- `template_value`: contenido heredado del diseño;
-- `placeholder_or_sample`: ejemplo, placeholder o dato demostrativo;
-- `unknown`: no hay evidencia suficiente de su origen.
+- `user_current_session`
+- `existing_user_data`
+- `automatic_rule`
+- `system_default`
+- `template_value`
+- `placeholder_or_sample`
+- `unknown`
 
-Son evidencia admisible la personalización ya registrada por los owners
-actuales, cambios explícitos del usuario y comparación con un baseline de
-template cuando exista. El historial del chat no puede contradecir el borrador.
-Si la procedencia no puede probarse, se clasifica como `unknown`, no como
-`existing_user_data`.
+Un valor no vacío no prueba personalización. `templateInput.changedKeys` puede
+aportar evidencia; valores de template/placeholders se mantienen no confiables.
+El historial no puede contradecir el borrador.
 
-Valores como `Borgoña · Floral contemporánea`, nombres de ejemplo, lugares de
-muestra, copy temático y fotos heredadas no se consideran personalizados por
-estar presentes. Nunca se inicia preguntando si se quiere conservar el nombre
-de la plantilla. Se reemplazan por una regla segura o se tratan dentro del
-bloque natural correspondiente.
+### 10.3 Reglas seguras versionadas
 
-Los defaults estables del sistema pueden cerrarse mediante reglas explícitas:
+Solo se aceptan estas reglas ejecutables:
 
-- la hora de fin opcional queda vacía si el usuario no indicó una;
-- el nombre opcional del lugar queda vacío si una dirección inequívoca basta;
-- labels, tipos, required y opciones del catálogo RSVP pueden conservar sus
-  defaults cuando el usuario acepta explícitamente un conjunto recomendado;
-- título, subtítulo, submit label y color iniciales de RSVP pueden conservar el
-  default del sistema si no fueron sustituidos por contenido de plantilla;
-- intro y texto funcional del botón de Regalos pueden conservar sus defaults del
-  sistema bajo el mismo criterio;
-- si el usuario decide mantener RSVP o Regalos apagado y no configurar ahora sus
-  opciones internas, la conversación puede preservar toda su configuración
-  normalizada mediante `resolved_by_rule`. Esta decisión se registra hoja por
-  hoja como `preserve_while_inactive`; no equivale a que esas capacidades no
-  existan. Si luego se activa la superficie, las hojas preservadas por esa regla
-  se reabren para confirmar o personalizar lo que pasa a ser visible.
+- `automatic_event_name`
+- `optional_end_time_omitted`
+- `optional_venue_name_omitted`
+- `same_day_party`
+- `catalog_defaults`
+- `system_default`
+- `preserve_while_inactive`
+- `keep_existing`
+- `leave_empty`
+- `recommended_order`
 
-Estas reglas reducen preguntas, pero cada aplicación debe dejar procedencia
-`resolved_by_rule`. No convierten cualquier contenido de plantilla en default de
-sistema.
+Cada regla se valida contra tipos de leaf compatibles. `preserve_while_inactive`
+no convierte RSVP/Gifts en inexistentes: al activarlos, las hojas internas se
+reabren. `not_applicable_by_dependency` también se revierte cuando cambia el
+parent.
 
-## 6. Regla automática para el nombre del evento
+### 10.4 Nombre automático del documento
 
-### 6.1 Fuentes y condición
-
-La regla usa los valores efectivos de `event_primary_person_name` y
-`event_secondary_person_name` leídos por el mismo bridge de nombres que utiliza
-Asistente. Los targets combinados (`event_couple_names_*`) son consumidores, no
-fuentes alternativas.
-
-Ambos nombres están suficientemente definidos cuando, después de trim y
-normalización de espacios:
-
-- cada uno contiene al menos un nombre identificable;
-- ninguno coincide con un placeholder, ejemplo o valor de template conocido;
-- no existe ambigüedad acerca de cuál corresponde a cada persona.
-
-No se exige apellido. Cuando ambos quedan resueltos, el nombre automático es:
+Con dos nombres reales, no placeholders y sin ambigüedad, la regla produce:
 
 ```text
 Casamiento {Nombre 1} y {Nombre 2}
 ```
 
-Ejemplo: `Casamiento Ana y Luz`.
-
-### 6.2 Momento de aplicación y prioridad
-
-La derivación se aplica en el mismo lote que completa o corrige ambos nombres,
-si el nombre vigente está vacío, es genérico/de template o continúa bajo la
-regla automática. Usa las acciones ya permitidas `event.set_people` y
-`document.set_name`; no requiere una acción nueva.
-
-La elección explícita del usuario tiene prioridad. Si pide “La fiesta de Ana y
-Luz”, `document.set_name` guarda ese texto y el nombre pasa a modo explícito. La
-regla automática existe para evitar una pregunta, no para quitar la capacidad
-de nombrar el borrador.
-
-### 6.3 Correcciones y sincronización
-
-Mientras el nombre esté gestionado por la regla, corregir cualquiera de los
-nombres debe recalcularlo en el mismo lote. Por ejemplo, cambiar `Luz` por
-`Lucía` produce `Casamiento Ana y Lucía`.
-
-Un nombre explícito nunca se sobreescribe al cambiar los nombres de las
-personas. La procedencia automática/explícita debe poder reconstruirse desde el
-borrador o metadata del owner del nombre, no solo desde el historial efímero. Un
-cambio manual del input `Nombre del evento` en Asistente se considera explícito.
-Asistente y Designer AI deben compartir esta política para que alternar tabs o
-recargar no rompa la sincronización.
-
-Si no hay procedencia persistida, solo es segura la actualización cuando el
-nombre actual coincide con el resultado automático calculado antes del cambio.
-En cualquier otro caso se preserva y se trata como explícito/ambiguo; nunca se
-sobrescribe por heurística destructiva.
-
-## 7. Estrategia conversacional
-
-### 7.1 Principios
-
-La conversación debe sentirse como acompañamiento breve para preparar la
-invitación, no como un formulario trasladado al chat:
-
-- preguntar por el evento y el resultado, no por campos o propiedades;
-- extraer todos los datos válidos de cada mensaje, aunque pertenezcan a varios
-  bloques;
-- aplicar en un único lote todas las acciones compatibles;
-- reconciliar el borrador y construir la pregunta siguiente desde las hojas que
-  realmente sigan no terminales;
-- no volver a preguntar un dato resuelto con suficiente certeza;
-- preguntar únicamente ante vacío, placeholder, procedencia incierta,
-  ambigüedad, dependencia reabierta o control pendiente;
-- confirmar brevemente lo que acaba de quedar resuelto y avanzar;
-- no mantener una secuencia fija ni un árbol de frases prefabricadas.
-
-La extracción no está limitada al tema de la pregunta. Si al preguntar por la
-ceremonia el usuario también informa fiesta, Dress Code y Regalos, se procesan
-todos esos datos.
-
-### 7.2 Bloques semánticos recomendados
-
-El orden es una prioridad adaptable, no un wizard rígido:
-
-| Bloque | Hojas que puede reunir | Criterio de pregunta |
-| --- | --- | --- |
-| Pareja y forma del evento | Ambos nombres; modo | Preguntar nombres juntos. Inferir el modo del relato o aclararlo en una frase corta. El nombre del borrador se deriva. |
-| Ceremonia o evento único | Fecha, inicio, fin opcional, lugar, dirección, Places | Pedir cuándo y dónde en una sola pregunta natural. La hora de fin no merece una pregunta aislada. |
-| Fiesta | Fecha, inicio, fin opcional, lugar, dirección, Places | Pedir los datos juntos; derivar misma fecha solo con contexto inequívoco. |
-| Información para invitados | Dress Code; story si existe | No mezclar ambos si exige una respuesta extensa. Resolver activación y contenido. |
-| Asistencia | Activación; conjunto/orden/configuración de preguntas; modal | Primero decidir si habrá RSVP. Si sí, ofrecer un conjunto razonable y permitir describir ajustes en lenguaje natural. |
-| Regalos | Activación; métodos/visibilidad; intro; botón | Primero decidir si se mostrará. Si sí, pedir los medios relacionados juntos y aplicar defaults documentados cuando corresponda. |
-| Imágenes | Portada existente; slots y orden de cada Gallery | Ofrecer el control para una superficie a la vez. Preguntar conservar/reemplazar solo cuando la procedencia actual no sea de usuario. |
-
-Normalmente una intervención pregunta por un bloque. Puede combinar dos bloques
-estrechamente relacionados si la frase sigue siendo corta —por ejemplo, nombres
-y panorama de ceremonia—, pero no enumera una lista extensa de temas. La menor
-cantidad razonable de intercambios se obtiene extrayendo bien las respuestas, no
-apilando todo en una sola pregunta.
-
-### 7.3 Planificación de la próxima pregunta
-
-Después de cada respuesta:
-
-1. interpretar el mensaje completo contra todas las capacidades disponibles;
-2. resolver referencias con borrador + últimos turnos, dando prioridad al
-   borrador;
-3. prevalidar y aplicar todas las acciones válidas juntas;
-4. releer el borrador y reconciliar el ledger hoja por hoja;
-5. confirmar solo los cambios relevantes del turno;
-6. seleccionar el bloque de mayor prioridad que aún contenga hojas no
-   terminales;
-7. formular una pregunta breve que pueda resolver varias hojas relacionadas;
-8. si no queda ninguna, cerrar.
-
-No se marca como cubierta una capacidad solo porque el usuario cambió de tema.
-“Después vemos las fotos” mantiene sus hojas pendientes; “dejemos las fotos como
-están” puede resolverlas si el usuario acaba de tomar una decisión informada
-sobre las fotos visibles.
-
-### 7.4 Confirmaciones
-
-Las confirmaciones son proporcionales y enlazan naturalmente con lo siguiente:
-
-- `Listo, ceremonia el 14 de noviembre a las 18 y fiesta a las 21. ¿Quieren indicar algún dress code?`
-- `Perfecto, ya quedó.`
-- `Bien, dejamos elegante sport. Ahora vemos la confirmación de asistencia.`
-
-No se listan action types, IDs ni estados internos. Tampoco se repite toda la
-información acumulada en cada turno.
-
-## 8. Controles especiales
-
-No todo se resuelve escribiendo. La conversación conduce al control real y
-mantiene uno solo activo a la vez:
-
-- `Nos falta la portada. Elegí la foto que quieran usar.` abre el uploader de
-  portada existente;
-- `Ahora pueden elegir la foto para la segunda celda de la galería.` monta el
-  flujo Gallery acotado al `galleryId` y slot vigentes;
-- `Para ubicarlo con precisión, elegí una sugerencia del lugar.` monta el bloque
-  actual de Google Places para Ceremony o Party.
-
-Al completar o cerrar el control, Designer AI relee el borrador. Solo el cambio
-real reflejado produce `resolved_by_control`; abrir el control no basta. Uploads,
-assets, URLs y metadata de Places no se incorporan a OpenAI.
-
-Estos montajes no agregan `data-assistant-tour-*`, anchors, substeps de tour ni
-lógica de navegación. Abrir Designer AI mantiene `assistantActive=false` y el
-Guided Tour recibe `mounted:false`.
-
-## 9. Correcciones posteriores y conflictos
-
-El usuario puede corregir cualquier valor autorizado aunque estuviera terminal:
-
-- `Al final la fiesta empieza a las 21:30` actualiza solo ese horario;
-- `Mejor no mostremos el CUIT` cambia su visibilidad y preserva el valor;
-- `Sumemos una pregunta por transporte` activa/configura la pregunta existente;
-- `Prefiero que se llame Nuestra fiesta` vuelve explícito el nombre del evento.
-
-La corrección invalida la resolución anterior, se aplica por el owner existente
-y vuelve a terminal solo después de releer el borrador. Si afecta dependencias,
-se reabre lo necesario: activar Party vuelve pendientes sus datos; cambiar una
-pregunta a `single_select` abre la resolución de opciones; activar Regalos exige
-al menos un método visible y completo.
-
-Ante dos interpretaciones plausibles, no se elige silenciosamente: se confirma
-solo la ambigüedad concreta. Nunca se deshacen valores no mencionados.
-
-## 10. Tono, inicio, fuera de alcance y cierre
-
-### 10.1 Voz
-
-La voz de Reserva el Día es cálida, simple, cercana, tranquila, contemporánea y
-segura. La tecnología queda en segundo plano. Se habla de la pareja, el evento,
-los invitados y la invitación; no de campos, snapshots, tools, acciones o
-allowlists.
-
-Se evitan emojis, exclamaciones repetidas, elogios automáticos, diminutivos
-forzados, romanticismo excesivo y clichés como “el día más mágico”, “amor
-eterno” o “hacer realidad sus sueños”.
-
-### 10.2 Inicio recomendado
-
-El primer turno visible siempre incluye una bienvenida breve y la primera
-pregunta adaptada a lo que realmente falta. Formulación base:
-
-> Hola, vamos a darle forma a su invitación. Yo los voy guiando y la dejamos
-> lista a medida que avanzamos. Para empezar, ¿cómo se llaman y cuándo y dónde es
-> la ceremonia?
-
-Si nombres o Ceremony ya son datos personalizados confiables, la segunda frase
-pregunta por el primer bloque pendiente en lugar de repetirlos. Nunca comienza
-leyendo un nombre técnico/heredado, preguntando si se conserva la plantilla,
-explicando que es una IA o enumerando capacidades.
-
-### 10.3 Fuera de alcance
-
-El límite técnico permanece intacto, pero la respuesta es natural:
-
-> Ese cambio de tipografía se hace desde el editor. Por acá puedo ayudarte con
-> los datos del evento, la asistencia, los regalos y las fotos que ya están en la
-> invitación. Nos quedaba definir el dress code, ¿quieren indicar alguno?
-
-La respuesta no menciona “acción inválida” ni “fuera de la allowlist”. Si el
-mismo mensaje contiene además datos válidos, esos datos se aplican; se rechaza
-solo la parte fuera de alcance y se continúa con el flujo pendiente.
-
-### 10.4 Cierre
-
-Cuando y solo cuando el ledger no contiene hojas disponibles no terminales:
-
-> Listo, ya tenemos todo. La información de la invitación quedó preparada. Si
-> después quieren cambiar algo, pueden volver por acá.
-
-No se generan preguntas artificiales, recomendaciones adicionales ni una
-revisión de todo el formulario.
-
-## 11. Ejemplos normativos
-
-Los textos son ejemplos de dinámica, no un catálogo rígido de respuestas.
-
-### 11.1 Mucha información en un solo mensaje
-
-Contexto: el borrador tiene bindings de Ceremony, Party, Dress Code e Historia;
-una portada de template, una Gallery de tres slots, RSVP y Regalos.
-
-**Diseñador AI**
-
-> Hola, vamos a darle forma a su invitación. Yo los voy guiando y la dejamos
-> lista a medida que avanzamos. ¿Cómo se llaman y cuándo y dónde es la ceremonia?
-
-**Usuario**
-
-> Somos Ana y Luz. Nos casamos el 14 de noviembre de 2026 a las 18 en la
-> Parroquia San José, Diego Palma 215, San Isidro. Después festejamos a las 21 en
-> Estancia La Linda, Ruta 8 km 47. El dress code es elegante sport.
-
-**Diseñador AI**
-
-> Listo: ceremonia el 14 de noviembre a las 18 y fiesta ese día a las 21. Dejamos
-> elegante sport. ¿Quieren sumar un texto breve sobre ustedes en la invitación?
-
-Resultado del turno, sin exponerlo en el chat: resuelve ambos nombres, deriva
-`Casamiento Ana y Luz`, infiere `ceremony_party`, aplica fecha/horarios/lugares y
-activa Dress Code. Las horas de fin quedan vacías por la regla opcional. Si las
-direcciones requieren precisión cartográfica, el control Places se ofrece antes
-de dar cada ubicación por resuelta.
-
-**Usuario**
-
-> No, dejemos la historia vacía. Sí queremos confirmación: solo nombre y apellido,
-> asistencia, cantidad de personas y alergias. Nombre y asistencia obligatorios;
-> el resto opcional. Dejemos los textos estándar del formulario.
-
-**Diseñador AI**
-
-> Perfecto, la confirmación quedó con esas cuatro preguntas. ¿Quieren mostrar
-> opciones de regalo?
-
-La palabra “solo” resuelve también la inactividad de todo el resto del catálogo;
-los labels, tipos, opciones y modal estándar quedan `resolved_by_rule` según la
-elección explícita.
-
-**Usuario**
-
-> Sí. Mostremos alias `ANA.LUZ`, CBU `0000000000000000000000` y titular Ana Pérez.
-> Ocultemos banco, CUIT y lista externa. El texto introductorio puede quedar como
-> está y el botón que diga “Ver regalos”.
-
-**Diseñador AI**
-
-> Bien, ya quedaron listos los datos de regalos. Nos falta elegir las imágenes.
-> Empecemos por la portada.
-
-**Control local de portada**
-
-> La pareja elige y sube una foto. El borrador refleja la nueva portada.
-
-**Diseñador AI**
-
-> Portada lista. Ahora elijan las tres fotos de la galería; después pueden
-> ordenarlas como prefieran.
-
-**Control local de Gallery**
-
-> La pareja completa los tres slots y ordena las fotos. El borrador refleja las
-> mutaciones de la Gallery existente.
-
-**Diseñador AI**
-
-> Listo, ya tenemos todo. La información de la invitación quedó preparada. Si
-> después quieren cambiar algo, pueden volver por acá.
-
-### 11.2 Respuestas progresivas
-
-Contexto: invitación de evento único, sin binding de Historia ni superficies de
-Fotos. RSVP y Regalos todavía no tienen decisiones de usuario.
-
-**Diseñador AI**
-
-> Hola, vamos a preparar su invitación de a poco. ¿Cómo se llaman?
-
-**Usuario**
-
-> Martina y Juan.
-
-**Diseñador AI**
-
-> Perfecto, ya quedó a nombre de Martina y Juan. ¿Cuándo y dónde es el evento?
-
-El borrador se llama automáticamente `Casamiento Martina y Juan`.
-
-**Usuario**
-
-> El 6 de marzo de 2027.
-
-**Diseñador AI**
-
-> Anotado el 6 de marzo. ¿A qué hora empieza y en qué lugar es?
-
-**Usuario**
-
-> A las ocho de la noche, en Salón del Río.
-
-**Diseñador AI**
-
-> Listo, empieza a las 20. Me falta la dirección del salón.
-
-**Usuario**
-
-> Costanera 450, Rosario. No vamos a poner dress code.
-
-**Diseñador AI**
-
-> Bien, ya quedó la ubicación y no mostramos dress code. ¿Quieren pedir
-> confirmación de asistencia?
-
-**Usuario**
-
-> No, ni confirmación ni regalos.
-
-**Diseñador AI**
-
-> Listo, ya tenemos todo. La información de la invitación quedó preparada. Si
-> después quieren cambiar algo, pueden volver por acá.
-
-La ausencia de Historia/Fotos no genera preguntas; esas hojas están
-`unavailable`. Desactivar RSVP y Regalos, junto con la decisión de no
-personalizarlos por ahora, resuelve sus configuraciones hoja por hoja mediante
-la regla `preserve_while_inactive`, sin recorrerlas una por una. No las clasifica
-como inexistentes: si luego se activan, vuelven a evaluarse.
-
-### 11.3 Corrección y pedido fuera de alcance
-
-**Usuario**
-
-> Al final la fiesta es a las 21:30 y quiero poner todos los textos en dorado.
-
-**Diseñador AI**
-
-> Listo, la fiesta empieza a las 21:30. El color de los textos se cambia desde el
-> editor. Por acá seguimos con los datos de la invitación; nos falta definir si
-> quieren mostrar opciones de regalo.
-
-La acción válida se aplica y la parte fuera de alcance se rechaza sin perder el
-hilo ni ampliar capacidades.
-
-## 12. Implementación vigente del contrato
-
-El runtime implementa este contrato mediante una sola capa compartida:
-
-- `shared/designerAiConversationLedger.cjs` enumera las hojas estructurales,
-  estados, procedencias, dependencias, reglas terminales, bloques y política de
-  nombre. Functions recibe una copia mecánica por el sincronizador existente;
-- `buildDesignerAiCapabilitySnapshot` relee los bridges vigentes y construye el
-  ledger. La revisión incluye valores mínimos, fingerprints y resoluciones; no
-  existe cobertura por IDs agregados ni `coveredCapabilityIds`;
-- `DesignerAiPanel` pre-valida el lote, lo aplica por el executor existente,
-  relee el borrador y recién entonces reconcilia y persiste metadata. Un control
-  local solo resuelve su hoja cuando cambia el fingerprint real del target;
-- `designerAiChat` interpreta todas las hojas del mensaje, devuelve acciones y
-  resoluciones estructuradas, y vuelve a validarlas. El brief prioriza el primer
-  bloque con hojas no terminales, no un paso fijo;
-- `designerAiConversation` persiste baseline, procedencia, reglas y la política
-  automática/explícita del nombre, pero no duplica valores, canvas ni chat;
-- al resolver o corregir ambos nombres, backend agrega
-  `document.set_name` con `Casamiento {Nombre 1} y {Nombre 2}` solo cuando la
-  política lo permite. Las ediciones manuales del nombre quedan explícitas y las
-  ediciones de nombres en Asistente recalculan el nombre mientras siga automático.
-
-La versión del protocolo de snapshot/resoluciones es `2.0.0`. La lista y los
-shapes de acciones autorizadas permanecen sin cambios.
-
-## 13. Autorización, OpenAI e aislamiento
-
-La visibilidad frontend requiere `loadingAdminAccess === false`,
-`isSuperAdmin === true`, sesión `draft`, estado editable y no selector. Perder
-una condición desmonta el panel. El callable ejecuta `requireSuperAdmin` antes de
-procesar payload o secret.
-
-Solo Functions importa el SDK oficial `openai`. `designerAiChat` usa
-`defineSecret("OPENAI_API_KEY")`, Responses API, `store:false`, una función
-estricta y sin `previous_response_id`. El navegador nunca recibe SDK ni key.
-
-El contexto remoto contiene únicamente valores relevantes, disponibilidad,
-procedencia mínima necesaria y ledger de completitud. No contiene objetos,
-secciones, canvas, geometría, media URLs, paths/tokens de Storage ni metadata de
-Firestore. Los logs no contienen prompts, valores privados, chat ni secrets.
-
-Diseñador AI no participa del Guided Tour: no agrega
-`data-assistant-tour-*`, steps, anchors, targets, preferencias, observers ni
-overlay. Asistente conserva su navegación, markup y comportamiento.
-
-## 14. Criterios de verificación documental para una implementación futura
-
-Una implementación cumple este contrato cuando puede demostrar:
-
-1. paridad entre cada hoja disponible del inventario de Asistente y su vía
-   conversacional/control;
-2. procedencia que no confunde datos de template con datos de usuario;
-3. aplicación automática y sincronización segura del nombre del evento;
-4. extracción multiacción de una sola respuesta;
-5. selección de la próxima pregunta desde el ledger reconciliado, no desde una
-   secuencia rígida;
-6. cierre solo con cero hojas no terminales;
-7. correcciones que reabren dependencias y preservan valores no mencionados;
-8. controles locales para Places y media sin datos sensibles en OpenAI;
-9. rechazo natural de pedidos fuera de alcance;
-10. ausencia de regresiones en Asistente, persistencia y Guided Tour.
-
-Anclas actuales de código y tests:
+Se aplica solo si el nombre está vacío, proviene de template/placeholder o sigue
+bajo política `automatic`. Un nombre explícito nunca se sobreescribe. Mientras
+la política sea automática, corregir una persona recalcula el nombre. Sin
+procedencia persistida, solo es segura la actualización si el nombre actual
+coincide con el resultado automático anterior.
+
+## 11. Correcciones y evidencia de ejecución
+
+- Cualquier valor autorizado puede corregirse aunque fuera terminal.
+- No se deshacen valores no mencionados.
+- Cambiar un parent reabre dependencias que vuelven a aplicar.
+- Una action propuesta no es evidencia de ejecución.
+- El panel solo confirma éxito después de validación, ejecución y reread.
+- Una revisión distinta entre request y respuesta cancela el lote completo antes
+  de aplicar.
+- Un control solo resuelve por la evidencia propia de su dominio: cambio de
+  fingerprint para portada; confirmación explícita y persistida para la Gallery
+  exacta; o coincidencia exacta de `placeId`, lugar y dirección seleccionados
+  para Places, más la misma phase reflejada en el snapshot de capabilities. Los
+  fingerprints de contenido/orden de una Gallery no son evidencia de
+  finalización. La metadata se compara localmente y no llega a OpenAI. La
+  evidencia de una Gallery, Ceremony o Party no se generaliza a otra.
+- Un error no vuelve terminal una hoja pendiente.
+
+La política textual de confirmaciones, errores y negativas está en
+`AI_ASSISTANT_CONVERSATION_CONTRACT.md`.
+
+## 12. Implementación y arquitectura
+
+El flujo ejecutable actual es:
+
+1. `DesignerAiPanel.jsx` relee snapshot y ledger.
+2. `designerAiChat` autoriza superadmin y valida payload.
+3. OpenAI devuelve una única `submit_designer_ai_result` estricta.
+4. Backend valida resultado; frontend valida revisión, actions, controles y
+   resolutions otra vez.
+5. `designerAiActionExecutor.js` delega en owners existentes.
+6. El panel relee, reconcilia y persiste `designerAiConversation`.
+
+La arquitectura completa, incluido el límite client-side de tools, está en
+`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.2.0`; el ledger
+usa versión `3`. La versión 3 agrega una finalización durable por Gallery dentro
+de `designerAiConversation.resolutions`. Un draft legacy sin esa resolución
+conserva sus fotos, pero la Gallery queda pendiente hasta la primera finalización
+explícita; no se infiere completitud por diferencias contra la plantilla.
+
+## 13. Conocimiento funcional: rutas canónicas
+
+Este contrato declara accesibilidad, no reescribe la funcionalidad del producto.
+
+| Superficie | Autoridad que continúa gobernando cómo funciona |
+| --- | --- |
+| Draft, metadata, fields dinámicos, `eventDetails`, RSVP | [DATA_MODEL.md](../architecture/DATA_MODEL.md) y owners de dominio. |
+| Regalos | [GIFTS_SYSTEM_CONTRACT.md](GIFTS_SYSTEM_CONTRACT.md) como entry point; [DATA_MODEL.md](../architecture/DATA_MODEL.md) para shape y [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) para CTA/modal. |
+| Editor/bridges/persistencia | [EDITOR_SYSTEM.md](../architecture/EDITOR_SYSTEM.md). |
+| Gallery | [GALLERY_SYSTEM_CONTRACT.md](GALLERY_SYSTEM_CONTRACT.md) y contratos enfocados. |
+| Portada/roles de imagen | [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). |
+| CTA RSVP/Gifts y publicación | [PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md](PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md). |
+| Countdown/mapa/render | [DATA_MODEL.md](../architecture/DATA_MODEL.md) y [RENDER_COMPATIBILITY_MATRIX.md](RENDER_COMPATIBILITY_MATRIX.md). |
+| Interacción genérica del canvas | [INTERACTION_CONTRACT.md](../architecture/INTERACTION_CONTRACT.md); fuera de alcance V1. |
+
+Si una funcionalidad cambia, se actualiza primero su owner. Este contrato solo se
+actualiza además si cambia la porción accesible para Designer AI.
+
+## 14. Anclas de código y tests
+
+Código:
 
 - `src/domain/editor/assistantMode.js`
 - `src/domain/editor/assistantSubsteps.js`
-- `src/components/MiniToolbarTabDetallesEvento.jsx`
-- `src/components/MiniToolbarTabTexto.jsx`
-- `src/components/MiniToolbarTabImagen.jsx`
-- `src/components/MiniToolbarTabRsvp.jsx`
-- `src/components/MiniToolbarTabRegalos.jsx`
 - `src/domain/editor/designerAiCapabilities.js`
 - `src/domain/editor/designerAiActionExecutor.js`
 - `shared/designerAiCapabilityContract.cjs`
+- `shared/designerAiConversationLedger.cjs`
 - `functions/src/designerAi/service.ts`
+- `src/components/editor/designerAi/DesignerAiPanel.jsx`
+
+Tests:
+
 - `shared/designerAiCapabilityContract.test.mjs`
+- `shared/designerAiConversationLedger.test.mjs`
 - `src/domain/editor/designerAiCapabilities.test.mjs`
 - `src/domain/editor/designerAiActionExecutor.test.mjs`
+- `src/domain/editor/designerAiNamePolicyIntegration.test.mjs`
 - `functions/designerAiService.test.mjs`
-- Assistant/Guided Tour anchors de `GUIDED_TOUR_SYSTEM.md`
+
+## 15. Regla de cambio
+
+Una ampliación de capability requiere en el mismo cambio:
+
+1. owner funcional y documentación canónica del dominio;
+2. availability/values mínimos del snapshot;
+3. action/control y schema compartido, sin setters genéricos;
+4. validación backend/frontend contra identidad vigente;
+5. adaptación del executor al owner existente;
+6. leaves, dependencias y procedencia del ledger;
+7. tests positivos, negativos, ambiguos, stale y de error;
+8. actualización de este contrato y de `AI_ASSISTANT_SYSTEM.md` si cambia una
+   frontera técnica.
+
+El contrato conversacional se modifica solo si cambia cómo debe comunicarse esa
+capacidad; no se duplica esa regla aquí.

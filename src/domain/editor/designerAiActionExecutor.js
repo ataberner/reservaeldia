@@ -16,7 +16,7 @@ import {
 import { readEditorRenderSnapshot } from "../../lib/editorSnapshotAdapter.js";
 import { EVENT_DETAIL_FEATURES } from "../eventDetails/features.js";
 import { resolveEventDateSidebarBinding } from "../eventDetails/date.js";
-import { resolveEventLocationFromAuthoring } from "../eventDetails/location.js";
+import { applyManualEventLocationText } from "../eventDetails/locationAuthoring.js";
 import { resolveDressCodeSidebarBinding, resolveStoryTextSidebarBinding } from "../templates/storyText.js";
 import { moveGalleryPhotoToSlot } from "../gallery/galleryMutations.js";
 import {
@@ -156,23 +156,12 @@ async function executeEventAction(action, targetWindow) {
     const feature = args.phase === "party"
       ? EVENT_DETAIL_FEATURES.PARTY
       : EVENT_DETAIL_FEATURES.CEREMONY;
-    const snapshot = readAuthoringSnapshot(targetWindow);
-    const objects = readEditorObjects(targetWindow);
-    const current = resolveEventLocationFromAuthoring({
-      fieldsSchema: snapshot.fieldsSchema,
-      defaults: snapshot.defaults,
-      objetos: objects,
+    await applyManualEventLocationText({
+      targetWindow,
       feature,
+      venueName: args.venueName,
+      address: args.address,
     });
-    await requireBridgeMethod("updateTemplateAuthoringEventLocation", targetWindow)(
-      {
-        ...current,
-        venueName: args.venueName,
-        address: args.address,
-        eventDetailsFeature: feature,
-      },
-      { feature }
-    );
     return;
   }
 

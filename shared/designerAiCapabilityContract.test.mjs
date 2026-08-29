@@ -28,7 +28,7 @@ const snapshot = sanitizeCapabilitySnapshot({
 });
 
 test("the versioned allowlist keeps model and trusted-control actions disjoint", () => {
-  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.0.0");
+  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.2.0");
   assert.equal(new Set([...DESIGNER_AI_MODEL_ACTION_TYPES, ...DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES]).size,
     DESIGNER_AI_MODEL_ACTION_TYPES.length + DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES.length);
 });
@@ -100,14 +100,24 @@ test("validates leaf resolutions against the current ledger", () => {
     ...snapshot,
     ledger: {
       version: 1,
-      leaves: [{
-        id: "event.people.primary_name",
-        block: "couple",
-        status: "pending",
-        provenance: "unknown",
-        rule: null,
-        fingerprint: "fp-1",
-      }],
+      leaves: [
+        {
+          id: "event.people.primary_name",
+          block: "couple",
+          status: "pending",
+          provenance: "unknown",
+          rule: null,
+          fingerprint: "fp-1",
+        },
+        {
+          id: "media.gallery.gallery-1.guided_completion",
+          block: "galleries",
+          status: "requires_control",
+          provenance: "unknown",
+          rule: null,
+          fingerprint: "fp-gallery-1",
+        },
+      ],
     },
   });
   assert.equal(validateDesignerAiResolutionUpdates([{
@@ -129,6 +139,16 @@ test("validates leaf resolutions against the current ledger", () => {
     leafId: "event.people.primary_name",
     status: "resolved_by_rule",
     rule: "optional_end_time_omitted",
+  }], ledgerSnapshot).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates([{
+    leafId: "media.gallery.gallery-1.guided_completion",
+    status: "requires_control",
+    rule: null,
+  }], ledgerSnapshot).ok, true);
+  assert.equal(validateDesignerAiResolutionUpdates([{
+    leafId: "media.gallery.gallery-1.guided_completion",
+    status: "resolved_from_user",
+    rule: null,
   }], ledgerSnapshot).ok, false);
 });
 
@@ -198,6 +218,17 @@ test("validates RSVP option mutations in deterministic batch order", () => {
     origin: DESIGNER_AI_ACTION_ORIGINS.MODEL,
     snapshot: rsvpSnapshot,
   }).ok, false);
+});
+
+test("RSVP remains callable for an explicit supported request", () => {
+  const result = validateDesignerAiActionBatch([{
+    type: "rsvp.set_enabled",
+    arguments: { enabled: true },
+  }], {
+    origin: DESIGNER_AI_ACTION_ORIGINS.MODEL,
+    snapshot,
+  });
+  assert.deepEqual(result, { ok: true, errors: [] });
 });
 
 test("gift-list snapshot reveals presence but not its URL and visibility-only actions preserve value", () => {

@@ -9,6 +9,8 @@ Alcance: esta documentación describe el sistema de visita guiada del Asistente 
 - Índice y convenciones de documentación: [DOCUMENTATION_INDEX.md](../DOCUMENTATION_INDEX.md)
 - Arquitectura general del producto, borradores, plantillas y editor: [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md)
 - Sistema del editor y contrato de ownership del Assistant Guided Tour: [EDITOR_SYSTEM.md](EDITOR_SYSTEM.md)
+- Arquitectura técnica de Diseñador AI y frontera explícita con este tour: [AI_ASSISTANT_SYSTEM.md](AI_ASSISTANT_SYSTEM.md)
+- Capabilities de Diseñador AI: [DESIGNER_AI_CAPABILITY_CONTRACT.md](../contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md)
 - Estado actual del sistema de interacción: [INTERACTION_SYSTEM_CURRENT_STATE.md](INTERACTION_SYSTEM_CURRENT_STATE.md)
 - Modelo de datos: [DATA_MODEL.md](DATA_MODEL.md)
 - Análisis del sistema de preview: [PREVIEW_SYSTEM_ANALYSIS.md](PREVIEW_SYSTEM_ANALYSIS.md)
@@ -17,6 +19,11 @@ Alcance: esta documentación describe el sistema de visita guiada del Asistente 
 - Mapa de fragilidad sistémica: [SYSTEM_FRAGILITY_MAP.md](SYSTEM_FRAGILITY_MAP.md)
 
 Esta página no duplica esos contratos. Cuando el guided tour toca carga de borradores, persistencia del editor, preview o publicación, esos documentos siguen siendo la fuente canónica.
+
+`Diseñador AI` no es una fase ni una variante de este tour. Al abrir ese tab se
+desactiva `assistantActive`, el tour queda desmontado y los controles reutilizados
+no deben exponer `data-assistant-tour-*`. Su conversación, tools y arquitectura
+se documentan fuera de esta página.
 
 ## Resumen ejecutivo
 

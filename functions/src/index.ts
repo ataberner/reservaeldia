@@ -159,6 +159,8 @@ import { generarHTMLDesdeSecciones } from "./utils/generarHTMLDesdeSecciones";
 import * as logger from "firebase-functions/logger";
 import {
   DesignerAiServiceError,
+  buildDesignerAiClientCompatibilityResponse,
+  buildDesignerAiErrorDetails,
   createDesignerAiOpenAiClient,
   interpretDesignerAiChat,
 } from "./designerAi/service";
@@ -3026,6 +3028,22 @@ function escapeHTML(text: string): string {
  * Solo interpreta acciones de la allowlist. Las mutaciones ocurren en el
  * editor mediante sus bridges y persistencia existentes.
  */
+async function readDesignerAiRegisteredFirstName(uid: string): Promise<string | null> {
+  try {
+    const profileSnap = await db.collection("usuarios").doc(uid).get();
+    const profile = extractProfileFromDocData(
+      profileSnap.exists ? profileSnap.data() : null
+    );
+    return profile.nombre;
+  } catch (error) {
+    logger.warn("No se pudo obtener el nombre mínimo para Diseñador AI", {
+      uid,
+      error,
+    });
+    return null;
+  }
+}
+
 export const designerAiChat = onCall(
   {
     region: "us-central1",
@@ -3039,6 +3057,17 @@ export const designerAiChat = onCall(
     const startedAt = Date.now();
 
     try {
+      const compatibilityResponse = buildDesignerAiClientCompatibilityResponse(
+        request.data
+      );
+      if (compatibilityResponse) {
+        logger.info("designerAiChat solicitó recarga por versión incompatible", {
+          uid,
+          contractVersion: compatibilityResponse.contractVersion,
+          batchId: compatibilityResponse.batchId,
+        });
+        return compatibilityResponse;
+      }
       let secretValue = "";
       try {
         secretValue = openAiApiKey.value();
@@ -3049,14 +3078,17 @@ export const designerAiChat = onCall(
         );
       }
       const client = createDesignerAiOpenAiClient(secretValue);
+      const registeredFirstName = await readDesignerAiRegisteredFirstName(uid);
       const result = await interpretDesignerAiChat({
         payload: request.data,
         client,
+        userContext: { registeredFirstName },
       });
       const {
         traceId,
         openAiRequestId,
         latencyMs,
+        repairCount,
         ...publicResult
       } = result;
       logger.info("designerAiChat completado", {
@@ -3067,32 +3099,39 @@ export const designerAiChat = onCall(
         result: publicResult.intent,
         actionCount: publicResult.actions.length,
         controlRequested: Boolean(publicResult.controlRequest),
+        repairCount,
         openAiRequestId,
       });
       return publicResult;
     } catch (error) {
       const serviceError = error instanceof DesignerAiServiceError ? error : null;
+      const errorDetails = buildDesignerAiErrorDetails(
+        serviceError,
+        fallbackTraceId
+      );
       logger.error("designerAiChat falló", {
         uid,
         traceId: fallbackTraceId,
         latencyMs: Math.max(0, Date.now() - startedAt),
         result: serviceError?.kind || "unknown",
+        failureReason: serviceError?.message || null,
+        referenceId: errorDetails.referenceId,
         openAiRequestId: serviceError?.openAiRequestId || null,
       });
 
       if (serviceError?.kind === "invalid-payload") {
-        throw new HttpsError("invalid-argument", "La solicitud de Diseñador AI es inválida.");
+        throw new HttpsError("invalid-argument", "La solicitud de Diseñador AI es inválida.", errorDetails);
       }
       if (serviceError?.kind === "missing-secret") {
-        throw new HttpsError("failed-precondition", "Diseñador AI no está configurado.");
+        throw new HttpsError("failed-precondition", "Diseñador AI no está configurado.", errorDetails);
       }
       if (serviceError?.kind === "timeout") {
-        throw new HttpsError("deadline-exceeded", "Diseñador AI excedió el tiempo de respuesta.");
+        throw new HttpsError("deadline-exceeded", "Diseñador AI excedió el tiempo de respuesta.", errorDetails);
       }
       if (serviceError?.kind === "rate-limit") {
-        throw new HttpsError("resource-exhausted", "Diseñador AI alcanzó su límite temporal.");
+        throw new HttpsError("resource-exhausted", "Diseñador AI alcanzó su límite temporal.", errorDetails);
       }
-      throw new HttpsError("internal", "Diseñador AI no pudo procesar la solicitud.");
+      throw new HttpsError("internal", "Diseñador AI no pudo procesar la solicitud.", errorDetails);
     }
   }
 );

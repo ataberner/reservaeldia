@@ -1,4 +1,4 @@
-const LEDGER_VERSION = 1;
+const LEDGER_VERSION = 3;
 
 const DESIGNER_AI_LEDGER_STATUSES = Object.freeze({
   UNAVAILABLE: "unavailable",
@@ -43,15 +43,19 @@ const TERMINAL_STATUSES = new Set([
   DESIGNER_AI_LEDGER_STATUSES.NOT_APPLICABLE_BY_DEPENDENCY,
 ]);
 
-const CONVERSATION_BLOCKS = Object.freeze([
-  { id: "couple", label: "pareja y forma del evento", prefixes: ["event.people.", "event.mode", "document.name"] },
-  { id: "ceremony", label: "fecha, horarios y lugar de la ceremonia o evento", prefixes: ["event.ceremony."] },
-  { id: "party", label: "fecha, horarios y lugar de la fiesta", prefixes: ["event.party."] },
-  { id: "guest_info", label: "informacion para invitados", prefixes: ["event.dress_code.", "story.text"] },
-  { id: "rsvp", label: "confirmacion de asistencia", prefixes: ["rsvp."] },
-  { id: "gifts", label: "regalos", prefixes: ["gifts."] },
-  { id: "media", label: "portada y galerias existentes", prefixes: ["media."] },
+const GUIDED_FLOW_BLOCKS = Object.freeze([
+  { id: "names", label: "nombres de quienes se casan" },
+  { id: "event_structure", label: "estructura del evento" },
+  { id: "event_data", label: "fecha, horarios y lugares del evento" },
+  { id: "gifts", label: "regalos" },
+  { id: "dress_code", label: "dress code" },
+  { id: "cover", label: "foto de portada" },
+  { id: "galleries", label: "fotos de Galleries" },
 ]);
+
+// Alias conservado para consumidores existentes. Esta lista es la única
+// prioridad ejecutable del recorrido guiado.
+const CONVERSATION_BLOCKS = GUIDED_FLOW_BLOCKS;
 
 const RSVP_SYSTEM_DEFAULTS = Object.freeze({
   modalTitle: "Confirmar asistencia",
@@ -81,6 +85,13 @@ function asRecord(value) {
 
 function normalizeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function buildDesignerAiGalleryCompletionLeafId(galleryId) {
+  const normalizedGalleryId = normalizeText(galleryId);
+  return normalizedGalleryId
+    ? `media.gallery.${normalizedGalleryId}.guided_completion`
+    : "";
 }
 
 function fingerprint(value) {
@@ -127,6 +138,7 @@ function buildAutomaticEventName(primaryName, secondaryName) {
 function normalizeDesignerAiConversationState(value) {
   const source = asRecord(value);
   const namePolicySource = asRecord(source.namePolicy);
+  const usageSource = asRecord(source.usage);
   const mode = ["automatic", "explicit", "unknown"].includes(namePolicySource.mode)
     ? namePolicySource.mode
     : "unknown";
@@ -152,12 +164,30 @@ function normalizeDesignerAiConversationState(value) {
     }));
   return {
     version: LEDGER_VERSION,
+    usage: {
+      hasStarted: usageSource.hasStarted === true,
+    },
     namePolicy: {
       mode,
       lastAutomaticName: normalizeText(namePolicySource.lastAutomaticName).slice(0, 120),
     },
     baseline,
     resolutions,
+  };
+}
+
+function prepareDesignerAiConversationEntry(value) {
+  const requestState = normalizeDesignerAiConversationState(value);
+  const entryMode = requestState.usage.hasStarted === true
+    ? "reentry"
+    : "first_entry";
+  return {
+    entryMode,
+    requestState,
+    persistedState: normalizeDesignerAiConversationState({
+      ...requestState,
+      usage: { hasStarted: true },
+    }),
   };
 }
 
@@ -257,6 +287,74 @@ function applyDependency(leaf, dependencyResolved, applicable) {
   return { ...leaf, status: DESIGNER_AI_LEDGER_STATUSES.NOT_APPLICABLE_BY_DEPENDENCY, provenance: DESIGNER_AI_PROVENANCE.AUTOMATIC_RULE, rule: "parent_inactive" };
 }
 
+function buildDesignerAiGuidedFlow({ leaves, values }) {
+  const byId = new Map(leaves.map((leaf) => [leaf.id, leaf]));
+  const leafIds = [];
+  const include = (leafId) => {
+    const leaf = byId.get(leafId);
+    if (!leaf || leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) return;
+    if (!leafIds.includes(leafId)) leafIds.push(leafId);
+  };
+  const includePrefix = (prefix) => {
+    for (const leaf of leaves) {
+      if (leaf.id.startsWith(prefix)) include(leaf.id);
+    }
+  };
+
+  include("event.people.primary_name");
+  include("event.people.secondary_name");
+  include("event.mode");
+
+  includePrefix("event.ceremony.");
+  const modeLeaf = byId.get("event.mode");
+  if (
+    values.eventMode === "ceremony_party" &&
+    isTerminalDesignerAiLedgerStatus(modeLeaf?.status)
+  ) {
+    includePrefix("event.party.");
+  }
+
+  include("gifts.enabled");
+  const giftsEnabledLeaf = byId.get("gifts.enabled");
+  if (
+    values.gifts?.enabled === true &&
+    isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf?.status)
+  ) {
+    includePrefix("gifts.method.");
+    include("gifts.intro_text");
+    include("gifts.button_text");
+  }
+
+  include("event.dress_code.enabled");
+  const dressEnabledLeaf = byId.get("event.dress_code.enabled");
+  if (
+    values.dressCode?.enabled === true &&
+    isTerminalDesignerAiLedgerStatus(dressEnabledLeaf?.status)
+  ) {
+    include("event.dress_code.value");
+  }
+
+  include("media.cover");
+  for (const gallery of Array.isArray(values.galleries) ? values.galleries : []) {
+    const galleryId = normalizeText(gallery?.id);
+    if (!galleryId) continue;
+    include(buildDesignerAiGalleryCompletionLeafId(galleryId));
+  }
+
+  const unresolvedLeafIds = leafIds.filter(
+    (leafId) => !isTerminalDesignerAiLedgerStatus(byId.get(leafId)?.status)
+  );
+  return {
+    leafIds,
+    completion: {
+      availableCount: leafIds.length,
+      terminalCount: leafIds.length - unresolvedLeafIds.length,
+      unresolvedLeafIds,
+      complete: unresolvedLeafIds.length === 0,
+    },
+  };
+}
+
 function buildDesignerAiLedger({ availability = {}, values = {}, conversationState = {}, sourceContext = {} } = {}) {
   const state = normalizeDesignerAiConversationState(conversationState);
   const source = {
@@ -270,58 +368,67 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   const party = asRecord(values.party);
   const dressCode = asRecord(values.dressCode);
 
-  add({ id: "document.name", block: "couple", value: values.documentName, available: availability.documentName, existingCanResolve: true });
-  add({ id: "event.people.primary_name", block: "couple", value: people.primaryName, available: availability.people });
-  add({ id: "event.people.secondary_name", block: "couple", value: people.secondaryName, available: availability.people });
-  add({ id: "event.mode", block: "couple", value: values.eventMode, available: availability.eventMode, existingCanResolve: false });
+  add({ id: "document.name", block: "outside_guided_flow", value: values.documentName, available: availability.documentName, existingCanResolve: true });
+  add({ id: "event.people.primary_name", block: "names", value: people.primaryName, available: availability.people });
+  add({ id: "event.people.secondary_name", block: "names", value: people.secondaryName, available: availability.people });
+  add({ id: "event.mode", block: "event_structure", value: values.eventMode, available: availability.eventMode, existingCanResolve: false });
 
   for (const [phase, data, datetimeAvailable, locationAvailable] of [
     ["ceremony", ceremony, availability.ceremonyDatetime, availability.ceremonyLocation],
     ["party", party, availability.partyDatetime, availability.partyLocation],
   ]) {
-    add({ id: `event.${phase}.date`, block: phase, value: data.date, available: datetimeAvailable });
-    add({ id: `event.${phase}.start_time`, block: phase, value: data.startTime, available: datetimeAvailable });
-    add({ id: `event.${phase}.end_time`, block: phase, value: data.endTime, available: datetimeAvailable });
-    add({ id: `event.${phase}.venue_name`, block: phase, value: data.venueName, available: locationAvailable });
-    add({ id: `event.${phase}.address`, block: phase, value: data.address, available: locationAvailable });
-    add({ id: `event.${phase}.place_selection`, block: phase, value: data.placeSelected === true, available: locationAvailable, defaultRequiresControl: Boolean(normalizeText(data.address)) && data.placeSelected !== true, existingCanResolve: data.placeSelected === true });
+    add({ id: `event.${phase}.date`, block: "event_data", value: data.date, available: datetimeAvailable });
+    add({ id: `event.${phase}.start_time`, block: "event_data", value: data.startTime, available: datetimeAvailable });
+    add({ id: `event.${phase}.end_time`, block: "event_data", value: data.endTime, available: datetimeAvailable });
+    add({ id: `event.${phase}.venue_name`, block: "event_data", value: data.venueName, available: locationAvailable });
+    add({ id: `event.${phase}.address`, block: "event_data", value: data.address, available: locationAvailable });
+    add({ id: `event.${phase}.place_selection`, block: "event_data", value: data.placeSelected === true, available: locationAvailable, defaultRequiresControl: Boolean(normalizeText(data.address)) && data.placeSelected !== true, existingCanResolve: data.placeSelected === true });
   }
 
-  add({ id: "event.dress_code.enabled", block: "guest_info", value: dressCode.enabled === true, available: availability.dressCode, existingCanResolve: false });
-  add({ id: "event.dress_code.value", block: "guest_info", value: dressCode.value, available: availability.dressCode });
-  add({ id: "story.text", block: "guest_info", value: values.story, available: availability.story });
-  add({ id: "media.cover", block: "media", value: { present: values.media?.hasCover === true, revision: values.media?.contentRevision || "" }, available: availability.cover, defaultRequiresControl: availability.cover === true });
+  add({ id: "event.dress_code.enabled", block: "dress_code", value: dressCode.enabled === true, available: availability.dressCode, existingCanResolve: false });
+  add({ id: "event.dress_code.value", block: "dress_code", value: dressCode.value, available: availability.dressCode });
+  add({ id: "story.text", block: "outside_guided_flow", value: values.story, available: availability.story });
+  add({ id: "media.cover", block: "cover", value: { present: values.media?.hasCover === true, revision: values.media?.contentRevision || "" }, available: availability.cover, defaultRequiresControl: availability.cover === true });
 
   for (const gallery of Array.isArray(values.galleries) ? values.galleries : []) {
     const galleryId = normalizeText(gallery?.id);
     if (!galleryId) continue;
-    const occupiedCount = (Array.isArray(gallery.slots) ? gallery.slots : []).filter((slot) => slot?.occupied === true).length;
-    for (const slot of Array.isArray(gallery.slots) ? gallery.slots : []) {
+    const gallerySlots = Array.isArray(gallery.slots) ? gallery.slots : [];
+    add({
+      id: buildDesignerAiGalleryCompletionLeafId(galleryId),
+      block: "galleries",
+      value: { galleryId, applicable: gallerySlots.length > 0 },
+      available: gallerySlots.length > 0,
+      defaultRequiresControl: true,
+      existingCanResolve: false,
+    });
+    const occupiedCount = gallerySlots.filter((slot) => slot?.occupied === true).length;
+    for (const slot of gallerySlots) {
       const slotKey = normalizeText(slot?.cellId) || String(slot?.index ?? "");
-      add({ id: `media.gallery.${galleryId}.slot.${slotKey}`, block: "media", value: { occupied: slot?.occupied === true, revision: slot?.contentRevision || "" }, available: true, defaultRequiresControl: true });
+      add({ id: `media.gallery.${galleryId}.slot.${slotKey}`, block: "outside_guided_flow", value: { occupied: slot?.occupied === true, revision: slot?.contentRevision || "" }, available: true, defaultRequiresControl: true });
     }
-    add({ id: `media.gallery.${galleryId}.order`, block: "media", value: gallery.slots, available: true, existingCanResolve: false });
+    add({ id: `media.gallery.${galleryId}.order`, block: "outside_guided_flow", value: gallery.slots, available: true, existingCanResolve: false });
     const orderLeaf = leaves[leaves.length - 1];
     if (occupiedCount < 2) Object.assign(orderLeaf, { status: DESIGNER_AI_LEDGER_STATUSES.NOT_APPLICABLE_BY_DEPENDENCY, provenance: DESIGNER_AI_PROVENANCE.AUTOMATIC_RULE, rule: "fewer_than_two_photos" });
   }
 
   const rsvp = asRecord(values.rsvp);
-  add({ id: "rsvp.enabled", block: "rsvp", value: rsvp.enabled === true, available: availability.rsvp, existingCanResolve: false });
-  add({ id: "rsvp.questions.order", block: "rsvp", value: (rsvp.questions || []).map((question) => question.id), available: availability.rsvp, existingCanResolve: false });
+  add({ id: "rsvp.enabled", block: "outside_guided_flow", value: rsvp.enabled === true, available: availability.rsvp, existingCanResolve: false });
+  add({ id: "rsvp.questions.order", block: "outside_guided_flow", value: (rsvp.questions || []).map((question) => question.id), available: availability.rsvp, existingCanResolve: false });
   for (const question of Array.isArray(rsvp.questions) ? rsvp.questions : []) {
     const prefix = `rsvp.question.${question.id}`;
-    add({ id: `${prefix}.active`, block: "rsvp", value: question.active === true, available: availability.rsvp, existingCanResolve: false });
-    add({ id: `${prefix}.label`, block: "rsvp", value: question.label, available: availability.rsvp });
-    add({ id: `${prefix}.type`, block: "rsvp", value: question.type, available: availability.rsvp, existingCanResolve: false });
-    add({ id: `${prefix}.required`, block: "rsvp", value: question.required === true, available: availability.rsvp, existingCanResolve: false });
-    add({ id: `${prefix}.options`, block: "rsvp", value: question.options, available: availability.rsvp, existingCanResolve: false });
+    add({ id: `${prefix}.active`, block: "outside_guided_flow", value: question.active === true, available: availability.rsvp, existingCanResolve: false });
+    add({ id: `${prefix}.label`, block: "outside_guided_flow", value: question.label, available: availability.rsvp });
+    add({ id: `${prefix}.type`, block: "outside_guided_flow", value: question.type, available: availability.rsvp, existingCanResolve: false });
+    add({ id: `${prefix}.required`, block: "outside_guided_flow", value: question.required === true, available: availability.rsvp, existingCanResolve: false });
+    add({ id: `${prefix}.options`, block: "outside_guided_flow", value: question.options, available: availability.rsvp, existingCanResolve: false });
   }
 
   const modal = asRecord(rsvp.modal);
-  add({ id: "rsvp.modal.title", block: "rsvp", value: modal.title, available: availability.rsvp, systemDefault: normalizeText(modal.title) === RSVP_SYSTEM_DEFAULTS.modalTitle });
-  add({ id: "rsvp.modal.subtitle", block: "rsvp", value: modal.subtitle, available: availability.rsvp, systemDefault: normalizeText(modal.subtitle) === RSVP_SYSTEM_DEFAULTS.modalSubtitle });
-  add({ id: "rsvp.modal.submit_label", block: "rsvp", value: modal.submitLabel, available: availability.rsvp, systemDefault: normalizeText(modal.submitLabel) === RSVP_SYSTEM_DEFAULTS.submitLabel });
-  add({ id: "rsvp.modal.primary_color", block: "rsvp", value: modal.primaryColor, available: availability.rsvp, systemDefault: normalizeText(modal.primaryColor).toLowerCase() === RSVP_SYSTEM_DEFAULTS.primaryColor });
+  add({ id: "rsvp.modal.title", block: "outside_guided_flow", value: modal.title, available: availability.rsvp, systemDefault: normalizeText(modal.title) === RSVP_SYSTEM_DEFAULTS.modalTitle });
+  add({ id: "rsvp.modal.subtitle", block: "outside_guided_flow", value: modal.subtitle, available: availability.rsvp, systemDefault: normalizeText(modal.subtitle) === RSVP_SYSTEM_DEFAULTS.modalSubtitle });
+  add({ id: "rsvp.modal.submit_label", block: "outside_guided_flow", value: modal.submitLabel, available: availability.rsvp, systemDefault: normalizeText(modal.submitLabel) === RSVP_SYSTEM_DEFAULTS.submitLabel });
+  add({ id: "rsvp.modal.primary_color", block: "outside_guided_flow", value: modal.primaryColor, available: availability.rsvp, systemDefault: normalizeText(modal.primaryColor).toLowerCase() === RSVP_SYSTEM_DEFAULTS.primaryColor });
 
   const gifts = asRecord(values.gifts);
   add({ id: "gifts.enabled", block: "gifts", value: gifts.enabled === true, available: availability.gifts, existingCanResolve: false });
@@ -401,6 +508,7 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
 
   const availableLeaves = leaves.filter((leaf) => leaf.status !== DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE);
   const unresolvedLeafIds = availableLeaves.filter((leaf) => !isTerminalDesignerAiLedgerStatus(leaf.status)).map((leaf) => leaf.id);
+  const guidedFlow = buildDesignerAiGuidedFlow({ leaves, values });
   return {
     version: LEDGER_VERSION,
     leaves,
@@ -410,22 +518,32 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
       unresolvedLeafIds,
       complete: unresolvedLeafIds.length === 0,
     },
+    guidedFlow,
   };
 }
 
 function buildDesignerAiConversationBrief(snapshot) {
   const leaves = Array.isArray(snapshot?.ledger?.leaves) ? snapshot.ledger.leaves : [];
-  const unresolved = leaves.filter((leaf) => leaf.status !== DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE && !isTerminalDesignerAiLedgerStatus(leaf.status));
+  const guidedLeafIds = new Set(
+    Array.isArray(snapshot?.ledger?.guidedFlow?.leafIds)
+      ? snapshot.ledger.guidedFlow.leafIds
+      : []
+  );
+  const unresolved = leaves.filter((leaf) => (
+    guidedLeafIds.has(leaf.id) &&
+    leaf.status !== DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE &&
+    !isTerminalDesignerAiLedgerStatus(leaf.status)
+  ));
   const blocks = CONVERSATION_BLOCKS.map((block) => ({
     id: block.id,
     label: block.label,
-    leafIds: unresolved.filter((leaf) => leaf.block === block.id || block.prefixes.some((prefix) => leaf.id === prefix || leaf.id.startsWith(prefix))).map((leaf) => leaf.id),
+    leafIds: unresolved.filter((leaf) => leaf.block === block.id).map((leaf) => leaf.id),
   })).filter((block) => block.leafIds.length > 0);
   return {
     nextBlock: blocks[0] || null,
     needsAttention: blocks,
     unresolvedLeafIds: unresolved.map((leaf) => leaf.id),
-    complete: unresolved.length === 0,
+    complete: snapshot?.ledger?.guidedFlow?.completion?.complete === true,
   };
 }
 
@@ -436,7 +554,10 @@ function mapActionToLeafIds(action) {
     case "event.set_people": return ["event.people.primary_name", "event.people.secondary_name"];
     case "event.set_mode": return ["event.mode"];
     case "event.set_datetime": return ["date", "startTime", "endTime"].filter((key) => args[key] !== null && args[key] !== undefined).map((key) => `event.${args.phase}.${key === "startTime" ? "start_time" : key === "endTime" ? "end_time" : "date"}`);
-    case "event.set_location_text": return [`event.${args.phase}.venue_name`, `event.${args.phase}.address`];
+    case "event.set_location_text": return [
+      ...(normalizeText(args.venueName) ? [`event.${args.phase}.venue_name`] : []),
+      ...(normalizeText(args.address) ? [`event.${args.phase}.address`] : []),
+    ];
     case "event.set_dress_code": return ["event.dress_code.enabled", ...(args.enabled ? ["event.dress_code.value"] : [])];
     case "story.set_text": return ["story.text"];
     case "gallery.move_photo": return [`media.gallery.${args.galleryId}.order`];
@@ -509,11 +630,13 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actions
 
 module.exports = {
   CONVERSATION_BLOCKS,
+  GUIDED_FLOW_BLOCKS,
   DESIGNER_AI_LEDGER_STATUSES,
   DESIGNER_AI_PROVENANCE,
   DESIGNER_AI_RESOLUTION_RULES,
   LEDGER_VERSION,
   buildAutomaticEventName,
+  buildDesignerAiGalleryCompletionLeafId,
   buildDesignerAiConversationBrief,
   buildDesignerAiLedger,
   fingerprintDesignerAiValue: fingerprint,
@@ -521,5 +644,6 @@ module.exports = {
   isTerminalDesignerAiLedgerStatus,
   mapDesignerAiActionToLeafIds: mapActionToLeafIds,
   normalizeDesignerAiConversationState,
+  prepareDesignerAiConversationEntry,
   reconcileDesignerAiConversationState,
 };

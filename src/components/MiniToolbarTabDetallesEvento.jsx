@@ -31,9 +31,15 @@ import {
   formatEventAddressText,
   getEventLocationFieldKey,
   EVENT_LOCATION_ROLES,
-  normalizeGooglePlaceInput,
   resolveEventLocationFromAuthoring,
 } from "@/domain/eventDetails/location";
+import {
+  createGooglePlacesSessionToken,
+  fetchGooglePlaceDetailsFromPrediction,
+  fetchGooglePlaceSuggestions,
+  getGoogleMapsApiKey,
+} from "@/domain/eventDetails/googlePlaces";
+import { applyEventGooglePlaceSelection } from "@/domain/eventDetails/locationAuthoring";
 import {
   EVENT_TIME_ROLES,
   getEventTimeFieldKey,
@@ -92,7 +98,6 @@ const disabledControlClass =
 const EVENT_PERSON_NAMES_SAVE_DELAY_MS = 350;
 const EVENT_LOCATION_SAVE_DELAY_MS = 350;
 const EVENT_TIMES_SAVE_DELAY_MS = 350;
-const GOOGLE_MAPS_SCRIPT_ID = "reservaeldia-google-maps-js";
 const EVENT_COUPLE_SCROLL_FIELD_KEYS = [
   getEventPersonNameFieldKey(
     EVENT_PERSON_NAME_ROLES.COUPLE,
@@ -663,113 +668,6 @@ function updateLinkedEventTimes(times, feature = EVENT_DETAIL_FEATURES.CEREMONY)
       console.error("No se pudieron actualizar las horas del evento.", error);
       return false;
     });
-}
-
-let googleMapsPlacesLoaderPromise = null;
-
-function getGoogleMapsApiKey() {
-  return String(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
-}
-
-function loadGoogleMapsPlacesLibrary() {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Google Maps solo esta disponible en el navegador."));
-  }
-  const apiKey = getGoogleMapsApiKey();
-  if (!apiKey) {
-    return Promise.reject(new Error("Falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY."));
-  }
-  if (window.google?.maps?.importLibrary) {
-    return window.google.maps.importLibrary("places");
-  }
-  if (googleMapsPlacesLoaderPromise) return googleMapsPlacesLoaderPromise;
-
-  googleMapsPlacesLoaderPromise = new Promise((resolve, reject) => {
-    const existingScript = document.getElementById(GOOGLE_MAPS_SCRIPT_ID);
-    if (existingScript) {
-      existingScript.addEventListener("load", () => {
-        if (window.google?.maps?.importLibrary) {
-          resolve(window.google.maps.importLibrary("places"));
-        } else {
-          reject(new Error("Google Maps no expuso importLibrary."));
-        }
-      }, { once: true });
-      existingScript.addEventListener("error", reject, { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = GOOGLE_MAPS_SCRIPT_ID;
-    script.async = true;
-    script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      apiKey
-    )}&libraries=places&v=weekly&language=es-419&region=AR&loading=async`;
-    script.onload = () => {
-      if (window.google?.maps?.importLibrary) {
-        resolve(window.google.maps.importLibrary("places"));
-      } else {
-        reject(new Error("Google Maps no expuso importLibrary."));
-      }
-    };
-    script.onerror = () => reject(new Error("No se pudo cargar Google Maps."));
-    document.head.appendChild(script);
-  });
-
-  return googleMapsPlacesLoaderPromise;
-}
-
-function placePredictionToLabel(prediction) {
-  const mainText = normalizeGooglePlaceInput({
-    displayName: prediction?.structuredFormat?.mainText?.text,
-  }).displayName;
-  const secondaryText = String(
-    prediction?.structuredFormat?.secondaryText?.text ||
-      prediction?.secondaryText ||
-      ""
-  ).trim();
-  const fallback = String(prediction?.text || prediction?.description || "").trim();
-  if (mainText && secondaryText) return `${mainText} - ${secondaryText}`;
-  return mainText || fallback;
-}
-
-async function fetchGooglePlaceSuggestions(input, sessionToken) {
-  const query = String(input || "").trim();
-  if (query.length < 3) return [];
-
-  const places = await loadGoogleMapsPlacesLibrary();
-  const AutocompleteSuggestion =
-    places?.AutocompleteSuggestion ||
-    window.google?.maps?.places?.AutocompleteSuggestion;
-  if (!AutocompleteSuggestion?.fetchAutocompleteSuggestions) return [];
-
-  const request = {
-    input: query,
-    language: "es-419",
-    region: "ar",
-    sessionToken,
-  };
-  const result = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
-  return (Array.isArray(result?.suggestions) ? result.suggestions : [])
-    .map((suggestion, index) => {
-      const prediction = suggestion?.placePrediction;
-      if (!prediction) return null;
-      return {
-        id: String(prediction.placeId || prediction.id || index),
-        label: placePredictionToLabel(prediction),
-        prediction,
-      };
-    })
-    .filter((entry) => entry?.label);
-}
-
-async function fetchGooglePlaceDetailsFromPrediction(prediction) {
-  if (!prediction?.toPlace) return normalizeGooglePlaceInput(prediction);
-  const place = prediction.toPlace();
-  await place.fetchFields({
-    fields: ["id", "displayName", "formattedAddress", "addressComponents", "location"],
-  });
-  return normalizeGooglePlaceInput(place);
 }
 
 export default function MiniToolbarTabDetallesEvento({
@@ -1767,13 +1665,8 @@ export default function MiniToolbarTabDetallesEvento({
   };
 
   const resolveGoogleAutocompleteSessionToken = useCallback(async () => {
-    const places = await loadGoogleMapsPlacesLibrary();
-    const TokenClass =
-      places?.AutocompleteSessionToken ||
-      window.google?.maps?.places?.AutocompleteSessionToken;
-    if (!TokenClass) return null;
     if (!googleAutocompleteSessionTokenRef.current) {
-      googleAutocompleteSessionTokenRef.current = new TokenClass();
+      googleAutocompleteSessionTokenRef.current = await createGooglePlacesSessionToken();
     }
     return googleAutocompleteSessionTokenRef.current;
   }, []);
@@ -1959,54 +1852,23 @@ export default function MiniToolbarTabDetallesEvento({
   ) => {
     if (!suggestion?.prediction) return;
     const safeFeature = normalizeEventDetailFeature(feature);
-    const locationRef =
-      safeFeature === EVENT_DETAIL_FEATURES.PARTY
-        ? partyEventLocationRef
-        : eventLocationRef;
     setLocationSuggestionsLoading(true);
     setLocationSuggestionsError("");
 
     try {
-      const googlePlace = await fetchGooglePlaceDetailsFromPrediction(
-        suggestion.prediction
-      );
-      if (!googlePlace.placeId) {
-        throw new Error("La ubicacion seleccionada no tiene Place ID.");
-      }
+      const googlePlace = await fetchGooglePlaceDetailsFromPrediction(suggestion.prediction);
       googleAutocompleteSessionTokenRef.current = null;
-      const nextLocation = {
-        ...locationRef.current,
-        eventDetailsFeature: safeFeature,
-        venueName: googlePlace.displayName || locationRef.current.venueName,
-        address: googlePlace.formattedAddress || locationRef.current.address,
-        googlePlaceId: googlePlace.placeId,
-        googleDisplayName: googlePlace.displayName,
-        googleFormattedAddress: googlePlace.formattedAddress,
-        googleAddressComponents: googlePlace.addressComponents,
-        googleLat: googlePlace.lat,
-        googleLng: googlePlace.lng,
-        hasGooglePlace: true,
-        showMap: false,
-      };
-      nextLocation.address = formatEventAddressText({
-        address: locationRef.current.address,
-        googleFormattedAddress: nextLocation.googleFormattedAddress,
-        googleAddressComponents: nextLocation.googleAddressComponents,
-        preset: nextLocation.addressTextFormatPreset,
+      const nextWithMap = await applyEventGooglePlaceSelection({
+        targetWindow: window,
+        feature: safeFeature,
+        googlePlace,
       });
-      const mapObjectId = ensureGoogleMapObject(nextLocation, safeFeature);
-      const nextWithMap = {
-        ...nextLocation,
-        mapObjectId,
-      };
       if (safeFeature === EVENT_DETAIL_FEATURES.PARTY) {
         setPartyEventLocation(nextWithMap);
         partyEventLocationRef.current = nextWithMap;
-        persistPartyEventLocation(nextWithMap);
       } else {
         setEventLocation(nextWithMap);
         eventLocationRef.current = nextWithMap;
-        persistEventLocation(nextWithMap);
       }
       setLocationSuggestions([]);
       setLocationSuggestionsOpen(false);

@@ -132,6 +132,11 @@ Normative rules:
   expose the card or cover substep without a resolved source, even when `portada`
   contains a catalog/card thumbnail. Only standalone legacy drafts MAY use
   `portada` without an explicit source.
+- Diseñador AI MUST reuse that same cover identity and replacement owner. Opening
+  its uploader is not completion evidence; the cover step becomes terminal only
+  after the resolved cover source produces a different fingerprint. Gallery
+  completion is intentionally not governed by this rule and remains in the
+  Designer AI capability contract.
 - The full template document and template editor document MUST preserve
   `portadaSource`. Template catalog documents MUST NOT become the identity authority.
   Creating a draft from a template MUST copy the normalized source together with the

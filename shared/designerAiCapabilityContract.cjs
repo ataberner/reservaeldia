@@ -1,6 +1,6 @@
 const conversationLedger = require("./designerAiConversationLedger.cjs");
 
-const DESIGNER_AI_CONTRACT_VERSION = "2.0.0";
+const DESIGNER_AI_CONTRACT_VERSION = "2.2.0";
 
 const DESIGNER_AI_ACTION_ORIGINS = Object.freeze({
   MODEL: "model",
@@ -581,6 +581,9 @@ function sanitizeCapabilitySnapshot(input) {
     },
     ledger: sanitizeLedger(source.ledger),
     conversation: {
+      usage: {
+        hasStarted: source.conversation?.usage?.hasStarted === true,
+      },
       namePolicy: {
         mode: ["automatic", "explicit", "unknown"].includes(source.conversation?.namePolicy?.mode)
           ? source.conversation.namePolicy.mode
@@ -616,6 +619,19 @@ function sanitizeLedger(value) {
   const unresolvedLeafIds = availableLeaves
     .filter((leaf) => !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf.status))
     .map((leaf) => leaf.id);
+  const availableLeafIds = new Set(availableLeaves.map((leaf) => leaf.id));
+  const guidedLeafIds = (Array.isArray(source.guidedFlow?.leafIds)
+    ? source.guidedFlow.leafIds
+    : [])
+    .map((leafId) => sanitizeString(leafId, 180))
+    .filter((leafId, index, all) => (
+      availableLeafIds.has(leafId) && all.indexOf(leafId) === index
+    ))
+    .slice(0, 700);
+  const guidedUnresolvedLeafIds = guidedLeafIds.filter((leafId) => {
+    const leaf = leaves.find((entry) => entry.id === leafId);
+    return !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf?.status);
+  });
   return {
     version: Number.isInteger(source.version) ? source.version : conversationLedger.LEDGER_VERSION,
     leaves,
@@ -624,6 +640,15 @@ function sanitizeLedger(value) {
       terminalCount: availableLeaves.length - unresolvedLeafIds.length,
       unresolvedLeafIds,
       complete: unresolvedLeafIds.length === 0,
+    },
+    guidedFlow: {
+      leafIds: guidedLeafIds,
+      completion: {
+        availableCount: guidedLeafIds.length,
+        terminalCount: guidedLeafIds.length - guidedUnresolvedLeafIds.length,
+        unresolvedLeafIds: guidedUnresolvedLeafIds,
+        complete: guidedUnresolvedLeafIds.length === 0,
+      },
     },
   };
 }
@@ -669,6 +694,12 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot) {
     if (!MODEL_RESOLUTION_STATUS_SET.has(record.status)) {
       errors.push(`Resolucion ${index}: estado no permitido.`);
     }
+    if (
+      /^media\.gallery\..+\.guided_completion$/.test(String(record.leafId || "")) &&
+      record.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL
+    ) {
+      errors.push(`Resolucion ${index}: una Gallery solo se finaliza desde su control local explicito.`);
+    }
     if (record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE) {
       if (!RESOLUTION_RULE_SET.has(record.rule)) {
         errors.push(`Resolucion ${index}: regla no permitida.`);
@@ -680,6 +711,23 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot) {
     }
   });
   return { ok: errors.length === 0, errors };
+}
+
+function discardIncompatibleDesignerAiResolutionRules(resolutions, snapshot) {
+  if (!Array.isArray(resolutions)) return resolutions;
+  const knownLeafIds = new Set(
+    (Array.isArray(snapshot?.ledger?.leaves) ? snapshot.ledger.leaves : [])
+      .filter((leaf) => leaf?.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE)
+      .map((leaf) => leaf?.id)
+      .filter(Boolean)
+  );
+  return resolutions.filter((resolution) => {
+    const record = asRecord(resolution);
+    if (!record || !hasExactKeys(record, ["leafId", "status", "rule"])) return true;
+    if (record.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE) return true;
+    if (!knownLeafIds.has(record.leafId) || !RESOLUTION_RULE_SET.has(record.rule)) return true;
+    return isResolutionRuleCompatible(record.leafId, record.rule);
+  });
 }
 
 function isResolutionRuleCompatible(leafId, rule) {
@@ -855,6 +903,7 @@ module.exports = {
   DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES,
   SNAPSHOT_AVAILABILITY_KEYS,
   containsForbiddenSnapshotData,
+  discardIncompatibleDesignerAiResolutionRules,
   sanitizeCapabilitySnapshot,
   validateDesignerAiActionBatch,
   validateDesignerAiControlRequest,

@@ -110,6 +110,12 @@ export function requestDashboardDocumentNameUpdate(detail, targetWindow) {
     designerAiConversation: Object.prototype.hasOwnProperty.call(safeDetail, "designerAiConversation")
       ? normalizeDesignerAiConversationState(safeDetail.designerAiConversation)
       : null,
+    ...(typeof safeDetail.onPersisted === "function"
+      ? { onPersisted: safeDetail.onPersisted }
+      : {}),
+    ...(typeof safeDetail.onPersistenceError === "function"
+      ? { onPersistenceError: safeDetail.onPersistenceError }
+      : {}),
   };
 
   resolvedWindow.dispatchEvent(

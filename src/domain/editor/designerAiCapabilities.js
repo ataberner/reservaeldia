@@ -265,13 +265,16 @@ export function buildDesignerAiCapabilitySnapshot({
     availability,
     values,
     ledger,
-    conversation: { namePolicy: normalizedConversationState.namePolicy },
+    conversation: {
+      usage: normalizedConversationState.usage,
+      namePolicy: normalizedConversationState.namePolicy,
+    },
   });
   safe.revision = fingerprint({
     availability: safe.availability,
     values: safe.values,
     ledger: safe.ledger,
-    conversation: safe.conversation,
+    conversation: { namePolicy: safe.conversation.namePolicy },
   });
   return safe;
 }
@@ -300,6 +303,7 @@ export function buildDesignerAiCallablePayload({
   message,
   recentTurns = [],
   snapshot,
+  entryMode = "continuation",
 } = {}) {
   const safeSnapshot = sanitizeCapabilitySnapshot(snapshot);
   const capabilitySnapshot = {
@@ -327,6 +331,9 @@ export function buildDesignerAiCallablePayload({
   return {
     contractVersion: DESIGNER_AI_CONTRACT_VERSION,
     clientMessageId: normalizeText(clientMessageId),
+    entryMode: ["first_entry", "reentry", "continuation"].includes(entryMode)
+      ? entryMode
+      : "continuation",
     message: String(message || "").trim(),
     recentTurns: (Array.isArray(recentTurns) ? recentTurns : [])
       .slice(-6)

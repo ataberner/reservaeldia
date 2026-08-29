@@ -575,6 +575,7 @@ Resultado esperado:
 7. Desactivar `Mostrar Dress Code` y volver a activarlo.
 8. Elegir una sugerencia de Google Maps cuyo nombre y direccion sean mas largos que los textos iniciales de la plantilla; verificar el resultado en Ceremonia y Fiesta.
 9. Redimensionar cada texto vinculado desde el nodo lateral y volver a reemplazar la ubicacion.
+10. Después de una selección Google, escribir manualmente otro lugar/dirección y confirmar que se limpian `placeId`, coordenadas/componentes y visibilidad del mapa sin perder los textos manuales.
 
 Resultado esperado:
 
@@ -583,6 +584,7 @@ Resultado esperado:
 - los datos de Fiesta se conservan aunque el bloque no se muestre
 - `eventDetails.dressCode.value` se conserva aunque Dress Code este desactivado
 - los campos dinamicos `event_ceremony_*` y `event_party_*` sincronizan tab, canvas, preview y HTML publico
+- ubicación manual y ubicación Google comparten los mismos fields de lugar/dirección; solo la segunda conserva metadata en el `mapa-google` de su phase
 - nombre y direccion conservan inicialmente el ancho definido en la plantilla, envuelven valores largos creciendo en altura y aceptan cambios posteriores de ancho desde el nodo lateral
 - el campo dinamico `event_dress_code` sincroniza tab, canvas, preview y HTML publico
 - los campos legacy `event_date`, `event_start_time`, `event_end_time`, `event_venue_name` y `event_venue_address` aparecen migrados a Ceremonia al cargar
@@ -731,52 +733,137 @@ Aplicar cuando el cambio toque el tab, contrato compartido, snapshot, ejecutor,
 callable, controles confiables o cualquiera de los owners compartidos con
 Asistente.
 
+Autoridades de lectura obligatoria:
+
+- `docs/architecture/AI_ASSISTANT_SYSTEM.md` para owners y garantías técnicas;
+- `docs/contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md` para actions, controles y límites;
+- `docs/contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md` para comportamiento de respuesta, decisiones cerradas y decisiones de estilo pendientes;
+- `docs/contracts/GIFTS_SYSTEM_CONTRACT.md` cuando el flujo alcanza Regalos.
+
+Este checklist no convierte el copy vigente en frase obligatoria. Tampoco reemplaza
+una evaluación conversacional durable: hoy no existe dataset/grader/model matrix
+que justifique `AI_ASSISTANT_RESPONSE_EVALUATION.md`.
+
+### [ ] Flujo contractual ejecutable
+
+Esta subsección prueba el flujo implementado y revalidado el 2026-08-28. No debe darse por
+aprobada solo por inspección del prompt o del copy: requiere draft real,
+persistencia, controles y reread.
+
+1. Primer ingreso: probar una señal durable real, saludo amable en español,
+   nombre registrado cuando esté disponible y comienzo por el primer pendiente,
+   sin listado de capabilities.
+2. Reingreso: desmontar/reabrir y recargar el draft; confirmar continuidad basada
+   en el borrador, saludo con nombre disponible y propuesta del primer pendiente,
+   sin fingir historial de chat.
+3. Verificar el orden funcional `Nombres -> estructura -> datos del evento ->
+   Regalos -> Dress Code -> portada si existe -> Galleries si existen -> cierre`.
+   Adelantar varios datos y confirmar que no se vuelven a preguntar.
+4. Confirmar que `eventDetails.mode` queda decidido antes de pedir datos de Party
+   y que `single` vuelve Party no aplicable sin borrar sus valores.
+5. Confirmar que RSVP no aparece como pregunta proactiva ni bloquea el cierre del
+   recorrido principal, pero sigue respondiendo a pedidos explícitos.
+6. En Regalos, verificar que la primera pregunta elija lista externa o datos
+   bancarios antes de pedir campos. Probar negativa sin preguntas adicionales;
+   lista válida/inválida sin interrogatorio bancario; uno, varios y todos los
+   datos bancarios; y un mensaje que adelante modalidad + varios valores. Partir
+   también de una plantilla con los cinco valores: solo los aportados por el
+   usuario quedan visibles y los demás se ocultan sin bloquear. Confirmar que
+   intro y texto del botón no se preguntan proactivamente y que, resuelta la
+   modalidad, continúa hacia Dress Code.
+7. Probar Dress Code afirmativo/negativo, con preservación del texto oculto y
+   salto cuando el binding no existe.
+8. Probar portada antes de Galleries, ausencia de portada, cero/una/múltiples
+   Galleries y orden canónico entre ellas. Dentro de una Gallery, reemplazar,
+   agregar, eliminar y reordenar varias fotos: ningún cambio debe avanzar. Usar
+   `Terminé con esta galería`: solo esa Gallery queda terminal y se abre/propone
+   la siguiente pendiente. Cerrar sin finalizar conserva cambios y deja la misma
+   Gallery pendiente, incluso tras reabrir el draft.
+9. Cerrar solo el recorrido principal: comunicar edición manual y botón
+   `Vista previa` arriba a la derecha; nunca afirmar que la invitación está
+   terminada.
+10. Enviar mensajes en otro idioma y verificar que las respuestas permanecen en
+    español, con voseo argentino cuidado y sin ampliar el alcance funcional de la
+    personalidad aprobada.
+11. Para pendientes de nombres, evento, Regalos y Dress Code, verificar que la
+    pregunta solicita directamente el dato o decisión necesaria sin ofrecer por
+    iniciativa propia dejarlo para después, responder solo una parte u omitirlo.
+    La respuesta puede reconocer brevemente lo anterior y debe conservar una
+    transición natural, no una cadena mecánica de preguntas.
+12. Responder espontáneamente que un dato todavía no está definido o se completará
+    después: el asistente respeta la postergación, no insiste ni repite enseguida,
+    conserva la hoja pendiente y continúa con otro dato aplicable.
+
 ### [ ] Autorizacion y ciclo de sesion
 
 1. En desktop y en 320, 390 y 430 px, abrir un borrador writable como superadmin y confirmar que aparece `Diseñador AI` junto a `Asistente`.
 2. Repetir como admin comun y usuario comun, durante `loadingAdminAccess`, en template workspace, modo selector y borrador read-only: el tab no aparece.
 3. Intentar llamar `designerAiChat` como admin comun y sin auth: ambos reciben el error correspondiente.
 4. Con el panel abierto, cambiar de borrador o perder el rol y confirmar cleanup de chat, control activo, request tardio y batch IDs.
-5. Alternar Asistente/Diseñador AI: los valores cambian inmediatamente en ambos y el chat se conserva solo durante esa sesion.
-6. Abrir una sesion nueva: el mensaje interno de inicio no aparece en el historial y la primera intervencion visible incluye una bienvenida breve orientada a preparar la invitacion, sin presentarse como IA ni empezar por confirmar el nombre actual.
-7. Usar un borrador con valores completos, incompletos y vacios: pregunta solo por lo pendiente/incompleto, agrupa fecha-horario-lugar por fase sin enumerar campos y no pide conservar sistematicamente valores completos validos.
+5. Alternar Asistente/Diseñador AI: los valores cambian inmediatamente en ambos. Confirmar el comportamiento actual de sesión: al desmontarse el panel, el chat visible se pierde y al reabrir se inicia otra conversación; no asumir persistencia que el runtime no ofrece.
+6. Abrir una sesión nueva: el mensaje interno de inicio no aparece en el historial. Registrar la primera intervención visible y compararla con idioma, tono y tratamiento ya aprobados; el copy exacto, longitud y estructura siguen sin ser canónicos.
+7. Usar un borrador con valores completos, incompletos y vacios: no vuelve terminal un dato por mera mención. Registrar por separado `ledger.completion` y `ledger.guidedFlow.completion`.
 8. Responder con datos de varios bloques: todos los valores validos se aplican en un unico lote y la siguiente pregunta se limita a lo que todavia falta.
-9. Completar lo pendiente: cierra brevemente indicando que la invitacion quedo preparada y no inventa otra pregunta.
-10. Inspeccionar el ledger: cada hoja disponible tiene estado/procedencia y el cierre solo ocurre con cero hojas no terminales; mencionar o saltear un bloque no lo completa.
+9. Completar los bloques aprobados del recorrido: exigir evidencia antes del cierre y confirmar que RSVP, historia, slots vacíos o reordenamiento reactivo no lo bloquean. Comparar el mensaje actual con la regla de edición manual + `Vista previa`, sin promoverlo a frase canónica.
+10. Inspeccionar el ledger: cada hoja disponible conserva estado/procedencia y mencionar o saltear un bloque no lo completa; confirmar que el mismo ledger calcula completitud operacional total y cierre guiado sin un segundo store.
 11. Partir de valores de template, placeholders y defaults: ninguno cuenta como personalizacion real sin evidencia; un dato registrado en `templateInput.changedKeys` si puede contar como dato previo.
 
 ### [ ] Allowlist, sincronizacion y persistencia
 
-1. Enviar nombre, personas, modalidad, fecha/hora, ubicacion manual y Dress Code en un mensaje; confirmar targets dinamicos y countdown.
+1. Enviar nombre, personas, modalidad, fecha/hora, ubicación manual y Dress Code en un mensaje; confirmar targets dinámicos y countdown. Para ubicación, confirmar además que lugar/dirección se conservan, la decisión Maps queda pendiente y el horario no vuelve a preguntarse.
 2. Corregir un valor y verificar que manda el borrador actual, no una copia del chat.
 3. Probar `texto_historia` con/sin binding; solo el primero cambia y conserva width/alineacion/wrapping.
 4. Probar RSVP completo: activacion, catalogo/custom, orden, label, type, required, opciones, modal, CTA y reload.
-5. Probar Regalos completo: activacion, metodos/visibilidad, lista externa, intro, boton, CTA y reload.
+5. Probar Regalos completo: activación, lista externa, cada método bancario,
+   visibilidad independiente, ocultamiento sin borrado, intro y botón ante pedido
+   explícito, CTA y reload. Confirmar que los cinco métodos, intro y botón siguen
+   siendo capabilities reactivas aunque no todos integren la completitud del
+   recorrido guiado.
 6. Reordenar fotos de una Gallery existente y verificar targeting, `cells[]`, reload y preview.
 7. Enviar un lote valido+invalido: no se aplica nada. Reenviar el mismo `batchId`: no se duplica.
 8. Cambiar la identidad del borrador durante una respuesta: el lote tardio se cancela.
 9. Reload/preview despues de cambios mixtos; confirmar autosave, FIFO y flush critico existentes.
-10. Pedir tipografia, posicion o layout: no genera acciones y responde naturalmente que ese cambio se hace desde el editor, mencionando brevemente con que datos permitidos puede ayudar.
+10. Pedir tipografia, posicion o layout: no genera acciones, no usa vocabulario interno del validador, explica que ese cambio pertenece al editor y no afirma haberlo realizado.
 11. Informar ambos nombres: se guarda `Casamiento {Nombre 1} y {Nombre 2}`; corregir un nombre recalcula mientras la politica sea automatica. Escribir un nombre de evento manual y repetir la correccion: el nombre explicito se preserva, incluso despues de reload.
 12. Desactivar RSVP/Regalos y decidir no configurarlos: cada hoja interna queda `preserve_while_inactive`; al activar cualquiera, sus hojas visibles se reabren.
 
 ### [ ] Controles locales y errores de OpenAI
 
 1. Pedir portada: se abre el uploader actual solo si existe portada; archivo, URL y metadata no llegan a OpenAI.
-2. Pedir una celda Gallery: se monta el control simplificado actual, no Builder/biblioteca/insercion libre.
-3. Pedir Google Places: seleccionar una sugerencia real y verificar texto, mapa oculto y persistencia por el owner actual.
-4. Confirmar un solo control activo y cleanup al cerrar o cambiar sesion.
-5. Simular secret ausente, timeout, rate limit y salida malformada: error seguro y cero mutacion.
-6. Revisar logs: UID, trace/batch, latencia, resultado y request ID; nunca prompt, valores, snapshot, URL privada ni clave.
+2. Pedir una celda Gallery: se monta el control simplificado actual, no
+   Builder/biblioteca/inserción libre ni controles de Regalos, RSVP, eventos o
+   ubicación; la Gallery y el slot exactos quedan seleccionados, visibles y
+   enfocados. Confirmar que cambiar el fingerprint de contenido u orden solo
+   muestra que hubo cambios. Verificar que el botón de finalización tiene target
+   táctil adecuado, espera persistencia, termina únicamente la Gallery actual y
+   que `Volver al chat` no reconcilia su hoja.
+3. Informar lugar + dirección para evento único: se aplican como ubicación manual y aparecen acciones explícitas `Buscar en Google Maps`/`Usar estos datos`; el selector no se abre por el solo hecho de haber aportado textos.
+4. Repetir con solo lugar: la conversación presenta una única elección Maps/carga manual, el botón manual dice `Ingresar dirección manual` y no `Usar estos datos`. Elegir manual registra `leave_empty` directamente, conserva el lugar, pide únicamente dirección y no aparecen `placeId`, coordenadas ni metadata Google.
+5. Aceptar Maps: el control se monta inline dentro del historial, mantiene visible el chat y el composer, identifica `evento`, `ceremonia` o `fiesta` y precarga lugar + dirección.
+6. Inspeccionar el control: contiene búsqueda, resultados y cancelar; no muestra fecha, horario, Dress Code, Regalos, RSVP ni otros campos del tab Detalles del evento.
+7. Forzar varias sugerencias y confirmar que ninguna se elige sola. Elegir una explícitamente y verificar fields de texto, `mapa-google` de la phase exacta, mapa oculto y persistencia por el owner compartido.
+8. Cancelar sin seleccionar: no reconciliar `place_selection`, conservar los textos manuales y permitir usar esos datos o volver a buscar.
+9. Simular fallo del authoring owner: no insertar/actualizar metadata de Google ni mostrar confirmación. Abrir el control por sí solo tampoco completa la hoja.
+10. En `ceremony_party`, completar primero Party mediante Places dejando Ceremony vacía: solo `event.party.place_selection` queda terminal, la siguiente pregunta deriva de la ubicación pendiente de Ceremony y Regalos no aparece.
+11. Repetir completando Ceremony primero, luego con una phase manual y la otra mediante Places. Ninguna mutación o confirmación de una phase resuelve la otra; Regalos aparece recién cuando ambas ubicaciones aplicables están completas.
+12. Cancelar el selector de cualquiera de las phases: conservar sus textos manuales, no reconciliar `place_selection`, mantener `event_data` como primer bloque y no confirmar ambas ubicaciones.
+13. Repetir en `single`, Ceremony y Party; una phase ambigua debe aclararse antes de abrir/mutar y una selección nunca puede cruzar de phase.
+14. Confirmar un solo control activo y cleanup al cerrar o cambiar sesion.
+15. Simular secret ausente, timeout y rate limit: error seguro y cero mutación. Forzar una primera salida estructurada inválida y verificar una sola reparación; si la segunda también falla, no aplicar actions.
+16. Forzar una versión de contrato anterior y otra desconocida/futura: ambas reciben el mensaje seguro de recarga con la versión del cliente, no llaman a OpenAI y no se muestran como un mensaje inválido. La versión vigente continúa por el flujo normal; versión vacía conserva el rechazo estructural.
+17. Revisar logs: UID, trace/batch, latencia, resultado y request ID; nunca prompt, valores, snapshot, URL privada ni clave.
+18. Después de una selección Places verificada, forzar una `resolution` redundante `resolved_from_user` sobre la misma `place_selection`: conservar `resolved_by_control`, continuar desde el primer pendiente real y no mostrar error.
+19. Forzar el fallo de copy posterior a un control ya persistido: el cambio debe conservarse, el mensaje debe distinguirlo del fallo conversacional y `Continuar recorrido` debe releer el snapshot antes de reintentar.
 
 ### [ ] Guided Tour, responsive y accesibilidad
 
 1. Abrir Diseñador AI: no aparecen overlay, anchors ni `data-assistant-tour-*` nuevos.
 2. Volver a Asistente y ejecutar el tour completo: steps, substeps, footer, targets y preferencia no cambian.
 3. Inspeccionar DOM con controles locales y confirmar que no hay targets duplicados.
-4. Verificar historial, `aria-live`, textarea, Enter/Shift+Enter, foco, touch y composer fijo en desktop/320/390/430 px.
-5. Repetir con `prefers-reduced-motion`; loaders y uso no deben depender de animaciones.
-6. Confirmar que la superficie normal contiene solo conversacion y composer: no hay card/titulo descriptivo, boton `Recorrer Todo Asistente`, action types ni avisos tecnicos de aplicado/no-op.
+4. Verificar historial, `aria-live`, textarea, Enter/Shift+Enter, foco, touch y composer fijo en desktop/320/390/430 px. Con el editor Gallery inline, comprobar scroll interno, ausencia de scroll horizontal, acceso al botón de finalización y retorno al chat sin perder cambios.
+5. Con Places inline activo en esos anchos, confirmar ancho sin scroll horizontal, targets táctiles de al menos 44 px, resultados con scroll interno, autocomplete seleccionable y control no oculto por el composer. El historial debe conservar el contexto de la pregunta.
+6. Repetir con `prefers-reduced-motion`; loaders y uso no deben depender de animaciones.
+7. Confirmar que la superficie normal contiene solo conversación y composer: no hay card/título descriptivo, botón `Recorrer Todo Asistente`, action types ni avisos técnicos de aplicado/no-op.
 
 ## 9. Senales de alerta
 

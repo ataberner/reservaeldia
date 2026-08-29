@@ -1130,11 +1130,14 @@ test(
       generateHtmlFromPreparedRenderPayload,
       prepareRenderPayload,
     } = publicationPublishValidationModule;
-    const browser = await puppeteer.launch({ headless: "new" });
+    const browser = await puppeteer.launch({
+      headless: "shell",
+      timeout: 60_000,
+      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+    });
     t.after(async () => browser.close());
 
     async function waitForLayoutSettle(target) {
-      await target.waitForFunction(() => document.readyState === "complete");
       await target.evaluate(async () => {
         if (document.fonts?.ready) {
           try {
@@ -1143,8 +1146,9 @@ test(
             // noop
           }
         }
+        const firstSection = document.querySelector(".inv > .sec");
         await Promise.all(
-          Array.from(document.images || []).map((image) => {
+          Array.from(firstSection?.querySelectorAll("img") || []).map((image) => {
             if (image.complete) return Promise.resolve();
             return new Promise((resolve) => {
               image.addEventListener("load", resolve, { once: true });
@@ -1174,29 +1178,44 @@ test(
 
     async function capturePreviewSnapshot(html, viewport) {
       const page = await browser.newPage();
-      await page.setViewport({
-        width: viewport.width,
-        height: viewport.height,
-        deviceScaleFactor: 1,
-        isMobile: true,
-      });
-      await page.setContent(
-        `<iframe id="preview" sandbox="allow-scripts allow-same-origin" style="width:${viewport.width}px;height:${viewport.height}px;border:0;display:block"></iframe>`,
-        { waitUntil: "load" }
-      );
-      const srcDoc = buildPreviewFrameSrcDoc(html, {
-        previewViewport: "mobile",
-        layoutMode: "parity",
-      });
-      await page.$eval("#preview", (iframe, value) => {
-        iframe.srcdoc = value;
-      }, srcDoc);
-      const frameHandle = await page.$("#preview");
-      const frame = await frameHandle.contentFrame();
-      await waitForLayoutSettle(frame);
-      const snapshot = await frame.evaluate(collectMobileGeometrySnapshotFromDocument);
-      await page.close();
-      return snapshot;
+      let stage = "viewport";
+      try {
+        await page.setViewport({
+          width: viewport.width,
+          height: viewport.height,
+          deviceScaleFactor: 1,
+          isMobile: true,
+        });
+        stage = "shell";
+        await page.setContent(
+          `<iframe id="preview" sandbox="allow-scripts allow-same-origin" style="width:${viewport.width}px;height:${viewport.height}px;border:0;display:block"></iframe>`,
+          { waitUntil: "load" }
+        );
+        const srcDoc = buildPreviewFrameSrcDoc(html, {
+          previewViewport: "mobile",
+          layoutMode: "parity",
+        });
+        stage = "srcdoc";
+        await page.$eval("#preview", (iframe, value) => {
+          iframe.srcdoc = value;
+        }, srcDoc);
+        stage = "srcdoc-ready";
+        await page.waitForFunction(() => {
+          const frameDocument = document.querySelector("#preview")?.contentDocument;
+          return frameDocument?.readyState !== "loading" && Boolean(frameDocument.querySelector(".inv"));
+        });
+        const frameHandle = await page.$("#preview");
+        const frame = await frameHandle.contentFrame();
+        stage = "layout-settle";
+        await waitForLayoutSettle(frame);
+        stage = "snapshot";
+        return await frame.evaluate(collectMobileGeometrySnapshotFromDocument);
+      } catch (error) {
+        error.message = `capture preview ${viewport.id} at ${stage}: ${error.message}`;
+        throw error;
+      } finally {
+        await page.close();
+      }
     }
 
     function assertObjectCenteredOnSection(snapshot, objectId, message) {
@@ -1217,6 +1236,216 @@ test(
         `${message}: ${objectId} center ${actualCenter.toFixed(2)} differs from section center ${expectedCenter.toFixed(2)}`
       );
     }
+
+    function assertObjectInsideViewport(snapshot, objectId, viewport, message) {
+      const object = (snapshot?.objects || []).find((entry) => entry.id === objectId);
+      assert.ok(object, `${message}: missing ${objectId}`);
+      assert.ok(
+        Number(object.rect?.left || 0) >= -2,
+        `${message}: ${objectId} left ${Number(object.rect?.left || 0).toFixed(2)} is outside`
+      );
+      assert.ok(
+        Number(object.rect?.right || 0) <= Number(viewport.width) + 2,
+        `${message}: ${objectId} right ${Number(object.rect?.right || 0).toFixed(2)} exceeds ${viewport.width}`
+      );
+    }
+
+    function assertGroupChildrenInsideViewport(snapshot, childIds, viewport, message) {
+      const expectedChildIds = new Set(childIds);
+      const children = (snapshot?.groupChildren || []).filter(
+        (entry) => expectedChildIds.has(entry.childId)
+      );
+      assert.equal(
+        children.length,
+        expectedChildIds.size,
+        `${message}: missing grouped children`
+      );
+      children.forEach((child) => {
+        assert.ok(
+          Number(child.rect?.left || 0) >= -2,
+          `${message}: ${child.childId} left ${Number(child.rect?.left || 0).toFixed(2)} is outside`
+        );
+        assert.ok(
+          Number(child.rect?.right || 0) <= Number(viewport.width) + 2,
+          `${message}: ${child.childId} right ${Number(child.rect?.right || 0).toFixed(2)} exceeds ${viewport.width}`
+        );
+      });
+    }
+
+    await t.test("pantalla edge content stays visible while decorative bleed may crop", async () => {
+      const galleryImage =
+        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+      const draft = {
+        secciones: [
+          {
+            id: "edge-content-pantalla",
+            orden: 0,
+            altoModo: "pantalla",
+            altura: 500,
+            fondo: "#f8f3fb",
+          },
+        ],
+        objetos: [
+          {
+            id: "edge-left-text",
+            tipo: "texto",
+            seccionId: "edge-content-pantalla",
+            x: 0,
+            yNorm: 0.08,
+            width: 220,
+            texto: "Texto junto al borde izquierdo",
+            fontSize: 30,
+            align: "left",
+          },
+          {
+            id: "edge-right-button",
+            tipo: "rsvp-boton",
+            seccionId: "edge-content-pantalla",
+            x: 600,
+            yNorm: 0.24,
+            width: 200,
+            height: 52,
+            texto: "Confirmar",
+          },
+          {
+            id: "edge-right-icon",
+            tipo: "icono-svg",
+            seccionId: "edge-content-pantalla",
+            x: 720,
+            yNorm: 0.4,
+            width: 64,
+            height: 64,
+            viewBox: "0 0 24 24",
+            d: "M3 3h18v18H3z",
+            color: "#4f2d62",
+          },
+          {
+            id: "edge-right-group",
+            tipo: "grupo",
+            seccionId: "edge-content-pantalla",
+            x: 560,
+            yNorm: 0.54,
+            width: 240,
+            height: 100,
+            children: [
+              {
+                id: "edge-right-group-icon",
+                tipo: "icono-svg",
+                x: 0,
+                y: 12,
+                width: 54,
+                height: 54,
+                viewBox: "0 0 24 24",
+                d: "M4 4h16v16H4z",
+                color: "#956bb3",
+              },
+              {
+                id: "edge-right-group-text",
+                tipo: "texto",
+                x: 68,
+                y: 10,
+                width: 172,
+                texto: "Contenido agrupado",
+                fontSize: 24,
+              },
+            ],
+          },
+          {
+            id: "edge-right-gallery",
+            tipo: "galeria",
+            seccionId: "edge-content-pantalla",
+            x: 500,
+            yNorm: 0.72,
+            width: 300,
+            height: 150,
+            rows: 1,
+            cols: 2,
+            cells: [
+              { id: "edge-gallery-one", mediaUrl: galleryImage },
+              { id: "edge-gallery-two", mediaUrl: galleryImage },
+            ],
+          },
+          {
+            id: "edge-decorative-bleed",
+            tipo: "forma",
+            figura: "rect",
+            role: "decorative",
+            anclaje: "fullbleed",
+            seccionId: "edge-content-pantalla",
+            x: -120,
+            yNorm: 0.34,
+            width: 1040,
+            height: 80,
+            color: "rgba(149,107,179,0.18)",
+          },
+        ],
+        rsvp: {
+          enabled: true,
+          questions: [],
+        },
+      };
+      const prepared = await prepareRenderPayload(draft);
+      const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+        slug: "mobile-edge-content-preview",
+        isPreview: true,
+      });
+      const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, {
+        slug: "mobile-edge-content-publish",
+      });
+      const containedIds = [
+        "edge-left-text",
+        "edge-right-button",
+        "edge-right-icon",
+        "edge-right-group",
+        "edge-right-gallery",
+      ];
+
+      for (const viewport of MOBILE_GEOMETRY_PARITY_VIEWPORTS) {
+        const previewSnapshot = await capturePreviewSnapshot(previewHtml, viewport);
+        const publishSnapshot = await capturePublishSnapshot(publishHtml, viewport);
+        assert.deepEqual(
+          diffMobileGeometrySnapshots(previewSnapshot, publishSnapshot),
+          [],
+          `edge content parity ${viewport.id}`
+        );
+        containedIds.forEach((objectId) => {
+          assertObjectInsideViewport(
+            previewSnapshot,
+            objectId,
+            viewport,
+            `edge content preview ${viewport.id}`
+          );
+          assertObjectInsideViewport(
+            publishSnapshot,
+            objectId,
+            viewport,
+            `edge content publish ${viewport.id}`
+          );
+        });
+        assertGroupChildrenInsideViewport(
+          previewSnapshot,
+          ["edge-right-group-icon", "edge-right-group-text"],
+          viewport,
+          `edge group children preview ${viewport.id}`
+        );
+        assertGroupChildrenInsideViewport(
+          publishSnapshot,
+          ["edge-right-group-icon", "edge-right-group-text"],
+          viewport,
+          `edge group children publish ${viewport.id}`
+        );
+
+        const decorativeBleed = publishSnapshot.objects.find(
+          (entry) => entry.id === "edge-decorative-bleed"
+        );
+        assert.ok(decorativeBleed, `edge decorative bleed ${viewport.id}`);
+        assert.equal(decorativeBleed.lane, "bleed");
+        assert.ok(
+          decorativeBleed.rect.left < -2 && decorativeBleed.rect.right > viewport.width + 2,
+          `edge decorative bleed ${viewport.id}: expected cover-like lateral crop`
+        );
+      }
+    });
 
     for (const fixture of previewPublishVisualBaselineFixtures) {
       await t.test(fixture.id, async () => {

@@ -26,9 +26,9 @@ de acceso libre al canvas, Firestore o Storage.
 | Responsabilidad | Owner actual | Observaciones |
 | --- | --- | --- |
 | Gate de acceso frontend | `src/domain/editor/designerAiAccess.js` | Exige superadmin resuelto, draft writable y no selector. |
-| Entrada de tab, panel responsive y exclusión del Asistente | `src/components/DashboardSidebar.jsx` | Monta/desmonta `DesignerAiPanel`; abrirlo desactiva Assistant. |
-| UI, historial efímero, envío, loader, controles locales, stale guards y mensajes seguros | `src/components/editor/designerAi/DesignerAiPanel.jsx` | No existe un reducer/store de conversación independiente. |
-| Control inline de ubicación | `src/components/editor/designerAi/DesignerAiLocationControl.jsx` | Superficie mínima de búsqueda/selección/cancelación; no monta el formulario completo de Detalles del evento. |
+| Entrada de tab, panel responsive, exclusión del Asistente e historial efímero por borrador | `src/components/DashboardSidebar.jsx` | Monta/desmonta `DesignerAiPanel`; abrirlo desactiva Assistant. Su estado React sobrevive al cambio de tab y se descarta con el `sidebarInstanceKey` al salir o cambiar de borrador. |
+| UI, envío, loader, controles locales, stale guards y mensajes seguros | `src/components/editor/designerAi/DesignerAiPanel.jsx` | Consume y actualiza el historial del sidebar; no existe un reducer/store de conversación independiente. |
+| Control especializado de ubicación | `src/components/editor/designerAi/DesignerAiLocationControl.jsx` | Superficie mínima de búsqueda/selección/cierre; ocupa el área de trabajo del chat mientras está activa y no monta el formulario completo de Detalles del evento. |
 | Decisión y targeting conversacional de ubicación | `src/domain/editor/designerAiLocationInteraction.js` | Deriva phase, precarga y decisión Maps desde resultado + snapshot; no persiste un segundo modelo. |
 | Proveedor Google Places | `src/domain/eventDetails/googlePlaces.js` | Loader, sesión de autocomplete, sugerencias y details compartidos por el tab manual y Diseñador AI. |
 | Mutación canónica de ubicación | `src/domain/eventDetails/locationAuthoring.js` + `updateTemplateAuthoringEventLocation` | Coordina fields/defaults y el objeto `mapa-google`; diferencia escritura manual de selección Google. |
@@ -65,12 +65,13 @@ DashboardSidebar
 La function call de OpenAI es un sobre de salida estructurada; no ejecuta por sí
 misma una tool de negocio. Las actions reales se ejecutan después en el cliente.
 
-Cuando una selección requiere precisión visual o autoridad externa, el flujo se
-ramifica sin reemplazar el chat:
+Cuando una selección requiere precisión visual o autoridad externa, el flujo
+reemplaza transitoriamente el área de historial + composer, sin perder el
+historial efímero:
 
 ```text
 chat -> intención/phase -> decisión explícita de usar Maps
-     -> DesignerAiLocationControl inline -> sugerencias locales de Places
+     -> DesignerAiLocationControl a altura disponible -> sugerencias locales de Places
      -> selección explícita -> locationAuthoring -> persistencia normal del draft
      -> reread de placeId/lugar/dirección -> resolved_by_control -> continuación
 ```
@@ -83,7 +84,7 @@ la solicita.
 
 Este es el primer uso implementado del patrón **chat orquesta; control
 especializado resuelve la selección precisa**. No existe un framework genérico ni
-un formulario paralelo: `MiniToolbarTabDetallesEvento` y el control inline
+un formulario paralelo: `MiniToolbarTabDetallesEvento` y el control especializado
 reutilizan el mismo proveedor de Places y el mismo coordinador de authoring, que
 escriben el mismo shape; cada superficie conserva solo su presentación.
 
@@ -242,9 +243,10 @@ Las allowlists y shapes exactos viven en
 - La búsqueda Places conserva todos los resultados devueltos y solo obtiene
   details del resultado que selecciona el usuario. API key, sesión y respuestas
   completas permanecen en el navegador.
-- El selector de ubicación se monta dentro del historial de conversación con
+- El selector de ubicación reemplaza temporalmente el área de trabajo del chat,
+  usa todo su alto disponible y conserva el historial en memoria. Se monta con
   phase y precarga derivadas del snapshot; no expone fecha, horario, Dress Code,
-  RSVP ni Regalos.
+  RSVP ni Regalos. Su cierre explícito vuelve al historial y al composer.
 - Firestore Rules exige ownership para persistir el draft y preserva `userId`.
 
 ### 6.3 Límites y gaps
@@ -271,8 +273,9 @@ Las allowlists y shapes exactos viven en
   persiste la resolución de la hoja `guided_completion` exacta y confirma esa
   persistencia. Cerrar el control no reconcilia la hoja.
 - `google_place_picker` valida la phase contra disponibilidad/mode. El panel
-  precarga lugar + dirección, mantiene el composer visible pero deshabilitado
-  mientras el control está activo y permite cancelar sin reconciliar la hoja.
+  precarga lugar + dirección, reemplaza visualmente historial y composer con el
+  control a altura completa y permite cerrarlo para volver al chat sin
+  reconciliar la hoja.
   La selección solo continúa cuando el owner releído coincide exactamente con el
   `placeId`, lugar y dirección elegidos y el snapshot de capabilities refleja
   esos textos y `placeSelected` en la misma phase. La reconciliación recibe ese
@@ -302,12 +305,15 @@ upstream.
 
 - `DashboardSidebar` pasa como `sessionKey` el draft key/slug disponible.
 - No existe `conversationId` durable ni una colección de conversaciones/mensajes.
-- El panel guarda como máximo seis mensajes en estado React.
+- `DashboardSidebar` conserva en estado React como máximo los treinta mensajes
+  visibles más recientes del borrador actual.
 - IDs de mensaje se generan en cliente con rol, timestamp y sufijo aleatorio.
 - El backend valida `clientMessageId`, pero no lo usa como clave idempotente.
-- Al desmontar el panel o cambiar `sessionKey`, el historial visible se pierde.
-  Reabrir el tab después de un unmount inicia otra conversación.
-- No se usa `previous_response_id`; cada request reconstruye contexto reciente.
+- Desmontar solo el panel al alternar tabs no pierde esos mensajes ni inicia otra
+  conversación al volver. Cambiar o cerrar el borrador remonta el sidebar y
+  descarta el historial.
+- No se usa `previous_response_id`; cada request reconstruye contexto con un
+  máximo de los seis turnos visibles más recientes, aunque la UI retenga treinta.
 
 ### 8.2 Persistencia
 
@@ -364,8 +370,9 @@ perfil, email, apellido o `nombreCompleto`.
 ### 8.4 Retención
 
 No se verificó una política específica de retención o borrado para
-`designerAiConversation`; hoy sigue el ciclo de vida del documento draft. Tampoco
-existe retención local del chat más allá del componente montado. La request a
+`designerAiConversation`; hoy sigue el ciclo de vida del documento draft. El
+chat solo se retiene en memoria dentro del `DashboardSidebar` asociado al
+borrador actual y se descarta al cambiar o cerrar ese borrador. La request a
 OpenAI configura `store:false`, pero el repositorio no documenta una política
 adicional del proveedor aplicable a estas requests.
 
@@ -473,7 +480,7 @@ Clasificación usada aquí:
 | Separación de contenido no confiable | Parcial | Roles y validación existen; estado de cliente se usa como developer context después de sanear. |
 | Evidencia antes de confirmar | Parcial | Ubicación manual y selección Places se verifican contra valores esperados; portada usa fingerprint; Gallery usa finalización explícita persistida y no el fingerprint de sus cambios. Otras actions aún no tienen verificación individual por efecto. |
 | Nunca afirmar ejecución sin evidencia completa | Solo documentado | Regla normativa en el contrato conversacional; el reread actual no verifica individualmente todos los efectos. |
-| Chat persistido | No implementado deliberadamente | Solo últimos seis mensajes en React. |
+| Chat persistido | No implementado deliberadamente | Hasta treinta mensajes en memoria React por borrador; solo los seis turnos más recientes forman el contexto de cada request. |
 | Metadata de ledger persistida | Implementado | `designerAiConversation` en draft. |
 | Primer ingreso vs reingreso | Implementado | `designerAiConversation.usage.hasStarted`, `prepareDesignerAiConversationEntry` y persistencia confirmada antes del auto-start. |
 | Nombre registrado en el saludo | Implementado con fallback | El callable relee solo `usuarios/{uid}.nombre`; ausencia/error produce string vacío. La calidad del saludo no tiene eval real. |
@@ -481,7 +488,7 @@ Clasificación usada aquí:
 | Orden guiado `Nombres -> estructura -> evento -> Regalos -> Dress Code -> portada -> Galleries` | Implementado y testeado | `GUIDED_FLOW_BLOCKS`, `ledger.guidedFlow` y brief derivado en el ledger compartido. |
 | RSVP fuera del interrogatorio principal | Implementado y testeado | No integra `guidedFlow`; la allowlist/action RSVP continúa disponible para pedidos explícitos. |
 | Aprovechar varios datos adelantados | Parcial | El schema acepta lotes de hasta 19 actions y el prompt pide agrupar, pero no hay evaluación real de cumplimiento conversacional. |
-| Ubicación chat-first manual/Places | Implementado y testeado | Datos manuales se aplican por el owner, la decisión Maps es explícita, el control inline reutiliza Places y la selección se verifica localmente antes de continuar. |
+| Ubicación chat-first manual/Places | Implementado y testeado | Datos manuales se aplican por el owner, la decisión Maps es explícita, el control especializado reutiliza Places y la selección se verifica localmente antes de continuar. |
 | Regalos con valor/visibilidad independientes y lista externa | Implementado en dominio/capability | Root normalizada, flags por método, URL externa, actions y validación de readiness existentes. |
 | Recorrido guiado interno de Regalos | Gap de runtime documentado | El owner funcional exige elegir lista externa o datos bancarios, ocultar defaults no confirmados y excluir intro/botón de la completitud. El ledger vigente todavía agrega todos los métodos, `gifts.intro_text` y `gifts.button_text` al `guidedFlow`; la corrección futura debe reutilizar las actions existentes y `GIFTS_SYSTEM_CONTRACT.md`, sin crear otro estado de modalidad. |
 | Portada y múltiples Galleries por disponibilidad real | Implementado en orquestación/control | Portada conserva evidencia por fingerprint. Cada Gallery con slots aporta una hoja durable, respeta el orden del snapshot y avanza solo por finalización explícita; cambios y cierre del control no completan. |

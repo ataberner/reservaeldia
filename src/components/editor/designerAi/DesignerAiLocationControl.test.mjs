@@ -12,17 +12,19 @@ test("inline control reuses the Places and event-location owners", () => {
   assert.doesNotMatch(source, /placeId:\s*["'`]/);
 });
 
-test("inline control contains only location selection and explicit cancellation", () => {
+test("location control contains only location selection and an explicit return to chat", () => {
   assert.match(source, /role="combobox"/);
   assert.match(source, /role="listbox"/);
   assert.match(source, /elegí explícitamente el resultado correcto/);
-  assert.match(source, /Cancelar búsqueda en Google Maps/);
+  assert.match(source, /Cerrar Google Maps y volver al chat/);
+  assert.match(source, />Volver al chat</);
   assert.doesNotMatch(source, /Dress Code|Regalos|RSVP|Hora de inicio|type="date"/);
 });
 
-test("inline control is width-safe, touchable and scrolls its own results", () => {
+test("location control fills the available area, stays touchable and scrolls its own results", () => {
   assert.match(source, /min-h-11/);
-  assert.match(source, /min-w-0 max-w-full/);
+  assert.match(source, /h-full min-h-0[^"]*min-w-0 max-w-full[^"]*flex-col overflow-hidden/);
+  assert.match(source, /min-h-0[^"]*flex-1 overflow-y-auto overflow-x-hidden/);
   assert.match(source, /overflow-y-auto overflow-x-hidden/);
   assert.match(source, /overscroll-contain/);
 });

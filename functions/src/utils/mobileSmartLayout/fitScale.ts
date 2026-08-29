@@ -35,6 +35,21 @@ export function jsFitScaleBlock(): string {
     restoreFitScaleBaseline(bleed);
   }
 
+  function isMobileContentFitNode(node){
+    if (!node) return false;
+    var fitMode = (node.getAttribute("data-mobile-fit") || "").toLowerCase();
+    if (fitMode === "ignore" || fitMode === "cover") return false;
+
+    var role = (node.getAttribute("data-role") || "").toLowerCase();
+    if (role === "decorative" || role === "background") return false;
+
+    // Fullbleed is the generated cover/crop lane. Section backgrounds and
+    // section-owned decorations are already outside .objeto collection; this
+    // guard keeps object-backed bleed resources on the same cover-like path.
+    if (node.closest && node.closest(".sec-bleed")) return false;
+    return true;
+  }
+
   function computeSectionBounds(sec, nodes){
     if (!sec || !nodes || !nodes.length) return null;
     var minLeft = Infinity;
@@ -115,7 +130,8 @@ export function jsFitScaleBlock(): string {
       scaleAfterWidthClamp: null,
       scaleAfterHeightClamp: null,
       tinyShrinkProtected: false,
-      pantallaDownscaleBlocked: false
+      pantallaDownscaleBlocked: false,
+      horizontalOverflow: false
     };
     if (coverage < minFillForUpscale) {
       scale = targetCoverage / Math.max(0.01, coverage);
@@ -140,9 +156,13 @@ export function jsFitScaleBlock(): string {
       scale = Math.min(scale, maxScaleByWidth);
       debug.maxScaleByWidth = maxScaleByWidth;
     }
+    var horizontalOverflow =
+      Number(bounds.minLeft || 0) < -0.5 ||
+      Number(bounds.maxRight || 0) > (secW + 0.5);
+    debug.horizontalOverflow = horizontalOverflow;
     debug.scaleAfterWidthClamp = scale;
 
-    if (secModo === "pantalla" && scale < 1 && scale > 0.94) {
+    if (secModo === "pantalla" && !horizontalOverflow && scale < 1 && scale > 0.94) {
       // Avoid shrinking "pantalla" for tiny overflows; preserve visual impact.
       scale = 1;
       debug.tinyShrinkProtected = true;
@@ -161,15 +181,16 @@ export function jsFitScaleBlock(): string {
     }
     debug.scaleAfterHeightClamp = scale;
 
-    if (secModo === "pantalla" && scale < 1) {
+    if (secModo === "pantalla" && scale < 1 && !horizontalOverflow) {
       // Pantalla sections already have their own viewport-fit logic.
-      // Avoid additional downscale here to keep hero text readable.
+      // Avoid height-only downscale here to keep hero text readable. Horizontal
+      // containment remains mandatory for content and interaction objects.
       scale = 1;
       debug.pantallaDownscaleBlocked = true;
     }
 
     if (!isFinite(scale) || scale <= 0) scale = 1;
-    if (Math.abs(scale - 1) < 0.02) scale = 1;
+    if (!horizontalOverflow && Math.abs(scale - 1) < 0.02) scale = 1;
     return {
       scale: scale,
       debug: debug
@@ -188,18 +209,9 @@ export function jsFitScaleBlock(): string {
       preserveBottomGap = Math.max(0, Number(opts.preserveBottomGap));
     }
 
-    var fitNodes = (nodesAll || []).filter(function(node){
-      if (!node) return false;
-      var fitMode = (node.getAttribute("data-mobile-fit") || "").toLowerCase();
-      if (fitMode === "ignore") return false;
-      if (node.closest && node.closest(".sec-bleed")) return false;
-      return true;
-    });
+    var fitNodes = (nodesAll || []).filter(isMobileContentFitNode);
 
     var bounds = computeSectionBounds(sec, fitNodes);
-    if (!bounds) {
-      bounds = computeSectionBounds(sec, nodesAll || []);
-    }
     if (!bounds) {
       restoreFitScaleBaseline(content);
       restoreFitScaleBaseline(bleed);
@@ -211,7 +223,7 @@ export function jsFitScaleBlock(): string {
     var scale = (fitResult && Number.isFinite(fitResult.scale)) ? fitResult.scale : 1;
     var fitDebug = fitResult && fitResult.debug ? fitResult.debug : null;
     applyElementFitScale(content, scale);
-    applyElementFitScale(bleed, scale);
+    restoreFitScaleBaseline(bleed);
 
     var neededHeight = 0;
     if (secModo !== "pantalla") {
@@ -415,7 +427,8 @@ export function jsFitScaleBlock(): string {
           scaleAfterWidthClamp: fitDebug.scaleAfterWidthClamp == null ? null : +Number(fitDebug.scaleAfterWidthClamp).toFixed(3),
           scaleAfterHeightClamp: fitDebug.scaleAfterHeightClamp == null ? null : +Number(fitDebug.scaleAfterHeightClamp).toFixed(3),
           tinyShrinkProtected: !!fitDebug.tinyShrinkProtected,
-          pantallaDownscaleBlocked: !!fitDebug.pantallaDownscaleBlocked
+          pantallaDownscaleBlocked: !!fitDebug.pantallaDownscaleBlocked,
+          horizontalOverflow: !!fitDebug.horizontalOverflow
         } : null,
         appliedScale: +Number(scale || 1).toFixed(3),
         dominantText: dominantText,

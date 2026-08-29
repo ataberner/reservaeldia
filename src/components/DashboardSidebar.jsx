@@ -403,6 +403,7 @@ export default function DashboardSidebar({
     const [assistantStepIndex, setAssistantStepIndex] = useState(0);
     const [assistantSubstepIndex, setAssistantSubstepIndex] = useState(0);
     const [assistantContentVersion, setAssistantContentVersion] = useState(0);
+    const [designerAiMessageHistory, setDesignerAiMessageHistory] = useState([]);
     const [assistantHasStoryTextStep, setAssistantHasStoryTextStep] = useState(false);
     const [rsvpForcePresetSelection, setRsvpForcePresetSelection] = useState(false);
     const [assistantTourFieldEditSignal, setAssistantTourFieldEditSignal] =
@@ -1719,8 +1720,8 @@ export default function DashboardSidebar({
             : "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-[#eadff8] bg-white px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-[#692B9A] transition hover:bg-[#EFDFFB] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]";
     const designerAiActive = canUseDesignerAi && !assistantActive && botonActivo === "designer-ai";
     const designerAiButtonClass = designerAiActive
-        ? "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-transparent bg-gradient-to-r from-[#4c1d95] to-[#c25b45] px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-white shadow-[0_12px_24px_rgba(76,29,149,0.2)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]"
-        : "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-[#eadff8] bg-white px-[17px] pb-[10px] pl-[15px] pt-2 font-['Source_Sans_Pro',sans-serif] text-[14px] font-[650] leading-[24px] tracking-[0px] text-[#4c1d95] transition hover:bg-[#fff4ef] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1]";
+        ? "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-transparent bg-[#692B9A] px-[17px] pb-[10px] pl-[15px] pt-2 font-['DM_Sans',sans-serif] text-[14px] font-semibold leading-[24px] tracking-[0px] text-white shadow-[0_10px_20px_rgba(105,43,154,0.18)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF]"
+        : "inline-flex h-[42px] w-[158px] items-center gap-2 rounded-[32px] border border-[#d9c0ec] bg-white px-[17px] pb-[10px] pl-[15px] pt-2 font-['DM_Sans',sans-serif] text-[14px] font-semibold leading-[24px] tracking-[0px] text-[#692B9A] transition-colors hover:bg-[#FAF5FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF]";
     const assistantStepButtonBase =
         "inline-flex min-h-10 items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c8f1] disabled:cursor-not-allowed disabled:opacity-45";
     const assistantStepButtonSecondary =
@@ -1958,8 +1959,8 @@ export default function DashboardSidebar({
                                         onClick={handleDesignerAiAccessClick}
                                         className={`${mobileHistoryButtonBase} ${
                                             designerAiActive
-                                                ? "border-white/70 bg-gradient-to-br from-[#4c1d95] to-[#c25b45] text-white shadow-[0_12px_24px_rgba(76,29,149,0.24)] ring-2 ring-white/55"
-                                                : "border-[#eadff8] bg-white text-[#4c1d95] shadow-[0_10px_20px_rgba(95,53,150,0.12)] hover:bg-[#fff4ef]"
+                                                ? "border-white/70 bg-[#692B9A] text-white shadow-[0_10px_20px_rgba(105,43,154,0.2)] ring-2 ring-white/55"
+                                                : "border-[#d9c0ec] bg-white text-[#692B9A] shadow-[0_8px_16px_rgba(105,43,154,0.12)] hover:bg-[#FAF5FF]"
                                         }`}
                                         title="Diseñador AI"
                                         aria-label="Abrir Diseñador AI"
@@ -2082,7 +2083,7 @@ export default function DashboardSidebar({
                             botonActivo === "forma"
                                 ? "gap-0 px-2.5 pb-0.5 pt-8"
                                 : botonActivo === "designer-ai"
-                                    ? "gap-0 px-2.5 pb-2 pt-10"
+                                    ? "gap-0 px-0 pb-0 pt-0"
                                 : botonActivo === "detalles"
                                     ? "gap-3 px-0 pb-3 pt-10"
                                 : "gap-3 px-2.5 pb-3 pt-10"
@@ -2125,6 +2126,8 @@ export default function DashboardSidebar({
                             <DesignerAiPanel
                                 sessionKey={assistantTourDraftKey || slugInvitacion}
                                 contentVersion={assistantContentVersion}
+                                messageHistory={designerAiMessageHistory}
+                                onMessageHistoryChange={setDesignerAiMessageHistory}
                                 abrirSelector={abrirSelectorImagen}
                                 imagenes={imagenes}
                                 imagenesEnProceso={imagenesEnProceso}

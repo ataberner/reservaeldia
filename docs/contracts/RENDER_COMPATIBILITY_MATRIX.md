@@ -42,6 +42,16 @@ Casos con paridad compartida caracterizada:
 - contrato de config `gifts`
 - geometria mobile/reflow opt-in para preview iframe vs publish en `390x844`, `375x812`, y `414x896`
 
+En mobile, el fit posterior al reflow debe mantener completamente dentro del
+ancho del viewport a los objetos de contenido e interaccion de `.sec-content`,
+incluidos texto, CTA, iconos, Gallery y el wrapper unico de un grupo. El ajuste
+puede reducir uniformemente ese lane cuando sea necesario para preservar la
+composicion. Los roles `decorative`/`background`, las capas propias de seccion y
+el lane `.sec-bleed` no forman parte de ese bounds de contenido: conservan su
+geometria de cobertura y pueden extenderse y recortarse lateralmente. Esta
+clasificacion es runtime-only y nunca muta `objetos`, `secciones`, `yNorm` ni
+estado del editor/Firestore.
+
 El ownership de scroll mobile conserva una sola autoridad efectiva por
 superficie. El publish mobile usa el root del documento (`<html>`) y mantiene
 `<body>` fuera del scroll vertical después del loader. Los mockups mobile
@@ -123,6 +133,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `forma.diamond` / `star` / `heart` / `arrow` / `pentagon` / `hexagon` / `pill` | `si` | `soportado` | `soportado` | `soportado` | `requiere prueba manual` | solo bloquea si `figura` cae fuera del set soportado | soportado, pero validar manualmente |
 | `altoModo: pantalla` + `yNorm` | `si` | `soportado` | `soportado` | `parcial` | `parcial` | warnings `pantalla-ynorm-missing` y `pantalla-ynorm-drift` | usar con restricciones |
 | `mobileLayoutMode: preserve` | `si` | `soportado` | `soportado` | `soportado` | `alta` en generated HTML | sin warning especifico actual | opt-out explicito de smart reflow por seccion; preview/publish comparten `data-mobile-layout-mode="preserve"` |
+| contencion mobile de contenido | no agrega persistencia | no cambia geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | `.sec-content` mantiene contenido/interaccion dentro del viewport; roles decorativos, capas de seccion y `.sec-bleed` conservan crop tipo cover |
 | `functionalAssociation` RSVP/Gifts/Ceremony/Party/Dress Code/Countdown | `si` en seccion o grupo raiz; Countdown solo en seccion | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled`, `eventDetails.mode`, `eventDetails.dressCode.enabled` y `mostrarCuentaRegresiva` del Countdown contenido son la autoridad; secciones/grupos omitidos no mutan geometria |
 | `anclaje: fullbleed` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque el canvas no representa la salida final | warning `fullbleed-editor-drift` | congelar contrato |
 | `enlace` | `si` | `parcial` | `soportado` | `soportado` | `parcial` | CTA funcional ignora `enlace` | usar con restricciones |

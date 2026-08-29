@@ -129,6 +129,9 @@ Treat any of the following as a regression unless a new product or architecture 
   an explicit countdown-contract change
 - changed cross-section order or changed `fijo`/`pantalla` relationship in the mixed case
 - changed mobile smart-layout height expansion between preview iframe and publish
+- allowed non-decorative `.sec-content` objects to cross the mobile viewport,
+  or included roles `decorative`/`background`, section-owned visuals, or the
+  `.sec-bleed` cover lane in the content-fit bounds
 - changed group-child offsets relative to the group wrapper
 - changed fullbleed/content lane separation in fixed sections
 - changed `decoracionesBorde` rendering into object/smart-layout nodes, or changed top/bottom viewport-width anchoring, intrinsic-clamp sizing budget, or offset behavior
@@ -186,6 +189,7 @@ Run the browser-backed junction capture with:
   byte-identical. SVG frame rendering did not change; PNG frame parity is
   additionally protected by the frame contract and renderer tests.
 - Mobile geometry parity capture is available through the opt-in Node test guarded by `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; normal CI keeps the deterministic fixture/diff tests only. The snapshot includes section, object, group-child, and edge-decoration geometry. Edge decoration sizing is governed by the generated HTML intrinsic-clamp model; the editor canvas can adjust only desktop edge offsets today, and mobile edge offsets remain a separate render field.
+- The same browser capture includes `pantalla edge content stays visible while decorative bleed may crop`. At `390x844`, `375x812`, and `414x896` it checks text, CTA, icon, one preserved group (including nested children), and Gallery containment in both draft-authoritative preview and publish, while a decorative `fullbleed` band must continue extending beyond both lateral edges.
 - The current preview iframe supports publish-like layout mode by default through `data-preview-layout-mode="parity"`. Set `NEXT_PUBLIC_MOBILE_PREVIEW_PARITY_MODE=0` to use the legacy iframe height/overflow mutation path during rollback.
 - On physical Android Chrome, the first gesture inside `mobile-preview-focused` must move `body.scrollTop` while `document.documentElement.scrollTop` remains `0`. The paired `mobile-preview-paired` mockup uses the same shell-only body-root contract and its browser-backed test covers touch, small wheel/trackpad deltas, and wheel after touch. Both iframes stay at logical `390 x 844`; this shell rule is not a preview/publish geometry parity target.
 - On published mobile HTML, the first gesture after loader readiness must instead move `document.documentElement.scrollTop` while `body.scrollTop` remains `0`. The browser-backed `published mobile first touch` test covers `390x844`, `375x812`, and `414x896`, and asserts that the initial gesture changes neither section heights nor the root scroll range. Desktop and preview root ownership remain unchanged.

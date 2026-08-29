@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-08-24.
+> Updated from code inspection on 2026-08-29.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -370,6 +370,18 @@ Section height is decided by a combination of generation-time section mode and r
 - `mobileLayoutMode: "preserve"` on a section is an explicit opt-out from smart reflow. The runtime still measures the section for normal mobile fit/height behavior, but skips anchor detection, clustering, ordering, and stack reflow.
 
 The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It clusters generated DOM nodes, decides whether reflow is needed, stacks flow content when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
+
+The final mobile fit pass also owns horizontal containment for generated
+content. It measures non-decorative `.sec-content` objects after base geometry,
+font/image readiness and any fixed-section reflow. If the rendered bounds would
+cross the viewport, it applies the smallest uniform lane downscale needed to
+keep text, CTAs, icons, Gallery and group wrappers visible. In `pantalla`, this
+horizontal containment is allowed even though height-only downscale remains
+blocked to preserve hero readability. Section-owned background/decor layers,
+roles marked `decorative`/`background`, and `.sec-bleed` remain outside this
+content fit and can retain cover-like lateral crop. The pass changes generated
+DOM geometry only; authored `x`/`y`, `yNorm`, groups and Firestore remain
+untouched.
 
 Centered title rule:
 

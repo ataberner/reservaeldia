@@ -331,17 +331,21 @@ El modelo puede solicitar, pero no ejecutar ni completar por sí solo:
 | `google_place_picker` | `event.select_google_place` | Solo `ceremony` o `party`. |
 
 Media URLs, assets, tokens, paths, `placeId`, coordenadas y metadata no son
-argumentos del modelo. Para ubicación, el panel conserva el chat, muestra inline
-solo la superficie especializada de Places para la phase exacta y precarga la
-búsqueda desde el lugar/dirección ya persistidos. El usuario debe elegir un
-resultado; no existe selección automática ante múltiples sugerencias. El
-frontend marca `resolved_by_control` solo después de comprobar la evidencia que
+argumentos del modelo. Mientras cualquier control local está activo, el panel
+conserva el historial efímero pero reemplaza visualmente historial + composer
+con una superficie que ocupa todo el alto disponible del área de trabajo. Esa
+superficie debe ofrecer cierre explícito para volver al chat; cerrarla no aporta
+evidencia ni completa una hoja. Para ubicación se muestra solo Places para la
+phase exacta y se precarga la búsqueda desde el lugar/dirección ya persistidos.
+El usuario debe elegir un resultado; no existe selección automática ante
+múltiples sugerencias. El frontend marca `resolved_by_control` solo después de
+comprobar la evidencia que
 corresponde al dominio. Portada exige un cambio real del fingerprint. Gallery
 exige la acción explícita de finalización del usuario y la persistencia
 confirmada de su hoja `guided_completion`; los fingerprints de slots se usan
 solo para distinguir cambios durante la edición. Places exige que la selección
-esperada se refleje en el owner. Abrir, cerrar o cancelar cualquier control no
-completa nada.
+esperada se refleje en el owner. Abrir o cerrar cualquier control no completa
+nada.
 
 En `ceremony_party`, `event.ceremony.{venue_name,address,place_selection}` y
 `event.party.{venue_name,address,place_selection}` son hojas independientes. La

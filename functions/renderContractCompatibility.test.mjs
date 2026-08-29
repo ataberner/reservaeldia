@@ -1416,6 +1416,60 @@ test("renders section mobile layout mode preserve as a smart reflow opt-out", ()
   assert.match(preserveHtml, /skip:mobileLayoutPreserve/);
 });
 
+test("mobile fit contains pantalla content without shrinking decorative or fullbleed lanes", () => {
+  const html = generarHTMLDesdeSecciones(
+    PANTALLA_SECTION,
+    [
+      {
+        id: "edge-content-text",
+        tipo: "texto",
+        seccionId: "section-hero",
+        x: 0,
+        yNorm: 0.12,
+        width: 240,
+        texto: "Contenido junto al borde",
+        fontSize: 30,
+      },
+      {
+        id: "edge-content-icon",
+        tipo: "icono-svg",
+        seccionId: "section-hero",
+        x: 720,
+        yNorm: 0.32,
+        width: 64,
+        height: 64,
+        viewBox: "0 0 24 24",
+        d: "M3 3h18v18H3z",
+      },
+      {
+        id: "edge-decorative-bleed",
+        tipo: "forma",
+        figura: "rect",
+        role: "decorative",
+        anclaje: "fullbleed",
+        seccionId: "section-hero",
+        x: -120,
+        yNorm: 0.5,
+        width: 1040,
+        height: 80,
+      },
+    ],
+    null,
+    {}
+  );
+
+  assert.match(html, /function isMobileContentFitNode\(node\)/);
+  assert.match(html, /role === "decorative" \|\| role === "background"/);
+  assert.match(html, /node\.closest\("\.sec-bleed"\)/);
+  assert.match(html, /var horizontalOverflow =/);
+  assert.match(
+    html,
+    /secModo === "pantalla" && scale < 1 && !horizontalOverflow/
+  );
+  assert.match(html, /applyElementFitScale\(content, scale\);\s*restoreFitScaleBaseline\(bleed\);/);
+  assert.doesNotMatch(html, /applyElementFitScale\(bleed, scale\);/);
+});
+
 test("preview mobile scroll runtime leaves touch and pointer scrolling native to the iframe root", () => {
   const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
     isPreview: true,

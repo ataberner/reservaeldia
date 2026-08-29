@@ -799,8 +799,8 @@ persistencia, controles y reread.
 1. En desktop y en 320, 390 y 430 px, abrir un borrador writable como superadmin y confirmar que aparece `Diseñador AI` junto a `Asistente`.
 2. Repetir como admin comun y usuario comun, durante `loadingAdminAccess`, en template workspace, modo selector y borrador read-only: el tab no aparece.
 3. Intentar llamar `designerAiChat` como admin comun y sin auth: ambos reciben el error correspondiente.
-4. Con el panel abierto, cambiar de borrador o perder el rol y confirmar cleanup de chat, control activo, request tardio y batch IDs.
-5. Alternar Asistente/Diseñador AI: los valores cambian inmediatamente en ambos. Confirmar el comportamiento actual de sesión: al desmontarse el panel, el chat visible se pierde y al reabrir se inicia otra conversación; no asumir persistencia que el runtime no ofrece.
+4. Con el panel abierto, cambiar o cerrar el borrador y confirmar cleanup del historial, control activo, request tardío y batch IDs. Al perder el rol, confirmar que el panel/control dejan de estar disponibles y que ningún trabajo tardío se aplica.
+5. Alternar Asistente/Diseñador AI: los valores cambian inmediatamente en ambos y el historial visible de Diseñador AI sigue disponible al volver, sin un nuevo saludo automático. Superar treinta mensajes y confirmar que solo se conservan los treinta más recientes. Cambiar o cerrar el borrador y confirmar que al regresar no reaparece ese historial; no confundir esta memoria de sesión con persistencia durable.
 6. Abrir una sesión nueva: el mensaje interno de inicio no aparece en el historial. Registrar la primera intervención visible y compararla con idioma, tono y tratamiento ya aprobados; el copy exacto, longitud y estructura siguen sin ser canónicos.
 7. Usar un borrador con valores completos, incompletos y vacios: no vuelve terminal un dato por mera mención. Registrar por separado `ledger.completion` y `ledger.guidedFlow.completion`.
 8. Responder con datos de varios bloques: todos los valores validos se aplican en un unico lote y la siguiente pregunta se limita a lo que todavia falta.
@@ -836,11 +836,13 @@ persistencia, controles y reread.
    enfocados. Confirmar que cambiar el fingerprint de contenido u orden solo
    muestra que hubo cambios. Verificar que el botón de finalización tiene target
    táctil adecuado, espera persistencia, termina únicamente la Gallery actual y
-   que `Volver al chat` no reconcilia su hoja.
+   que `Volver al chat` restaura historial + composer sin reconciliar su hoja.
+   En desktop y mobile, el control debe reemplazar el chat y ocupar todo el alto
+   disponible entre el encabezado de Diseñador AI y el borde inferior del panel.
 3. Informar lugar + dirección para evento único: se aplican como ubicación manual y aparecen acciones explícitas `Buscar en Google Maps`/`Usar estos datos`; el selector no se abre por el solo hecho de haber aportado textos.
 4. Repetir con solo lugar: la conversación presenta una única elección Maps/carga manual, el botón manual dice `Ingresar dirección manual` y no `Usar estos datos`. Elegir manual registra `leave_empty` directamente, conserva el lugar, pide únicamente dirección y no aparecen `placeId`, coordenadas ni metadata Google.
-5. Aceptar Maps: el control se monta inline dentro del historial, mantiene visible el chat y el composer, identifica `evento`, `ceremonia` o `fiesta` y precarga lugar + dirección.
-6. Inspeccionar el control: contiene búsqueda, resultados y cancelar; no muestra fecha, horario, Dress Code, Regalos, RSVP ni otros campos del tab Detalles del evento.
+5. Aceptar Maps: el control reemplaza temporalmente historial + composer, ocupa todo el alto disponible, identifica `evento`, `ceremonia` o `fiesta` y precarga lugar + dirección. Activar `Volver al chat` restaura el historial y enfoca el composer sin perder mensajes.
+6. Inspeccionar el control: contiene búsqueda, resultados con scroll propio y cierre explícito; no muestra fecha, horario, Dress Code, Regalos, RSVP ni otros campos del tab Detalles del evento.
 7. Forzar varias sugerencias y confirmar que ninguna se elige sola. Elegir una explícitamente y verificar fields de texto, `mapa-google` de la phase exacta, mapa oculto y persistencia por el owner compartido.
 8. Cancelar sin seleccionar: no reconciliar `place_selection`, conservar los textos manuales y permitir usar esos datos o volver a buscar.
 9. Simular fallo del authoring owner: no insertar/actualizar metadata de Google ni mostrar confirmación. Abrir el control por sí solo tampoco completa la hoja.

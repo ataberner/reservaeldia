@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle, MapPin, Send, X } from "lucide-react";
+import { Bot, LoaderCircle, MapPin, Send, X } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
@@ -24,6 +24,11 @@ import {
   buildDesignerAiCallablePayload,
   readDesignerAiCapabilitySnapshot,
 } from "@/domain/editor/designerAiCapabilities";
+import {
+  appendDesignerAiMessageHistory,
+  normalizeDesignerAiMessageHistory,
+  selectDesignerAiRecentTurns,
+} from "@/domain/editor/designerAiMessageHistory";
 import { executeDesignerAiActionBatch } from "@/domain/editor/designerAiActionExecutor";
 import {
   buildDesignerAiGooglePlaceControlState,
@@ -41,7 +46,6 @@ import {
   requestDashboardDocumentNameUpdate,
 } from "@/lib/dashboardDocumentNameBridge";
 
-const MAX_SESSION_MESSAGES = 6;
 const AUTO_START_MESSAGE = "Iniciá la conversación con una bienvenida breve y guiame desde el primer bloque que todavía tenga información pendiente.";
 const COMPLETE_MESSAGE = "Terminamos el recorrido principal. Podés seguir editando manualmente toda la invitación como quieras y consultar el resultado con el botón Vista previa, en la esquina superior derecha.";
 
@@ -60,12 +64,6 @@ function createMessage(role, content, extra = {}) {
     content: String(content || "").trim(),
     ...extra,
   };
-}
-
-function appendSessionMessages(current, ...messages) {
-  return [...current, ...messages]
-    .filter((message) => message.content)
-    .slice(-MAX_SESSION_MESSAGES);
 }
 
 function normalizeCallableError(error) {
@@ -232,9 +230,9 @@ async function waitForAppliedSnapshot({ initialSnapshot, actions, readSnapshot, 
 
 function DesignerAiLocationDecision({ decision, onSearch, onUseManual }) {
   return (
-    <section className="w-full min-w-0 rounded-xl border border-violet-200 bg-violet-50/60 p-3" aria-label={`Decidir ubicación de ${decision.label}`}>
+    <section className="w-full min-w-0 rounded-2xl border border-[#EFDBFF] bg-white p-3 text-left transition-none" aria-label={`Decidir ubicación de ${decision.label}`}>
       {decision.cancelled ? (
-        <p className="mb-2 text-xs leading-relaxed text-slate-700">
+        <p className="mb-2 text-[13px] leading-5 text-[#575153]">
           No se seleccionó un resultado de Google Maps. Podés volver a buscar o continuar con los datos escritos.
         </p>
       ) : null}
@@ -242,7 +240,7 @@ function DesignerAiLocationDecision({ decision, onSearch, onUseManual }) {
         <button
           type="button"
           onClick={() => onSearch(decision)}
-          className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#692B9A] px-3 py-2 font-['DM_Sans',sans-serif] text-xs font-medium text-white transition-colors hover:bg-[#57227f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF]"
         >
           <MapPin className="h-4 w-4 shrink-0" aria-hidden="true" />
           Buscar en Google Maps
@@ -250,7 +248,7 @@ function DesignerAiLocationDecision({ decision, onSearch, onUseManual }) {
         <button
           type="button"
           onClick={() => onUseManual(decision)}
-          className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-800 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+          className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-xl border border-[#d9c0ec] bg-white px-3 py-2 font-['DM_Sans',sans-serif] text-xs font-medium text-[#692B9A] transition-colors hover:bg-[#FAF5FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF]"
         >
           {decision.address ? "Usar estos datos" : "Ingresar dirección manual"}
         </button>
@@ -270,20 +268,22 @@ function DesignerAiTrustedControl({
   if (!request) return null;
   if (request.type === "google_place_picker") {
     return (
-      <DesignerAiLocationControl
-        phase={request.phase}
-        eventMode={controlState.eventMode}
-        initialQuery={controlState.initialQuery}
-        onCancel={onClose}
-        onSelectionApplied={onSelectionApplied}
-      />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FBF7F9] p-3">
+        <DesignerAiLocationControl
+          phase={request.phase}
+          eventMode={controlState.eventMode}
+          initialQuery={controlState.initialQuery}
+          onCancel={onClose}
+          onSelectionApplied={onSelectionApplied}
+        />
+      </div>
     );
   }
   return (
-    <section className="flex max-h-[min(28rem,65vh)] min-h-0 w-full min-w-0 flex-col rounded-xl border border-violet-200 bg-violet-50/45 p-2.5" aria-label="Selección para la invitación">
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+    <section className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[#FBF7F9] p-3 text-left transition-none" aria-label="Selección para la invitación">
+      <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-2">
         {request.type === "gallery_cell_upload" && controlState.galleryIndex >= 0 ? (
-          <p className="min-w-0 truncate text-xs font-semibold text-violet-900">
+          <p className="min-w-0 truncate text-xs font-medium text-[#692B9A]">
             Galería {controlState.galleryIndex + 1} de {controlState.galleryCount}
           </p>
         ) : <span />}
@@ -291,13 +291,13 @@ function DesignerAiTrustedControl({
           type="button"
           onClick={onClose}
           disabled={controlState.finishing === true}
-          className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-800 transition hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:cursor-wait disabled:text-violet-400"
+          className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-[#d9c0ec] bg-white px-2.5 py-1.5 text-xs font-medium text-[#692B9A] transition-colors hover:bg-[#FAF5FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-wait disabled:text-[#9a879f]"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
           Volver al chat
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white p-2">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[#eee9ec] bg-white p-2">
         <MiniToolbarTabImagen
             {...imageProps}
             simplifiedForAssistant
@@ -316,8 +316,8 @@ function DesignerAiTrustedControl({
           />
       </div>
       {request.type === "gallery_cell_upload" ? (
-        <div className="mt-2 flex shrink-0 flex-col gap-2 border-t border-violet-100 pt-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] leading-relaxed text-slate-600" aria-live="polite">
+        <div className="mt-2 flex shrink-0 flex-col gap-2 border-t border-[#eee9ec] pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-[#625d60]" aria-live="polite">
             {controlState.galleryHasChanges
               ? "Los cambios realizados quedaron guardados."
               : "Podés conservar las fotos actuales o hacer los cambios que quieras."}
@@ -326,7 +326,7 @@ function DesignerAiTrustedControl({
             type="button"
             onClick={onGalleryComplete}
             disabled={controlState.finishing === true}
-            className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:cursor-wait disabled:bg-violet-400 sm:w-auto"
+            className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-xl bg-[#692B9A] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#57227f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-wait disabled:bg-[#a990b7] sm:w-auto"
           >
             {controlState.finishing === true ? "Guardando…" : "Terminé con esta galería"}
           </button>
@@ -339,6 +339,8 @@ function DesignerAiTrustedControl({
 export default function DesignerAiPanel({
   sessionKey,
   contentVersion = 0,
+  messageHistory = [],
+  onMessageHistoryChange = null,
   abrirSelector,
   imagenes,
   imagenesEnProceso,
@@ -350,17 +352,22 @@ export default function DesignerAiPanel({
   setMostrarGaleria,
   setImagenesSeleccionadas,
 }) {
-  const [messages, setMessages] = useState([]);
+  const messages = useMemo(
+    () => normalizeDesignerAiMessageHistory(messageHistory),
+    [messageHistory]
+  );
   const [draftMessage, setDraftMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [activeControl, setActiveControl] = useState(null);
   const [locationDecisions, setLocationDecisions] = useState([]);
   const [liveMessage, setLiveMessage] = useState("");
   const sessionKeyRef = useRef(sessionKey);
-  const messagesRef = useRef([]);
+  const messagesRef = useRef(messages);
   const sendingRef = useRef(false);
   const submitMessageRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const messageComposerRef = useRef(null);
+  const restoreChatFocusRef = useRef(false);
   const appliedBatchIdsRef = useRef(new Set());
   const requestSequenceRef = useRef(0);
   const conversationStateRef = useRef(normalizeDesignerAiConversationState(null));
@@ -369,6 +376,21 @@ export default function DesignerAiPanel({
   const pendingFramesRef = useRef(new Set());
   const autoStartedSessionRef = useRef("");
   const callable = useMemo(() => httpsCallable(functions, "designerAiChat"), []);
+
+  messagesRef.current = messages;
+
+  const setMessages = useCallback((nextMessagesOrUpdater) => {
+    if (typeof onMessageHistoryChange !== "function") return;
+    onMessageHistoryChange((current) => {
+      const safeCurrent = Array.isArray(current) ? current : [];
+      const nextMessages = typeof nextMessagesOrUpdater === "function"
+        ? nextMessagesOrUpdater(safeCurrent)
+        : nextMessagesOrUpdater;
+      const boundedMessages = normalizeDesignerAiMessageHistory(nextMessages);
+      messagesRef.current = boundedMessages;
+      return boundedMessages;
+    });
+  }, [onMessageHistoryChange]);
 
   const readSnapshot = useCallback(() => readDesignerAiCapabilitySnapshot(window, {
     conversationState: conversationStateRef.current,
@@ -391,8 +413,18 @@ export default function DesignerAiPanel({
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    messagesEndRef.current?.scrollIntoView?.({
+      block: "nearest",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
   }, [activeControl, locationDecisions, messages, sending]);
+
+  useEffect(() => {
+    if (activeControl || !restoreChatFocusRef.current) return;
+    restoreChatFocusRef.current = false;
+    messageComposerRef.current?.focus?.();
+  }, [activeControl]);
 
   const submitMessage = useCallback(async (rawMessage, {
     showUserMessage = true,
@@ -407,9 +439,9 @@ export default function DesignerAiPanel({
     const initialSnapshot = snapshotOverride || readSnapshot();
     const userMessage = createMessage("user", message);
     const conversationWithUser = showUserMessage
-      ? appendSessionMessages(messagesRef.current, userMessage)
+      ? appendDesignerAiMessageHistory(messagesRef.current, userMessage)
       : messagesRef.current;
-    const recentTurns = conversationWithUser.map((turn) => ({ role: turn.role, content: turn.content }));
+    const recentTurns = selectDesignerAiRecentTurns(conversationWithUser);
     if (showUserMessage) {
       messagesRef.current = conversationWithUser;
       setMessages(conversationWithUser);
@@ -492,7 +524,7 @@ export default function DesignerAiPanel({
         ? COMPLETE_MESSAGE
         : result.assistantMessage;
       setMessages((current) => {
-        const next = appendSessionMessages(current, createMessage("assistant", assistantMessage, { intent: result.intent }));
+        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", assistantMessage, { intent: result.intent }));
         messagesRef.current = next;
         return next;
       });
@@ -506,7 +538,7 @@ export default function DesignerAiPanel({
         ? VERIFIED_CONTINUATION_FALLBACK
         : `${normalizeCallableError(error)}${reflected}`;
       setMessages((current) => {
-        const next = appendSessionMessages(current, createMessage("assistant", safeMessage, {
+        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, {
           intent: "error",
           canRetryContinuation: verifiedContinuation,
         }));
@@ -520,7 +552,7 @@ export default function DesignerAiPanel({
         setSending(false);
       }
     }
-  }, [callable, persistConversationState, readSnapshot]);
+  }, [callable, persistConversationState, readSnapshot, setMessages]);
 
   submitMessageRef.current = submitMessage;
 
@@ -531,6 +563,14 @@ export default function DesignerAiPanel({
     ) return false;
     const documentState = readDashboardDocumentNameState(window);
     if (documentState.hydrated !== true) return false;
+    if (messagesRef.current.length > 0) {
+      conversationStateRef.current = normalizeDesignerAiConversationState(
+        documentState.designerAiConversation
+      );
+      autoStartedSessionRef.current = sessionKeyRef.current;
+      setLiveMessage("");
+      return true;
+    }
     const entry = prepareDesignerAiConversationEntry(
       documentState.designerAiConversation
     );
@@ -557,7 +597,7 @@ export default function DesignerAiPanel({
         if (sessionKeyRef.current !== requestSessionKey) return;
         const safeMessage = "No pude iniciar Diseñador AI porque no se guardó el estado del borrador. Cerrá el panel y probá nuevamente.";
         setMessages((current) => {
-          const next = appendSessionMessages(current, createMessage("assistant", safeMessage, { intent: "error" }));
+          const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, { intent: "error" }));
           messagesRef.current = next;
           return next;
         });
@@ -565,20 +605,19 @@ export default function DesignerAiPanel({
       },
     });
     return true;
-  }, [persistConversationState]);
+  }, [persistConversationState, setMessages]);
 
   useEffect(() => {
     cancelPendingEditorFrames(pendingFramesRef.current);
     sessionKeyRef.current = sessionKey;
     requestSequenceRef.current += 1;
     appliedBatchIdsRef.current.clear();
-    messagesRef.current = [];
     sendingRef.current = false;
     activeControlRef.current = null;
     controlVerificationRef.current = false;
+    restoreChatFocusRef.current = false;
     autoStartedSessionRef.current = "";
     conversationStateRef.current = normalizeDesignerAiConversationState(null);
-    setMessages([]);
     setActiveControl(null);
     setLocationDecisions([]);
     setSending(false);
@@ -591,6 +630,10 @@ export default function DesignerAiPanel({
     return () => {
       window.clearTimeout(timerId);
       cancelPendingEditorFrames(pendingFramesRef.current);
+      if (sessionKeyRef.current === sessionKey) {
+        sessionKeyRef.current = "";
+        requestSequenceRef.current += 1;
+      }
     };
   }, [sessionKey, startConversationIfReady]);
 
@@ -703,7 +746,7 @@ export default function DesignerAiPanel({
     if (!completionLeafId || !completionLeaf) {
       const safeMessage = "No pude finalizar esta galería porque ya no está disponible en el borrador. Volvé al chat para continuar con el estado actual.";
       setMessages((current) => {
-        const next = appendSessionMessages(current, createMessage("assistant", safeMessage, { intent: "error" }));
+        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, { intent: "error" }));
         messagesRef.current = next;
         return next;
       });
@@ -770,7 +813,7 @@ export default function DesignerAiPanel({
         }
         const safeMessage = "Los cambios de fotos se conservaron, pero no pude guardar que terminaste esta galería. Probá nuevamente.";
         setMessages((current) => {
-          const next = appendSessionMessages(current, createMessage("assistant", safeMessage, { intent: "error" }));
+          const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, { intent: "error" }));
           messagesRef.current = next;
           return next;
         });
@@ -787,7 +830,7 @@ export default function DesignerAiPanel({
     if (!validation.ok) {
       const safeMessage = "No pude abrir la búsqueda para esa ubicación porque el estado del evento cambió. Probá nuevamente desde el chat.";
       setMessages((current) => {
-        const next = appendSessionMessages(current, createMessage("assistant", safeMessage, { intent: "error" }));
+        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, { intent: "error" }));
         messagesRef.current = next;
         return next;
       });
@@ -807,7 +850,7 @@ export default function DesignerAiPanel({
     if (!validation.ok) {
       const safeMessage = "No pude registrar la elección de ubicación manual porque el estado del evento cambió. Probá nuevamente desde el chat.";
       setMessages((current) => {
-        const next = appendSessionMessages(current, createMessage("assistant", safeMessage, { intent: "error" }));
+        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, { intent: "error" }));
         messagesRef.current = next;
         return next;
       });
@@ -826,7 +869,7 @@ export default function DesignerAiPanel({
       buildDesignerAiManualLocationReply(decision)
     );
     setMessages((current) => {
-      const next = appendSessionMessages(current, userChoice);
+      const next = appendDesignerAiMessageHistory(current, userChoice);
       messagesRef.current = next;
       return next;
     });
@@ -858,7 +901,7 @@ export default function DesignerAiPanel({
         ]);
         const safeMessage = "No pude guardar la elección de ubicación manual. Probá nuevamente.";
         setMessages((current) => {
-          const next = appendSessionMessages(current, createMessage("assistant", safeMessage, { intent: "error" }));
+          const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, { intent: "error" }));
           messagesRef.current = next;
           return next;
         });
@@ -872,6 +915,7 @@ export default function DesignerAiPanel({
     const controlState = activeControlRef.current;
     activeControlRef.current = null;
     controlVerificationRef.current = false;
+    restoreChatFocusRef.current = true;
     setActiveControl(null);
     if (controlState?.request?.type !== "google_place_picker") return;
     const snapshot = readSnapshot();
@@ -921,17 +965,45 @@ export default function DesignerAiPanel({
   const imageProps = { abrirSelector, imagenes, imagenesEnProceso, cargarImagenes, borrarImagen, hayMas, cargando, seccionActivaId, setMostrarGaleria, setImagenesSeleccionadas };
 
   return (
-    <section className="flex h-full max-h-full min-h-0 w-full flex-1 flex-col overflow-hidden" aria-label="Diseñador AI">
-      <div className="min-h-0 flex-1 basis-0 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-2.5" role="log" aria-label="Conversación">
+    <section
+      className="flex h-full max-h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-white p-0 text-left font-['DM_Sans',sans-serif] text-[#262626] transition-none [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_p]:m-0 [&_p]:[text-shadow:none] [&_section]:transition-none"
+      aria-label="Diseñador AI"
+    >
+      <header className="flex min-h-12 shrink-0 items-center gap-2.5 border-b border-[#E5E5E5] bg-white px-3 pr-12">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#FAF5FF] text-[#692B9A]" aria-hidden="true">
+          <Bot className="h-4 w-4" />
+        </span>
+        <h2 className="m-0 truncate text-sm font-semibold leading-5 text-[#262626]">
+          Diseñador AI
+        </h2>
+      </header>
+      {activeControl ? (
+        <DesignerAiTrustedControl
+          controlState={activeControl}
+          onClose={closeTrustedControl}
+          onSelectionApplied={(expectedLocation) => completeActiveControlIfReflected({
+            wait: true,
+            expectedLocation,
+          })}
+          onGalleryComplete={finishActiveGallery}
+          imageProps={imageProps}
+        />
+      ) : (
+        <>
+      <div
+        className="flex min-h-0 flex-1 basis-0 flex-col gap-2.5 overflow-y-auto overscroll-contain bg-[#FBF7F9] px-3 py-3.5 [scrollbar-gutter:stable]"
+        role="log"
+        aria-label="Conversación"
+      >
         {messages.map((message) => (
           <article
             key={message.id}
-            className={`max-w-[92%] rounded-xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
+            className={`max-w-[88%] rounded-2xl px-3 py-2.5 font-['Source_Sans_3',sans-serif] text-sm leading-5 ${
               message.role === "user"
-                ? "ml-auto bg-violet-700 text-white"
+                ? "ml-auto rounded-br-md bg-[#692B9A] text-white"
                 : message.intent === "error"
-                  ? "mr-auto border border-rose-200 bg-rose-50 text-rose-900"
-                  : "mr-auto border border-slate-200 bg-white text-slate-800"
+                  ? "mr-auto rounded-bl-md border border-[#FFDADA] bg-[#fff3f2] text-[#8f1d18]"
+                  : "mr-auto rounded-bl-md border border-[#E5E5E5] bg-white text-[#262626]"
             }`}
           >
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
@@ -940,7 +1012,7 @@ export default function DesignerAiPanel({
                 type="button"
                 onClick={() => retryVerifiedContinuation(message.id)}
                 disabled={sending}
-                className="mt-2 inline-flex min-h-10 items-center justify-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-wait disabled:opacity-60"
+                className="mt-2 inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d9c0ec] bg-white px-3 py-2 text-xs font-medium text-[#692B9A] transition-colors hover:bg-[#FAF5FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-wait disabled:opacity-60"
               >
                 Continuar recorrido
               </button>
@@ -948,8 +1020,8 @@ export default function DesignerAiPanel({
           </article>
         ))}
         {sending ? (
-          <div className="mr-auto inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <div className="mr-auto inline-flex items-center gap-2 rounded-2xl rounded-bl-md border border-[#E5E5E5] bg-white px-3 py-2.5 font-['Source_Sans_3',sans-serif] text-sm text-[#625d60]">
+            <LoaderCircle className="h-4 w-4 animate-spin text-[#692B9A] motion-reduce:animate-none" aria-hidden="true" />
             Pensando…
           </div>
         ) : null}
@@ -961,24 +1033,13 @@ export default function DesignerAiPanel({
             onUseManual={useManualLocation}
           />
         )) : null}
-        {!sending && activeControl ? (
-          <DesignerAiTrustedControl
-            controlState={activeControl}
-            onClose={closeTrustedControl}
-            onSelectionApplied={(expectedLocation) => completeActiveControlIfReflected({
-              wait: true,
-              expectedLocation,
-            })}
-            onGalleryComplete={finishActiveGallery}
-            imageProps={imageProps}
-          />
-        ) : null}
         <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={handleSubmit} className="mt-2 shrink-0 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_-8px_20px_rgba(15,23,42,0.04)]">
+      <form onSubmit={handleSubmit} className="shrink-0 border-t border-[#E5E5E5] bg-white px-3 py-2.5">
         <label htmlFor="designer-ai-message" className="sr-only">Mensaje para Diseñador AI</label>
         <div className="flex items-end gap-2">
           <textarea
+            ref={messageComposerRef}
             id="designer-ai-message"
             value={draftMessage}
             onChange={(event) => setDraftMessage(event.target.value.slice(0, 1200))}
@@ -986,9 +1047,9 @@ export default function DesignerAiPanel({
             disabled={sending || Boolean(activeControl)}
             rows={3}
             placeholder="Contame los datos o cambios que quieran hacer."
-            className="min-h-[76px] min-w-0 flex-1 resize-none rounded-lg border border-slate-300 px-2.5 py-2 text-xs text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus-visible:ring-2 focus-visible:ring-violet-200 disabled:bg-slate-50"
+            className="min-h-[68px] min-w-0 flex-1 resize-none rounded-xl border border-[#d8d3d5] bg-[#FBF7F9] px-3 py-2.5 font-['Source_Sans_3',sans-serif] text-sm leading-5 text-[#262626] outline-none transition-colors placeholder:text-[#81797d] focus:border-[#692B9A] focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-not-allowed disabled:bg-[#f2eff1]"
           />
-          <button type="submit" disabled={sending || Boolean(activeControl) || !draftMessage.trim()} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-violet-700 text-white transition hover:bg-violet-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:cursor-not-allowed disabled:bg-slate-300" aria-label="Enviar mensaje">
+          <button type="submit" disabled={sending || Boolean(activeControl) || !draftMessage.trim()} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-[#692B9A] text-white transition-colors hover:bg-[#57227f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-not-allowed disabled:bg-[#c9c3c7]" aria-label="Enviar mensaje">
             {sending
               ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
               : <Send className="h-4 w-4" aria-hidden="true" />}
@@ -996,6 +1057,8 @@ export default function DesignerAiPanel({
         </div>
 
       </form>
+        </>
+      )}
       <p className="sr-only" aria-live="polite">{liveMessage}</p>
     </section>
   );

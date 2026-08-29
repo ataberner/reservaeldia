@@ -111,16 +111,16 @@ export default function DesignerAiLocationControl({
 
   return (
     <section
-      className="w-full min-w-0 max-w-full rounded-xl border border-violet-200 bg-white p-3 text-left shadow-sm"
+      className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden rounded-2xl border border-[#EFDBFF] bg-white p-3 text-left font-['DM_Sans',sans-serif] text-[#262626] shadow-none transition-none [&_h3]:[text-shadow:none] [&_p]:m-0 [&_p]:[text-shadow:none]"
       aria-label={`Buscar ubicación de ${phaseLabel} en Google Maps`}
       data-designer-ai-location-control={safePhase}
     >
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-slate-900">
+          <h3 className="text-sm font-semibold text-[#262626]">
             Ubicación de {phaseLabel}
           </h3>
-          <p className="mt-1 text-xs leading-relaxed text-slate-600">
+          <p className="mt-1 text-xs leading-5 text-[#625d60]">
             Buscá el lugar y elegí explícitamente el resultado correcto.
           </p>
         </div>
@@ -128,18 +128,19 @@ export default function DesignerAiLocationControl({
           type="button"
           onClick={onCancel}
           disabled={selecting}
-          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:opacity-50"
-          aria-label="Cancelar búsqueda en Google Maps"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-xl border border-[#E5E5E5] bg-white px-2.5 text-[#625d60] transition-colors hover:bg-[#FAF5FF] hover:text-[#692B9A] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:opacity-50"
+          aria-label="Cerrar Google Maps y volver al chat"
         >
           <X className="h-4 w-4" aria-hidden="true" />
+          <span className="text-xs font-medium">Volver al chat</span>
         </button>
       </div>
 
-      <label className="mt-3 block text-xs font-medium text-slate-700" htmlFor={`designer-ai-place-${safePhase}`}>
+      <label className="mt-3 block text-xs font-medium text-[#4f494c]" htmlFor={`designer-ai-place-${safePhase}`}>
         Buscar en Google Maps
       </label>
       <div className="relative mt-1.5 min-w-0">
-        <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+        <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#81797d]" aria-hidden="true" />
         <input
           ref={inputRef}
           id={`designer-ai-place-${safePhase}`}
@@ -151,14 +152,14 @@ export default function DesignerAiLocationControl({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           disabled={selecting}
-          className="block min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus-visible:ring-2 focus-visible:ring-violet-200 disabled:bg-slate-50"
+          className="block min-h-11 w-full min-w-0 rounded-xl border border-[#d8d3d5] bg-[#FBF7F9] py-2.5 pl-9 pr-3 font-['Source_Sans_3',sans-serif] text-sm text-[#262626] outline-none placeholder:text-[#81797d] focus:border-[#692B9A] focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:bg-[#f2eff1]"
           placeholder="Nombre del lugar o dirección"
         />
       </div>
 
       {loading || selecting ? (
-        <p className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600" role="status">
-          <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        <p className="mt-2 inline-flex items-center gap-2 text-xs text-[#625d60]" role="status">
+          <LoaderCircle className="h-4 w-4 animate-spin text-[#692B9A] motion-reduce:animate-none" aria-hidden="true" />
           {selecting ? "Guardando la ubicación seleccionada…" : "Buscando lugares…"}
         </p>
       ) : null}
@@ -167,7 +168,7 @@ export default function DesignerAiLocationControl({
         <div
           id={`designer-ai-place-results-${safePhase}`}
           role="listbox"
-          className="mt-2 max-h-52 w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white overscroll-contain"
+          className="mt-2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-[#E5E5E5] bg-white overscroll-contain"
         >
           {suggestions.map((suggestion) => (
             <button
@@ -176,9 +177,9 @@ export default function DesignerAiLocationControl({
               role="option"
               aria-selected="false"
               onClick={() => void handleSelect(suggestion)}
-              className="flex min-h-11 w-full min-w-0 items-start gap-2 border-b border-slate-100 px-3 py-2.5 text-left text-xs leading-relaxed text-slate-800 last:border-b-0 hover:bg-violet-50 focus:outline-none focus-visible:bg-violet-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-300"
+              className="flex min-h-11 w-full min-w-0 items-start gap-2 border-b border-[#eee9ec] px-3 py-2.5 text-left font-['Source_Sans_3',sans-serif] text-xs leading-5 text-[#262626] last:border-b-0 hover:bg-[#FAF5FF] focus:outline-none focus-visible:bg-[#FAF5FF] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#EFDBFF]"
             >
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" aria-hidden="true" />
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#692B9A]" aria-hidden="true" />
               <span className="min-w-0 break-words">{suggestion.label}</span>
             </button>
           ))}
@@ -186,12 +187,12 @@ export default function DesignerAiLocationControl({
       ) : null}
 
       {!hasGoogleMapsApiKey ? (
-        <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+        <p className="mt-2 rounded-xl bg-[#FFF1C2] px-2.5 py-2 text-xs text-[#5b5100]">
           La búsqueda de Google Maps no está configurada. Podés cancelar y continuar con los datos manuales.
         </p>
       ) : null}
       {error ? (
-        <p className="mt-2 rounded-lg bg-rose-50 px-2.5 py-2 text-xs text-rose-800" role="alert">
+        <p className="mt-2 rounded-xl bg-[#FFDADA] px-2.5 py-2 text-xs text-[#8f1d18]" role="alert">
           {error}
         </p>
       ) : null}

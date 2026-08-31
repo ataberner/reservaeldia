@@ -262,7 +262,9 @@ function buildSectionDecorationScaleVar(mode: string): string {
 function buildSectionDecorationTopCss(top: number, mode: string): string {
   const scaleVar = buildSectionDecorationScaleVar(mode);
   if (String(mode || "").toLowerCase() === "pantalla") {
-    return `calc(var(--pantalla-y-base, 0px) + (${scaleVar} * ${top}px) + (${scaleVar} * var(--pantalla-y-offset, 0px)))`;
+    const normalizedTop = top / ALTURA_REFERENCIA_PANTALLA;
+    const fallbackSpan = `calc(${scaleVar} * ${ALTURA_REFERENCIA_PANTALLA}px)`;
+    return `calc(var(--pantalla-y-base, 0px) + (var(--pantalla-y-span, ${fallbackSpan}) * ${normalizedTop}) + (${scaleVar} * var(--pantalla-y-offset, 0px)))`;
   }
   return `calc(${scaleVar} * ${top}px)`;
 }
@@ -1498,6 +1500,8 @@ export function generarHTMLDesdeSecciones(
     fitMaxScale: 1.16,
     fitTargetWidthRatio: 0.94,
     fitMinFillRatio: 0.9,
+    designWidthPx: CANVAS_BASE.ANCHO,
+    pantallaDesignHeightPx: ALTURA_REFERENCIA_PANTALLA,
   });
 
   const previewMobileScrollRuntime = `
@@ -1747,6 +1751,7 @@ export function generarHTMLDesdeSecciones(
       --bgzoom: 1;
       --edgezoom: 1;
       --pantalla-text-zoom: 1;
+      --pantalla-y-span: calc(var(--sfinal) * ${ALTURA_REFERENCIA_PANTALLA}px);
       --edge-section-h: var(--vh-safe);
 
       /* factor final para CONTENIDO (se setea por JS) */
@@ -2647,6 +2652,7 @@ export function generarHTMLDesdeSecciones(
 
           // limpiar custom width si no aplica
           sec.style.removeProperty("--content-w-pantalla");
+          sec.style.removeProperty("--pantalla-y-span");
 
           if (modo === "pantalla"){
             // vh-safe real en px
@@ -2686,12 +2692,11 @@ export function generarHTMLDesdeSecciones(
               // intencionales (incluyendo textos encimados o muy cercanos).
               pantallaYCompact = 0;
 
-              // ✅ Ajuste de posición vertical global (uniforme):
-              // desplazamos TODO el bloque por igual para no alterar posiciones relativas.
+              // Mapear yNorm contra el alto visible sin alterar el zoom ni el
+              // tamaño width-based de los objetos mobile.
               var vhLogicalPx = vhSafePx / Math.max(0.01, zoom || 1);
-              var designScaledHPx = sfinal * DESIGN_H;
-              var spareVerticalPx = Math.max(0, vhLogicalPx - designScaledHPx);
-              pantallaYBasePx = spareVerticalPx * 0.36;
+              sec.style.setProperty("--pantalla-y-span", vhLogicalPx + "px");
+              pantallaYBasePx = 0;
             }
           } else {
             edgeSectionHeightPx = sfinal * hbase;

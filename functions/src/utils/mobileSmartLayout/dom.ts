@@ -144,7 +144,7 @@ export function jsDomHelpersBlock(): string {
   function cx(it){ return it.left + (it.width || 0) / 2; }
 
   // -------------------------
-  // ✅ CLUSTERS POR SOLAPE
+  // COMPOSITION CLUSTERS
   // -------------------------
   function rectsOverlap(a, b, tol){
     tol = tol || 0;
@@ -162,13 +162,142 @@ export function jsDomHelpersBlock(): string {
     return Math.max(0, r - l);
   }
 
+  function verticalOverlapPx(a, b){
+    var t = Math.max(a.top, b.top);
+    var bt = Math.min(a.top + a.height, b.top + b.height);
+    return Math.max(0, bt - t);
+  }
+
+  function horizontalGapPx(a, b){
+    var leftAfter = Math.max(a.left, b.left);
+    var rightBefore = Math.min(a.left + a.width, b.left + b.width);
+    return leftAfter - rightBefore;
+  }
+
   function verticalGapPx(a, b){
     var topAfter = Math.max(a.top, b.top);
     var bottomBefore = Math.min(a.top + a.height, b.top + b.height);
     return topAfter - bottomBefore;
   }
 
-  function buildOverlapClusters(items){
+  function cy(it){ return it.top + (it.height || 0) / 2; }
+
+  function compositionLane(it){
+    if (!it) return "content";
+    if (it._compositionLane) return it._compositionLane;
+    var lane = (!it.node || !it.node.closest || !it.node.closest(".sec-bleed"))
+      ? "content"
+      : "bleed";
+    it._compositionLane = lane;
+    return lane;
+  }
+
+  function sharesVerticalCompositionAxis(a, b){
+    var aW = Math.max(1, Number(a.width || 0));
+    var bW = Math.max(1, Number(b.width || 0));
+    var minW = Math.min(aW, bW);
+    var maxW = Math.max(aW, bW);
+    var spanRatio = maxW / minW;
+    var centerTol = Math.max(18, Math.min(42, minW * 0.35));
+    if (Math.abs(cx(a) - cx(b)) <= centerTol) return true;
+
+    // Edge alignment is meaningful only for boxes with comparable spans.
+    // This prevents one wide heading from attaching to both visual columns.
+    if (spanRatio > 2.4) return false;
+    var edgeTol = Math.max(10, Math.min(24, minW * 0.22));
+    var leftAligned = Math.abs(Number(a.left || 0) - Number(b.left || 0)) <= edgeTol;
+    var rightAligned = Math.abs(
+      (Number(a.left || 0) + aW) - (Number(b.left || 0) + bW)
+    ) <= edgeTol;
+    if (leftAligned || rightAligned) return true;
+
+    var overlap = horizontalOverlapPx(a, b);
+    return spanRatio <= 1.8 && (overlap / minW) >= 0.55;
+  }
+
+  function sharesHorizontalCompositionAxis(a, b){
+    var aH = Math.max(1, Number(a.height || 0));
+    var bH = Math.max(1, Number(b.height || 0));
+    var minH = Math.min(aH, bH);
+    var maxH = Math.max(aH, bH);
+    var spanRatio = maxH / minH;
+    var centerTol = Math.max(10, Math.min(28, minH * 0.45));
+    if (Math.abs(cy(a) - cy(b)) <= centerTol) return true;
+
+    if (spanRatio > 2.4) return false;
+    var edgeTol = Math.max(8, Math.min(18, minH * 0.28));
+    var topAligned = Math.abs(Number(a.top || 0) - Number(b.top || 0)) <= edgeTol;
+    var bottomAligned = Math.abs(
+      (Number(a.top || 0) + aH) - (Number(b.top || 0) + bH)
+    ) <= edgeTol;
+    if (topAligned || bottomAligned) return true;
+
+    var overlap = verticalOverlapPx(a, b);
+    return spanRatio <= 1.8 && (overlap / minH) >= 0.55;
+  }
+
+  function inferTextLaneDivider(items, rootWidth){
+    var width = Number(rootWidth || 0);
+    if (!isFinite(width) || width <= 1) return null;
+
+    var divider = width / 2;
+    var deadZone = Math.max(18, width * 0.06);
+    var leftCenters = [];
+    var rightCenters = [];
+
+    for (var i=0; i<items.length; i++) {
+      var item = items[i];
+      if (!item || !item.node) continue;
+      if ((item.node.getAttribute("data-debug-texto") || "") !== "1") continue;
+      var center = cx(item);
+      if (center <= divider - deadZone) leftCenters.push(center);
+      else if (center >= divider + deadZone) rightCenters.push(center);
+    }
+
+    // A repeated signal on both sides distinguishes authored text lanes from
+    // an isolated inline pair that merely happens to straddle the center.
+    if (leftCenters.length < 2 || rightCenters.length < 2) return null;
+    leftCenters.sort(function(a,b){ return a - b; });
+    rightCenters.sort(function(a,b){ return a - b; });
+    var leftMedian = percentile(leftCenters, 0.5);
+    var rightMedian = percentile(rightCenters, 0.5);
+    if ((rightMedian - leftMedian) < width * 0.3) return null;
+
+    return {
+      divider: divider,
+      deadZone: deadZone,
+      leftCount: leftCenters.length,
+      rightCount: rightCenters.length
+    };
+  }
+
+  function shouldSeparateWeakTextLaneOverlap(a, b, dividerModel){
+    if (!dividerModel || !a || !b || !a.node || !b.node) return false;
+    var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
+    var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
+    if (!aIsText || !bIsText) return false;
+
+    var divider = Number(dividerModel.divider || 0);
+    var deadZone = Number(dividerModel.deadZone || 0);
+    var aCenter = cx(a);
+    var bCenter = cx(b);
+    var oppositeLanes =
+      (aCenter <= divider - deadZone && bCenter >= divider + deadZone) ||
+      (bCenter <= divider - deadZone && aCenter >= divider + deadZone);
+    if (!oppositeLanes) return false;
+
+    // Wide centered text boxes can overlap a few pixels in the gutter even
+    // though their visual centers form two independent authored columns.
+    // Keep only that weak bbox overlap from becoming a composition edge;
+    // substantial overlap remains valid evidence for a horizontal unit.
+    var overlap = horizontalOverlapPx(a, b);
+    if (overlap <= 0) return false;
+    var minWidth = Math.max(1, Math.min(Number(a.width || 0), Number(b.width || 0)));
+    var weakOverlapLimit = Math.max(12, minWidth * 0.12);
+    return overlap <= weakOverlapLimit;
+  }
+
+  function buildCompositionClusters(items, rootWidth){
     var n = items.length;
     var parent = new Array(n);
     for (var i=0;i<n;i++) parent[i] = i;
@@ -186,57 +315,60 @@ export function jsDomHelpersBlock(): string {
       if (ra !== rb) parent[rb] = ra;
     }
 
-    // tol pequeño para considerar “encimado” aunque sea apenas
+    // Small tolerance keeps intentional overlap in one authored unit.
     var TOL = 1;
-    // unión por cercanía vertical dentro de una misma "columna visual"
+    // Axis-neighbor bounds are measured after the base desktop-to-mobile scale.
     var PROX_Y = 34;
-    var MIN_H_OVERLAP_RATIO = 0.35;
-    var MAX_CX_DIST = 42;
+    var PROX_X = 28;
+    var textLaneDivider = inferTextLaneDivider(items, rootWidth);
 
     for (var i=0;i<n;i++){
       for (var j=i+1;j<n;j++){
         var a = items[i], b = items[j];
 
-    var aIso = (a.node.getAttribute("data-mobile-cluster") || "") === "isolated";
-    var bIso = (b.node.getAttribute("data-mobile-cluster") || "") === "isolated";
+        // Content and fullbleed are independent generated geometry owners.
+        if (compositionLane(a) !== compositionLane(b)) continue;
 
-    // si cualquiera es isolated, no lo unimos con nadie
-    if (aIso || bIso) continue;
+        var aIso = (a.node.getAttribute("data-mobile-cluster") || "") === "isolated";
+        var bIso = (b.node.getAttribute("data-mobile-cluster") || "") === "isolated";
 
-    // opcional: cluster-id manual (si querés agrupar solo algunos)
-    var aKey = a.node.getAttribute("data-mobile-cluster-id") || "";
-    var bKey = b.node.getAttribute("data-mobile-cluster-id") || "";
-    if (aKey && bKey && aKey !== bKey) continue;
+        // Persisted groups and other explicit isolated units stay atomic.
+        if (aIso || bIso) continue;
 
-    var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
-    var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
-    var involvesText = aIsText || bIsText;
-    var cxDist = Math.abs(cx(a) - cx(b));
+        var aKey = a.node.getAttribute("data-mobile-cluster-id") || "";
+        var bKey = b.node.getAttribute("data-mobile-cluster-id") || "";
+        if (aKey && bKey) {
+          if (aKey === bKey) union(i,j);
+          continue;
+        }
 
-    if (rectsOverlap(a, b, TOL)) {
-      // Evita pegar columnas distintas por cajas de texto anchas.
-      // Si hay texto, exigimos cercania por eje X del centro.
-      if (!involvesText || cxDist <= MAX_CX_DIST) union(i,j);
-      continue;
-    }
+        var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
+        var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
+        var involvesText = aIsText || bIsText;
 
-    // Si no se solapan pero están muy cerca en vertical y comparten columna,
-    // también los unimos para mantener bloque (ej: icono + texto debajo).
-    var hov = horizontalOverlapPx(a, b);
-    var minW = Math.max(1, Math.min(a.width || 0, b.width || 0));
-    var hovRatio = hov / minW;
-    // Con texto, usamos criterio más estricto para no cruzar columnas.
-    var sameVisualColumn = involvesText
-      ? (cxDist <= MAX_CX_DIST)
-      : ((hovRatio >= MIN_H_OVERLAP_RATIO) || (cxDist <= MAX_CX_DIST));
-    var vGap = verticalGapPx(a, b);
-    var nearVertical = vGap >= 0 && vGap <= PROX_Y;
-    var bothText = aIsText && bIsText;
+        if (rectsOverlap(a, b, TOL)) {
+          // Wide text boxes must not bridge otherwise independent columns.
+          if (
+            !shouldSeparateWeakTextLaneOverlap(a, b, textLaneDivider) &&
+            (
+              !involvesText ||
+              sharesVerticalCompositionAxis(a, b) ||
+              sharesHorizontalCompositionAxis(a, b)
+            )
+          ) union(i,j);
+          continue;
+        }
 
-    // Evitar "pegar" párrafos entre sí solo por cercanía vertical.
-    // La unión por proximidad queda para pares mixtos (texto + no-texto),
-    // manteniendo el caso icono/forma + texto.
-    if (sameVisualColumn && nearVertical && !bothText) union(i,j);
+        var vGap = verticalGapPx(a, b);
+        var nearVertical = vGap >= 0 && vGap <= PROX_Y;
+        if (nearVertical && sharesVerticalCompositionAxis(a, b)) {
+          union(i,j);
+          continue;
+        }
+
+        var hGap = horizontalGapPx(a, b);
+        var nearHorizontal = hGap >= 0 && hGap <= PROX_X;
+        if (nearHorizontal && sharesHorizontalCompositionAxis(a, b)) union(i,j);
 
       }
     }
@@ -261,7 +393,7 @@ export function jsDomHelpersBlock(): string {
         maxB = Math.max(maxB, it.top + it.height);
       }
 
-      // offsets relativos para preservar el solape dentro del cluster
+      // Preserve the authored vectors inside every inferred composition unit.
       for (var i=0;i<arr.length;i++){
         arr[i]._relTop = arr[i].top - minTop;
         arr[i]._relLeft = arr[i].left - minLeft;
@@ -281,6 +413,193 @@ export function jsDomHelpersBlock(): string {
     clusters.sort(function(a,b){ return a.top - b.top; });
 
     return clusters;
+  }
+
+  function readPantallaObjectYNorm(node){
+    if (!node) return null;
+    var raw = "";
+    try {
+      raw = String(node.style.getPropertyValue("--obj-y-norm") || "").trim();
+      if (!raw && window.getComputedStyle) {
+        raw = String(getComputedStyle(node).getPropertyValue("--obj-y-norm") || "").trim();
+      }
+    } catch(_e) {
+      raw = "";
+    }
+    var value = parseFloat(raw);
+    if (!isFinite(value)) return null;
+    return clamp(value, 0, 1);
+  }
+
+  function isPantallaCompositionNode(node){
+    if (!node || !node.closest || !node.closest(".sec-content")) return false;
+    if (node.closest(".sec-bleed")) return false;
+
+    var fitMode = String(node.getAttribute("data-mobile-fit") || "").toLowerCase();
+    if (fitMode === "ignore" || fitMode === "cover") return false;
+
+    var role = String(node.getAttribute("data-role") || "").toLowerCase();
+    if (role === "decorative" || role === "background") return false;
+    return readPantallaObjectYNorm(node) != null;
+  }
+
+  function resolvePantallaVerticalMap(items, sectionHeight){
+    var valid = (items || []).filter(function(it){
+      return it && isFinite(it._pantallaYNorm) && isFinite(it._sourceTop);
+    });
+    var fallbackSlope = Math.max(1, Number(sectionHeight || 0));
+    if (!valid.length) return { slope: fallbackSlope, intercept: 0 };
+
+    var meanNorm = 0;
+    var meanTop = 0;
+    for (var i=0; i<valid.length; i++) {
+      meanNorm += valid[i]._pantallaYNorm;
+      meanTop += valid[i]._sourceTop;
+    }
+    meanNorm /= valid.length;
+    meanTop /= valid.length;
+
+    var numerator = 0;
+    var denominator = 0;
+    for (var j=0; j<valid.length; j++) {
+      var dx = valid[j]._pantallaYNorm - meanNorm;
+      numerator += dx * (valid[j]._sourceTop - meanTop);
+      denominator += dx * dx;
+    }
+
+    var slope = denominator > 0.000001 ? (numerator / denominator) : fallbackSlope;
+    if (!isFinite(slope) || slope <= fallbackSlope * 0.5 || slope >= fallbackSlope * 1.5) {
+      slope = fallbackSlope;
+    }
+
+    var intercepts = valid.map(function(it){
+      return it._sourceTop - (it._pantallaYNorm * slope);
+    }).sort(function(a,b){ return a - b; });
+    var midpoint = Math.floor(intercepts.length / 2);
+    var intercept = intercepts.length % 2
+      ? intercepts[midpoint]
+      : (intercepts[midpoint - 1] + intercepts[midpoint]) / 2;
+    if (!isFinite(intercept)) intercept = 0;
+
+    return { slope: slope, intercept: intercept };
+  }
+
+  function applyPantallaCompositionUnits(sec, content, nodes, CFG, meta){
+    var result = {
+      clusters: 0,
+      compositionUnits: 0,
+      changedUnits: 0,
+      changedNodes: 0
+    };
+    if (!sec || !content || !nodes || nodes.length < 2) return result;
+
+    var secRect = sec.getBoundingClientRect();
+    var contentRect = content.getBoundingClientRect();
+    var secHeight = Number(secRect.height || 0);
+    var designWidth = Math.max(1, Number(CFG && CFG.DESIGN_W || 800));
+    var designHeight = Math.max(1, Number(CFG && CFG.PANTALLA_DESIGN_H || 500));
+    var designScale = Number(contentRect.width || 0) / designWidth;
+    var projectedSpan = designHeight * designScale;
+    if (secHeight <= 1 || projectedSpan <= 1) return result;
+
+    var projectedItems = (nodes || []).filter(isPantallaCompositionNode).map(function(node){
+      var yNorm = readPantallaObjectYNorm(node);
+      var contentBox = relRect(node, content);
+      var sectionBox = relRect(node, sec);
+      return {
+        node: node,
+        top: yNorm * projectedSpan,
+        left: contentBox.left,
+        width: contentBox.width,
+        height: contentBox.height,
+        _pantallaYNorm: yNorm,
+        _sourceTop: sectionBox.top
+      };
+    }).filter(function(it){
+      return it.width > 0.5 || it.height > 0.5;
+    });
+    if (projectedItems.length < 2) return result;
+
+    var verticalMap = resolvePantallaVerticalMap(projectedItems, secHeight);
+    var clusters = buildCompositionClusters(projectedItems, contentRect.width);
+    var offsetHeight = Number(content.offsetHeight || 0);
+    var localToViewportScale = offsetHeight > 0
+      ? Number(contentRect.height || 0) / offsetHeight
+      : Number(contentRect.width || 0) / Math.max(1, Number(content.offsetWidth || 0));
+    if (!isFinite(localToViewportScale) || localToViewportScale <= 0) {
+      localToViewportScale = 1;
+    }
+
+    var visibleTop = clamp(verticalMap.intercept, 0, secHeight);
+    var visibleBottom = clamp(verticalMap.intercept + verticalMap.slope, visibleTop, secHeight);
+    if (visibleBottom - visibleTop < 1) {
+      visibleTop = 0;
+      visibleBottom = secHeight;
+    }
+
+    result.clusters = clusters.length;
+    for (var ci=0; ci<clusters.length; ci++) {
+      var cluster = clusters[ci];
+      if (!cluster || !cluster.items || cluster.items.length < 2) continue;
+      result.compositionUnits++;
+
+      var explicitAnchor = cluster.items.find(function(it){
+        var node = it.node;
+        return (
+          String(node.getAttribute("data-mobile-layout") || "").toLowerCase() === "keep" ||
+          String(node.getAttribute("data-mobile-role") || "").toLowerCase() === "anchor"
+        );
+      });
+      var desiredClusterTop = 0;
+      if (explicitAnchor) {
+        desiredClusterTop = explicitAnchor._sourceTop - (explicitAnchor.top - cluster.top);
+      } else {
+        var anchorNorm = clamp(
+          (cluster.top + cluster.height / 2) / projectedSpan,
+          0,
+          1
+        );
+        var anchorTop = verticalMap.intercept + (anchorNorm * verticalMap.slope);
+        desiredClusterTop = anchorTop - cluster.height / 2;
+      }
+
+      var maxClusterTop = visibleBottom - cluster.height;
+      if (maxClusterTop < visibleTop) maxClusterTop = visibleTop;
+      desiredClusterTop = clamp(desiredClusterTop, visibleTop, maxClusterTop);
+
+      var changedInUnit = 0;
+      for (var mi=0; mi<cluster.items.length; mi++) {
+        var item = cluster.items[mi];
+        var desiredTop = desiredClusterTop + (item.top - cluster.top);
+        var deltaViewport = desiredTop - item._sourceTop;
+        if (!isFinite(deltaViewport) || Math.abs(deltaViewport) <= 0.2) continue;
+
+        var originalTop = item.node.getAttribute("data-msl-orig-top");
+        if (originalTop == null || !String(originalTop).trim()) continue;
+        var deltaLocal = deltaViewport / localToViewportScale;
+        item.node.style.top = "calc((" + originalTop + ") + (" + deltaLocal + "px))";
+        item.node.setAttribute("data-msl-pantalla-composition-unit", String(ci));
+        changedInUnit++;
+        result.changedNodes++;
+      }
+      if (changedInUnit > 0) result.changedUnits++;
+    }
+
+    sec.setAttribute(
+      "data-msl-pantalla-composition-units",
+      String(result.compositionUnits)
+    );
+    mslLog("section:pantallaComposition", {
+      secIndex: meta && Number.isFinite(meta.secIndex) ? meta.secIndex : -1,
+      clusters: result.clusters,
+      compositionUnits: result.compositionUnits,
+      changedUnits: result.changedUnits,
+      changedNodes: result.changedNodes,
+      projectedSpan: +projectedSpan.toFixed(2),
+      verticalSlope: +Number(verticalMap.slope || 0).toFixed(2),
+      verticalIntercept: +Number(verticalMap.intercept || 0).toFixed(2)
+    });
+    return result;
   }
 
   // ✅ “entra” si ningún cluster se sale horizontalmente del contenedor content

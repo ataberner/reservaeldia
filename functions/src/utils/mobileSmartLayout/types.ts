@@ -24,4 +24,7 @@ export type MobileSmartLayoutOptions = {
   fitMaxScale?: number;
   fitTargetWidthRatio?: number;
   fitMinFillRatio?: number;
+
+  designWidthPx?: number;
+  pantallaDesignHeightPx?: number;
 };

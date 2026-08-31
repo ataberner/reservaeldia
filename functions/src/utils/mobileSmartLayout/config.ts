@@ -43,5 +43,14 @@ export function normalizeConfig(opts: MobileSmartLayoutOptions): NormalizedConfi
     fitMaxScale,
     fitTargetWidthRatio,
     fitMinFillRatio,
+    designWidthPx:
+      Number.isFinite(opts.designWidthPx) && Number(opts.designWidthPx) > 0
+        ? Number(opts.designWidthPx)
+        : 800,
+    pantallaDesignHeightPx:
+      Number.isFinite(opts.pantallaDesignHeightPx) &&
+      Number(opts.pantallaDesignHeightPx) > 0
+        ? Number(opts.pantallaDesignHeightPx)
+        : 500,
   };
 }

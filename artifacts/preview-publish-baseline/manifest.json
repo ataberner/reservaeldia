@@ -167,7 +167,8 @@
       "acceptedWarningCodes": [],
       "captureFocus": [
         "fixed sections remain the only smart-reflow section mode",
-        "column groups stack consistently in mobile preview and publish",
+        "wide text boxes with weak gutter overlap stay in two inferred column units",
+        "column groups preserve internal vectors and stack consistently in mobile preview and publish",
         "section height after reflow stays within the same geometry tolerance"
       ]
     },
@@ -184,8 +185,9 @@
       "expectedParityMode": "shared-parity",
       "acceptedWarningCodes": [],
       "captureFocus": [
-        "the centered section title stays above the mobile flow",
-        "title geometry does not contaminate left/right lane bounding boxes",
+        "the centered title/subtitle composition stays above the mobile flow",
+        "heading geometry does not contaminate left/right lane bounding boxes",
+        "spatially related objects preserve their internal vectors as one inferred composition unit",
         "ceremony and party visual columns both stack on the mobile center axis",
         "preview and publish keep the same centered-column geometry"
       ]
@@ -278,6 +280,26 @@
         "pantalla sections do not enter fixed smart reflow",
         "yNorm objects keep relative vertical spacing",
         "viewport-fit formulas stay consistent between preview and publish"
+      ]
+    },
+    {
+      "caseId": "pantalla-composition-related-text",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "the related text pair is inferred from authored 800x500 geometry",
+        "the composition keeps one proportional vertical anchor on mobile pantalla",
+        "internal text spacing scales with content width instead of viewport height",
+        "pantalla does not enter fixed-section ordering, stacking, or height expansion",
+        "desktop geometry and preview/publish parity stay unchanged"
       ]
     }
   ]

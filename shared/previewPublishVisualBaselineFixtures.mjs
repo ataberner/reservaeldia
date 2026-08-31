@@ -219,6 +219,41 @@ function createPantallaTextObject({
   };
 }
 
+function createPantallaCompositionTextObjects({ seccionId = "section-hero" } = {}) {
+  return [
+    {
+      id: "pantalla-composition-title",
+      tipo: "texto",
+      seccionId,
+      anclaje: "content",
+      x: 6.858840771161169,
+      y: 302.6077543409347,
+      yNorm: 0.6052155086818695,
+      texto: "Nos casamos",
+      fontFamily: "Great Vibes, cursive",
+      fontSize: 92.804,
+      lineHeight: 1.2,
+      align: "center",
+      colorTexto: "#ecd4c3",
+    },
+    {
+      id: "pantalla-composition-names",
+      tipo: "texto",
+      seccionId,
+      anclaje: "content",
+      x: 175.20039232325945,
+      y: 387.8768467071258,
+      yNorm: 0.7757536934142516,
+      texto: "Juli & Manu",
+      fontFamily: "Poppins",
+      fontSize: 31.91,
+      lineHeight: 1.2,
+      align: "center",
+      colorTexto: "#efdbcb",
+    },
+  ];
+}
+
 function createPreservedGroupObject({
   id = "hero-copy-group",
   seccionId = "section-hero",
@@ -272,47 +307,123 @@ function createPreservedGroupObject({
 function createMobileReflowColumnObjects({ seccionId = "section-details" } = {}) {
   return [
     {
-      id: "mobile-column-left-title",
+      id: "mobile-column-left-heading",
       tipo: "texto",
       seccionId,
-      x: 72,
-      y: 78,
-      width: 220,
-      texto: "Ceremonia",
-      fontSize: 30,
+      x: 48.306729625196596,
+      y: 25.115696932074115,
+      width: 360,
+      texto: "Civil",
+      fontSize: 19,
+      align: "center",
       colorTexto: "#2f2a27",
     },
     {
-      id: "mobile-column-left-copy",
+      id: "mobile-column-left-date",
       tipo: "texto",
       seccionId,
-      x: 72,
-      y: 124,
-      width: 220,
-      texto: "La ceremonia comienza puntual.",
-      fontSize: 20,
+      x: 48.899276377894324,
+      y: 57.55460133936708,
+      width: 360,
+      texto: "6 de diciembre de 2026",
+      fontSize: 43,
+      align: "center",
       colorTexto: "#4c4640",
     },
     {
-      id: "mobile-column-right-title",
+      id: "mobile-column-left-place",
       tipo: "texto",
       seccionId,
-      x: 458,
-      y: 78,
-      width: 220,
-      texto: "Fiesta",
-      fontSize: 30,
+      x: 42.46019128631997,
+      y: 136.90875672239713,
+      width: 360,
+      texto: "A confirmar",
+      fontSize: 19,
+      align: "center",
       colorTexto: "#2f2a27",
     },
     {
-      id: "mobile-column-right-copy",
+      id: "mobile-column-left-address",
       tipo: "texto",
       seccionId,
-      x: 458,
-      y: 124,
-      width: 220,
-      texto: "Cena, musica y brindis.",
-      fontSize: 20,
+      x: 42.792,
+      y: 158.316,
+      width: 360,
+      texto: "a confirmar",
+      fontSize: 21,
+      align: "center",
+      colorTexto: "#4c4640",
+    },
+    {
+      id: "mobile-column-left-time",
+      tipo: "texto",
+      seccionId,
+      x: 42.23642614104017,
+      y: 232.40408523659562,
+      width: 360,
+      texto: "18:00",
+      fontSize: 21,
+      align: "center",
+      colorTexto: "#4c4640",
+    },
+    {
+      id: "mobile-column-right-heading",
+      tipo: "texto",
+      seccionId,
+      x: 396.5371511596004,
+      y: 33.14013303872821,
+      width: 360,
+      texto: "Jupá y Fiesta",
+      fontSize: 19,
+      align: "center",
+      colorTexto: "#2f2a27",
+    },
+    {
+      id: "mobile-column-right-date",
+      tipo: "texto",
+      seccionId,
+      x: 396.99077924040387,
+      y: 74.6245298913891,
+      width: 360,
+      texto: "6 de diciembre de 2026",
+      fontSize: 39,
+      align: "center",
+      colorTexto: "#4c4640",
+    },
+    {
+      id: "mobile-column-right-place",
+      tipo: "texto",
+      seccionId,
+      x: 396.3390527442324,
+      y: 116.99827674968583,
+      width: 360,
+      texto: "Azahares de Escobar",
+      fontSize: 27,
+      align: "center",
+      colorTexto: "#2f2a27",
+    },
+    {
+      id: "mobile-column-right-address",
+      tipo: "texto",
+      seccionId,
+      x: 382.87300000000005,
+      y: 151.99800000000005,
+      width: 360,
+      texto: "Juan Mermoz Sur 1530, B1625 Belén de Escobar, Provincia de Buenos Aires",
+      fontSize: 21,
+      align: "center",
+      colorTexto: "#4c4640",
+    },
+    {
+      id: "mobile-column-right-time",
+      tipo: "texto",
+      seccionId,
+      x: 389.554,
+      y: 234.36900000000014,
+      width: 360,
+      texto: "18:00hs",
+      fontSize: 21,
+      align: "center",
       colorTexto: "#4c4640",
     },
   ];
@@ -385,6 +496,18 @@ function createMobileReflowTitleVisualColumnObjects({ seccionId = "section-detai
       fontSize: 38,
       align: "center",
       colorTexto: "#2f2a27",
+    },
+    {
+      id: "where-subtitle",
+      tipo: "texto",
+      seccionId,
+      x: 190,
+      y: 82,
+      width: 420,
+      texto: "Ceremonia y celebraciÃ³n",
+      fontSize: 24,
+      align: "center",
+      colorTexto: "#4c4640",
     },
     ...createColumn({
       prefix: "ceremony",
@@ -806,6 +929,25 @@ const pantallaYNormPublishDraft = upsertObjects(
   ]
 );
 
+const pantallaCompositionPreviewDraft = upsertObjects(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+      sectionIds: ["section-hero"],
+      objectIds: [],
+    })
+  ),
+  createPantallaCompositionTextObjects()
+);
+const pantallaCompositionPublishDraft = upsertObjects(
+  withoutRootConfigs(
+    selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+      sectionIds: ["section-hero"],
+      objectIds: [],
+    })
+  ),
+  createPantallaCompositionTextObjects()
+);
+
 const edgeDecorationsPreviewDraft = withHeroEdgeDecorations(
   withoutRootConfigs(
     selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
@@ -996,21 +1138,23 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
     publishDraft: fixedReflowColumnsPublishDraft,
     focusCheckpoints: [
       "fixed sections remain the only smart-reflow section mode",
-      "column groups stack consistently in mobile preview and publish",
+      "wide text boxes with weak gutter overlap stay in two inferred column units",
+      "column groups preserve internal vectors and stack consistently in mobile preview and publish",
       "section height after reflow stays within the same geometry tolerance",
     ],
   }),
   createVisualBaselineCase({
     id: "fixed-reflow-title-visual-columns",
-    label: "Fixed section title plus visual columns",
-    purpose: "Freeze centered section-title anchoring before two visual columns are stacked on mobile.",
+    label: "Fixed section heading composition plus visual columns",
+    purpose: "Freeze a centered title/subtitle composition before two visual columns are stacked on mobile.",
     sourceFixture: "preview-publish-hydrated-asset-parity",
     expectedParityMode: "shared-parity",
     previewDraft: fixedReflowTitleVisualColumnsPreviewDraft,
     publishDraft: fixedReflowTitleVisualColumnsPublishDraft,
     focusCheckpoints: [
-      "the centered section title stays above the mobile flow",
-      "title geometry does not contaminate left/right lane bounding boxes",
+      "the centered title/subtitle composition stays above the mobile flow",
+      "heading geometry does not contaminate left/right lane bounding boxes",
+      "spatially related objects preserve their internal vectors as one inferred composition unit",
       "ceremony and party visual columns both stack on the mobile center axis",
       "preview and publish keep the same centered-column geometry",
     ],
@@ -1083,6 +1227,22 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
       "pantalla sections do not enter fixed smart reflow",
       "yNorm objects keep relative vertical spacing",
       "viewport-fit formulas stay consistent between preview and publish",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "pantalla-composition-related-text",
+    label: "Pantalla related text composition",
+    purpose: "Freeze one screen-relative anchor plus content-scaled internal vectors for related pantalla text.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: pantallaCompositionPreviewDraft,
+    publishDraft: pantallaCompositionPublishDraft,
+    focusCheckpoints: [
+      "the related text pair is inferred from authored 800x500 geometry",
+      "the composition keeps one proportional vertical anchor on mobile pantalla",
+      "internal text spacing scales with content width instead of viewport height",
+      "pantalla does not enter fixed-section ordering, stacking, or height expansion",
+      "desktop geometry and preview/publish parity stay unchanged",
     ],
   }),
 ]);

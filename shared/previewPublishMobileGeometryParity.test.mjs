@@ -85,7 +85,7 @@ test("mobile geometry diff accepts small pixel tolerance", () => {
   assert.deepEqual(diffMobileGeometrySnapshots(preview, publish), []);
 });
 
-test("mobile geometry diff reports section, object, and group-child drift", () => {
+test("mobile geometry diff reports section, object, decoration, and group-child drift", () => {
   const preview = createSyntheticGeometrySnapshot({
     scrollHeight: 900,
     sections: [
@@ -105,6 +105,13 @@ test("mobile geometry diff reports section, object, and group-child drift", () =
         sectionId: "section-1",
         slot: "top",
         rect: { left: 0, top: 0, width: 390, height: 60 },
+      },
+    ],
+    sectionDecorations: [
+      {
+        id: "section-1:0",
+        sectionId: "section-1",
+        rect: { left: 260, top: 220, width: 90, height: 50 },
       },
     ],
     groupChildren: [
@@ -137,6 +144,13 @@ test("mobile geometry diff reports section, object, and group-child drift", () =
         rect: { left: 0, top: 0, width: 360, height: 64 },
       },
     ],
+    sectionDecorations: [
+      {
+        id: "section-1:0",
+        sectionId: "section-1",
+        rect: { left: 260, top: 240, width: 90, height: 50 },
+      },
+    ],
     groupChildren: [
       {
         id: "group-1:child-1",
@@ -154,6 +168,7 @@ test("mobile geometry diff reports section, object, and group-child drift", () =
   assert.equal(paths.includes("objects.object-1.left"), true);
   assert.equal(paths.includes("edgeDecorations.section-1:top.width"), true);
   assert.equal(paths.includes("edgeDecorations.section-1:top.height"), true);
+  assert.equal(paths.includes("sectionDecorations.section-1:0.top"), true);
   assert.equal(paths.includes("groupChildren.relative.group-1:child-1.left"), true);
 });
 
@@ -1167,7 +1182,7 @@ test(
         width: viewport.width,
         height: viewport.height,
         deviceScaleFactor: 1,
-        isMobile: true,
+        isMobile: viewport.width <= 767,
       });
       await page.setContent(html, { waitUntil: "load" });
       await waitForLayoutSettle(page);
@@ -1184,7 +1199,7 @@ test(
           width: viewport.width,
           height: viewport.height,
           deviceScaleFactor: 1,
-          isMobile: true,
+          isMobile: viewport.width <= 767,
         });
         stage = "shell";
         await page.setContent(
@@ -1192,7 +1207,7 @@ test(
           { waitUntil: "load" }
         );
         const srcDoc = buildPreviewFrameSrcDoc(html, {
-          previewViewport: "mobile",
+          previewViewport: viewport.width <= 767 ? "mobile" : "desktop",
           layoutMode: "parity",
         });
         stage = "srcdoc";
@@ -1218,7 +1233,7 @@ test(
       }
     }
 
-    function assertObjectCenteredOnSection(snapshot, objectId, message) {
+    function assertObjectCenteredOnSection(snapshot, objectId, message, tolerancePx = 3) {
       const object = (snapshot?.objects || []).find((entry) => entry.id === objectId);
       assert.ok(object, `${message}: missing ${objectId}`);
 
@@ -1232,8 +1247,122 @@ test(
       const actualCenter =
         Number(object.rect?.left || 0) + Number(object.rect?.width || 0) / 2;
       assert.ok(
-        Math.abs(actualCenter - expectedCenter) <= 3,
+        Math.abs(actualCenter - expectedCenter) <= tolerancePx,
         `${message}: ${objectId} center ${actualCenter.toFixed(2)} differs from section center ${expectedCenter.toFixed(2)}`
+      );
+    }
+
+    function requireObjectAndSection(snapshot, objectId, message) {
+      const object = (snapshot?.objects || []).find((entry) => entry.id === objectId);
+      assert.ok(object, `${message}: missing ${objectId}`);
+      const section = (snapshot?.sections || []).find(
+        (entry) => entry.id === object.sectionId
+      );
+      assert.ok(section, `${message}: missing section for ${objectId}`);
+      return { object, section };
+    }
+
+    function normalizedCompositionRelation(snapshot, firstId, secondId, message) {
+      const first = requireObjectAndSection(snapshot, firstId, message);
+      const second = requireObjectAndSection(snapshot, secondId, message);
+      assert.equal(
+        first.object.sectionId,
+        second.object.sectionId,
+        `${message}: related objects must share one section`
+      );
+      const contentWidth = Number(first.section.contentRect?.width || 0);
+      assert.ok(contentWidth > 0, `${message}: invalid section content width`);
+      const firstCenter =
+        Number(first.object.rect?.left || 0) + Number(first.object.rect?.width || 0) / 2;
+      const secondCenter =
+        Number(second.object.rect?.left || 0) + Number(second.object.rect?.width || 0) / 2;
+      return {
+        centerDelta: (secondCenter - firstCenter) / contentWidth,
+        topDelta:
+          (Number(second.object.rect?.top || 0) - Number(first.object.rect?.top || 0)) /
+          contentWidth,
+        gap:
+          (Number(second.object.rect?.top || 0) - Number(first.object.rect?.bottom || 0)) /
+          contentWidth,
+      };
+    }
+
+    function assertCompositionRelationsPreserved(
+      desktopSnapshot,
+      mobileSnapshot,
+      relationPairs,
+      message,
+      toleranceByKey = {}
+    ) {
+      relationPairs.forEach(([firstId, secondId]) => {
+        const desktopRelation = normalizedCompositionRelation(
+          desktopSnapshot,
+          firstId,
+          secondId,
+          message
+        );
+        const mobileRelation = normalizedCompositionRelation(
+          mobileSnapshot,
+          firstId,
+          secondId,
+          message
+        );
+        for (const key of ["centerDelta", "topDelta", "gap"]) {
+          const tolerance = Number(toleranceByKey[key] ?? 0.012);
+          assert.ok(
+            Math.abs(mobileRelation[key] - desktopRelation[key]) <= tolerance,
+            `${message}: ${firstId} -> ${secondId} ${key} changed from ${desktopRelation[key].toFixed(4)} to ${mobileRelation[key].toFixed(4)}`
+          );
+        }
+      });
+    }
+
+    function normalizedCompositionCenter(snapshot, objectIds, message) {
+      const entries = objectIds.map((objectId) =>
+        requireObjectAndSection(snapshot, objectId, message)
+      );
+      const section = entries[0].section;
+      entries.forEach(({ object }) => {
+        assert.equal(
+          object.sectionId,
+          entries[0].object.sectionId,
+          `${message}: composition members must share one section`
+        );
+      });
+      const top = Math.min(...entries.map(({ object }) => Number(object.rect?.top || 0)));
+      const bottom = Math.max(
+        ...entries.map(({ object }) => Number(object.rect?.bottom || 0))
+      );
+      const sectionTop = Number(section.rect?.top || 0);
+      const sectionHeight = Number(section.rect?.height || 0);
+      assert.ok(sectionHeight > 0, `${message}: invalid section height`);
+      return ((top + bottom) / 2 - sectionTop) / sectionHeight;
+    }
+
+    function assertObjectVerticalOrder(snapshot, objectIds, message) {
+      const objects = objectIds.map((objectId) =>
+        requireObjectAndSection(snapshot, objectId, message).object
+      );
+      for (let index = 1; index < objects.length; index += 1) {
+        assert.ok(
+          Number(objects[index].rect?.top || 0) >=
+            Number(objects[index - 1].rect?.top || 0) - 1,
+          `${message}: ${objectIds[index]} rendered before ${objectIds[index - 1]}`
+        );
+      }
+    }
+
+    function assertFixedDesktopAuthoredTop(snapshot, objectId, authoredY, message) {
+      const { object, section } = requireObjectAndSection(snapshot, objectId, message);
+      const contentWidth = Number(section.contentRect?.width || 0);
+      assert.ok(contentWidth > 0, `${message}: invalid section content width`);
+      const actualRatio =
+        (Number(object.rect?.top || 0) - Number(section.contentRect?.top || 0)) /
+        contentWidth;
+      const expectedRatio = Number(authoredY) / 800;
+      assert.ok(
+        Math.abs(actualRatio - expectedRatio) <= 0.004,
+        `${message}: ${objectId} top ratio ${actualRatio.toFixed(4)} differs from authored ${expectedRatio.toFixed(4)}`
       );
     }
 
@@ -1272,6 +1401,29 @@ test(
       });
     }
 
+    function assertPantallaVerticalRatio(
+      snapshot,
+      collectionName,
+      itemId,
+      expectedRatio,
+      message
+    ) {
+      const item = (snapshot?.[collectionName] || []).find((entry) => entry.id === itemId);
+      assert.ok(item, `${message}: missing ${itemId}`);
+      const section = (snapshot?.sections || []).find(
+        (entry) => entry.id === item.sectionId
+      );
+      assert.ok(section, `${message}: missing section for ${itemId}`);
+      const sectionHeight = Number(section.rect?.height || 0);
+      assert.ok(sectionHeight > 0, `${message}: invalid section height`);
+      const actualRatio =
+        (Number(item.rect?.top || 0) - Number(section.rect?.top || 0)) / sectionHeight;
+      assert.ok(
+        Math.abs(actualRatio - expectedRatio) <= 0.025,
+        `${message}: ${itemId} top ratio ${actualRatio.toFixed(3)} differs from ${expectedRatio.toFixed(3)}`
+      );
+    }
+
     await t.test("pantalla edge content stays visible while decorative bleed may crop", async () => {
       const galleryImage =
         "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -1283,6 +1435,21 @@ test(
             altoModo: "pantalla",
             altura: 500,
             fondo: "#f8f3fb",
+            decoracionesFondo: {
+              parallax: "none",
+              items: [
+                {
+                  id: "edge-section-decoration-bottom",
+                  src: galleryImage,
+                  x: 620,
+                  y: 440,
+                  width: 120,
+                  height: 48,
+                  rotation: 0,
+                  orden: 0,
+                },
+              ],
+            },
           },
         ],
         objetos: [
@@ -1399,6 +1566,15 @@ test(
         "edge-right-group",
         "edge-right-gallery",
       ];
+      const verticalTargets = [
+        ["objects", "edge-left-text", 0.08],
+        ["objects", "edge-right-button", 0.24],
+        ["objects", "edge-right-icon", 0.4],
+        ["objects", "edge-right-group", 0.54],
+        ["objects", "edge-right-gallery", 0.72],
+        ["objects", "edge-decorative-bleed", 0.34],
+        ["sectionDecorations", "edge-content-pantalla:0", 0.88],
+      ];
 
       for (const viewport of MOBILE_GEOMETRY_PARITY_VIEWPORTS) {
         const previewSnapshot = await capturePreviewSnapshot(previewHtml, viewport);
@@ -1444,7 +1620,55 @@ test(
           decorativeBleed.rect.left < -2 && decorativeBleed.rect.right > viewport.width + 2,
           `edge decorative bleed ${viewport.id}: expected cover-like lateral crop`
         );
+
+        verticalTargets.forEach(([collectionName, itemId, expectedRatio]) => {
+          assertPantallaVerticalRatio(
+            previewSnapshot,
+            collectionName,
+            itemId,
+            expectedRatio,
+            `pantalla vertical preview ${viewport.id}`
+          );
+          assertPantallaVerticalRatio(
+            publishSnapshot,
+            collectionName,
+            itemId,
+            expectedRatio,
+            `pantalla vertical publish ${viewport.id}`
+          );
+        });
       }
+
+      const desktopViewport = { id: "desktop-1280x820", width: 1280, height: 820 };
+      const desktopPreviewSnapshot = await capturePreviewSnapshot(
+        previewHtml,
+        desktopViewport
+      );
+      const desktopPublishSnapshot = await capturePublishSnapshot(
+        publishHtml,
+        desktopViewport
+      );
+      assert.deepEqual(
+        diffMobileGeometrySnapshots(desktopPreviewSnapshot, desktopPublishSnapshot),
+        [],
+        "pantalla vertical desktop parity"
+      );
+      verticalTargets.forEach(([collectionName, itemId, expectedRatio]) => {
+        assertPantallaVerticalRatio(
+          desktopPreviewSnapshot,
+          collectionName,
+          itemId,
+          expectedRatio,
+          "pantalla vertical desktop preview"
+        );
+        assertPantallaVerticalRatio(
+          desktopPublishSnapshot,
+          collectionName,
+          itemId,
+          expectedRatio,
+          "pantalla vertical desktop publish"
+        );
+      });
     });
 
     for (const fixture of previewPublishVisualBaselineFixtures) {
@@ -1458,14 +1682,173 @@ test(
           slug: "mobile-geometry-publish",
         });
 
+        let desktopCompositionSnapshot = null;
+        if (
+          fixture.id === "fixed-reflow-columns" ||
+          fixture.id === "fixed-reflow-title-visual-columns" ||
+          fixture.id === "pantalla-composition-related-text"
+        ) {
+          const desktopViewport = { id: "desktop-1280x820", width: 1280, height: 820 };
+          const desktopPreviewSnapshot = await capturePreviewSnapshot(
+            previewHtml,
+            desktopViewport
+          );
+          const desktopPublishSnapshot = await capturePublishSnapshot(
+            publishHtml,
+            desktopViewport
+          );
+          assert.deepEqual(
+            diffMobileGeometrySnapshots(desktopPreviewSnapshot, desktopPublishSnapshot),
+            [],
+            `${fixture.id} desktop parity`
+          );
+          if (fixture.id === "fixed-reflow-title-visual-columns") {
+            [
+              ["where-title", 34],
+              ["where-subtitle", 82],
+              ["ceremony-icon", 120],
+              ["ceremony-label", 180],
+              ["ceremony-time", 224],
+              ["ceremony-place", 254],
+              ["party-icon", 120],
+              ["party-label", 180],
+              ["party-time", 224],
+              ["party-place", 254],
+            ].forEach(([objectId, authoredY]) => {
+              assertFixedDesktopAuthoredTop(
+                desktopPreviewSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop preview`
+              );
+              assertFixedDesktopAuthoredTop(
+                desktopPublishSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop publish`
+              );
+            });
+          } else if (fixture.id === "fixed-reflow-columns") {
+            [
+              ["mobile-column-left-heading", 25.115696932074115],
+              ["mobile-column-left-date", 57.55460133936708],
+              ["mobile-column-left-place", 136.90875672239713],
+              ["mobile-column-left-address", 158.316],
+              ["mobile-column-left-time", 232.40408523659562],
+              ["mobile-column-right-heading", 33.14013303872821],
+              ["mobile-column-right-date", 74.6245298913891],
+              ["mobile-column-right-place", 116.99827674968583],
+              ["mobile-column-right-address", 151.99800000000005],
+              ["mobile-column-right-time", 234.36900000000014],
+            ].forEach(([objectId, authoredY]) => {
+              assertFixedDesktopAuthoredTop(
+                desktopPreviewSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop preview`
+              );
+              assertFixedDesktopAuthoredTop(
+                desktopPublishSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop publish`
+              );
+            });
+          } else {
+            [
+              ["pantalla-composition-title", 0.6052155086818695],
+              ["pantalla-composition-names", 0.7757536934142516],
+            ].forEach(([objectId, authoredYNorm]) => {
+              assertPantallaVerticalRatio(
+                desktopPreviewSnapshot,
+                "objects",
+                objectId,
+                authoredYNorm,
+                `${fixture.id} desktop preview`
+              );
+              assertPantallaVerticalRatio(
+                desktopPublishSnapshot,
+                "objects",
+                objectId,
+                authoredYNorm,
+                `${fixture.id} desktop publish`
+              );
+            });
+          }
+          desktopCompositionSnapshot = desktopPreviewSnapshot;
+        }
+
         for (const viewport of MOBILE_GEOMETRY_PARITY_VIEWPORTS) {
           const previewSnapshot = await capturePreviewSnapshot(previewHtml, viewport);
           const publishSnapshot = await capturePublishSnapshot(publishHtml, viewport);
           const diffs = diffMobileGeometrySnapshots(previewSnapshot, publishSnapshot);
           assert.deepEqual(diffs, [], `${fixture.id} ${viewport.id}`);
 
-          if (fixture.id === "fixed-reflow-title-visual-columns") {
+          if (fixture.id === "fixed-reflow-columns") {
+            const leftColumn = [
+              "mobile-column-left-heading",
+              "mobile-column-left-date",
+              "mobile-column-left-place",
+              "mobile-column-left-address",
+              "mobile-column-left-time",
+            ];
+            const rightColumn = [
+              "mobile-column-right-heading",
+              "mobile-column-right-date",
+              "mobile-column-right-place",
+              "mobile-column-right-address",
+              "mobile-column-right-time",
+            ];
+            [...leftColumn, ...rightColumn].forEach((objectId) => {
+              assertObjectCenteredOnSection(
+                previewSnapshot,
+                objectId,
+                `${fixture.id} preview ${viewport.id}`,
+                5
+              );
+              assertObjectCenteredOnSection(
+                publishSnapshot,
+                objectId,
+                `${fixture.id} publish ${viewport.id}`,
+                5
+              );
+            });
+            const relatedPairs = [
+              ...leftColumn.slice(0, -1).map((objectId, index) => [
+                objectId,
+                leftColumn[index + 1],
+              ]),
+              ...rightColumn.slice(0, -1).map((objectId, index) => [
+                objectId,
+                rightColumn[index + 1],
+              ]),
+            ];
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              previewSnapshot,
+              relatedPairs,
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              publishSnapshot,
+              relatedPairs,
+              `${fixture.id} publish ${viewport.id}`
+            );
+            const readingOrder = [...leftColumn, ...rightColumn];
+            assertObjectVerticalOrder(
+              previewSnapshot,
+              readingOrder,
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertObjectVerticalOrder(
+              publishSnapshot,
+              readingOrder,
+              `${fixture.id} publish ${viewport.id}`
+            );
+          } else if (fixture.id === "fixed-reflow-title-visual-columns") {
             [
+              "where-subtitle",
               "ceremony-icon",
               "ceremony-label",
               "ceremony-time",
@@ -1486,6 +1869,105 @@ test(
                 `${fixture.id} publish ${viewport.id}`
               );
             });
+            const relatedPairs = [
+              ["where-title", "where-subtitle"],
+              ["ceremony-icon", "ceremony-label"],
+              ["ceremony-label", "ceremony-time"],
+              ["ceremony-time", "ceremony-place"],
+              ["party-icon", "party-label"],
+              ["party-label", "party-time"],
+              ["party-time", "party-place"],
+            ];
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              previewSnapshot,
+              relatedPairs,
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              publishSnapshot,
+              relatedPairs,
+              `${fixture.id} publish ${viewport.id}`
+            );
+            const readingOrder = [
+              "where-title",
+              "where-subtitle",
+              "ceremony-icon",
+              "ceremony-label",
+              "ceremony-time",
+              "ceremony-place",
+              "party-icon",
+              "party-label",
+              "party-time",
+              "party-place",
+            ];
+            assertObjectVerticalOrder(
+              previewSnapshot,
+              readingOrder,
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertObjectVerticalOrder(
+              publishSnapshot,
+              readingOrder,
+              `${fixture.id} publish ${viewport.id}`
+            );
+          } else if (fixture.id === "pantalla-composition-related-text") {
+            const relatedPair = [
+              ["pantalla-composition-title", "pantalla-composition-names"],
+            ];
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              previewSnapshot,
+              relatedPair,
+              `${fixture.id} preview ${viewport.id}`,
+              { gap: 0.015 }
+            );
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              publishSnapshot,
+              relatedPair,
+              `${fixture.id} publish ${viewport.id}`,
+              { gap: 0.015 }
+            );
+
+            const objectIds = [
+              "pantalla-composition-title",
+              "pantalla-composition-names",
+            ];
+            const desktopCenter = normalizedCompositionCenter(
+              desktopCompositionSnapshot,
+              objectIds,
+              `${fixture.id} desktop anchor`
+            );
+            const previewCenter = normalizedCompositionCenter(
+              previewSnapshot,
+              objectIds,
+              `${fixture.id} preview ${viewport.id}`
+            );
+            const publishCenter = normalizedCompositionCenter(
+              publishSnapshot,
+              objectIds,
+              `${fixture.id} publish ${viewport.id}`
+            );
+            assert.ok(
+              Math.abs(previewCenter - desktopCenter) <= 0.025,
+              `${fixture.id} preview ${viewport.id}: composition center changed from ${desktopCenter.toFixed(4)} to ${previewCenter.toFixed(4)}`
+            );
+            assert.ok(
+              Math.abs(publishCenter - desktopCenter) <= 0.025,
+              `${fixture.id} publish ${viewport.id}: composition center changed from ${desktopCenter.toFixed(4)} to ${publishCenter.toFixed(4)}`
+            );
+
+            const section = previewSnapshot.sections.find(
+              (entry) => entry.id === "section-hero"
+            );
+            assert.ok(section, `${fixture.id} ${viewport.id}: missing pantalla section`);
+            assert.equal(section.modo, "pantalla");
+            assert.ok(
+              Math.abs(Number(section.rect?.height || 0) - viewport.height) <= 2,
+              `${fixture.id} ${viewport.id}: pantalla height must remain viewport-owned`
+            );
           }
         }
       });

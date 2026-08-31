@@ -163,6 +163,23 @@ export function collectMobileGeometrySnapshotFromDocument() {
     }
   );
 
+  const sectionDecorations = Array.from(document.querySelectorAll(".sec-decor-item")).map(
+    (decoration, index) => {
+      const section = decoration.closest(".sec");
+      const sectionId = section ? section.getAttribute("data-seccion-id") || "" : "";
+      const sectionDecorationsList = section
+        ? Array.from(section.querySelectorAll(".sec-decor-item"))
+        : [];
+      const sectionDecorationIndex = sectionDecorationsList.indexOf(decoration);
+      return {
+        index,
+        id: `${sectionId}:${Math.max(0, sectionDecorationIndex)}`,
+        sectionId,
+        rect: toRect(decoration),
+      };
+    }
+  );
+
   const groupChildren = Array.from(document.querySelectorAll("[data-group-child-id]")).map(
     (child, index) => {
       const group = child.closest("[data-obj-id]");
@@ -204,6 +221,7 @@ export function collectMobileGeometrySnapshotFromDocument() {
     sections,
     objects,
     edgeDecorations,
+    sectionDecorations,
     groupChildren,
   };
 }
@@ -256,6 +274,13 @@ export function diffMobileGeometrySnapshots(
     diffs,
   });
   diffKeyedRects({
+    path: "sectionDecorations",
+    leftItems: previewSnapshot?.sectionDecorations,
+    rightItems: publishSnapshot?.sectionDecorations,
+    tolerancePx,
+    diffs,
+  });
+  diffKeyedRects({
     path: "groupChildren.relative",
     leftItems: previewSnapshot?.groupChildren,
     rightItems: publishSnapshot?.groupChildren,
@@ -272,6 +297,7 @@ export function createSyntheticGeometrySnapshot({
   sections = [],
   objects = [],
   edgeDecorations = [],
+  sectionDecorations = [],
   groupChildren = [],
 } = {}) {
   return {
@@ -303,6 +329,11 @@ export function createSyntheticGeometrySnapshot({
       id: normalizeText(decoration.id),
       sectionId: normalizeText(decoration.sectionId),
       slot: normalizeText(decoration.slot),
+      rect: rectToSnapshot(decoration.rect),
+    })),
+    sectionDecorations: sectionDecorations.map((decoration) => ({
+      id: normalizeText(decoration.id),
+      sectionId: normalizeText(decoration.sectionId),
       rect: rectToSnapshot(decoration.rect),
     })),
     groupChildren: groupChildren.map((child) => ({

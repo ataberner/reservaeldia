@@ -60,13 +60,14 @@ These views freeze invitation rendering reference points only. They do not freez
 | `gallery` | Protect the current gallery layout family, preset visibility, cell ordering, and generated global-viewer markers. | `shared-parity` | all five baseline views | none | cell order, sizing pattern, desktop/mobile gallery family, clickable-cell DOM order |
 | `countdown` | Protect current countdown frame and unit composition. | `shared-parity` | all five baseline views | none | frame composition, unit structure, desktop/mobile countdown family |
 | `mixed-fijo-pantalla` | Protect section ordering across one `pantalla` section plus fixed sections. | `shared-parity` | all five baseline views | none | section order, `pantalla` to `fijo` relationship, cross-section stability |
-| `fixed-reflow-columns` | Protect the two-column mobile smart-layout path for fixed sections. | `shared-parity` | all five baseline views | none | fixed-only reflow, mobile column stacking, section height |
-| `fixed-reflow-title-visual-columns` | Protect a centered section title above two icon/text columns. | `shared-parity` | all five baseline views | none | title anchor, lane bbox isolation, centered Ceremony/Fiesta mobile stack |
+| `fixed-reflow-columns` | Protect the two-column mobile smart-layout path for fixed sections. | `shared-parity` | all five baseline views | none | fixed-only reflow, weak gutter overlap between wide text boxes, preserved column units, mobile column stacking, section height |
+| `fixed-reflow-title-visual-columns` | Protect a centered title/subtitle composition above two icon/text columns. | `shared-parity` | all five baseline views | none | heading unit, internal vectors, lane bbox isolation, centered Ceremony/Fiesta mobile stack |
 | `fixed-overflow-expansion` | Protect fixed-section expansion when mobile content exceeds authored height. | `shared-parity` | all five baseline views | none | overflow expansion, stale iframe gaps, downstream offsets |
 | `grouped-cta-fixed-section` | Protect grouped CTA positioning and hit-layer preservation in fixed sections. | `shared-parity` | all five baseline views | none | group wrapper unit, nested CTA semantics, sibling stacking |
 | `group-nested-children` | Protect group child offsets relative to the wrapper. | `shared-parity` | all five baseline views | none | atomic group movement, nested children, relative offsets |
 | `fixed-fullbleed-mixed-lanes` | Protect fullbleed/content lane separation inside fixed sections. | `shared-parity` | all five baseline views | none | bleed lane, content lane, fit-scale lane intent |
-| `pantalla-ynorm-positioning` | Protect multiple `yNorm` positions in one `pantalla` section. | `shared-parity` | all five baseline views | none | no fixed reflow, relative vertical spacing, viewport-fit formulas |
+| `pantalla-ynorm-positioning` | Protect multiple `yNorm` positions in one `pantalla` section. | `shared-parity` | all five baseline views | none | no fixed reflow, mobile top ratio against visible section height, relative vertical spacing, viewport-fit formulas |
+| `pantalla-composition-related-text` | Protect a related title/name pair in one `pantalla` section. | `shared-parity` | all five baseline views | none | authored `800 x 500` inference, one proportional unit anchor, content-scaled internal vectors, no stack/height expansion, unchanged desktop |
 
 ## Centered Title Reflow Fix
 
@@ -92,6 +93,40 @@ Manual validation:
 - With `¿Dónde?` present, mobile preview and mobile publish center Ceremony and Fiesta on the same axis.
 - With `¿Dónde?` removed, the previous centered Ceremony/Fiesta stack remains unchanged.
 - Desktop preview and publish keep the original side-by-side composition.
+
+## Composition-Aware Fixed Reflow
+
+Root cause characterized on 2026-08-29:
+
+- clustering excluded nearby text/text relationships
+- anchor classification ran before composition inference
+- a subtitle close to an anchored title could therefore enter one visual lane,
+  render after that lane, and lose the authored heading relationship
+
+Frozen rule:
+
+- mobile `fijo`/automatic reflow infers composition units from bounded spatial
+  relationships plus shared axes or edges before the anchor/flow split
+- internal center deltas, top deltas and gaps of a unit stay proportional to
+  the desktop composition when the unit is moved
+- explicit group wrappers remain isolated units; inferred units never cross
+  content/fullbleed lanes and are never persisted
+- `pantalla`, `mobileLayoutMode: preserve`, section-owned decorations and
+  desktop geometry keep their existing owners
+
+The `fixed-reflow-title-visual-columns` browser case compares desktop with
+`390x844`, `375x812`, and `414x896`, waits for fonts/images and delayed layout
+passes, and checks heading order plus the normalized internal vectors of both
+visual columns in draft-authoritative preview and publish.
+
+The `pantalla-composition-related-text` browser case freezes the complementary
+screen-mode rule with the real no-width typography shape of `Nos casamos` and
+`Juli & Manu`. It compares the unit's normalized visual center and internal
+center/top/gap vectors with desktop at the same three mobile viewports. The
+text-gap tolerance is `0.015` because the existing mobile pantalla text zoom
+changes glyph-box height; center alignment and top vectors retain the stricter
+`0.012` tolerance. The independent top/bottom `pantalla-ynorm-positioning`
+fixture remains the negative case and must keep exact per-object `yNorm`.
 
 ## Accepted Current Differences
 
@@ -129,11 +164,17 @@ Treat any of the following as a regression unless a new product or architecture 
   an explicit countdown-contract change
 - changed cross-section order or changed `fijo`/`pantalla` relationship in the mixed case
 - changed mobile smart-layout height expansion between preview iframe and publish
+- split a spatially related fixed-section composition into independently
+  positioned mobile items, changed its normalized internal vectors, or merged
+  content and fullbleed into one inferred unit
 - allowed non-decorative `.sec-content` objects to cross the mobile viewport,
   or included roles `decorative`/`background`, section-owned visuals, or the
   `.sec-bleed` cover lane in the content-fit bounds
 - changed group-child offsets relative to the group wrapper
 - changed fullbleed/content lane separation in fixed sections
+- changed a mobile `pantalla` root object's visible top ratio away from its
+  `yNorm`, allowed horizontal fit to compress that ratio, changed group-child
+  local offsets, or applied the mobile span override to desktop
 - changed `decoracionesBorde` rendering into object/smart-layout nodes, or changed top/bottom viewport-width anchoring, intrinsic-clamp sizing budget, or offset behavior
 - changed `divisores` into object/selection/smart-layout nodes, changed a catalog path without updating all five baseline views, allowed both adjacent slots to paint the same physical junction, introduced a straight or white section seam, or excluded the divider from clean canvas capture
 
@@ -190,6 +231,9 @@ Run the browser-backed junction capture with:
   additionally protected by the frame contract and renderer tests.
 - Mobile geometry parity capture is available through the opt-in Node test guarded by `PREVIEW_PUBLISH_MOBILE_GEOMETRY=1`; normal CI keeps the deterministic fixture/diff tests only. The snapshot includes section, object, group-child, and edge-decoration geometry. Edge decoration sizing is governed by the generated HTML intrinsic-clamp model; the editor canvas can adjust only desktop edge offsets today, and mobile edge offsets remain a separate render field.
 - The same browser capture includes `pantalla edge content stays visible while decorative bleed may crop`. At `390x844`, `375x812`, and `414x896` it checks text, CTA, icon, one preserved group (including nested children), and Gallery containment in both draft-authoritative preview and publish, while a decorative `fullbleed` band must continue extending beyond both lateral edges.
+- That browser case also checks vertical `pantalla` intent after fonts, first-section images, resize/observer work, and the delayed smart-layout passes: top-level text, CTA, icon, group wrapper, Gallery and fullbleed stay within `0.025` of their authored `yNorm`; section-owned background decoration `y` uses the equivalent `y / 500` ratio. Preview and publish must remain geometrically equal at all three viewports.
+- The `fixed-reflow-title-visual-columns` browser case freezes composition-aware mobile reflow: title/subtitle order and spacing, internal icon/label/copy vectors, explicit column stacking, preview/publish parity, and unchanged desktop authored tops.
+- The `pantalla-composition-related-text` browser case freezes one proportional anchor for a related mobile `pantalla` unit while its internal vectors scale with content width; it also protects the absence of fixed ordering/stacking/height expansion and unchanged desktop geometry.
 - The current preview iframe supports publish-like layout mode by default through `data-preview-layout-mode="parity"`. Set `NEXT_PUBLIC_MOBILE_PREVIEW_PARITY_MODE=0` to use the legacy iframe height/overflow mutation path during rollback.
 - On physical Android Chrome, the first gesture inside `mobile-preview-focused` must move `body.scrollTop` while `document.documentElement.scrollTop` remains `0`. The paired `mobile-preview-paired` mockup uses the same shell-only body-root contract and its browser-backed test covers touch, small wheel/trackpad deltas, and wheel after touch. Both iframes stay at logical `390 x 844`; this shell rule is not a preview/publish geometry parity target.
 - On published mobile HTML, the first gesture after loader readiness must instead move `document.documentElement.scrollTop` while `body.scrollTop` remains `0`. The browser-backed `published mobile first touch` test covers `390x844`, `375x812`, and `414x896`, and asserts that the initial gesture changes neither section heights nor the root scroll range. Desktop and preview root ownership remain unchanged.

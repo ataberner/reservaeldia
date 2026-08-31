@@ -1466,7 +1466,11 @@ test("mobile fit contains pantalla content without shrinking decorative or fullb
     html,
     /secModo === "pantalla" && scale < 1 && !horizontalOverflow/
   );
-  assert.match(html, /applyElementFitScale\(content, scale\);\s*restoreFitScaleBaseline\(bleed\);/);
+  assert.match(
+    html,
+    /applyElementFitScale\(content, scale\);[\s\S]*content\.style\.setProperty\("--pantalla-y-fit-scale", String\(scale\)\);[\s\S]*restoreFitScaleBaseline\(bleed\);/
+  );
+  assert.match(html, /el\.style\.removeProperty\("--pantalla-y-fit-scale"\);/);
   assert.doesNotMatch(html, /applyElementFitScale\(bleed, scale\);/);
 });
 
@@ -1626,6 +1630,61 @@ test("mobile smart layout exposes logs only to explicit preview diagnostics or M
     /var MSL_DEBUG = Boolean\(window\.__PREVIEW_SCROLL_DIAG_ACTIVE\) \|\| readDebugFlag\("mslDebug"\);/
   );
   assert.match(html, /if \(!MSL_DEBUG\) return;/);
+});
+
+test("mobile smart layout infers composition units before anchor and flow classification", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+
+  assert.match(html, /function buildCompositionClusters\(items, rootWidth\)/);
+  assert.match(html, /function sharesVerticalCompositionAxis\(a, b\)/);
+  assert.match(html, /function sharesHorizontalCompositionAxis\(a, b\)/);
+  assert.match(html, /function inferTextLaneDivider\(items, rootWidth\)/);
+  assert.match(html, /function shouldSeparateWeakTextLaneOverlap\(a, b, dividerModel\)/);
+  assert.match(html, /if \(compositionLane\(a\) !== compositionLane\(b\)\) continue;/);
+  assert.match(html, /var textLaneDivider = inferTextLaneDivider\(items, rootWidth\);/);
+  assert.match(
+    html,
+    /!shouldSeparateWeakTextLaneOverlap\(a, b, textLaneDivider\)/
+  );
+  assert.match(
+    html,
+    /var compositionClusters = buildCompositionClusters\(itemsAll, contentW\);[\s\S]*var anchorNodes = new Set\(\);[\s\S]*var itemsFlow = itemsAll\.filter/
+  );
+  assert.match(
+    html,
+    /var clusters = compositionClusters\.filter\(function\(cluster\)/
+  );
+  assert.doesNotMatch(html, /var bothText = aIsText && bIsText;/);
+});
+
+test("mobile pantalla preserves one proportional composition anchor without fixed stacking", () => {
+  const html = generarHTMLDesdeSecciones(FIXED_SECTION, [], null, {
+    isPreview: true,
+  });
+
+  assert.match(html, /DESIGN_W: 800/);
+  assert.match(html, /PANTALLA_DESIGN_H: 500/);
+  assert.match(html, /function readPantallaObjectYNorm\(node\)/);
+  assert.match(html, /function applyPantallaCompositionUnits\(sec, content, nodes, CFG, meta\)/);
+  assert.match(
+    html,
+    /var projectedSpan = designHeight \* designScale;[\s\S]*var clusters = buildCompositionClusters\(projectedItems, contentRect\.width\);/
+  );
+  assert.match(
+    html,
+    /var anchorNorm = clamp\([\s\S]*var anchorTop = verticalMap\.intercept \+ \(anchorNorm \* verticalMap\.slope\);/
+  );
+  assert.match(
+    html,
+    /var fit = applySectionFitScale\([\s\S]*if \(secModo === "pantalla" && mobileLayoutMode !== "preserve"\) \{[\s\S]*applyPantallaCompositionUnits\(/
+  );
+  const pantallaFunction = html.match(
+    /function applyPantallaCompositionUnits\([\s\S]*?return result;\n  }/
+  )?.[0];
+  assert.ok(pantallaFunction);
+  assert.doesNotMatch(pantallaFunction, /applyClusterStack/);
 });
 
 test("keeps grouped text plus icon compositions nested under one authored object id", () => {
@@ -1937,14 +1996,22 @@ test("keeps pantalla positioning branches stable for yNorm objects and y fallbac
   const html = renderRepresentativeDraft(createRepresentativeCompatibilityWarningDraftFixture());
 
   assert.match(html, /--pantalla-y-compact: 0;/);
-  assert.match(html, /sec\.style\.setProperty\("--pantalla-y-base", pantallaYBasePx \+ "px"\);/);
+  assert.match(html, /--pantalla-y-span: calc\(var\(--sfinal\) \* 500px\);/);
   assert.match(
     html,
-    /data-obj-id="hero-image"[\s\S]*calc\(0\.5 \+ \(\(0\.08\) - 0\.5\) \* \(1 - var\(--pantalla-y-compact, 0\)\)\)/
+    /sec\.style\.setProperty\("--pantalla-y-span", vhLogicalPx \+ "px"\);/
+  );
+  assert.match(html, /sec\.style\.setProperty\("--pantalla-y-base", pantallaYBasePx \+ "px"\);/);
+  assert.match(html, /var\(--pantalla-y-fit-scale, 1\)/);
+  assert.match(html, /--obj-y-norm: 0\.08;/);
+  assert.match(html, /--obj-y-norm: 0\.304;/);
+  assert.match(
+    html,
+    /data-obj-id="hero-image"[\s\S]*calc\(0\.5 \+ \(\(var\(--obj-y-norm, 0\.08\)\) - 0\.5\) \* \(1 - var\(--pantalla-y-compact, 0\)\)\)/
   );
   assert.match(
     html,
-    /data-obj-id="hero-title"[\s\S]*calc\(0\.5 \+ \(\(0\.304\) - 0\.5\) \* \(1 - var\(--pantalla-y-compact, 0\)\)\)/
+    /data-obj-id="hero-title"[\s\S]*calc\(0\.5 \+ \(\(var\(--obj-y-norm, 0\.304\)\) - 0\.5\) \* \(1 - var\(--pantalla-y-compact, 0\)\)\)/
   );
 });
 

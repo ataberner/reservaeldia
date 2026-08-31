@@ -19,6 +19,7 @@ export function jsFitScaleBlock(): string {
     el.style.transform = baseTransform;
     if (baseOrigin) el.style.transformOrigin = baseOrigin;
     else el.style.removeProperty("transform-origin");
+    el.style.removeProperty("--pantalla-y-fit-scale");
   }
 
   function applyElementFitScale(el, scale){
@@ -223,6 +224,13 @@ export function jsFitScaleBlock(): string {
     var scale = (fitResult && Number.isFinite(fitResult.scale)) ? fitResult.scale : 1;
     var fitDebug = fitResult && fitResult.debug ? fitResult.debug : null;
     applyElementFitScale(content, scale);
+    if (secModo === "pantalla" && isFinite(scale) && scale > 0) {
+      // Keep normalized vertical anchors tied to the visible pantalla height.
+      // Object sizes still receive the uniform content-lane fit scale.
+      content.style.setProperty("--pantalla-y-fit-scale", String(scale));
+    } else {
+      content.style.removeProperty("--pantalla-y-fit-scale");
+    }
     restoreFitScaleBaseline(bleed);
 
     var neededHeight = 0;

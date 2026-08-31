@@ -769,11 +769,13 @@ export function generarHTMLDesdeObjetos(
   function topPantallaCSS(obj: any, ynRaw: any): string {
     const yn = clamp01(ynRaw) ?? 0;
     const yBloqueDisenio = `calc(${sContenidoVar(obj)} * ${ALTURA_EDITOR_PANTALLA}px)`;
+    const ySpanPantalla = `var(--pantalla-y-span, ${yBloqueDisenio})`;
     const yBasePantalla = `var(--pantalla-y-base, 0px)`;
-    const ynCompactado = `calc(0.5 + ((${yn}) - 0.5) * (1 - var(--pantalla-y-compact, 0)))`;
+    const ynValue = `var(--obj-y-norm, ${yn})`;
+    const ynCompactado = `calc(0.5 + ((${ynValue}) - 0.5) * (1 - var(--pantalla-y-compact, 0)))`;
     return `calc(
   ${yBasePantalla}
-  + (${yBloqueDisenio} * ${ynCompactado})
+  + ((${ySpanPantalla} * ${ynCompactado}) / var(--pantalla-y-fit-scale, 1))
   + (${sContenidoVar(obj)} * var(--pantalla-y-offset, ${PANTALLA_Y_OFFSET_DESKTOP_PX}px))
 )`;
   }
@@ -818,6 +820,10 @@ export function generarHTMLDesdeObjetos(
 
   function stylePosBase(obj: any): string {
     const x = Number(obj?.x || 0);
+    const pantallaYNorm =
+      !isGroupChildRender && esSeccionPantalla(obj)
+        ? clamp01(getYPxEditor(obj) / ALTURA_EDITOR_PANTALLA)
+        : null;
 
     const rot = obj?.rotation ?? 0;
     const scaleX = obj?.scaleX ?? 1;
@@ -829,6 +835,7 @@ export function generarHTMLDesdeObjetos(
 position: absolute;
 left: ${pxX(obj, x)};
 top: ${topCSS(obj)};
+${pantallaYNorm != null ? `--obj-y-norm: ${pantallaYNorm};` : ""}
 transform: rotate(${rot}deg) scale(${scaleX}, ${scaleY});
 transform-origin: top left;
 ${zIndex !== undefined ? `z-index:${zIndex};` : ""}

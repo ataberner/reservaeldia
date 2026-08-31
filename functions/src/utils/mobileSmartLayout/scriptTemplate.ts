@@ -132,7 +132,10 @@ export function buildScript(cfg: NormalizedConfig): string {
     FIT_MIN_SCALE: ${cfg.fitMinScale},
     FIT_MAX_SCALE: ${cfg.fitMaxScale},
     FIT_TARGET_WIDTH_RATIO: ${cfg.fitTargetWidthRatio},
-    FIT_MIN_FILL_RATIO: ${cfg.fitMinFillRatio}
+    FIT_MIN_FILL_RATIO: ${cfg.fitMinFillRatio},
+
+    DESIGN_W: ${cfg.designWidthPx},
+    PANTALLA_DESIGN_H: ${cfg.pantallaDesignHeightPx}
   };
 
   ${jsDomHelpersBlock()}
@@ -333,7 +336,9 @@ export function buildScript(cfg: NormalizedConfig): string {
         var nodesAllDesktop = getObjNodes(sec);
         for (var nd=0; nd<nodesAllDesktop.length; nd++) {
           restoreNodeBaseline(nodesAllDesktop[nd]);
+          nodesAllDesktop[nd].removeAttribute("data-msl-pantalla-composition-unit");
         }
+        sec.removeAttribute("data-msl-pantalla-composition-units");
         sec.setAttribute("data-msl-fit-scale", "1");
       });
       return;
@@ -447,11 +452,24 @@ export function buildScript(cfg: NormalizedConfig): string {
         );
         var fitNeeded = (fit && Number.isFinite(fit.neededHeight)) ? Number(fit.neededHeight) : 0;
         var neededHeight = Math.max(Number(minNeededHeight || 0), fitNeeded);
+        var pantallaComposition = null;
+        if (secModo === "pantalla" && mobileLayoutMode !== "preserve") {
+          pantallaComposition = applyPantallaCompositionUnits(
+            sec,
+            content,
+            nodesAll,
+            CFG,
+            { secIndex: secIndex }
+          );
+        }
         mslLog("section:heightFinal", {
           secIndex: secIndex,
           mode: secModo,
           minNeededHeight: +Number(minNeededHeight || 0).toFixed(1),
           fitNeededHeight: +fitNeeded.toFixed(1),
+          pantallaCompositionUnits: pantallaComposition
+            ? pantallaComposition.changedUnits
+            : 0,
           preserveBottomGap: +gap.toFixed(1),
           finalNeededHeight: +neededHeight.toFixed(1)
         });
@@ -526,7 +544,9 @@ export function buildScript(cfg: NormalizedConfig): string {
       var restoredCount = 0;
       nodesAll.forEach(function(node){
         restoredCount += restoreNodeBaseline(node);
+        node.removeAttribute("data-msl-pantalla-composition-unit");
       });
+      sec.removeAttribute("data-msl-pantalla-composition-units");
       mslLog("section:baselineRestore", { secIndex: secIndex, nodes: nodesAll.length, restored: restoredCount });
 
       // Rect del content (métricas reales)
@@ -1063,7 +1083,7 @@ export function buildScript(cfg: NormalizedConfig): string {
         return isRootCenteredText(it);
       }
 
-      // ✅ Determinar qué nodos son "ANCHOR" (no se reflowean)
+      // Determine which composition units are anchors (not reflowed).
       // Reglas:
       // - opt-out/anchor explícitos siempre se respetan.
       // - un título semántico centrado en el eje de la sección es full-width
@@ -1098,9 +1118,23 @@ export function buildScript(cfg: NormalizedConfig): string {
         return false;
       }
 
-      // ✅ Flow = todo lo que NO es anchor
-      var itemsFlow = itemsAll.filter(function(it){ return !isAnchorNode(it); });
-      var itemsAnchor = itemsAll.filter(function(it){ return isAnchorNode(it); });
+      // Infer relationships before the anchor/flow split. If one item is an
+      // anchor, its spatially related companions move into the same anchor
+      // unit, preserving authored distance/alignment instead of assigning a
+      // subtitle or label independently to a later mobile lane.
+      var compositionClusters = buildCompositionClusters(itemsAll, contentW);
+      var anchorNodes = new Set();
+      for (var ac=0; ac<compositionClusters.length; ac++){
+        var compositionCluster = compositionClusters[ac];
+        var clusterHasAnchor = compositionCluster.items.some(function(it){
+          return isAnchorNode(it);
+        });
+        if (!clusterHasAnchor) continue;
+        compositionCluster.items.forEach(function(it){ anchorNodes.add(it.node); });
+      }
+
+      var itemsFlow = itemsAll.filter(function(it){ return !anchorNodes.has(it.node); });
+      var itemsAnchor = itemsAll.filter(function(it){ return anchorNodes.has(it.node); });
       mslLog("section:anchorSplit", {
         secIndex: secIndex,
         anchors: itemsAnchor.length,
@@ -1134,13 +1168,16 @@ export function buildScript(cfg: NormalizedConfig): string {
       // medimos el bottom máximo de anchors (en coords del content)
       var maxAnchorBottom = 0;
       itemsAll.forEach(function(it){
-        if (!isAnchorNode(it)) return;
+        if (!anchorNodes.has(it.node)) return;
         var b = (it.top || 0) + (it.height || 0);
         if (b > maxAnchorBottom) maxAnchorBottom = b;
       });
 
-      // ✅ 1) agrupar por solape → clusters (SOLO FLOW)
-      var clusters = buildOverlapClusters(itemsFlow);
+      // Reuse the inferred composition units for flow. They already carry the
+      // relative vectors measured from the generated DOM before reflow.
+      var clusters = compositionClusters.filter(function(cluster){
+        return !cluster.items.some(function(it){ return anchorNodes.has(it.node); });
+      });
       mslLog("section:clusters", {
         secIndex: secIndex,
         count: clusters.length,

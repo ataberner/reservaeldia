@@ -52,6 +52,32 @@ geometria de cobertura y pueden extenderse y recortarse lateralmente. Esta
 clasificacion es runtime-only y nunca muta `objetos`, `secciones`, `yNorm` ni
 estado del editor/Firestore.
 
+En secciones mobile `fijo` con reflow automatico, la unidad de adaptacion no es
+siempre cada objeto raiz por separado. El runtime infiere primero unidades de
+composicion a partir de solape o proximidad acotada mas alineacion de ejes o
+bordes. Cada unidad conserva sus vectores internos de distancia, alineacion y
+orden; despues se decide si la unidad completa es anchor o flow y se apilan las
+unidades que corresponda. Un `tipo: "grupo"` persistido conserva su contrato
+atomico explicito. La inferencia no cruza `.sec-content` con `.sec-bleed`, no
+incluye capas propias de seccion y no persiste agrupaciones nuevas. `pantalla`,
+`mobileLayoutMode: preserve` y desktop conservan sus ramas existentes.
+
+En secciones mobile `altoModo: pantalla`, un objeto raiz independiente conserva
+la proporcion vertical de `yNorm` respecto del alto visible seguro de la
+seccion. El fallback compatible sin `yNorm` deriva la misma proporcion desde
+`y / 500`. Cuando varios objetos elegibles forman una composicion espacial en
+las coordenadas autoradas `800 x 500`, el runtime conserva un unico anclaje
+vertical proporcional para la unidad y escala sus vectores internos con el
+ancho final de `.sec-content`; no estira cada `yNorm` de la unidad por separado.
+Esta inferencia ocurre despues del fit, no ordena ni apila unidades, no expande
+la seccion y no se ejecuta bajo `mobileLayoutMode: preserve`. El wrapper de un
+grupo participa como una sola unidad y sus children conservan offsets locales;
+Gallery y CTA siguen el mismo contrato de objeto raiz. Las decoraciones de
+fondo propias de seccion normalizan su `y` autorado contra los mismos 500 px de
+referencia. `.sec-bleed`, fondos y decoraciones de borde mantienen sus owners y
+reglas de cover/slot. Esta adaptacion existe solo bajo mobile; desktop conserva
+la geometria previa.
+
 El ownership de scroll mobile conserva una sola autoridad efectiva por
 superficie. El publish mobile usa el root del documento (`<html>`) y mantiene
 `<body>` fuera del scroll vertical después del loader. Los mockups mobile
@@ -131,8 +157,10 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `forma.line` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por geometria | sin warning especifico | usar con checklist |
 | `forma.triangle` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por geometria | sin warning especifico | usar con checklist |
 | `forma.diamond` / `star` / `heart` / `arrow` / `pentagon` / `hexagon` / `pill` | `si` | `soportado` | `soportado` | `soportado` | `requiere prueba manual` | solo bloquea si `figura` cae fuera del set soportado | soportado, pero validar manualmente |
-| `altoModo: pantalla` + `yNorm` | `si` | `soportado` | `soportado` | `parcial` | `parcial` | warnings `pantalla-ynorm-missing` y `pantalla-ynorm-drift` | usar con restricciones |
+| `altoModo: pantalla` + `yNorm` | `si` | `soportado` | `soportado` | `parcial` | `parcial`; preview autoritativa/publish comparten proporcion vertical mobile | warnings `pantalla-ynorm-missing` y `pantalla-ynorm-drift` | mobile preserva `yNorm` contra el alto visible; usar con restricciones por warnings legacy |
 | `mobileLayoutMode: preserve` | `si` | `soportado` | `soportado` | `soportado` | `alta` en generated HTML | sin warning especifico actual | opt-out explicito de smart reflow por seccion; preview/publish comparten `data-mobile-layout-mode="preserve"` |
+| composicion mobile inferida (`fijo`/`auto`) | no agrega persistencia | no cambia grupos ni geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | infiere unidades por relaciones geometricas antes de anchor/flow; preserva vectores internos, grupos explicitos y separacion content/fullbleed |
+| composicion mobile inferida (`pantalla`) | no agrega persistencia | no cambia `yNorm`, grupos ni geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | proyecta relaciones a `800 x 500`, conserva un anclaje vertical proporcional por unidad y escala offsets internos con content fit; sin ordering, stack ni expansion |
 | contencion mobile de contenido | no agrega persistencia | no cambia geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | `.sec-content` mantiene contenido/interaccion dentro del viewport; roles decorativos, capas de seccion y `.sec-bleed` conservan crop tipo cover |
 | `functionalAssociation` RSVP/Gifts/Ceremony/Party/Dress Code/Countdown | `si` en seccion o grupo raiz; Countdown solo en seccion | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled`, `eventDetails.mode`, `eventDetails.dressCode.enabled` y `mostrarCuentaRegresiva` del Countdown contenido son la autoridad; secciones/grupos omitidos no mutan geometria |
 | `anclaje: fullbleed` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque el canvas no representa la salida final | warning `fullbleed-editor-drift` | congelar contrato |

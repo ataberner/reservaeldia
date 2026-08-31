@@ -369,7 +369,20 @@ Section height is decided by a combination of generation-time section mode and r
 - mobile smart layout does not mutate Firestore or editor state.
 - `mobileLayoutMode: "preserve"` on a section is an explicit opt-out from smart reflow. The runtime still measures the section for normal mobile fit/height behavior, but skips anchor detection, clustering, ordering, and stack reflow.
 
-The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It clusters generated DOM nodes, decides whether reflow is needed, stacks flow content when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
+The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It measures generated DOM nodes, infers composition units, decides whether reflow is needed, stacks those units when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
+
+For `fijo` sections in automatic mobile layout, composition inference happens
+before the anchor/flow split. Bounded overlap or horizontal/vertical proximity
+must also share a meaningful center or edge axis; this allows a title and
+subtitle, a visual plus its label, or a run of aligned copy to retain their
+authored internal vectors without adding type-specific layout cases. A unit
+containing an anchor remains together above the mobile flow, while flow units
+are ordered and stacked as blocks. Persisted `tipo: "grupo"` wrappers keep
+their stronger explicit isolated-unit contract. `.sec-content` and
+`.sec-bleed` never merge into one inferred unit, and section-owned visuals
+remain outside object clustering. This is generated-DOM geometry only: no
+inferred relationship is written to `objetos`, `secciones`, the editor, or
+Firestore.
 
 The final mobile fit pass also owns horizontal containment for generated
 content. It measures non-decorative `.sec-content` objects after base geometry,
@@ -383,9 +396,38 @@ content fit and can retain cover-like lateral crop. The pass changes generated
 DOM geometry only; authored `x`/`y`, `yNorm`, groups and Firestore remain
 untouched.
 
+For mobile `pantalla` sections, normalized vertical placement is resolved
+against the visible safe section height rather than against the short
+width-scaled `800 x 500` design block. The base geometry runtime writes a
+logical pre-zoom vertical span (`vhSafe / zoom`); the existing pantalla wrapper
+then maps `yNorm: 0..1` back to the same proportional `0..visible height`
+positions perceived on desktop. A missing `yNorm` keeps the existing `y / 500`
+compatibility derivation.
+
+After the final content fit, mobile `pantalla` also projects eligible
+`.sec-content` objects back into the authored `800 x 500` coordinate system and
+reuses the spatial composition inference. A related unit receives one
+screen-proportional vertical anchor derived from its visual center; member
+offsets scale with the fitted content width instead of being stretched
+independently by viewport height. Singleton objects keep their exact `yNorm`
+mapping. This branch does not order or stack units, expand the section, include
+`fullbleed`/background/decorative roles, or persist inferred relationships.
+`mobileLayoutMode: "preserve"` remains an opt-out. Group wrappers keep their
+top-level mapping while their children retain group-local offsets. Section
+background decorations use the normalized interpretation of their authored
+`y`; edge decorations remain independently owned by their explicit top/bottom
+slots.
+
+If horizontal containment scales `.sec-content`, its fit scale is compensated
+only in the normalized `top` formula. This preserves the vertical anchor while
+object size still receives the uniform fit required for lateral containment.
+The cover-like `.sec-bleed` lane is not fit-scaled and needs no compensation.
+Desktop keeps the previous `sfinal * 500` span and receives no mobile override.
+
 Centered title rule:
 
-- A generated text object with semantic `data-role="title"`, `text-align:center`, a box centered on the fixed section content axis, and no same-row content peer is treated as a mobile anchor before column/lane detection.
+- A generated text object with semantic `data-role="title"`, `text-align:center`, a box centered on the fixed section content axis, and no same-row content peer seeds a mobile anchor unit before column/lane detection.
+- Spatially related companions are inferred first, so a nearby aligned subtitle remains in that anchor unit instead of being assigned independently to a visual column.
 - This fixes the 2026-04-30 centered-title reflow bug where a top title such as `¿Dónde?` entered the flow, was assigned to one of the two visual lanes, and polluted that lane bounding box. The affected ceremony column was then centered against `title + column` instead of the mobile section center.
 - Column labels remain flow items because their own boxes are left/right of the section center, or because a centered middle-column label still has same-row peers.
 - The avoided risk is over-anchoring every centered text when icons/shapes are present. The legacy full-width text heuristic still only runs when no visible non-text object is present.

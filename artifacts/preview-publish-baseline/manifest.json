@@ -118,6 +118,26 @@
       ]
     },
     {
+      "caseId": "fixed-reflow-centered-gallery-side-object",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "the desktop Gallery remains centered beside the authored lateral object",
+        "mobile separates the ungrouped centered and lateral objects into vertical units",
+        "the Gallery and lateral object are centered independently after reflow",
+        "the two Gallery cells and generated viewer markers stay intact",
+        "preview and publish keep identical final geometry at representative mobile viewports"
+      ]
+    },
+    {
       "caseId": "countdown",
       "sourceFixture": "preview-publish-hydrated-asset-parity",
       "requiredViews": [

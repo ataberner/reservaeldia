@@ -62,6 +62,14 @@ atomico explicito. La inferencia no cruza `.sec-content` con `.sec-bleed`, no
 incluye capas propias de seccion y no persiste agrupaciones nuevas. `pantalla`,
 `mobileLayoutMode: preserve` y desktop conservan sus ramas existentes.
 
+Una pareja raiz no agrupada que comparte la fila autorada, pero combina un
+objeto centrado sobre el eje de la seccion con otro claramente lateral, no se
+infiere como una unica unidad. En mobile `fijo` con reflow automatico se apilan
+como unidades independientes y cada una se centra en el ancho disponible; si
+empatan en `y`, la unidad originalmente centrada conserva precedencia. Esta
+regla no separa wrappers de grupo ni objetos con un identificador de composicion
+explicito compartido.
+
 En secciones mobile `altoModo: pantalla`, un objeto raiz independiente conserva
 la proporcion vertical de `yNorm` respecto del alto visible seguro de la
 seccion. El fallback compatible sin `yNorm` deriva la misma proporcion desde

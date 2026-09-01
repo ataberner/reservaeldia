@@ -18,6 +18,7 @@ test("visual baseline fixtures keep the required case ids frozen", () => {
     "decorative-fullbleed",
     "text-with-decoration-behind",
     "gallery",
+    "fixed-reflow-centered-gallery-side-object",
     "countdown",
     "mixed-fijo-pantalla",
     "fixed-reflow-columns",
@@ -29,7 +30,24 @@ test("visual baseline fixtures keep the required case ids frozen", () => {
     "pantalla-ynorm-positioning",
     "pantalla-composition-related-text",
   ]);
-  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 16);
+  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 17);
+});
+
+test("fixed centered Gallery fixture freezes the centered-lateral regression shape", () => {
+  const fixture = previewPublishVisualBaselineFixtures.find(
+    (entry) => entry.id === "fixed-reflow-centered-gallery-side-object"
+  );
+  assert.ok(fixture);
+  const gallery = fixture.publishDraft.objetos.find((object) => object.id === "gallery-main");
+  const ornament = fixture.publishDraft.objetos.find(
+    (object) => object.id === "centered-gallery-side-ornament"
+  );
+  assert.ok(gallery);
+  assert.ok(ornament);
+  assert.equal(gallery.x + gallery.width / 2, 400);
+  assert.equal(gallery.cells.length, 2);
+  assert.equal(ornament.x > 400, true);
+  assert.equal(gallery.y, ornament.y);
 });
 
 test("fixed reflow heading fixture freezes inferred composition relationships", () => {

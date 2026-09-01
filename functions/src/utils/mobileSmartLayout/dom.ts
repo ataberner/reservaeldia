@@ -297,6 +297,44 @@ export function jsDomHelpersBlock(): string {
     return overlap <= weakOverlapLimit;
   }
 
+  function shouldSeparateCenteredLateralPair(a, b, rootWidth){
+    var width = Number(rootWidth || 0);
+    if (!a || !b || !isFinite(width) || width <= 1) return false;
+
+    var rootCenter = width / 2;
+    var centerTolerance = Math.max(14, width * 0.08);
+    var lateralDistance = Math.max(42, width * 0.22);
+    var aDelta = Math.abs(cx(a) - rootCenter);
+    var bDelta = Math.abs(cx(b) - rootCenter);
+    var centered = null;
+    var lateral = null;
+
+    if (aDelta <= centerTolerance && bDelta >= lateralDistance) {
+      centered = a;
+      lateral = b;
+    } else if (bDelta <= centerTolerance && aDelta >= lateralDistance) {
+      centered = b;
+      lateral = a;
+    }
+    if (!centered || !lateral) return false;
+
+    var minHeight = Math.max(
+      1,
+      Math.min(Number(centered.height || 0), Number(lateral.height || 0))
+    );
+    var verticalOverlapRatio = verticalOverlapPx(centered, lateral) / minHeight;
+    var sameRowTolerance = Math.max(18, Math.min(42, minHeight * 0.75));
+    var sharesAuthoredRow =
+      verticalOverlapRatio >= 0.35 ||
+      Math.abs(cy(centered) - cy(lateral)) <= sameRowTolerance;
+
+    // An ungrouped object authored on the section axis and a lateral peer are
+    // separate responsive units. Joining their boxes would center the combined
+    // bounds and move the authored centered object off-axis. Explicit groups or
+    // shared cluster ids have already been handled by the caller and stay atomic.
+    return sharesAuthoredRow;
+  }
+
   function buildCompositionClusters(items, rootWidth){
     var n = items.length;
     var parent = new Array(n);
@@ -341,6 +379,8 @@ export function jsDomHelpersBlock(): string {
           if (aKey === bKey) union(i,j);
           continue;
         }
+
+        if (shouldSeparateCenteredLateralPair(a, b, rootWidth)) continue;
 
         var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
         var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";

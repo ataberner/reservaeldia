@@ -26,8 +26,6 @@ export default function useSectionsManager({
     setObjetos,
     seccionActivaId,
     setSeccionActivaId,
-    canManageSite = false,
-
     stageRef,
     setGlobalCursor,
     clearGlobalCursor,
@@ -439,7 +437,6 @@ export default function useSectionsManager({
     // ------------------------------------------
     const toggleMobileLayoutModeSeccion = useCallback(
         async (seccionId) => {
-            if (!canManageSite) return;
             if (!seccionId) return;
             const targetSection = seccionesRef.current.find((section) => section?.id === seccionId);
             if (!canMutateSection(targetSection)) return;
@@ -464,7 +461,7 @@ export default function useSectionsManager({
                 console.error("Error guardando mobileLayoutMode:", e);
             }
         },
-        [applySectionSnapshot, canManageSite, persistSectionMutation]
+        [applySectionSnapshot, persistSectionMutation]
     );
 
     // ------------------------------------------

@@ -649,9 +649,16 @@ test("renders edge decorations as section-owned non-object layer", () => {
   assert.match(html, /\.sec-zoom-backdrop\{[\s\S]*z-index: 0;/);
   assert.match(html, /\.sec-zoom-decor\{[\s\S]*z-index: 2;/);
   assert.match(html, /\.sec-zoom-content\{[\s\S]*z-index: 3;/);
-  assert.match(
+  const edgeLayerRule =
+    html.match(/\.sec-edge-layer\{\s*position: absolute;[\s\S]*?\n\s*\}/)?.[0] || "";
+  assert.match(edgeLayerRule, /overflow: hidden;/);
+  assert.doesNotMatch(
     html,
-    /@media \(min-width: 768px\)\{[\s\S]*\.sec\[data-edge-decorations="1"\] \.sec-edge-layer\{[\s\S]*overflow: visible;[\s\S]*\.sec\[data-modo="pantalla"\]\[data-edge-decorations="1"\]\{[\s\S]*overflow: visible;/
+    /\.sec\[data-edge-decorations="1"\] \.sec-edge-layer\{[\s\S]*?overflow: visible;/
+  );
+  assert.doesNotMatch(
+    html,
+    /\.sec\[data-modo="pantalla"\]\[data-edge-decorations="1"\]\{/
   );
   const backdropLayerIndex = html.indexOf('class="sec-zoom sec-zoom-backdrop"');
   const edgeLayerIndex = html.indexOf('class="sec-edge-layer"');
@@ -684,6 +691,102 @@ test("renders edge decorations as section-owned non-object layer", () => {
     /--edge-used-height/
   );
   assert.match(html, /sec\.style\.setProperty\("--edgezoom", String\(edgezoom\)\);/);
+});
+
+test("keeps normal image content visible across sections while clipping section-owned visuals", () => {
+  const html = generarHTMLDesdeSecciones(
+    [
+      {
+        id: "section-screen",
+        orden: 1,
+        altoModo: "pantalla",
+        altura: 600,
+        fondo: "#fff4ef",
+        fondoTipo: "imagen",
+        fondoImagen: "https://cdn.example.com/section-background.png",
+        decoracionesBorde: {
+          bottom: {
+            enabled: true,
+            src: "https://cdn.example.com/edge-bottom.png",
+            mode: "cover-x",
+            offsetDesktopPx: -160,
+          },
+        },
+      },
+      {
+        id: "section-next",
+        orden: 2,
+        altoModo: "fijo",
+        altura: 600,
+        fondo: "#eef4ff",
+      },
+    ],
+    [
+      {
+        id: "cross-section-image",
+        tipo: "imagen",
+        seccionId: "section-screen",
+        src: "https://cdn.example.com/cross-section-image.png",
+        x: 260,
+        y: 450,
+        yNorm: 0.9,
+        width: 280,
+        height: 220,
+      },
+    ]
+  );
+
+  const dom = new JSDOM(html);
+  const sections = dom.window.document.querySelectorAll(".inv > .sec");
+  assert.equal(sections.length, 2);
+  assert.ok(
+    sections[0].querySelector(".sec-zoom-content .image-object"),
+    "Expected the image to remain normal content owned by its source section"
+  );
+  assert.ok(
+    sections[0].querySelector(
+      '.sec-zoom-backdrop .sec-bg[data-bg-kind="image"] .sec-bg-image'
+    ),
+    "Expected the section background to remain in the clipped backdrop owner"
+  );
+  assert.ok(
+    sections[0].querySelector(
+      '.sec-edge-layer .sec-edge-decor--bottom[data-edge-mode="cover-x"]'
+    ),
+    "Expected the bottom decoration to remain in the clipped section-owned edge layer"
+  );
+
+  assert.match(
+    html,
+    /\.inv\{ width: 100%; background: white; overflow: clip; \}/
+  );
+  const sectionRule =
+    html.match(/\.sec\{\s*position: relative;[\s\S]*?\n\s*\}/)?.[0] || "";
+  assert.match(sectionRule, /left: calc\(50% - 50vw\);/);
+  assert.doesNotMatch(sectionRule, /transform:/);
+  assert.match(
+    html,
+    /\.sec\[data-modo="pantalla"\]\{\s*overflow: visible;/
+  );
+  assert.match(
+    html,
+    /\.sec\[data-modo="pantalla"\] \.sec-zoom-backdrop,\s*\.sec\[data-modo="pantalla"\] \.sec-zoom-decor\{\s*overflow: hidden;/
+  );
+  assert.match(
+    html,
+    /\.sec\[data-modo="pantalla"\] \.sec-zoom-content\{\s*overflow: visible;/
+  );
+  assert.match(html, /\.sec-bg\{[\s\S]*?overflow: hidden;/);
+  assert.match(html, /\.sec-decor-layer\{[\s\S]*?overflow: hidden;/);
+  const edgeLayerRule =
+    html.match(/\.sec-edge-layer\{\s*position: absolute;[\s\S]*?\n\s*\}/)?.[0] || "";
+  assert.match(edgeLayerRule, /overflow: hidden;/);
+  assert.doesNotMatch(
+    html,
+    /\.sec\[data-edge-decorations="1"\] \.sec-edge-layer\{[\s\S]*?overflow: visible;/
+  );
+
+  dom.window.close();
 });
 
 test("renders explicit responsive edge decoration sizing fields", () => {
@@ -1642,12 +1745,17 @@ test("mobile smart layout infers composition units before anchor and flow classi
   assert.match(html, /function sharesHorizontalCompositionAxis\(a, b\)/);
   assert.match(html, /function inferTextLaneDivider\(items, rootWidth\)/);
   assert.match(html, /function shouldSeparateWeakTextLaneOverlap\(a, b, dividerModel\)/);
+  assert.match(html, /function shouldSeparateCenteredLateralPair\(a, b, rootWidth\)/);
   assert.match(html, /if \(compositionLane\(a\) !== compositionLane\(b\)\) continue;/);
   assert.match(html, /var textLaneDivider = inferTextLaneDivider\(items, rootWidth\);/);
   assert.match(
     html,
     /!shouldSeparateWeakTextLaneOverlap\(a, b, textLaneDivider\)/
   );
+  assert.match(html, /if \(shouldSeparateCenteredLateralPair\(a, b, rootWidth\)\) continue;/);
+  assert.match(html, /var centeredLateralPair = shouldSeparateCenteredLateralPair\(cA, cB, rootW\);/);
+  assert.match(html, /reason: "centeredLateralStack"/);
+  assert.match(html, /return \{ groups: \[verticalPair\], mode: "rows" \};/);
   assert.match(
     html,
     /var compositionClusters = buildCompositionClusters\(itemsAll, contentW\);[\s\S]*var anchorNodes = new Set\(\);[\s\S]*var itemsFlow = itemsAll\.filter/

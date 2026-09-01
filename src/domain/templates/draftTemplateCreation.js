@@ -1,4 +1,7 @@
 import { collectDuplicateRenderObjectIds } from "../../../shared/renderAssetContract.js";
+import { ensureDefaultsForSchema } from "../../../shared/templates/contract.js";
+import { sanitizeAuthoringSchema } from "./authoring/model.js";
+import { validateAuthoringState } from "./authoring/validation.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -12,6 +15,41 @@ export function buildTemplateCopyId({ draftSlug, timestamp = Date.now() } = {}) 
   const safeDraftSlug = normalizeText(draftSlug);
   if (!safeDraftSlug) return "";
   return `${safeDraftSlug}-template-${timestamp}`;
+}
+
+export function prepareTemplateCopyAuthoringState({
+  authoringState,
+  objetos,
+} = {}) {
+  const source = asObject(authoringState);
+  const repaired = sanitizeAuthoringSchema({
+    fieldsSchema: source.fieldsSchema,
+    defaults: source.defaults,
+    objetos: Array.isArray(objetos) ? objetos : [],
+    dropOrphans: true,
+  });
+  const defaults = ensureDefaultsForSchema(
+    repaired.fieldsSchema,
+    repaired.defaults
+  );
+  const status = validateAuthoringState({
+    fieldsSchema: repaired.fieldsSchema,
+    defaults,
+    objetos: Array.isArray(objetos) ? objetos : [],
+  });
+
+  return {
+    changed: repaired.changed,
+    removedFieldKeys: repaired.removedFieldKeys,
+    removedTargets: repaired.removedTargets,
+    status,
+    snapshot: {
+      ...source,
+      fieldsSchema: repaired.fieldsSchema,
+      defaults,
+      status,
+    },
+  };
 }
 
 export function composeDraftTemplateCreationPayload({

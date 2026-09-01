@@ -45,8 +45,7 @@ const DESKTOP_TOOLTIP_LABELS = Object.freeze({
   backgroundColor: "Color de fondo",
   lock: "Bloquear seccion",
   unlock: "Desbloquear seccion",
-  mobileReflowOn: "Reflow movil: Activado",
-  mobileReflowOff: "Reflow movil: Desactivado",
+  mobileReflow: "Adaptar para celular",
   design: "Diseño de la sección",
 });
 
@@ -193,11 +192,9 @@ export default function SectionActionsOverlay({
       ? "preserve"
       : "auto";
   const mobileReflowEnabled = mobileLayoutMode !== "preserve";
-  const mobileReflowLabel = mobileReflowEnabled
-    ? DESKTOP_TOOLTIP_LABELS.mobileReflowOn
-    : DESKTOP_TOOLTIP_LABELS.mobileReflowOff;
+  const mobileReflowLabel = DESKTOP_TOOLTIP_LABELS.mobileReflow;
   const canToggleMobileLayoutMode = Boolean(
-    canManageSite && typeof toggleMobileLayoutModeSeccion === "function"
+    typeof toggleMobileLayoutModeSeccion === "function"
   );
   const colorInputValue = resolveColorInputValue(backgroundModel.base.fondo);
   const edgeDecorations = backgroundModel.decoracionesBorde || {};

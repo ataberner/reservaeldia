@@ -187,6 +187,10 @@ export function jsOrderingBlock(): string {
       var pairInvasion = dividerInvasionRatio([cA, cB], mid);
       var pairInvasionLimit = hasTextSignalTwo ? 0.5 : 0.34;
 
+      var cADelta = Math.abs(Number(cA.cx || 0) - mid);
+      var cBDelta = Math.abs(Number(cB.cx || 0) - mid);
+      var centeredLateralPair = shouldSeparateCenteredLateralPair(cA, cB, rootW);
+
       var anyForceCenter = (sA.force > 0 || sB.force > 0);
       var bothMixed = (sA.text > 0 && sA.non > 0 && sB.text > 0 && sB.non > 0);
       // Señal robusta de "par de columnas":
@@ -195,6 +199,25 @@ export function jsOrderingBlock(): string {
       var hasColumnSignal =
         (sA.non > 0 || sB.non > 0) ||
         ((cA.items && cA.items.length > 1) || (cB.items && cB.items.length > 1));
+
+      if (centeredLateralPair) {
+        var verticalPair = clusters.slice().sort(function(a,b){
+          if (Math.abs(a.top - b.top) > 0.5) return a.top - b.top;
+          var aDelta = Math.abs(Number(a.cx || 0) - mid);
+          var bDelta = Math.abs(Number(b.cx || 0) - mid);
+          if (Math.abs(aDelta - bDelta) > 0.5) return aDelta - bDelta;
+          return a.left - b.left;
+        });
+        mslLog("order:two:pairPolicy", {
+          mode: "rows",
+          reason: "centeredLateralStack",
+          topDelta: +topDelta.toFixed(1),
+          centerDeltas: [+cADelta.toFixed(1), +cBDelta.toFixed(1)],
+          tops: verticalPair.map(function(c){ return +c.top.toFixed(1); }),
+          lefts: verticalPair.map(function(c){ return +c.left.toFixed(1); })
+        });
+        return { groups: [verticalPair], mode: "rows" };
+      }
 
       if (looksTwo && sideBySide && hasColumnSignal && pairInvasion <= pairInvasionLimit) {
         var leftPair = (cA.cx <= cB.cx) ? [cA] : [cB];

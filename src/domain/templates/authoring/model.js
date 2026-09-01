@@ -15,6 +15,9 @@ import {
   isEventTimeField,
 } from "../../eventDetails/time.js";
 import {
+  isEventDateField,
+} from "../../eventDetails/date.js";
+import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
 } from "../../../../shared/renderAssetContract.js";
@@ -883,6 +886,7 @@ export function sanitizeAuthoringSchema({
       if (isEventPersonNameField(field)) return true;
       if (isEventLocationField(field)) return true;
       if (isEventTimeField(field)) return true;
+      if (isEventDateField(field)) return true;
       if (Array.isArray(field.applyTargets) && field.applyTargets.length > 0) {
         return true;
       }

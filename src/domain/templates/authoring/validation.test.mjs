@@ -62,6 +62,47 @@ test("authoring schema repair keeps grouped-child targets", () => {
   assert.equal(repaired.fieldsSchema[0].applyTargets[0].id, "grouped-primary-name");
 });
 
+test("authoring schema repair preserves event date fields after removing a stale target", () => {
+  const repaired = sanitizeAuthoringSchema({
+    fieldsSchema: [
+      {
+        key: "event_ceremony_date",
+        label: "Fecha de la ceremonia",
+        type: "date",
+        group: "Ceremonia",
+        eventDetailsRole: "ceremony_date",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "deleted-date-text",
+            path: "texto",
+          },
+        ],
+      },
+    ],
+    defaults: {
+      event_ceremony_date: "2027-01-05",
+    },
+    objetos: [],
+    dropOrphans: true,
+  });
+
+  assert.equal(repaired.changed, true);
+  assert.deepEqual(repaired.removedFieldKeys, []);
+  assert.equal(repaired.removedTargets[0].targetId, "deleted-date-text");
+  assert.equal(repaired.fieldsSchema.length, 1);
+  assert.deepEqual(repaired.fieldsSchema[0].applyTargets, []);
+  assert.equal(repaired.defaults.event_ceremony_date, "2027-01-05");
+  assert.equal(
+    validateAuthoringState({
+      fieldsSchema: repaired.fieldsSchema,
+      defaults: repaired.defaults,
+      objetos: [],
+    }).isReady,
+    true
+  );
+});
+
 test("authoring validation rejects duplicate identities before they can alias targets", () => {
   const status = validateAuthoringState({
     fieldsSchema: [],

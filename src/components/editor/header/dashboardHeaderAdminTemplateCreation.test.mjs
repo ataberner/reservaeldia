@@ -32,6 +32,8 @@ test("administrative read-only template creation uses the real draft preparation
 
   assert.match(block, /pedirNombreNuevaPlantilla\(\)/);
   assert.match(block, /capturarPreparacionPlantilla\(\{[\s\S]*?allowAuthoringRepair: false/);
+  assert.match(block, /repairAuthoringCopyInMemory: true/);
+  assert.match(block, /authoringCopyObjects: sourceDraft\.objetos/);
   assert.match(block, /composeDraftTemplateCreationPayload\(\{/);
   assert.match(block, /createTemplateFromDraft\(\{[\s\S]*?draftSlug,[\s\S]*?templateId,/);
   assert.match(
@@ -39,6 +41,27 @@ test("administrative read-only template creation uses the real draft preparation
     /onOpenTemplateSession\(\{[\s\S]*?editorDocument:[\s\S]*?creationResult\?\.editorDocument/
   );
   assert.doesNotMatch(block, /window\.confirm|convertDraftToTemplate|ensureEditorFlushBeforeAction/);
+});
+
+test("administrative copy repairs authoring in memory without persisting the source draft", () => {
+  const preparationBlock = readFunctionBlock(
+    dashboardHeaderSource,
+    "const capturarPreparacionPlantilla",
+    "const pedirNombreNuevaPlantilla"
+  );
+  const copyRepairStart = preparationBlock.indexOf(
+    "if (\n            !allowAuthoringRepair"
+  );
+  const copyRepairEnd = preparationBlock.indexOf(
+    "if (runtimeAuthoringStatus && runtimeAuthoringStatus.isReady === false)",
+    copyRepairStart
+  );
+  const copyRepairBlock = preparationBlock.slice(copyRepairStart, copyRepairEnd);
+
+  assert.notEqual(copyRepairStart, -1);
+  assert.notEqual(copyRepairEnd, -1);
+  assert.match(copyRepairBlock, /prepareTemplateCopyAuthoringState\(\{/);
+  assert.doesNotMatch(copyRepairBlock, /repairTemplateAuthoringState|persistEditorSessionPatch/);
 });
 
 test("writable draft creation keeps its existing conversion and legacy menu route", () => {

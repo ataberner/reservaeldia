@@ -526,6 +526,54 @@ function createMobileReflowTitleVisualColumnObjects({ seccionId = "section-detai
   ];
 }
 
+function withCenteredGallerySideObject(draft) {
+  const next = deepClone(draft);
+  const gallery = (next.objetos || []).find((object) => object?.id === "gallery-main");
+  if (!gallery) return next;
+
+  Object.assign(gallery, {
+    x: 120,
+    y: 85,
+    width: 560,
+    widthPct: 70,
+    height: 276,
+    rows: 1,
+    cols: 2,
+    gap: 8,
+    radius: 6,
+    ratio: "1:1",
+    galleryLayoutMode: "fixed",
+    galleryLayoutType: "canvas_preserve",
+    galleryLayoutBlueprint: null,
+    currentLayout: "grid_2x1",
+    defaultLayout: "grid_2x1",
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    cells: Array.isArray(gallery.cells) ? gallery.cells.slice(0, 2) : [],
+  });
+
+  next.objetos = (next.objetos || [])
+    .filter((object) => object?.id !== "centered-gallery-side-ornament")
+    .concat({
+      id: "centered-gallery-side-ornament",
+      tipo: "forma",
+      figura: "rect",
+      seccionId: gallery.seccionId,
+      x: 650,
+      y: 85,
+      width: 120,
+      height: 120,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      color: "rgba(119, 61, 190, 0.24)",
+      cornerRadius: 24,
+    });
+
+  return next;
+}
+
 function createOverflowObjects({ seccionId = "section-details" } = {}) {
   return [
     {
@@ -732,6 +780,13 @@ const galleryPublishDraft = withoutRootConfigs(
     sectionIds: ["section-gallery"],
     objectIds: ["gallery-main"],
   })
+);
+
+const fixedCenteredGallerySideObjectPreviewDraft = withCenteredGallerySideObject(
+  galleryPreviewDraft
+);
+const fixedCenteredGallerySideObjectPublishDraft = withCenteredGallerySideObject(
+  galleryPublishDraft
 );
 
 const countdownPreviewDraft = withoutRootConfigs(
@@ -1091,6 +1146,22 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
     ],
     notes: [
       "Reuses the current representative gallery object and canonical cell media mix.",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-reflow-centered-gallery-side-object",
+    label: "Fixed centered Gallery plus lateral object",
+    purpose: "Freeze vertical mobile distribution without moving an authored centered Gallery off the section axis.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedCenteredGallerySideObjectPreviewDraft,
+    publishDraft: fixedCenteredGallerySideObjectPublishDraft,
+    focusCheckpoints: [
+      "the desktop Gallery remains centered beside the authored lateral object",
+      "mobile separates the ungrouped centered and lateral objects into vertical units",
+      "the Gallery and lateral object are centered independently after reflow",
+      "the two Gallery cells and generated viewer markers stay intact",
+      "preview and publish keep identical final geometry at representative mobile viewports",
     ],
   }),
   createVisualBaselineCase({

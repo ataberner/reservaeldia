@@ -240,6 +240,21 @@ test("resize controls keep their own gesture owner while passive canvas visuals 
   );
 });
 
+test("section background remains clipped to its owner while editing", () => {
+  assertSourceMatches(
+    sectionBackgroundSource,
+    /<Group\s+clipX=\{0\}\s+clipY=\{offsetY\}\s+clipWidth=\{canvasWidth\}\s+clipHeight=\{alturaPx\}\s*>\s*\{hasBaseImage/,
+    "the base section background must keep the section clip in edit and idle phases"
+  );
+  assert.equal(
+    /clip(?:X|Y|Width|Height)=\{isEditing\s*\?\s*undefined/.test(
+      sectionBackgroundSource
+    ),
+    false,
+    "background edit mode must not disable the section-owned visual clip"
+  );
+});
+
 test("scroll ownership keeps tap suppression until the next real press without terminal listeners", () => {
   const genericSource = touchDragConsumers[0].source;
   const gallerySource = touchDragConsumers[1].source;

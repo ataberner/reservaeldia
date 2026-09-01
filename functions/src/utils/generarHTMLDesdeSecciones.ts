@@ -1698,13 +1698,22 @@ export function generarHTMLDesdeSecciones(
       }
     }
 
-    .inv{ width: 100%; background: white; }
+    /*
+     * Section content may cross internal boundaries, but it must not extend the
+     * document scroll range beyond the invitation's outer bounds.
+     */
+    .inv{ width: 100%; background: white; overflow: clip; }
 
     .sec{
       position: relative;
       width: 100vw;
-      left: 50%;
-      transform: translateX(-50%);
+      /*
+       * Center the viewport-wide section without transform. A transform here
+       * creates one stacking context per section, so the following section's
+       * background paints over normal content that legitimately overflows the
+       * previous section.
+       */
+      left: calc(50% - 50vw);
       overflow: visible; /* bleed puede salirse */
       --edge-section-h: 100%;
       --edge-offset-scale: var(--sfinal, var(--sx, 1));
@@ -1735,9 +1744,9 @@ export function generarHTMLDesdeSecciones(
       pointer-events: none;
     }
 
-    /* ✅ Pantalla ON: recorte para que el zoom no desborde */
+    /* Pantalla clips section-owned layers individually; content may cross sections. */
     .sec[data-modo="pantalla"]{
-      overflow: hidden;
+      overflow: visible;
       height: 100dvh;
       height: 100vh;
       padding-top: var(--safe-top);
@@ -1805,9 +1814,12 @@ export function generarHTMLDesdeSecciones(
     }
 
     .sec[data-modo="pantalla"] .sec-zoom-backdrop,
-    .sec[data-modo="pantalla"] .sec-zoom-decor,
-    .sec[data-modo="pantalla"] .sec-zoom-content{
+    .sec[data-modo="pantalla"] .sec-zoom-decor{
       overflow: hidden;
+    }
+
+    .sec[data-modo="pantalla"] .sec-zoom-content{
+      overflow: visible;
     }
 
     .sec-divider-layer{
@@ -1848,16 +1860,6 @@ export function generarHTMLDesdeSecciones(
 
     .sec[data-modo="pantalla"] .sec-edge-layer{
       transform: scale(var(--edgezoom, 1));
-    }
-
-    @media (min-width: 768px){
-      .sec[data-edge-decorations="1"] .sec-edge-layer{
-        overflow: visible;
-      }
-
-      .sec[data-modo="pantalla"][data-edge-decorations="1"]{
-        overflow: visible;
-      }
     }
 
     .sec-edge-decor{

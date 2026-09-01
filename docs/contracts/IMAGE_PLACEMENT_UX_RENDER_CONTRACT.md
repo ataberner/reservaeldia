@@ -222,7 +222,7 @@ Selection rule:
 - Intended ownership: object-owned content associated to a section by `seccionId`.
 - Editor behavior: normal object selection, multi-selection, drag, resize, rotation, object layer order, and persistence. Inline text editing is not applicable.
 - Selection model: follows the normal selection-box and drag-overlay model in `INTERACTION_SYSTEM_CURRENT_STATE.md`.
-- Stacking behavior: editor stacking follows `objetos` order; publish can also apply object `zIndex`. Normal content renders above section-owned visuals. Fullbleed images use the existing fullbleed object path, not this section-owned contract.
+- Stacking behavior: editor stacking follows `objetos` order; publish can also apply object `zIndex`. Normal content renders above section-owned visuals. A normal image MUST remain visible when its rendered bounds cross into an adjacent section; `seccionId` continues to own its persisted coordinate space, but the section boundary MUST NOT clip the image. Generated HTML MUST preserve the same global content-over-section-visual ordering as the editor, while backgrounds and section-owned decorations keep their own clipping. Fullbleed images use the existing fullbleed object path, not this section-owned contract.
 - Mobile behavior: follows object/mobile smart-layout and fullbleed object rules where applicable.
 - Preview/publish rendering: rendered by `functions/src/utils/generarHTMLDesdeObjetos.ts`.
 - Conversion behavior: this is the default inserted image role. Converting from this role to any section-owned visual MUST remove the object.
@@ -250,7 +250,7 @@ Selection rule:
 - Intended ownership: section-owned base layer.
 - Editor behavior: `FondoSeccion` renders the base image. Background edit mode supports dragging the image and bottom-right keep-ratio resizing to maintain cover behavior. Rotation is disabled.
 - Selection model: section-owned edit mode, not normal object selection. Converting to this role must clear the source object selection.
-- Stacking behavior: lowest section visual layer. Generated HTML uses `.sec-bg` with `z-index: 0`.
+- Stacking behavior: lowest section visual layer. Generated HTML uses `.sec-bg` with `z-index: 0`. A base section background MUST remain clipped to the owning section bounds in every phase and runtime, including editor background edit mode, preview, and publish. It MUST NOT use the cross-section overflow granted only to normal `objetos[]` image content.
 - Mobile behavior: generated HTML uses responsive background-image layout and runtime image positioning. Current canvas editing is based on the 800px editor coordinate model.
 - Preview/publish rendering: rendered by `renderSectionBackgroundLayer` in `generarHTMLDesdeSecciones.ts`; publish preparation can block unresolved assets with `section-background-unresolved`.
 - Conversion behavior: current implementation removes the original normal image object. This matches the intended conversion rule.
@@ -264,7 +264,7 @@ Selection rule:
 - Intended ownership: section-owned structural edge visual.
 - Editor behavior: `FondoSeccion` renders the top edge image. Double-click opens `SectionEdgeDecorationEditorOverlay`, which supports vertical offset editing only. It does not support normal resize, rotation, grouping, or object z-index.
 - Selection model: section-owned edge edit mode. It must not become a selected object box.
-- Stacking behavior: behind normal content. Generated HTML uses `.sec-edge-layer` with `z-index: 1`.
+- Stacking behavior: behind normal content. Generated HTML uses `.sec-edge-layer` with `z-index: 1`. The layer MUST clip the top decoration to the owning section in editor, preview, and publish, regardless of viewport width or vertical offset.
 - Mobile behavior: publish HTML supports separate mobile height caps, section-ratio caps, and `offsetMobilePx`. The current canvas overlay edits `offsetDesktopPx` only.
 - Preview/publish rendering: rendered by `renderSectionEdgeDecorations` in `generarHTMLDesdeSecciones.ts`; publish preparation can block unresolved assets with `section-edge-decoration-unresolved`.
 - Conversion behavior: current implementation writes the edge slot, removes the original `tipo: "imagen"` object from `objetos`, and clears stale object selection.
@@ -278,7 +278,7 @@ Selection rule:
 - Intended ownership: section-owned structural edge visual.
 - Editor behavior: same edge-decoration editor as top, but offset convention is bottom-relative. Positive desktop offset moves the bottom decoration upward into the section.
 - Selection model: section-owned edge edit mode. It must not become a selected object box.
-- Stacking behavior: behind normal content. Generated HTML uses `.sec-edge-layer` with `z-index: 1`.
+- Stacking behavior: behind normal content. Generated HTML uses `.sec-edge-layer` with `z-index: 1`. The layer MUST clip the bottom decoration to the owning section in editor, preview, and publish, regardless of viewport width or vertical offset.
 - Mobile behavior: same responsive edge model as top, with separate `offsetMobilePx`. The current canvas overlay edits `offsetDesktopPx` only.
 - Preview/publish rendering: rendered by `renderSectionEdgeDecorations` in `generarHTMLDesdeSecciones.ts`; publish preparation can block unresolved assets with `section-edge-decoration-unresolved`.
 - Conversion behavior: current implementation writes the edge slot, removes the original `tipo: "imagen"` object from `objetos`, and clears stale object selection.
@@ -296,6 +296,8 @@ Selection rule:
   an existing dual cover/background role by replacing matching base section
   sources with geometry and placement preserved.
 - Normal image/content is represented as an object in `objetos`.
+- Normal image/content can visually overflow into an adjacent section without being converted, duplicated, or clipped at the section boundary.
+- Base section backgrounds remain clipped to their owning section in idle and edit phases; cross-section overflow never applies to `fondoTipo: "imagen"` / `fondoImagen`.
 - Base background, free background decoration, and top/bottom edge decorations are represented as section data in `secciones`.
 - The data model already distinguishes base background, free decoration, and edge decoration as separate primitives.
 - The contextual gear menu now groups normal image role actions under the intended `Usar como` vocabulary.
@@ -306,18 +308,26 @@ Selection rule:
 - Section-owned editor overlays are custom section edit surfaces, not normal object selection boxes.
 - Generated section dividers are pointer-inert section layers and never enter object selection, grouping, z-index, rotation, resize, drag, or smart-layout flows.
 - The section actions menu does not expose delete buttons for free, top, or bottom decorations.
-- Desktop preview/publish uses controlled edge-layer overflow for top/bottom decorations so full edge artwork is not cropped merely because the preview viewport is wider than the 800px editor canvas.
+- Top/bottom edge decorations remain clipped to their owning section in editor, preview, and publish. Their internal sizing can preserve the complete artwork where it fits, but no edge-decoration pixel may cross the section boundary.
 
 ## Preview / Publish Contract
 
 Draft-authoritative preview and publish both use the backend prepared render payload path. Section-owned visuals are generated in `generarHTMLDesdeSecciones.ts`, while normal image objects are generated in `generarHTMLDesdeObjetos.ts`.
 
+Normal image overflow strategy:
+
+- A section remains the persisted coordinate owner for its normal image objects, but it is not a visual clip owner for those objects.
+- Generated section centering MUST NOT create a per-section stacking context that lets a later section background cover earlier overflowing content.
+- In `pantalla`, clipping is applied to the background and section-owned decoration layers, not to `.sec-zoom-content`.
+- The invitation root clips only at the outer document boundary so internal cross-section overflow does not create extra scroll range beyond the first or last section.
+- Preview and publish MUST preserve the same cross-section visibility because they consume the same generated HTML owner.
+
 Edge decoration render strategy:
 
 - `Decoración arriba` and `Decoración abajo` render as section-owned edge layers, not as `.objeto` nodes.
 - Generated HTML keeps the base background, edge decoration, free decoration, and content surfaces in separate ordered layers.
-- Desktop preview/publish may allow controlled vertical overflow only for `decoracionesBorde` edge artwork. This preserves the full edge ornament when the editor canvas shows it fully.
-- Mobile edge behavior remains on the existing mobile sizing and offset path; desktop overflow changes must not redefine mobile geometry.
+- `.sec-edge-layer` is the visual clip owner for `decoracionesBorde` in desktop and mobile. Child geometry may extend beyond its nominal top/bottom band, but the resulting artwork MUST be clipped at the owning section boundary.
+- Mobile edge behavior remains on the existing mobile sizing and offset path; clipping does not redefine its geometry.
 - Edge decorations stay behind content and remain `pointer-events: none`.
 
 Generated divider render strategy:

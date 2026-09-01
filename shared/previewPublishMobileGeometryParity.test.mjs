@@ -1352,6 +1352,15 @@ test(
       }
     }
 
+    function assertObjectsVerticallySeparated(snapshot, upperId, lowerId, message) {
+      const upper = requireObjectAndSection(snapshot, upperId, message).object;
+      const lower = requireObjectAndSection(snapshot, lowerId, message).object;
+      assert.ok(
+        Number(lower.rect?.top || 0) >= Number(upper.rect?.bottom || 0) - 1,
+        `${message}: ${lowerId} top ${Number(lower.rect?.top || 0).toFixed(2)} overlaps ${upperId} bottom ${Number(upper.rect?.bottom || 0).toFixed(2)}`
+      );
+    }
+
     function assertFixedDesktopAuthoredTop(snapshot, objectId, authoredY, message) {
       const { object, section } = requireObjectAndSection(snapshot, objectId, message);
       const contentWidth = Number(section.contentRect?.width || 0);
@@ -1686,6 +1695,7 @@ test(
         if (
           fixture.id === "fixed-reflow-columns" ||
           fixture.id === "fixed-reflow-title-visual-columns" ||
+          fixture.id === "fixed-reflow-centered-gallery-side-object" ||
           fixture.id === "pantalla-composition-related-text"
         ) {
           const desktopViewport = { id: "desktop-1280x820", width: 1280, height: 820 };
@@ -1754,6 +1764,44 @@ test(
                 `${fixture.id} desktop publish`
               );
             });
+          } else if (fixture.id === "fixed-reflow-centered-gallery-side-object") {
+            [
+              ["gallery-main", 85],
+              ["centered-gallery-side-ornament", 85],
+            ].forEach(([objectId, authoredY]) => {
+              assertFixedDesktopAuthoredTop(
+                desktopPreviewSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop preview`
+              );
+              assertFixedDesktopAuthoredTop(
+                desktopPublishSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop publish`
+              );
+            });
+            assertObjectCenteredOnSection(
+              desktopPreviewSnapshot,
+              "gallery-main",
+              `${fixture.id} desktop preview`
+            );
+            assertObjectCenteredOnSection(
+              desktopPublishSnapshot,
+              "gallery-main",
+              `${fixture.id} desktop publish`
+            );
+            assert.equal(
+              (previewHtml.match(/<div\b[^>]*data-gallery-image="1"[^>]*>/g) || []).length,
+              2,
+              `${fixture.id} preview must keep two viewer markers`
+            );
+            assert.equal(
+              (publishHtml.match(/<div\b[^>]*data-gallery-image="1"[^>]*>/g) || []).length,
+              2,
+              `${fixture.id} publish must keep two viewer markers`
+            );
           } else {
             [
               ["pantalla-composition-title", 0.6052155086818695],
@@ -1910,6 +1958,31 @@ test(
             assertObjectVerticalOrder(
               publishSnapshot,
               readingOrder,
+              `${fixture.id} publish ${viewport.id}`
+            );
+          } else if (fixture.id === "fixed-reflow-centered-gallery-side-object") {
+            ["gallery-main", "centered-gallery-side-ornament"].forEach((objectId) => {
+              assertObjectCenteredOnSection(
+                previewSnapshot,
+                objectId,
+                `${fixture.id} preview ${viewport.id}`
+              );
+              assertObjectCenteredOnSection(
+                publishSnapshot,
+                objectId,
+                `${fixture.id} publish ${viewport.id}`
+              );
+            });
+            assertObjectsVerticallySeparated(
+              previewSnapshot,
+              "gallery-main",
+              "centered-gallery-side-ornament",
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertObjectsVerticallySeparated(
+              publishSnapshot,
+              "gallery-main",
+              "centered-gallery-side-ornament",
               `${fixture.id} publish ${viewport.id}`
             );
           } else if (fixture.id === "pantalla-composition-related-text") {

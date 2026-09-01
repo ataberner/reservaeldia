@@ -638,8 +638,6 @@ export default function CanvasEditor({
     setObjetos,
     seccionActivaId,
     setSeccionActivaId,
-    canManageSite,
-
     crearSeccion,
     normalizarAltoModo,
     validarPuntosLinea,

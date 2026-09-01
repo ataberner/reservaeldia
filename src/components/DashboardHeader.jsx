@@ -23,6 +23,7 @@ import {
 import {
     buildTemplateCopyId,
     composeDraftTemplateCreationPayload,
+    prepareTemplateCopyAuthoringState,
 } from "@/domain/templates/draftTemplateCreation";
 import { resolveEditorUserMenuAccess } from "@/domain/dashboard/editorUserMenu";
 import {
@@ -491,6 +492,8 @@ export default function DashboardHeader(props) {
     const capturarPreparacionPlantilla = async ({
         templateId,
         allowAuthoringRepair = true,
+        repairAuthoringCopyInMemory = false,
+        authoringCopyObjects = null,
     }) => {
         const getTemplateAuthoringStatus = readCanvasEditorMethod(
             "getTemplateAuthoringStatus"
@@ -507,6 +510,7 @@ export default function DashboardHeader(props) {
         let runtimeAuthoringSnapshot = getTemplateAuthoringSnapshot
             ? getTemplateAuthoringSnapshot()
             : null;
+        const liveEditorSnapshot = readEditorRenderSnapshot();
         let authoringRepairSummary = "";
 
         if (
@@ -546,6 +550,43 @@ export default function DashboardHeader(props) {
                     }
                     authoringRepairSummary = repairNotes.join(" y ");
                 }
+            }
+        }
+
+        if (
+            !allowAuthoringRepair &&
+            repairAuthoringCopyInMemory &&
+            runtimeAuthoringStatus &&
+            runtimeAuthoringStatus.isReady === false &&
+            runtimeAuthoringSnapshot &&
+            typeof runtimeAuthoringSnapshot === "object"
+        ) {
+            const copyObjects = Array.isArray(liveEditorSnapshot?.objetos)
+                ? liveEditorSnapshot.objetos
+                : Array.isArray(authoringCopyObjects)
+                    ? authoringCopyObjects
+                    : null;
+
+            if (copyObjects) {
+                const repairResult = prepareTemplateCopyAuthoringState({
+                    authoringState: runtimeAuthoringSnapshot,
+                    objetos: copyObjects,
+                });
+                runtimeAuthoringStatus = repairResult.status;
+                runtimeAuthoringSnapshot = repairResult.snapshot;
+
+                const repairNotes = [];
+                if (repairResult.removedTargets.length > 0) {
+                    repairNotes.push(
+                        `${repairResult.removedTargets.length} vinculo(s) roto(s)`
+                    );
+                }
+                if (repairResult.removedFieldKeys.length > 0) {
+                    repairNotes.push(
+                        `${repairResult.removedFieldKeys.length} campo(s) huerfano(s)`
+                    );
+                }
+                authoringRepairSummary = repairNotes.join(" y ");
             }
         }
 
@@ -593,7 +634,7 @@ export default function DashboardHeader(props) {
 
         return {
             authoringRepairSummary,
-            liveEditorSnapshot: readEditorRenderSnapshot(),
+            liveEditorSnapshot,
             portada,
             runtimeAuthoringSnapshot,
             runtimeAuthoringStatus,
@@ -898,10 +939,13 @@ export default function DashboardHeader(props) {
             const preparation = await capturarPreparacionPlantilla({
                 templateId,
                 allowAuthoringRepair: false,
+                repairAuthoringCopyInMemory: true,
+                authoringCopyObjects: sourceDraft.objetos,
             });
             if (!preparation) return;
 
             const {
+                authoringRepairSummary,
                 liveEditorSnapshot,
                 portada,
                 runtimeAuthoringSnapshot,
@@ -954,7 +998,11 @@ export default function DashboardHeader(props) {
             await router.replace(
                 `/dashboard?templateId=${encodeURIComponent(templateId)}`
             );
-            window.alert("La plantilla se creo correctamente en estado En proceso.");
+            window.alert(
+                authoringRepairSummary
+                    ? `La plantilla se creo correctamente en estado En proceso.\n\nSe reparo la copia removiendo ${authoringRepairSummary}; el borrador original no fue modificado.`
+                    : "La plantilla se creo correctamente en estado En proceso."
+            );
         } catch (error) {
             console.error("Error al crear plantilla desde borrador administrativo:", error);
             window.alert(

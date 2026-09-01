@@ -398,10 +398,10 @@ export default function FondoSeccion({
       ) : null}
 
       <Group
-        clipX={isEditing ? undefined : 0}
-        clipY={isEditing ? undefined : offsetY}
-        clipWidth={isEditing ? undefined : canvasWidth}
-        clipHeight={isEditing ? undefined : alturaPx}
+        clipX={0}
+        clipY={offsetY}
+        clipWidth={canvasWidth}
+        clipHeight={alturaPx}
       >
         {hasBaseImage && baseImageLayout ? (
           <KonvaImage

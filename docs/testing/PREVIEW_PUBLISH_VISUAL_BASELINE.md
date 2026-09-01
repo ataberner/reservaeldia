@@ -62,6 +62,7 @@ These views freeze invitation rendering reference points only. They do not freez
 | `mixed-fijo-pantalla` | Protect section ordering across one `pantalla` section plus fixed sections. | `shared-parity` | all five baseline views | none | section order, `pantalla` to `fijo` relationship, cross-section stability |
 | `fixed-reflow-columns` | Protect the two-column mobile smart-layout path for fixed sections. | `shared-parity` | all five baseline views | none | fixed-only reflow, weak gutter overlap between wide text boxes, preserved column units, mobile column stacking, section height |
 | `fixed-reflow-title-visual-columns` | Protect a centered title/subtitle composition above two icon/text columns. | `shared-parity` | all five baseline views | none | heading unit, internal vectors, lane bbox isolation, centered Ceremony/Fiesta mobile stack |
+| `fixed-reflow-centered-gallery-side-object` | Protect a centered two-cell Gallery beside an ungrouped lateral object. | `shared-parity` | all five baseline views | none | unchanged desktop placement, independent mobile units, centered Gallery and side object, vertical separation, clickable Gallery cell markers |
 | `fixed-overflow-expansion` | Protect fixed-section expansion when mobile content exceeds authored height. | `shared-parity` | all five baseline views | none | overflow expansion, stale iframe gaps, downstream offsets |
 | `grouped-cta-fixed-section` | Protect grouped CTA positioning and hit-layer preservation in fixed sections. | `shared-parity` | all five baseline views | none | group wrapper unit, nested CTA semantics, sibling stacking |
 | `group-nested-children` | Protect group child offsets relative to the wrapper. | `shared-parity` | all five baseline views | none | atomic group movement, nested children, relative offsets |
@@ -111,6 +112,11 @@ Frozen rule:
   the desktop composition when the unit is moved
 - explicit group wrappers remain isolated units; inferred units never cross
   content/fullbleed lanes and are never persisted
+- an ungrouped same-row pair made of one section-axis-centered object and one
+  clearly lateral object is kept as two units; fixed mobile reflow stacks and
+  centers them independently, with the authored centered unit first on a top tie
+- explicit groups or shared composition identifiers remain atomic and are the
+  opt-in for preserving a side-by-side relationship between those objects
 - `pantalla`, `mobileLayoutMode: preserve`, section-owned decorations and
   desktop geometry keep their existing owners
 
@@ -118,6 +124,12 @@ The `fixed-reflow-title-visual-columns` browser case compares desktop with
 `390x844`, `375x812`, and `414x896`, waits for fonts/images and delayed layout
 passes, and checks heading order plus the normalized internal vectors of both
 visual columns in draft-authoritative preview and publish.
+
+The `fixed-reflow-centered-gallery-side-object` browser case keeps a two-cell
+Gallery centered on desktop beside an ungrouped lateral object. At `390x844`,
+`375x812`, and `414x896`, it waits for the same font/image and delayed layout
+passes, then requires preview/publish geometry parity, both independent units
+centered, no vertical overlap, and the two generated Gallery viewer markers.
 
 The `pantalla-composition-related-text` browser case freezes the complementary
 screen-mode rule with the real no-width typography shape of `Nos casamos` and

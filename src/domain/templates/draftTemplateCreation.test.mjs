@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildTemplateCopyId,
   composeDraftTemplateCreationPayload,
+  prepareTemplateCopyAuthoringState,
 } from "./draftTemplateCreation.js";
 
 test("template copy ids are unique derivatives of the authorized draft slug", () => {
@@ -52,6 +53,60 @@ test("template creation overlays the live render snapshot on the authorized draf
     fieldsSchema: [{ key: "runtime-field" }],
   });
   assert.deepEqual(result.payload, { nombre: "Borrador original" });
+});
+
+test("template copy authoring repair is in-memory and preserves semantic date fields", () => {
+  const source = {
+    version: 1,
+    sourceTemplateId: "template-base",
+    fieldsSchema: [
+      {
+        key: "event_ceremony_date",
+        label: "Fecha de la ceremonia",
+        type: "date",
+        group: "Ceremonia",
+        eventDetailsRole: "ceremony_date",
+        applyTargets: [
+          { scope: "objeto", id: "deleted-date", path: "texto" },
+        ],
+      },
+      {
+        key: "temporary_copy",
+        label: "Texto eliminado",
+        type: "text",
+        group: "Contenido",
+        applyTargets: [
+          { scope: "objeto", id: "deleted-text", path: "texto" },
+        ],
+      },
+    ],
+    defaults: {
+      event_ceremony_date: "2027-01-05",
+      temporary_copy: "Anterior",
+    },
+    status: { isReady: false, issues: ["stale"] },
+  };
+  const original = structuredClone(source);
+
+  const result = prepareTemplateCopyAuthoringState({
+    authoringState: source,
+    objetos: [],
+  });
+
+  assert.deepEqual(source, original);
+  assert.equal(result.changed, true);
+  assert.equal(result.status.isReady, true);
+  assert.deepEqual(result.removedFieldKeys, ["temporary_copy"]);
+  assert.deepEqual(
+    result.removedTargets.map((entry) => entry.targetId),
+    ["deleted-date", "deleted-text"]
+  );
+  assert.equal(result.snapshot.fieldsSchema.length, 1);
+  assert.equal(result.snapshot.fieldsSchema[0].key, "event_ceremony_date");
+  assert.deepEqual(result.snapshot.fieldsSchema[0].applyTargets, []);
+  assert.deepEqual(result.snapshot.defaults, {
+    event_ceremony_date: "2027-01-05",
+  });
 });
 
 test("stored authoring remains the fallback when read-only runtime state is absent", () => {

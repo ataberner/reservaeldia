@@ -390,6 +390,25 @@ Resultado esperado:
 - la geometria final persiste
 - no reaparece escala intermedia
 
+### [ ] Imagen comun que cruza entre secciones
+
+1. En desktop, ubicar una imagen comun cerca del borde inferior de una seccion `fijo` y redimensionarla hasta que una parte quede sobre la seccion siguiente.
+2. Repetir desde una seccion `pantalla` y desde la seccion siguiente hacia arriba.
+3. Confirmar el resultado en canvas, preview `draft-authoritative` desktop y publish desktop.
+4. Repetir en preview/publish mobile con una composicion cuya adaptacion mobile conserve el cruce.
+5. En una de las secciones, configurar otra imagen como `Fondo de la seccion`, moverla/redimensionarla en el modo de edicion de fondo y confirmar que nunca se vea fuera de esa seccion.
+6. Configurar `Decoracion arriba` y `Decoracion abajo` con offsets que lleven parte de la imagen fuera de la seccion; comprobar el limite superior e inferior en canvas, preview y publish.
+
+Resultado esperado:
+
+- la imagen completa sigue visible a ambos lados del limite entre secciones
+- el fondo de la seccion adyacente no pinta por encima de la porcion que sobresale
+- fondos y decoraciones propios de seccion siguen recortados por sus owners
+- el fondo de seccion sigue recortado tambien mientras se edita; esta excepcion de overflow pertenece solo a `Imagen (contenido)`
+- las decoraciones top/bottom pueden exceder su banda interna, pero ningun pixel cruza el limite de la seccion propietaria
+- el cruce visual no duplica el objeto ni cambia por si solo su `seccionId`
+- preview y publish conservan la misma visibilidad y geometria
+
 ### [ ] Drift visual despues de drag, settle o scroll
 
 1. Arrastrar un objeto cerca de los limites del viewport o durante auto-scroll de secciones.

@@ -103,12 +103,16 @@ Resultado esperado:
 
 1. Seleccionar un objeto comun.
 2. Seleccionar una `forma.line`.
-3. Editar inline un texto ya seleccionado.
+3. En la barra flotante de la linea, cambiar el color y probar el grosor minimo, uno intermedio y el maximo.
+4. Repetir la seleccion y los cambios de la linea en mobile.
+5. Editar inline un texto ya seleccionado.
 
 Resultado esperado:
 
 - un objeto comun muestra transformer
 - una linea muestra bounds indicator y `LineControls`, no el transformer generico
+- la barra flotante de una linea ofrece `Color` y `Grosor`; el grosor refleja y actualiza `strokeWidth` entre 1 y 50 px sin cambiar el color ni los puntos
+- el control sigue accesible en mobile mediante el scroll horizontal existente de la barra
 - durante inline edit se suprimen los visuales primarios de seleccion
 - no aparecen dobles bordes ni overlays superpuestos
 

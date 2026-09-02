@@ -17,6 +17,11 @@ import {
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import { isFunctionalCtaButton } from "@/domain/functionalCtaButtons";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import {
+  LINE_STROKE_WIDTH_MAX,
+  LINE_STROKE_WIDTH_MIN,
+  normalizeLineStrokeWidth,
+} from "@/components/editor/toolbar/lineStrokeWidthControl";
 
 const FONT_SELECTOR_GAP = 12;
 const FONT_SELECTOR_PADDING = 8;
@@ -423,6 +428,9 @@ export default function FloatingTextToolbar({
     objetoSeleccionado?.tipo === "forma" &&
     objetoSeleccionado?.figura === "rect" &&
     typeof objetoSeleccionado?.texto === "string";
+  const esLinea =
+    objetoSeleccionado?.tipo === "forma" &&
+    objetoSeleccionado?.figura === "line";
   const esRect = objetoSeleccionado?.figura === "rect" || esRsvp;
   const mostrarControlesTipografia = esTexto || esFormaConTexto || esRsvp;
   const mostrarControlesFondo = objetoSeleccionado?.tipo === "forma" || esRsvp;
@@ -439,6 +447,7 @@ export default function FloatingTextToolbar({
       )
     : (objetoSeleccionado?.color || colorFondoDefault);
   const permiteGradienteFondo = esRsvp || objetoSeleccionado?.figura !== "line";
+  const grosorLineaActual = normalizeLineStrokeWidth(objetoSeleccionado?.strokeWidth);
   const mobileFontStripVisible =
     isMobile && mostrarControlesTipografia && mostrarSelectorFuente;
   const mobileSizeStripVisible =
@@ -965,12 +974,12 @@ export default function FloatingTextToolbar({
       >
         {mostrarControlesFondo && (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Fondo</label>
+            <label className="text-xs text-gray-600">{esLinea ? "Color" : "Fondo"}</label>
             <UnifiedColorPicker
               preserveInlineEdit={true}
               value={fondoPickerValue}
               showGradients={permiteGradienteFondo}
-              title="Cambiar fondo"
+              title={esLinea ? "Cambiar color de la línea" : "Cambiar fondo"}
               panelWidth={272}
               triggerClassName="h-6 w-6 rounded border border-gray-300"
               onChange={(nextColor) => {
@@ -1001,6 +1010,36 @@ export default function FloatingTextToolbar({
                 });
               }}
             />
+          </div>
+        )}
+
+        {esLinea && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600" htmlFor="line-stroke-width-control">
+              Grosor
+            </label>
+            <input
+              id="line-stroke-width-control"
+              type="range"
+              min={LINE_STROKE_WIDTH_MIN}
+              max={LINE_STROKE_WIDTH_MAX}
+              step={1}
+              value={grosorLineaActual}
+              aria-label="Grosor de la línea"
+              aria-valuetext={`${grosorLineaActual} px`}
+              onChange={(e) => {
+                const nextStrokeWidth = normalizeLineStrokeWidth(e.target.value);
+                actualizarSeleccionados((o) =>
+                  o?.tipo === "forma" && o?.figura === "line"
+                    ? { ...o, strokeWidth: nextStrokeWidth }
+                    : o
+                );
+              }}
+              className="w-[120px]"
+            />
+            <span className="min-w-[34px] text-right text-xs text-gray-700">
+              {grosorLineaActual}px
+            </span>
           </div>
         )}
 

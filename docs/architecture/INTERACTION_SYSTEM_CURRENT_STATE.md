@@ -393,9 +393,9 @@ Current touch-intent gate:
 Current move behavior:
 
 - drag-overlay bounds are recalculated from live node bounds
-- guides are scheduled separately through `scheduleGuideEvaluation(...)`
-- guide evaluation is RAF-coalesced when `requestAnimationFrame` exists
+- individual guide requests run synchronously through `scheduleGuideEvaluation(...)` and `flushScheduledGuideEvaluation(...)` for every object family on the shared pipeline
 - if snapping moves the live node, the composer re-reads live selection bounds and resynchronizes the controlled drag overlay
+- desktop Alt/Option is carried in the same drag request and temporarily bypasses snap; touch classification still comes from `editorTouchDragIntent.js`
 
 Current end behavior:
 
@@ -527,21 +527,25 @@ Current guide computation:
 
 - section center guides are resolved from the active section
 - element-to-element guide candidates are limited to objects in the same section
+- candidate preselection is bounded independently for X and Y, then resolved deterministically by distance and semantic priority
 - section guides and object guides compete per axis with section-priority bias
-- snap locks are stored in `snapLockRef`
+- snap locks are stored in `snapLockRef` with drag-session and concrete target identity
+- an accepted section or element candidate applies its complete axis delta; guide lines are published only from the post-snap live geometry when the relation is within the explicit alignment tolerance
+- section center, center-to-center, edge-to-edge, and center-to-edge relations travel in the existing guide-line shape; `CanvasGuideLayer` maps them to solid, dashed, dotted, and dash-dot treatments respectively
+- activation/release radii and guide stroke/dash metrics are converted from perceptual screen pixels by the current visual scale; all snap calculations remain in canvas coordinates
 
 Current execution flow:
 
-1. drag move stores the latest guide payload
-2. `scheduleGuideEvaluation(...)` coalesces work behind `requestAnimationFrame`
-3. `flushScheduledGuideEvaluation(...)` calls `mostrarGuias(...)`
-4. `mostrarGuias(...)` may mutate the live node position by snapping it
-5. if the active drag-overlay session still matches, the composer performs `guide-post-snap-sync` to refresh the drag-overlay box
-6. `CanvasGuideLayer` renders the current guide lines
+1. drag move builds the eligible individual guide payload, including the current desktop modifier state
+2. `scheduleGuideEvaluation(...)` synchronously calls `flushScheduledGuideEvaluation(...)`
+3. `mostrarGuias(...)` reads the legal live geometry, resolves per-axis candidates, and applies an exact snap when eligible
+4. `mostrarGuias(...)` re-reads post-snap live geometry and publishes only verified guide relations
+5. if the active drag-overlay session still matches, the composer performs `guide-post-snap-sync` from that post-snap geometry
+6. `CanvasGuideLayer` renders the current guide lines with visual-scale compensation
+7. drag end, cancellation, invalid target/geometry, evaluation failure, or unmount clears pending work, locks, and guide output immediately
 
 Current ambiguity / race conditions:
 
-- guides intentionally lag behind the raw drag sample by one RAF when RAF exists
 - guides are not authoritative for multi-selection/group drag
 - guide output depends on live node geometry, not just persisted object data
 
@@ -908,9 +912,9 @@ Current drag geometry flow after the change:
 Current snap mutation timing after the change:
 
 1. Drag move still schedules eligible guide evaluation through `scheduleGuideEvaluation(...)`.
-2. For single dragged `texto`, `forma`, `icono`, and `icono-svg` elements, `scheduleGuideEvaluation(...)` now flushes guide evaluation synchronously instead of waiting for a later RAF boundary, so the guide decision, snap mutation, post-snap reread, and overlay resync remain inside the same drag sample.
+2. For every eligible single-element family on the individual pipeline, `scheduleGuideEvaluation(...)` now flushes guide evaluation synchronously instead of waiting for a later RAF boundary, so the guide decision, snap mutation, post-snap reread, and overlay resync remain inside the same drag sample.
 3. `mostrarGuias(...)` in `useGuiasCentrado.js` now reads the active drag box from the live node only; it no longer feeds drag input position into the active drag box reader, and for non-text families it aligns that live reread with the same selection-rect basis used by overlay sync.
-4. If snap commits, `mostrarGuias(...)` still mutates the live node, then immediately re-reads `postSnapBox` from the same family-aligned live geometry path before returning the guide outcome.
+4. If snap commits, `mostrarGuias(...)` applies the complete axis delta to the live node, then immediately re-reads `postSnapBox` from the same family-aligned live geometry path before returning the guide outcome; a relation line is emitted only when that reread verifies alignment within tolerance.
 5. `flushScheduledGuideEvaluation(...)` in the composer still performs `guide-post-snap-sync`, but it now records the pre-resync and post-resync overlay rects, geometry families, and mismatch classification against the post-snap live reread so drift would be observable if the resync failed.
 
 Overlay resync mechanism after snap:
@@ -938,7 +942,7 @@ Family-specific handling after the change:
 
 - `useGuiasCentrado.js` now requires authoritative text geometry for the active dragged text box and does not use input-position pose shifting for drag-time text snap evaluation.
 - `useGuiasCentrado.js` now resolves active dragged `forma` and `icono` boxes through the same live selection-rect helper used by overlay sync, rather than a broader raw stage client rect that could include a different envelope near guide thresholds.
-- Single dragged `forma`, `icono`, and `icono-svg` elements now use the same synchronous guide-evaluation timing rule as text so guide snap cannot lag one visual beat behind the raw dragmove sample.
+- All eligible individual-drag families now use the same synchronous guide-evaluation timing rule that Phase 2 first established for text, `forma`, `icono`, and `icono-svg`, so Gallery, Countdown, CTA/button, image, and other generic-renderer families cannot lag one visual beat behind the raw dragmove sample.
 - `SelectionBoundsIndicator.jsx` now reads authoritative text rects, not generic `getClientRect(...)`, when comparing the rendered drag overlay against visible text geometry.
 - The verified root cause of the text vibration was both timing-sensitive snap resync and geometry inconsistency.
 - The dominant earlier correctness issue for text in code was geometry inconsistency: the guide path could reason from an input-position-adjusted text pose while the drag overlay was synchronized from live selection bounds.
@@ -949,6 +953,7 @@ Family-specific handling after the change:
 Verification note:
 
 - Phase 2 is now the current stable drag-geometry baseline. The Phase 2 instrumentation remains in place so later phases can verify they did not reintroduce drag/snap drift across text and non-text object families.
+- The current guide refinement preserves that baseline while adding exact snap, per-axis bounded candidates, scale-compensated presentation/radii, semantic relation styles, deterministic session cleanup, and desktop Alt/Option bypass inside the same owners.
 
 ## 19. Drag End / Settling / Handoff (Post Phase 3)
 

@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Layer, Line } from "react-konva";
 import { trackCanvasDragPerf } from "@/components/editor/canvasEditor/canvasDragPerf";
+import { resolveGuideVisualMetrics } from "@/lib/editorAlignmentGuides";
 import { dashboardExportExcludeProps } from "@/utils/dashboardCanvasExport";
 
 function getGuideLayerPerfNow() {
@@ -10,7 +11,10 @@ function getGuideLayerPerfNow() {
   return Date.now();
 }
 
-const CanvasGuideLayer = forwardRef(function CanvasGuideLayer(_props, ref) {
+const CanvasGuideLayer = forwardRef(function CanvasGuideLayer(
+  { visualScale = 1 },
+  ref
+) {
   const [guideLines, setGuideLines] = useState([]);
   const layerRef = useRef(null);
   const guideLinesRef = useRef([]);
@@ -20,14 +24,20 @@ const CanvasGuideLayer = forwardRef(function CanvasGuideLayer(_props, ref) {
   }, [guideLines]);
 
   const setGuideLinesState = useCallback((nextLines = []) => {
-    setGuideLines(Array.isArray(nextLines) ? nextLines : []);
+    const safeLines = Array.isArray(nextLines) ? nextLines : [];
+    guideLinesRef.current = safeLines;
+    setGuideLines(safeLines);
   }, []);
 
   const clearGuideLines = useCallback(() => {
+    guideLinesRef.current = [];
     setGuideLines([]);
   }, []);
 
-  const getGuideLinesCount = useCallback(() => guideLines.length, [guideLines.length]);
+  const getGuideLinesCount = useCallback(
+    () => guideLinesRef.current.length,
+    []
+  );
 
   useImperativeHandle(ref, () => ({
     setGuideLines: setGuideLinesState,
@@ -124,19 +134,23 @@ const CanvasGuideLayer = forwardRef(function CanvasGuideLayer(_props, ref) {
     >
       {guideLines.map((linea, index) => {
         const esLineaSeccion = linea?.priority === "seccion";
+        const visualMetrics = resolveGuideVisualMetrics(
+          linea?.semantic,
+          visualScale
+        );
         return (
           <Line
-            key={`${linea?.type || "guide"}-${index}`}
+            key={`${linea?.type || "guide"}-${linea?.semantic || "generic"}-${index}`}
             name="ui"
             points={Array.isArray(linea?.points) ? linea.points : []}
             stroke={esLineaSeccion ? "#773dbe" : "#9333ea"}
-            strokeWidth={esLineaSeccion ? 2 : 1}
-            dash={linea?.style === "dashed" ? [8, 6] : undefined}
-            opacity={esLineaSeccion ? 0.9 : 0.7}
+            strokeWidth={visualMetrics.strokeWidth}
+            dash={visualMetrics.dash}
+            opacity={visualMetrics.opacity}
             listening={false}
             perfectDrawEnabled={false}
             shadowColor={esLineaSeccion ? "rgba(119, 61, 190, 0.3)" : undefined}
-            shadowBlur={esLineaSeccion ? 4 : 0}
+            shadowBlur={visualMetrics.shadowBlur}
             shadowEnabled={esLineaSeccion}
           />
         );

@@ -22,6 +22,17 @@ import {
 import {
     resolveNodeSelectionRect,
 } from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
+import {
+    GUIDE_RELATIONS,
+    buildReachGuideSegments,
+    chooseGuideAxisDecision,
+    getGuideAxisAnchors,
+    resolveCanvasDistanceForScreenPx,
+    resolveExactSectionSnapDelta,
+    resolveLockedGuideDecision,
+    selectGuideCandidatesByAxis,
+    shouldBypassGuideSnap,
+} from "@/lib/editorAlignmentGuides";
 
 function roundGuideMetric(value) {
     const numeric = Number(value);
@@ -41,6 +52,7 @@ function buildGuideLinesSignature(lines = []) {
         line?.type || "",
         line?.priority || "",
         line?.style || "",
+        line?.semantic || "",
         ...(Array.isArray(line?.points) ? line.points.map(roundGuideMetric) : []),
     ].join(":")).join("|");
 }
@@ -83,6 +95,7 @@ function resolveGuideEvaluationRequest(input, fallbackElementId = null) {
                 : null,
         elementId,
         pos: isObjectInput ? (input.pos ?? null) : input,
+        modifierState: isObjectInput ? (input.modifierState ?? null) : null,
     };
 }
 
@@ -235,21 +248,15 @@ function maybeLogGuideDebug(eventName, payload = {}, options = {}) {
  */
 export default function useGuiasCentrado({
     anchoCanvas = 800,
-    altoCanvas = 800,
+    visualScale = 1,
     magnetRadius = 16,       // distancia para activar el snap
     elementMagnetRadius = null,   // null => magnetRadius
     sectionMagnetRadius = null,   // null => magnetRadius
-    sectionShowRadius = 18,  // legado (no usado para mostrar líneas de sección)
     sectionPriorityBias = 4,      // ventaja extra para que gane sección vs elementos
-    snapStrength = 1,        // 1 = pegado exacto; 0.4-0.6 = tracción suave
-    sectionSnapStrength = null,   // null => snapStrength
-    elementSnapStrength = null,   // null => snapStrength
     sectionLineTolerance = 0.75,  // solo mostrar guía de sección cuando está realmente centrado
     seccionesOrdenadas = [],
     onGuideLinesChange = null,
 }) {
-    const guideLinesRafRef = useRef(null);
-    const pendingGuideLinesRef = useRef(null);
     const lastGuideSignatureRef = useRef("");
     const objectCacheRef = useRef({
         source: null,
@@ -268,6 +275,7 @@ export default function useGuiasCentrado({
     });
     const snapLockRef = useRef({
         ownerId: null,
+        ownerSessionId: null,
         x: null,
         y: null,
     });
@@ -289,6 +297,7 @@ export default function useGuiasCentrado({
     const resetSnapLocks = useCallback(() => {
         snapLockRef.current = {
             ownerId: null,
+            ownerSessionId: null,
             x: null,
             y: null,
         };
@@ -314,7 +323,6 @@ export default function useGuiasCentrado({
                 throttleMs: 180,
                 throttleKey: "guides:commit-skip",
             });
-            pendingGuideLinesRef.current = null;
             return;
         }
 
@@ -338,48 +346,15 @@ export default function useGuiasCentrado({
             force: true,
         });
 
-        pendingGuideLinesRef.current = {
-            lines: safeLines,
-            signature: nextSignature,
-        };
-
-        if (guideLinesRafRef.current != null) return;
-
-        if (typeof window === "undefined") {
-            lastGuideSignatureRef.current = nextSignature;
-            publishGuideLines(safeLines);
-            pendingGuideLinesRef.current = null;
-            return;
-        }
-
-        guideLinesRafRef.current = window.requestAnimationFrame(() => {
-            guideLinesRafRef.current = null;
-            const pending = pendingGuideLinesRef.current;
-            if (!pending) return;
-            pendingGuideLinesRef.current = null;
-
-            if (pending.signature === lastGuideSignatureRef.current) {
-                trackCanvasDragPerf("guides:commit-skip", {
-                    lines: pending.lines.length,
-                    signatureSize: pending.signature.length,
-                    reason: "raf-same-signature",
-                }, {
-                    throttleMs: 180,
-                    throttleKey: "guides:commit-skip",
-                });
-                return;
-            }
-
-            lastGuideSignatureRef.current = pending.signature;
-            trackCanvasDragPerf("guides:commit", {
-                lines: pending.lines.length,
-                signatureSize: pending.signature.length,
-            }, {
-                throttleMs: 180,
-                throttleKey: "guides:commit",
-            });
-            publishGuideLines(pending.lines);
+        lastGuideSignatureRef.current = nextSignature;
+        trackCanvasDragPerf("guides:commit", {
+            lines: safeLines.length,
+            signatureSize: nextSignature.length,
+        }, {
+            throttleMs: 180,
+            throttleKey: "guides:commit",
         });
+        publishGuideLines(safeLines);
     }, [publishGuideLines]);
 
     const clearGuideLines = useCallback(() => {
@@ -402,13 +377,10 @@ export default function useGuiasCentrado({
     }, [commitGuideLines, resetSnapLocks]);
 
     useEffect(() => () => {
-        if (
-            guideLinesRafRef.current != null &&
-            typeof window !== "undefined"
-        ) {
-            window.cancelAnimationFrame(guideLinesRafRef.current);
-        }
-    }, []);
+        resetSnapLocks();
+        lastGuideSignatureRef.current = "";
+        publishGuideLines([]);
+    }, [publishGuideLines, resetSnapLocks]);
 
     const getObjectCache = useCallback((objetos = []) => {
         if (objectCacheRef.current.source === objetos) {
@@ -462,12 +434,21 @@ export default function useGuiasCentrado({
     }, [seccionesOrdenadas]);
 
 
-    const effElementMagnetRadius = elementMagnetRadius ?? magnetRadius;
-    const effSectionMagnetRadius = sectionMagnetRadius ?? magnetRadius;
-    const effSectionSnapStrength = sectionSnapStrength ?? snapStrength;
-    const effElementSnapStrength = elementSnapStrength ?? snapStrength;
-    const effElementReleaseRadius = effElementMagnetRadius + 8;
-    const effSectionReleaseRadius = effSectionMagnetRadius + 8;
+    const effElementMagnetRadius = resolveCanvasDistanceForScreenPx(
+        elementMagnetRadius ?? magnetRadius,
+        visualScale
+    );
+    const effSectionMagnetRadius = resolveCanvasDistanceForScreenPx(
+        sectionMagnetRadius ?? magnetRadius,
+        visualScale
+    );
+    const effSectionPriorityBias = resolveCanvasDistanceForScreenPx(
+        sectionPriorityBias,
+        visualScale
+    );
+    const releasePadding = resolveCanvasDistanceForScreenPx(8, visualScale);
+    const effElementReleaseRadius = effElementMagnetRadius + releasePadding;
+    const effSectionReleaseRadius = effSectionMagnetRadius + releasePadding;
     const snapLockMinMs = 120;
     const snapSoftReleaseMultiplier = 1.75;
 
@@ -481,82 +462,6 @@ export default function useGuiasCentrado({
         }
         return offsetY;
     }, [seccionesOrdenadas]);
-
-    // ---- Segmentos "reach" entre cajas (va hasta el otro elemento) ----
-    const reachVertical = (x, selfBox, otherBox, gap = 6) => {
-        const selfCy = selfBox.y + selfBox.height / 2;
-        const otherCy = otherBox.y + otherBox.height / 2;
-        let y1, y2;
-        if (otherCy <= selfCy) {
-            y1 = otherBox.y + otherBox.height + gap; // desde borde inferior del otro
-            y2 = selfBox.y - gap;                     // hasta borde superior del self
-        } else {
-            y1 = selfBox.y + selfBox.height + gap;
-            y2 = otherBox.y - gap;
-        }
-        return [x, y1, x, y2];
-    };
-
-    const reachHorizontal = (y, selfBox, otherBox, gap = 6) => {
-        const selfCx = selfBox.x + selfBox.width / 2;
-        const otherCx = otherBox.x + otherBox.width / 2;
-        let x1, x2;
-        if (otherCx <= selfCx) {
-            x1 = otherBox.x + otherBox.width + gap; // desde borde derecho del otro
-            x2 = selfBox.x - gap;                    // hasta borde izquierdo del self
-        } else {
-            x1 = selfBox.x + selfBox.width + gap;
-            x2 = otherBox.x - gap;
-        }
-        return [x1, y, x2, y];
-    };
-
-    // ---- Delta para alinear a la guía más cercana ----
-    const deltaForGuide = (axis, guideValue, box) => {
-        if (axis === "x") {
-            const center = box.x + box.width / 2;
-            const left = box.x;
-            const right = box.x + box.width;
-            const opts = [
-                { dist: Math.abs(center - guideValue), delta: guideValue - center },
-                { dist: Math.abs(left - guideValue), delta: guideValue - left },
-                { dist: Math.abs(right - guideValue), delta: guideValue - right },
-            ].sort((a, b) => a.dist - b.dist)[0];
-            return opts.delta;
-        } else {
-            const center = box.y + box.height / 2;
-            const top = box.y;
-            const bottom = box.y + box.height;
-            const opts = [
-                { dist: Math.abs(center - guideValue), delta: guideValue - center },
-                { dist: Math.abs(top - guideValue), delta: guideValue - top },
-                { dist: Math.abs(bottom - guideValue), delta: guideValue - bottom },
-            ].sort((a, b) => a.dist - b.dist)[0];
-            return opts.delta;
-        }
-    };
-
-    // Misma heurística que deltaForGuide, pero devuelve distancia mínima
-    const distForGuide = (axis, guideValue, box) => {
-        if (axis === "x") {
-            const center = box.x + box.width / 2;
-            const left = box.x;
-            const right = box.x + box.width;
-            return Math.min(
-                Math.abs(center - guideValue),
-                Math.abs(left - guideValue),
-                Math.abs(right - guideValue)
-            );
-        }
-        const center = box.y + box.height / 2;
-        const top = box.y;
-        const bottom = box.y + box.height;
-        return Math.min(
-            Math.abs(center - guideValue),
-            Math.abs(top - guideValue),
-            Math.abs(bottom - guideValue)
-        );
-    };
 
     // ---- Candidatos de la MISMA sección (centros + bordes) ----
     const getNodeBox = (node, stage, obj = null, options = {}) => {
@@ -823,41 +728,9 @@ export default function useGuiasCentrado({
     }, []);
 
     const buildSameSectionGuides = (selfBox, guideTargets) => {
-        if (!selfBox || !Array.isArray(guideTargets) || guideTargets.length === 0) {
-            return [];
-        }
-        const selfCenterX = selfBox.x + selfBox.width / 2;
-        const selfCenterY = selfBox.y + selfBox.height / 2;
-        const candidates = guideTargets
-            .map((target) => ({
-                box: target.box,
-                d:
-                    Math.abs(selfCenterX - target.centerX) +
-                    Math.abs(selfCenterY - target.centerY),
-            }))
-            .filter(Boolean)
-            .sort((a, b) => a.d - b.d)
-            .slice(0, 3); // pocos vecinos → menos ruido
-
-        const g = [];
-        for (const { box } of candidates) {
-            const cx = box.x + box.width / 2;
-            const cy = box.y + box.height / 2;
-            const left = box.x;
-            const right = box.x + box.width;
-            const top = box.y;
-            const bottom = box.y + box.height;
-
-            // Centros
-            g.push({ axis: "x", value: cx, type: "el-cx", targetBox: box, priority: "elemento", style: "dashed" });
-            g.push({ axis: "y", value: cy, type: "el-cy", targetBox: box, priority: "elemento", style: "dashed" });
-            // Bordes
-            g.push({ axis: "x", value: left, type: "el-left", targetBox: box, priority: "elemento", style: "dashed" });
-            g.push({ axis: "x", value: right, type: "el-right", targetBox: box, priority: "elemento", style: "dashed" });
-            g.push({ axis: "y", value: top, type: "el-top", targetBox: box, priority: "elemento", style: "dashed" });
-            g.push({ axis: "y", value: bottom, type: "el-bottom", targetBox: box, priority: "elemento", style: "dashed" });
-        }
-        return g;
+        return selectGuideCandidatesByAxis(selfBox, guideTargets, {
+            limitPerAxis: 3,
+        });
     };
 
     const readActiveDragBox = ({ stage, node, objActual }) => (
@@ -959,13 +832,27 @@ export default function useGuiasCentrado({
             });
             return null;
         }
+        if (shouldBypassGuideSnap(guideRequest.modifierState)) {
+            clearGuideLines();
+            finishPerf?.({ reason: "desktop-modifier-bypass" });
+            return {
+                elementId: idActual,
+                snapCommitted: false,
+                snapMovedNode: false,
+                snapXSource: "none",
+                snapYSource: "none",
+                bypassed: true,
+            };
+        }
         const node = elementRefs.current?.[idActual];
         if (!node) {
+            clearGuideLines();
             finishPerf?.({ reason: "missing-node" });
             return null;
         }
         const stage = node.getStage?.();
         if (!stage) {
+            clearGuideLines();
             finishPerf?.({ reason: "missing-stage" });
             return null;
         }
@@ -994,9 +881,13 @@ export default function useGuiasCentrado({
                 };
             }
 
-            if (snapLockRef.current.ownerId !== idActual) {
+            if (
+                snapLockRef.current.ownerId !== idActual ||
+                snapLockRef.current.ownerSessionId !== guideSessionId
+            ) {
                 snapLockRef.current = {
                     ownerId: idActual,
+                    ownerSessionId: guideSessionId,
                     x: null,
                     y: null,
                 };
@@ -1010,6 +901,7 @@ export default function useGuiasCentrado({
             });
             const initialBox = initialBoxInfo?.box || null;
             if (!initialBox) {
+                clearGuideLines();
                 finishPerf?.({ reason: "missing-self-box-before" });
                 return null;
             }
@@ -1065,7 +957,11 @@ export default function useGuiasCentrado({
             );
             capturePerfPhase("targetsLookupMs");
 
-            const elementGuides = buildSameSectionGuides(initialBox, sectionGuideTargets);
+            const elementCandidates = buildSameSectionGuides(
+                initialBox,
+                sectionGuideTargets
+            );
+            const elementGuides = elementCandidates.all;
 
             // One snapshot per evaluation frame keeps guide decisions and snap math
             // aligned to the same drag-time geometry sample.
@@ -1091,108 +987,51 @@ export default function useGuiasCentrado({
                 distSecY,
             };
 
-            const bestElX = dragSnapshot.elementGuides
-                .filter(g => g.axis === "x")
-                .map(g => ({ g, dist: distForGuide("x", g.value, dragSnapshot.selfBox) }))
-                .sort((a, b) => a.dist - b.dist)[0];
-
-            const bestElY = dragSnapshot.elementGuides
-                .filter(g => g.axis === "y")
-                .map(g => ({ g, dist: distForGuide("y", g.value, dragSnapshot.selfBox) }))
-                .sort((a, b) => a.dist - b.dist)[0];
+            const bestElX = elementCandidates.x[0]
+                ? {
+                    g: elementCandidates.x[0],
+                    dist: elementCandidates.x[0].match.distance,
+                }
+                : null;
+            const bestElY = elementCandidates.y[0]
+                ? {
+                    g: elementCandidates.y[0],
+                    dist: elementCandidates.y[0].match.distance,
+                }
+                : null;
             capturePerfPhase("guideBuildMs");
 
-            const resolveLockedDecision = (axis, secDistCenter, bestEl) => {
-                const axisLock = snapLockRef.current?.[axis];
-                if (!axisLock) return null;
-                const lockAgeMs = Number.isFinite(Number(axisLock.lockedAtMs))
-                    ? getGuidePerfNow() - Number(axisLock.lockedAtMs)
-                    : Infinity;
-                const releaseMultiplier = lockAgeMs <= snapLockMinMs
-                    ? snapSoftReleaseMultiplier
-                    : 1;
+            const resolveAxisDecision = (axis, sectionDistance, bestElement) => (
+                resolveLockedGuideDecision({
+                    axis,
+                    lock: snapLockRef.current?.[axis],
+                    selfBox: dragSnapshot.selfBox,
+                    targets: dragSnapshot.sectionGuideTargets,
+                    sectionDistance,
+                    sectionReleaseRadius: effSectionReleaseRadius,
+                    elementReleaseRadius: effElementReleaseRadius,
+                    nowMs: getGuidePerfNow(),
+                    lockMinMs: snapLockMinMs,
+                    softReleaseMultiplier: snapSoftReleaseMultiplier,
+                }) || chooseGuideAxisDecision({
+                    sectionDistance,
+                    bestElement,
+                    sectionRadius: effSectionMagnetRadius,
+                    elementRadius: effElementMagnetRadius,
+                    sectionPriorityBias: effSectionPriorityBias,
+                })
+            );
 
-                if (axisLock.source === "seccion") {
-                    const releaseRadius =
-                        Number(axisLock.releaseRadius || effSectionReleaseRadius) * releaseMultiplier;
-                    if (secDistCenter <= releaseRadius) {
-                        return {
-                            source: "seccion",
-                            locked: true,
-                            lockAgeMs: roundGuideMetric(lockAgeMs),
-                        };
-                    }
-                    return null;
-                }
-
-                const matchingGuide = dragSnapshot.elementGuides
-                    .filter((guide) => guide.axis === axis)
-                    .map((guide) => ({
-                        g: guide,
-                        dist: distForGuide(axis, guide.value, dragSnapshot.selfBox),
-                    }))
-                    .filter(({ g }) => (
-                        g.type === axisLock.nearType &&
-                        Math.abs((g.value ?? 0) - (axisLock.targetValue ?? 0)) <= 0.5
-                    ))
-                    .sort((a, b) => a.dist - b.dist)[0];
-
-                const lockedDist = matchingGuide?.dist ?? (
-                    Number.isFinite(Number(axisLock.targetValue))
-                        ? distForGuide(axis, axisLock.targetValue, dragSnapshot.selfBox)
-                        : Infinity
-                );
-
-                const releaseRadius =
-                    Number(axisLock.releaseRadius || effElementReleaseRadius) * releaseMultiplier;
-
-                if (!Number.isFinite(lockedDist) || lockedDist > releaseRadius) {
-                    return null;
-                }
-
-                if (matchingGuide) {
-                    return {
-                        source: "elemento",
-                        near: matchingGuide,
-                        locked: true,
-                        lockAgeMs: roundGuideMetric(lockAgeMs),
-                    };
-                }
-
-                return {
-                    source: "elemento",
-                    near: bestEl || {
-                        g: {
-                            value: axisLock.targetValue,
-                            type: axisLock.nearType || null,
-                            targetBox: null,
-                        },
-                        dist: lockedDist,
-                    },
-                    locked: true,
-                    lockAgeMs: roundGuideMetric(lockAgeMs),
-                };
-            };
-
-            // Decidir qué guía “gana” por eje (sección vs elemento)
-            const decidirSnap = (secDistCenter, bestEl) => {
-                const secOk = secDistCenter <= effSectionMagnetRadius;
-                const elOk = !!bestEl && bestEl.dist <= effElementMagnetRadius;
-                if (!secOk && !elOk) return null;
-                if (secOk && !elOk) return { source: "seccion" };
-                if (!secOk && elOk) return { source: "elemento", near: bestEl };
-
-                // ambos aplican: la sección tiene ventaja (bias)
-                const elBeatsSection = (bestEl.dist + sectionPriorityBias) < secDistCenter;
-                return elBeatsSection
-                    ? { source: "elemento", near: bestEl }
-                    : { source: "seccion" };
-            };
-
-            const decisionX = resolveLockedDecision("x", dragSnapshot.distSecX, bestElX)
-                || decidirSnap(dragSnapshot.distSecX, bestElX);
-            const decisionY = resolveLockedDecision("y", dragSnapshot.distSecY, bestElY)
-                || decidirSnap(dragSnapshot.distSecY, bestElY);
+            const decisionX = resolveAxisDecision(
+                "x",
+                dragSnapshot.distSecX,
+                bestElX
+            );
+            const decisionY = resolveAxisDecision(
+                "y",
+                dragSnapshot.distSecY,
+                bestElY
+            );
             capturePerfPhase("decisionMs");
 
             const previousDecisionDebug = guideDecisionDebugRef.current || {};
@@ -1409,7 +1248,11 @@ export default function useGuiasCentrado({
                         ? dragSnapshot.sectionCenterX
                         : dragSnapshot.sectionCenterY;
                     const distBefore = Math.abs(targetCenter - nextCenter);
-                    const delta = (targetCenter - nextCenter) * effSectionSnapStrength;
+                    const delta = resolveExactSectionSnapDelta(
+                        axis,
+                        boxBeforeSnap,
+                        targetCenter
+                    );
 
                     if (axis === "x") {
                         node.x(node.x() + delta);
@@ -1422,23 +1265,34 @@ export default function useGuiasCentrado({
                         axis,
                         deltaApplied: roundGuideMetric(delta),
                         distBefore: roundGuideMetric(distBefore),
-                        strength: roundGuideMetric(effSectionSnapStrength),
+                        strength: 1,
                         targetValue: roundGuideMetric(targetCenter),
                         nearType: null,
                     };
                 }
 
-                const delta = deltaForGuide(axis, decision.near.g.value, boxBeforeSnap);
-                const appliedDelta = delta * effElementSnapStrength;
-                if (axis === "x") node.x(node.x() + appliedDelta);
-                else node.y(node.y() + appliedDelta);
+                const delta = Number(decision?.near?.g?.match?.delta);
+                if (!Number.isFinite(delta)) {
+                    return {
+                        snapped: false,
+                        source: "none",
+                        axis,
+                        deltaApplied: 0,
+                        distBefore: null,
+                        strength: null,
+                        targetValue: null,
+                        nearType: null,
+                    };
+                }
+                if (axis === "x") node.x(node.x() + delta);
+                else node.y(node.y() + delta);
                 return {
                     snapped: true,
                     source: "elemento",
                     axis,
-                    deltaApplied: roundGuideMetric(appliedDelta),
+                    deltaApplied: roundGuideMetric(delta),
                     distBefore: roundGuideMetric(decision?.near?.dist),
-                    strength: roundGuideMetric(effElementSnapStrength),
+                    strength: 1,
                     targetValue: roundGuideMetric(decision?.near?.g?.value),
                     nearType: decision?.near?.g?.type || null,
                     near: decision.near,
@@ -1458,10 +1312,18 @@ export default function useGuiasCentrado({
                 const previousLock = snapLockRef.current?.[axis] || null;
                 const nextTargetValue = snapRes.targetValue ?? null;
                 const nextNearType = snapRes.nearType || decision?.near?.g?.type || null;
+                const nextTargetId = decision?.near?.g?.targetId || null;
+                const nextTargetAnchorKind =
+                    decision?.near?.g?.targetAnchorKind || null;
+                const nextSelfAnchorKind =
+                    decision?.near?.g?.selfAnchorKind || null;
                 const sameLock =
                     previousLock &&
                     previousLock.source === snapRes.source &&
                     previousLock.nearType === nextNearType &&
+                    previousLock.targetId === nextTargetId &&
+                    previousLock.targetAnchorKind === nextTargetAnchorKind &&
+                    previousLock.selfAnchorKind === nextSelfAnchorKind &&
                     (
                         (previousLock.targetValue == null && nextTargetValue == null) ||
                         (
@@ -1479,6 +1341,9 @@ export default function useGuiasCentrado({
                         source: "seccion",
                         targetValue: nextTargetValue,
                         nearType: null,
+                        targetId: null,
+                        targetAnchorKind: null,
+                        selfAnchorKind: null,
                         releaseRadius: effSectionReleaseRadius,
                         lockedAtMs,
                     };
@@ -1489,6 +1354,9 @@ export default function useGuiasCentrado({
                     source: "elemento",
                     targetValue: nextTargetValue,
                     nearType: nextNearType,
+                    targetId: nextTargetId,
+                    targetAnchorKind: nextTargetAnchorKind,
+                    selfAnchorKind: nextSelfAnchorKind,
                     releaseRadius: effElementReleaseRadius,
                     lockedAtMs,
                 };
@@ -1506,6 +1374,7 @@ export default function useGuiasCentrado({
             });
             const postSnapBox = postSnapBoxInfo?.box || null;
             if (!postSnapBox) {
+                clearGuideLines();
                 finishPerf?.({ reason: "missing-self-box-after" });
                 return null;
             }
@@ -1527,12 +1396,20 @@ export default function useGuiasCentrado({
                     return roundGuideMetric(Math.abs(nextCenter - targetCenter));
                 }
                 if (snapRes.source === "elemento" && snapRes.targetValue != null) {
-                    return roundGuideMetric(
-                        distForGuide(axis, snapRes.targetValue, postSnapBox)
+                    const selfAnchorKind = snapRes?.near?.g?.selfAnchorKind;
+                    const selfAnchor = getGuideAxisAnchors(postSnapBox, axis).find(
+                        (anchor) => anchor.kind === selfAnchorKind
                     );
+                    return selfAnchor
+                        ? roundGuideMetric(
+                            Math.abs(selfAnchor.value - snapRes.targetValue)
+                        )
+                        : null;
                 }
                 return null;
             };
+            const xDistAfter = computeSnapAfterDistance("x", snapResX);
+            const yDistAfter = computeSnapAfterDistance("y", snapResY);
 
             
 
@@ -1548,6 +1425,7 @@ export default function useGuiasCentrado({
                     type: "seccion-cx",
                     priority: "seccion",
                     style: "solid",
+                    semantic: GUIDE_RELATIONS.SECTION_CENTER,
                     points: [
                         dragSnapshot.sectionCenterX,
                         dragSnapshot.sectionOffsetY,
@@ -1565,25 +1443,56 @@ export default function useGuiasCentrado({
                     type: "seccion-cy",
                     priority: "seccion",
                     style: "solid",
+                    semantic: GUIDE_RELATIONS.SECTION_CENTER,
                     points: [0, dragSnapshot.sectionCenterY, anchoCanvas, dragSnapshot.sectionCenterY]
                 });
             }
 
-            if (snapResX.snapped && snapResX.source === "elemento" && snapResX.near?.g?.targetBox) {
-                lines.push({
+            if (
+                snapResX.snapped &&
+                snapResX.source === "elemento" &&
+                snapResX.near?.g?.targetBox &&
+                xDistAfter != null &&
+                Number(xDistAfter) <= sectionLineTolerance
+            ) {
+                const guide = snapResX.near.g;
+                buildReachGuideSegments({
+                    axis: "x",
+                    coordinate: guide.value,
+                    selfBox: postSnapBox,
+                    targetBox: guide.targetBox,
+                    gap: resolveCanvasDistanceForScreenPx(6, visualScale),
+                    exteriorLength: resolveCanvasDistanceForScreenPx(12, visualScale),
+                }).forEach((points) => lines.push({
                     type: "reach-x",
                     priority: "elemento",
-                    style: "dashed",
-                    points: reachVertical(snapResX.near.g.value, postSnapBox, snapResX.near.g.targetBox)
-                });
+                    style: guide.style,
+                    semantic: guide.semantic,
+                    points,
+                }));
             }
-            if (snapResY.snapped && snapResY.source === "elemento" && snapResY.near?.g?.targetBox) {
-                lines.push({
+            if (
+                snapResY.snapped &&
+                snapResY.source === "elemento" &&
+                snapResY.near?.g?.targetBox &&
+                yDistAfter != null &&
+                Number(yDistAfter) <= sectionLineTolerance
+            ) {
+                const guide = snapResY.near.g;
+                buildReachGuideSegments({
+                    axis: "y",
+                    coordinate: guide.value,
+                    selfBox: postSnapBox,
+                    targetBox: guide.targetBox,
+                    gap: resolveCanvasDistanceForScreenPx(6, visualScale),
+                    exteriorLength: resolveCanvasDistanceForScreenPx(12, visualScale),
+                }).forEach((points) => lines.push({
                     type: "reach-y",
                     priority: "elemento",
-                    style: "dashed",
-                    points: reachHorizontal(snapResY.near.g.value, postSnapBox, snapResY.near.g.targetBox)
-                });
+                    style: guide.style,
+                    semantic: guide.semantic,
+                    points,
+                }));
             }
             capturePerfPhase("lineBuildMs");
 
@@ -1599,8 +1508,8 @@ export default function useGuiasCentrado({
                     yStrength: snapResY.strength ?? null,
                     xDistBefore: snapResX.distBefore ?? null,
                     yDistBefore: snapResY.distBefore ?? null,
-                    xDistAfter: computeSnapAfterDistance("x", snapResX),
-                    yDistAfter: computeSnapAfterDistance("y", snapResY),
+                    xDistAfter,
+                    yDistAfter,
                     xTargetType: snapResX.nearType || null,
                     yTargetType: snapResY.nearType || null,
                     linesPlanned: lines.length,
@@ -1618,8 +1527,6 @@ export default function useGuiasCentrado({
                 Math.abs(Number(postSnapBoxDelta?.dy || 0)) > 0.01 ||
                 Math.abs(Number(postSnapBoxDelta?.dCenterX || 0)) > 0.01 ||
                 Math.abs(Number(postSnapBoxDelta?.dCenterY || 0)) > 0.01;
-            const xDistAfter = computeSnapAfterDistance("x", snapResX);
-            const yDistAfter = computeSnapAfterDistance("y", snapResY);
             const forcePostSnapTextLog =
                 shouldForceGuideGeometryLog({
                     delta: postSnapTextDiagnostics?.guideVsAuthoritativeDelta,
@@ -1865,6 +1772,7 @@ export default function useGuiasCentrado({
                 preToPostDelta: postSnapBoxDelta,
             };
         } catch (e) {
+            clearGuideLines();
             finishPerf?.({
                 reason: "error",
                 message: e?.message || String(e),
@@ -1875,15 +1783,17 @@ export default function useGuiasCentrado({
             return null;
         }
     }, [
-        anchoCanvas, altoCanvas,
-        magnetRadius, sectionShowRadius, snapStrength,
+        anchoCanvas, visualScale,
+        magnetRadius,
         seccionesOrdenadas,
         calcularOffsetSeccion, getSectionById,
         elementMagnetRadius, sectionMagnetRadius, sectionPriorityBias,
-        sectionSnapStrength, elementSnapStrength, sectionLineTolerance,
+        sectionLineTolerance,
         clearGuideLines, commitGuideLines, getObjectCache, getSectionGuideTargets,
         readTextGuideGeometryDiagnostics,
+        effElementMagnetRadius, effSectionMagnetRadius,
         effElementReleaseRadius, effSectionReleaseRadius,
+        effSectionPriorityBias,
         snapLockMinMs, snapSoftReleaseMultiplier
     ]);
 

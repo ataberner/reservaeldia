@@ -1021,7 +1021,7 @@ export default function CanvasStageContent({
   isDragging,
   setIsDragging = () => {},
   actualizarLinea,
-  guiaLineas = [],
+  guideVisualScale = 1,
   guideOverlayRef,
   handleTransformInteractionStart,
   handleTransformInteractionEnd,
@@ -7625,6 +7625,7 @@ export default function CanvasStageContent({
       targetType,
       isText,
       pos: pos || null,
+      modifierState: meta?.modifierState || null,
     };
   }, [objectLookup]);
 
@@ -7857,69 +7858,18 @@ export default function CanvasStageContent({
       throttleKey: `guides:schedule:${guideRequest.elementId}`,
     });
 
-    const shouldFlushSynchronouslyForStrictGeometryChain =
-      guideRequest.isText === true ||
-      guideRequest.targetType === "forma" ||
-      guideRequest.targetType === "icono" ||
-      guideRequest.targetType === "icono-svg";
-    if (shouldFlushSynchronouslyForStrictGeometryChain) {
-      if (
-        nextFrame.rafId &&
-        typeof window !== "undefined" &&
-        typeof window.cancelAnimationFrame === "function"
-      ) {
-        window.cancelAnimationFrame(nextFrame.rafId);
-      }
-      guideDragFrameRef.current = {
-        rafId: 0,
-        payload: guideRequest,
-      };
-
-      const syncFlushSample = sampleCanvasInteractionLog(
-        `guides:strict-sync-flush:${guideRequest.sessionId || guideRequest.elementId || "unknown"}`,
-        {
-          firstCount: 8,
-          throttleMs: 120,
-        }
-      );
-      if (syncFlushSample.shouldLog) {
-        logSelectedDragDebug("guides:strict-sync-flush", {
-          sampleCount: syncFlushSample.sampleCount,
-          perfNowMs: roundRotationMetric(getComposerVisualNowMs()),
-          guideSessionId: guideRequest.sessionId || null,
-          interactionEpoch: guideRequest.interactionEpoch || null,
-          elementId: guideRequest.elementId,
-          targetType: guideRequest.targetType || null,
-          source: guideRequest.source || "drag-move",
-          pipeline: guideRequest.pipeline || "individual",
-          pos: guideRequest.pos || null,
-          replacedPendingPayload: Boolean(current.payload),
-          cancelledPendingRaf: Boolean(current.rafId),
-          flushReason:
-            guideRequest.isText === true
-              ? "text-drag-single-geometry-chain"
-              : "shape-icon-drag-single-geometry-chain",
-        });
-      }
-
-      flushScheduledGuideEvaluation();
-      return;
-    }
-
-    if (nextFrame.rafId) return;
-
     if (
-      typeof window === "undefined" ||
-      typeof window.requestAnimationFrame !== "function"
+      nextFrame.rafId &&
+      typeof window !== "undefined" &&
+      typeof window.cancelAnimationFrame === "function"
     ) {
-      flushScheduledGuideEvaluation();
-      return;
+      window.cancelAnimationFrame(nextFrame.rafId);
     }
-
-    nextFrame.rafId = window.requestAnimationFrame(() => {
-      flushScheduledGuideEvaluation();
-    });
-    guideDragFrameRef.current = nextFrame;
+    guideDragFrameRef.current = {
+      rafId: 0,
+      payload: guideRequest,
+    };
+    flushScheduledGuideEvaluation();
   }, [flushScheduledGuideEvaluation]);
 
   const clearDragGuides = useCallback((options = {}) => {
@@ -7970,9 +7920,9 @@ export default function CanvasStageContent({
 
   useEffect(() => (
     () => {
-      cancelScheduledGuideEvaluation();
+      clearDragGuides({ reason: "unmount", source: "composer-unmount" });
     }
-  ), [cancelScheduledGuideEvaluation]);
+  ), [clearDragGuides]);
 
   const startDragSettleSession = useCallback((
     dragId,
@@ -12657,33 +12607,12 @@ export default function CanvasStageContent({
 
 
 
-                  {/* LÃ­neas de guÃ­a dinÃ¡micas mejoradas */}
-                  {!isImageRotateInteractionActive && guiaLineas.map((linea, i) => {
-                    // Determinar el estilo visual segÃºn el tipo
-                    const esLineaSeccion = linea.priority === 'seccion';
-
-                    return (
-                      <Line
-                        name="ui"
-                        key={`${linea.type}-${i}`}
-                        points={linea.points}
-                        stroke={esLineaSeccion ? "#773dbe" : "#9333ea"} // Violeta mÃ¡s intenso para secciÃ³n
-                        strokeWidth={esLineaSeccion ? 2 : 1} // LÃ­neas de secciÃ³n mÃ¡s gruesas
-                        dash={linea.style === 'dashed' ? [8, 6] : undefined} // Punteado para elementos
-                        opacity={esLineaSeccion ? 0.9 : 0.7} // LÃ­neas de secciÃ³n mÃ¡s opacas
-                        listening={false}
-                        perfectDrawEnabled={false}
-                        // Efecto sutil de resplandor para lÃ­neas de secciÃ³n
-                        shadowColor={esLineaSeccion ? "rgba(119, 61, 190, 0.3)" : undefined}
-                        shadowBlur={esLineaSeccion ? 4 : 0}
-                        shadowEnabled={esLineaSeccion}
-                      />
-                    );
-                  })}
-
                 </CanvasElementsLayer>
 
-                <CanvasGuideLayer ref={guideOverlayRef} />
+                <CanvasGuideLayer
+                  ref={guideOverlayRef}
+                  visualScale={guideVisualScale}
+                />
 
                 {/* ? Overlay superior: borde de secciÃ³n activa SIEMPRE arriba de todo */}
                 <CanvasElementsLayer

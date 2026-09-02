@@ -38,6 +38,7 @@ import {
   previewDragGrupal,
   startDragGrupalLider,
 } from "@/drag/dragGrupal";
+import { buildIndividualDragModifierState } from "@/drag/dragIndividual";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -674,6 +675,7 @@ export default function GaleriaKonva({
             pipeline: "individual",
             sessionId: null,
             leaderId: null,
+            modifierState: buildIndividualDragModifierState(e?.evt),
           }
         );
       }}
@@ -740,6 +742,7 @@ export default function GaleriaKonva({
             pipeline: "individual",
             sessionId: null,
             leaderId: null,
+            modifierState: buildIndividualDragModifierState(e?.evt),
           }
         );
 

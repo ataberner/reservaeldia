@@ -374,14 +374,22 @@ Guides and snap are valid only in the individual single-element drag pipeline un
 
 - guides MUST evaluate against live node geometry
 - guides MAY mutate the live node position
+- a visible active guide MUST represent an exact alignment: once a candidate is accepted, the corresponding live-node coordinate MUST converge to the target and the persisted drag result MUST preserve that aligned coordinate
+- proximity or magnetic attraction MUST NOT be rendered as a confirmed alignment before the geometry is aligned
 - if guides mutate the live node, drag-overlay geometry MUST resync after mutation
+- guide evaluation, live-node snap mutation, post-snap geometry re-read, drag-overlay resync, and guide publication MUST belong to the same valid drag sample; an extra scheduling frame MUST NOT be introduced only to defer guide evaluation or cleanup
 - guides are not authoritative for multi-selection or group drag
 - guides MUST NOT become a visible box owner
+- section-center, object center-to-center, edge-to-edge, and supported center-to-edge relations MUST remain distinguishable in the existing guide shape and visual vocabulary; section center remains the strongest visual reference
+- magnetic radii and guide stroke/dash presentation MUST remain approximately stable in screen pixels across editor visual scale; snap geometry remains in canvas coordinates and mobile MUST NOT own a separate snap algorithm
+- candidate preselection MUST be bounded and evaluated per axis, or by an equivalent deterministic strategy that cannot discard an evident X/Y alignment solely because of distance on the other axis
+- while Alt/Option is held during desktop drag, the active individual-drag request MUST bypass snap and publish no active guide; releasing it allows the same snap owner to participate again, and touch behavior is unchanged
 
 ### 9.3 Explicit Constraints
 
 - multi-selection/group-drag guide authority is forbidden under this contract
 - guide output MUST NOT outlive the drag session that produced it
+- drag end, cancellation, target/session invalidation, invalid geometry, evaluation failure, and owner unmount MUST clear guide output and snap locks deterministically at the owning lifecycle boundary
 - a snapped node and its visible drag-overlay box MUST converge in the same drag session
 
 ## 10. INLINE TEXT CONTRACT

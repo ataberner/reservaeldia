@@ -129,6 +129,26 @@ Resultado esperado:
 - al terminar el settle, el transformer vuelve a anclarse a la seleccion correcta
 - no queda drag visual selection residual
 
+### [ ] Snap y guias durante drag individual
+
+1. En desktop, arrastrar lentamente y luego rapido texto, imagen, forma, icono, Gallery, countdown y CTA/boton cerca del centro de seccion y de centros/bordes de otros objetos.
+2. Entrar y salir repetidamente del radio, competir entre dos candidatos y soltar inmediatamente despues de un snap.
+3. Repetir con zoom/escala normal y reducida; confirmar legibilidad en canvas de aproximadamente 320, 390 y 430 px cuando la infraestructura lo permita.
+4. Durante el mismo drag desktop, mantener Alt/Option, mover, soltar la tecla y continuar moviendo.
+5. Probar cajas separadas, tangentes, parcialmente solapadas, contenidas y totalmente apiladas.
+6. Finalizar, cancelar, invalidar el target cuando sea reproducible y comenzar una nueva sesion sobre el mismo objeto.
+7. En touch, repetir scroll vertical, gesto inicialmente horizontal y drag; Alt/Option no participa.
+
+Resultado esperado:
+
+- toda guia activa coincide exactamente con la geometria del nodo y con la posicion finalmente persistida; nodo, drag overlay y guia no divergen
+- centro de seccion usa la referencia visual mas fuerte; centro-centro, borde-borde y centro-borde se distinguen sin cambiar el lenguaje violeta existente
+- los candidatos evidentes de cada eje participan de forma estable y determinista, sin chatter al competir
+- las lineas entre objetos nunca invierten extremos ni atraviesan cajas solapadas por asumir un gap inexistente
+- grosor, dash y radio magnetico conservan una percepcion aproximadamente constante al cambiar la escala, sin cambiar las coordenadas legales del snap
+- Alt/Option elimina snap y guia mientras esta presionado y los reactiva al liberarse; touch conserva su algoritmo compartido y el scroll vertical
+- drag end, cancelacion, geometria/target invalido, error y nueva sesion no dejan guias ni locks stale
+
 ### [ ] Re-seleccion despues del drag
 
 1. Mover un objeto o grupo.

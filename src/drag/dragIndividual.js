@@ -9,6 +9,10 @@ import {
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
 import { shouldSuppressIndividualDragForElement } from "@/drag/dragGrupal";
+import {
+  isTouchLikePointerType,
+  resolvePointerTypeFromNativeEvent,
+} from "@/lib/editorTouchDragIntent";
 
 function resolveNodeId(node, fallback = null) {
   if (!node) return fallback;
@@ -20,6 +24,15 @@ function resolveNodeId(node, fallback = null) {
 
 function buildPreviewSampleKey(nodeId) {
   return `drag-individual-preview:${nodeId || "unknown"}`;
+}
+
+export function buildIndividualDragModifierState(nativeEvent = null) {
+  const pointerType = resolvePointerTypeFromNativeEvent(nativeEvent);
+  return {
+    altKey: nativeEvent?.altKey === true,
+    isTouchLike: isTouchLikePointerType(pointerType),
+    pointerType,
+  };
 }
 
 export function startDragIndividual(e, dragStartPos) {
@@ -68,7 +81,12 @@ export function previewDragIndividual(e, obj, onDragMovePersonalizado, dragMeta 
       });
     }
 
-    if (onDragMovePersonalizado) onDragMovePersonalizado(nuevaPos, obj.id, dragMeta);
+    if (onDragMovePersonalizado) {
+      onDragMovePersonalizado(nuevaPos, obj.id, {
+        ...(dragMeta || {}),
+        modifierState: buildIndividualDragModifierState(e?.evt),
+      });
+    }
   }
 }
 

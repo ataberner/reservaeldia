@@ -1323,16 +1323,11 @@ export default function CanvasEditor({
     limpiarGuias
   } = useGuiasCentrado({
     anchoCanvas: 800,
-    altoCanvas: renderAltoCanvas,
+    visualScale: escalaVisual,
     // UX: guÃ­a de secciÃ³n solo al centrar, con imÃ¡n sutil.
-    margenSensibilidad: 8,
     magnetRadius: 10,
     sectionMagnetRadius: 6,
-    snapStrength: 0.8,
-    sectionSnapStrength: 1,
     sectionLineTolerance: 0.75,
-    snapToEdges: true,
-    snapToCenters: true,
     seccionesOrdenadas,
     onGuideLinesChange: publishGuideLines,
   });
@@ -1977,7 +1972,7 @@ export default function CanvasEditor({
                 isDragging={isDragging}
                 setIsDragging={setIsDragging}
                 actualizarLinea={actualizarLinea}
-                guiaLineas={[]}
+                guideVisualScale={escalaVisual}
                 guideOverlayRef={guideOverlayRef}
                 handleTransformInteractionStart={handleTransformInteractionStart}
                 handleTransformInteractionEnd={handleTransformInteractionEnd}

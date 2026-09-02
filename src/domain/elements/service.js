@@ -134,7 +134,6 @@ export function subscribeFirestoreCatalog({
     { includeMetadataChanges: true },
     (snapshot) => {
       if (snapshot.metadata.fromCache) {
-        onError?.(new Error("Catalog snapshot not confirmed by Firestore server."));
         return;
       }
       onData?.({
@@ -167,7 +166,6 @@ export function subscribeFirestorePopularCatalog({
     { includeMetadataChanges: true },
     (snapshot) => {
       if (snapshot.metadata.fromCache) {
-        onError?.(new Error("Popular catalog snapshot not confirmed by Firestore server."));
         return;
       }
       onData?.(

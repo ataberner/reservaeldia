@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import {
+  buildOrderedSearchResultGroups,
   dedupeCatalogItems,
   isCatalogItemAvailableForNewInsertion,
   normalizeCatalogIconItem,
@@ -95,6 +96,18 @@ test("catalog service has no Storage enumeration fallback and queries explicit a
   assert.match(serviceSource, /snapshot\.metadata\.fromCache/);
 });
 
+test("catalog subscriptions ignore transient cache snapshots without clearing confirmed results", () => {
+  const serviceSource = readFileSync(new URL("./service.js", import.meta.url), "utf8");
+  const ignoredCacheBranches = serviceSource.match(
+    /if \(snapshot\.metadata\.fromCache\) \{\s*return;\s*\}/g
+  ) || [];
+  const realErrorHandlers = serviceSource.match(/\(error\) => onError\?\.\(error\)/g) || [];
+
+  assert.equal(ignoredCacheBranches.length, 2);
+  assert.equal(realErrorHandlers.length, 2);
+  assert.doesNotMatch(serviceSource, /snapshot not confirmed by Firestore server/i);
+});
+
 test("elements panel keeps catalog verification failures silent", () => {
   const panelSource = readFileSync(
     new URL("../../components/PanelDeFormas.jsx", import.meta.url),
@@ -104,4 +117,62 @@ test("elements panel keeps catalog verification failures silent", () => {
   assert.doesNotMatch(panelSource, /^\s*error,\s*$/m);
   assert.doesNotMatch(panelSource, /insertionError\s*\|\|\s*error/);
   assert.match(panelSource, /\{insertionError \? \(/);
+});
+
+test("elements panel keeps the search field in every focused library view", () => {
+  const panelSource = readFileSync(
+    new URL("../../components/PanelDeFormas.jsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    panelSource,
+    /function ElementsPanelShell[\s\S]*?<ElementSearchField[^>]*\/>\s*\{children\}/
+  );
+  assert.equal(panelSource.match(/aria-label="Buscar elementos"/g)?.length, 1);
+
+  for (const focusedLibrary of ["shapes", "icons", "images", "recents"]) {
+    assert.match(
+      panelSource,
+      new RegExp(
+        `if \\(!searching && focusedLibrary === "${focusedLibrary}"\\) \\{[\\s\\S]*?return \\([\\s\\n]*<ElementsPanelShell`
+      )
+    );
+  }
+
+  assert.match(panelSource, /queryResultGroups\.map\(\(group\) => \(\s*<div/);
+  assert.match(panelSource, /role="group"/);
+  assert.match(panelSource, /className="h-px flex-1 bg-slate-200"/);
+  assert.doesNotMatch(panelSource, /queryResultGroups\.map\(\(group\) => \(\s*<section/);
+  assert.match(panelSource, /\{group\.label\}/);
+});
+
+test("element search groups results and promotes the focused library", () => {
+  const groupedResults = {
+    shape: [{ id: "shape-1", kind: "shape" }],
+    icon: [{ id: "icon-1", kind: "icon" }],
+    gif: [{ id: "gif-1", kind: "gif" }],
+    image: [{ id: "image-1", kind: "image" }],
+  };
+
+  assert.deepEqual(
+    buildOrderedSearchResultGroups(groupedResults).map((group) => group.key),
+    ["shape", "icon", "image"]
+  );
+  assert.deepEqual(
+    buildOrderedSearchResultGroups(groupedResults, "shapes").map((group) => group.key),
+    ["shape", "icon", "image"]
+  );
+  assert.deepEqual(
+    buildOrderedSearchResultGroups(groupedResults, "icons").map((group) => group.key),
+    ["icon", "shape", "image"]
+  );
+  assert.deepEqual(
+    buildOrderedSearchResultGroups(groupedResults, "images").map((group) => group.key),
+    ["image", "shape", "icon"]
+  );
+  assert.deepEqual(
+    buildOrderedSearchResultGroups(groupedResults, "icons")[0].items.map((item) => item.id),
+    ["icon-1", "gif-1"]
+  );
 });

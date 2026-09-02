@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import useElementCatalog from "@/hooks/useElementCatalog";
 import {
+  buildOrderedSearchResultGroups,
   isCatalogItemAvailableForNewInsertion,
   normalizeCatalogIconItem,
   normalizeQueryText,
@@ -293,6 +294,33 @@ function EmptyHint({ query }) {
   );
 }
 
+function ElementSearchField({ query, onQueryChange }) {
+  return (
+    <div className="sticky top-0 z-20 shrink-0 bg-white pb-0.5">
+      <label className="block rounded-xl border border-slate-300 bg-white p-1">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Busca formas, iconos o imagenes"
+          autoComplete="off"
+          aria-label="Buscar elementos"
+          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-500"
+        />
+      </label>
+    </div>
+  );
+}
+
+function ElementsPanelShell({ className, query, onQueryChange, children }) {
+  return (
+    <div className={className}>
+      <ElementSearchField query={query} onQueryChange={onQueryChange} />
+      {children}
+    </div>
+  );
+}
+
 export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   const {
     shapeItems,
@@ -337,21 +365,14 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
   const iconRail = useHorizontalScrollMeta(iconLibrary.length);
   const imageRail = useHorizontalScrollMeta(imageLibrary.length);
 
-  const queryResults = useMemo(() => {
-    if (!searching) return { shape: [], icon: [], image: [], gif: [] };
-    return {
-      shape: groupedResults.shape,
-      icon: groupedResults.icon,
-      image: groupedResults.image,
-      gif: groupedResults.gif,
-    };
-  }, [groupedResults, searching]);
+  const queryResultGroups = useMemo(
+    () => searching
+      ? buildOrderedSearchResultGroups(groupedResults, focusedLibrary)
+      : [],
+    [focusedLibrary, groupedResults, searching]
+  );
 
-  const hasQueryResults =
-    queryResults.shape.length ||
-    queryResults.icon.length ||
-    queryResults.image.length ||
-    queryResults.gif.length;
+  const hasQueryResults = queryResultGroups.length > 0;
 
   useEffect(() => {
     if (focusedLibrary !== "icons" || !hasMore) return;
@@ -513,9 +534,13 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
   if (!abierto || !sidebarAbierta) return null;
 
-  if (focusedLibrary === "shapes") {
+  if (!searching && focusedLibrary === "shapes") {
     return (
-      <div className="w-full space-y-1.5 pb-0">
+      <ElementsPanelShell
+        className="w-full space-y-1.5 pb-0"
+        query={query}
+        onQueryChange={setQuery}
+      >
         <div className="flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Formas</h3>
           <button
@@ -532,13 +557,17 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
             <ShapeButton key={shape.id} item={shape} onInsert={insertShape} />
           ))}
         </div>
-      </div>
+      </ElementsPanelShell>
     );
   }
 
-  if (focusedLibrary === "icons") {
+  if (!searching && focusedLibrary === "icons") {
     return (
-      <div className="w-full h-full min-h-0 flex flex-col gap-1.5 pb-0">
+      <ElementsPanelShell
+        className="w-full h-full min-h-0 flex flex-col gap-1.5 pb-0"
+        query={query}
+        onQueryChange={setQuery}
+      >
         <div className="shrink-0 flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Iconos</h3>
           <button
@@ -571,13 +600,17 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
             <EmptyHint />
           )}
         </div>
-      </div>
+      </ElementsPanelShell>
     );
   }
 
-  if (focusedLibrary === "images") {
+  if (!searching && focusedLibrary === "images") {
     return (
-      <div className="w-full h-full min-h-0 flex flex-col gap-1.5 pb-0">
+      <ElementsPanelShell
+        className="w-full h-full min-h-0 flex flex-col gap-1.5 pb-0"
+        query={query}
+        onQueryChange={setQuery}
+      >
         <div className="shrink-0 flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Imagenes</h3>
           <button
@@ -610,13 +643,17 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
             <EmptyHint />
           )}
         </div>
-      </div>
+      </ElementsPanelShell>
     );
   }
 
-  if (focusedLibrary === "recents") {
+  if (!searching && focusedLibrary === "recents") {
     return (
-      <div className="w-full space-y-1.5 pb-0">
+      <ElementsPanelShell
+        className="w-full space-y-1.5 pb-0"
+        query={query}
+        onQueryChange={setQuery}
+      >
         <div className="flex items-center justify-between py-0">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide leading-none text-slate-700">Recientes</h3>
           <button
@@ -641,26 +678,16 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
         ) : (
           <EmptyHint />
         )}
-      </div>
+      </ElementsPanelShell>
     );
   }
 
   return (
-    <div className="w-full space-y-1.5 pb-0">
-      <div className="sticky top-0 z-20 bg-white pb-0.5">
-        <label className="block rounded-xl border border-slate-300 bg-white p-1">
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Busca formas, iconos o imagenes"
-            autoComplete="off"
-            aria-label="Buscar elementos"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-500"
-          />
-        </label>
-      </div>
-
+    <ElementsPanelShell
+      className="w-full space-y-1.5 pb-0"
+      query={query}
+      onQueryChange={setQuery}
+    >
       {!searching && filteredRecents.length > 0 ? (
         <section className="space-y-0 rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/65 px-1 py-1 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
           <div className="flex items-center justify-between px-1 py-0.5">
@@ -797,37 +824,37 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
 
       {searching ? (
         <>
-          {queryResults.shape.length > 0 ? (
-            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados formas">
-              {queryResults.shape.map((shape) => (
-                <ShapeButton key={shape.id} item={shape} onInsert={insertShape} />
-              ))}
+          {queryResultGroups.map((group) => (
+            <div
+              key={group.key}
+              className="space-y-1"
+              role="group"
+              aria-labelledby={`element-search-group-${group.key}`}
+            >
+              <div className="flex items-center gap-2 px-1">
+                <h3
+                  id={`element-search-group-${group.key}`}
+                  className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] leading-none text-slate-500"
+                >
+                  {group.label}
+                </h3>
+                <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {group.items.map((item) => (
+                  group.key === "shape" ? (
+                    <ShapeButton key={item.id} item={item} onInsert={insertShape} />
+                  ) : (
+                    <MediaButton
+                      key={`${item.kind}-${item.id}-${item.src}`}
+                      item={item}
+                      onInsert={insertLibraryItem}
+                    />
+                  )
+                ))}
+              </div>
             </div>
-          ) : null}
-
-          {queryResults.icon.length > 0 ? (
-            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados iconos">
-              {queryResults.icon.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
-              ))}
-            </div>
-          ) : null}
-
-          {queryResults.image.length > 0 ? (
-            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados imagenes">
-              {queryResults.image.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
-              ))}
-            </div>
-          ) : null}
-
-          {queryResults.gif.length > 0 ? (
-            <div className="grid grid-cols-3 gap-1.5" aria-label="Resultados gifs">
-              {queryResults.gif.map((item) => (
-                <MediaButton key={`${item.id}-${item.src}`} item={item} onInsert={insertLibraryItem} />
-              ))}
-            </div>
-          ) : null}
+          ))}
 
           {!hasQueryResults ? <EmptyHint query={query} /> : null}
         </>
@@ -849,6 +876,6 @@ export default function PanelDeFormas({ abierto, sidebarAbierta }) {
           ) : null}
         </>
       )}
-    </div>
+    </ElementsPanelShell>
   );
 }

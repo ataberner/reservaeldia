@@ -43,6 +43,16 @@ const INSERTABLE_ICON_FORMATS = new Set([
   "gif",
   "avif",
 ]);
+const SEARCH_RESULT_GROUPS = [
+  { key: "shape", label: "Formas", kinds: ["shape"] },
+  { key: "icon", label: "Iconos", kinds: ["icon", "gif"] },
+  { key: "image", label: "Imagenes", kinds: ["image"] },
+];
+const FOCUSED_LIBRARY_SEARCH_GROUP = {
+  shapes: "shape",
+  icons: "icon",
+  images: "image",
+};
 
 export const SHAPE_LIBRARY = [
   { id: "shape-rect", label: "Rectangulo", kind: "shape", figura: "rect", formato: null, src: null, popular: true, categories: ["basicas"], keywords: ["rectangulo", "caja"], searchText: "rectangulo caja basicas", color: "#111827" },
@@ -376,6 +386,26 @@ export function groupResultsByKind(items = []) {
   }
 
   return grouped;
+}
+
+export function buildOrderedSearchResultGroups(groupedResults = {}, focusedLibrary = "none") {
+  const priorityKey = FOCUSED_LIBRARY_SEARCH_GROUP[focusedLibrary] || null;
+  const orderedGroups = priorityKey
+    ? [
+        SEARCH_RESULT_GROUPS.find((group) => group.key === priorityKey),
+        ...SEARCH_RESULT_GROUPS.filter((group) => group.key !== priorityKey),
+      ]
+    : SEARCH_RESULT_GROUPS;
+
+  return orderedGroups
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      items: group.kinds.flatMap((kind) => (
+        Array.isArray(groupedResults?.[kind]) ? groupedResults[kind] : []
+      )),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function normalizeRecentEntry(entry) {

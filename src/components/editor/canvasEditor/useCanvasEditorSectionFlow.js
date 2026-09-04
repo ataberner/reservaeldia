@@ -36,6 +36,7 @@ export default function useCanvasEditorSectionFlow({
   validarPuntosLinea,
   enqueueDraftWrite,
   ALTURA_PANTALLA_EDITOR,
+  onDeleteSectionWithDynamicVisuals = null,
 }) {
   const seccionPendienteEliminar = useMemo(
     () => secciones.find((seccion) => seccion.id === deleteSectionModal.sectionId) || null,
@@ -77,6 +78,16 @@ export default function useCanvasEditorSectionFlow({
 
     setIsDeletingSection(true);
     try {
+      if (typeof onDeleteSectionWithDynamicVisuals === "function") {
+        const handled = await onDeleteSectionWithDynamicVisuals({
+          sectionId: seccionId,
+          section: targetSection,
+        });
+        if (handled === true) {
+          setDeleteSectionModal({ isOpen: false, sectionId: null });
+          return;
+        }
+      }
       await borrarSeccionExternal({
         seccionId,
         secciones,
@@ -111,6 +122,7 @@ export default function useCanvasEditorSectionFlow({
     validarPuntosLinea,
     enqueueDraftWrite,
     ALTURA_PANTALLA_EDITOR,
+    onDeleteSectionWithDynamicVisuals,
   ]);
 
   const onSelectSeccion = useCallback((id) => {

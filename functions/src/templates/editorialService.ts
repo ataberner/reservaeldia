@@ -16,6 +16,7 @@ import {
 } from "./storageAssets";
 import { normalizeCountdownGeometryDeep } from "../utils/normalizeCountdownGeometry";
 import { prepareTemplateEditorPreview } from "./templateEditorPreview";
+import { normalizeDetachedVisualsMetadata } from "./draftAuthoringMetadata";
 const {
   collectDuplicateRenderObjectIds,
   normalizeRenderAssetState,
@@ -577,13 +578,10 @@ async function writeTemplateAndCatalog(params: {
     );
 
     const templateAuthoringDraft =
-      preparedPayload.templateAuthoringDraft &&
-      typeof preparedPayload.templateAuthoringDraft === "object"
-        ? preparedPayload.templateAuthoringDraft
-        : safeBaseRaw.templateAuthoringDraft &&
-            typeof safeBaseRaw.templateAuthoringDraft === "object"
-          ? safeBaseRaw.templateAuthoringDraft
-          : null;
+      normalizedTemplate.templateAuthoringDraft &&
+      typeof normalizedTemplate.templateAuthoringDraft === "object"
+        ? normalizedTemplate.templateAuthoringDraft
+        : null;
 
     const templateDoc = {
       ...safeBaseRaw,
@@ -669,21 +667,12 @@ function buildWorkspaceTemplateAuthoringDraft(
   templateId: string,
   uid: string
 ) {
-  return {
-    version: 1,
-    sourceTemplateId: templateId,
-    fieldsSchema: Array.isArray(template.fieldsSchema) ? template.fieldsSchema : [],
-    defaults:
-      template.defaults && typeof template.defaults === "object"
-        ? template.defaults
-        : {},
-    status: {
-      isReady: true,
-      issues: [],
-    },
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedByUid: uid,
-  };
+  return buildTemplateAuthoringDraft(
+    template.templateAuthoringDraft,
+    template,
+    templateId,
+    uid
+  );
 }
 
 function normalizeIssues(value: unknown): string[] {
@@ -742,11 +731,17 @@ function buildTemplateAuthoringDraft(
   const rawStatus = asObject(alignedSource.status);
   const fallbackStatus = asObject(alignedFallback.status);
   const issues = normalizeIssues(rawStatus.issues || fallbackStatus.issues);
+  const detachedVisualsSource = Object.prototype.hasOwnProperty.call(
+    alignedSource,
+    "detachedVisuals"
+  )
+    ? alignedSource.detachedVisuals
+    : alignedFallback.detachedVisuals;
 
   return {
     version: Number.isFinite(Number(alignedSource.version || alignedFallback.version))
-      ? Math.max(1, Math.round(Number(alignedSource.version || alignedFallback.version)))
-      : 1,
+      ? Math.max(2, Math.round(Number(alignedSource.version || alignedFallback.version)))
+      : 2,
     sourceTemplateId:
       normalizeText(alignedSource.sourceTemplateId) ||
       normalizeText(alignedFallback.sourceTemplateId) ||
@@ -754,6 +749,10 @@ function buildTemplateAuthoringDraft(
       null,
     fieldsSchema,
     defaults,
+    detachedVisuals: normalizeDetachedVisualsMetadata(
+      detachedVisualsSource,
+      fieldsSchema
+    ),
     status: {
       isReady:
         rawStatus.isReady !== false &&
@@ -851,7 +850,11 @@ function buildTemplatePayloadFromDraft(
 ): Record<string, unknown> {
   const renderState = normalizeDraftRenderState(draftData);
   const renderAssetState = normalizeRenderAssetState(renderState);
-  const authoringDraft = asObject(draftData.templateAuthoringDraft);
+  const draftAuthoring = asObject(draftData.templateAuthoringDraft);
+  const currentAuthoring = asObject(currentTemplate.templateAuthoringDraft);
+  const authoringDraft = Object.keys(draftAuthoring).length
+    ? draftAuthoring
+    : currentAuthoring;
   const fieldsSchema = Array.isArray(authoringDraft.fieldsSchema)
     ? authoringDraft.fieldsSchema
     : Array.isArray(currentTemplate.fieldsSchema)
@@ -882,6 +885,9 @@ function buildTemplatePayloadFromDraft(
     secciones: renderAssetState.secciones,
     fieldsSchema,
     defaults,
+    ...(Object.keys(authoringDraft).length
+      ? { templateAuthoringDraft: authoringDraft }
+      : {}),
     rsvp: renderState.rsvp,
     gifts: renderState.gifts,
     eventDetails: renderState.eventDetails,
@@ -1517,7 +1523,14 @@ export const adminConvertDraftToTemplateV1 = onCall(
     );
 
     const templateAuthoringDraft = buildTemplateAuthoringDraft(
-      draftData.templateAuthoringDraft,
+      {
+        ...asObject(
+          Object.keys(asObject(currentPayload.templateAuthoringDraft)).length
+            ? currentPayload.templateAuthoringDraft
+            : draftData.templateAuthoringDraft
+        ),
+        sourceTemplateId: draftSlug,
+      },
       currentPayload,
       draftSlug,
       uid
@@ -1777,7 +1790,14 @@ export const adminCreateTemplateFromDraftV1 = onCall(
         estado: normalizeText(currentPayload.estado) || "active",
         estadoEditorial: "en_proceso",
         templateAuthoringDraft: buildTemplateAuthoringDraft(
-          draftData.templateAuthoringDraft,
+          {
+            ...asObject(
+              Object.keys(asObject(currentPayload.templateAuthoringDraft)).length
+                ? currentPayload.templateAuthoringDraft
+                : draftData.templateAuthoringDraft
+            ),
+            sourceTemplateId: templateId,
+          },
           currentPayload,
           templateId,
           uid

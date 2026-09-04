@@ -292,6 +292,35 @@ export function collectEventPersonNameFields(fieldsSchema) {
     .filter((field) => isEventPersonNameField(field));
 }
 
+export function resolveEventPersonNameVisualFieldKeys({
+  field,
+  fieldsSchema,
+} = {}) {
+  const safeField = asObject(field);
+  const fieldKey = normalizeText(safeField.key);
+  if (!fieldKey) return [];
+  if (
+    normalizeEventPersonNameRole(safeField.eventDetailsRole) !==
+    EVENT_PERSON_NAME_ROLES.COUPLE
+  ) {
+    return [fieldKey];
+  }
+
+  const declaredKeys = new Set(
+    (Array.isArray(fieldsSchema) ? fieldsSchema : [])
+      .map((candidate) => normalizeText(candidate?.key))
+      .filter(Boolean)
+  );
+  return [
+    fieldKey,
+    getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY),
+    getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY),
+  ].filter((key, index, keys) => {
+    if (!key || keys.indexOf(key) !== index) return false;
+    return key === fieldKey || declaredKeys.has(key);
+  });
+}
+
 export function resolveEventPersonNamesFromAuthoring({
   fieldsSchema,
   defaults,
@@ -318,25 +347,41 @@ export function resolveEventPersonNamesFromAuthoring({
       normalizeEventPersonNameRole(field.eventDetailsRole) ===
       EVENT_PERSON_NAME_ROLES.COUPLE
   );
-  let primaryName =
-    resolveFirstLinkedTextualTargetValue(primaryField, objetos) ||
-    normalizeText(safeDefaults[primaryKey]);
-  let secondaryName =
-    resolveFirstLinkedTextualTargetValue(secondaryField, objetos) ||
-    normalizeText(safeDefaults[secondaryKey]);
+  const hasPrimaryValue = Object.prototype.hasOwnProperty.call(
+    safeDefaults,
+    primaryKey
+  );
+  const hasSecondaryValue = Object.prototype.hasOwnProperty.call(
+    safeDefaults,
+    secondaryKey
+  );
+  let primaryName = hasPrimaryValue
+    ? normalizeText(safeDefaults[primaryKey])
+    : resolveFirstLinkedTextualTargetValue(primaryField, objetos);
+  let secondaryName = hasSecondaryValue
+    ? normalizeText(safeDefaults[secondaryKey])
+    : resolveFirstLinkedTextualTargetValue(secondaryField, objetos);
 
-  if (!primaryName || !secondaryName) {
-    const visibleCoupleText = coupleFields.reduce((value, field) => {
-      return value || resolveFirstLinkedTextualTargetValue(field, objetos);
-    }, "");
+  if ((!hasPrimaryValue && !primaryName) || (!hasSecondaryValue && !secondaryName)) {
     const defaultCoupleText = coupleFields.reduce((value, field) => {
-      return value || normalizeText(safeDefaults[field?.key]);
+      const fieldKey = normalizeText(field?.key);
+      if (!fieldKey || !Object.prototype.hasOwnProperty.call(safeDefaults, fieldKey)) {
+        return value;
+      }
+      return value || normalizeText(safeDefaults[fieldKey]);
+    }, "");
+    const visibleCoupleText = coupleFields.reduce((value, field) => {
+      const fieldKey = normalizeText(field?.key);
+      if (fieldKey && Object.prototype.hasOwnProperty.call(safeDefaults, fieldKey)) {
+        return value;
+      }
+      return value || resolveFirstLinkedTextualTargetValue(field, objetos);
     }, "");
     const parsed = splitEventCoupleNamesText(
       visibleCoupleText || defaultCoupleText
     );
-    primaryName = primaryName || parsed.primaryName;
-    secondaryName = secondaryName || parsed.secondaryName;
+    if (!hasPrimaryValue) primaryName = primaryName || parsed.primaryName;
+    if (!hasSecondaryValue) secondaryName = secondaryName || parsed.secondaryName;
   }
 
   return {

@@ -4,10 +4,6 @@ import {
   isTextualTemplateTargetPath,
   normalizeTemplateTargetTransform,
 } from "../fieldValueResolver.js";
-import { isEventPersonNameField } from "../../eventDetails/personNames.js";
-import { isEventLocationField } from "../../eventDetails/location.js";
-import { isEventTimeField } from "../../eventDetails/time.js";
-import { isEventDateField } from "../../eventDetails/date.js";
 import {
   collectDuplicateRenderObjectIds,
   collectRenderObjectIds,
@@ -49,6 +45,14 @@ function normalizeIssueList(issues) {
         .filter(Boolean)
     )
   );
+}
+
+export function resolveAuthoringValidationObjects({ state, renderPatch } = {}) {
+  const patchObjects = asObject(renderPatch).objetos;
+  if (Array.isArray(patchObjects)) return patchObjects;
+
+  const stateObjects = asObject(state).objetos;
+  return Array.isArray(stateObjects) ? stateObjects : [];
 }
 
 export function validateAuthoringState({
@@ -107,17 +111,6 @@ export function validateAuthoringState({
 
     if (!hasOwn(safeDefaults, key)) {
       issues.push(`Campo '${key}': falta default asociado.`);
-    }
-
-    if (
-      !applyTargets.length &&
-      !isEventPersonNameField(safeField) &&
-      !isEventLocationField(safeField) &&
-      !isEventTimeField(safeField) &&
-      !isEventDateField(safeField)
-    ) {
-      issues.push(`Campo '${key}': sin applyTargets.`);
-      return;
     }
 
     applyTargets.forEach((target, targetIndex) => {

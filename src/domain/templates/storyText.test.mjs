@@ -68,7 +68,7 @@ test("story text targets request fixed width word wrapping for text paths", () =
   assert.equal(resolveStoryTextTargetOptions({ key: "otra" }, "texto"), null);
 });
 
-test("story text binding uses the linked canvas text and validates as a regular dynamic field", () => {
+test("story text binding keeps the structured value authoritative over its canvas view", () => {
   const fieldKey = getStoryTextFieldKey();
   const ensured = ensureStoryTextField({ fieldsSchema: [] });
   const linked = linkElementToField({
@@ -103,7 +103,7 @@ test("story text binding uses the linked canvas text and validates as a regular 
   assert.equal(binding.hasBinding, true);
   assert.equal(binding.fieldKey, fieldKey);
   assert.equal(binding.objectId, "story-copy");
-  assert.equal(binding.value, "Texto desde canvas\nsegunda linea");
+  assert.equal(binding.value, "Historia default");
   assert.equal(status.isReady, true);
   assert.deepEqual(status.issues, []);
 });
@@ -159,7 +159,7 @@ test("dress code targets request fixed width word wrapping for text paths", () =
   assert.equal(resolveDressCodeTargetOptions({ key: "otra" }, "texto"), null);
 });
 
-test("dress code binding uses the linked canvas text and validates as a regular dynamic field", () => {
+test("dress code binding keeps the structured value authoritative over its canvas view", () => {
   const fieldKey = getDressCodeFieldKey();
   const ensured = ensureDressCodeField({ fieldsSchema: [] });
   const linked = linkElementToField({
@@ -193,7 +193,7 @@ test("dress code binding uses the linked canvas text and validates as a regular 
   assert.equal(binding.hasBinding, true);
   assert.equal(binding.fieldKey, fieldKey);
   assert.equal(binding.objectId, "dress-code-copy");
-  assert.equal(binding.value, "Elegante sport");
+  assert.equal(binding.value, "Formal");
   assert.equal(status.isReady, true);
   assert.deepEqual(status.issues, []);
 });

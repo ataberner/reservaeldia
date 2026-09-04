@@ -2,7 +2,7 @@
 
 > Status: Current Architecture/System Map.
 >
-> Updated from code inspection on 2026-08-27.
+> Updated from code inspection on 2026-09-02.
 >
 > This document is a high-level overview of the current editor runtime. Detailed interaction/rendering behavior lives in `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`.
 
@@ -66,8 +66,29 @@ The current editable render state is:
 - `secciones`
 - `rsvp`
 - `gifts`
+- `eventDetails`
 
 This state is owned by `CanvasEditor.jsx` and persisted through `useBorradorSync.js`, which delegates actual session transport to `editorSessionPersistence.js`.
+
+Dynamic field values are authoring data, not canvas state. Writable drafts read
+and write them through `templateInput.values`; template sessions use
+`templateAuthoringDraft.defaults`. Canvas objects (including grouped children,
+maps, and countdowns) are linked views produced through `applyTargets`. A field
+may therefore remain editable with no materialized canvas object, and editing it
+must not insert a view implicitly.
+
+`templateAuthoringDraft.detachedVisuals` is the durable, inert presentation cache
+for explicitly removed dynamic views. It is neither a render source nor a value
+source. Dynamic value changes project into all currently valid targets without
+creating canvas-history entries; object position, style, size, text width,
+alignment, and wrapping remain object-owned.
+
+All root-removal entry points share one dynamic-view planner. A reached linked
+view is removed only after the contextual confirmation and successful ordered
+persistence boundary; cancellation and write failure preserve the existing
+selection/view. Recovery inserts at most one view and reapplies the current value.
+Detailed keyboard, touch, focus, group-child, and undo/redo rules are normative in
+`INTERACTION_CONTRACT.md`.
 
 ### 3.2 Immediate Interaction State
 
@@ -164,8 +185,16 @@ Current behavior:
 - persists autosave snapshots through `persistEditorSessionSnapshot`
 - persists section height, `altoModo`, create, delete, reorder, name, and authoring patches through `persistEditorSessionPatch`
 - shares write ordering through the draft-write coordinator for autosave, flush, and section mutation writes
+- persists a reached dynamic-field operation as one ordered session mutation over `templateInput`, `templateAuthoringDraft`, `objetos`, `secciones`, and `eventDetails`, rather than through a private authoring queue
+- drains pending name, location, date, and time edits before a critical flush; later autosaves read the latest complete snapshot
 
 Editor modules must not call `doc(db, "borradores", slug)` to persist editor-session state. New session kinds must be represented explicitly in `normalizeEditorSession`; unsupported kinds fail closed at the persistence authority instead of falling back to draft.
+
+Canvas undo/redo snapshots include `objetos`, `secciones`, and
+`dynamicVisualState`. The latter contains object-scope dynamic targets plus
+`detachedVisuals`, but never structured values. Undoing or redoing a visual
+mutation restores the link/presentation and reapplies the current structured
+value. History suppression and autosave suppression are separate guards.
 
 ## 4. Runtime Bridges
 
@@ -179,6 +208,25 @@ The editor currently exposes compatibility-sensitive runtime bridges through:
 These are active system boundaries, not incidental implementation details.
 
 `window.canvasEditor.scrollToDynamicFieldTarget(fieldKeyOrKeys, options?)` is a sidebar-to-canvas navigation bridge for dynamic-field editing. It may scroll the dashboard viewport toward the first linked render object for the requested field, but it must not mutate render data, selection state, hover state, inline edit state, or overlay ownership.
+
+The dynamic-field bridge surface is:
+
+- `getTemplateAuthoringSnapshot()`, which exposes the effective `values`, schema,
+  Places metadata, targets, and inert `detachedVisuals`;
+- `updateTemplateFieldValue(fieldKey, value, options?)` and
+  `updateTemplateFieldValues(valuesPatch, options?)`, the canonical field-write
+  entry points;
+- `restoreDynamicFieldRepresentation({ fieldKey, representationKind })`, where
+  `representationKind` is `"auto"`, `"text"`, `"map"`, or `"countdown"`;
+- `getDynamicFieldRepresentationStatus(...)`, which reports the derived
+  `visible | hidden | absent` state and counts without persisting another index.
+
+Existing person-name, location, date/time, and
+`updateTemplateAuthoringDefault` methods are compatibility adapters over those
+owners. `editor:dynamic-field-edit-request` carries normalized
+`{ fieldKey, objectId }` from a linked canvas text to the owning sidebar field;
+it is the only event for that handoff and does not authorize inline content
+mutation.
 
 `window.canvasEditor.getCoverImage()` exposes the effective editor-session cover to
 the Sidebar. It resolves the visual referenced by `portadaSource`. Template sessions

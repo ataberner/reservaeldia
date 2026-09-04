@@ -662,6 +662,7 @@ export function buildDraftPersonalizationPatch({
     });
 
     if (appliedInField > 0) return;
+    if (fieldPlan.dataOnly === true) return;
 
     if (normalizeText(field.type).toLowerCase() === "images") {
       const replaced = applyFallbackGalleryReplace({

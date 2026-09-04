@@ -9,6 +9,7 @@ import {
   formatEventCoupleNames,
   getEventPersonNameFieldKey,
   inferEventCoupleNamesFormat,
+  resolveEventPersonNameVisualFieldKeys,
   resolveEventPersonNamesState,
   resolveEventPersonNamesFromAuthoring,
   splitEventCoupleNamesText,
@@ -16,6 +17,32 @@ import {
 import {
   buildTemplateAuthoringTargetPatches,
 } from "../templates/authoring/targetApplication.js";
+
+test("combined person-name visuals depend on both structured name fields", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+    coupleFormats: [EVENT_COUPLE_NAME_FORMATS.AMPERSAND],
+  });
+  const coupleField = ensured.fieldsSchema.find(
+    (field) => field.eventDetailsRole === EVENT_PERSON_NAME_ROLES.COUPLE
+  );
+
+  assert.deepEqual(
+    resolveEventPersonNameVisualFieldKeys({
+      field: coupleField,
+      fieldsSchema: ensured.fieldsSchema,
+    }),
+    [
+      getEventPersonNameFieldKey(
+        EVENT_PERSON_NAME_ROLES.COUPLE,
+        EVENT_COUPLE_NAME_FORMATS.AMPERSAND
+      ),
+      getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY),
+      getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY),
+    ]
+  );
+});
 
 test("infers and splits couple names from common separators", () => {
   assert.equal(
@@ -161,7 +188,7 @@ test("resolves person names from visible linked text targets when defaults are e
   );
 });
 
-test("resolves person names from visible linked text targets before stale defaults", () => {
+test("resolves person names from structured values before stale linked views", () => {
   const ensured = ensureEventPersonNameFields({
     fieldsSchema: [],
     includeBaseFields: true,
@@ -219,8 +246,8 @@ test("resolves person names from visible linked text targets before stale defaul
       ],
     }),
     {
-      primaryName: "Ana",
-      secondaryName: "Tomas",
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
     }
   );
 });

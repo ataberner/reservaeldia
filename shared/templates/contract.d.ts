@@ -123,11 +123,42 @@ export interface TemplateAuthoringDraftStatus {
   issues: string[];
 }
 
+export type DetachedVisualSourceKind = "root" | "group-child" | "event-map";
+
+export interface DetachedVisualSource {
+  kind: DetachedVisualSourceKind;
+  rootId: string;
+  rootIndex: number;
+  childIndex?: number;
+  sectionId: string | null;
+}
+
+export interface DetachedVisualTarget {
+  fieldKey: string;
+  target: TemplateFieldApplyTarget;
+}
+
+export interface DetachedVisualEntry {
+  id: string;
+  sequence: number;
+  fieldKeys: string[];
+  object: Record<string, unknown>;
+  targets: DetachedVisualTarget[];
+  source: DetachedVisualSource;
+}
+
+export interface DetachedVisuals {
+  version: 1;
+  nextSequence: number;
+  entries: DetachedVisualEntry[];
+}
+
 export interface TemplateAuthoringDraft {
   version: number;
   sourceTemplateId: string | null;
   fieldsSchema: TemplateField[];
   defaults: TemplateDefaults;
+  detachedVisuals: DetachedVisuals;
   status: TemplateAuthoringDraftStatus;
   updatedAt?: unknown;
   updatedByUid?: string | null;
@@ -208,6 +239,9 @@ export declare const TEMPLATE_EDITORIAL_STATES: readonly [
   "publicada",
 ];
 
+export declare const TEMPLATE_AUTHORING_DRAFT_VERSION: 2;
+export declare const DETACHED_VISUALS_VERSION: 1;
+
 export declare function normalizeTemplateEditorialState(
   value: unknown
 ): "en_proceso" | "en_revision" | "publicada";
@@ -227,6 +261,22 @@ export declare function ensureDefaultsForSchema(
   fieldsSchema: unknown,
   defaults: unknown
 ): TemplateDefaults;
+
+export declare function ensureValuesForSchema(
+  fieldsSchema: unknown,
+  values: unknown,
+  fallbackValues?: unknown
+): TemplateDefaults;
+
+export declare function normalizeDetachedVisuals(
+  value: unknown,
+  fieldsSchema?: unknown
+): DetachedVisuals;
+
+export declare function normalizeTemplateAuthoringDraft(
+  value: unknown,
+  fallbackTemplateId?: string | null
+): TemplateAuthoringDraft | null;
 
 export declare function resolveTemplatePreviewSource(
   template: unknown

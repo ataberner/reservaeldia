@@ -284,8 +284,8 @@ Resultado esperado:
 3. Confirmar que la opcion dinamica aparece como `Texto historia`.
 4. Vincular el texto a `Texto historia`.
 5. Abrir el Tab Texto y editar el campo bajo `Nuestra historia`.
-6. Editar el mismo texto directamente desde el canvas.
-7. Abrir un borrador o plantilla sin ningun texto vinculado a `Texto historia`.
+6. Intentar editar inline el mismo contenido directamente desde el canvas y usar `Ir al campo`.
+7. Abrir un borrador o plantilla que declara `Texto historia` pero no tiene ninguna vista vinculada; repetir con un documento que no declara el field.
 8. Con el transformer, cambiar el ancho de la caja del texto marcado y volver a editar desde `Nuestra historia`.
 9. Abrir el modo asistente en un borrador con `Texto historia` vinculado.
 10. Abrir el modo asistente en un borrador sin `Texto historia` vinculado.
@@ -297,16 +297,45 @@ Resultado esperado:
 
 - solo admin/superadmin puede asignar o reasignar `Texto historia` desde el engranaje
 - la opcion no aparece como `Textto historia`
-- el Tab Texto muestra `Nuestra historia` y el campo editable solo cuando existe un texto vinculado
+- el Tab Texto muestra `Nuestra historia` cuando el field existe en schema, aunque no tenga vista; un documento sin el field no inventa el control
 - editar desde el sidebar actualiza el texto del canvas
 - el texto editado desde el sidebar conserva el ancho y la alineacion de la caja; si el contenido es largo, envuelve dentro de esa caja
 - el transformer del canvas sigue pudiendo cambiar el ancho de la caja del texto marcado
-- editar desde el canvas actualiza el campo del sidebar
-- en modo asistente, el paso `Texto` aparece despues de `Evento` solo si existe `Texto historia`
+- el contenido vinculado no entra a inline edit; se explica que se edita desde los datos y `Ir al campo` abre/enfoca el input estable sin duplicar seleccion ni owner
+- en modo asistente, el paso `Texto` aparece despues de `Evento` si existe `Texto historia` en schema, no por presencia de una vista
 - el Tab Texto en modo asistente muestra solo `Nuestra historia` y su caja de texto
 - un usuario sin permiso no puede reasignar el campo desde el engranaje y el vinculo heredado no se elimina
 - al enfocar campos dinamicos del sidebar, el canvas hace scroll suave hasta el primer objeto vinculado sin cambiar seleccion, hover, transformer ni modo inline
 - al enfocar campos editables del sidebar, su contenido queda seleccionado y escribir reemplaza el valor existente
+
+### [ ] Campos dinámicos: estado, eliminación y recuperación de vistas
+
+1. Preparar un field con dos vistas de texto, una de ellas como child de grupo; repetir con ubicación/mapa y fecha/countdown de una misma phase.
+2. Verificar que el indicador integrado muestre `Visible`, `Oculto` o `Insertar` dentro del borde derecho del input, sin iconos de ojo ni una etiqueta duplicada debajo o al costado.
+3. Con tres vistas, activar repetidamente el indicador visible/oculto y confirmar que selecciona y centra el primer, segundo y tercer root en orden de canvas, vuelve al primero en la cuarta activación y usa el wrapper para un child agrupado. Eliminar una vista durante el recorrido y confirmar que continúa desde un root válido.
+4. Intentar quitar una vista vinculada con teclado y con menú touch. Cancelar una vez con `Cancelar` y otra con `Escape`.
+5. Confirmar `Quitar`; repetir con selección mixta y con eliminación de sección/grupo.
+6. Editar el dato desde el sidebar cuando no queda ninguna vista, recargar y comprobar que el valor sigue disponible para sidebar/modal/Designer AI.
+7. Restaurar con cache, después de mover, redimensionar, cambiar estilo y formato. Repetir sin cache, con sección original ausente y con colisión del ID archivado.
+8. Eliminar un child dinámico dentro de un grupo y restaurarlo. Verificar que vuelve standalone y que no reaparecen siblings.
+9. Con varias vistas del mismo field, quitar una y confirmar que no se ofrece restore; quitar todas en un mismo batch y comprobar que la última por orden visual estable es la recuperable.
+10. Ejecutar delete -> undo -> cambiar el valor -> redo/undo, y repetir después de reload.
+11. Simular fallo de persistencia durante la confirmación.
+12. Repetir el diálogo en desktop y mobile, con teclado, lector semántico y `prefers-reduced-motion`.
+13. Vincular ambos nombres sólo mediante `Nombres de los casados (&)`, quitar esa vista y restaurar primero desde cada uno de los dos inputs en ejecuciones separadas.
+
+Resultado esperado:
+
+- el indicador deriva `visible | hidden | absent`, lo presenta dentro del input como `Visible | Oculto | Insertar`, muestra badge sólo para más de una vista y no cuenta targets stale ni vistas inválidas; activaciones sucesivas recorren circularmente los roots vinculados en orden de canvas sin crear otra selección; mapa/countdown no duplican la etiqueta junto a sus checkboxes
+- mapas cuentan para nombre/dirección y countdowns para fecha/horario de inicio de su phase; no se persiste otro índice de visibilidad
+- el `alertdialog` aparece junto a la selección en desktop y como tarjeta compacta separada de los bordes en mobile, sin extenderse hasta el pie de la pantalla; nombra los campos alcanzados y explica brevemente que se recuperan con `Volver a insertar` en el panel de datos; inicia foco en `Cancelar`, contiene/retorna foco, responde a `Escape` y mantiene targets táctiles de al menos 40 px
+- cancelar no cambia selección, refs, history, persistencia ni objetos; un fallo de persistencia también conserva la vista y muestra feedback
+- confirmar quita sólo vistas y targets, conserva field y valor estructurado, y persiste la mutación alcanzada antes de limpiar selección
+- editar el dato ausente no recrea objetos; restaurar inserta como máximo una vista y aplica siempre el valor estructurado actual
+- con cache se recuperan posición, estilo, tamaño, formato y targets exactos; sin cache se usan builders/defaults consistentes para texto, mapa o countdown
+- la restauración respeta la asociación funcional, remapea IDs en conflicto y usa la sección original editable o un fallback normalizado
+- undo/redo restaura vista, targets y recovery, nunca revierte el valor dinámico actual
+- una vista combinada de nombres afecta el estado de ambos inputs; restaurar desde cualquiera recupera una sola vista combinada con su formato y targets previos
 
 ## 3. Preview boundary
 
@@ -400,6 +429,19 @@ Resultado esperado:
 
 - el editor hidrata el ultimo estado valido
 - no mezcla estado viejo y nuevo
+
+### [ ] Persistencia atómica de datos y vistas dinámicas
+
+1. Editar nombres, ubicación, fecha y horario mientras sus debounces siguen pendientes.
+2. Antes de que venzan, quitar o restaurar una vista dinámica y abrir preview para forzar flush crítico.
+3. Recargar el editor y repetir en template workspace cuando corresponda.
+
+Resultado esperado:
+
+- el flush drena primero los edits pendientes y persiste el snapshot completo más reciente
+- drafts ordenan una sola mutación alcanzada de `templateInput`, `templateAuthoringDraft`, `objetos`, `secciones` y `eventDetails` mediante el coordinator compartido
+- templates delegan una sola vez al owner editorial; no reaparece una cola privada de authoring
+- después de reload no se mezclan valores nuevos con targets/recovery viejos ni viceversa
 
 ## 5. Transformaciones e imagenes
 
@@ -619,15 +661,20 @@ Resultado esperado:
 8. Elegir una sugerencia de Google Maps cuyo nombre y direccion sean mas largos que los textos iniciales de la plantilla; verificar el resultado en Ceremonia y Fiesta.
 9. Redimensionar cada texto vinculado desde el nodo lateral y volver a reemplazar la ubicacion.
 10. Después de una selección Google, escribir manualmente otro lugar/dirección y confirmar que se limpian `placeId`, coordenadas/componentes y visibilidad del mapa sin perder los textos manuales.
+11. Crear múltiples mapas y countdowns de una phase; editar sus fields y comprobar que todas las vistas reciben la proyección.
+12. Quitar todos los mapas/countdowns, cambiar datos o seleccionar Places y confirmar que no se reinsertan automáticamente; restaurarlos desde su indicador especializado.
+13. Después de seleccionar Places, editar sólo el nombre del lugar y comprobar que la selección se conserva; editar la dirección y comprobar que se limpia.
 
 Resultado esperado:
 
 - `Un solo evento` mantiene Ceremonia activa y Fiesta inactiva
 - `Ceremonia y fiesta` mantiene ambas funcionalidades activas
 - los datos de Fiesta se conservan aunque el bloque no se muestre
-- `eventDetails.dressCode.value` se conserva aunque Dress Code este desactivado
+- `templateInput.values` conserva los valores aunque no haya vistas; `eventDetails.dressCode.value` es sólo el mirror del field `dress_code`
 - los campos dinamicos `event_ceremony_*` y `event_party_*` sincronizan tab, canvas, preview y HTML publico
-- ubicación manual y ubicación Google comparten los mismos fields de lugar/dirección; solo la segunda conserva metadata en el `mapa-google` de su phase
+- ubicación manual y ubicación Google comparten los mismos fields de lugar/dirección; la segunda conserva metadata autoritativa en `values.__eventDetails.locations[phase]` y cada `mapa-google` guarda sólo su proyección compatible
+- todas las vistas válidas de mapa/countdown se actualizan; editar o seleccionar datos sin vistas no inserta objetos
+- el countdown usa fecha y horario de inicio canónicos de su phase, nunca horario de finalización; el preset explícito de cada target de fecha prevalece sobre el fallback del field
 - nombre y direccion conservan inicialmente el ancho definido en la plantilla, envuelven valores largos creciendo en altura y aceptan cambios posteriores de ancho desde el nodo lateral
 - el campo dinamico `event_dress_code` sincroniza tab, canvas, preview y HTML publico
 - los campos legacy `event_date`, `event_start_time`, `event_end_time`, `event_venue_name` y `event_venue_address` aparecen migrados a Ceremonia al cargar
@@ -815,7 +862,7 @@ persistencia, controles y reread.
    intro y texto del botón no se preguntan proactivamente y que, resuelta la
    modalidad, continúa hacia Dress Code.
 7. Probar Dress Code afirmativo/negativo, con preservación del texto oculto y
-   salto cuando el binding no existe.
+   salto sólo cuando el field no existe; `applyTargets: []` sigue disponible.
 8. Probar portada antes de Galleries, ausencia de portada, cero/una/múltiples
    Galleries y orden canónico entre ellas. Dentro de una Gallery, reemplazar,
    agregar, eliminar y reordenar varias fotos: ningún cambio debe avanzar. Usar
@@ -855,7 +902,7 @@ persistencia, controles y reread.
 
 1. Enviar nombre, personas, modalidad, fecha/hora, ubicación manual y Dress Code en un mensaje; confirmar targets dinámicos y countdown. Para ubicación, confirmar además que lugar/dirección se conservan, la decisión Maps queda pendiente y el horario no vuelve a preguntarse.
 2. Corregir un valor y verificar que manda el borrador actual, no una copia del chat.
-3. Probar `texto_historia` con/sin binding; solo el primero cambia y conserva width/alineacion/wrapping.
+3. Probar `texto_historia` con múltiples vistas, `applyTargets: []` y field ausente: los dos primeros actualizan el valor, sólo las vistas existentes se proyectan y el tercero no inventa capability; width/alineación/wrapping se conservan.
 4. Probar RSVP completo: activacion, catalogo/custom, orden, label, type, required, opciones, modal, CTA y reload.
 5. Probar Regalos completo: activación, lista externa, cada método bancario,
    visibilidad independiente, ocultamiento sin borrado, intro y botón ante pedido
@@ -869,6 +916,7 @@ persistencia, controles y reread.
 10. Pedir tipografia, posicion o layout: no genera acciones, no usa vocabulario interno del validador, explica que ese cambio pertenece al editor y no afirma haberlo realizado.
 11. Informar ambos nombres: se guarda `Casamiento {Nombre 1} y {Nombre 2}`; corregir un nombre recalcula mientras la politica sea automatica. Escribir un nombre de evento manual y repetir la correccion: el nombre explicito se preserva, incluso despues de reload.
 12. Desactivar RSVP/Regalos y decidir no configurarlos: cada hoja interna queda `preserve_while_inactive`; al activar cualquiera, sus hojas visibles se reabren.
+13. Quitar todas las vistas de un field disponible y editarlo desde Designer AI: el dato cambia sin restaurar objetos; al restaurar manualmente desde sidebar se proyecta el valor actual.
 
 ### [ ] Controles locales y errores de OpenAI
 
@@ -886,7 +934,7 @@ persistencia, controles y reread.
 4. Repetir con solo lugar: la conversación presenta una única elección Maps/carga manual, el botón manual dice `Ingresar dirección manual` y no `Usar estos datos`. Elegir manual registra `leave_empty` directamente, conserva el lugar, pide únicamente dirección y no aparecen `placeId`, coordenadas ni metadata Google.
 5. Aceptar Maps: el control reemplaza temporalmente historial + composer, ocupa todo el alto disponible, identifica `evento`, `ceremonia` o `fiesta` y precarga lugar + dirección. Activar `Volver al chat` restaura el historial y enfoca el composer sin perder mensajes.
 6. Inspeccionar el control: contiene búsqueda, resultados con scroll propio y cierre explícito; no muestra fecha, horario, Dress Code, Regalos, RSVP ni otros campos del tab Detalles del evento.
-7. Forzar varias sugerencias y confirmar que ninguna se elige sola. Elegir una explícitamente y verificar fields de texto, `mapa-google` de la phase exacta, mapa oculto y persistencia por el owner compartido.
+7. Forzar varias sugerencias y confirmar que ninguna se elige sola. Elegir una explícitamente y verificar fields de texto, metadata en `values.__eventDetails.locations[phase]`, parche de todos los mapas existentes de esa phase, visibilidad preservada y persistencia por el owner compartido. Sin mapas, no debe insertar uno.
 8. Cancelar sin seleccionar: no reconciliar `place_selection`, conservar los textos manuales y permitir usar esos datos o volver a buscar.
 9. Simular fallo del authoring owner: no insertar/actualizar metadata de Google ni mostrar confirmación. Abrir el control por sí solo tampoco completa la hoja.
 10. En `ceremony_party`, completar primero Party mediante Places dejando Ceremony vacía: solo `event.party.place_selection` queda terminal, la siguiente pregunta deriva de la ubicación pendiente de Ceremony y Regalos no aparece.
@@ -922,5 +970,8 @@ Bloquear validacion si aparece cualquiera de estas:
 - el overlay inline queda montado o desalineado al cerrar
 - transformer, bounds indicator o line controls quedan desfasados tras drag, settle o scroll
 - publish usa un estado distinto del confirmado por flush
+- borrar una vista dinámica elimina o revierte el valor estructurado del sidebar
+- cancelar el diálogo de quitar cambia selección/history, o confirmar limpia el canvas antes de persistir
+- editar un field sin vista inserta un objeto, o preview/publish serializa `detachedVisuals`/Places como fallback visual
 - `pantalla` y `yNorm` cambian la posicion vertical inesperadamente al recargar o previsualizar
 - en mobile, un tooltip de la visita guiada queda detras del footer del Asistente, la barra inferior o fuera del viewport visible

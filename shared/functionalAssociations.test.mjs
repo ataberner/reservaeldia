@@ -9,6 +9,7 @@ import {
   sanitizeMovedGroupFunctionalAssociation,
   setGroupFunctionalAssociation,
   setSectionFunctionalAssociation,
+  stripFunctionalAssociationFromClonedObject,
 } from "./functionalAssociations.js";
 
 const sections = [
@@ -499,4 +500,93 @@ test("moved functional groups keep association only without destination conflict
   assert.equal(groupConflict.changed, true);
   assert.equal("functionalAssociation" in groupConflict.objetos[0], false);
   assert.equal(groupConflict.objetos[1].functionalAssociation, "rsvp");
+});
+
+test("standalone ceremony, party, and dress-code roots follow functional visibility", () => {
+  const objetos = [
+    {
+      id: "ceremony-title",
+      tipo: "texto",
+      seccionId: "shared",
+      functionalAssociation: "ceremony",
+    },
+    {
+      id: "party-map",
+      tipo: "mapa-google",
+      seccionId: "shared",
+      functionalAssociation: "party",
+    },
+    {
+      id: "dress-title",
+      tipo: "texto",
+      seccionId: "shared",
+      functionalAssociation: "dress_code",
+    },
+    {
+      id: "legacy-rsvp-root",
+      tipo: "texto",
+      seccionId: "shared",
+      functionalAssociation: "rsvp",
+    },
+  ];
+  const result = applyFunctionalAssociationsToRenderState({
+    secciones: [{ id: "shared", orden: 0, altura: 400 }],
+    objetos,
+    eventDetails: {
+      mode: "single",
+      dressCode: { enabled: false, value: "Formal" },
+    },
+  });
+
+  assert.deepEqual(result.objetos.map((object) => object.id), [
+    "ceremony-title",
+    "legacy-rsvp-root",
+  ]);
+  assert.deepEqual(result.hiddenObjectIds, ["party-map", "dress-title"]);
+  assert.deepEqual(result.centeredGroupDeltas, {});
+});
+
+test("an active standalone owner keeps a shared section visible beside inactive groups", () => {
+  const result = applyFunctionalAssociationsToRenderState({
+    secciones: [{ id: "shared", orden: 0, altura: 400 }],
+    objetos: [
+      {
+        id: "ceremony-root",
+        tipo: "texto",
+        seccionId: "shared",
+        functionalAssociation: "ceremony",
+      },
+      group({ id: "party-group", association: "party", x: 500 }),
+    ],
+    eventDetails: { mode: "single" },
+  });
+
+  assert.deepEqual(result.secciones.map((section) => section.id), ["shared"]);
+  assert.deepEqual(result.objetos.map((object) => object.id), ["ceremony-root"]);
+  assert.deepEqual(result.hiddenObjectIds, ["party-group"]);
+});
+
+test("section ownership and cloning clear functional associations from standalone roots", () => {
+  const sectionResult = setSectionFunctionalAssociation({
+    secciones: [{ id: "shared", orden: 0, altura: 400 }],
+    objetos: [
+      {
+        id: "party-title",
+        tipo: "texto",
+        seccionId: "shared",
+        functionalAssociation: "party",
+      },
+    ],
+    sectionId: "shared",
+    association: "party",
+  });
+  assert.equal(sectionResult.secciones[0].functionalAssociation, "party");
+  assert.equal("functionalAssociation" in sectionResult.objetos[0], false);
+
+  const cloned = stripFunctionalAssociationFromClonedObject({
+    id: "party-title",
+    tipo: "texto",
+    functionalAssociation: "party",
+  });
+  assert.equal("functionalAssociation" in cloned, false);
 });

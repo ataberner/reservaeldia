@@ -30,6 +30,7 @@ import {
 import {
   normalizarAltoModo,
 } from '@/components/editor/canvasEditor/canvasEditorCoreUtils';
+import { filterEditableObjectIds } from '@/domain/editor/protectedSections';
 
 export default function useEditorHandlers({
   objetos,
@@ -46,10 +47,13 @@ export default function useEditorHandlers({
   setFuturos,
   setSecciones,
   ignoreNextUpdateRef,
-  setMostrarPanelZ
+  setMostrarPanelZ,
+  onRequestDelete = null,
+  restoreDynamicVisualState = null,
 }) {
   const onDeshacer = useCallback(() => ejecutarDeshacer({
     historial,
+    futuros,
     objetos,
     secciones,
     setHistorial,
@@ -57,11 +61,13 @@ export default function useEditorHandlers({
     setSecciones,
     setFuturos,
     ignoreNextUpdateRef,
+    restoreDynamicVisualState,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [historial, futuros, objetos, secciones]);
+  }), [historial, futuros, objetos, restoreDynamicVisualState, secciones]);
 
   const onRehacer = useCallback(() => ejecutarRehacer({
+    historial,
     futuros,
     objetos,
     secciones,
@@ -70,9 +76,10 @@ export default function useEditorHandlers({
     setObjetos,
     setSecciones,
     ignoreNextUpdateRef,
+    restoreDynamicVisualState,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [futuros, objetos, secciones]);
+  }), [futuros, historial, objetos, restoreDynamicVisualState, secciones]);
 
   const onDuplicar = useCallback(() => duplicarElemento({
     objetos,
@@ -83,6 +90,18 @@ export default function useEditorHandlers({
   }), [objetos, elementosSeleccionados]);
 
 const onEliminar = useCallback(() => {
+  const editableSelectedIds = filterEditableObjectIds(elementosSeleccionados, {
+    objetos,
+    secciones,
+  });
+  if (
+    editableSelectedIds.length > 0 &&
+    typeof onRequestDelete === "function" &&
+    onRequestDelete({ selectedIds: editableSelectedIds }) === true
+  ) {
+    return;
+  }
+
   // 🔹 Limpiar hover inmediato
   if (typeof window !== 'undefined' && window.setHoverIdGlobal) {
     window.setHoverIdGlobal(null);
@@ -104,7 +123,15 @@ const onEliminar = useCallback(() => {
     setElementosSeleccionados,
     setMostrarPanelZ
   });
-}, [objetos, secciones, elementosSeleccionados]);
+}, [
+  elementosSeleccionados,
+  objetos,
+  onRequestDelete,
+  secciones,
+  setElementosSeleccionados,
+  setMostrarPanelZ,
+  setObjetos,
+]);
 
 
   const onCopiar = useCallback(() => copiarElemento({

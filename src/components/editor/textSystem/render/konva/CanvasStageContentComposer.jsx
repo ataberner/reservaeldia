@@ -1036,6 +1036,7 @@ export default function CanvasStageContent({
   onBackgroundEditInteractionChange,
   postDragDiagnosticMenuTargetIds = [],
   canManageSite = false,
+  onDynamicFieldInlineBlocked = null,
 }) {
   const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
   const inlineActivationRef = useRef({
@@ -9374,6 +9375,19 @@ export default function CanvasStageContent({
   }) => {
     if (!id || !targetObj) return;
 
+    if (
+      typeof onDynamicFieldInlineBlocked === "function" &&
+      onDynamicFieldInlineBlocked({ objectId: id, object: targetObj }) === true
+    ) {
+      clearInlineActivation("dynamic-field-owned-content", {
+        id,
+        sourceGesture,
+        sourceReason: sourceReason || null,
+      });
+      clearInlineIntent("dynamic-field-owned-content", { id });
+      return;
+    }
+
     const initialText = String(
       targetObj?.texto ??
         getFunctionalCtaDefaultText(targetObj)
@@ -9543,10 +9557,12 @@ export default function CanvasStageContent({
     armInlineActivation,
     captureInlineSnapshot,
     clearInlineActivation,
+    clearInlineIntent,
     elementRefs,
     ensureInlineFontReady,
     inlineDebugLog,
     inlineEditPreviewRef,
+    onDynamicFieldInlineBlocked,
     obtenerCentroVisualTextoX,
     obtenerMetricasNodoInline,
     pendingInlineStartRef,

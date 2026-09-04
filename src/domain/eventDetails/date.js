@@ -411,11 +411,19 @@ export function resolveEventDateSidebarBinding({
     normalizeText(field?.key) ||
     normalizeText(countdownDetails?.fieldKey);
   const countdownFieldKey = normalizeText(countdownDetails?.fieldKey);
-  const targetISO =
-    resolveEventDateValueFromTextTargets({ field, objetos }) ||
-    normalizeText(safeDefaults[fieldKey]) ||
-    normalizeText(safeDefaults[countdownFieldKey]) ||
-    normalizeText(countdownDetails?.targetISO);
+  const hasStructuredFieldValue = Boolean(
+    fieldKey && Object.prototype.hasOwnProperty.call(safeDefaults, fieldKey)
+  );
+  const hasStructuredCountdownValue = Boolean(
+    countdownFieldKey &&
+      Object.prototype.hasOwnProperty.call(safeDefaults, countdownFieldKey)
+  );
+  const targetISO = hasStructuredFieldValue
+    ? normalizeText(safeDefaults[fieldKey])
+    : hasStructuredCountdownValue
+      ? normalizeText(safeDefaults[countdownFieldKey])
+      : resolveEventDateValueFromTextTargets({ field, objetos }) ||
+        normalizeText(countdownDetails?.targetISO);
 
   return {
     field,

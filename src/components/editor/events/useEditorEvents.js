@@ -22,6 +22,7 @@ import {
   clearAllMotionEffects,
   CLEAR_ALL_MOTION_PRESET_ID,
   sanitizeMotionEffect,
+  summarizeMotionEffectChanges,
 } from "@/domain/motionEffects";
 import { normalizeSectionBackgroundModel } from "@/domain/sections/backgrounds";
 import {
@@ -511,11 +512,9 @@ export default function useEditorEvents({
           canEditObject(current[index], { secciones }) ? item : current[index]
         );
 
-        summary.total = protectedAwareNext.length;
-        summary.changed = protectedAwareNext.reduce((acc, item, index) => {
-          const beforeEffect = sanitizeMotionEffect(current[index]?.motionEffect);
-          return acc + (beforeEffect !== item.motionEffect ? 1 : 0);
-        }, 0);
+        const objectSummary = summarizeMotionEffectChanges(current, protectedAwareNext);
+        summary.total = objectSummary.total;
+        summary.changed = objectSummary.changed;
         return protectedAwareNext;
       });
 

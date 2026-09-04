@@ -15,6 +15,10 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function sanitizeImageUrls(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -64,6 +68,7 @@ export function buildTemplatePersonalizationFieldPlan({
   const safeField = asObject(field);
   const key = normalizeText(safeField.key);
   if (!key) return null;
+  const hasExplicitApplyTargets = hasOwn(safeField, "applyTargets");
 
   const applyTargets = (Array.isArray(safeField.applyTargets) ? safeField.applyTargets : [])
     .map((target) => normalizeApplyTarget(target))
@@ -85,12 +90,16 @@ export function buildTemplatePersonalizationFieldPlan({
 
   let fallback = null;
 
-  if (normalizeText(safeField.type).toLowerCase() === "images") {
+  if (!hasExplicitApplyTargets && normalizeText(safeField.type).toLowerCase() === "images") {
     fallback = {
       kind: "gallery",
       value: sanitizeImageUrls(nextValue),
     };
-  } else if (typeof defaultValue === "string" && typeof nextValue === "string") {
+  } else if (
+    !hasExplicitApplyTargets &&
+    typeof defaultValue === "string" &&
+    typeof nextValue === "string"
+  ) {
     fallback = {
       kind: "text_replace",
       find: String(defaultValue ?? ""),
@@ -105,6 +114,7 @@ export function buildTemplatePersonalizationFieldPlan({
     defaultValue,
     applyTargets,
     fallback,
+    dataOnly: hasExplicitApplyTargets && applyTargets.length === 0,
   };
 }
 

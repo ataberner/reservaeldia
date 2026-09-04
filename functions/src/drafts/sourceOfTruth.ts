@@ -1,7 +1,7 @@
-export const DRAFT_SOURCE_OF_TRUTH_VERSION = 1;
+export const DRAFT_SOURCE_OF_TRUTH_VERSION = 2;
 export const DRAFT_CANONICAL_SOURCE = "draft_render_state" as const;
-// Regla de precedencia de datos:
-// canvas edits > modal-applied initial patch > template defaults.
+// Render roots remain canonical for presentation. Structured dynamic values live
+// in templateInput.values and are projected into render roots by their targets.
 
 const {
   normalizeEventDetailsConfig,
@@ -40,6 +40,91 @@ function normalizeRsvp(value: unknown): UnknownRecord | null {
 function normalizeGifts(value: unknown): UnknownRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as UnknownRecord;
+}
+
+function hasOwn(value: UnknownRecord, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function normalizeFieldValue(fieldType: unknown, value: unknown): unknown {
+  if (normalizeText(fieldType).toLowerCase() === "images") {
+    return Array.isArray(value) ? value : [];
+  }
+  return value === null || typeof value === "undefined" ? "" : value;
+}
+
+function buildFieldValueMap(
+  fieldsSchema: unknown,
+  primaryValues: unknown,
+  fallbackValues: unknown
+): UnknownRecord {
+  const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const primary = asObject(primaryValues);
+  const fallback = asObject(fallbackValues);
+  const selected: UnknownRecord = { ...fallback, ...primary };
+
+  fields.forEach((rawField) => {
+    const field = asObject(rawField);
+    const key = normalizeText(field.key);
+    if (!key) return;
+    const rawValue = hasOwn(primary, key)
+      ? primary[key]
+      : hasOwn(fallback, key)
+        ? fallback[key]
+        : undefined;
+    selected[key] = normalizeFieldValue(field.type, rawValue);
+  });
+
+  return selected;
+}
+
+function areFieldValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+export type DraftTemplateInput = UnknownRecord & {
+  initialValues: UnknownRecord;
+  values: UnknownRecord;
+  defaults: UnknownRecord;
+  changedKeys: string[];
+  policyVersion: number;
+};
+
+export function normalizeDraftTemplateInput(params?: {
+  templateInput?: unknown;
+  fieldsSchema?: unknown;
+  defaults?: unknown;
+  fallbackValues?: unknown;
+}): DraftTemplateInput {
+  const source = asObject(params?.templateInput);
+  const fields = Array.isArray(params?.fieldsSchema) ? params?.fieldsSchema : [];
+  const normalizedDefaults = buildFieldValueMap(fields, source.defaults, params?.defaults);
+  const initialValues = buildFieldValueMap(fields, source.initialValues, {
+    ...normalizedDefaults,
+    ...asObject(params?.fallbackValues),
+  });
+  const values = buildFieldValueMap(fields, source.values, initialValues);
+  const changedKeys = fields
+    .map((rawField) => normalizeText(asObject(rawField).key))
+    .filter(Boolean)
+    .filter((key) => !areFieldValuesEqual(values[key], normalizedDefaults[key]));
+  const sourceVersion = Number(source.policyVersion);
+
+  return {
+    ...source,
+    initialValues,
+    values,
+    defaults: normalizedDefaults,
+    changedKeys,
+    policyVersion: Number.isFinite(sourceVersion)
+      ? Math.max(DRAFT_SOURCE_OF_TRUTH_VERSION, Math.round(sourceVersion))
+      : DRAFT_SOURCE_OF_TRUTH_VERSION,
+  };
 }
 
 export type DraftRenderState = {

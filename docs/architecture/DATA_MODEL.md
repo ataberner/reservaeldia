@@ -428,22 +428,21 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `role` / `rol` | Optional | Semantic role override used by motion/runtime data attributes. |
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
 | `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
+| `functionalAssociation` | Optional, root semantic association | Standalone roots may use `"ceremony"`, `"party"`, or `"dress_code"`; group roots additionally retain their existing RSVP/Gifts support. Group children inherit the wrapper association and must not persist another one. |
 
-`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority and `eventDetails.dressCode.value` is the dynamic text source for the Dress Code field. For section-only `functionalAssociation: "countdown"`, the existing Countdown field `mostrarCuentaRegresiva` is the authority and no root switch is added. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
+`rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority; `eventDetails.dressCode.value` is only a one-way compatibility mirror of the structured dynamic value. For section-only `functionalAssociation: "countdown"`, the existing Countdown field `mostrarCuentaRegresiva` is the authority and no root switch is added. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
 
 ### `mapa-google`
 
-La ubicación visible y el vínculo con Google son conceptos separados dentro del
-modelo vigente:
+La ubicación estructurada y su vista de mapa son conceptos separados:
 
-- el lugar y la dirección canónicos de cada phase viven en los defaults/targets
-  de `event_ceremony_venue_*` o `event_party_venue_*`;
-- una ubicación manual tiene esos textos y no tiene `googlePlaceId` efectivo;
-- una ubicación elegida en Places conserva esos mismos textos y agrega un objeto
-  `tipo: "mapa-google"` de la phase con metadata del resultado seleccionado;
-- volver a escribir manualmente la ubicación limpia la metadata Google y oculta
-  el mapa. El objeto puede conservar su identidad/geometry con fields Google
-  vacíos; esa presencia inerte no significa que la ubicación esté vinculada.
+- nombre y dirección viven en los fields `event_ceremony_venue_*` o
+  `event_party_venue_*` del value bag autoritativo;
+- una selección Google vive en `__eventDetails.locations[phase]` del mismo bag;
+- uno o más objetos `tipo: "mapa-google"` reciben sólo la proyección necesaria
+  para editor/render; su ausencia no elimina textos ni metadata estructurada;
+- editar manualmente la dirección limpia la selección Google y oculta todas las
+  vistas de esa phase. Editar sólo el nombre conserva la selección vigente.
 
 Campos específicos normalizados del objeto:
 
@@ -453,9 +452,9 @@ Campos específicos normalizados del objeto:
 | `googlePlaceId` | Required for a linked Google location | ID devuelto por el resultado seleccionado; vacío significa ubicación manual/no vinculada. |
 | `googleDisplayName` | Optional provider value | Nombre del resultado seleccionado. |
 | `googleFormattedAddress` | Optional provider value | Dirección completa del resultado seleccionado. |
-| `googleAddressComponents` | Optional normalized list | Componentes usados por el formato de dirección del field. |
+| `googleAddressComponents` | Legacy input | Se acepta al migrar; la metadata moderna pertenece al namespace estructurado. |
 | `googleLat` / `googleLng` | Optional coordinates | Coordenadas del resultado seleccionado; nunca se inventan para ubicación manual. |
-| `mostrarMapa` | Optional boolean | Solo puede ser `true` con `googlePlaceId`; seleccionar un Place desde Diseñador AI lo deja oculto por defecto. |
+| `mostrarMapa` | Optional boolean | Sólo puede ser `true` con `googlePlaceId`; seleccionar un Place parchea mapas existentes y no inserta otro automáticamente. |
 | `width` / `height` | Render geometry | Se preservan al reemplazar una selección y no pertenecen al modelo conversacional. |
 
 `src/domain/eventDetails/location.js` normaliza el shape y
@@ -937,10 +936,10 @@ These fields are real Firestore data, but they are not part of the canonical inv
 | Field | Notes |
 | --- | --- |
 | `templateWorkspace` | Template editor session metadata. Observed fields include `templateId`, `mode`, `readOnly`, `openedByUid`, `openedAt`, `lastCommittedAt`, `estadoEditorial`, `tags`, `templateName`, `permissions`. |
-| `templateAuthoringDraft` | Template-authoring payload. Current workspace creation writes `version`, `sourceTemplateId`, `fieldsSchema`, `defaults`, `status`, `updatedAt`, `updatedByUid`. |
-| `templateInput` | Template-personalization snapshot. Current modal flow writes `initialValues`, `values`, `defaults`, `changedKeys`, `applyReport`, `appliedAt`, `updatedAt`, `policyVersion`. |
+| `templateAuthoringDraft` | Template-authoring payload. Version `2` writes `sourceTemplateId`, `fieldsSchema`, `defaults`, inert `detachedVisuals`, `status`, `updatedAt`, and `updatedByUid`. In template editing, `defaults` is the value authority. |
+| `templateInput` | Draft-personalization snapshot. Policy version `2` writes `initialValues`, authoritative `values`, baseline `defaults`, schema-scoped `changedKeys`, `applyReport`, `appliedAt`, and `updatedAt`. |
 | `designerAiConversation` | Designer AI planning metadata. Shape: `{ version, usage: { hasStarted: boolean }, namePolicy: { mode: "automatic" | "explicit" | "unknown", lastAutomaticName }, baseline[], resolutions[] }`. Records contain leaf IDs, opaque value fingerprints, provenance/status, and an optional documented rule; they contain no canvas objects, media URLs, Places metadata or chat transcript. |
-| `eventDetails` | Render-state configuration for the Detalles del evento flow. Normalized shape is `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`; missing/invalid values normalize to `"single"` and disabled Dress Code with empty value. |
+| `eventDetails` | Render-state configuration for the Detalles del evento flow. Normalized shape is `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`; `mode` and `dressCode.enabled` remain functional authorities, while `dressCode.value` is a one-way compatibility projection of the field with `eventDetailsRole: "dress_code"`. |
 
 Ledger v3 represents an explicit Designer AI Gallery finalization as a resolution
 for `media.gallery.{galleryId}.guided_completion`. It does not add a field to the
@@ -956,34 +955,138 @@ resolutions, valores completados y cantidad de mensajes no son evidencia de uso.
 No se persisten fecha de ingreso, historial visible ni una segunda identidad de
 conversación.
 
+Dynamic values and their canvas representations are separate contracts:
+
+- In writable drafts, `templateInput.values` is the only authority for dynamic
+  field values. In template authoring, `templateAuthoringDraft.defaults` is the
+  authority. Every declared `fieldsSchema` key is normalized into the applicable
+  value bag, including valid empty values such as `""` and `[]`; consumers test
+  key presence rather than truthiness.
+- Canvas objects, grouped children, maps, countdowns, and
+  `eventDetails.dressCode.value` are projections. Editing a structured value
+  applies it to every valid target without transferring ownership of position,
+  size, style, text-box width, alignment, or wrapping to the field.
+- `changedKeys` and personalization UI iterate only keys declared by
+  `fieldsSchema`. Reserved metadata may coexist in the value bag but is not a
+  user field and cannot become a replacement target.
+
+The reserved Places namespace is:
+
+```ts
+values.__eventDetails.locations["ceremony" | "party"] = {
+  source: "google_places",
+  placeId: string,
+  displayName: string,
+  formattedAddress: string,
+  addressComponents: object[],
+  lat: number,
+  lng: number,
+} | null
+```
+
+For template authoring, the same namespace lives in
+`templateAuthoringDraft.defaults`. Objects retain only the map projection needed
+by editor/render compatibility (`googlePlaceId`, display/address/coordinates and
+`mostrarMapa`); object-level `googleAddressComponents` is a legacy migration
+input, not the modern metadata authority. Selecting Places patches existing map
+views but does not recreate a deleted map. Manually editing an address clears the
+phase metadata and hides existing maps; editing only the venue name preserves a
+valid Places selection.
+
+`applyTargets` remains schema data and `applyTarget` remains application logic.
+Their persisted distinction is normative:
+
+- missing `applyTargets` means a legacy association is still eligible for
+  deterministic materialization;
+- `applyTargets: []` means a valid modern data-only field with no canvas view;
+- a stale target is removed by sanitization without deleting its field, default,
+  or structured value.
+
+Target identity preserves `scope`, `id`, `path`, `mode`, and `transform`, including
+group-child traversal. An explicit date transform preset on a target wins;
+`field.dateTextFormatPreset` is used only when that target has no preset.
+
+Version `2` authoring payloads include the inert recovery cache below. It never
+participates in render, value application, validation, `changedKeys`, preview, or
+publish:
+
+```ts
+detachedVisuals: {
+  version: 1,
+  nextSequence: number,
+  entries: Array<{
+    id: string,
+    sequence: number,
+    fieldKeys: string[],
+    object: object,
+    targets: Array<{ fieldKey: string, target: ApplyTarget }>,
+    source: {
+      kind: "root" | "group-child" | "event-map",
+      rootId: string,
+      rootIndex: number,
+      childIndex?: number,
+      sectionId: string | null,
+    },
+  }>,
+}
+```
+
+The archived `object` is a standalone visual snapshot with projected dynamic
+values removed. `sequence` selects, and persistence retains, only the most recent
+reachable presentation for each field; no second persisted index exists.
+`fieldKeys` records every structured field consumed by that presentation, while
+`targets` remains the exact mapping authority. A combined `couple_names` text
+therefore records both base person-name keys as dependencies but restores only
+its original combined target; either sidebar name may recover that one shared
+presentation.
+Restoring reattaches the exact targets,
+uses the current structured values, remaps colliding IDs, and falls back to a
+normal default insertion when no usable entry exists. Generic text fields use the
+standard text insertion contract (dates keep `date_to_text` plus the field preset
+fallback); map and countdown requests delegate to their existing builders.
+
+Migration from v1 to v2 is lazy and idempotent. It materializes legacy mappings
+as explicit `applyTargets` (or `[]` when no view exists) and resolves values in
+this order: a reversible legacy-specific/live target value in stable canvas
+order; a non-baseline authoring default; an existing `templateInput.values` key;
+then authoring, initial, or template defaults. Lossy transforms such as formatted
+date text are not inverted without an existing legacy resolver. Dress Code and
+the first valid map metadata for each phase migrate through the same boundary.
+
 `templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current standardized fields are:
 
-| Key | Label | Type | Group | Render authority |
+| Key | Label | Type | Group | Canvas projection |
 | --- | --- | --- | --- | --- |
-| `texto_historia` | `Texto historia` | `textarea` | `Datos principales` | Linked `objeto.texto` targets remain the visible/canonical canvas text. |
-| `event_ceremony_date` | `Fecha de la ceremonia` | `date` | `Ceremonia` | Linked text/countdown targets remain the visible/canonical canvas objects. |
-| `event_ceremony_start_time` | `Horario de inicio de la ceremonia` | `time` | `Ceremonia` | Linked text targets remain the visible/canonical canvas objects. |
-| `event_ceremony_end_time` | `Horario de fin de la ceremonia` | `time` | `Ceremonia` | Linked text targets remain the visible/canonical canvas objects. |
-| `event_ceremony_venue_name` | `Lugar de la ceremonia` | `text` | `Ceremonia` | Linked text/map targets remain the visible/canonical canvas objects. |
-| `event_ceremony_venue_address` | `Direccion de la ceremonia` | `text` | `Ceremonia` | Linked text/map targets remain the visible/canonical canvas objects. |
-| `event_party_date` | `Fecha de la fiesta` | `date` | `Fiesta` | Linked text/countdown targets remain the visible/canonical canvas objects. |
-| `event_party_start_time` | `Horario de inicio de la fiesta` | `time` | `Fiesta` | Linked text targets remain the visible/canonical canvas objects. |
-| `event_party_end_time` | `Horario de fin de la fiesta` | `time` | `Fiesta` | Linked text targets remain the visible/canonical canvas objects. |
-| `event_party_venue_name` | `Lugar de la fiesta` | `text` | `Fiesta` | Linked text/map targets remain the visible/canonical canvas objects. |
-| `event_party_venue_address` | `Direccion de la fiesta` | `text` | `Fiesta` | Linked text/map targets remain the visible/canonical canvas objects. |
-| `event_dress_code` | `Dress Code` | `text` | `Detalles del evento` | Linked text targets read/write `eventDetails.dressCode.value`; section/group visibility reads `eventDetails.dressCode.enabled`. |
+| `texto_historia` | `Texto historia` | `textarea` | `Datos principales` | Zero or more linked text views. |
+| `event_ceremony_date` | `Fecha de la ceremonia` | `date` | `Ceremonia` | Zero or more linked text/countdown views. |
+| `event_ceremony_start_time` | `Horario de inicio de la ceremonia` | `time` | `Ceremonia` | Zero or more linked text/countdown views. |
+| `event_ceremony_end_time` | `Horario de fin de la ceremonia` | `time` | `Ceremonia` | Zero or more linked text views. |
+| `event_ceremony_venue_name` | `Lugar de la ceremonia` | `text` | `Ceremonia` | Zero or more linked text/map views. |
+| `event_ceremony_venue_address` | `Direccion de la ceremonia` | `text` | `Ceremonia` | Zero or more linked text/map views. |
+| `event_party_date` | `Fecha de la fiesta` | `date` | `Fiesta` | Zero or more linked text/countdown views. |
+| `event_party_start_time` | `Horario de inicio de la fiesta` | `time` | `Fiesta` | Zero or more linked text/countdown views. |
+| `event_party_end_time` | `Horario de fin de la fiesta` | `time` | `Fiesta` | Zero or more linked text views. |
+| `event_party_venue_name` | `Lugar de la fiesta` | `text` | `Fiesta` | Zero or more linked text/map views. |
+| `event_party_venue_address` | `Direccion de la fiesta` | `text` | `Fiesta` | Zero or more linked text/map views. |
+| `event_dress_code` | `Dress Code` | `text` | `Detalles del evento` | Zero or more text views; visibility reads `eventDetails.dressCode.enabled`. |
 
-`templateAuthoringDraft.defaults.texto_historia` is authoring metadata for the dynamic-field flow. It must not become a second render authority: preview, publish, and canvas rendering continue to read the linked text object through the normal `objetos` model. Older templates or drafts without `texto_historia` are valid; editor UI should hide story-specific controls until the field has a linked text object target.
+`templateAuthoringDraft.defaults.texto_historia` is the template-authoring value and
+`templateInput.values.texto_historia` is the draft value. Preview, publish, and
+canvas rendering still consume only materialized views through the normal
+`objetos` model. Older documents without the field remain valid. A declared field
+remains editable in sidebar/modal even with `applyTargets: []`; changing it never
+inserts a view as a side effect.
 
 When `texto_historia` is applied to a text object through template authoring or personalization, the linked text object keeps ownership of layout. The object stores the text box width and alignment (`width`, `align`) and dynamic updates set `__autoWidth: false` with word wrapping so longer story text wraps inside the existing box. Canvas transformer edits may still change that box width directly on the object.
 
 The same layout ownership applies when `event_ceremony_venue_name`, `event_ceremony_venue_address`, `event_party_venue_name`, or `event_party_venue_address` is applied to a text target. Manual input and Google Maps selection preserve the target object's authored `width` and alignment, set `__autoWidth: false`, and use word wrapping so longer values grow vertically inside that box. The canvas transformer's lateral width handle remains the authority for later width changes.
 
 Manual and Google location completion use one persisted model. Manual authoring
-writes the applicable venue/address defaults and clears the phase's Google
-metadata. Places authoring writes those same defaults from the selected result
-and stores provider metadata only on the phase's `mapa-google` object. Chat or
-ledger state is never a render authority for either representation.
+writes the applicable venue/address value and clears the phase's structured
+Google metadata. Places authoring writes those same fields plus
+`__eventDetails.locations[phase]`, then projects compatible fields into every
+existing map view. Chat, ledger state, and any individual map object are never
+the value or provider-metadata authority.
 
 Event-detail dynamic fields use explicit `eventDetailsRole` values such as `ceremony_date`, `party_start_time`, `party_venue_address`, and `dress_code`; runtime code must not infer Ceremony/Party/Dress Code permanently from legacy keys. Legacy fields (`event_date`, `event_start_time`, `event_end_time`, `event_venue_name`, `event_venue_address`) are migrated idempotently to their Ceremony equivalents and the document is normalized to `eventDetails.mode: "single"`. Party defaults and targets are preserved when switching back to single-event mode, but Party render associations are inactive until `eventDetails.mode` is `"ceremony_party"`. Dress Code text is preserved when disabled; only visibility is derived from `eventDetails.dressCode.enabled`.
 
@@ -1298,6 +1401,7 @@ Output:
 - `seccionId` must keep each object attached to a valid section.
 - `altoModo`, `y`, and `yNorm` must mean the same thing in editor persistence and HTML generation.
 - section ordering must stay sortable by `orden`.
+- Dynamic value edits persist the structured value bag together with reached render/config projections. Recovery-only `detachedVisuals` and reserved value metadata never enter the canonical render payload.
 - root `rsvp` and `gifts` must remain root-level configs, not embedded into button objects.
 - publish readiness is not inferred only from generator support. The current backend contract is `prepareRenderPayload(...)` plus `validatePreparedRenderPayload(...)`, which can produce either blockers or warnings for the same stored render fields.
 - Successful `share` metadata must be derived from generated publish HTML first-section capture. It must not add a new editor mapping, new render arrays in `publicadas`, a template-preview authority, or a canvas-derived social preview source.

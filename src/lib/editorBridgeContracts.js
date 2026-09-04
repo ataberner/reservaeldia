@@ -19,6 +19,10 @@ export const CANVAS_EDITOR_COMPATIBILITY_KEYS = Object.freeze([
   "hasPendingDraftWrites",
   "getTemplateAuthoringStatus",
   "getTemplateAuthoringSnapshot",
+  "getDynamicFieldRepresentationStatus",
+  "restoreDynamicFieldRepresentation",
+  "updateTemplateFieldValue",
+  "updateTemplateFieldValues",
   "updateTemplateAuthoringDefault",
   "updateTemplateAuthoringDateTextFormat",
   "updateTemplateAuthoringSelectedDateTextFormat",
@@ -119,7 +123,20 @@ export const EDITOR_BRIDGE_EVENTS = Object.freeze({
   EXIT_BACKGROUND_MOVE_MODE: "salir-modo-mover-fondo",
   DRAFT_FLUSH_REQUEST: "editor:draft-flush:request",
   DRAFT_FLUSH_RESULT: "editor:draft-flush:result",
+  DYNAMIC_FIELD_EDIT_REQUEST: "editor:dynamic-field-edit-request",
 });
+
+export function normalizeDynamicFieldEditRequestDetail(detail) {
+  const source = asObject(detail) || {};
+  return {
+    fieldKey: normalizeText(source.fieldKey),
+    objectId: normalizeText(source.objectId),
+  };
+}
+
+export function buildDynamicFieldEditRequestDetail({ fieldKey, objectId } = {}) {
+  return normalizeDynamicFieldEditRequestDetail({ fieldKey, objectId });
+}
 
 export function buildEditorSelectionChangeDetail({
   ids,

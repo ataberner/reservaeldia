@@ -42,6 +42,15 @@ Casos con paridad compartida caracterizada:
 - contrato de config `gifts`
 - geometria mobile/reflow opt-in para preview iframe vs publish en `390x844`, `375x812`, y `414x896`
 
+Los valores dinámicos estructurados y sus vistas tienen fronteras distintas.
+`templateInput`, `templateAuthoringDraft`, el namespace reservado de Places y
+`detachedVisuals` son metadata del editor y no entran al prepared render payload
+ni al HTML generado. Preview/publish materializan únicamente los objetos y
+secciones vivos después de aplicar sus targets. Por lo tanto un field data-only
+es válido y no emite HTML, mientras una vista restaurada vuelve a usar el mismo
+shape público del objeto existente; este contrato no agrega nodos, atributos ni
+payload público nuevos.
+
 En mobile, el fit posterior al reflow debe mantener completamente dentro del
 ancho del viewport a los objetos de contenido e interaccion de `.sec-content`,
 incluidos texto, CTA, iconos, Gallery y el wrapper unico de un grupo. El ajuste
@@ -153,6 +162,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `countdown` schema v1 | `si` | `soportado` | `soportado` | `soportado` | `parcial`; conserva compatibilidad congelada y `freezeZero` | warning `legacy-countdown-schema-v1-frozen`; target faltante/invalido bloquea | congelar contrato |
 | `countdown` schema v2 | `si` | `soportado` | `soportado` | `soportado` | `alta`: contrato compartido para geometria/distribucion/`gap` decimal/separadores, stacking frame-chip-texto, tipografia, SVG fixed/`currentColor`, bytes/transparencia PNG preservados, PNG contenido sin deformacion, seleccion Canvas como union contenido+frame, `frameScale` centrado `0.5..5`, `boxShadow` y distribucion editorial; lifecycle actual `freezeZero` | puede bloquear por `countdown-frame-unresolved`, `countdown-target-missing` o `countdown-target-invalid` | usar con baseline congelado |
 | `mapa-google` | `si` | placeholder | `soportado` | omitido | `alta` en preview/publish, no participa en share image | puede bloquear si falta `placeId` o API key para publish | el iframe real se excluye de `share.jpg` |
+| metadata dinámica (`templateInput`, `templateAuthoringDraft`, Places y `detachedVisuals`) | `si`, editor-only | no renderiza por sí misma | omitida | omitida | `alta`: sólo las vistas materializadas alcanzan HTML | no bloquea por sí misma | filtrar metadata y recovery; no serializar ni usar como fallback visual |
 | `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `enabled` normalizado desde legacy decide visibilidad funcional y `questions[].options` explicitas conservan membresia en preview/publish | warning `functional-cta-link-ignored`; `rsvp-missing-root-config` queda como compatibilidad solo si no puede normalizarse raiz | validar contrato completo |
 | `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `enabled` normalizado desde legacy decide visibilidad funcional | warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, warning `functional-cta-link-ignored`; `gift-missing-root-config` queda como compatibilidad solo si no puede normalizarse raiz | validar contrato completo |
 | fondo de seccion por color | `si` | `soportado` | `soportado` | `soportado` | `alta` | sin warning especifico | usar con checklist |
@@ -170,7 +180,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | composicion mobile inferida (`fijo`/`auto`) | no agrega persistencia | no cambia grupos ni geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | infiere unidades por relaciones geometricas antes de anchor/flow; preserva vectores internos, grupos explicitos y separacion content/fullbleed |
 | composicion mobile inferida (`pantalla`) | no agrega persistencia | no cambia `yNorm`, grupos ni geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | proyecta relaciones a `800 x 500`, conserva un anclaje vertical proporcional por unidad y escala offsets internos con content fit; sin ordering, stack ni expansion |
 | contencion mobile de contenido | no agrega persistencia | no cambia geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | `.sec-content` mantiene contenido/interaccion dentro del viewport; roles decorativos, capas de seccion y `.sec-bleed` conservan crop tipo cover |
-| `functionalAssociation` RSVP/Gifts/Ceremony/Party/Dress Code/Countdown | `si` en seccion o grupo raiz; Countdown solo en seccion | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled`, `eventDetails.mode`, `eventDetails.dressCode.enabled` y `mostrarCuentaRegresiva` del Countdown contenido son la autoridad; secciones/grupos omitidos no mutan geometria |
+| `functionalAssociation` RSVP/Gifts/Ceremony/Party/Dress Code/Countdown | `si` en seccion o grupo raiz; roots standalone admiten Ceremony/Party/Dress Code; Countdown solo en seccion | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled`, `eventDetails.mode`, `eventDetails.dressCode.enabled` y `mostrarCuentaRegresiva` del Countdown contenido son la autoridad; asociaciones inactivas se omiten sin mutar geometria |
 | `anclaje: fullbleed` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque el canvas no representa la salida final | warning `fullbleed-editor-drift` | congelar contrato |
 | `enlace` | `si` | `parcial` | `soportado` | `soportado` | `parcial` | CTA funcional ignora `enlace` | usar con restricciones |
 | `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML | no tiene warning especifico actual | validar en HTML |
@@ -208,6 +218,7 @@ Advertencias de publish hoy:
 - No tratar una figura como "editor-only" si existe rama real en `generarHTMLDesdeObjetos.ts` y en `publicationPublishValidation.ts`.
 - No tratar una rama como "soportada" solo porque existe HTML. Si depende de assets resueltos o config raiz, queda `parcial`.
 - Para preview vs publish, la fuente de verdad actual es la combinacion de `previewPublishParity`, `prepareRenderPayload`, y `validatePreparedRenderPayload`, no inspeccion manual aislada del canvas.
+- Nunca promover `templateInput.values`, Places o `detachedVisuals` a fallback de render. Una vista quitada permanece ausente de preview/publish aunque su valor y snapshot recuperable sigan persistidos.
 - Para imagen social publicada, usar solo el HTML de publish generado como fuente visual. El renderer debe esperar `document.readyState === "complete"`, `document.fonts.ready`, carga/error de imagenes de la primera seccion, al menos dos animation frames, y el asentamiento acotado de animaciones/transiciones finitas de entrada en la primera seccion; luego debe validar un clip finito y capturar el primer `.inv > .sec` en `1200x630`. Los loops infinitos/decorativos y las secciones no capturadas no deben bloquear la captura.
 - La imagen social publicada es un artefacto obligatorio de publish. Si el renderer excede su presupuesto backend, encuentra error, o el `share.jpg` no se confirma como JPEG `1200x630`, el publish falla de forma controlada y no debe persistir una publicacion exitosa con fallback generico. El presupuesto actual incluye cold start de Chromium y reserva tiempo final para screenshot. El HTML final nunca debe publicar un `og:image` faltante.
 - Para cambios de roles de imagen, usar tambien [IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md](IMAGE_PLACEMENT_UX_RENDER_CONTRACT.md). Ese contrato define la semantica normativa de conversion: una imagen normal convertida en visual propio de seccion debe eliminar el objeto original.

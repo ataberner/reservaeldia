@@ -24,9 +24,7 @@ import {
 } from "@/domain/eventDetails/personNames";
 import {
   ADDRESS_TEXT_FORMAT_PRESET_OPTIONS,
-  buildEventGoogleMapClearPatch,
-  buildEventGoogleMapInsertObject,
-  buildEventGoogleMapObjectPatch,
+  collectEventGoogleMapObjects,
   findEventGoogleMapObject,
   formatEventAddressText,
   getEventLocationFieldKey,
@@ -59,6 +57,7 @@ import {
 } from "@/lib/dashboardDocumentNameBridge";
 import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
+import { DRAFT_FLUSH_REQUEST_EVENT } from "@/domain/drafts/flushGate";
 import {
   readCanvasEditorMethod,
   readEditorObjects,
@@ -82,6 +81,7 @@ import {
   buildAutomaticEventName,
   normalizeDesignerAiConversationState,
 } from "../../shared/designerAiConversationLedger.js";
+import DynamicFieldVisualIndicator from "@/components/editor/templateAuthoring/DynamicFieldVisualIndicator";
 
 const inputClass =
   "mt-2 block h-[38px] w-full max-w-[361px] box-border bg-white px-3 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none placeholder:text-[#9b9b9b] [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
@@ -98,6 +98,33 @@ const disabledControlClass =
 const EVENT_PERSON_NAMES_SAVE_DELAY_MS = 350;
 const EVENT_LOCATION_SAVE_DELAY_MS = 350;
 const EVENT_TIMES_SAVE_DELAY_MS = 350;
+
+function DynamicFieldInputShell({
+  children,
+  status,
+  pending = false,
+  error = "",
+  onActivate,
+}) {
+  const child = React.Children.only(children);
+  return (
+    <div
+      data-dynamic-field-input-shell="true"
+      className="mt-2 flex h-[42px] w-full max-w-[361px] min-w-0 items-stretch overflow-hidden bg-white [border:1px_solid_var(--Border,#00000029)] focus-within:[border-color:#692B9A]"
+    >
+      {React.cloneElement(child, {
+        className: `${child.props.className || ""} !mt-0 !h-full !w-auto !max-w-none min-w-0 flex-1 !border-0 !bg-transparent !pr-1 focus:!border-transparent`,
+      })}
+      <DynamicFieldVisualIndicator
+        status={status}
+        loading={pending}
+        error={error}
+        onActivate={onActivate}
+        className="!static !h-full min-w-[64px] self-stretch !rounded-none border-l border-[#00000014] bg-white px-2"
+      />
+    </div>
+  );
+}
 const EVENT_COUPLE_SCROLL_FIELD_KEYS = [
   getEventPersonNameFieldKey(
     EVENT_PERSON_NAME_ROLES.COUPLE,
@@ -172,7 +199,7 @@ function resolveCountdownDetailsStateFromSnapshot(
     : [];
   const baseEventDateBinding = resolveEventDateSidebarBinding({
     fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
     objetos,
     feature: safeFeature,
   });
@@ -192,7 +219,7 @@ function resolveCountdownDetailsStateFromSnapshot(
       });
   const eventDateBinding = resolveEventDateSidebarBinding({
     fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
     countdownDetails,
     objetos,
     feature: safeFeature,
@@ -307,6 +334,7 @@ function readEventPersonNamesState(targetWindow, options = {}) {
   const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
   const nextNames = resolveEventPersonNamesState({
     ...authoringSnapshot,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
     objetos: readEditorObjects(targetWindow),
   });
   if (nextNames) return nextNames;
@@ -321,7 +349,8 @@ function readEventLocationState(targetWindow, feature = EVENT_DETAIL_FEATURES.CE
   const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
   return resolveEventLocationFromAuthoring({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
+    values: authoringSnapshot?.values,
     objetos: readEditorObjects(targetWindow),
     feature,
   });
@@ -335,7 +364,10 @@ function resolveEventTimesStateFromSnapshot(
     authoringSnapshot,
     feature
   );
-  return resolveEventTimesState(authoringSnapshot, {
+  return resolveEventTimesState({
+    ...authoringSnapshot,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
+  }, {
     fallbackStartTime: countdownDetails?.time,
     feature,
   });
@@ -357,7 +389,7 @@ function readEventTimesState(targetWindow, options = {}) {
   });
   return resolveEventTimesFromAuthoring({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
     fallbackStartTime: countdownDetails?.time,
     feature: options.feature,
   });
@@ -431,7 +463,7 @@ function readDressCodeBindingState(targetWindow) {
   };
   return resolveDressCodeSidebarBinding({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
     objetos: authoringSnapshot?.objetos,
   });
 }
@@ -439,12 +471,12 @@ function readDressCodeBindingState(targetWindow) {
 function readEventDetailsUiConfigState(targetWindow) {
   const config = readEventDetailsConfigState(targetWindow);
   const dressCodeBinding = readDressCodeBindingState(targetWindow);
-  if (!normalizeText(config?.dressCode?.value) && normalizeText(dressCodeBinding?.value)) {
+  if (normalizeText(dressCodeBinding?.fieldKey)) {
     return normalizeEventDetailsConfig({
       ...config,
       dressCode: {
         ...config.dressCode,
-        value: dressCodeBinding.value,
+        value: String(dressCodeBinding.value ?? ""),
       },
     });
   }
@@ -510,72 +542,54 @@ function isDateInputValue(value) {
 function buildEventDateTargetValue({ date, time, fieldType } = {}) {
   const safeDate = normalizeText(date);
   const safeTime = normalizeEventTimeValue(time);
-  const targetISO = buildCountdownTargetIsoFromLocalParts({
-    date: safeDate,
-    time: safeTime,
-  });
-  if (targetISO) return targetISO;
-
   if (
     normalizeText(fieldType).toLowerCase() === "date" &&
     isDateInputValue(safeDate)
   ) {
     return safeDate;
   }
+  const targetISO = buildCountdownTargetIsoFromLocalParts({
+    date: safeDate,
+    time: safeTime,
+  });
+  if (targetISO) return targetISO;
 
   return "";
 }
 
-function dispatchCountdownPatch(countdownId, cambios) {
-  if (typeof window === "undefined" || !countdownId || !cambios) return;
-  window.dispatchEvent(
-    new CustomEvent(EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT, {
-      detail: {
-        id: countdownId,
-        cambios,
-      },
-    })
-  );
-}
-
-function dispatchElementPatch(objectId, cambios) {
-  if (typeof window === "undefined" || !objectId || !cambios) return;
-  window.dispatchEvent(
-    new CustomEvent(EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT, {
-      detail: {
-        id: objectId,
-        cambios,
-      },
-    })
-  );
-}
-
-function dispatchMapInsert(location, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
-  if (typeof window === "undefined") return null;
-  const safeFeature = normalizeEventDetailFeature(feature);
-  const mapObject = buildEventGoogleMapInsertObject(
-    {
-      ...location,
-      eventDetailsFeature: safeFeature,
-    },
-    { feature: safeFeature }
-  );
-  window.dispatchEvent(
-    new CustomEvent(EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT, {
-      detail: mapObject,
-    })
-  );
-  return mapObject;
-}
-
 function updateLinkedFieldDefault(fieldKey, value, options = {}) {
   if (typeof window === "undefined" || !fieldKey) return;
-  const updateDefault = readCanvasEditorMethod("updateTemplateAuthoringDefault");
+  const updateDefault =
+    readCanvasEditorMethod("updateTemplateFieldValue") ||
+    readCanvasEditorMethod("updateTemplateAuthoringDefault");
   if (typeof updateDefault !== "function") return;
 
   void Promise.resolve(updateDefault(fieldKey, value, options)).catch((error) => {
     console.error("No se pudo actualizar el default del campo dinamico.", error);
   });
+}
+
+function readDynamicFieldVisualStatus(fieldKeys, options = {}) {
+  if (typeof window === "undefined") {
+    return {
+      state: "absent",
+      linkedCount: 0,
+      visibleCount: 0,
+      canRestore: false,
+      fieldKey: Array.isArray(fieldKeys) ? fieldKeys[0] || "" : String(fieldKeys || ""),
+    };
+  }
+  const reader = readCanvasEditorMethod("getDynamicFieldRepresentationStatus");
+  if (typeof reader !== "function") {
+    return {
+      state: "absent",
+      linkedCount: 0,
+      visibleCount: 0,
+      canRestore: false,
+      fieldKey: Array.isArray(fieldKeys) ? fieldKeys[0] || "" : String(fieldKeys || ""),
+    };
+  }
+  return reader(fieldKeys, options);
 }
 
 function updateLinkedSelectedFieldDateTextFormat(fieldKey, preset) {
@@ -595,6 +609,25 @@ function scrollToDynamicFieldTarget(fieldKeys) {
   const scrollToTarget = readCanvasEditorMethod("scrollToDynamicFieldTarget");
   if (typeof scrollToTarget !== "function") return false;
   return scrollToTarget(fieldKeys);
+}
+
+function focusDynamicFieldVisual(status, fieldKeys, requestedRootObjectId = "") {
+  if (typeof window === "undefined") return false;
+  const rootObjectIds = Array.isArray(status?.rootObjectIds)
+    ? status.rootObjectIds.map(normalizeText).filter(Boolean)
+    : [];
+  const requestedId = normalizeText(requestedRootObjectId);
+  const rootObjectId = rootObjectIds.includes(requestedId)
+    ? requestedId
+    : rootObjectIds[0] || normalizeText(status?.firstRootObjectId);
+  const focusObject = readCanvasEditorMethod("focusEditorObjectById");
+  if (rootObjectId && typeof focusObject === "function") {
+    return focusObject(rootObjectId, {
+      select: true,
+      source: "dynamic-field-indicator",
+    });
+  }
+  return scrollToDynamicFieldTarget(fieldKeys);
 }
 
 function selectSidebarFieldText(event) {
@@ -708,6 +741,12 @@ export default function MiniToolbarTabDetallesEvento({
   const [locationSuggestionsOpen, setLocationSuggestionsOpen] = useState(false);
   const [locationSuggestionsLoading, setLocationSuggestionsLoading] = useState(false);
   const [locationSuggestionsError, setLocationSuggestionsError] = useState("");
+  const [dynamicVisualStatuses, setDynamicVisualStatuses] = useState({});
+  const [dynamicVisualOperation, setDynamicVisualOperation] = useState({
+    key: "",
+    pending: false,
+    error: "",
+  });
   const editingNameRef = useRef(false);
   const editingEventPersonNamesRef = useRef(false);
   const editingEventLocationRef = useRef(false);
@@ -752,6 +791,131 @@ export default function MiniToolbarTabDetallesEvento({
   const dressCodeFieldKey = getDressCodeFieldKey();
   const ceremonyScrollFieldKeys = buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY);
   const partyScrollFieldKeys = buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY);
+
+  const syncDynamicVisualStatuses = useCallback(() => {
+    setDynamicVisualStatuses({
+      primaryName: readDynamicFieldVisualStatus(EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS),
+      secondaryName: readDynamicFieldVisualStatus(EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS),
+      dressCode: readDynamicFieldVisualStatus(getDressCodeFieldKey()),
+      ceremonyDate: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).date
+      ),
+      ceremonyStartTime: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).startTime
+      ),
+      ceremonyEndTime: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).endTime
+      ),
+      ceremonyCountdown: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).date,
+        { kind: "countdown" }
+      ),
+      ceremonyVenueName: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).venueName
+      ),
+      ceremonyVenueAddress: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).venueAddress
+      ),
+      ceremonyMap: readDynamicFieldVisualStatus(
+        [
+          ...buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).venueName,
+          ...buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.CEREMONY).venueAddress,
+        ],
+        { kind: "map" }
+      ),
+      partyDate: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).date
+      ),
+      partyStartTime: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).startTime
+      ),
+      partyEndTime: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).endTime
+      ),
+      partyCountdown: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).date,
+        { kind: "countdown" }
+      ),
+      partyVenueName: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).venueName
+      ),
+      partyVenueAddress: readDynamicFieldVisualStatus(
+        buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).venueAddress
+      ),
+      partyMap: readDynamicFieldVisualStatus(
+        [
+          ...buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).venueName,
+          ...buildEventScrollFieldKeys(EVENT_DETAIL_FEATURES.PARTY).venueAddress,
+        ],
+        { kind: "map" }
+      ),
+    });
+  }, []);
+
+  const activateDynamicVisual = useCallback(
+    async ({
+      operationKey,
+      fieldKeys,
+      representationKind = "auto",
+      rootObjectId = "",
+    }) => {
+      const status = readDynamicFieldVisualStatus(fieldKeys, {
+        kind: representationKind === "auto" ? undefined : representationKind,
+      });
+      if (status?.state !== "absent") {
+        focusDynamicFieldVisual(status, fieldKeys, rootObjectId);
+        return;
+      }
+
+      const restore = readCanvasEditorMethod("restoreDynamicFieldRepresentation");
+      const fallbackFieldKey = Array.isArray(fieldKeys) ? fieldKeys[0] : fieldKeys;
+      const fieldKey = normalizeText(
+        status?.restoreFieldKey || status?.fieldKey || fallbackFieldKey
+      );
+      if (typeof restore !== "function" || !fieldKey) return;
+
+      setDynamicVisualOperation({ key: operationKey, pending: true, error: "" });
+      try {
+        const result = await restore({ fieldKey, representationKind });
+        if (result?.ok === false) {
+          throw new Error(result.error || "No se pudo volver a insertar la representacion.");
+        }
+        syncDynamicVisualStatuses();
+      } catch (restoreError) {
+        setDynamicVisualOperation({
+          key: operationKey,
+          pending: false,
+          error:
+            restoreError instanceof Error
+              ? restoreError.message
+              : "No se pudo volver a insertar la representacion.",
+        });
+        return;
+      }
+      setDynamicVisualOperation({ key: "", pending: false, error: "" });
+    },
+    [syncDynamicVisualStatuses]
+  );
+
+  const visualIndicatorProps = useCallback(
+    (operationKey, fieldKeys, representationKind = "auto") => ({
+      status: dynamicVisualStatuses[operationKey],
+      pending:
+        dynamicVisualOperation.pending && dynamicVisualOperation.key === operationKey,
+      error:
+        dynamicVisualOperation.key === operationKey
+          ? dynamicVisualOperation.error
+          : "",
+      onActivate: ({ rootObjectId } = {}) =>
+        activateDynamicVisual({
+          operationKey,
+          fieldKeys,
+          representationKind,
+          rootObjectId,
+        }),
+    }),
+    [activateDynamicVisual, dynamicVisualOperation, dynamicVisualStatuses]
+  );
 
   const applySyncedCountdownDetailsState = useCallback((details, feature) => {
     if (!details) return;
@@ -828,11 +992,18 @@ export default function MiniToolbarTabDetallesEvento({
         },
       });
       setEventDetailsConfig(nextConfig);
-      void updateLinkedEventDetailsConfig(nextConfig);
       if (applyTargets) {
         updateLinkedFieldDefault(dressCodeFieldKey, nextConfig.dressCode.value, {
           applyTargets: true,
+          eventDetailsPatch: {
+            dressCode: {
+              enabled: nextConfig.dressCode.enabled,
+            },
+          },
+          reason: "dress-code-value-update",
         });
+      } else {
+        void updateLinkedEventDetailsConfig(nextConfig);
       }
     },
     [dressCodeFieldKey, eventDetailsConfig]
@@ -1100,20 +1271,22 @@ export default function MiniToolbarTabDetallesEvento({
 
   useEffect(() => {
     return () => {
+      // El tab es efimero: reservar los writes antes de desmontar evita que un
+      // flush posterior confirme un estado anterior.
       if (eventPersonNamesSaveTimerRef.current) {
-        clearTimeout(eventPersonNamesSaveTimerRef.current);
+        persistEventPersonNames(eventPersonNamesRef.current);
       }
       if (eventLocationSaveTimerRef.current) {
-        clearTimeout(eventLocationSaveTimerRef.current);
+        persistEventLocation(eventLocationRef.current);
       }
       if (partyEventLocationSaveTimerRef.current) {
-        clearTimeout(partyEventLocationSaveTimerRef.current);
+        persistPartyEventLocation(partyEventLocationRef.current);
       }
       if (eventTimesSaveTimerRef.current) {
-        clearTimeout(eventTimesSaveTimerRef.current);
+        persistEventTimes(eventTimesRef.current);
       }
       if (partyEventTimesSaveTimerRef.current) {
-        clearTimeout(partyEventTimesSaveTimerRef.current);
+        persistPartyEventTimes(partyEventTimesRef.current);
       }
       if (locationSuggestionTimerRef.current) {
         clearTimeout(locationSuggestionTimerRef.current);
@@ -1170,6 +1343,7 @@ export default function MiniToolbarTabDetallesEvento({
     syncEventPersonNamesState();
     syncEventLocationState();
     syncEventTimesState();
+    syncDynamicVisualStatuses();
 
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
@@ -1206,6 +1380,14 @@ export default function MiniToolbarTabDetallesEvento({
     window.addEventListener(
       EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
       syncEventLocationState
+    );
+    window.addEventListener(
+      EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+      syncDynamicVisualStatuses
+    );
+    window.addEventListener(
+      EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+      syncDynamicVisualStatuses
     );
 
     return () => {
@@ -1245,6 +1427,14 @@ export default function MiniToolbarTabDetallesEvento({
         EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
         syncEventLocationState
       );
+      window.removeEventListener(
+        EDITOR_BRIDGE_EVENTS.SELECTION_CHANGE,
+        syncDynamicVisualStatuses
+      );
+      window.removeEventListener(
+        EDITOR_BRIDGE_EVENTS.TEMPLATE_AUTHORING_CHANGE,
+        syncDynamicVisualStatuses
+      );
     };
   }, [
     syncCountdownUiState,
@@ -1255,6 +1445,7 @@ export default function MiniToolbarTabDetallesEvento({
     syncEventLocationState,
     syncEventTimesState,
     handleTemplateAuthoringChangeForEventTimes,
+    syncDynamicVisualStatuses,
   ]);
 
   const canEditEventName = documentNameState.editable;
@@ -1635,6 +1826,33 @@ export default function MiniToolbarTabDetallesEvento({
     persistPartyEventLocation(partyEventLocationRef.current);
   }, [persistPartyEventLocation]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const flushPendingDynamicFieldDebounces = () => {
+      if (eventPersonNamesSaveTimerRef.current) flushEventPersonNames();
+      if (eventLocationSaveTimerRef.current) flushEventLocation();
+      if (partyEventLocationSaveTimerRef.current) flushPartyEventLocation();
+      if (eventTimesSaveTimerRef.current) flushEventTimes();
+      if (partyEventTimesSaveTimerRef.current) flushPartyEventTimes();
+    };
+    window.addEventListener(
+      DRAFT_FLUSH_REQUEST_EVENT,
+      flushPendingDynamicFieldDebounces
+    );
+    return () => {
+      window.removeEventListener(
+        DRAFT_FLUSH_REQUEST_EVENT,
+        flushPendingDynamicFieldDebounces
+      );
+    };
+  }, [
+    flushEventLocation,
+    flushEventPersonNames,
+    flushEventTimes,
+    flushPartyEventLocation,
+    flushPartyEventTimes,
+  ]);
+
   const applyEventLocation = (
     patch,
     { persist = true, feature = EVENT_DETAIL_FEATURES.CEREMONY } = {}
@@ -1751,9 +1969,6 @@ export default function MiniToolbarTabDetallesEvento({
   const clearGoogleMapBinding = (feature = EVENT_DETAIL_FEATURES.CEREMONY) => {
     const safeFeature = normalizeEventDetailFeature(feature);
     const mapObject = findEventGoogleMapObject(readEditorObjects(window), safeFeature);
-    if (mapObject?.id) {
-      dispatchElementPatch(mapObject.id, buildEventGoogleMapClearPatch());
-    }
     return {
       googlePlaceId: "",
       googleDisplayName: "",
@@ -1821,31 +2036,6 @@ export default function MiniToolbarTabDetallesEvento({
     }, { feature: safeFeature });
   };
 
-  const ensureGoogleMapObject = (
-    nextLocation,
-    feature = EVENT_DETAIL_FEATURES.CEREMONY
-  ) => {
-    const safeFeature = normalizeEventDetailFeature(feature);
-    const mapObject = findEventGoogleMapObject(readEditorObjects(window), safeFeature);
-    const patch = buildEventGoogleMapObjectPatch(
-      {
-        ...nextLocation,
-        eventDetailsFeature: safeFeature,
-        width: mapObject?.width,
-        height: mapObject?.height,
-      },
-      {
-        showMap: nextLocation.showMap === true,
-      }
-    );
-    if (mapObject?.id) {
-      dispatchElementPatch(mapObject.id, patch);
-      return mapObject.id;
-    }
-    const inserted = dispatchMapInsert(nextLocation, safeFeature);
-    return inserted?.id || "";
-  };
-
   const handleGoogleSuggestionSelect = async (
     suggestion,
     feature = EVENT_DETAIL_FEATURES.CEREMONY
@@ -1883,7 +2073,7 @@ export default function MiniToolbarTabDetallesEvento({
     }
   };
 
-  const handleShowMapChange = (
+  const handleShowMapChange = async (
     event,
     feature = EVENT_DETAIL_FEATURES.CEREMONY
   ) => {
@@ -1899,12 +2089,39 @@ export default function MiniToolbarTabDetallesEvento({
       eventDetailsFeature: safeFeature,
       showMap: checked,
     };
-    const mapObject = findEventGoogleMapObject(readEditorObjects(window), safeFeature);
-    if (mapObject?.id) {
-      dispatchElementPatch(mapObject.id, { mostrarMapa: checked });
-    } else if (checked) {
-      ensureGoogleMapObject(nextLocation, safeFeature);
+    const mapObjects = collectEventGoogleMapObjects(
+      readEditorObjects(window),
+      safeFeature
+    );
+    const addressFieldKey = getEventLocationFieldKey(
+      EVENT_LOCATION_ROLES.VENUE_ADDRESS,
+      safeFeature
+    );
+    if (checked && mapObjects.length === 0) {
+      const restore = readCanvasEditorMethod("restoreDynamicFieldRepresentation");
+      if (typeof restore === "function") {
+        const result = await restore({
+          fieldKey: addressFieldKey,
+          representationKind: "map",
+        });
+        if (result?.ok === false) return;
+        if (safeFeature === EVENT_DETAIL_FEATURES.PARTY) {
+          setPartyEventLocation(nextLocation);
+          partyEventLocationRef.current = nextLocation;
+        } else {
+          setEventLocation(nextLocation);
+          eventLocationRef.current = nextLocation;
+        }
+        return;
+      }
+      return;
     }
+    updateLinkedFieldDefault(addressFieldKey, location.address, {
+      applyTargets: true,
+      representationVisibility: checked,
+      representationKind: "map",
+      reason: "event-map-visibility",
+    });
     if (safeFeature === EVENT_DETAIL_FEATURES.PARTY) {
       setPartyEventLocation(nextLocation);
       partyEventLocationRef.current = nextLocation;
@@ -1955,21 +2172,11 @@ export default function MiniToolbarTabDetallesEvento({
 
     if (controlsDisabled || !details.fieldKey) return;
 
-    const targetISO = nextParts.targetISO;
-    const targetValue =
-      targetISO ||
-      buildEventDateTargetValue({
-        date: nextParts.date,
-        time: nextParts.time,
-        fieldType: details.fieldType || details.field?.type,
-      });
-    if (!targetValue) return;
-
-    if (details.countdownId && targetISO) {
-      dispatchCountdownPatch(details.countdownId, {
-        fechaObjetivo: targetISO,
-      });
-    }
+    const targetValue = buildEventDateTargetValue({
+      date: nextParts.date,
+      time: nextParts.time,
+      fieldType: details.fieldType || details.field?.type,
+    });
     updateLinkedFieldDefault(details.fieldKey, targetValue, {
       applyTargets: true,
     });
@@ -1988,11 +2195,29 @@ export default function MiniToolbarTabDetallesEvento({
   ) => {
     const safeFeature = normalizeEventDetailFeature(feature);
     const nextTime = normalizeEventTimeValue(event.target.value);
-    applyCountdownDateTime({ time: nextTime }, safeFeature);
+    const details =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyCountdownUiRef.current.details
+        : countdownUiRef.current.details;
+    if (normalizeText(details?.fieldType || details?.field?.type).toLowerCase() === "datetime") {
+      applyCountdownDateTime({ time: nextTime }, safeFeature);
+    } else {
+      const uiRef =
+        safeFeature === EVENT_DETAIL_FEATURES.PARTY
+          ? partyCountdownUiRef
+          : countdownUiRef;
+      const setState =
+        safeFeature === EVENT_DETAIL_FEATURES.PARTY
+          ? setPartyCountdownUi
+          : setCountdownUi;
+      const nextUi = { ...uiRef.current, time: nextTime };
+      uiRef.current = nextUi;
+      setState(nextUi);
+    }
     applyEventTimes({ startTime: nextTime }, safeFeature);
   };
 
-  const handleShowCountdownChange = (
+  const handleShowCountdownChange = async (
     event,
     feature = EVENT_DETAIL_FEATURES.CEREMONY
   ) => {
@@ -2010,14 +2235,43 @@ export default function MiniToolbarTabDetallesEvento({
       safeFeature === EVENT_DETAIL_FEATURES.PARTY
         ? setPartyCountdownUi
         : setCountdownUi;
+    if (!details.fieldKey) return;
+    if (checked && !details.countdownId) {
+      const restore = readCanvasEditorMethod("restoreDynamicFieldRepresentation");
+      if (typeof restore === "function") {
+        const result = await restore({
+          fieldKey: details.fieldKey,
+          representationKind: "countdown",
+        });
+        if (result?.ok === false) return;
+        setState((current) => ({
+          ...current,
+          showCountdown: true,
+        }));
+        return;
+      }
+      return;
+    } else if (visibilityDisabled) {
+      return;
+    }
     setState((current) => ({
       ...current,
       showCountdown: checked,
     }));
-
-    if (visibilityDisabled || !details.countdownId) return;
-    dispatchCountdownPatch(details.countdownId, {
-      mostrarCuentaRegresiva: checked,
+    const currentUi =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY
+        ? partyCountdownUiRef.current
+        : countdownUiRef.current;
+    const structuredDateValue = buildEventDateTargetValue({
+      date: currentUi.date,
+      time: currentUi.time,
+      fieldType: details.fieldType || details.field?.type,
+    });
+    updateLinkedFieldDefault(details.fieldKey, structuredDateValue, {
+      applyTargets: true,
+      representationVisibility: checked,
+      representationKind: "countdown",
+      reason: "event-countdown-visibility",
     });
   };
 
@@ -2131,6 +2385,20 @@ export default function MiniToolbarTabDetallesEvento({
     scrollKeys,
   }) => {
     const safeFeature = normalizeEventDetailFeature(feature);
+    const visualPrefix =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY ? "party" : "ceremony";
+    const dateVisualProps = visualIndicatorProps(
+      `${visualPrefix}Date`,
+      scrollKeys.date
+    );
+    const startTimeVisualProps = visualIndicatorProps(
+      `${visualPrefix}StartTime`,
+      scrollKeys.startTime
+    );
+    const endTimeVisualProps = visualIndicatorProps(
+      `${visualPrefix}EndTime`,
+      scrollKeys.endTime
+    );
     return (
       <section className={`${sectionClass} pt-4`}>
         <h3 className={labelClass}>{title}</h3>
@@ -2139,18 +2407,20 @@ export default function MiniToolbarTabDetallesEvento({
           <label className={subLabelClass} htmlFor={dateInputId}>
             Fecha
           </label>
-          <input
-            id={dateInputId}
-            type="date"
-            value={countdown.date}
-            onFocus={(event) => {
-              selectSidebarFieldText(event);
-              scrollToDynamicFieldTarget(scrollKeys.date);
-            }}
-            onChange={(event) => handleEventDateChange(event, safeFeature)}
-            disabled={controlsDisabled}
-            className={`${inputClass} ${disabledControlClass}`}
-          />
+          <DynamicFieldInputShell {...dateVisualProps} nativePicker>
+            <input
+              id={dateInputId}
+              type="date"
+              value={countdown.date}
+              onFocus={(event) => {
+                selectSidebarFieldText(event);
+                scrollToDynamicFieldTarget(scrollKeys.date);
+              }}
+              onChange={(event) => handleEventDateChange(event, safeFeature)}
+              disabled={controlsDisabled}
+              className={`${inputClass} ${disabledControlClass}`}
+            />
+          </DynamicFieldInputShell>
         </div>
 
         <div className="mt-3 grid w-full grid-cols-2 gap-3">
@@ -2158,33 +2428,37 @@ export default function MiniToolbarTabDetallesEvento({
             <label className={subLabelClass} htmlFor={startInputId}>
               Hora de inicio
             </label>
-            <input
-              id={startInputId}
-              type="time"
-              value={startTimeValue}
-              onFocus={(event) => handleEventTimeFocus(event, scrollKeys.startTime)}
-              onChange={(event) => handleEventStartTimeChange(event, safeFeature)}
-              onBlur={() => handleEventTimeBlur(safeFeature)}
-              onKeyDown={handleEventTimeKeyDown}
-              className={inputClass}
-            />
+            <DynamicFieldInputShell {...startTimeVisualProps} nativePicker>
+              <input
+                id={startInputId}
+                type="time"
+                value={startTimeValue}
+                onFocus={(event) => handleEventTimeFocus(event, scrollKeys.startTime)}
+                onChange={(event) => handleEventStartTimeChange(event, safeFeature)}
+                onBlur={() => handleEventTimeBlur(safeFeature)}
+                onKeyDown={handleEventTimeKeyDown}
+                className={inputClass}
+              />
+            </DynamicFieldInputShell>
           </div>
 
           <div className="min-w-0">
             <label className={subLabelClass} htmlFor={endInputId}>
               Hora Fin <span className="text-[#777777]">(opcional)</span>
             </label>
-            <input
-              id={endInputId}
-              type="time"
-              value={endTimeValue}
-              onFocus={(event) => handleEventTimeFocus(event, scrollKeys.endTime)}
-              onChange={(event) => handleEventEndTimeChange(event, safeFeature)}
-              onBlur={() => handleEventTimeBlur(safeFeature)}
-              onKeyDown={handleEventTimeKeyDown}
-              placeholder="Opcional"
-              className={inputClass}
-            />
+            <DynamicFieldInputShell {...endTimeVisualProps} nativePicker>
+              <input
+                id={endInputId}
+                type="time"
+                value={endTimeValue}
+                onFocus={(event) => handleEventTimeFocus(event, scrollKeys.endTime)}
+                onChange={(event) => handleEventEndTimeChange(event, safeFeature)}
+                onBlur={() => handleEventTimeBlur(safeFeature)}
+                onKeyDown={handleEventTimeKeyDown}
+                placeholder="Opcional"
+                className={inputClass}
+              />
+            </DynamicFieldInputShell>
           </div>
         </div>
 
@@ -2210,16 +2484,18 @@ export default function MiniToolbarTabDetallesEvento({
               </select>
             </div>
 
-            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-              <input
-                type="checkbox"
-                checked={countdown.showCountdown}
-                onChange={(event) => handleShowCountdownChange(event, safeFeature)}
-                disabled={visibilityDisabled}
-                className={`${checkboxClass} disabled:cursor-not-allowed`}
-              />
-              Mostrar contador con cuenta regresiva
-            </label>
+            <div className="mt-3 flex min-h-10 items-center">
+              <label className="flex flex-1 items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+                <input
+                  type="checkbox"
+                  checked={countdown.showCountdown}
+                  onChange={(event) => handleShowCountdownChange(event, safeFeature)}
+                  disabled={!countdown.details?.fieldKey}
+                  className={`${checkboxClass} disabled:cursor-not-allowed`}
+                />
+                Mostrar contador con cuenta regresiva
+              </label>
+            </div>
           </>
         )}
       </section>
@@ -2237,8 +2513,18 @@ export default function MiniToolbarTabDetallesEvento({
     scrollKeys,
   }) => {
     const safeFeature = normalizeEventDetailFeature(feature);
+    const visualPrefix =
+      safeFeature === EVENT_DETAIL_FEATURES.PARTY ? "party" : "ceremony";
     const venueNameKey = `${safeFeature}:venueName`;
     const addressKey = `${safeFeature}:address`;
+    const venueNameVisualProps = visualIndicatorProps(
+      `${visualPrefix}VenueName`,
+      scrollKeys.venueName
+    );
+    const venueAddressVisualProps = visualIndicatorProps(
+      `${visualPrefix}VenueAddress`,
+      scrollKeys.venueAddress
+    );
     return (
       <section className={`${sectionClass} pb-1 pt-4`}>
         <h3 className={labelClass}>{title}</h3>
@@ -2247,19 +2533,21 @@ export default function MiniToolbarTabDetallesEvento({
           <label className={subLabelClass} htmlFor={placeInputId}>
             Nombre del lugar <span className="text-[#777777]">(opcional)</span>
           </label>
-          <input
-            id={placeInputId}
-            type="text"
-            value={location.venueName}
-            onFocus={(event) =>
-              handleEventLocationFocus(event, "venueName", location.venueName, safeFeature)
-            }
-            onChange={(event) => handleVenueNameChange(event, safeFeature)}
-            onBlur={() => handleEventLocationBlur(safeFeature)}
-            onKeyDown={handleEventLocationKeyDown}
-            placeholder="Ej: Salon Las Acacias"
-            className={inputClass}
-          />
+          <DynamicFieldInputShell {...venueNameVisualProps}>
+            <input
+              id={placeInputId}
+              type="text"
+              value={location.venueName}
+              onFocus={(event) =>
+                handleEventLocationFocus(event, "venueName", location.venueName, safeFeature)
+              }
+              onChange={(event) => handleVenueNameChange(event, safeFeature)}
+              onBlur={() => handleEventLocationBlur(safeFeature)}
+              onKeyDown={handleEventLocationKeyDown}
+              placeholder="Ej: Salon Las Acacias"
+              className={inputClass}
+            />
+          </DynamicFieldInputShell>
           {renderLocationSuggestions(venueNameKey, safeFeature)}
         </div>
 
@@ -2267,19 +2555,21 @@ export default function MiniToolbarTabDetallesEvento({
           <label className={subLabelClass} htmlFor={addressInputId}>
             Direccion
           </label>
-          <input
-            id={addressInputId}
-            type="text"
-            value={location.address}
-            onFocus={(event) =>
-              handleEventLocationFocus(event, "address", location.address, safeFeature)
-            }
-            onChange={(event) => handleVenueAddressChange(event, safeFeature)}
-            onBlur={() => handleEventLocationBlur(safeFeature)}
-            onKeyDown={handleEventLocationKeyDown}
-            placeholder="Ej: Av. Corrientes 1234, CABA"
-            className={inputClass}
-          />
+          <DynamicFieldInputShell {...venueAddressVisualProps}>
+            <input
+              id={addressInputId}
+              type="text"
+              value={location.address}
+              onFocus={(event) =>
+                handleEventLocationFocus(event, "address", location.address, safeFeature)
+              }
+              onChange={(event) => handleVenueAddressChange(event, safeFeature)}
+              onBlur={() => handleEventLocationBlur(safeFeature)}
+              onKeyDown={handleEventLocationKeyDown}
+              placeholder="Ej: Av. Corrientes 1234, CABA"
+              className={inputClass}
+            />
+          </DynamicFieldInputShell>
           {renderLocationSuggestions(addressKey, safeFeature)}
         </div>
 
@@ -2322,16 +2612,18 @@ export default function MiniToolbarTabDetallesEvento({
 
         {!simplifiedForAssistant && (
           <>
-            <label className="mt-4 flex items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
-              <input
-                type="checkbox"
-                checked={location.showMap}
-                onChange={(event) => handleShowMapChange(event, safeFeature)}
-                disabled={!canShowMap}
-                className={`${checkboxClass} disabled:cursor-not-allowed`}
-              />
-              Mostrar mapa en la invitacion
-            </label>
+            <div className="mt-3 flex min-h-10 items-center">
+              <label className="flex flex-1 items-center gap-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626]">
+                <input
+                  type="checkbox"
+                  checked={location.showMap}
+                  onChange={(event) => handleShowMapChange(event, safeFeature)}
+                  disabled={!canShowMap}
+                  className={`${checkboxClass} disabled:cursor-not-allowed`}
+                />
+                Mostrar mapa en la invitacion
+              </label>
+            </div>
             {!canShowMap ? (
               <p className="mt-2 font-['Source_Sans_Pro',sans-serif] text-[11px] text-[#777777]">
                 Selecciona una sugerencia de Google Maps para activar el mapa.
@@ -2386,50 +2678,64 @@ export default function MiniToolbarTabDetallesEvento({
               <label className={subLabelClass} htmlFor="first-person-name">
                 Nombre de la primera persona
               </label>
-              <input
-                id="first-person-name"
-                {...{
-                  [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
-                    ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_PRIMARY,
-                  [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
-                    eventPersonNamesHydrated === true ? "true" : "false",
-                }}
-                type="text"
-                value={eventPersonNames.primaryName}
-                onFocus={(event) =>
-                  handleEventPersonNameFocus(event, EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS)
-                }
-                onChange={handlePrimaryPersonNameChange}
-                onBlur={handleEventPersonNameBlur}
-                onKeyDown={handleEventPersonNameKeyDown}
-                placeholder="Ej: Sofia"
-                className={inputClass}
-              />
+              <DynamicFieldInputShell
+                {...visualIndicatorProps(
+                  "primaryName",
+                  EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS
+                )}
+              >
+                <input
+                  id="first-person-name"
+                  {...{
+                    [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                      ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_PRIMARY,
+                    [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
+                      eventPersonNamesHydrated === true ? "true" : "false",
+                  }}
+                  type="text"
+                  value={eventPersonNames.primaryName}
+                  onFocus={(event) =>
+                    handleEventPersonNameFocus(event, EVENT_PRIMARY_PERSON_SCROLL_FIELD_KEYS)
+                  }
+                  onChange={handlePrimaryPersonNameChange}
+                  onBlur={handleEventPersonNameBlur}
+                  onKeyDown={handleEventPersonNameKeyDown}
+                  placeholder="Ej: Sofia"
+                  className={inputClass}
+                />
+              </DynamicFieldInputShell>
             </div>
 
             <div className="mt-3">
               <label className={subLabelClass} htmlFor="second-person-name">
                 Nombre de la segunda persona
               </label>
-              <input
-                id="second-person-name"
-                {...{
-                  [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
-                    ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_SECONDARY,
-                  [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
-                    eventPersonNamesHydrated === true ? "true" : "false",
-                }}
-                type="text"
-                value={eventPersonNames.secondaryName}
-                onFocus={(event) =>
-                  handleEventPersonNameFocus(event, EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS)
-                }
-                onChange={handleSecondaryPersonNameChange}
-                onBlur={handleEventPersonNameBlur}
-                onKeyDown={handleEventPersonNameKeyDown}
-                placeholder="Ej: Mateo"
-                className={inputClass}
-              />
+              <DynamicFieldInputShell
+                {...visualIndicatorProps(
+                  "secondaryName",
+                  EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS
+                )}
+              >
+                <input
+                  id="second-person-name"
+                  {...{
+                    [ASSISTANT_GUIDED_TOUR_TARGET_ATTR]:
+                      ASSISTANT_GUIDED_TOUR_TARGETS.PERSON_SECONDARY,
+                    [ASSISTANT_GUIDED_TOUR_HYDRATION_ATTR]:
+                      eventPersonNamesHydrated === true ? "true" : "false",
+                  }}
+                  type="text"
+                  value={eventPersonNames.secondaryName}
+                  onFocus={(event) =>
+                    handleEventPersonNameFocus(event, EVENT_SECONDARY_PERSON_SCROLL_FIELD_KEYS)
+                  }
+                  onChange={handleSecondaryPersonNameChange}
+                  onBlur={handleEventPersonNameBlur}
+                  onKeyDown={handleEventPersonNameKeyDown}
+                  placeholder="Ej: Mateo"
+                  className={inputClass}
+                />
+              </DynamicFieldInputShell>
             </div>
           </section>
         </>
@@ -2481,15 +2787,19 @@ export default function MiniToolbarTabDetallesEvento({
               <label className={subLabelClass} htmlFor="event-dress-code-value">
                 Texto del Dress Code
               </label>
-              <input
-                id="event-dress-code-value"
-                type="text"
-                value={dressCodeValue}
-                onFocus={handleDressCodeFocus}
-                onChange={handleDressCodeValueChange}
-                placeholder="Ej: Formal"
-                className={inputClass}
-              />
+              <DynamicFieldInputShell
+                {...visualIndicatorProps("dressCode", dressCodeFieldKey)}
+              >
+                <input
+                  id="event-dress-code-value"
+                  type="text"
+                  value={dressCodeValue}
+                  onFocus={handleDressCodeFocus}
+                  onChange={handleDressCodeValueChange}
+                  placeholder="Ej: Formal"
+                  className={inputClass}
+                />
+              </DynamicFieldInputShell>
             </div>
           ) : null}
         </section>

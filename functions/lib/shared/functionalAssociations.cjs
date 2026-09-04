@@ -9,6 +9,14 @@ const {
 const FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze(["rsvp", "gifts", "ceremony", "party", "dress_code"]);
 const FUNCTIONAL_ASSOCIATION_SET = new Set(FUNCTIONAL_ASSOCIATION_VALUES);
 const SINGLETON_FUNCTIONAL_ASSOCIATION_VALUES = new Set(["rsvp", "gifts"]);
+const STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze([
+  "ceremony",
+  "party",
+  "dress_code",
+]);
+const STANDALONE_FUNCTIONAL_ASSOCIATION_SET = new Set(
+  STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES
+);
 const FUNCTIONAL_ASSOCIATION_FIELD = "functionalAssociation";
 const FUNCTIONAL_RENDER_OFFSET_X_FIELD = "__functionalRenderOffsetX";
 const DEFAULT_CANVAS_WIDTH = 800;
@@ -117,6 +125,14 @@ function setFunctionalAssociationField(
 
 function isGroupObject(value) {
   return normalizeLowerText(asObject(value).tipo) === "grupo";
+}
+
+function isStandaloneFunctionalAssociationOwner(value) {
+  const safeValue = asObject(value);
+  if (isGroupObject(safeValue)) return false;
+  return STANDALONE_FUNCTIONAL_ASSOCIATION_SET.has(
+    normalizeFunctionalAssociation(safeValue[FUNCTIONAL_ASSOCIATION_FIELD])
+  );
 }
 
 function isRsvpCta(value) {
@@ -474,6 +490,19 @@ function collectFunctionalGroupsBySection(objetos, visibleSectionIds) {
   return groupsBySection;
 }
 
+function hasActiveStandaloneAssociationInSection(objetos, sectionId, enabled) {
+  const safeSectionId = normalizeText(sectionId);
+  return (Array.isArray(objetos) ? objetos : []).some((object) => {
+    const safeObject = asObject(object);
+    if (normalizeText(safeObject.seccionId) !== safeSectionId) return false;
+    if (!isStandaloneFunctionalAssociationOwner(safeObject)) return false;
+    const association = normalizeFunctionalAssociation(
+      safeObject[FUNCTIONAL_ASSOCIATION_FIELD]
+    );
+    return enabled[association] === true;
+  });
+}
+
 function addRenderOffset(object, deltaX, { materializeOffsets = true } = {}) {
   const safeObject = asObject(object);
   const roundedDelta = roundMetric(deltaX, 3);
@@ -535,7 +564,14 @@ function applyFunctionalAssociationsToRenderState({
       0
     );
 
-    if (activeGroupCount === 0) {
+    if (
+      activeGroupCount === 0 &&
+      !hasActiveStandaloneAssociationInSection(
+        sourceObjetos,
+        sectionId,
+        enabled
+      )
+    ) {
       hiddenSectionIds.add(sectionId);
     }
   });
@@ -586,7 +622,9 @@ function applyFunctionalAssociationsToRenderState({
     const section = sectionLookup.get(sectionId);
     const sectionAssociation = normalizeSectionFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     const objectAssociation = normalizeFunctionalAssociation(safeObject[FUNCTIONAL_ASSOCIATION_FIELD]);
-    if (!sectionAssociation && isGroupObject(safeObject) && objectAssociation && enabled[objectAssociation] !== true) {
+    const ownsFunctionalAssociation =
+      isGroupObject(safeObject) || isStandaloneFunctionalAssociationOwner(safeObject);
+    if (!sectionAssociation && ownsFunctionalAssociation && objectAssociation && enabled[objectAssociation] !== true) {
       if (objectId) hiddenObjectIds.add(objectId);
       return [];
     }
@@ -631,7 +669,7 @@ function setSectionFunctionalAssociation({ secciones, objetos, sectionId, associ
   if (normalized) {
     nextObjetos = nextObjetos.map((object) => {
       const safeObject = asObject(object);
-      if (!isGroupObject(safeObject) || normalizeText(safeObject.seccionId) !== safeSectionId) return object;
+      if (normalizeText(safeObject.seccionId) !== safeSectionId) return object;
       if (!normalizeFunctionalAssociation(safeObject[FUNCTIONAL_ASSOCIATION_FIELD])) return object;
       changed = true;
       return setFunctionalAssociationField(safeObject, null);
@@ -696,7 +734,7 @@ function setGroupFunctionalAssociation({ secciones, objetos, groupId, associatio
 
 function stripFunctionalAssociationFromClonedObject(object) {
   const safeObject = asObject(object);
-  if (!isGroupObject(safeObject)) return object;
+  if (!normalizeFunctionalAssociation(safeObject[FUNCTIONAL_ASSOCIATION_FIELD])) return object;
   return setFunctionalAssociationField(safeObject, null);
 }
 
@@ -713,7 +751,10 @@ function sanitizeMovedGroupFunctionalAssociation({
 
   const targetGroup = objetos.find((object) => {
     const safeObject = asObject(object);
-    return isGroupObject(safeObject) && normalizeText(safeObject.id) === safeGroupId;
+    return (
+      (isGroupObject(safeObject) || isStandaloneFunctionalAssociationOwner(safeObject)) &&
+      normalizeText(safeObject.id) === safeGroupId
+    );
   });
   const association = normalizeFunctionalAssociation(targetGroup?.[FUNCTIONAL_ASSOCIATION_FIELD]);
   const targetSectionId = normalizeText(targetGroup?.seccionId);
@@ -763,6 +804,7 @@ module.exports = {
   FUNCTIONAL_ASSOCIATION_FIELD,
   FUNCTIONAL_ASSOCIATION_VALUES,
   FUNCTIONAL_RENDER_OFFSET_X_FIELD,
+  STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES,
   applyFunctionalAssociationsToRenderState,
   normalizeFunctionalAssociation,
   normalizeSectionFunctionalAssociation,

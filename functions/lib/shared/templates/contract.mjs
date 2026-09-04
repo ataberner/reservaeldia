@@ -87,6 +87,8 @@ export const TEMPLATE_EDITORIAL_STATES = Object.freeze([
   "publicada",
 ]);
 const TEMPLATE_EDITORIAL_STATE_SET = new Set(TEMPLATE_EDITORIAL_STATES);
+export const TEMPLATE_AUTHORING_DRAFT_VERSION = 2;
+export const DETACHED_VISUALS_VERSION = 1;
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -111,6 +113,10 @@ function normalizeTemplateType(value) {
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function normalizeTemplateSections(value) {
@@ -369,6 +375,7 @@ function normalizeFieldSchemaItem(raw, index) {
   const optional = toBoolean(source.optional, false);
   const validation = normalizeFieldValidation(source.validation, type);
   const updateMode = normalizeFieldUpdateMode(source.updateMode);
+  const hasExplicitApplyTargets = hasOwn(source, "applyTargets");
   const applyTargets = normalizeFieldApplyTargets(source.applyTargets, type);
   const eventDetailsRole = normalizeEventDetailsRole(source.eventDetailsRole);
   const eventDetailsFormat = normalizeEventDetailsFormat(
@@ -393,7 +400,7 @@ function normalizeFieldSchemaItem(raw, index) {
     ...(helperText ? { helperText } : {}),
     ...(validation ? { validation } : {}),
     ...(updateMode ? { updateMode } : {}),
-    ...(applyTargets.length ? { applyTargets } : {}),
+    ...(hasExplicitApplyTargets ? { applyTargets } : {}),
   };
 }
 
@@ -572,25 +579,165 @@ function normalizeDefaultsValueByType(type, value) {
   return value;
 }
 
-function normalizeTemplateAuthoringDraft(value, fallbackTemplateId = null) {
+function normalizeDetachedVisualSource(value, entryId, renderObject) {
+  const source = asObject(value);
+  const rawKind = normalizeText(source.kind).toLowerCase();
+  const kind =
+    rawKind === "group-child" || rawKind === "event-map"
+      ? rawKind
+      : "root";
+  const rootIndex = Number(source.rootIndex);
+  const childIndex = Number(source.childIndex);
+  const sectionId = normalizeText(source.sectionId) || null;
+
+  return {
+    kind,
+    rootId:
+      normalizeText(source.rootId) ||
+      normalizeText(renderObject?.id) ||
+      entryId,
+    rootIndex: Number.isFinite(rootIndex) && rootIndex >= 0
+      ? Math.round(rootIndex)
+      : 0,
+    ...(kind === "group-child" && Number.isFinite(childIndex) && childIndex >= 0
+      ? { childIndex: Math.round(childIndex) }
+      : {}),
+    sectionId,
+  };
+}
+
+function normalizeDetachedVisualTargetRecord(value, fieldsByKey) {
+  const source = asObject(value);
+  const fieldKey = toFieldKey(source.fieldKey, "");
+  const field = fieldsByKey.get(fieldKey);
+  if (!field) return null;
+
+  const target = normalizeFieldApplyTarget(source.target, field.type);
+  if (!target) return null;
+
+  return {
+    fieldKey,
+    target,
+  };
+}
+
+export function normalizeDetachedVisuals(value, fieldsSchema = []) {
+  const source = asObject(value);
+  const rawEntries = Array.isArray(source.entries) ? source.entries : [];
+  const fieldsByKey = new Map(
+    (Array.isArray(fieldsSchema) ? fieldsSchema : [])
+      .map((field) => [normalizeText(field?.key), field])
+      .filter(([key]) => Boolean(key))
+  );
+  const entries = [];
+  const seenEntryIds = new Set();
+  let maxSequence = 0;
+
+  rawEntries.forEach((rawEntry) => {
+    const entry = asObject(rawEntry);
+    const id = normalizeText(entry.id);
+    const renderObject = asObject(entry.object);
+    if (!id || seenEntryIds.has(id) || !Object.keys(renderObject).length) return;
+
+    const rawSequence = Number(entry.sequence);
+    const sequence = Number.isFinite(rawSequence) && rawSequence >= 1
+      ? Math.round(rawSequence)
+      : 1;
+    const targets = (Array.isArray(entry.targets) ? entry.targets : [])
+      .map((target) => normalizeDetachedVisualTargetRecord(target, fieldsByKey))
+      .filter(Boolean);
+    const seenTargets = new Set();
+    const uniqueTargets = targets.filter(({ fieldKey, target }) => {
+      const key = `${fieldKey}|${target.scope}|${target.id || ""}|${target.path}|${
+        target.mode || "set"
+      }|${target.transform?.kind || ""}|${target.transform?.preset || ""}`;
+      if (seenTargets.has(key)) return false;
+      seenTargets.add(key);
+      return true;
+    });
+    const declaredFieldKeys = Array.isArray(entry.fieldKeys) ? entry.fieldKeys : [];
+    const fieldKeys = [];
+    const seenFieldKeys = new Set();
+    [...declaredFieldKeys, ...uniqueTargets.map((target) => target.fieldKey)].forEach(
+      (rawFieldKey) => {
+        const fieldKey = toFieldKey(rawFieldKey, "");
+        if (!fieldKey || !fieldsByKey.has(fieldKey) || seenFieldKeys.has(fieldKey)) return;
+        seenFieldKeys.add(fieldKey);
+        fieldKeys.push(fieldKey);
+      }
+    );
+    if (!fieldKeys.length) return;
+
+    seenEntryIds.add(id);
+    maxSequence = Math.max(maxSequence, sequence);
+    entries.push({
+      id,
+      sequence,
+      fieldKeys,
+      object: { ...renderObject },
+      targets: uniqueTargets,
+      source: normalizeDetachedVisualSource(entry.source, id, renderObject),
+    });
+  });
+
+  const rawNextSequence = Number(source.nextSequence);
+  const nextSequence = Number.isFinite(rawNextSequence)
+    ? Math.max(maxSequence + 1, Math.round(rawNextSequence), 1)
+    : Math.max(maxSequence + 1, 1);
+  const claimedFieldKeys = new Set();
+  const latestEntries = entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) =>
+      right.entry.sequence - left.entry.sequence || right.index - left.index
+    )
+    .reduce((kept, { entry, index }) => {
+      const fieldKeys = entry.fieldKeys.filter(
+        (fieldKey) => !claimedFieldKeys.has(fieldKey)
+      );
+      if (!fieldKeys.length) return kept;
+      fieldKeys.forEach((fieldKey) => claimedFieldKeys.add(fieldKey));
+      const fieldKeySet = new Set(fieldKeys);
+      kept.push({
+        entry: {
+          ...entry,
+          fieldKeys,
+          targets: entry.targets.filter((target) => fieldKeySet.has(target.fieldKey)),
+        },
+        index,
+      });
+      return kept;
+    }, [])
+    .sort((left, right) => left.index - right.index)
+    .map(({ entry }) => entry);
+
+  return {
+    version: DETACHED_VISUALS_VERSION,
+    nextSequence,
+    entries: latestEntries,
+  };
+}
+
+export function normalizeTemplateAuthoringDraft(value, fallbackTemplateId = null) {
   const source = asObject(value);
   if (!Object.keys(source).length) return null;
 
   const fieldsSchema = normalizeFieldsSchema(source.fieldsSchema);
   const defaults = ensureDefaultsForSchema(fieldsSchema, source.defaults);
+  const detachedVisuals = normalizeDetachedVisuals(source.detachedVisuals, fieldsSchema);
   const rawStatus = asObject(source.status);
   const issues = uniqueList(toStringList(rawStatus.issues));
 
   return {
     version: Number.isFinite(Number(source.version))
-      ? Math.max(1, Math.round(Number(source.version)))
-      : 1,
+      ? Math.max(TEMPLATE_AUTHORING_DRAFT_VERSION, Math.round(Number(source.version)))
+      : TEMPLATE_AUTHORING_DRAFT_VERSION,
     sourceTemplateId:
       normalizeText(source.sourceTemplateId) ||
       normalizeText(fallbackTemplateId) ||
       null,
     fieldsSchema,
     defaults,
+    detachedVisuals,
     status: {
       isReady: rawStatus.isReady !== false && issues.length === 0,
       issues,
@@ -616,6 +763,15 @@ export function ensureDefaultsForSchema(fieldsSchema, defaults) {
   }
 
   return normalizedDefaults;
+}
+
+export function ensureValuesForSchema(fieldsSchema, values, fallbackValues = {}) {
+  const sourceValues = asObject(values);
+  const fallback = asObject(fallbackValues);
+  return ensureDefaultsForSchema(fieldsSchema, {
+    ...fallback,
+    ...sourceValues,
+  });
 }
 
 export function normalizeTemplateDocument(raw, idOverride = "") {

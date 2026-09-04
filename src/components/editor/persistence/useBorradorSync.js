@@ -48,6 +48,7 @@ export default function useBorradorSync({
   rsvp,
   gifts,
   eventDetails,
+  getTemplateAuthoringSnapshot = null,
   cargado,
 
   // setters
@@ -94,6 +95,7 @@ export default function useBorradorSync({
     rsvp: null,
     gifts: null,
     eventDetails: null,
+    getTemplateAuthoringSnapshot: null,
     cargado: false,
   });
   latestStateRef.current = {
@@ -105,6 +107,7 @@ export default function useBorradorSync({
     rsvp,
     gifts,
     eventDetails,
+    getTemplateAuthoringSnapshot,
     cargado,
   };
   if (!persistSchedulerRef.current) {
@@ -413,6 +416,7 @@ export default function useBorradorSync({
               portadaSource: loadResult.portadaSource,
               templateWorkspace: loadResult.templateWorkspace,
               templateAuthoringDraft: loadResult.templateAuthoringDraft,
+              templateInput: loadResult.templateInput,
               objetos: loadResult.hydratedObjetos,
               secciones: loadResult.hydratedSecciones,
               rsvp: loadResult.rawRsvp,
@@ -449,6 +453,7 @@ export default function useBorradorSync({
               portadaSource: null,
               templateWorkspace: null,
               templateAuthoringDraft: null,
+              templateInput: null,
               objetos: [],
               secciones: [],
               rsvp: null,
@@ -542,6 +547,10 @@ export default function useBorradorSync({
 
       const currentSlug = normalizeText(latestStateRef.current.slug);
       if (!currentSlug || detail.slug !== currentSlug) return;
+
+      // Let synchronous listeners drain dynamic-field debounces into the shared
+      // write coordinator before this flush claims its queue position.
+      await Promise.resolve();
 
       const result = await flushPersistBoundary({
         reason: detail.reason || "external-flush",

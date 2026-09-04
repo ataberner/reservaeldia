@@ -3,6 +3,8 @@ import MenuOpcionesElemento from "@/components/MenuOpcionesElemento";
 import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar";
 import TemplateFieldBadgeOverlay from "@/components/editor/templateAuthoring/TemplateFieldBadgeOverlay";
 import ConfirmDeleteSectionModal from "@/components/editor/sections/ConfirmDeleteSectionModal";
+import DynamicFieldInlineNotice from "@/components/editor/templateAuthoring/DynamicFieldInlineNotice";
+import DynamicVisualDeleteDialog from "@/components/editor/templateAuthoring/DynamicVisualDeleteDialog";
 
 export default function CanvasEditorOverlays({
   readOnly,
@@ -75,6 +77,10 @@ export default function CanvasEditorOverlays({
   onSetCoverImage,
   canvasUiSuppressed = false,
   backgroundEditSectionId = null,
+  dynamicFieldInlineNotice = null,
+  onGoToDynamicField = null,
+  onCloseDynamicFieldInlineNotice = null,
+  dynamicVisualDeleteDialog = null,
 }) {
   const workspaceStateLabel =
     templateWorkspace?.estadoEditorial === "en_revision"
@@ -269,6 +275,25 @@ export default function CanvasEditorOverlays({
         isDeleting={isDeletingSection}
         onCancel={cerrarModalBorrarSeccion}
         onConfirm={confirmarBorrarSeccion}
+      />
+
+      <DynamicFieldInlineNotice
+        notice={dynamicFieldInlineNotice}
+        anchorRef={botonOpcionesRef}
+        isMobile={isMobile}
+        onGoToField={onGoToDynamicField}
+        onClose={onCloseDynamicFieldInlineNotice}
+      />
+
+      <DynamicVisualDeleteDialog
+        isOpen={dynamicVisualDeleteDialog?.isOpen === true}
+        anchorRect={dynamicVisualDeleteDialog?.anchorRect || null}
+        fieldLabels={dynamicVisualDeleteDialog?.fieldLabels || []}
+        isConfirming={dynamicVisualDeleteDialog?.isConfirming === true}
+        error={dynamicVisualDeleteDialog?.error || ""}
+        onCancel={dynamicVisualDeleteDialog?.onCancel}
+        onConfirm={dynamicVisualDeleteDialog?.onConfirm}
+        onRestoreFocus={dynamicVisualDeleteDialog?.onRestoreFocus}
       />
     </>
   );

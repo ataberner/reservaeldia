@@ -61,7 +61,9 @@ function resolvePhaseState({ authoringSnapshot, objects, feature }) {
   const fieldsSchema = Array.isArray(authoringSnapshot.fieldsSchema)
     ? authoringSnapshot.fieldsSchema
     : [];
-  const defaults = asRecord(authoringSnapshot.defaults);
+  const defaults = Object.prototype.hasOwnProperty.call(authoringSnapshot, "values")
+    ? asRecord(authoringSnapshot.values)
+    : asRecord(authoringSnapshot.defaults);
   const baseDate = resolveEventDateSidebarBinding({
     fieldsSchema,
     defaults,
@@ -107,7 +109,7 @@ function resolvePhaseState({ authoringSnapshot, objects, feature }) {
     },
     availability: {
       datetime:
-        dateBinding.hasBinding === true ||
+        Boolean(dateBinding.fieldKey) ||
         hasFeatureFields(timeFields, resolveEventTimeFieldFeature, feature),
       location: hasFeatureFields(
         locationFields,
@@ -199,8 +201,15 @@ export function buildDesignerAiCapabilitySnapshot({
       ? authoring.objetos
       : [];
   const fieldsSchema = Array.isArray(authoring.fieldsSchema) ? authoring.fieldsSchema : [];
-  const defaults = asRecord(authoring.defaults);
-  const authoringWithObjects = { ...authoring, objetos: objects };
+  const defaults = Object.prototype.hasOwnProperty.call(authoring, "values")
+    ? asRecord(authoring.values)
+    : asRecord(authoring.defaults);
+  const authoringWithObjects = {
+    ...authoring,
+    defaults,
+    values: defaults,
+    objetos: objects,
+  };
   const people = resolveEventPersonNamesFromAuthoring({ fieldsSchema, defaults, objetos: objects });
   const ceremony = resolvePhaseState({
     authoringSnapshot: authoringWithObjects,
@@ -226,8 +235,8 @@ export function buildDesignerAiCapabilitySnapshot({
     partyDatetime: party.availability.datetime,
     ceremonyLocation: ceremony.availability.location,
     partyLocation: party.availability.location,
-    dressCode: dressCode.hasBinding === true,
-    story: story.hasBinding === true,
+    dressCode: Boolean(dressCode.fieldKey),
+    story: Boolean(story.fieldKey),
     cover: Boolean(normalizeText(coverImage)),
     gallery: galleries.length > 0,
     rsvp: true,
@@ -242,7 +251,7 @@ export function buildDesignerAiCapabilitySnapshot({
     party: party.values,
     dressCode: {
       enabled: eventDetails.dressCode.enabled === true,
-      value: dressCode.value || eventDetails.dressCode.value,
+      value: dressCode.fieldKey ? dressCode.value : eventDetails.dressCode.value,
     },
     story: story.value,
     media: {

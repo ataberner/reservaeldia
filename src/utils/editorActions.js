@@ -15,9 +15,14 @@ import {
   filterEditableObjectIds,
 } from "@/domain/editor/protectedSections";
 import { cloneRenderObjectWithFreshIdentity } from "@/domain/editor/renderObjectTree";
+import {
+  planRedoHistoryTransition,
+  planUndoHistoryTransition,
+} from "../components/editor/history/historyState.js";
 
 export function ejecutarDeshacer({
   historial,
+  futuros,
   objetos = [],
   secciones = [],
   setHistorial,
@@ -25,10 +30,15 @@ export function ejecutarDeshacer({
   setSecciones,
   setFuturos,
   ignoreNextUpdateRef,
+  restoreDynamicVisualState,
   setElementosSeleccionados,
   setMostrarPanelZ
 }) {
-  if (historial.length > 1) {
+  const transition = planUndoHistoryTransition({
+    history: historial,
+    future: futuros,
+  });
+  if (transition) {
     setElementosSeleccionados([]);
     setMostrarPanelZ(false);
 
@@ -42,24 +52,32 @@ export function ejecutarDeshacer({
     });
 
 
-    setHistorial((prev) => {
-      const nuevoHistorial = [...prev];
-      const estadoActual = nuevoHistorial.pop();
-      const estadoAnterior = nuevoHistorial[nuevoHistorial.length - 1];
+    const nextSecciones = sanitizeSecciones(
+      transition.targetSnapshot?.secciones || []
+    );
+    const sanitizedObjects = sanitizeObjetos(
+      transition.targetSnapshot?.objetos || []
+    );
+    const nextObjetos =
+      typeof restoreDynamicVisualState === "function"
+        ? restoreDynamicVisualState(
+            transition.targetSnapshot?.dynamicVisualState,
+            sanitizedObjects,
+            nextSecciones
+          )
+        : sanitizedObjects;
+    setHistorial(transition.history);
+    setFuturos(transition.future);
+    setObjetos(nextObjetos);
+    setSecciones(nextSecciones);
 
-      // Aplicar estado anterior
-      setObjetos(sanitizeObjetos(estadoAnterior.objetos || []));
-      setSecciones(sanitizeSecciones(estadoAnterior.secciones || []));
-
-      // Guardar para rehacer (push al frente, igual que tu lógica actual)
-      setFuturos((f) => [estadoActual, ...f.slice(0, 19)]);
-
-      return nuevoHistorial;
-    });
+    return true;
   }
+  return false;
 }
 
 export function ejecutarRehacer({
+  historial,
   futuros,
   objetos = [],
   secciones = [],
@@ -68,14 +86,17 @@ export function ejecutarRehacer({
   setObjetos,
   setSecciones,
   ignoreNextUpdateRef,
+  restoreDynamicVisualState,
   setElementosSeleccionados,
   setMostrarPanelZ
 }) {
-  if (futuros.length > 0) {
+  const transition = planRedoHistoryTransition({
+    history: historial,
+    future: futuros,
+  });
+  if (transition) {
     setElementosSeleccionados([]);
     setMostrarPanelZ(false);
-
-    const siguienteEstado = futuros[0];
 
     ignoreNextUpdateRef.current = (ignoreNextUpdateRef.current || 0) + 1;
     const sanitizeObjetos = buildProtectedSectionObjectSanitizer({
@@ -86,12 +107,28 @@ export function ejecutarRehacer({
       currentSecciones: secciones,
     });
 
-    setObjetos(sanitizeObjetos(siguienteEstado.objetos || []));
-    setSecciones(sanitizeSecciones(siguienteEstado.secciones || []));
+    const nextSecciones = sanitizeSecciones(
+      transition.targetSnapshot?.secciones || []
+    );
+    const sanitizedObjects = sanitizeObjetos(
+      transition.targetSnapshot?.objetos || []
+    );
+    const nextObjetos =
+      typeof restoreDynamicVisualState === "function"
+        ? restoreDynamicVisualState(
+            transition.targetSnapshot?.dynamicVisualState,
+            sanitizedObjects,
+            nextSecciones
+          )
+        : sanitizedObjects;
+    setObjetos(nextObjetos);
+    setSecciones(nextSecciones);
 
-    setFuturos((f) => f.slice(1));
-    setHistorial((h) => [...h, siguienteEstado]);
+    setFuturos(transition.future);
+    setHistorial(transition.history);
+    return true;
   }
+  return false;
 }
 
 

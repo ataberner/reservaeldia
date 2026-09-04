@@ -71,7 +71,10 @@ import {
 import { shouldPreventMobileScrollChain } from "@/domain/dashboard/mobileScrollContainment";
 import { EDITOR_PANEL_IDS } from "@/domain/editor/editorPanelCoordinator";
 import { useEditorPanelCoordinator } from "@/components/editor/panels/EditorPanelCoordinatorContext";
-import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
+import {
+    EDITOR_BRIDGE_EVENTS,
+    normalizeDynamicFieldEditRequestDetail,
+} from "@/lib/editorBridgeContracts";
 import { DASHBOARD_DOCUMENT_NAME_EVENTS } from "@/lib/dashboardDocumentNameBridge";
 import { canAccessDesignerAi } from "@/domain/editor/designerAiAccess";
 import {
@@ -92,6 +95,51 @@ function safeContains(container, maybeNode) {
     // En algunos casos relatedTarget puede ser Window/Document/etc.
     if (!(maybeNode instanceof Node)) return false;
     return container.contains(maybeNode);
+}
+
+function resolveDynamicFieldSidebarDestination(fieldKey, snapshot) {
+    const safeFieldKey = String(fieldKey || "").trim();
+    const fields = Array.isArray(snapshot?.fieldsSchema) ? snapshot.fieldsSchema : [];
+    const field = fields.find((entry) => String(entry?.key || "").trim() === safeFieldKey);
+    const role = String(field?.eventDetailsRole || "").trim().toLowerCase();
+
+    if (safeFieldKey === "texto_historia") {
+        return { tabId: "texto", inputId: "template-field-texto-historia" };
+    }
+
+    const inputIdByRole = {
+        primary_person_name: "first-person-name",
+        secondary_person_name: "second-person-name",
+        couple_names: "first-person-name",
+        ceremony_date: "event-ceremony-date",
+        ceremony_start_time: "event-ceremony-start-time",
+        ceremony_end_time: "event-ceremony-end-time",
+        ceremony_venue_name: "event-ceremony-place",
+        ceremony_venue_address: "event-ceremony-address",
+        party_date: "event-party-date",
+        party_start_time: "event-party-start-time",
+        party_end_time: "event-party-end-time",
+        party_venue_name: "event-party-place",
+        party_venue_address: "event-party-address",
+        dress_code: "event-dress-code-value",
+    };
+    const fallbackIdByKey = {
+        event_primary_person_name: "first-person-name",
+        event_secondary_person_name: "second-person-name",
+        event_ceremony_date: "event-ceremony-date",
+        event_ceremony_start_time: "event-ceremony-start-time",
+        event_ceremony_end_time: "event-ceremony-end-time",
+        event_ceremony_venue_name: "event-ceremony-place",
+        event_ceremony_venue_address: "event-ceremony-address",
+        event_party_date: "event-party-date",
+        event_party_start_time: "event-party-start-time",
+        event_party_end_time: "event-party-end-time",
+        event_party_venue_name: "event-party-place",
+        event_party_venue_address: "event-party-address",
+        event_dress_code: "event-dress-code-value",
+    };
+    const inputId = inputIdByRole[role] || fallbackIdByKey[safeFieldKey] || "";
+    return inputId ? { tabId: "detalles", inputId } : null;
 }
 
 const MOBILE_BAR_HEIGHT_PX = 96;
@@ -1307,6 +1355,50 @@ export default function DashboardSidebar({
 
         window.addEventListener("abrir-panel-regalos", handleAbrirPanelRegalos);
         return () => window.removeEventListener("abrir-panel-regalos", handleAbrirPanelRegalos);
+    }, [openEditorPanel]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return undefined;
+
+        const handleDynamicFieldEditRequest = (event) => {
+            const detail = normalizeDynamicFieldEditRequestDetail(event?.detail);
+            if (!detail.fieldKey) return;
+            const getSnapshot = readCanvasEditorMethod("getTemplateAuthoringSnapshot");
+            const destination = resolveDynamicFieldSidebarDestination(
+                detail.fieldKey,
+                typeof getSnapshot === "function" ? getSnapshot() : null
+            );
+            if (!destination) return;
+
+            setAssistantActive(false);
+            setBotonActivo(destination.tabId);
+            setFijadoSidebar(true);
+            setHoverSidebar(true);
+            setRsvpForcePresetSelection(false);
+            openEditorPanel(EDITOR_PANEL_IDS.LEFT);
+
+            window.setTimeout(() => {
+                const requestedInput = document.getElementById(destination.inputId);
+                const fallbackInput =
+                    destination.inputId === "event-dress-code-value"
+                        ? document.getElementById("event-dress-code-enabled")
+                        : null;
+                const target = requestedInput || fallbackInput;
+                target?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+                target?.focus?.({ preventScroll: true });
+            }, 0);
+        };
+
+        window.addEventListener(
+            EDITOR_BRIDGE_EVENTS.DYNAMIC_FIELD_EDIT_REQUEST,
+            handleDynamicFieldEditRequest
+        );
+        return () => {
+            window.removeEventListener(
+                EDITOR_BRIDGE_EVENTS.DYNAMIC_FIELD_EDIT_REQUEST,
+                handleDynamicFieldEditRequest
+            );
+        };
     }, [openEditorPanel]);
 
     useEffect(() => {

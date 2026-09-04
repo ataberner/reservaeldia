@@ -4,6 +4,7 @@ export const DEFAULT_CANVAS_WIDTH = runtime.DEFAULT_CANVAS_WIDTH;
 export const FUNCTIONAL_ASSOCIATION_FIELD = runtime.FUNCTIONAL_ASSOCIATION_FIELD;
 export const FUNCTIONAL_ASSOCIATION_VALUES = runtime.FUNCTIONAL_ASSOCIATION_VALUES;
 export const FUNCTIONAL_RENDER_OFFSET_X_FIELD = runtime.FUNCTIONAL_RENDER_OFFSET_X_FIELD;
+export const STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES = runtime.STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES;
 export const applyFunctionalAssociationsToRenderState = runtime.applyFunctionalAssociationsToRenderState;
 export const normalizeFunctionalAssociation = runtime.normalizeFunctionalAssociation;
 export const normalizeSectionFunctionalAssociation = runtime.normalizeSectionFunctionalAssociation;

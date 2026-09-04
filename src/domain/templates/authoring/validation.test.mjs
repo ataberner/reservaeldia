@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { sanitizeAuthoringSchema } from "./model.js";
-import { validateAuthoringState } from "./validation.js";
+import {
+  resolveAuthoringValidationObjects,
+  validateAuthoringState,
+} from "./validation.js";
 
 const groupedObjects = [
   {
@@ -46,6 +49,27 @@ test("authoring validation accepts targets inside preserved groups", () => {
 
   assert.equal(status.isReady, true);
   assert.deepEqual(status.issues, []);
+});
+
+test("persistence validation uses the atomic render patch before stale state objects", () => {
+  const staleStateObjects = [{ id: "unrelated", tipo: "texto" }];
+  const validationObjects = resolveAuthoringValidationObjects({
+    state: { objetos: staleStateObjects },
+    renderPatch: { objetos: groupedObjects },
+  });
+  const status = validateAuthoringState({
+    fieldsSchema,
+    defaults: { event_primary_person_name: "Sofia" },
+    objetos: validationObjects,
+  });
+
+  assert.equal(validationObjects, groupedObjects);
+  assert.equal(status.isReady, true);
+  assert.deepEqual(status.issues, []);
+  assert.equal(
+    resolveAuthoringValidationObjects({ state: { objetos: staleStateObjects } }),
+    staleStateObjects
+  );
 });
 
 test("authoring schema repair keeps grouped-child targets", () => {
@@ -101,6 +125,39 @@ test("authoring schema repair preserves event date fields after removing a stale
     }).isReady,
     true
   );
+});
+
+test("authoring validation and repair preserve generic data-only fields", () => {
+  const dataOnlySchema = [
+    {
+      key: "story_text",
+      label: "Historia",
+      type: "textarea",
+      group: "Datos principales",
+      applyTargets: [],
+    },
+  ];
+  const defaults = { story_text: "Sigue guardada" };
+
+  const status = validateAuthoringState({
+    fieldsSchema: dataOnlySchema,
+    defaults,
+    objetos: [],
+  });
+  const repaired = sanitizeAuthoringSchema({
+    fieldsSchema: dataOnlySchema,
+    defaults,
+    objetos: [],
+    dropOrphans: true,
+  });
+
+  assert.equal(status.isReady, true);
+  assert.deepEqual(status.issues, []);
+  assert.equal(repaired.changed, false);
+  assert.deepEqual(repaired.removedFieldKeys, []);
+  assert.equal(repaired.fieldsSchema[0].key, "story_text");
+  assert.deepEqual(repaired.fieldsSchema[0].applyTargets, []);
+  assert.deepEqual(repaired.defaults, defaults);
 });
 
 test("authoring validation rejects duplicate identities before they can alias targets", () => {

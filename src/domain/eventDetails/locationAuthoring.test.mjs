@@ -15,7 +15,11 @@ class TestCustomEvent extends Event {
   }
 }
 
-function createLocationRuntime({ withMap = false, failUpdate = false } = {}) {
+function createLocationRuntime({
+  withMap = false,
+  failUpdate = false,
+  objetos = null,
+} = {}) {
   const target = new EventTarget();
   target.CustomEvent = TestCustomEvent;
   target.Event = Event;
@@ -45,24 +49,26 @@ function createLocationRuntime({ withMap = false, failUpdate = false } = {}) {
     target.addEventListener(eventName, (event) => events.push([eventName, event.detail]));
   }
   syncEditorSnapshotRenderState({
-    objetos: withMap ? [{
-      id: "map-ceremony",
-      tipo: "mapa-google",
-      eventDetailsFeature: "ceremony",
-      googlePlaceId: "old-place",
-      googleDisplayName: "Lugar anterior",
-      googleFormattedAddress: "Dirección anterior",
-      googleLat: -34,
-      googleLng: -58,
-      mostrarMapa: true,
-    }] : [],
+    objetos: Array.isArray(objetos)
+      ? objetos
+      : withMap ? [{
+          id: "map-ceremony",
+          tipo: "mapa-google",
+          eventDetailsFeature: "ceremony",
+          googlePlaceId: "old-place",
+          googleDisplayName: "Lugar anterior",
+          googleFormattedAddress: "Dirección anterior",
+          googleLat: -34,
+          googleLng: -58,
+          mostrarMapa: true,
+        }] : [],
     secciones: [],
     eventDetails: { mode: "single" },
   }, target);
   return { target, calls, events };
 }
 
-test("selected Google location persists through the existing location owner and map shape", async () => {
+test("selected Google location persists without inserting an absent map view", async () => {
   const { target, calls, events } = createLocationRuntime();
   const result = await applyEventGooglePlaceSelection({
     targetWindow: target,
@@ -79,17 +85,14 @@ test("selected Google location persists through the existing location owner and 
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0].googlePlaceId, "place-123");
   assert.deepEqual(calls[0][1], { feature: "ceremony" });
-  assert.equal(events.length, 1);
-  assert.equal(events[0][0], "insertar-elemento");
-  assert.equal(events[0][1].tipo, "mapa-google");
-  assert.equal(events[0][1].eventDetailsFeature, "ceremony");
-  assert.equal(events[0][1].googlePlaceId, "place-123");
-  assert.equal(events[0][1].mostrarMapa, false);
+  assert.deepEqual(events, []);
+  assert.equal(result.mapObjectId, "");
+  assert.deepEqual(result.mapObjectIds, []);
   assert.equal(result.venueName, "Salón Los Robles");
   assert.equal(result.address, "Av. Ejemplo 1234, Buenos Aires");
 });
 
-test("manual location clears Google metadata without inventing replacement metadata", async () => {
+test("manual location delegates metadata clearing to the atomic authoring owner", async () => {
   const { target, calls, events } = createLocationRuntime({ withMap: true });
   const result = await applyManualEventLocationText({
     targetWindow: target,
@@ -103,20 +106,71 @@ test("manual location clears Google metadata without inventing replacement metad
   assert.equal(calls[0][0].googlePlaceId, "");
   assert.equal(calls[0][0].googleLat, null);
   assert.equal(calls[0][0].googleLng, null);
-  assert.equal(events.length, 1);
-  assert.deepEqual(events[0], ["actualizar-elemento", {
-    id: "map-ceremony",
-    cambios: {
-      googlePlaceId: "",
-      googleDisplayName: "",
-      googleFormattedAddress: "",
-      googleAddressComponents: [],
-      googleLat: null,
-      googleLng: null,
-      mostrarMapa: false,
-    },
-  }]);
+  assert.deepEqual(events, []);
   assert.equal(result.hasGooglePlace, false);
+});
+
+test("selected Google location delegates all existing map projections to one owner call", async () => {
+  const { target, calls, events } = createLocationRuntime({
+    objetos: [
+      {
+        id: "map-root",
+        tipo: "mapa-google",
+        eventDetailsFeature: "ceremony",
+        mostrarMapa: true,
+      },
+      {
+        id: "map-group",
+        tipo: "grupo",
+        children: [
+          {
+            id: "map-child",
+            tipo: "mapa-google",
+            eventDetailsFeature: "ceremony",
+            mostrarMapa: true,
+          },
+          {
+            id: "party-map",
+            tipo: "mapa-google",
+            eventDetailsFeature: "party",
+            mostrarMapa: true,
+          },
+        ],
+      },
+    ],
+  });
+
+  const result = await applyEventGooglePlaceSelection({
+    targetWindow: target,
+    feature: "ceremony",
+    googlePlace: {
+      id: "place-new",
+      displayName: "Nuevo lugar",
+      formattedAddress: "Calle Nueva 20",
+      location: { lat: -34.5, lng: -58.5 },
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0].googlePlaceId, "place-new");
+  assert.deepEqual(events, []);
+  assert.deepEqual(result.mapObjectIds, ["map-root", "map-child"]);
+});
+
+test("manual venue-name edits preserve Google metadata and map presentation", async () => {
+  const { target, calls, events } = createLocationRuntime({ withMap: true });
+
+  const result = await applyManualEventLocationText({
+    targetWindow: target,
+    feature: "ceremony",
+    venueName: "Nombre personalizado",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0].venueName, "Nombre personalizado");
+  assert.equal(calls[0][0].googlePlaceId, "old-place");
+  assert.equal(result.hasGooglePlace, true);
+  assert.deepEqual(events, []);
 });
 
 test("failed location persistence never creates or updates a Google map object", async () => {
@@ -142,4 +196,19 @@ test("selected place construction keeps the target phase and canonical Google da
   assert.equal(result.googlePlaceId, "party-place");
   assert.equal(result.venueName, "Fiesta");
   assert.equal(result.address, "Ruta 8 km 40");
+});
+
+test("selected place keeps an existing map visible without creating a new one", () => {
+  const result = buildSelectedGoogleEventLocation({
+    currentLocation: { showMap: true },
+    googlePlace: {
+      place_id: "place-visible",
+      name: "Nuevo lugar",
+      formatted_address: "Calle 10",
+    },
+    feature: "ceremony",
+  });
+
+  assert.equal(result.showMap, true);
+  assert.equal(result.googlePlaceId, "place-visible");
 });

@@ -36,7 +36,12 @@ import CanvasStageContent from "@/components/editor/canvasEditor/CanvasStageCont
 import SectionDesignPanel from "@/components/editor/sectionDesign/SectionDesignPanel";
 import { useEditorPanelCoordinator } from "@/components/editor/panels/EditorPanelCoordinatorContext";
 import { EDITOR_PANEL_IDS } from "@/domain/editor/editorPanelCoordinator";
-import { updateSectionDividers } from "@/domain/sections/backgrounds";
+import {
+  addBackgroundDecorationFromImageObject,
+  applySectionBaseImage,
+  convertImageObjectToSectionEdgeDecorationState,
+  updateSectionDividers,
+} from "@/domain/sections/backgrounds";
 import {
   ALTURA_REFERENCIA_PANTALLA,
   ALTURA_PANTALLA_EDITOR,
@@ -116,6 +121,14 @@ import {
   DASHBOARD_EDITOR_CANVAS_TRANSITION_MS,
   resolveSectionDesignCanvasInsetRight,
 } from "@/domain/dashboard/editorCanvasLayout";
+import {
+  planDynamicFieldVisualDeletion,
+  resolveDynamicTextFieldForObject,
+} from "@/domain/templates/dynamicFieldTargets";
+import {
+  EDITOR_BRIDGE_EVENTS,
+  buildDynamicFieldEditRequestDetail,
+} from "@/lib/editorBridgeContracts";
 
 const SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS = DASHBOARD_EDITOR_CANVAS_TRANSITION_MS + 60;
 const CANVAS_DESKTOP_WIDTH_PX = 800;
@@ -125,6 +138,119 @@ const SECTION_ACTIONS_DESKTOP_RIGHT_EXTENT_PX =
   CANVAS_DESKTOP_WIDTH_PX / 2 +
   SECTION_ACTIONS_DESKTOP_PANEL_GAP_PX +
   SECTION_ACTIONS_DESKTOP_PANEL_WIDTH_PX;
+const IMAGE_CONVERSION_GEOMETRY_KEYS = [
+  "x",
+  "y",
+  "yNorm",
+  "width",
+  "height",
+  "scaleX",
+  "scaleY",
+  "rotation",
+  "crop",
+  "fit",
+  "objectFit",
+];
+
+function resolveDynamicVisualDeleteFieldLabels(fieldsSchema, fieldKeys) {
+  const labelByKey = new Map(
+    (Array.isArray(fieldsSchema) ? fieldsSchema : [])
+      .map((field) => [
+        String(field?.key || "").trim(),
+        String(field?.label || field?.key || "").trim(),
+      ])
+      .filter(([key, label]) => Boolean(key && label))
+  );
+
+  return Array.from(
+    new Set(
+      (Array.isArray(fieldKeys) ? fieldKeys : [])
+        .map((fieldKey) => labelByKey.get(String(fieldKey || "").trim()))
+        .filter(Boolean)
+    )
+  );
+}
+
+function buildDynamicImageConversionMutation({
+  conversion,
+  objetos,
+  secciones,
+}) {
+  const safeConversion =
+    conversion && typeof conversion === "object" ? conversion : {};
+  const objectId = String(safeConversion.objectId || "").trim();
+  const currentObjects = Array.isArray(objetos) ? objetos : [];
+  const currentSections = Array.isArray(secciones) ? secciones : [];
+  const currentObject = currentObjects.find(
+    (object) => String(object?.id || "").trim() === objectId
+  );
+  if (!currentObject || currentObject.tipo !== "imagen") return null;
+
+  const visualSnapshot =
+    safeConversion.objectSnapshot &&
+    typeof safeConversion.objectSnapshot === "object"
+      ? safeConversion.objectSnapshot
+      : {};
+  const imageObject = { ...currentObject };
+  IMAGE_CONVERSION_GEOMETRY_KEYS.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(visualSnapshot, key)) {
+      imageObject[key] = visualSnapshot[key];
+    }
+  });
+  const sectionId = String(imageObject.seccionId || "").trim();
+  if (!sectionId) return null;
+
+  if (safeConversion.kind === "section-base-image") {
+    const nextSections = applySectionBaseImage(
+      currentSections.map((section) =>
+        section?.id === sectionId ? { ...section, fondo: "#ffffff" } : section
+      ),
+      sectionId,
+      currentObject.src
+    );
+    return {
+      nextObjects: currentObjects.filter((object) => object?.id !== objectId),
+      nextSections,
+      sectionId,
+      kind: safeConversion.kind,
+    };
+  }
+
+  if (safeConversion.kind === "background-decoration") {
+    const result = addBackgroundDecorationFromImageObject(
+      currentSections,
+      imageObject,
+      800
+    );
+    if (!result?.decorationId || !Array.isArray(result.sections)) return null;
+    return {
+      nextObjects: currentObjects.filter((object) => object?.id !== objectId),
+      nextSections: result.sections,
+      sectionId: result.sectionId,
+      decorationId: result.decorationId,
+      kind: safeConversion.kind,
+    };
+  }
+
+  if (safeConversion.kind === "edge-decoration") {
+    const result = convertImageObjectToSectionEdgeDecorationState({
+      sections: currentSections,
+      objects: currentObjects,
+      imageObject,
+      slot: safeConversion.slot,
+    });
+    if (!result?.decoration || !Array.isArray(result.sections)) return null;
+    return {
+      nextObjects: result.objects,
+      nextSections: result.sections,
+      sectionId: result.sectionId,
+      slot: result.slot,
+      kind: safeConversion.kind,
+    };
+  }
+
+  return null;
+}
 
 Konva.dragDistance = 8;
 
@@ -238,6 +364,7 @@ export default function CanvasEditor({
   const inlineKonvaDrawMetaRef = useRef({ seq: 0, nowMs: null, source: null });
   const inlinePaintApproxRef = useRef({ lastPaintApproxMs: null, pending: false });
   const requestInlineEditFinishRef = useRef(() => false);
+  const templateAuthoringSnapshotRef = useRef(null);
   const inlineCriticalBoundaryStateRef = useRef({
     editingId: null,
     inlineOverlayMountedId: null,
@@ -306,6 +433,7 @@ export default function CanvasEditor({
   const previoAnimandoSeccionesRef = useRef(false);
   const seccionActivaIdRef = useRef(null);
   const ignoreNextUpdateRef = useRef(0);
+  const ignoreNextHistoryUpdateRef = useRef(0);
   const [anchoStage, setAnchoStage] = useState(800);
   const [mostrarSelectorFuente, setMostrarSelectorFuente] = useState(false);
   const [mostrarSubmenuCapa, setMostrarSubmenuCapa] = useState(false);
@@ -318,6 +446,7 @@ export default function CanvasEditor({
     portadaSource: null,
     templateWorkspace: null,
     templateAuthoringDraft: null,
+    templateInput: null,
     loadedAt: 0,
   });
   const [templateEditorialPanelOpen, setTemplateEditorialPanelOpen] = useState(false);
@@ -325,6 +454,17 @@ export default function CanvasEditor({
   const [isBackgroundEditInteracting, setIsBackgroundEditInteracting] = useState(false);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
+  const [dynamicFieldInlineNotice, setDynamicFieldInlineNotice] = useState(null);
+  const [dynamicVisualDeleteState, setDynamicVisualDeleteState] = useState({
+    isOpen: false,
+    isConfirming: false,
+    error: "",
+    sessionKey: "",
+    selectedRootIds: [],
+    sectionId: null,
+    anchorRect: null,
+    fieldLabels: [],
+  });
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const [giftsConfig, setGiftsConfig] = useState(null);
@@ -601,6 +741,7 @@ export default function CanvasEditor({
     rsvp: rsvpConfig,
     gifts: giftsConfig,
     eventDetails: eventDetailsConfig,
+    getTemplateAuthoringSnapshot: () => templateAuthoringSnapshotRef.current,
     cargado,
 
     setObjetos,
@@ -823,6 +964,22 @@ export default function CanvasEditor({
     secciones,
     selectedElement: objetoSeleccionado,
     draftMeta,
+    onReplaceObjects: setObjetos,
+    eventDetailsConfig,
+    onReplaceEventDetails: setEventDetailsConfig,
+    onSnapshotChange: (nextSnapshot) => {
+      templateAuthoringSnapshotRef.current = nextSnapshot;
+    },
+    enqueueDraftWrite: draftWriteCoordinator.enqueueDraftWrite,
+    activeSectionId: seccionActivaId,
+    hiddenObjectIds: functionalHiddenObjectIds,
+    normalizarAltoModo,
+    ALTURA_PANTALLA_EDITOR,
+    suppressNextHistoryCapture: () => {
+      ignoreNextHistoryUpdateRef.current =
+        (ignoreNextHistoryUpdateRef.current || 0) + 1;
+    },
+    writable: !readOnly,
     onPatchObject: (objectId, patch) => {
       const safeObjectId = String(objectId || "").trim();
       if (!safeObjectId || !patch || typeof patch !== "object") return;
@@ -833,6 +990,63 @@ export default function CanvasEditor({
       );
     },
   });
+  templateAuthoringSnapshotRef.current =
+    templateAuthoring.hydrated === true
+      ? templateAuthoring.getSnapshot()
+      : null;
+  const handleDynamicFieldInlineBlocked = useCallback(
+    ({ objectId } = {}) => {
+      const binding = resolveDynamicTextFieldForObject({
+        fieldsSchema: templateAuthoring.fieldsSchema,
+        objectId,
+      });
+      if (!binding?.fieldKey) return false;
+      setDynamicFieldInlineNotice({
+        fieldKey: binding.fieldKey,
+        objectId: String(objectId || "").trim(),
+      });
+      return true;
+    },
+    [templateAuthoring.fieldsSchema]
+  );
+  const goToDynamicFieldFromInlineNotice = useCallback(() => {
+    const detail = buildDynamicFieldEditRequestDetail(dynamicFieldInlineNotice || {});
+    if (!detail.fieldKey || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(EDITOR_BRIDGE_EVENTS.DYNAMIC_FIELD_EDIT_REQUEST, { detail })
+    );
+    setDynamicFieldInlineNotice(null);
+  }, [dynamicFieldInlineNotice]);
+  const restoreDynamicFieldRepresentationAndFocus = useCallback(
+    async (request = {}) => {
+      const flushResult = await flushEditorPersistence({
+        reason: "before-dynamic-visual-restore",
+      });
+      if (flushResult?.ok !== true) {
+        return {
+          ok: false,
+          reason: "flush-failed",
+          error:
+            flushResult?.error ||
+            "No se pudieron confirmar los cambios recientes antes de restaurar la vista.",
+        };
+      }
+      const result = await templateAuthoring.restoreDynamicFieldRepresentation(request);
+      if (!result?.ok || !result?.restoredRootId) return result;
+      selectionRuntime?.setCommittedSelection?.([result.restoredRootId], {
+        source: "dynamic-field-restore",
+      });
+      window.requestAnimationFrame(() => {
+        window.canvasEditor?.focusEditorObjectById?.(result.restoredRootId, {
+          select: true,
+          behavior: "smooth",
+          source: "dynamic-field-restore",
+        });
+      });
+      return result;
+    },
+    [flushEditorPersistence, selectionRuntime, templateAuthoring]
+  );
   const canRenderTemplateAuthoringMenu =
     canManageSite &&
     (
@@ -840,6 +1054,10 @@ export default function CanvasEditor({
       templateAuthoring.selectedElementType === "countdown" ||
       Boolean(templateAuthoring.selectedField)
     );
+  const dynamicVisualHistoryState = useMemo(
+    () => templateAuthoring.getDynamicVisualHistoryState(),
+    [templateAuthoring]
+  );
 
   const handleViewTemplateFieldUsage = useCallback(
     (fieldKey) => {
@@ -854,6 +1072,55 @@ export default function CanvasEditor({
   );
   const tamaniosDisponibles = Array.from({ length: (260 - 6) / 2 + 1 }, (_, i) => 6 + i * 2);
   const botonOpcionesRef = useRef(null);
+  const dynamicVisualDeleteFocusReturnRef = useRef(null);
+  const dynamicVisualRootConversionRef = useRef(null);
+  const captureDynamicVisualDeleteFocus = useCallback(
+    ({ preferOptionButton = false } = {}) => {
+      if (typeof document === "undefined") return;
+      const activeElement = document.activeElement;
+      const trigger =
+        activeElement &&
+        activeElement !== document.body &&
+        activeElement !== document.documentElement
+          ? activeElement
+          : null;
+      const optionButton = preferOptionButton
+        ? botonOpcionesRef.current?.querySelector?.("button") || null
+        : null;
+      dynamicVisualDeleteFocusReturnRef.current = {
+        trigger,
+        optionButton,
+      };
+    },
+    []
+  );
+  const restoreDynamicVisualDeleteFocus = useCallback((previouslyFocused) => {
+    const saved = dynamicVisualDeleteFocusReturnRef.current;
+    dynamicVisualDeleteFocusReturnRef.current = null;
+    const safePrevious =
+      typeof document !== "undefined" &&
+      previouslyFocused !== document.body &&
+      previouslyFocused !== document.documentElement
+        ? previouslyFocused
+        : null;
+    const candidates = [
+      saved?.trigger,
+      saved?.optionButton,
+      safePrevious,
+      editorOverlayRootRef.current,
+      stageRef.current?.container?.(),
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate?.isConnected || typeof candidate.focus !== "function") continue;
+      try {
+        candidate.focus({ preventScroll: true });
+      } catch {
+        candidate.focus();
+      }
+      if (typeof document === "undefined" || document.activeElement === candidate) return;
+    }
+  }, []);
   const sidebarPanelInsetLeft = Math.max(
     0,
     Number(editorCanvasSidebarInsetLeft) || 0
@@ -998,6 +1265,393 @@ export default function CanvasEditor({
 
   const [isSelectionRotating, setIsSelectionRotating] = useState(false);
 
+  const requestCanvasObjectDelete = useCallback(
+    ({ selectedIds = [], conversion = null } = {}) => {
+      const safeIds = Array.from(
+        new Set(
+          (Array.isArray(selectedIds) ? selectedIds : [])
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (!safeIds.length) return false;
+
+      const authoringSnapshot = templateAuthoring.getSnapshot();
+      const plan = planDynamicFieldVisualDeletion({
+        fieldsSchema: authoringSnapshot.fieldsSchema,
+        objetos,
+        secciones,
+        selectedRootIds: safeIds,
+        detachedVisuals: authoringSnapshot.detachedVisuals,
+        alturaPantalla: ALTURA_PANTALLA_EDITOR,
+      });
+      if (plan?.affected?.hasLinkedVisuals !== true) return false;
+
+      const fieldLabels = resolveDynamicVisualDeleteFieldLabels(
+        authoringSnapshot.fieldsSchema,
+        plan.affected.fieldKeys
+      );
+
+      dynamicVisualRootConversionRef.current =
+        conversion && typeof conversion === "object" ? conversion : null;
+
+      const sessionKey = `${String(editorSession?.kind || "draft")}:${String(
+        editorSession?.id || slug || ""
+      )}`;
+      const anchorRect = botonOpcionesRef.current?.getBoundingClientRect?.() || null;
+      captureDynamicVisualDeleteFocus({ preferOptionButton: true });
+      setDynamicFieldInlineNotice(null);
+      setDynamicVisualDeleteState({
+        isOpen: true,
+        isConfirming: false,
+        error: "",
+        sessionKey,
+        selectedRootIds: safeIds,
+        sectionId: null,
+        fieldLabels,
+        anchorRect: anchorRect
+          ? {
+              left: anchorRect.left,
+              top: anchorRect.top,
+              right: anchorRect.right,
+              bottom: anchorRect.bottom,
+              width: anchorRect.width,
+              height: anchorRect.height,
+            }
+          : null,
+      });
+      return true;
+    },
+    [
+      ALTURA_PANTALLA_EDITOR,
+      captureDynamicVisualDeleteFocus,
+      editorSession?.id,
+      editorSession?.kind,
+      objetos,
+      secciones,
+      slug,
+      templateAuthoring,
+    ]
+  );
+
+  const requestSectionDeleteWithDynamicVisuals = useCallback(
+    async ({ sectionId } = {}) => {
+      const safeSectionId = String(sectionId || "").trim();
+      if (!safeSectionId) return false;
+      const requestedSection = secciones.find(
+        (section) => String(section?.id || "") === safeSectionId
+      );
+      if (!requestedSection || !canMutateSection(requestedSection)) return false;
+      const sectionRootIds = objetos
+        .filter((object) => String(object?.seccionId || "") === safeSectionId)
+        .map((object) => String(object?.id || "").trim())
+        .filter(Boolean);
+      if (!sectionRootIds.length) return false;
+
+      const authoringSnapshot = templateAuthoring.getSnapshot();
+      const plan = planDynamicFieldVisualDeletion({
+        fieldsSchema: authoringSnapshot.fieldsSchema,
+        objetos,
+        secciones,
+        selectedRootIds: sectionRootIds,
+        detachedVisuals: authoringSnapshot.detachedVisuals,
+        alturaPantalla: ALTURA_PANTALLA_EDITOR,
+      });
+      if (plan?.affected?.hasLinkedVisuals !== true) return false;
+
+      const fieldLabels = resolveDynamicVisualDeleteFieldLabels(
+        authoringSnapshot.fieldsSchema,
+        plan.affected.fieldKeys
+      );
+
+      dynamicVisualRootConversionRef.current = null;
+
+      const sessionKey = `${String(editorSession?.kind || "draft")}:${String(
+        editorSession?.id || slug || ""
+      )}`;
+      captureDynamicVisualDeleteFocus();
+      setDynamicFieldInlineNotice(null);
+      setDynamicVisualDeleteState({
+        isOpen: true,
+        isConfirming: false,
+        error: "",
+        sessionKey,
+        selectedRootIds: sectionRootIds,
+        sectionId: safeSectionId,
+        fieldLabels,
+        anchorRect: null,
+      });
+      return true;
+    },
+    [
+      ALTURA_PANTALLA_EDITOR,
+      captureDynamicVisualDeleteFocus,
+      editorSession?.id,
+      editorSession?.kind,
+      objetos,
+      secciones,
+      slug,
+      templateAuthoring,
+    ]
+  );
+
+  const cancelDynamicVisualDelete = useCallback(() => {
+    if (dynamicVisualDeleteState.isConfirming) return;
+    dynamicVisualRootConversionRef.current = null;
+    setDynamicVisualDeleteState({
+      isOpen: false,
+      isConfirming: false,
+      error: "",
+      sessionKey: "",
+      selectedRootIds: [],
+      sectionId: null,
+      anchorRect: null,
+      fieldLabels: [],
+    });
+  }, [dynamicVisualDeleteState.isConfirming]);
+
+  const requestCanvasImageConversion = useCallback(
+    ({ kind, elementoImagen, slot = null } = {}) => {
+      const objectId = String(elementoImagen?.id || "").trim();
+      if (!objectId) return false;
+      return requestCanvasObjectDelete({
+        selectedIds: [objectId],
+        conversion: {
+          kind,
+          objectId,
+          objectSnapshot: elementoImagen,
+          ...(slot ? { slot } : {}),
+        },
+      });
+    },
+    [requestCanvasObjectDelete]
+  );
+
+  const reemplazarFondoConDynamicGuard = useCallback(
+    (options = {}) => {
+      if (
+        requestCanvasImageConversion({
+          kind: "section-base-image",
+          elementoImagen: options.elementoImagen,
+        })
+      ) {
+        return;
+      }
+      reemplazarFondo(options);
+    },
+    [requestCanvasImageConversion]
+  );
+
+  const confirmDynamicVisualDelete = useCallback(async () => {
+    const pending = dynamicVisualDeleteState;
+    if (!pending.isOpen || pending.isConfirming) return;
+    const currentSessionKey = `${String(editorSession?.kind || "draft")}:${String(
+      editorSession?.id || slug || ""
+    )}`;
+    if (!pending.sessionKey || pending.sessionKey !== currentSessionKey) {
+      setDynamicVisualDeleteState((current) => ({
+        ...current,
+        error: "La sesion del editor cambio. Volve a intentar.",
+      }));
+      return;
+    }
+
+    setDynamicVisualDeleteState((current) => ({
+      ...current,
+      isConfirming: true,
+      error: "",
+    }));
+    try {
+      const flushResult = await flushEditorPersistence({
+        reason: pending.sectionId
+          ? "before-dynamic-section-delete"
+          : "before-dynamic-visual-delete",
+      });
+      if (flushResult?.ok !== true) {
+        throw new Error(
+          flushResult?.error ||
+            "No se pudieron confirmar los cambios recientes antes de quitar la vista."
+        );
+      }
+
+      const sessionAfterFlush = `${String(editorSession?.kind || "draft")}:${String(
+        editorSession?.id || slug || ""
+      )}`;
+      if (pending.sessionKey !== sessionAfterFlush) {
+        throw new Error("La sesion del editor cambio. Volve a intentar.");
+      }
+
+      const currentObjects = canvasEditorObjetosRef.current || objetos;
+      const currentSections = canvasEditorSeccionesRef.current || secciones;
+      const currentRootIds = new Set(
+        currentObjects.map((object) => String(object?.id || "").trim()).filter(Boolean)
+      );
+      if (pending.selectedRootIds.some((id) => !currentRootIds.has(id))) {
+        throw new Error("La seleccion cambio. Volve a intentar.");
+      }
+      if (
+        pending.selectedRootIds.some(
+          (id) => !canEditObjectById(id, { objetos: currentObjects, secciones: currentSections })
+        )
+      ) {
+        throw new Error("La seleccion ya no se puede modificar.");
+      }
+
+      if (pending.sectionId) {
+        const currentSection = currentSections.find(
+          (section) => String(section?.id || "") === pending.sectionId
+        );
+        if (!currentSection || !canMutateSection(currentSection)) {
+          throw new Error("La seccion cambio o ya no se puede modificar.");
+        }
+        const currentMembership = currentObjects
+          .filter(
+            (object) => String(object?.seccionId || "") === pending.sectionId
+          )
+          .map((object) => String(object?.id || "").trim())
+          .filter(Boolean);
+        const frozenMembership = new Set(pending.selectedRootIds);
+        if (
+          currentMembership.length !== frozenMembership.size ||
+          currentMembership.some((id) => !frozenMembership.has(id))
+        ) {
+          throw new Error("El contenido de la seccion cambio. Volve a intentar.");
+        }
+      }
+
+      const authoringSnapshot = templateAuthoring.getSnapshot();
+      const plan = planDynamicFieldVisualDeletion({
+        fieldsSchema: authoringSnapshot.fieldsSchema,
+        objetos: currentObjects,
+        secciones: currentSections,
+        selectedRootIds: pending.selectedRootIds,
+        detachedVisuals: authoringSnapshot.detachedVisuals,
+        alturaPantalla: ALTURA_PANTALLA_EDITOR,
+      });
+      if (plan?.affected?.hasLinkedVisuals !== true) {
+        throw new Error("El vinculo cambio. Volve a intentar.");
+      }
+
+      const pendingConversion = dynamicVisualRootConversionRef.current;
+      let conversionMutation = null;
+      if (pendingConversion) {
+        const conversionObject = currentObjects.find(
+          (object) =>
+            String(object?.id || "").trim() === pendingConversion.objectId
+        );
+        const conversionSection = currentSections.find(
+          (section) => section?.id === conversionObject?.seccionId
+        );
+        if (!conversionObject || !canMutateSection(conversionSection)) {
+          throw new Error("La imagen o su seccion cambiaron. Volve a intentar.");
+        }
+        conversionMutation = buildDynamicImageConversionMutation({
+          conversion: pendingConversion,
+          objetos: currentObjects,
+          secciones: currentSections,
+        });
+        if (!conversionMutation) {
+          throw new Error("No se pudo preparar la conversion de la imagen.");
+        }
+      }
+
+      const nextObjects = conversionMutation?.nextObjects || plan.nextObjetos;
+      const nextSections = conversionMutation?.nextSections ||
+        (pending.sectionId
+          ? currentSections.filter(
+              (section) => String(section?.id || "") !== pending.sectionId
+            )
+          : currentSections);
+      await templateAuthoring.commitDynamicVisualMutation({
+        nextObjects,
+        nextFieldsSchema: plan.nextFieldsSchema,
+        nextDetachedVisuals: plan.nextDetachedVisuals,
+        nextSections,
+        reason: conversionMutation
+          ? `dynamic-visual-${conversionMutation.kind}`
+          : pending.sectionId
+            ? "dynamic-section-delete"
+            : "dynamic-visual-delete",
+        pessimistic: true,
+      });
+
+      if (conversionMutation) {
+        setSecciones(nextSections);
+        setSeccionActivaId(conversionMutation.sectionId || null);
+        if (conversionMutation.kind === "background-decoration") {
+          setSectionDecorationEdit({
+            sectionId: conversionMutation.sectionId,
+            decorationId: conversionMutation.decorationId,
+            overlayReady: false,
+          });
+        } else {
+          if (conversionMutation.kind === "edge-decoration") {
+            selectionClearPolicy?.prepareForBackgroundDecorationEdit?.();
+          }
+          setSectionDecorationEdit(null);
+        }
+      } else if (pending.sectionId) {
+        setSecciones(nextSections);
+        if (seccionActivaId === pending.sectionId) {
+          const nextActiveSectionId = String(nextSections[0]?.id || "") || null;
+          setSeccionActivaId(nextActiveSectionId);
+          if (typeof window !== "undefined") {
+            window._seccionActivaId = nextActiveSectionId;
+          }
+        }
+      }
+
+      pending.selectedRootIds.forEach((id) => {
+        delete elementRefs.current?.[id];
+        if (window._elementRefs) delete window._elementRefs[id];
+      });
+      selectionRuntime?.clearTransientState?.({
+        clearPreselection: true,
+        clearMarquee: true,
+        clearPendingDrag: true,
+        clearDragVisual: true,
+      });
+      setElementosSeleccionados([]);
+      setMostrarPanelZ(false);
+      dynamicVisualRootConversionRef.current = null;
+      setDynamicVisualDeleteState({
+        isOpen: false,
+        isConfirming: false,
+        error: "",
+        sessionKey: "",
+        selectedRootIds: [],
+        sectionId: null,
+        anchorRect: null,
+        fieldLabels: [],
+      });
+    } catch (deleteError) {
+      setDynamicVisualDeleteState((current) => ({
+        ...current,
+        isConfirming: false,
+        error:
+          deleteError instanceof Error
+            ? deleteError.message
+            : "No se pudo quitar la vista. Intenta de nuevo.",
+      }));
+    }
+  }, [
+    ALTURA_PANTALLA_EDITOR,
+    dynamicVisualDeleteState,
+    editorSession?.id,
+    editorSession?.kind,
+    flushEditorPersistence,
+    objetos,
+    selectionClearPolicy,
+    secciones,
+    seccionActivaId,
+    selectionRuntime,
+    setSeccionActivaId,
+    setSecciones,
+    setSectionDecorationEdit,
+    slug,
+    templateAuthoring,
+  ]);
+
   const {
     onDeshacer,
     onRehacer,
@@ -1023,18 +1677,23 @@ export default function CanvasEditor({
     futuros,
     setFuturos,
     setSecciones,
-    ignoreNextUpdateRef,
-    setMostrarPanelZ
+    ignoreNextUpdateRef: ignoreNextHistoryUpdateRef,
+    restoreDynamicVisualState: templateAuthoring.restoreDynamicVisualHistoryState,
+    setMostrarPanelZ,
+    onRequestDelete: requestCanvasObjectDelete,
   });
 
 
   useHistoryManager({
     cargado,
+    authoringHydrated:
+      !canUseTemplateFields || templateAuthoring.hydrated === true,
     objetos,
     secciones,
+    dynamicVisualState: dynamicVisualHistoryState,
     setHistorial,
     setFuturos,
-    ignoreNextUpdateRef,
+    ignoreNextUpdateRef: ignoreNextHistoryUpdateRef,
   });
 
   useCanvasEditorStageInteraction({
@@ -1226,6 +1885,7 @@ export default function CanvasEditor({
       !isBackgroundEditInteracting &&
       !backgroundEditSectionId &&
       !sectionDecorationEdit?.decorationId,
+    disabled: dynamicVisualDeleteState.isOpen,
   });
 
 
@@ -1269,6 +1929,7 @@ export default function CanvasEditor({
     setSeccionActivaId,
     setMostrarPanelZ,
     selectionClearPolicy,
+    onRequestImageRootConversion: requestCanvasImageConversion,
     canManageSite,
   });
 
@@ -1311,6 +1972,7 @@ export default function CanvasEditor({
     validarPuntosLinea,
     enqueueDraftWrite: draftWriteCoordinator.enqueueDraftWrite,
     ALTURA_PANTALLA_EDITOR,
+    onDeleteSectionWithDynamicVisuals: requestSectionDeleteWithDynamicVisuals,
   });
   // ?? NUEVO HOOK PARA GUÃAS
   const publishGuideLines = useCallback((nextLines = []) => {
@@ -1568,6 +2230,12 @@ export default function CanvasEditor({
     elementRefs,
     getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
+    getDynamicFieldRepresentationStatus:
+      templateAuthoring.getDynamicFieldRepresentationStatus,
+    restoreDynamicFieldRepresentation:
+      restoreDynamicFieldRepresentationAndFocus,
+    updateTemplateFieldValue: templateAuthoring.updateTemplateFieldValue,
+    updateTemplateFieldValues: templateAuthoring.updateTemplateFieldValues,
     updateTemplateAuthoringDefault: templateAuthoring.updateFieldDefaultValue,
     updateTemplateAuthoringDateTextFormat: templateAuthoring.updateFieldDateTextFormat,
     updateTemplateAuthoringSelectedDateTextFormat:
@@ -1794,6 +2462,7 @@ export default function CanvasEditor({
   return (
     <div
       ref={editorOverlayRootRef}
+      tabIndex={-1}
       data-section-design-canvas-inset-right={sectionDesignCanvasInsetRight}
       className="flex justify-center"
       style={{
@@ -1987,6 +2656,7 @@ export default function CanvasEditor({
                 onBackgroundEditInteractionChange={handleBackgroundEditInteractionChange}
                 postDragDiagnosticMenuTargetIds={postDragDiagnosticMenuTargetIds}
                 canManageSite={canManageSite}
+                onDynamicFieldInlineBlocked={handleDynamicFieldInlineBlocked}
               />
 
 
@@ -2046,7 +2716,7 @@ export default function CanvasEditor({
           onEliminar={onEliminar}
           moverElemento={moverElemento}
           setMostrarPanelZ={setMostrarPanelZ}
-          reemplazarFondo={reemplazarFondo}
+          reemplazarFondo={reemplazarFondoConDynamicGuard}
           secciones={secciones}
           setSecciones={setSecciones}
           setObjetos={setObjetos}
@@ -2095,6 +2765,15 @@ export default function CanvasEditor({
           }
           backgroundEditSectionId={backgroundEditSectionId}
           sectionDecorationEdit={sectionDecorationEdit}
+          dynamicFieldInlineNotice={dynamicFieldInlineNotice}
+          onGoToDynamicField={goToDynamicFieldFromInlineNotice}
+          onCloseDynamicFieldInlineNotice={() => setDynamicFieldInlineNotice(null)}
+          dynamicVisualDeleteDialog={{
+            ...dynamicVisualDeleteState,
+            onCancel: cancelDynamicVisualDelete,
+            onConfirm: confirmDynamicVisualDelete,
+            onRestoreFocus: restoreDynamicVisualDeleteFocus,
+          }}
         />
       )}
 

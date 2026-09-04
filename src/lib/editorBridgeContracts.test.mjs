@@ -5,6 +5,7 @@ import {
   EDITOR_BRIDGE_EVENTS,
   EDITOR_RUNTIME_COMPATIBILITY_CONTRACT,
   buildEditorActiveSectionDetail,
+  buildDynamicFieldEditRequestDetail,
   buildEditorDraftFlushResultDetail,
   buildEditorDragLifecycleDetail,
   buildEditorGalleryCellChangeDetail,
@@ -12,6 +13,7 @@ import {
   buildEditorSelectionChangeDetail,
   normalizeEditorDraftFlushRequestDetail,
   normalizeEditorDraftFlushResultDetail,
+  normalizeDynamicFieldEditRequestDetail,
   projectLegacyGroupDragGlobals,
 } from "./editorBridgeContracts.js";
 
@@ -118,6 +120,28 @@ test("editor bridge flush helpers preserve request/result normalization", () => 
       error: "No se recibio confirmacion",
     }
   );
+});
+
+test("dynamic field edit requests expose only stable field and object identity", () => {
+  assert.equal(
+    EDITOR_BRIDGE_EVENTS.DYNAMIC_FIELD_EDIT_REQUEST,
+    "editor:dynamic-field-edit-request"
+  );
+  assert.deepEqual(
+    buildDynamicFieldEditRequestDetail({
+      fieldKey: " event_ceremony_date ",
+      objectId: " group-root ",
+      path: "children.0.texto",
+    }),
+    {
+      fieldKey: "event_ceremony_date",
+      objectId: "group-root",
+    }
+  );
+  assert.deepEqual(normalizeDynamicFieldEditRequestDetail(null), {
+    fieldKey: "",
+    objectId: "",
+  });
 });
 
 test("editor bridge group-drag projection exposes only the legacy globals the runtime reads", () => {

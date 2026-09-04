@@ -232,6 +232,10 @@ export async function loadBorradorSyncState({
       data?.templateAuthoringDraft && typeof data.templateAuthoringDraft === "object"
         ? data.templateAuthoringDraft
         : null,
+    templateInput:
+      data?.templateInput && typeof data.templateInput === "object"
+        ? data.templateInput
+        : null,
     countdownAudit: countdown
       ? {
           countdown,

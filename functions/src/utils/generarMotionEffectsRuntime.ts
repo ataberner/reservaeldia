@@ -100,25 +100,25 @@ export function generarMotionEffectsRuntimeHTML(): string {
     animation: mefxPulse 2.6s ease-in-out infinite;
   }
 
-  .objeto[data-type="countdown"].mefx-pulse .cd-chip {
+  [data-type="countdown"].mefx-pulse .cd-chip {
     animation: mefxPulseCountdownChip 2.6s ease-in-out infinite;
     transform-origin: center center;
     will-change: transform, box-shadow;
   }
 
-  .objeto[data-type="countdown"].mefx-pulse .cd-chip:nth-child(1) {
+  [data-type="countdown"].mefx-pulse .cd-chip:nth-child(1) {
     animation-delay: 0ms;
   }
 
-  .objeto[data-type="countdown"].mefx-pulse .cd-chip:nth-child(2) {
+  [data-type="countdown"].mefx-pulse .cd-chip:nth-child(2) {
     animation-delay: 90ms;
   }
 
-  .objeto[data-type="countdown"].mefx-pulse .cd-chip:nth-child(3) {
+  [data-type="countdown"].mefx-pulse .cd-chip:nth-child(3) {
     animation-delay: 180ms;
   }
 
-  .objeto[data-type="countdown"].mefx-pulse .cd-chip:nth-child(4) {
+  [data-type="countdown"].mefx-pulse .cd-chip:nth-child(4) {
     animation-delay: 270ms;
   }
 
@@ -135,7 +135,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
     }
   }
 
-  .objeto[data-type="rsvp"].mefx-rsvp {
+  [data-type="rsvp"].mefx-rsvp {
     animation: mefxRsvp 2.2s ease-in-out infinite;
     transform-origin: center center;
     will-change: scale, opacity, filter;
@@ -242,13 +242,13 @@ export function generarMotionEffectsRuntimeHTML(): string {
       animation: none !important;
     }
 
-    .objeto[data-type="countdown"].mefx-pulse .cd-chip {
+    [data-type="countdown"].mefx-pulse .cd-chip {
       animation: none !important;
       transform: none !important;
       box-shadow: none !important;
     }
 
-    .objeto[data-type="rsvp"].mefx-rsvp {
+    [data-type="rsvp"].mefx-rsvp {
       animation: none !important;
       scale: 1 !important;
       opacity: 1 !important;
@@ -261,6 +261,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
 (function(){
   var VALID_EFFECTS = { none: 1, reveal: 1, draw: 1, zoom: 1, hover: 1, pulse: 1, rsvp: 1 };
   var OBSERVED_EFFECTS = { reveal: 1, draw: 1, zoom: 1 };
+  var MOTION_ELEMENT_SELECTOR = ".objeto[data-motion], .group-child-root[data-motion]";
   var STAGGER_SELECTOR = ".galeria-celda";
   var PREPARING_CLASS = "mefx-preparing";
   var RUNTIME_READY_EVENT = "invitation-runtime-ready";
@@ -1007,7 +1008,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
   function boot(elements){
     var list = Array.isArray(elements) ? elements : [];
     if (!list.length) {
-      list = Array.from(document.querySelectorAll(".objeto[data-motion]"));
+      list = Array.from(document.querySelectorAll(MOTION_ELEMENT_SELECTOR));
     }
 
     var elementsToAnimate = list;
@@ -1080,7 +1081,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
   }
 
   function prepareAllElements(){
-    var elements = Array.from(document.querySelectorAll(".objeto[data-motion]"));
+    var elements = Array.from(document.querySelectorAll(MOTION_ELEMENT_SELECTOR));
     if (!elements.length) return;
 
     setPreparingState(true);

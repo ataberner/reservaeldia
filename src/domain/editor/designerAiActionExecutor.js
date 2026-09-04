@@ -5,7 +5,6 @@ import {
 import { normalizeEventDetailsConfig } from "../../../shared/eventDetailsConfig.js";
 import {
   buildCountdownTargetIsoFromLocalParts,
-  buildDynamicCountdownEventDetails,
 } from "../../../shared/countdownEventDetails.js";
 import { requestDashboardDocumentNameUpdate } from "../../lib/dashboardDocumentNameBridge.js";
 import { EDITOR_BRIDGE_EVENTS } from "../../lib/editorBridgeContracts.js";
@@ -111,14 +110,11 @@ async function executeEventAction(action, targetWindow) {
     const objects = readEditorObjects(targetWindow);
     const baseBinding = resolveEventDateSidebarBinding({
       fieldsSchema: snapshot.fieldsSchema,
-      defaults: snapshot.defaults,
+      defaults: Object.prototype.hasOwnProperty.call(snapshot, "values")
+        ? snapshot.values
+        : snapshot.defaults,
       objetos: objects,
       feature,
-    });
-    const countdown = buildDynamicCountdownEventDetails({
-      fieldsSchema: snapshot.fieldsSchema,
-      objetos: objects,
-      fieldKey: baseBinding.fieldKey,
     });
     const currentPhase = asRecord(
       action.__currentValues?.[feature === EVENT_DETAIL_FEATURES.PARTY ? "party" : "ceremony"]
@@ -127,27 +123,28 @@ async function executeEventAction(action, targetWindow) {
     const startTime = args.startTime ?? currentPhase.startTime ?? "";
     const endTime = args.endTime ?? currentPhase.endTime ?? "";
 
-    await requireBridgeMethod("updateTemplateAuthoringEventTimes", targetWindow)(
-      { startTime, endTime },
-      { feature }
+    const rolePrefix = feature === EVENT_DETAIL_FEATURES.PARTY ? "party" : "ceremony";
+    const fieldKeyByRole = new Map(
+      (Array.isArray(snapshot.fieldsSchema) ? snapshot.fieldsSchema : [])
+        .map((field) => [String(field?.eventDetailsRole || "").trim().toLowerCase(), field])
+        .filter(([role]) => Boolean(role))
     );
-
+    const valuesPatch = {};
     if (baseBinding.fieldKey) {
-      const targetISO = buildCountdownTargetIsoFromLocalParts({ date, time: startTime });
-      const targetValue = targetISO || date;
-      if (targetValue) {
-        if (countdown?.countdownId && targetISO) {
-          dispatchRuntimeEvent(targetWindow, EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT, {
-            id: countdown.countdownId,
-            cambios: { fechaObjetivo: targetISO },
-          });
-        }
-        await requireBridgeMethod("updateTemplateAuthoringDefault", targetWindow)(
-          baseBinding.fieldKey,
-          targetValue,
-          { applyTargets: true }
-        );
-      }
+      const fieldType = String(baseBinding.field?.type || "date").trim().toLowerCase();
+      valuesPatch[baseBinding.fieldKey] = fieldType === "datetime"
+        ? buildCountdownTargetIsoFromLocalParts({ date, time: startTime }) || ""
+        : date;
+    }
+    const startField = fieldKeyByRole.get(`${rolePrefix}_start_time`);
+    const endField = fieldKeyByRole.get(`${rolePrefix}_end_time`);
+    if (startField?.key) valuesPatch[startField.key] = startTime;
+    if (endField?.key) valuesPatch[endField.key] = endTime;
+    if (Object.keys(valuesPatch).length > 0) {
+      await requireBridgeMethod("updateTemplateFieldValues", targetWindow)(valuesPatch, {
+        applyTargets: true,
+        reason: "designer-ai-event-datetime",
+      });
     }
     return;
   }
@@ -171,20 +168,28 @@ async function executeEventAction(action, targetWindow) {
     const objects = readEditorObjects(targetWindow);
     const binding = resolveDressCodeSidebarBinding({
       fieldsSchema: authoring.fieldsSchema,
-      defaults: authoring.defaults,
+      defaults: Object.prototype.hasOwnProperty.call(authoring, "values")
+        ? authoring.values
+        : authoring.defaults,
       objetos: objects,
     });
-    const config = normalizeEventDetailsConfig({
-      ...asRecord(render.eventDetails),
-      dressCode: { enabled: args.enabled, value: args.value },
-    });
-    await requireBridgeMethod("updateEventDetailsConfig", targetWindow)(config);
     if (binding.fieldKey) {
       await requireBridgeMethod("updateTemplateAuthoringDefault", targetWindow)(
         binding.fieldKey,
         args.value,
-        { applyTargets: true }
+        {
+          applyTargets: true,
+          eventDetailsPatch: {
+            dressCode: { enabled: args.enabled },
+          },
+        }
       );
+    } else {
+      const config = normalizeEventDetailsConfig({
+        ...asRecord(render.eventDetails),
+        dressCode: { enabled: args.enabled, value: args.value },
+      });
+      await requireBridgeMethod("updateEventDetailsConfig", targetWindow)(config);
     }
     return;
   }
@@ -196,11 +201,13 @@ async function executeStoryAction(action, targetWindow) {
   const authoring = readAuthoringSnapshot(targetWindow);
   const binding = resolveStoryTextSidebarBinding({
     fieldsSchema: authoring.fieldsSchema,
-    defaults: authoring.defaults,
+    defaults: Object.prototype.hasOwnProperty.call(authoring, "values")
+      ? authoring.values
+      : authoring.defaults,
     objetos: readEditorObjects(targetWindow),
   });
-  if (!binding.fieldKey || !binding.hasBinding) {
-    throw new Error("El texto de historia no tiene un binding editable vigente.");
+  if (!binding.fieldKey) {
+    throw new Error("El texto de historia no esta declarado en el schema vigente.");
   }
   await requireBridgeMethod("updateTemplateAuthoringDefault", targetWindow)(
     binding.fieldKey,

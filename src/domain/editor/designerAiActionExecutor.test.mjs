@@ -119,7 +119,7 @@ test("stale draft identity cancels the batch before the first mutation", async (
   assert.deepEqual(calls, []);
 });
 
-test("event datetime uses authoring owners and keeps the linked countdown aligned", async () => {
+test("event datetime delegates countdown projection to the authoring value owner", async () => {
   const target = new EventTarget();
   target.CustomEvent = TestCustomEvent;
   target.Event = Event;
@@ -135,8 +135,7 @@ test("event datetime uses authoring owners and keeps the linked countdown aligne
   };
   target.canvasEditor = {
     getTemplateAuthoringSnapshot: () => authoring,
-    updateTemplateAuthoringEventTimes: async (...args) => calls.push(["times", ...args]),
-    updateTemplateAuthoringDefault: async (...args) => calls.push(["default", ...args]),
+    updateTemplateFieldValues: async (...args) => calls.push(["values", ...args]),
   };
   target.addEventListener("actualizar-elemento", (event) => updates.push(event.detail));
   syncEditorSnapshotRenderState({
@@ -154,15 +153,22 @@ test("event datetime uses authoring owners and keeps the linked countdown aligne
     { type: "event.set_datetime", arguments: { phase: "ceremony", date: "2027-04-10", startTime: "18:30", endTime: "23:45" } },
   ], { snapshot: current, targetWindow: target });
 
-  assert.deepEqual(calls[0], ["times", { startTime: "18:30", endTime: "23:45" }, { feature: "ceremony" }]);
-  assert.equal(calls[1][0], "default");
-  assert.equal(calls[1][1], "event_ceremony_date");
-  assert.match(calls[1][2], /^2027-04-10T/);
-  assert.deepEqual(updates[0].id, "countdown");
-  assert.equal(updates[0].cambios.fechaObjetivo, calls[1][2]);
+  assert.deepEqual(calls, [[
+    "values",
+    {
+      event_ceremony_date: "2027-04-10",
+      event_ceremony_start_time: "18:30",
+      event_ceremony_end_time: "23:45",
+    },
+    {
+      applyTargets: true,
+      reason: "designer-ai-event-datetime",
+    },
+  ]]);
+  assert.deepEqual(updates, []);
 });
 
-test("manual event location uses the shared owner and removes stale Google metadata", async () => {
+test("manual event location delegates map clearing to the shared atomic owner", async () => {
   const target = new EventTarget();
   target.CustomEvent = TestCustomEvent;
   target.Event = Event;
@@ -219,9 +225,7 @@ test("manual event location uses the shared owner and removes stale Google metad
   assert.equal(calls[0][0].address, "Av. Ejemplo 1234");
   assert.equal(calls[0][0].googlePlaceId, "");
   assert.deepEqual(calls[0][1], { feature: "ceremony" });
-  assert.equal(updates[0].id, "map-ceremony");
-  assert.equal(updates[0].cambios.googlePlaceId, "");
-  assert.equal(updates[0].cambios.mostrarMapa, false);
+  assert.deepEqual(updates, []);
 });
 
 test("Gallery, RSVP and Gifts delegate to existing mutation/config/CTA events", async () => {

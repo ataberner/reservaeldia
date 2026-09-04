@@ -351,3 +351,61 @@ test("post-copy personalization patch syncs dress code field to event details an
     dressCode: { enabled: true, value: "Elegante sport" },
   });
 });
+
+test("post-copy personalization accepts changed data-only fields without visual fallback", () => {
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template: {
+      fieldsSchema: [
+        {
+          key: "story_text",
+          label: "Historia",
+          type: "textarea",
+          group: "Datos principales",
+          applyTargets: [],
+        },
+      ],
+      defaults: { story_text: "Historia base" },
+    },
+    draftData: {
+      objetos: [
+        {
+          id: "unlinked-copy",
+          tipo: "texto",
+          texto: "Historia base",
+        },
+      ],
+      secciones: [],
+    },
+    resolvedValues: { story_text: "Historia nueva" },
+  });
+
+  assert.deepEqual(patch.changedKeys, ["story_text"]);
+  assert.deepEqual(patch.applyReport.skippedFields, []);
+  assert.equal(patch.applyReport.fallbackReplacements, 0);
+  assert.equal(patch.objetos[0].texto, "Historia base");
+});
+
+test("post-copy personalization retains fallback replacement for legacy fields without applyTargets", () => {
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template: {
+      fieldsSchema: [
+        {
+          key: "legacy_title",
+          label: "Titulo",
+          type: "text",
+          group: "Datos principales",
+        },
+      ],
+      defaults: { legacy_title: "Titulo base" },
+    },
+    draftData: {
+      objetos: [{ id: "legacy-copy", tipo: "texto", texto: "Titulo base" }],
+      secciones: [],
+    },
+    resolvedValues: { legacy_title: "Titulo nuevo" },
+  });
+
+  assert.equal(patch.objetos[0].texto, "Titulo nuevo");
+  assert.equal(patch.applyReport.fallbackReplacements, 1);
+  assert.deepEqual(patch.applyReport.skippedFields, []);
+});

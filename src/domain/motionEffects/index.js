@@ -73,10 +73,12 @@ const SUPPORTED_AUTO_TYPES = new Set([
   "image",
   "icon",
   "divider",
+  "shape",
   "gallery",
   "countdown",
   "rsvp",
   "button",
+  "map",
 ]);
 
 function toLowerText(value) {
@@ -86,6 +88,10 @@ function toLowerText(value) {
 function toFiniteNumber(value, fallback = 0) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function isGroupElement(element) {
+  return toLowerText(element?.tipo) === "grupo";
 }
 
 function normalizePresetId(value) {
@@ -115,6 +121,7 @@ function canonicalType(element) {
   if (tipo === "line" || tipo === "divider") return "divider";
   if (tipo === "forma" && figura === "line") return "divider";
   if (tipo === "forma") return "shape";
+  if (tipo === "mapa-google") return "map";
 
   return "unsupported";
 }
@@ -292,6 +299,7 @@ function resolveRole(element, type) {
   if (type === "rsvp") return "rsvp";
   if (type === "button") return "cta";
   if (type === "shape") return "decorative";
+  if (type === "map") return "map";
 
   return "unsupported";
 }
@@ -308,7 +316,25 @@ export function sanitizeMotionEffect(value) {
 
 export function clearAllMotionEffects(elements) {
   const list = Array.isArray(elements) ? elements : [];
-  return list.map((element) => ({ ...element, motionEffect: "none" }));
+  return list.map((element) => {
+    if (!isGroupElement(element)) {
+      return { ...element, motionEffect: "none" };
+    }
+
+    if (!Array.isArray(element?.children)) {
+      return { ...element, motionEffect: "none" };
+    }
+
+    return {
+      ...element,
+      motionEffect: "none",
+      children: element.children.map((child) =>
+        child && typeof child === "object" && !Array.isArray(child)
+          ? { ...child, motionEffect: "none" }
+          : child
+      ),
+    };
+  });
 }
 
 export function getAllowedMotionEffectsForElement(element) {
@@ -344,6 +370,8 @@ function effectForPreset({ presetId, element, type, role, sectionContext }) {
     return isInteractiveIcon(element) ? "hover" : "reveal";
   }
 
+  if (type === "shape" || type === "map") return "reveal";
+
   if (type === "image") {
     if (presetId === "modern_dynamic") {
       return isCoverImage(element, sectionContext) || isMediumOrLargeImage(element)
@@ -373,26 +401,94 @@ export function applyGlobalMotionPreset(elements, options = {}) {
   const list = Array.isArray(elements) ? elements : [];
   const presetId = normalizePresetId(options?.presetId);
   const sectionContext = buildSectionContext(options?.secciones);
-  const repeatMap = buildSmallRepeatMap(list);
+  const effectTargets = list.flatMap((element) => {
+    if (!isGroupElement(element)) return [element];
 
-  return list.map((element) => {
-    const type = canonicalType(element);
-    const role = resolveRole(element, type);
+    const groupSectionId = element?.seccionId;
+    return (Array.isArray(element?.children) ? element.children : [])
+      .filter((child) => child && typeof child === "object" && !Array.isArray(child))
+      .map((child) => ({ ...child, seccionId: groupSectionId }));
+  });
+  const repeatMap = buildSmallRepeatMap(effectTargets);
 
-    if (shouldExcludeFromAutoEffect({ element, type, repeatMap })) {
+  const applyToElement = (element, inheritedSectionId = null) => {
+    const contextualElement = inheritedSectionId
+      ? { ...element, seccionId: inheritedSectionId }
+      : element;
+    const type = canonicalType(contextualElement);
+    const role = resolveRole(contextualElement, type);
+
+    if (shouldExcludeFromAutoEffect({ element: contextualElement, type, repeatMap })) {
       return { ...element, motionEffect: "none" };
     }
 
     const effect = effectForPreset({
       presetId,
-      element,
+      element: contextualElement,
       type,
       role,
       sectionContext,
     });
 
     return { ...element, motionEffect: sanitizeMotionEffect(effect) };
+  };
+
+  return list.map((element) => {
+    if (!isGroupElement(element)) {
+      return applyToElement(element);
+    }
+
+    if (!Array.isArray(element?.children)) {
+      return { ...element, motionEffect: "none" };
+    }
+
+    return {
+      ...element,
+      motionEffect: "none",
+      children: element.children.map((child) =>
+        child && typeof child === "object" && !Array.isArray(child)
+          ? applyToElement(child, element?.seccionId)
+          : child
+      ),
+    };
   });
+}
+
+function collectMotionEffectEntries(elements) {
+  const entries = [];
+  (Array.isArray(elements) ? elements : []).forEach((element, rootIndex) => {
+    if (!isGroupElement(element)) {
+      entries.push({
+        key: `root:${rootIndex}`,
+        effect: sanitizeMotionEffect(element?.motionEffect),
+      });
+      return;
+    }
+
+    (Array.isArray(element?.children) ? element.children : []).forEach((child, childIndex) => {
+      if (!child || typeof child !== "object" || Array.isArray(child)) return;
+      entries.push({
+        key: `root:${rootIndex}:child:${childIndex}`,
+        effect: sanitizeMotionEffect(child?.motionEffect),
+      });
+    });
+  });
+  return entries;
+}
+
+export function summarizeMotionEffectChanges(previousElements, nextElements) {
+  const previousByKey = new Map(
+    collectMotionEffectEntries(previousElements).map((entry) => [entry.key, entry.effect])
+  );
+  const nextEntries = collectMotionEffectEntries(nextElements);
+
+  return {
+    total: nextEntries.length,
+    changed: nextEntries.reduce(
+      (count, entry) => count + (previousByKey.get(entry.key) !== entry.effect ? 1 : 0),
+      0
+    ),
+  };
 }
 
 export function applyGlobalMotionPresetToSections(secciones, options = {}) {

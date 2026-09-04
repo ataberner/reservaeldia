@@ -6,18 +6,6 @@ import {
   resolveFieldDateTextFormatPreset,
 } from "../fieldValueResolver.js";
 import {
-  isEventPersonNameField,
-} from "../../eventDetails/personNames.js";
-import {
-  isEventLocationField,
-} from "../../eventDetails/location.js";
-import {
-  isEventTimeField,
-} from "../../eventDetails/time.js";
-import {
-  isEventDateField,
-} from "../../eventDetails/date.js";
-import {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
 } from "../../../../shared/renderAssetContract.js";
@@ -845,7 +833,6 @@ export function sanitizeAuthoringSchema({
   fieldsSchema,
   defaults,
   objetos,
-  dropOrphans = true,
 } = {}) {
   const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
   const safeDefaults = { ...asObject(defaults) };
@@ -855,49 +842,31 @@ export function sanitizeAuthoringSchema({
   const removedTargets = [];
   let changed = false;
 
-  const nextFields = fields
-    .map((field, index) => {
-      const normalized = normalizeField(field, index);
-      const nextTargets = normalized.applyTargets.filter((target) => {
-        if (target.scope !== "objeto") return true;
-        const targetId = normalizeText(target.id);
-        if (!targetId || objectIds.has(targetId)) return true;
-
-        changed = true;
-        removedTargets.push({
-          fieldKey: normalized.key,
-          targetId,
-          path: normalizeText(target.path) || null,
-        });
-        return false;
-      });
-
-      if (nextTargets.length === normalized.applyTargets.length) {
-        return normalized;
-      }
-
-      return {
-        ...normalized,
-        applyTargets: nextTargets,
-      };
-    })
-    .filter((field) => {
-      if (!dropOrphans) return true;
-      if (isEventPersonNameField(field)) return true;
-      if (isEventLocationField(field)) return true;
-      if (isEventTimeField(field)) return true;
-      if (isEventDateField(field)) return true;
-      if (Array.isArray(field.applyTargets) && field.applyTargets.length > 0) {
-        return true;
-      }
+  const nextFields = fields.map((field, index) => {
+    const normalized = normalizeField(field, index);
+    const nextTargets = normalized.applyTargets.filter((target) => {
+      if (target.scope !== "objeto") return true;
+      const targetId = normalizeText(target.id);
+      if (!targetId || objectIds.has(targetId)) return true;
 
       changed = true;
-      removedFieldKeys.push(field.key);
-      if (Object.prototype.hasOwnProperty.call(safeDefaults, field.key)) {
-        delete safeDefaults[field.key];
-      }
+      removedTargets.push({
+        fieldKey: normalized.key,
+        targetId,
+        path: normalizeText(target.path) || null,
+      });
       return false;
     });
+
+    if (nextTargets.length === normalized.applyTargets.length) {
+      return normalized;
+    }
+
+    return {
+      ...normalized,
+      applyTargets: nextTargets,
+    };
+  });
 
   return {
     fieldsSchema: nextFields,

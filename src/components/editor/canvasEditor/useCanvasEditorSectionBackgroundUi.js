@@ -45,6 +45,7 @@ export default function useCanvasEditorSectionBackgroundUi({
   setSeccionActivaId,
   setMostrarPanelZ,
   selectionClearPolicy,
+  onRequestImageRootConversion = null,
   canManageSite = false,
 }) {
   const canUseAdvancedDecorations = canManageSite === true;
@@ -170,6 +171,16 @@ export default function useCanvasEditorSectionBackgroundUi({
             }
           : elementoImagen;
 
+      if (
+        typeof onRequestImageRootConversion === "function" &&
+        onRequestImageRootConversion({
+          kind: "background-decoration",
+          elementoImagen: renderedImageSnapshot,
+        }) === true
+      ) {
+        return;
+      }
+
       convertirImagenEnDecoracionFondo({
         elementoImagen: renderedImageSnapshot,
         secciones,
@@ -187,6 +198,7 @@ export default function useCanvasEditorSectionBackgroundUi({
       altoCanvas,
       elementRefs,
       normalizarAltoModo,
+      onRequestImageRootConversion,
       objetos,
       secciones,
       seccionesOrdenadas,
@@ -208,6 +220,17 @@ export default function useCanvasEditorSectionBackgroundUi({
         requestInlineEditFinishRef.current?.("edge-decoration-conversion");
       }
 
+      if (
+        typeof onRequestImageRootConversion === "function" &&
+        onRequestImageRootConversion({
+          kind: "edge-decoration",
+          elementoImagen,
+          slot,
+        }) === true
+      ) {
+        return;
+      }
+
       const result = convertImageObjectToSectionEdgeDecorationState({
         sections: secciones,
         objects: objetos,
@@ -227,6 +250,7 @@ export default function useCanvasEditorSectionBackgroundUi({
     [
       editingId,
       objetos,
+      onRequestImageRootConversion,
       requestInlineEditFinishRef,
       secciones,
       selectionClearPolicy,

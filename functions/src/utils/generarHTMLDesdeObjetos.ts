@@ -422,6 +422,7 @@ function mapObjToDataType(obj: any): string {
   if (tipo === "line" || tipo === "divider") return "divider";
   if (tipo === "forma" && figura === "line") return "divider";
   if (tipo === "forma") return "shape";
+  if (tipo === "mapa-google") return "mapa-google";
 
   return "unknown";
 }
@@ -1129,10 +1130,11 @@ background: #f8fafc;
 box-sizing: border-box;
 `.trim();
 
-        return `
-<div class="objeto mapa-google" data-type="mapa-google" data-google-place-id="${escapeAttr(
-          String(obj.googlePlaceId || "")
-        )}" style="${wrapperStyle}">
+        return appendMotionDataAttrs(
+          `
+<div class="objeto mapa-google" data-google-place-id="${escapeAttr(
+            String(obj.googlePlaceId || "")
+          )}" style="${wrapperStyle}">
   <iframe
     title="${escapeAttr(title)}"
     src="${escapeAttr(src)}"
@@ -1143,7 +1145,9 @@ box-sizing: border-box;
     allowfullscreen
     referrerpolicy="no-referrer-when-downgrade"></iframe>
 </div>
-`.trim();
+`.trim(),
+          obj
+        );
       }
 
       // ---------------- TEXTO ----------------

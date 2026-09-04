@@ -8,6 +8,7 @@ import {
 } from "@/domain/templates/storyText";
 import { useTextPresetCatalog } from "@/hooks/useTextPresetCatalog";
 import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
+import DynamicFieldVisualIndicator from "@/components/editor/templateAuthoring/DynamicFieldVisualIndicator";
 import {
   readCanvasEditorMethod,
   readEditorActiveSectionId,
@@ -18,7 +19,7 @@ import {
 const storyTitleClass =
   "m-0 block w-full text-left font-['Source_Sans_Pro',sans-serif] text-[16px] font-semibold leading-[20px] tracking-[0px] text-[#262626]";
 const storyTextareaClass =
-  "mt-1.5 block min-h-[112px] w-full resize-y rounded-md bg-white px-3 py-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none [border:1px_solid_var(--Border,#00000029)] focus:[border-color:#692B9A]";
+  "block min-h-[110px] min-w-0 flex-1 resize-y bg-white px-3 py-2 font-['Source_Sans_Pro',sans-serif] text-[13px] font-normal leading-[18px] text-[#262626] outline-none border-0";
 const textPresetSkeletonLineWidths = Object.freeze([
   ["w-3/5", "w-4/5", "w-2/5"],
   ["w-2/5", "w-3/4", "w-1/2"],
@@ -158,11 +159,27 @@ function readTemplateAuthoringSnapshot(targetWindow) {
 
 function readStoryTextState(targetWindow) {
   const authoringSnapshot = readTemplateAuthoringSnapshot(targetWindow);
-  return resolveStoryTextSidebarBinding({
+  const binding = resolveStoryTextSidebarBinding({
     fieldsSchema: authoringSnapshot?.fieldsSchema,
-    defaults: authoringSnapshot?.defaults,
+    defaults: authoringSnapshot?.values || authoringSnapshot?.defaults,
     objetos: readEditorObjects(targetWindow),
   });
+  const readVisualStatus = readCanvasEditorMethod(
+    "getDynamicFieldRepresentationStatus",
+    targetWindow
+  );
+  return {
+    ...binding,
+    visualStatus:
+      typeof readVisualStatus === "function" && binding.fieldKey
+        ? readVisualStatus(binding.fieldKey)
+        : {
+            state: binding.hasBinding ? "visible" : "absent",
+            linkedCount: binding.hasBinding ? 1 : 0,
+            visibleCount: binding.hasBinding ? 1 : 0,
+            canRestore: Boolean(binding.fieldKey),
+          },
+  };
 }
 
 function readInitialStoryTextState() {
@@ -172,7 +189,9 @@ function readInitialStoryTextState() {
 
 function updateLinkedStoryTextDefault(fieldKey, value) {
   if (typeof window === "undefined" || !fieldKey) return;
-  const updateDefault = readCanvasEditorMethod("updateTemplateAuthoringDefault");
+  const updateDefault =
+    readCanvasEditorMethod("updateTemplateFieldValue") ||
+    readCanvasEditorMethod("updateTemplateAuthoringDefault");
   if (typeof updateDefault !== "function") return;
 
   void Promise.resolve(
@@ -187,6 +206,25 @@ function scrollToStoryTextTarget() {
   const scrollToTarget = readCanvasEditorMethod("scrollToDynamicFieldTarget");
   if (typeof scrollToTarget !== "function") return false;
   return scrollToTarget(STORY_TEXT_FIELD_KEY);
+}
+
+function focusStoryTextVisual(status, requestedRootObjectId = "") {
+  if (typeof window === "undefined") return false;
+  const rootObjectIds = Array.isArray(status?.rootObjectIds)
+    ? status.rootObjectIds.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  const requestedId = String(requestedRootObjectId || "").trim();
+  const rootObjectId = rootObjectIds.includes(requestedId)
+    ? requestedId
+    : rootObjectIds[0] || String(status?.firstRootObjectId || "").trim();
+  const focusObject = readCanvasEditorMethod("focusEditorObjectById");
+  if (rootObjectId && typeof focusObject === "function") {
+    return focusObject(rootObjectId, {
+      select: true,
+      source: "dynamic-field-indicator",
+    });
+  }
+  return scrollToStoryTextTarget();
 }
 
 function selectSidebarFieldText(event) {
@@ -393,6 +431,8 @@ export default function MiniToolbarTabTexto({
   const [invitationType, setInvitationType] = useState(getCurrentInvitationType);
   const [storyTextState, setStoryTextState] = useState(readInitialStoryTextState);
   const [storyTextValue, setStoryTextValue] = useState(() => storyTextState.value);
+  const [storyVisualPending, setStoryVisualPending] = useState(false);
+  const [storyVisualError, setStoryVisualError] = useState("");
   const editingStoryTextRef = useRef(false);
   const {
     items: textPresets,
@@ -453,6 +493,37 @@ export default function MiniToolbarTabTexto({
     updateLinkedStoryTextDefault(storyTextState.fieldKey, nextValue);
   };
 
+  const handleStoryVisualActivate = async ({ rootObjectId } = {}) => {
+    if (!storyTextState.fieldKey || typeof window === "undefined") return;
+    if (storyTextState.visualStatus?.state !== "absent") {
+      focusStoryTextVisual(storyTextState.visualStatus, rootObjectId);
+      return;
+    }
+
+    const restore = readCanvasEditorMethod("restoreDynamicFieldRepresentation");
+    if (typeof restore !== "function") return;
+    setStoryVisualPending(true);
+    setStoryVisualError("");
+    try {
+      const result = await restore({
+        fieldKey: storyTextState.fieldKey,
+        representationKind: "auto",
+      });
+      if (result?.ok === false) {
+        throw new Error(result.error || "No se pudo volver a insertar el texto.");
+      }
+      syncStoryTextState();
+    } catch (restoreError) {
+      setStoryVisualError(
+        restoreError instanceof Error
+          ? restoreError.message
+          : "No se pudo volver a insertar el texto."
+      );
+    } finally {
+      setStoryVisualPending(false);
+    }
+  };
+
   useEffect(() => {
     const fonts = new Set();
     (Array.isArray(textPresets) ? textPresets : []).forEach((preset) => {
@@ -476,23 +547,36 @@ export default function MiniToolbarTabTexto({
     };
   }, [textPresets]);
 
-  const storyTextSection = storyTextState.hasBinding ? (
+  const storyTextSection = storyTextState.fieldKey ? (
     <section className={simplifiedForAssistant ? "w-full" : "-mt-1 md:-mt-1.5 w-full"}>
       <h3 className={storyTitleClass}>{STORY_TEXT_SIDEBAR_TITLE}</h3>
-      <textarea
-        value={storyTextValue}
-        onFocus={(event) => {
-          editingStoryTextRef.current = true;
-          selectSidebarFieldText(event);
-          scrollToStoryTextTarget();
-        }}
-        onChange={handleStoryTextChange}
-        onBlur={() => {
-          editingStoryTextRef.current = false;
-        }}
-        aria-label={STORY_TEXT_SIDEBAR_TITLE}
-        className={storyTextareaClass}
-      />
+      <div
+        data-dynamic-field-input-shell="true"
+        className="mt-1.5 flex min-h-[112px] w-full max-w-[361px] min-w-0 items-start overflow-hidden rounded-md bg-white [border:1px_solid_var(--Border,#00000029)] focus-within:[border-color:#692B9A]"
+      >
+        <textarea
+          id="template-field-texto-historia"
+          value={storyTextValue}
+          onFocus={(event) => {
+            editingStoryTextRef.current = true;
+            selectSidebarFieldText(event);
+            scrollToStoryTextTarget();
+          }}
+          onChange={handleStoryTextChange}
+          onBlur={() => {
+            editingStoryTextRef.current = false;
+          }}
+          aria-label={STORY_TEXT_SIDEBAR_TITLE}
+          className={storyTextareaClass}
+        />
+        <DynamicFieldVisualIndicator
+          status={storyTextState.visualStatus}
+          loading={storyVisualPending}
+          error={storyVisualError}
+          onActivate={handleStoryVisualActivate}
+          className="!static !h-10 min-w-[64px] shrink-0 !rounded-none border-l border-[#00000014] bg-white px-2"
+        />
+      </div>
     </section>
   ) : null;
 

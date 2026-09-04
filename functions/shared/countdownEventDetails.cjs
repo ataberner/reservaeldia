@@ -37,6 +37,32 @@ function resolveCountdownTargetValue(countdown) {
   );
 }
 
+function forEachRenderObject(objetos, visitor) {
+  if (typeof visitor !== "function") return;
+
+  function visit(value) {
+    const object = asObject(value);
+    if (!Object.keys(object).length) return;
+    visitor(object);
+    if (
+      normalizeLowerText(object.tipo) === "grupo" &&
+      Array.isArray(object.children)
+    ) {
+      object.children.forEach(visit);
+    }
+  }
+
+  (Array.isArray(objetos) ? objetos : []).forEach(visit);
+}
+
+function collectCountdownObjects(objetos) {
+  const countdowns = [];
+  forEachRenderObject(objetos, (object) => {
+    if (isCountdownObject(object)) countdowns.push(object);
+  });
+  return countdowns;
+}
+
 function splitCountdownTargetIso(value) {
   const raw = normalizeText(value);
   if (!raw) return { date: "", time: "" };
@@ -146,11 +172,11 @@ function findObjectById(objetos, id) {
   const safeId = normalizeText(id);
   if (!safeId) return null;
 
-  return (
-    (Array.isArray(objetos) ? objetos : []).find(
-      (objeto) => normalizeText(asObject(objeto).id) === safeId
-    ) || null
-  );
+  let found = null;
+  forEachRenderObject(objetos, (objeto) => {
+    if (!found && normalizeText(objeto.id) === safeId) found = objeto;
+  });
+  return found;
 }
 
 function normalizeFieldKeyFilter(value) {
@@ -161,9 +187,10 @@ function normalizeFieldKeyFilter(value) {
   return single ? new Set([single]) : null;
 }
 
-function findDynamicCountdownBinding({ fieldsSchema, objetos, fieldKey, fieldKeys } = {}) {
+function collectDynamicCountdownBindings({ fieldsSchema, objetos, fieldKey, fieldKeys } = {}) {
   const safeFields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
   const fieldKeyFilter = normalizeFieldKeyFilter(fieldKeys || fieldKey);
+  const bindings = [];
 
   for (const field of safeFields) {
     const safeField = asObject(field);
@@ -185,7 +212,7 @@ function findDynamicCountdownBinding({ fieldsSchema, objetos, fieldKey, fieldKey
       const countdown = findObjectById(objetos, targetId);
       if (!isCountdownObject(countdown)) continue;
 
-      return {
+      bindings.push({
         field: safeField,
         fieldKey,
         fieldType: normalizeLowerText(safeField.type),
@@ -193,15 +220,82 @@ function findDynamicCountdownBinding({ fieldsSchema, objetos, fieldKey, fieldKey
         targetIndex,
         countdown,
         countdownId: targetId,
-      };
+      });
     }
   }
 
-  return null;
+  return bindings;
+}
+
+function findDynamicCountdownBinding(options = {}) {
+  return collectDynamicCountdownBindings(options)[0] || null;
+}
+
+function resolveCanonicalCountdownTargetIso({ dateValue, startTime } = {}) {
+  const rawDateValue = normalizeText(dateValue);
+  if (!rawDateValue) return "";
+
+  const parts = splitCountdownTargetIso(rawDateValue);
+  const explicitStartTime = normalizeText(startTime);
+  if (parts.date && explicitStartTime) {
+    return buildCountdownTargetIsoFromLocalParts({
+      date: parts.date,
+      time: explicitStartTime,
+    });
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDateValue)) {
+    return buildCountdownTargetIsoFromLocalParts({
+      date: rawDateValue,
+      time: "00:00",
+    });
+  }
+
+  const parsed = new Date(rawDateValue);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function buildDynamicCountdownProjectionPatches(options = {}) {
+  const bindings = collectDynamicCountdownBindings(options);
+  const values = asObject(options.values);
+  const startTimeByFieldKey = asObject(options.startTimeByFieldKey);
+  const hasDateValue = Object.prototype.hasOwnProperty.call(options, "dateValue");
+  const hasStartTime = Object.prototype.hasOwnProperty.call(options, "startTime");
+  const patches = [];
+  const patchedObjectIds = new Set();
+
+  bindings.forEach((binding) => {
+    if (patchedObjectIds.has(binding.countdownId)) return;
+    const dateValue = hasDateValue
+      ? options.dateValue
+      : values[binding.fieldKey];
+    const startTime = hasStartTime
+      ? options.startTime
+      : startTimeByFieldKey[binding.fieldKey];
+    const targetISO = resolveCanonicalCountdownTargetIso({
+      dateValue,
+      startTime,
+    });
+    if (!targetISO) return;
+
+    patchedObjectIds.add(binding.countdownId);
+    patches.push({
+      objectId: binding.countdownId,
+      patch: { fechaObjetivo: targetISO },
+    });
+  });
+
+  return patches;
 }
 
 function buildDynamicCountdownEventDetails({ fieldsSchema, objetos, fieldKey, fieldKeys } = {}) {
-  const binding = findDynamicCountdownBinding({ fieldsSchema, objetos, fieldKey, fieldKeys });
+  const bindings = collectDynamicCountdownBindings({
+    fieldsSchema,
+    objetos,
+    fieldKey,
+    fieldKeys,
+  });
+  const binding = bindings[0] || null;
   if (!binding) {
     return {
       hasBinding: false,
@@ -215,11 +309,24 @@ function buildDynamicCountdownEventDetails({ fieldsSchema, objetos, fieldKey, fi
       date: "",
       time: "",
       visible: false,
+      countdownIds: [],
+      linkedCount: 0,
+      visibleCount: 0,
     };
   }
 
   const targetISO = resolveCountdownTargetValue(binding.countdown);
   const parts = splitCountdownTargetIso(targetISO);
+  const countdownsById = new Map();
+  bindings.forEach((candidate) => {
+    if (!countdownsById.has(candidate.countdownId)) {
+      countdownsById.set(candidate.countdownId, candidate.countdown);
+    }
+  });
+  const countdownIds = Array.from(countdownsById.keys());
+  const visibleCount = Array.from(countdownsById.values()).filter(
+    isCountdownVisible
+  ).length;
 
   return {
     hasBinding: true,
@@ -232,16 +339,23 @@ function buildDynamicCountdownEventDetails({ fieldsSchema, objetos, fieldKey, fi
     targetISO,
     date: parts.date,
     time: parts.time,
-    visible: isCountdownVisible(binding.countdown),
+    visible: visibleCount > 0,
+    countdownIds,
+    linkedCount: countdownIds.length,
+    visibleCount,
   };
 }
 
 module.exports = {
   buildCountdownTargetIsoFromLocalParts,
+  buildDynamicCountdownProjectionPatches,
   buildDynamicCountdownEventDetails,
+  collectCountdownObjects,
+  collectDynamicCountdownBindings,
   findDynamicCountdownBinding,
   isCountdownVisible,
   mergeCountdownTargetLocalParts,
+  resolveCanonicalCountdownTargetIso,
   resolveCountdownTargetValue,
   splitCountdownTargetIso,
 };

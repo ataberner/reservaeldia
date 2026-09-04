@@ -17,9 +17,12 @@ export default function useKeyboardShortcuts({
   isEditing,
   tieneSeleccion,
   puedeMoverSeleccion = false,
+  disabled = false,
 }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (disabled) return;
+
       const key = typeof e?.key === "string" ? e.key.toLowerCase() : "";
       if (!key) return;
 
@@ -114,5 +117,6 @@ export default function useKeyboardShortcuts({
     isEditing,
     tieneSeleccion,
     puedeMoverSeleccion,
+    disabled,
   ]);
 }

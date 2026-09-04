@@ -424,6 +424,104 @@ The Konva -> DOM handoff MUST be phase-atomic:
 - active inline edit MUST NOT create a second snap authority
 - Assumption: inline edit does not participate in the drag-guide pipeline while DOM authority is active, because the current guide pipeline is drag-specific
 
+### 10.5 Linked Dynamic Text
+
+A text-content path governed by a dynamic-field target MUST NOT enter the DOM
+inline-content session. The object remains eligible for visual transforms, but
+its content is edited only through the structured value owner. The attempted
+entry communicates `Este texto se edita desde los datos de la invitación · Ir al campo`;
+that action emits the normalized
+`editor:dynamic-field-edit-request` detail `{ fieldKey, objectId }`, opens the
+owning sidebar panel, and focuses its stable input. It MUST NOT introduce a
+second value mutation or selection authority.
+
+## 10A. DYNAMIC VIEW INTERACTION CONTRACT
+
+### 10A.1 Derived Field Indicator
+
+Each applicable sidebar field derives, rather than persists, a representation
+status from valid live targets and functional visibility:
+
+- `visible`: at least one effective linked view is visible;
+- `hidden`: valid linked views exist, but all are hidden by their object or by an
+  inactive section/group/root association;
+- `absent`: no valid linked view exists.
+
+The same derivation reports `linkedCount`, `visibleCount`, `canRestore`, and the
+first root object identity. Stale targets and invalid views do not count. Maps
+count for the venue-name/address fields they consume; countdowns count for their
+phase date and canonical start time. Multiple views remain one structured value,
+not multiple data owners.
+
+A combined `couple_names` view represents both structured person-name inputs.
+Removing its last live instance makes both sidebar inputs report `absent`.
+Restoring from either input MUST recover the same single combined presentation
+and its exact format/target; it MUST NOT create an individual-name duplicate.
+
+The integrated control communicates those states with the short text labels
+`Visible`, `Oculto`, and `Insertar`; it does not rely on eye icons. The multiple
+view count remains next to the status label. The control stays inside the input
+boundary, with reserved content padding; it MUST NOT render as a standalone
+status below or beside the field. Specialized map/countdown checkboxes keep
+their own insert/visibility behavior without duplicating that label externally.
+
+When a field has multiple live views, repeated activation of its integrated
+indicator MUST traverse their selectable roots in stable canvas order. The
+first activation selects and centers the first root, each following activation
+advances once, and activation after the last root wraps to the first. If the
+available roots change, a stale cursor falls back to the first remaining root.
+A target inside a preserved group routes to the group wrapper, because the
+existing editor selection runtime remains the only selection authority.
+
+Activating a `visible` or `hidden` indicator selects and centers its root, even
+when the target is a grouped child. An `absent` indicator may request one restore;
+changing the input itself never restores a view.
+
+### 10A.2 Removal Confirmation
+
+Keyboard delete, element-menu delete, section deletion, and conversions that
+remove roots MUST enter the same pure removal planner. A batch with no dynamic
+view preserves immediate deletion. If any reached root/child is a dynamic view,
+the editor freezes the session and object identities and presents one contextual
+`alertdialog` before mutation:
+
+- title `Quitar de la invitación`;
+- brief explanation naming the affected schema field or fields, clarifying that
+  their data stays saved, and directing the user to `Volver a insertar` beside
+  the same field in the data panel;
+- actions `Cancelar` and `Quitar`;
+- desktop placement adjacent to the selection and mobile placement as a compact
+  inset card above the safe area, always sized to its content rather than the
+  remaining viewport height;
+- initial focus on `Cancelar`, focus containment, `Escape` cancellation, focus
+  return, at least 40 px touch targets, and reduced-motion behavior.
+
+Cancel MUST leave selection, runtime refs, history, persisted data, and render
+state untouched. Confirm MUST revalidate the frozen session/identities, archive
+the current presentation without projected values, and persist the complete
+mutation before clearing objects, targets, or selection. Persistence failure
+keeps the view/link intact and surfaces feedback.
+
+Confirmed removal deletes only the visual representation and its target links;
+the structured value and field remain intact. A grouped child is archived and
+restored as one standalone root using canonical ungroup geometry, without its
+siblings. If several views for one field are removed together, stable visual
+order chooses the newest recoverable snapshot. Restore is unavailable while any
+live representation remains, inserts at most one view, reapplies the current
+structured value, restores visibility subject to the functional association,
+and falls back to the normal insertion defaults if no usable snapshot exists.
+
+Undo/redo covers view/link state and recovery cache, never structured values.
+After either operation the current structured value is projected again, so
+history cannot resurrect stale content.
+
+`dynamicVisualState` is a versioned history payload. Capture MUST wait until
+template authoring is hydrated; a missing, legacy, or unsupported payload is a
+no-op for links and recovery cache. Value-only projection changes suppress a
+canvas-history entry and realign the comparison baseline, while target,
+transform, explicit representation-visibility, and recovery-cache changes MUST
+remain undoable.
+
 ## 11. SESSION & IDENTITY CONTRACT
 
 ### 11.1 Drag Sessions
@@ -495,6 +593,8 @@ The following patterns MUST NOT exist:
 - session resurrection
 - unsynchronized drag-overlay after snap mutation
 - DOM and Konva both acting as visible inline-edit owners at the same time
+- inline content mutation of a dynamic-target path
+- immediate removal of a dynamic view before the shared confirmation/persistence boundary
 - selection authority that is visually represented by a box owner from a different phase
 
 ## 13. CRITICAL INVARIANTS (TESTABLE)
@@ -508,6 +608,8 @@ The following invariants MUST always hold and are intended to be testable or log
 - During `settling`, drag-overlay remains the sole visible box owner until selected-phase readiness and post-paint confirmation are complete.
 - If snap changes the live node during drag, the visible drag-overlay bounds must be refreshed afterward from live geometry.
 - During active inline edit with DOM authority, DOM is the sole visible editing authority and caret visibility requires DOM editable authority.
+- Dynamic view cancellation produces no history, persistence, selection, or render mutation.
+- Confirmed dynamic view removal preserves its structured field value and removes only the materialized view/link.
 - Single-text hover/selection/drag visuals must derive from the authoritative text rect, not a separate persisted visual-box field.
 - `pendingDragSelection` and `dragVisualSelection` must be cleared or reconciled before drag-overlay ownership ends.
 - Hover must not remain visible after any higher-priority owner takes authority.

@@ -19,6 +19,7 @@ function createEmptyDraftMeta() {
     portadaSource: null,
     templateWorkspace: null,
     templateAuthoringDraft: null,
+    templateInput: null,
     loadedAt: 0,
   };
 }
@@ -39,6 +40,10 @@ function normalizeDraftLoadedMeta(meta) {
       safeMeta.templateAuthoringDraft &&
       typeof safeMeta.templateAuthoringDraft === "object"
         ? safeMeta.templateAuthoringDraft
+        : null,
+    templateInput:
+      safeMeta.templateInput && typeof safeMeta.templateInput === "object"
+        ? safeMeta.templateInput
         : null,
     loadedAt: Number(safeMeta.loadedAt || Date.now()),
   };

@@ -49,7 +49,7 @@ test("builds only the minimal Assistant capability snapshot", () => {
 
   assert.equal(snapshot.values.documentName, "Evento");
   assert.deepEqual(snapshot.values.people, { primaryName: "Ana", secondaryName: "Luz" });
-  assert.equal(snapshot.values.story, "Nuestra historia");
+  assert.equal(snapshot.values.story, "Fallback");
   assert.equal(snapshot.values.media.hasCover, true);
   assert.equal(snapshot.values.galleries[0].slots[0].occupied, true);
   const galleryCompletionLeaf = snapshot.ledger.leaves.find(
@@ -106,6 +106,46 @@ test("marks template document names and unbound story as unavailable", () => {
   assert.equal(snapshot.availability.documentName, false);
   assert.equal(snapshot.availability.story, false);
   assert.equal(snapshot.availability.cover, false);
+});
+
+test("keeps schema-declared data-only fields available and reads the structured value bag", () => {
+  const snapshot = buildDesignerAiCapabilitySnapshot({
+    documentNameState: { name: "Evento", documentKind: "draft", editable: true },
+    authoringSnapshot: {
+      fieldsSchema: [
+        { key: "texto_historia", type: "textarea", applyTargets: [] },
+        {
+          key: "event_dress_code",
+          type: "text",
+          eventDetailsRole: "dress_code",
+          applyTargets: [],
+        },
+      ],
+      defaults: {
+        texto_historia: "Default de plantilla",
+        event_dress_code: "Formal",
+      },
+      values: {
+        texto_historia: "Historia guardada sin vista",
+        event_dress_code: "Elegante",
+      },
+    },
+    renderSnapshot: {
+      objetos: [],
+      eventDetails: {
+        mode: "single",
+        dressCode: { enabled: true, value: "Mirror viejo" },
+      },
+    },
+  });
+
+  assert.equal(snapshot.availability.story, true);
+  assert.equal(snapshot.availability.dressCode, true);
+  assert.equal(snapshot.values.story, "Historia guardada sin vista");
+  assert.deepEqual(snapshot.values.dressCode, {
+    enabled: true,
+    value: "Elegante",
+  });
 });
 
 test("conversation coverage cannot remove unresolved leaves from completeness", () => {

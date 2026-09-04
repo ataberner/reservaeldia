@@ -52,26 +52,12 @@ function normalizeField(field, index) {
   };
 }
 
-function hasRenderableTargets(field) {
-  const source = asObject(field);
-  if (!Object.prototype.hasOwnProperty.call(source, "applyTargets")) {
-    return true;
-  }
-
-  const targets = Array.isArray(source.applyTargets) ? source.applyTargets : [];
-  return targets.some((target) => {
-    const safeTarget = asObject(target);
-    return normalizeText(safeTarget.scope) && normalizeText(safeTarget.path);
-  });
-}
-
 function normalizeFieldsSchema(fieldsSchema) {
   if (!Array.isArray(fieldsSchema)) return [];
   const seen = new Set();
   const out = [];
 
   fieldsSchema.forEach((field, index) => {
-    if (!hasRenderableTargets(field)) return;
     const normalized = normalizeField(field, index);
     if (!normalized.key || seen.has(normalized.key)) return;
     seen.add(normalized.key);

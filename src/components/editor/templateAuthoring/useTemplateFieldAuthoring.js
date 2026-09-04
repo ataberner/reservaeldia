@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ensureDefaultsForSchema } from "../../../../shared/templates/contract.js";
+import {
+  ensureDefaultsForSchema,
+  ensureValuesForSchema,
+  normalizeDetachedVisuals,
+} from "../../../../shared/templates/contract.js";
 import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
 import {
   buildElementFieldIndex,
@@ -25,12 +29,16 @@ import {
 } from "@/domain/eventDetails/personNames.js";
 import {
   buildEventLocationDefaults,
+  buildEventGoogleMapInsertObject,
+  buildEventGoogleMapProjectionPatches,
   collectEventLocationFields,
   ensureEventLocationFields,
   getEventLocationFieldKey,
+  mergeEventDetailsValueMetadata,
   normalizeEventLocationRole,
   resolveEventLocationFieldFeature,
   resolveEventLocationFromAuthoring,
+  setEventLocationProviderMetadata,
   updateEventAddressTextFormatInSchema,
 } from "@/domain/eventDetails/location.js";
 import {
@@ -77,6 +85,23 @@ import {
   buildDynamicGalleryObjectPatch,
   buildFixedGalleryObjectPatch,
 } from "@/domain/templates/galleryDynamicMedia.js";
+import {
+  preserveRecoveredTextBoxLayout,
+  restoreDynamicFieldVisual,
+  resolveDynamicFieldVisualStatus,
+} from "@/domain/templates/dynamicFieldTargets.js";
+import computeInsertDefaults from "@/components/editor/events/computeInsertDefaults.js";
+import { updateRenderObjectById } from "@/domain/editor/renderObjectTree.js";
+import { canInsertIntoSection } from "@/domain/editor/protectedSections.js";
+import {
+  buildDynamicCountdownProjectionPatches,
+} from "@/domain/eventDetails/countdownEventDetails.js";
+import { normalizeEventDetailsConfig } from "../../../../shared/eventDetailsConfig.js";
+import {
+  buildDynamicVisualHistoryState,
+  hasDynamicVisualHistoryChange,
+  restoreDynamicVisualHistorySlice,
+} from "../history/historyState.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -125,6 +150,54 @@ function arePatchValuesEqual(left, right) {
   } catch {
     return false;
   }
+}
+
+function applyObjectPatches(objetos, patches) {
+  let nextObjetos = Array.isArray(objetos) ? objetos : [];
+  (Array.isArray(patches) ? patches : []).forEach(({ objectId, patch }) => {
+    if (!objectId || !patch || typeof patch !== "object") return;
+    const result = updateRenderObjectById(nextObjetos, objectId, (object) => ({
+      ...object,
+      ...patch,
+    }));
+    if (result.changed) nextObjetos = result.objetos;
+  });
+  return nextObjetos;
+}
+
+function normalizeRepresentationKind(value) {
+  const kind = normalizeText(value).toLowerCase();
+  if (["map", "event-map", "mapa", "mapa-google"].includes(kind)) return "map";
+  if (["countdown", "contador"].includes(kind)) return "countdown";
+  return "text";
+}
+
+function resolveFieldFunctionalAssociation(field) {
+  const role = normalizeText(field?.eventDetailsRole).toLowerCase();
+  if (role.startsWith("ceremony_")) return "ceremony";
+  if (role.startsWith("party_")) return "party";
+  if (role === "dress_code") return "dress_code";
+  return null;
+}
+
+function buildCountdownStartTimeByFieldKey(fieldsSchema, values) {
+  const safeFields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const safeValues = asObject(values);
+  const result = {};
+  safeFields.forEach((field) => {
+    const role = normalizeText(field?.eventDetailsRole).toLowerCase();
+    if (role !== "ceremony_date" && role !== "party_date") return;
+    const feature = role.startsWith("party_") ? "party" : "ceremony";
+    const startField = safeFields.find(
+      (candidate) =>
+        normalizeText(candidate?.eventDetailsRole).toLowerCase() ===
+        `${feature}_start_time`
+    );
+    const dateFieldKey = normalizeText(field?.key);
+    if (!dateFieldKey) return;
+    result[dateFieldKey] = safeValues[normalizeText(startField?.key)] || "";
+  });
+  return result;
 }
 
 function resolveFieldTargetForObject(field, objectId) {
@@ -197,6 +270,9 @@ function emptySnapshot() {
     sourceTemplateId: null,
     fieldsSchema: [],
     defaults: {},
+    values: {},
+    detachedVisuals: { version: 1, nextSequence: 1, entries: [] },
+    templateInput: null,
     status: {
       isReady: true,
       issues: [],
@@ -218,16 +294,34 @@ export default function useTemplateFieldAuthoring({
   selectedElement,
   draftMeta,
   onPatchObject = null,
+  onReplaceObjects = null,
+  eventDetailsConfig = null,
+  onReplaceEventDetails = null,
+  onSnapshotChange = null,
+  enqueueDraftWrite = null,
+  activeSectionId = null,
+  hiddenObjectIds = [],
+  normalizarAltoModo = null,
+  ALTURA_PANTALLA_EDITOR = 500,
+  suppressNextHistoryCapture = null,
+  writable = true,
 }) {
   const [snapshot, setSnapshot] = useState(() => emptySnapshot());
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const lastLoadKeyRef = useRef("");
-  const saveQueueRef = useRef(Promise.resolve());
+  const lastWriteRef = useRef(Promise.resolve());
   const saveCounterRef = useRef(0);
   const reloadInFlightRef = useRef(null);
   const autoRepairSignatureRef = useRef("");
+  const latestAuthoringStateRef = useRef({
+    snapshot: emptySnapshot(),
+    objetos: [],
+    secciones: [],
+    eventDetails: normalizeEventDetailsConfig(null),
+  });
 
   const safeObjetos = Array.isArray(objetos) ? objetos : [];
   const safeSecciones = Array.isArray(secciones) ? secciones : [];
@@ -263,6 +357,38 @@ export default function useTemplateFieldAuthoring({
     () => ensureDefaultsForSchema(fieldsSchema, snapshot.defaults),
     [fieldsSchema, snapshot.defaults]
   );
+  const values = useMemo(
+    () => ensureValuesForSchema(fieldsSchema, snapshot.values, defaults),
+    [defaults, fieldsSchema, snapshot.values]
+  );
+  const detachedVisuals = useMemo(
+    () => normalizeDetachedVisuals(snapshot.detachedVisuals, fieldsSchema),
+    [fieldsSchema, snapshot.detachedVisuals]
+  );
+
+  useEffect(() => {
+    latestAuthoringStateRef.current = {
+      snapshot: {
+        ...snapshot,
+        fieldsSchema,
+        defaults,
+        values,
+        detachedVisuals,
+      },
+      objetos: safeObjetos,
+      secciones: safeSecciones,
+      eventDetails: eventDetailsConfig,
+    };
+  }, [
+    defaults,
+    detachedVisuals,
+    eventDetailsConfig,
+    fieldsSchema,
+    safeObjetos,
+    safeSecciones,
+    snapshot,
+    values,
+  ]);
 
   const fieldIndexByElementId = useMemo(
     () => buildElementFieldIndex(fieldsSchema),
@@ -298,16 +424,36 @@ export default function useTemplateFieldAuthoring({
   );
 
   const hydrateSnapshot = useCallback(
-    (incoming) => {
+    (incoming, objetosForValidation = latestAuthoringStateRef.current.objetos) => {
       const normalizedIncoming = asObject(incoming);
       const incomingFields = Array.isArray(normalizedIncoming.fieldsSchema)
         ? normalizedIncoming.fieldsSchema
         : [];
       const incomingDefaults = ensureDefaultsForSchema(incomingFields, normalizedIncoming.defaults);
+      const incomingValues = ensureValuesForSchema(
+        incomingFields,
+        Object.prototype.hasOwnProperty.call(normalizedIncoming, "values")
+          ? normalizedIncoming.values
+          : normalizedIncoming?.templateInput?.values,
+        incomingDefaults
+      );
+      const incomingDetachedVisuals = normalizeDetachedVisuals(
+        normalizedIncoming.detachedVisuals,
+        incomingFields
+      );
       const nextStatus = validateAuthoringState({
         fieldsSchema: incomingFields,
         defaults: incomingDefaults,
-        objetos: safeObjetos,
+        values: incomingValues,
+        detachedVisuals: incomingDetachedVisuals,
+        templateInput:
+          normalizedIncoming.templateInput &&
+          typeof normalizedIncoming.templateInput === "object"
+            ? normalizedIncoming.templateInput
+            : draftMeta?.templateInput || null,
+        objetos: Array.isArray(objetosForValidation)
+          ? objetosForValidation
+          : [],
       });
 
       return {
@@ -318,35 +464,77 @@ export default function useTemplateFieldAuthoring({
           null,
         fieldsSchema: incomingFields,
         defaults: incomingDefaults,
+        values: incomingValues,
+        detachedVisuals: incomingDetachedVisuals,
+        templateInput:
+          normalizedIncoming.templateInput &&
+          typeof normalizedIncoming.templateInput === "object"
+            ? {
+                ...normalizedIncoming.templateInput,
+                values: incomingValues,
+              }
+            : draftMeta?.templateInput && typeof draftMeta.templateInput === "object"
+              ? {
+                  ...draftMeta.templateInput,
+                  values: incomingValues,
+                }
+              : null,
         status: nextStatus,
         updatedAt: normalizedIncoming.updatedAt || null,
         updatedByUid: normalizeText(normalizedIncoming.updatedByUid) || null,
       };
     },
-    [safeObjetos, sourceTemplateId]
+    [draftMeta?.templateInput, sourceTemplateId]
   );
 
   const persistSnapshot = useCallback(
-    (nextSnapshot) => {
+    (nextSnapshot, options = {}) => {
       const safeSlug = normalizeText(slug);
       if (!enabled || !safeSlug) return Promise.resolve();
 
       saveCounterRef.current += 1;
       setSaving(true);
 
-      const payload = hydrateSnapshot(nextSnapshot);
+      const liveState = latestAuthoringStateRef.current;
+      const renderObjects = Array.isArray(options.nextObjects)
+        ? options.nextObjects
+        : Array.isArray(liveState.objetos)
+          ? liveState.objetos
+          : [];
+      const renderSections = Array.isArray(options.nextSections)
+        ? options.nextSections
+        : Array.isArray(liveState.secciones)
+          ? liveState.secciones
+          : [];
+      const renderEventDetails =
+        options.nextEventDetails && typeof options.nextEventDetails === "object"
+          ? options.nextEventDetails
+          : liveState.eventDetails && typeof liveState.eventDetails === "object"
+            ? liveState.eventDetails
+            : normalizeEventDetailsConfig(null);
+      const payload = hydrateSnapshot(nextSnapshot, renderObjects);
+      const renderPatch = {
+        objetos: renderObjects,
+        secciones: renderSections,
+        eventDetails: renderEventDetails,
+      };
 
-      saveQueueRef.current = saveQueueRef.current
-        .catch(() => {})
-        .then(() =>
-          saveAuthoringDraft({
+      const write = () =>
+        saveAuthoringDraft({
             slug: safeSlug,
             uid: userId,
             state: payload,
             templateId: sourceTemplateId || "",
             editorSession,
-          })
-        )
+            renderPatch,
+            reason: options.reason || "template-authoring",
+          });
+      const writePromise =
+        typeof enqueueDraftWrite === "function"
+          ? enqueueDraftWrite(write)
+          : Promise.resolve().then(write);
+
+      lastWriteRef.current = writePromise
         .catch((saveError) => {
           const message =
             saveError instanceof Error
@@ -362,20 +550,72 @@ export default function useTemplateFieldAuthoring({
           }
         });
 
-      return saveQueueRef.current;
+      return lastWriteRef.current;
     },
-    [editorSession, enabled, hydrateSnapshot, slug, sourceTemplateId, userId]
+    [
+      editorSession,
+      enabled,
+      enqueueDraftWrite,
+      hydrateSnapshot,
+      slug,
+      sourceTemplateId,
+      userId,
+    ]
   );
 
   const commitSnapshot = useCallback(
-    async (nextPartial) => {
-      const nextSnapshot = hydrateSnapshot(nextPartial);
-      setSnapshot(nextSnapshot);
+    async (nextPartial, options = {}) => {
+      const nextObjects = Array.isArray(options.nextObjects)
+        ? options.nextObjects
+        : latestAuthoringStateRef.current.objetos;
+      const nextSections = Array.isArray(options.nextSections)
+        ? options.nextSections
+        : latestAuthoringStateRef.current.secciones;
+      const nextEventDetails = options.nextEventDetails ||
+        latestAuthoringStateRef.current.eventDetails;
+      const nextSnapshot = hydrateSnapshot(nextPartial, nextObjects);
       setError("");
-      await persistSnapshot(nextSnapshot);
+      if (options.pessimistic !== true) {
+        latestAuthoringStateRef.current = {
+          snapshot: nextSnapshot,
+          objetos: nextObjects,
+          secciones: nextSections,
+          eventDetails: nextEventDetails,
+        };
+        onSnapshotChange?.(nextSnapshot);
+        setSnapshot(nextSnapshot);
+        if (Array.isArray(options.nextObjects)) {
+          if (options.excludeFromHistory === true) suppressNextHistoryCapture?.();
+          onReplaceObjects?.(options.nextObjects);
+        }
+        if (options.nextEventDetails) onReplaceEventDetails?.(options.nextEventDetails);
+      }
+      await persistSnapshot(nextSnapshot, options);
+      if (options.pessimistic === true) {
+        latestAuthoringStateRef.current = {
+          snapshot: nextSnapshot,
+          objetos: nextObjects,
+          secciones: nextSections,
+          eventDetails: nextEventDetails,
+        };
+        onSnapshotChange?.(nextSnapshot);
+        setSnapshot(nextSnapshot);
+        if (Array.isArray(options.nextObjects)) {
+          if (options.excludeFromHistory === true) suppressNextHistoryCapture?.();
+          onReplaceObjects?.(options.nextObjects);
+        }
+        if (options.nextEventDetails) onReplaceEventDetails?.(options.nextEventDetails);
+      }
       return nextSnapshot;
     },
-    [hydrateSnapshot, persistSnapshot]
+    [
+      hydrateSnapshot,
+      onReplaceEventDetails,
+      onReplaceObjects,
+      onSnapshotChange,
+      persistSnapshot,
+      suppressNextHistoryCapture,
+    ]
   );
 
   const reloadAvailableFields = useCallback(
@@ -383,8 +623,15 @@ export default function useTemplateFieldAuthoring({
       const safeSlug = normalizeText(slug);
       if (!enabled || !safeSlug) {
         const clearedSnapshot = emptySnapshot();
+        latestAuthoringStateRef.current = {
+          snapshot: clearedSnapshot,
+          objetos: safeObjetos,
+          secciones: safeSecciones,
+          eventDetails: eventDetailsConfig,
+        };
         setSnapshot(clearedSnapshot);
         setLoading(false);
+        setHydrated(false);
         setSaving(false);
         setError("");
         return clearedSnapshot;
@@ -399,9 +646,10 @@ export default function useTemplateFieldAuthoring({
         setSnapshot(emptySnapshot());
       }
       setLoading(true);
+      setHydrated(false);
       setError("");
 
-      const reloadPromise = saveQueueRef.current
+      const reloadPromise = lastWriteRef.current
         .catch(() => {})
         .then(() =>
           loadAuthoringState({
@@ -409,11 +657,24 @@ export default function useTemplateFieldAuthoring({
             templateId,
             editorSession,
             preloadedDraft: null,
+            persistMigration: writable,
+            enqueueDraftWrite,
+            uid: userId,
           })
         )
         .then((loaded) => {
           const nextSnapshot = hydrateSnapshot(loaded);
+          latestAuthoringStateRef.current = {
+            snapshot: nextSnapshot,
+            objetos: safeObjetos,
+            secciones: safeSecciones,
+            eventDetails: loaded?.eventDetails || eventDetailsConfig,
+          };
           setSnapshot(nextSnapshot);
+          setHydrated(true);
+          if (loaded?.migration?.applied && loaded?.eventDetails) {
+            onReplaceEventDetails?.(loaded.eventDetails);
+          }
           return nextSnapshot;
         })
         .catch((loadError) => {
@@ -425,6 +686,7 @@ export default function useTemplateFieldAuthoring({
           if (clearOnError) {
             setSnapshot(emptySnapshot());
           }
+          setHydrated(false);
           throw loadError;
         })
         .finally(() => {
@@ -435,14 +697,35 @@ export default function useTemplateFieldAuthoring({
       reloadInFlightRef.current = reloadPromise;
       return reloadPromise;
     },
-    [draftMeta, editorSession, enabled, hydrateSnapshot, safeObjetos, slug]
+    [
+      draftMeta,
+      editorSession,
+      enabled,
+      enqueueDraftWrite,
+      hydrateSnapshot,
+      eventDetailsConfig,
+      onReplaceEventDetails,
+      safeObjetos,
+      safeSecciones,
+      slug,
+      userId,
+      writable,
+    ]
   );
 
   useEffect(() => {
     const safeSlug = normalizeText(slug);
     if (!enabled || !safeSlug) {
-      setSnapshot(emptySnapshot());
+      const clearedSnapshot = emptySnapshot();
+      latestAuthoringStateRef.current = {
+        snapshot: clearedSnapshot,
+        objetos: safeObjetos,
+        secciones: safeSecciones,
+        eventDetails: eventDetailsConfig,
+      };
+      setSnapshot(clearedSnapshot);
       setLoading(false);
+      setHydrated(false);
       setSaving(false);
       setError("");
       lastLoadKeyRef.current = "";
@@ -457,9 +740,17 @@ export default function useTemplateFieldAuthoring({
 
     let cancelled = false;
     setLoading(true);
+    setHydrated(false);
     setSaving(false);
     setError("");
-    setSnapshot(emptySnapshot());
+    const loadingSnapshot = emptySnapshot();
+    latestAuthoringStateRef.current = {
+      snapshot: loadingSnapshot,
+      objetos: safeObjetos,
+      secciones: safeSecciones,
+      eventDetails: eventDetailsConfig,
+    };
+    setSnapshot(loadingSnapshot);
 
     void (async () => {
       try {
@@ -470,11 +761,27 @@ export default function useTemplateFieldAuthoring({
           preloadedDraft: {
             plantillaId: templateId || null,
             templateAuthoringDraft: draftMeta?.templateAuthoringDraft || null,
+            templateInput: draftMeta?.templateInput || null,
             objetos: safeObjetos,
+            eventDetails: eventDetailsConfig,
           },
+          persistMigration: writable,
+          enqueueDraftWrite,
+          uid: userId,
         });
         if (cancelled) return;
-        setSnapshot(hydrateSnapshot(loaded));
+        const nextSnapshot = hydrateSnapshot(loaded);
+        latestAuthoringStateRef.current = {
+          snapshot: nextSnapshot,
+          objetos: safeObjetos,
+          secciones: safeSecciones,
+          eventDetails: loaded?.eventDetails || eventDetailsConfig,
+        };
+        setSnapshot(nextSnapshot);
+        setHydrated(true);
+        if (loaded?.migration?.applied && loaded?.eventDetails) {
+          onReplaceEventDetails?.(loaded.eventDetails);
+        }
       } catch (loadError) {
         if (cancelled) return;
         const message =
@@ -483,6 +790,7 @@ export default function useTemplateFieldAuthoring({
             : "No se pudo cargar el authoring de la plantilla.";
         setError(message);
         setSnapshot(emptySnapshot());
+        setHydrated(false);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -493,7 +801,17 @@ export default function useTemplateFieldAuthoring({
     return () => {
       cancelled = true;
     };
-  }, [draftMeta, editorSession, enabled, hydrateSnapshot, safeObjetos, slug]);
+  }, [
+    draftMeta,
+    editorSession,
+    enabled,
+    enqueueDraftWrite,
+    hydrateSnapshot,
+    onReplaceEventDetails,
+    slug,
+    userId,
+    writable,
+  ]);
 
   const authoringCapabilities = resolveTemplateAuthoringCapabilities({
     enabled,
@@ -504,71 +822,266 @@ export default function useTemplateFieldAuthoring({
   const canConfigure = authoringCapabilities.canEditSchema;
   const canUseExistingFields = authoringCapabilities.canUseFields;
 
-  const applyFieldTargetsToObjects = useCallback(
-    (field, value, { targetObjectIds = null } = {}) => {
-      if (typeof onPatchObject !== "function") return false;
-
-      const patches = buildTemplateAuthoringTargetPatches({
-        field,
-        value,
-        objetos: safeObjetos,
-        secciones: safeSecciones,
-        targetObjectIds,
-      });
-
-      patches.forEach(({ objectId, patch }) => {
-        onPatchObject(objectId, patch);
-      });
-
-      return patches.length > 0;
+  const buildSnapshotWithValues = useCallback(
+    (nextFieldsSchema, nextValues, overrides = {}, baseSnapshot = snapshot) => {
+      const sourceSnapshot = asObject(baseSnapshot);
+      const sourceDefaults = ensureDefaultsForSchema(
+        nextFieldsSchema,
+        sourceSnapshot.defaults || defaults
+      );
+      const normalizedValues = ensureValuesForSchema(
+        nextFieldsSchema,
+        nextValues,
+        sourceDefaults
+      );
+      const templateSession = normalizeText(editorSession?.kind).toLowerCase() === "template";
+      return {
+        ...sourceSnapshot,
+        ...overrides,
+        sourceTemplateId,
+        fieldsSchema: nextFieldsSchema,
+        defaults: templateSession
+          ? ensureDefaultsForSchema(nextFieldsSchema, normalizedValues)
+          : sourceDefaults,
+        values: normalizedValues,
+        detachedVisuals:
+          overrides.detachedVisuals ||
+          sourceSnapshot.detachedVisuals ||
+          detachedVisuals,
+        templateInput: templateSession
+          ? null
+          : {
+              ...asObject(sourceSnapshot.templateInput || draftMeta?.templateInput),
+              values: normalizedValues,
+            },
+      };
     },
-    [onPatchObject, safeObjetos, safeSecciones]
+    [
+      defaults,
+      detachedVisuals,
+      draftMeta?.templateInput,
+      editorSession?.kind,
+      snapshot,
+      sourceTemplateId,
+    ]
   );
 
-  const applyEventPersonNameTargetsToObjects = useCallback(
-    (nextFieldsSchema, nextDefaults) => {
-      let targetsApplied = false;
-      collectEventPersonNameFields(nextFieldsSchema).forEach((field) => {
-        const fieldKey = normalizeText(field?.key);
-        if (!fieldKey) return;
-        const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
-        targetsApplied = targetsApplied || applied;
+  const updateTemplateFieldValues = useCallback(
+    async (valuesPatch = {}, options = {}) => {
+      if (!canUseExistingFields) {
+        throw new Error("Este borrador no esta vinculado a una plantilla base.");
+      }
+
+      const rawPatch = asObject(valuesPatch);
+      const liveState = latestAuthoringStateRef.current;
+      const baseSnapshot = asObject(liveState.snapshot);
+      const baseFieldsSchema = Array.isArray(baseSnapshot.fieldsSchema)
+        ? baseSnapshot.fieldsSchema
+        : fieldsSchema;
+      const baseDefaults = ensureDefaultsForSchema(
+        baseFieldsSchema,
+        baseSnapshot.defaults || defaults
+      );
+      const baseValues = ensureValuesForSchema(
+        baseFieldsSchema,
+        baseSnapshot.values,
+        baseDefaults
+      );
+      const baseObjects = Array.isArray(liveState.objetos)
+        ? liveState.objetos
+        : safeObjetos;
+      const baseSections = Array.isArray(liveState.secciones)
+        ? liveState.secciones
+        : safeSecciones;
+      const baseEventDetails = liveState.eventDetails || eventDetailsConfig;
+      const effectiveFieldsSchema = Array.isArray(options.fieldsSchema)
+        ? options.fieldsSchema
+        : baseFieldsSchema;
+      const declaredKeys = new Set(
+        effectiveFieldsSchema.map((field) => normalizeText(field?.key)).filter(Boolean)
+      );
+      const filteredPatch = mergeEventDetailsValueMetadata(
+        baseValues,
+        Object.fromEntries(
+        Object.entries(rawPatch).filter(
+          ([key]) => declaredKeys.has(key) || key === "__eventDetails"
+        )
+        )
+      );
+      const nextValues = ensureValuesForSchema(effectiveFieldsSchema, {
+        ...baseValues,
+        ...filteredPatch,
+      }, baseDefaults);
+
+      let nextObjects = baseObjects;
+      if (options.applyTargets !== false) {
+        effectiveFieldsSchema.forEach((field) => {
+          const fieldKey = normalizeText(field?.key);
+          if (!fieldKey || !Object.prototype.hasOwnProperty.call(filteredPatch, fieldKey)) return;
+          const patches = buildTemplateAuthoringTargetPatches({
+            field,
+            value: nextValues[fieldKey],
+            objetos: nextObjects,
+            secciones: baseSections,
+          });
+          nextObjects = applyObjectPatches(nextObjects, patches);
+        });
+
+        ["ceremony", "party"].forEach((feature) => {
+          const location = resolveEventLocationFromAuthoring({
+            fieldsSchema: effectiveFieldsSchema,
+            defaults: baseDefaults,
+            values: nextValues,
+            objetos: nextObjects,
+            feature,
+          });
+          nextObjects = applyObjectPatches(
+            nextObjects,
+            buildEventGoogleMapProjectionPatches({
+              objetos: nextObjects,
+              location,
+              feature,
+              ...(Object.prototype.hasOwnProperty.call(options, "showMap")
+                ? { showMap: options.showMap === true }
+                : {}),
+            })
+          );
+        });
+
+        nextObjects = applyObjectPatches(
+          nextObjects,
+          buildDynamicCountdownProjectionPatches({
+            fieldsSchema: effectiveFieldsSchema,
+            objetos: nextObjects,
+            values: nextValues,
+            startTimeByFieldKey: buildCountdownStartTimeByFieldKey(
+              effectiveFieldsSchema,
+              nextValues
+            ),
+          })
+        );
+
+        if (typeof options.representationVisibility === "boolean") {
+          const visibilityStatus = resolveDynamicFieldVisualStatus({
+            fieldsSchema: effectiveFieldsSchema,
+            fieldKeys: Object.keys(filteredPatch).filter((key) => declaredKeys.has(key)),
+            objetos: nextObjects,
+            secciones: baseSections,
+            eventDetails: baseEventDetails,
+            kind: options.representationKind,
+          });
+          visibilityStatus.objectIds.forEach((objectId) => {
+            const visibilityResult = updateRenderObjectById(
+              nextObjects,
+              objectId,
+              (object) => {
+                const next = { ...object };
+                const objectType = normalizeText(object?.tipo).toLowerCase();
+                if (objectType === "countdown") {
+                  next.mostrarCuentaRegresiva = options.representationVisibility;
+                } else if (objectType === "mapa-google") {
+                  next.mostrarMapa =
+                    options.representationVisibility &&
+                    Boolean(normalizeText(next.googlePlaceId));
+                } else {
+                  next.hidden = !options.representationVisibility;
+                  next.visible = options.representationVisibility;
+                }
+                return next;
+              }
+            );
+            if (visibilityResult.changed) nextObjects = visibilityResult.objetos;
+          });
+        }
+      }
+
+      const dressField = effectiveFieldsSchema.find(
+        (field) => normalizeText(field?.eventDetailsRole).toLowerCase() === "dress_code"
+      );
+      const dressFieldKey = normalizeText(dressField?.key);
+      const eventDetailsPatch = asObject(options.eventDetailsPatch);
+      const hasDressValuePatch =
+        dressFieldKey && Object.prototype.hasOwnProperty.call(filteredPatch, dressFieldKey);
+      const hasEventDetailsPatch = Object.keys(eventDetailsPatch).length > 0;
+      const nextEventDetails = hasDressValuePatch || hasEventDetailsPatch
+        ? normalizeEventDetailsConfig({
+            ...asObject(baseEventDetails),
+            ...eventDetailsPatch,
+            dressCode: {
+              ...asObject(baseEventDetails?.dressCode),
+              ...asObject(eventDetailsPatch.dressCode),
+              ...(hasDressValuePatch
+                ? { value: String(nextValues[dressFieldKey] ?? "") }
+                : {}),
+            },
+          })
+        : baseEventDetails;
+
+      const valuesChanged = !areValuesMapsEqual(baseValues, nextValues);
+      const schemaChanged = !areValuesMapsEqual(baseFieldsSchema, effectiveFieldsSchema);
+      const objectsChanged = nextObjects !== baseObjects;
+      const eventDetailsChanged = nextEventDetails !== baseEventDetails;
+      if (!valuesChanged && !schemaChanged && !objectsChanged && !eventDetailsChanged) {
+        return false;
+      }
+
+      const nextSnapshot = buildSnapshotWithValues(
+        effectiveFieldsSchema,
+        nextValues,
+        {},
+        baseSnapshot
+      );
+      const beforeDynamicVisualState = buildDynamicVisualHistoryState({
+        fieldsSchema: baseFieldsSchema,
+        detachedVisuals: normalizeDetachedVisuals(
+          baseSnapshot.detachedVisuals || detachedVisuals,
+          baseFieldsSchema
+        ),
       });
-      return targetsApplied;
+      const afterDynamicVisualState = buildDynamicVisualHistoryState({
+        fieldsSchema: effectiveFieldsSchema,
+        detachedVisuals: normalizeDetachedVisuals(
+          nextSnapshot.detachedVisuals,
+          effectiveFieldsSchema
+        ),
+      });
+      const recordsCanvasHistory =
+        options.includeInHistory === true ||
+        typeof options.representationVisibility === "boolean" ||
+        hasDynamicVisualHistoryChange(
+          beforeDynamicVisualState,
+          afterDynamicVisualState
+        );
+      await commitSnapshot(nextSnapshot, {
+        nextObjects,
+        nextSections: baseSections,
+        nextEventDetails,
+        reason: options.reason || "dynamic-field-value-update",
+        excludeFromHistory: !recordsCanvasHistory,
+      });
+      return true;
     },
-    [applyFieldTargetsToObjects]
+    [
+      buildSnapshotWithValues,
+      canUseExistingFields,
+      commitSnapshot,
+      defaults,
+      detachedVisuals,
+      eventDetailsConfig,
+      fieldsSchema,
+      safeObjetos,
+      safeSecciones,
+      values,
+    ]
   );
 
-  const applyEventLocationTargetsToObjects = useCallback(
-    (nextFieldsSchema, nextDefaults, feature = "ceremony") => {
-      let targetsApplied = false;
-      const safeFeature = normalizeEventDetailFeature(feature);
-      collectEventLocationFields(nextFieldsSchema).forEach((field) => {
-        if (resolveEventLocationFieldFeature(field) !== safeFeature) return;
-        const fieldKey = normalizeText(field?.key);
-        if (!fieldKey) return;
-        const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
-        targetsApplied = targetsApplied || applied;
-      });
-      return targetsApplied;
+  const updateTemplateFieldValue = useCallback(
+    (fieldKey, value, options = {}) => {
+      const safeFieldKey = normalizeText(fieldKey);
+      if (!safeFieldKey) return Promise.resolve(false);
+      return updateTemplateFieldValues({ [safeFieldKey]: value }, options);
     },
-    [applyFieldTargetsToObjects]
-  );
-
-  const applyEventTimeTargetsToObjects = useCallback(
-    (nextFieldsSchema, nextDefaults, feature = "ceremony") => {
-      let targetsApplied = false;
-      const safeFeature = normalizeEventDetailFeature(feature);
-      collectEventTimeFields(nextFieldsSchema).forEach((field) => {
-        if (resolveEventTimeFieldFeature(field) !== safeFeature) return;
-        const fieldKey = normalizeText(field?.key);
-        if (!fieldKey) return;
-        const applied = applyFieldTargetsToObjects(field, nextDefaults[fieldKey]);
-        targetsApplied = targetsApplied || applied;
-      });
-      return targetsApplied;
-    },
-    [applyFieldTargetsToObjects]
+    [updateTemplateFieldValues]
   );
 
   const updateEventPersonNames = useCallback(
@@ -579,7 +1092,7 @@ export default function useTemplateFieldAuthoring({
 
       const currentNames = resolveEventPersonNamesFromAuthoring({
         fieldsSchema,
-        defaults,
+        defaults: values,
         objetos: safeObjetos,
       });
       const safePatch = asObject(patch);
@@ -608,44 +1121,33 @@ export default function useTemplateFieldAuthoring({
             changed: false,
           };
       const nextFieldsSchema = ensureResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(
+      const nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventPersonNameDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults,
+          defaults: values,
           names: nextNames,
         })
       );
-      const targetsApplied = applyEventPersonNameTargetsToObjects(
-        nextFieldsSchema,
-        nextDefaults
+      const valuesPatch = Object.fromEntries(
+        collectEventPersonNameFields(nextFieldsSchema)
+          .map((field) => normalizeText(field?.key))
+          .filter(Boolean)
+          .map((fieldKey) => [fieldKey, nextValues[fieldKey]])
       );
-
-      if (
-        !ensureResult.changed &&
-        areValuesMapsEqual(nextDefaults, defaults)
-      ) {
-        return targetsApplied;
-      }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      return updateTemplateFieldValues(valuesPatch, {
         fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+        applyTargets: true,
+        reason: "event-person-names-update",
       });
-      return true;
     },
     [
-      applyEventPersonNameTargetsToObjects,
       canConfigure,
       canUseExistingFields,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       safeObjetos,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValues,
+      values,
     ]
   );
 
@@ -666,7 +1168,7 @@ export default function useTemplateFieldAuthoring({
       const selectedText = normalizeText(selectedElement?.texto);
       const currentNames = resolveEventPersonNamesFromAuthoring({
         fieldsSchema,
-        defaults,
+        defaults: values,
         objetos: safeObjetos,
       });
       let nextNames = { ...currentNames };
@@ -710,42 +1212,40 @@ export default function useTemplateFieldAuthoring({
         path: selectedElementFieldPath || "texto",
       });
       const nextFieldsSchema = linkResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(
+      const nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventPersonNameDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults,
+          defaults: values,
           names: nextNames,
         })
       );
 
-      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextDefaults, defaults)) {
+      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextValues, values)) {
         return false;
       }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      const valuesPatch = Object.fromEntries(
+        collectEventPersonNameFields(nextFieldsSchema)
+          .map((field) => normalizeText(field?.key))
+          .filter(Boolean)
+          .map((key) => [key, nextValues[key]])
+      );
+      return updateTemplateFieldValues(valuesPatch, {
         fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+        applyTargets: true,
+        reason: "event-person-name-link",
       });
-
-      applyEventPersonNameTargetsToObjects(nextFieldsSchema, nextDefaults);
-      return true;
     },
     [
-      applyEventPersonNameTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       selectedElement,
       selectedElementId,
       selectedElementFieldPath,
       selectedElementType,
       safeObjetos,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValues,
+      values,
     ]
   );
 
@@ -755,11 +1255,29 @@ export default function useTemplateFieldAuthoring({
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
       const feature = normalizeEventDetailFeature(options.feature || patch.eventDetailsFeature);
+      const liveState = latestAuthoringStateRef.current;
+      const liveSnapshot = asObject(liveState.snapshot);
+      const liveFieldsSchema = Array.isArray(liveSnapshot.fieldsSchema)
+        ? liveSnapshot.fieldsSchema
+        : [];
+      const liveDefaults = ensureDefaultsForSchema(
+        liveFieldsSchema,
+        liveSnapshot.defaults
+      );
+      const liveValues = ensureValuesForSchema(
+        liveFieldsSchema,
+        liveSnapshot.values,
+        liveDefaults
+      );
+      const liveObjects = Array.isArray(liveState.objetos)
+        ? liveState.objetos
+        : [];
 
       const currentLocation = resolveEventLocationFromAuthoring({
-        fieldsSchema,
-        defaults,
-        objetos: safeObjetos,
+        fieldsSchema: liveFieldsSchema,
+        defaults: liveDefaults,
+        values: liveValues,
+        objetos: liveObjects,
         feature,
       });
       const safePatch = asObject(patch);
@@ -783,14 +1301,23 @@ export default function useTemplateFieldAuthoring({
         googleAddressComponents: Object.prototype.hasOwnProperty.call(safePatch, "googleAddressComponents")
           ? safePatch.googleAddressComponents
           : currentLocation.googleAddressComponents,
+        googleLat: Object.prototype.hasOwnProperty.call(safePatch, "googleLat")
+          ? safePatch.googleLat
+          : currentLocation.googleLat,
+        googleLng: Object.prototype.hasOwnProperty.call(safePatch, "googleLng")
+          ? safePatch.googleLng
+          : currentLocation.googleLng,
+        showMap: Object.prototype.hasOwnProperty.call(safePatch, "showMap")
+          ? safePatch.showMap === true
+          : currentLocation.showMap === true,
         addressTextFormatPreset: Object.prototype.hasOwnProperty.call(safePatch, "addressTextFormatPreset")
           ? safePatch.addressTextFormatPreset
           : currentLocation.addressTextFormatPreset,
       };
       const ensureResult = canConfigure
-        ? ensureEventLocationFields({ fieldsSchema, feature })
+        ? ensureEventLocationFields({ fieldsSchema: liveFieldsSchema, feature })
         : {
-            fieldsSchema,
+            fieldsSchema: liveFieldsSchema,
             changed: false,
           };
       const formatResult = canConfigure && Object.prototype.hasOwnProperty.call(
@@ -807,47 +1334,53 @@ export default function useTemplateFieldAuthoring({
             changed: false,
           };
       const nextFieldsSchema = formatResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(
+      let nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventLocationDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults,
+          defaults: liveValues,
           location: nextLocation,
           feature,
         })
       );
-      const targetsApplied = applyEventLocationTargetsToObjects(
-        nextFieldsSchema,
-        nextDefaults,
-        feature
+      nextValues = setEventLocationProviderMetadata(
+        nextValues,
+        feature,
+        nextLocation
       );
-
-      if (
-        !ensureResult.changed &&
-        !formatResult.changed &&
-        areValuesMapsEqual(nextDefaults, defaults)
-      ) {
-        return targetsApplied;
-      }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
-        fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+      const nextLocations = asObject(
+        asObject(nextValues.__eventDetails).locations
+      );
+      const valuesPatch = {
+        __eventDetails: {
+          locations: {
+            [feature]: Object.prototype.hasOwnProperty.call(
+              nextLocations,
+              feature
+            )
+              ? nextLocations[feature]
+              : null,
+          },
+        },
+      };
+      collectEventLocationFields(nextFieldsSchema).forEach((field) => {
+        if (resolveEventLocationFieldFeature(field) !== feature) return;
+        const fieldKey = normalizeText(field?.key);
+        if (fieldKey) valuesPatch[fieldKey] = nextValues[fieldKey];
       });
-      return true;
+      return updateTemplateFieldValues(valuesPatch, {
+        fieldsSchema: nextFieldsSchema,
+        applyTargets: true,
+        ...(Object.prototype.hasOwnProperty.call(nextLocation, "showMap")
+          ? { showMap: nextLocation.showMap === true }
+          : {}),
+        reason: "event-location-update",
+      });
     },
     [
-      applyEventLocationTargetsToObjects,
       canConfigure,
       canUseExistingFields,
-      commitSnapshot,
-      defaults,
-      fieldsSchema,
-      safeObjetos,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValues,
     ]
   );
 
@@ -869,7 +1402,8 @@ export default function useTemplateFieldAuthoring({
       const selectedText = normalizeText(selectedElement?.texto);
       const currentLocation = resolveEventLocationFromAuthoring({
         fieldsSchema,
-        defaults,
+        defaults: values,
+        values,
         objetos: safeObjetos,
         feature,
       });
@@ -898,43 +1432,41 @@ export default function useTemplateFieldAuthoring({
         path: selectedElementFieldPath || "texto",
       });
       const nextFieldsSchema = linkResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(
+      const nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventLocationDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults,
+          defaults: values,
           location: nextLocation,
           feature,
         })
       );
 
-      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextDefaults, defaults)) {
+      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextValues, values)) {
         return false;
       }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
-        fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+      const valuesPatch = {};
+      collectEventLocationFields(nextFieldsSchema).forEach((field) => {
+        if (resolveEventLocationFieldFeature(field) !== feature) return;
+        const key = normalizeText(field?.key);
+        if (key) valuesPatch[key] = nextValues[key];
       });
-
-      applyEventLocationTargetsToObjects(nextFieldsSchema, nextDefaults, feature);
-      return true;
+      return updateTemplateFieldValues(valuesPatch, {
+        fieldsSchema: nextFieldsSchema,
+        applyTargets: true,
+        reason: "event-location-link",
+      });
     },
     [
-      applyEventLocationTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       safeObjetos,
       selectedElement,
       selectedElementId,
       selectedElementFieldPath,
       selectedElementType,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValues,
+      values,
     ]
   );
 
@@ -947,7 +1479,7 @@ export default function useTemplateFieldAuthoring({
 
       const currentTimes = resolveEventTimesFromAuthoring({
         fieldsSchema,
-        defaults,
+        defaults: values,
         feature,
       });
       const safePatch = asObject(patch);
@@ -966,45 +1498,33 @@ export default function useTemplateFieldAuthoring({
             changed: false,
           };
       const nextFieldsSchema = ensureResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(
+      const nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventTimeDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults,
+          defaults: values,
           times: nextTimes,
           feature,
         })
       );
-      const targetsApplied = applyEventTimeTargetsToObjects(
-        nextFieldsSchema,
-        nextDefaults,
-        feature
-      );
-
-      if (
-        !ensureResult.changed &&
-        areValuesMapsEqual(nextDefaults, defaults)
-      ) {
-        return targetsApplied;
-      }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
-        fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+      const valuesPatch = {};
+      collectEventTimeFields(nextFieldsSchema).forEach((field) => {
+        if (resolveEventTimeFieldFeature(field) !== feature) return;
+        const fieldKey = normalizeText(field?.key);
+        if (fieldKey) valuesPatch[fieldKey] = nextValues[fieldKey];
       });
-      return true;
+      return updateTemplateFieldValues(valuesPatch, {
+        fieldsSchema: nextFieldsSchema,
+        applyTargets: true,
+        reason: "event-times-update",
+      });
     },
     [
-      applyEventTimeTargetsToObjects,
       canConfigure,
       canUseExistingFields,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValues,
+      values,
     ]
   );
 
@@ -1026,7 +1546,7 @@ export default function useTemplateFieldAuthoring({
       const selectedText = normalizeText(selectedElement?.texto);
       const currentTimes = resolveEventTimesFromAuthoring({
         fieldsSchema,
-        defaults,
+        defaults: values,
         feature,
       });
       const nextTimes = { ...currentTimes };
@@ -1054,42 +1574,40 @@ export default function useTemplateFieldAuthoring({
         path: selectedElementFieldPath || "texto",
       });
       const nextFieldsSchema = linkResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(
+      const nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventTimeDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults,
+          defaults: values,
           times: nextTimes,
           feature,
         })
       );
 
-      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextDefaults, defaults)) {
+      if (!ensureResult.changed && !linkResult.changed && areValuesMapsEqual(nextValues, values)) {
         return false;
       }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
-        fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+      const valuesPatch = {};
+      collectEventTimeFields(nextFieldsSchema).forEach((field) => {
+        if (resolveEventTimeFieldFeature(field) !== feature) return;
+        const key = normalizeText(field?.key);
+        if (key) valuesPatch[key] = nextValues[key];
       });
-
-      applyEventTimeTargetsToObjects(nextFieldsSchema, nextDefaults, feature);
-      return true;
+      return updateTemplateFieldValues(valuesPatch, {
+        fieldsSchema: nextFieldsSchema,
+        applyTargets: true,
+        reason: "event-time-link",
+      });
     },
     [
-      applyEventTimeTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       selectedElement,
       selectedElementId,
       selectedElementFieldPath,
       selectedElementType,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValues,
+      values,
     ]
   );
 
@@ -1107,6 +1625,9 @@ export default function useTemplateFieldAuthoring({
 
       const feature = normalizeEventDetailFeature(options.feature);
       const fieldKey = getEventDateFieldKey(feature);
+      const fieldAlreadyExists = fieldsSchema.some(
+        (field) => normalizeText(field?.key) === fieldKey
+      );
       const ensureResult = ensureEventDateField({ fieldsSchema, feature });
       const linkResult = linkElementToField({
         fieldsSchema: ensureResult.fieldsSchema,
@@ -1118,52 +1639,42 @@ export default function useTemplateFieldAuthoring({
       const linkedField =
         nextFieldsSchema.find((field) => normalizeText(field?.key) === fieldKey) ||
         ensureResult.field;
-      const linkedValue =
-        resolveFieldValueFromLinkedDateTargets({
-          field: linkedField,
-          objetos: safeObjetos,
-          fallbackValue:
-            defaults[fieldKey] ||
-            (selectedElementType === "countdown" ? selectedElementDefaultValue : ""),
-        }) || "";
-      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, {
-        ...defaults,
-        [fieldKey]: linkedValue || defaults[fieldKey] || "",
+      const linkedValue = fieldAlreadyExists
+        ? values[fieldKey]
+        : resolveFieldValueFromLinkedDateTargets({
+            field: linkedField,
+            objetos: safeObjetos,
+            fallbackValue:
+              selectedElementType === "countdown" ? selectedElementDefaultValue : "",
+          });
+      const nextValues = ensureValuesForSchema(nextFieldsSchema, {
+        ...values,
+        [fieldKey]: linkedValue ?? "",
       });
 
       if (
         !ensureResult.changed &&
         !linkResult.changed &&
-        areValuesMapsEqual(nextDefaults, defaults)
+        areValuesMapsEqual(nextValues, values)
       ) {
         return false;
       }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      return updateTemplateFieldValue(fieldKey, nextValues[fieldKey], {
         fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+        applyTargets: true,
+        reason: "event-date-link",
       });
-
-      if (linkedValue) {
-        applyFieldTargetsToObjects(linkedField, linkedValue);
-      }
-      return true;
     },
     [
-      applyFieldTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       safeObjetos,
       selectedElementDefaultValue,
       selectedElementFieldPath,
       selectedElementId,
       selectedElementType,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValue,
+      values,
     ]
   );
 
@@ -1185,50 +1696,43 @@ export default function useTemplateFieldAuthoring({
         path: selectedElementFieldPath || "texto",
       });
       const nextFieldsSchema = linkResult.fieldsSchema;
-      const selectedText =
-        typeof selectedElement?.texto === "string"
+      const fieldAlreadyExists = fieldsSchema.some(
+        (field) => normalizeText(field?.key) === fieldKey
+      );
+      const selectedText = fieldAlreadyExists
+        ? values[fieldKey]
+        : typeof selectedElement?.texto === "string"
           ? selectedElement.texto
           : selectedElementDefaultValue;
-      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, {
-        ...defaults,
+      const nextValues = ensureValuesForSchema(nextFieldsSchema, {
+        ...values,
         [fieldKey]: selectedText,
       });
 
       if (
         !ensureResult.changed &&
         !linkResult.changed &&
-        areValuesMapsEqual(nextDefaults, defaults)
+        areValuesMapsEqual(nextValues, values)
       ) {
         return false;
       }
 
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      return updateTemplateFieldValue(fieldKey, nextValues[fieldKey], {
         fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+        applyTargets: true,
+        reason: "story-text-link",
       });
-
-      const linkedField = nextFieldsSchema.find(
-        (field) => normalizeText(field?.key) === fieldKey
-      );
-      applyFieldTargetsToObjects(linkedField, selectedText);
-
-      return true;
     },
     [
-      applyFieldTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       selectedElement,
       selectedElementDefaultValue,
       selectedElementFieldPath,
       selectedElementId,
       selectedElementType,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValue,
+      values,
     ]
   );
 
@@ -1250,50 +1754,43 @@ export default function useTemplateFieldAuthoring({
         path: selectedElementFieldPath || "texto",
       });
       const nextFieldsSchema = linkResult.fieldsSchema;
-      const selectedText =
-        typeof selectedElement?.texto === "string"
+      const fieldAlreadyExists = fieldsSchema.some(
+        (field) => normalizeText(field?.key) === fieldKey
+      );
+      const selectedText = fieldAlreadyExists
+        ? values[fieldKey]
+        : typeof selectedElement?.texto === "string"
           ? selectedElement.texto
           : selectedElementDefaultValue;
-      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, {
-        ...defaults,
+      const nextValues = ensureValuesForSchema(nextFieldsSchema, {
+        ...values,
         [fieldKey]: selectedText,
       });
 
       if (
         !ensureResult.changed &&
         !linkResult.changed &&
-        areValuesMapsEqual(nextDefaults, defaults)
+        areValuesMapsEqual(nextValues, values)
       ) {
         return false;
       }
 
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      return updateTemplateFieldValue(fieldKey, nextValues[fieldKey], {
         fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+        applyTargets: true,
+        reason: "dress-code-link",
       });
-
-      const linkedField = nextFieldsSchema.find(
-        (field) => normalizeText(field?.key) === fieldKey
-      );
-      applyFieldTargetsToObjects(linkedField, selectedText);
-
-      return true;
     },
     [
-      applyFieldTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
       selectedElement,
       selectedElementDefaultValue,
       selectedElementFieldPath,
       selectedElementId,
       selectedElementType,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValue,
+      values,
     ]
   );
 
@@ -1402,33 +1899,17 @@ export default function useTemplateFieldAuthoring({
         dropOrphans: true,
       });
       const nextFieldsSchema = repairedResult.fieldsSchema;
-      const nextDefaults = ensureDefaultsForSchema(nextFieldsSchema, repairedResult.defaults);
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      const safeFieldKey = normalizeText(fieldKey);
+      await updateTemplateFieldValue(safeFieldKey, values[safeFieldKey], {
         fieldsSchema: nextFieldsSchema,
-        defaults: nextDefaults,
+        applyTargets: true,
+        reason: "template-field-link",
       });
       syncSelectedGalleryAuthoringState(nextFieldsSchema);
-
-      const linkedField = nextFieldsSchema.find(
-        (field) => normalizeText(field?.key) === normalizeText(fieldKey)
-      );
-      if (isCountdownCompatibleFieldType(linkedField?.type)) {
-        const linkedValue = resolveFieldValueFromLinkedDateTargets({
-          field: linkedField,
-          objetos: safeObjetos,
-          fallbackValue: nextDefaults[normalizeText(fieldKey)],
-        });
-        applyFieldTargetsToObjects(linkedField, linkedValue);
-      }
       return true;
     },
     [
-      applyFieldTargetsToObjects,
       canConfigure,
-      commitSnapshot,
       defaults,
       fieldsSchema,
       safeObjetos,
@@ -1437,9 +1918,9 @@ export default function useTemplateFieldAuthoring({
       selectedTargetConfig,
       selectedElementType,
       selectedIsSupportedElement,
-      snapshot,
-      sourceTemplateId,
       syncSelectedGalleryAuthoringState,
+      updateTemplateFieldValue,
+      values,
     ]
   );
 
@@ -1536,47 +2017,13 @@ export default function useTemplateFieldAuthoring({
   );
 
   const updateFieldDefaultValue = useCallback(
-    async (fieldKey, value, options = {}) => {
-      if (!canUseExistingFields) {
-        throw new Error("Este borrador no esta vinculado a una plantilla base.");
-      }
-
-      const safeFieldKey = normalizeText(fieldKey);
-      if (!safeFieldKey) return false;
-
-      const targetField = fieldsSchema.find(
-        (field) => normalizeText(field?.key) === safeFieldKey
-      );
-      if (!targetField) return false;
-
-      const shouldApplyTargets = options?.applyTargets === true;
-      const targetsApplied = shouldApplyTargets
-        ? applyFieldTargetsToObjects(targetField, value)
-        : false;
-      if (arePatchValuesEqual(defaults[safeFieldKey], value)) {
-        return targetsApplied;
-      }
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
-        fieldsSchema,
-        defaults: ensureDefaultsForSchema(fieldsSchema, {
-          ...defaults,
-          [safeFieldKey]: value,
-        }),
-      });
-      return true;
-    },
-    [
-      applyFieldTargetsToObjects,
-      canUseExistingFields,
-      commitSnapshot,
-      defaults,
-      fieldsSchema,
-      snapshot,
-      sourceTemplateId,
-    ]
+    (fieldKey, value, options = {}) =>
+      updateTemplateFieldValue(fieldKey, value, {
+        ...options,
+        applyTargets: options?.applyTargets === true,
+        reason: options?.reason || "template-authoring-default-adapter",
+      }),
+    [updateTemplateFieldValue]
   );
 
   const updateFieldDateTextFormat = useCallback(
@@ -1594,35 +2041,18 @@ export default function useTemplateFieldAuthoring({
         preset,
       });
       if (!updateResult.field) return false;
-
-      const linkedValue = resolveFieldValueFromLinkedDateTargets({
-        field: updateResult.field,
-        objetos: safeObjetos,
-        fallbackValue: defaults[safeFieldKey],
-      });
-      const targetsApplied = applyFieldTargetsToObjects(updateResult.field, linkedValue, {
-        targetObjectIds: updateResult.targetObjectIds,
-      });
-
-      if (!updateResult.changed) return targetsApplied;
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      if (!updateResult.changed) return false;
+      return updateTemplateFieldValue(safeFieldKey, values[safeFieldKey], {
         fieldsSchema: updateResult.fieldsSchema,
-        defaults: ensureDefaultsForSchema(updateResult.fieldsSchema, defaults),
+        applyTargets: true,
+        reason: "date-text-format-update",
       });
-      return true;
     },
     [
-      applyFieldTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
-      safeObjetos,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValue,
+      values,
     ]
   );
 
@@ -1645,37 +2075,483 @@ export default function useTemplateFieldAuthoring({
       if (!updateResult.field || updateResult.targetObjectIds.length === 0) {
         return false;
       }
-
-      const linkedValue = resolveFieldValueFromLinkedDateTargets({
-        field: updateResult.field,
-        objetos: safeObjetos,
-        fallbackValue: defaults[safeFieldKey],
-      });
-      const targetsApplied = applyFieldTargetsToObjects(updateResult.field, linkedValue, {
-        targetObjectIds: updateResult.targetObjectIds,
-      });
-
-      if (!updateResult.changed) return targetsApplied;
-
-      await commitSnapshot({
-        ...snapshot,
-        sourceTemplateId,
+      if (!updateResult.changed) return false;
+      return updateTemplateFieldValue(safeFieldKey, values[safeFieldKey], {
         fieldsSchema: updateResult.fieldsSchema,
-        defaults: ensureDefaultsForSchema(updateResult.fieldsSchema, defaults),
+        applyTargets: true,
+        reason: "selected-date-text-format-update",
       });
-      return true;
     },
     [
-      applyFieldTargetsToObjects,
       canConfigure,
-      commitSnapshot,
-      defaults,
       fieldsSchema,
-      safeObjetos,
       selectedElementFieldPath,
       selectedElementId,
-      snapshot,
-      sourceTemplateId,
+      updateTemplateFieldValue,
+      values,
+    ]
+  );
+
+  const getDynamicFieldRepresentationStatus = useCallback(
+    (fieldKeyOrKeys, options = {}) => {
+      const result = resolveDynamicFieldVisualStatus({
+        fieldsSchema,
+        ...(Array.isArray(fieldKeyOrKeys)
+          ? { fieldKeys: fieldKeyOrKeys }
+          : { fieldKey: fieldKeyOrKeys }),
+        objetos: safeObjetos,
+        secciones: safeSecciones,
+        eventDetails: eventDetailsConfig,
+        hiddenObjectIds,
+        kind: options?.kind,
+        detachedVisuals,
+      });
+      return {
+        ...result,
+        firstRootObjectId: result.firstRootObjectId || result.rootObjectIds?.[0] || null,
+      };
+    },
+    [
+      detachedVisuals,
+      eventDetailsConfig,
+      fieldsSchema,
+      hiddenObjectIds,
+      safeObjetos,
+      safeSecciones,
+    ]
+  );
+
+  const getDynamicVisualHistoryState = useCallback(
+    () => buildDynamicVisualHistoryState({
+      fieldsSchema,
+      detachedVisuals,
+    }),
+    [detachedVisuals, fieldsSchema]
+  );
+
+  const restoreDynamicVisualHistoryState = useCallback(
+    (dynamicVisualState, nextObjects, nextSections = safeSecciones) => {
+      const liveState = latestAuthoringStateRef.current;
+      const baseSnapshot = asObject(liveState.snapshot);
+      const baseFieldsSchema = Array.isArray(baseSnapshot.fieldsSchema)
+        ? baseSnapshot.fieldsSchema
+        : fieldsSchema;
+      const baseDefaults = ensureDefaultsForSchema(
+        baseFieldsSchema,
+        baseSnapshot.defaults || defaults
+      );
+      const currentValues = ensureValuesForSchema(
+        baseFieldsSchema,
+        baseSnapshot.values,
+        baseDefaults
+      );
+      const currentDetachedVisuals = normalizeDetachedVisuals(
+        baseSnapshot.detachedVisuals || detachedVisuals,
+        baseFieldsSchema
+      );
+      const restoredSlice = restoreDynamicVisualHistorySlice({
+        historyState: dynamicVisualState,
+        fieldsSchema: baseFieldsSchema,
+        detachedVisuals: currentDetachedVisuals,
+      });
+      if (!restoredSlice.applied) {
+        return Array.isArray(nextObjects) ? nextObjects : [];
+      }
+      const nextFieldsSchema = restoredSlice.fieldsSchema;
+      const nextDetachedVisuals = normalizeDetachedVisuals(
+        restoredSlice.detachedVisuals,
+        nextFieldsSchema
+      );
+      let projectedObjects = Array.isArray(nextObjects) ? nextObjects : [];
+      nextFieldsSchema.forEach((field) => {
+        const fieldKey = normalizeText(field?.key);
+        if (!fieldKey) return;
+        projectedObjects = applyObjectPatches(
+          projectedObjects,
+          buildTemplateAuthoringTargetPatches({
+            field,
+            value: currentValues[fieldKey],
+            objetos: projectedObjects,
+            secciones: nextSections,
+          })
+        );
+      });
+      ["ceremony", "party"].forEach((feature) => {
+        const location = resolveEventLocationFromAuthoring({
+          fieldsSchema: nextFieldsSchema,
+          defaults: baseDefaults,
+          values: currentValues,
+          objetos: projectedObjects,
+          feature,
+        });
+        projectedObjects = applyObjectPatches(
+          projectedObjects,
+          buildEventGoogleMapProjectionPatches({
+            objetos: projectedObjects,
+            location,
+            feature,
+          })
+        );
+      });
+      projectedObjects = applyObjectPatches(
+        projectedObjects,
+        buildDynamicCountdownProjectionPatches({
+          fieldsSchema: nextFieldsSchema,
+          objetos: projectedObjects,
+          values: currentValues,
+          startTimeByFieldKey: buildCountdownStartTimeByFieldKey(
+            nextFieldsSchema,
+            currentValues
+          ),
+        })
+      );
+      const nextSnapshot = buildSnapshotWithValues(
+        nextFieldsSchema,
+        currentValues,
+        { detachedVisuals: nextDetachedVisuals },
+        baseSnapshot
+      );
+      latestAuthoringStateRef.current = {
+        snapshot: nextSnapshot,
+        objetos: projectedObjects,
+        secciones: nextSections,
+        eventDetails: liveState.eventDetails,
+      };
+      onSnapshotChange?.(nextSnapshot);
+      setSnapshot(nextSnapshot);
+      void persistSnapshot(nextSnapshot, {
+        nextObjects: projectedObjects,
+        nextSections,
+        reason: "dynamic-visual-history-restore",
+      }).catch(() => {});
+      return projectedObjects;
+    },
+    [
+      buildSnapshotWithValues,
+      defaults,
+      detachedVisuals,
+      fieldsSchema,
+      onSnapshotChange,
+      persistSnapshot,
+      safeSecciones,
+    ]
+  );
+
+  const commitDynamicVisualMutation = useCallback(
+    async ({
+      nextObjects,
+      nextFieldsSchema,
+      nextDetachedVisuals,
+      nextSections,
+      nextEventDetails,
+      reason = "dynamic-visual-mutation",
+      pessimistic = true,
+    } = {}) => {
+      const liveState = latestAuthoringStateRef.current;
+      const liveSnapshot = asObject(liveState.snapshot);
+      const liveFields = Array.isArray(liveSnapshot.fieldsSchema)
+        ? liveSnapshot.fieldsSchema
+        : fieldsSchema;
+      const liveDefaults = ensureDefaultsForSchema(
+        liveFields,
+        liveSnapshot.defaults || defaults
+      );
+      const liveValues = ensureValuesForSchema(
+        liveFields,
+        liveSnapshot.values,
+        liveDefaults
+      );
+      const targetFields = Array.isArray(nextFieldsSchema)
+        ? nextFieldsSchema
+        : liveFields;
+      const targetDetached = normalizeDetachedVisuals(
+        nextDetachedVisuals === undefined
+          ? liveSnapshot.detachedVisuals || detachedVisuals
+          : nextDetachedVisuals,
+        targetFields
+      );
+      const targetObjects = Array.isArray(nextObjects)
+        ? nextObjects
+        : Array.isArray(liveState.objetos)
+          ? liveState.objetos
+          : [];
+      const targetSections = Array.isArray(nextSections)
+        ? nextSections
+        : Array.isArray(liveState.secciones)
+          ? liveState.secciones
+          : [];
+      const targetEventDetails =
+        nextEventDetails && typeof nextEventDetails === "object"
+          ? nextEventDetails
+          : liveState.eventDetails;
+      const nextSnapshot = buildSnapshotWithValues(
+        targetFields,
+        liveValues,
+        { detachedVisuals: targetDetached },
+        liveSnapshot
+      );
+      await commitSnapshot(nextSnapshot, {
+        nextObjects: targetObjects,
+        nextSections: targetSections,
+        nextEventDetails: targetEventDetails,
+        reason,
+        pessimistic,
+      });
+      return nextSnapshot;
+    },
+    [
+      buildSnapshotWithValues,
+      commitSnapshot,
+      defaults,
+      detachedVisuals,
+      fieldsSchema,
+    ]
+  );
+
+  const restoreDynamicFieldRepresentation = useCallback(
+    async ({ fieldKey, representationKind = "auto" } = {}) => {
+      const safeFieldKey = normalizeText(fieldKey);
+      const liveState = latestAuthoringStateRef.current;
+      const liveSnapshot = asObject(liveState.snapshot);
+      const liveFieldsSchema = Array.isArray(liveSnapshot.fieldsSchema)
+        ? liveSnapshot.fieldsSchema
+        : [];
+      const liveDefaults = ensureDefaultsForSchema(
+        liveFieldsSchema,
+        liveSnapshot.defaults
+      );
+      const liveValues = ensureValuesForSchema(
+        liveFieldsSchema,
+        liveSnapshot.values,
+        liveDefaults
+      );
+      const liveObjects = Array.isArray(liveState.objetos)
+        ? liveState.objetos
+        : [];
+      const liveSections = Array.isArray(liveState.secciones)
+        ? liveState.secciones
+        : [];
+      const liveDetachedVisuals = normalizeDetachedVisuals(
+        liveSnapshot.detachedVisuals,
+        liveFieldsSchema
+      );
+      const liveEventDetails = liveState.eventDetails;
+      const field = liveFieldsSchema.find(
+        (candidate) => normalizeText(candidate?.key) === safeFieldKey
+      );
+      if (!field) return { ok: false, reason: "field-missing" };
+
+      const requestedKind = normalizeRepresentationKind(
+        representationKind === "auto" ? "text" : representationKind
+      );
+      const editableSections = liveSections.filter((section) =>
+        canInsertIntoSection(section?.id, liveSections)
+      );
+      const sectionId = canInsertIntoSection(activeSectionId, liveSections)
+        ? normalizeText(activeSectionId)
+        : normalizeText(editableSections[0]?.id);
+      if (!sectionId) return { ok: false, reason: "editable-section-missing" };
+
+      const association = resolveFieldFunctionalAssociation(field);
+      const baseId = `dynamic-${safeFieldKey}-${Date.now().toString(36)}`;
+      let defaultObject = null;
+      let defaultTarget = null;
+      if (requestedKind === "map") {
+        const feature = association === "party" ? "party" : "ceremony";
+        const location = resolveEventLocationFromAuthoring({
+          fieldsSchema: liveFieldsSchema,
+          defaults: liveDefaults,
+          values: liveValues,
+          objetos: liveObjects,
+          feature,
+        });
+        defaultObject = computeInsertDefaults({
+          payload: {
+            ...buildEventGoogleMapInsertObject(location, {
+              id: baseId,
+              feature,
+            }),
+            ...(association ? { functionalAssociation: association } : {}),
+          },
+          targetSeccionId: sectionId,
+          secciones: liveSections,
+          normalizarAltoModo,
+          ALTURA_PANTALLA_EDITOR,
+        });
+      } else if (requestedKind === "countdown") {
+        defaultObject = computeInsertDefaults({
+          payload: {
+            id: baseId,
+            tipo: "countdown",
+            targetISO: liveValues[safeFieldKey],
+            mostrarCuentaRegresiva: true,
+            ...(association ? { functionalAssociation: association } : {}),
+          },
+          targetSeccionId: sectionId,
+          secciones: liveSections,
+          normalizarAltoModo,
+          ALTURA_PANTALLA_EDITOR,
+        });
+        defaultTarget = {
+          scope: "objeto",
+          id: baseId,
+          path: "fechaObjetivo",
+          mode: "set",
+          transform: { kind: "date_to_countdown_iso" },
+        };
+      } else {
+        const fieldType = normalizeText(field?.type).toLowerCase();
+        const dateLike = fieldType === "date" || fieldType === "datetime";
+        defaultObject = computeInsertDefaults({
+          payload: {
+            id: baseId,
+            tipo: "texto",
+            texto: "",
+            variant: fieldType === "textarea" ? "parrafo" : "texto",
+            ...(association ? { functionalAssociation: association } : {}),
+          },
+          targetSeccionId: sectionId,
+          secciones: liveSections,
+          normalizarAltoModo,
+          ALTURA_PANTALLA_EDITOR,
+        });
+        defaultTarget = {
+          scope: "objeto",
+          id: baseId,
+          path: "texto",
+          mode: "set",
+          ...(dateLike
+            ? {
+                transform: {
+                  kind: "date_to_text",
+                  preset: field.dateTextFormatPreset,
+                },
+              }
+            : {}),
+        };
+      }
+
+      const restored = restoreDynamicFieldVisual({
+        fieldKey: safeFieldKey,
+        representationKind,
+        fieldsSchema: liveFieldsSchema,
+        objetos: liveObjects,
+        secciones: editableSections,
+        detachedVisuals: liveDetachedVisuals,
+        activeSection: sectionId,
+        defaultObject,
+        defaultTarget,
+      });
+      if (!restored.restoredRootId) {
+        return { ok: false, reason: restored.reason || "restore-failed" };
+      }
+
+      let nextObjects = restored.nextObjetos;
+      const restoredObject = nextObjects.find(
+        (object) => normalizeText(object?.id) === restored.restoredRootId
+      );
+      if (restoredObject) {
+        const insertNormalizedObject = computeInsertDefaults({
+          payload: restoredObject,
+          targetSeccionId: normalizeText(restoredObject?.seccionId) || sectionId,
+          secciones: liveSections,
+          normalizarAltoModo,
+          ALTURA_PANTALLA_EDITOR,
+        });
+        const normalizedRestoredObject =
+          restored.reason === "restored"
+            ? preserveRecoveredTextBoxLayout({
+                recoveredObject: restoredObject,
+                normalizedObject: insertNormalizedObject,
+              })
+            : insertNormalizedObject;
+        const normalizedResult = updateRenderObjectById(
+          nextObjects,
+          restored.restoredRootId,
+          () => normalizedRestoredObject
+        );
+        if (normalizedResult.changed) nextObjects = normalizedResult.objetos;
+      }
+      restored.nextFieldsSchema.forEach((candidate) => {
+        const candidateKey = normalizeText(candidate?.key);
+        if (!candidateKey) return;
+        nextObjects = applyObjectPatches(
+          nextObjects,
+          buildTemplateAuthoringTargetPatches({
+            field: candidate,
+            value: liveValues[candidateKey],
+            objetos: nextObjects,
+            secciones: liveSections,
+          })
+        );
+      });
+      nextObjects = applyObjectPatches(
+        nextObjects,
+        buildDynamicCountdownProjectionPatches({
+          fieldsSchema: restored.nextFieldsSchema,
+          objetos: nextObjects,
+          values: liveValues,
+          startTimeByFieldKey: buildCountdownStartTimeByFieldKey(
+            restored.nextFieldsSchema,
+            liveValues
+          ),
+        })
+      );
+      ["ceremony", "party"].forEach((feature) => {
+        const location = resolveEventLocationFromAuthoring({
+          fieldsSchema: restored.nextFieldsSchema,
+          defaults: liveDefaults,
+          values: liveValues,
+          objetos: nextObjects,
+          feature,
+        });
+        const locationProjection = { ...location };
+        delete locationProjection.showMap;
+        nextObjects = applyObjectPatches(
+          nextObjects,
+          buildEventGoogleMapProjectionPatches({
+            objetos: nextObjects,
+            location: locationProjection,
+            feature,
+          })
+        );
+      });
+      const visibilityResult = updateRenderObjectById(
+        nextObjects,
+        restored.restoredRootId,
+        (object) => {
+          const next = { ...object, hidden: false, visible: true, mostrar: true };
+          if (normalizeText(object?.tipo).toLowerCase() === "countdown") {
+            next.mostrarCuentaRegresiva = true;
+          }
+          if (normalizeText(object?.tipo).toLowerCase() === "mapa-google") {
+            next.mostrarMapa = Boolean(normalizeText(next.googlePlaceId));
+          }
+          return next;
+        }
+      );
+      if (visibilityResult.changed) nextObjects = visibilityResult.objetos;
+
+      await commitDynamicVisualMutation({
+        nextObjects,
+        nextFieldsSchema: restored.nextFieldsSchema,
+        nextDetachedVisuals: restored.nextDetachedVisuals,
+        nextSections: liveSections,
+        nextEventDetails: liveEventDetails,
+        reason: "dynamic-visual-restore",
+        pessimistic: true,
+      });
+      return {
+        ok: true,
+        ...restored,
+        nextObjetos: nextObjects,
+      };
+    },
+    [
+      ALTURA_PANTALLA_EDITOR,
+      activeSectionId,
+      commitDynamicVisualMutation,
+      normalizarAltoModo,
     ]
   );
 
@@ -1801,15 +2677,55 @@ export default function useTemplateFieldAuthoring({
           sourceTemplateId,
           fieldsSchema,
           defaults,
+          values,
+          detachedVisuals,
+          templateInput: snapshot.templateInput || null,
           objetos: safeObjetos,
           status,
         },
       })
     );
-  }, [defaults, fieldsSchema, sourceTemplateId, status]);
+  }, [defaults, detachedVisuals, fieldsSchema, safeObjetos, snapshot.templateInput, sourceTemplateId, status, values]);
+
+  const getSnapshot = useCallback(() => {
+    const current = asObject(latestAuthoringStateRef.current.snapshot);
+    const currentFields = Array.isArray(current.fieldsSchema)
+      ? current.fieldsSchema
+      : fieldsSchema;
+    const currentDefaults = ensureDefaultsForSchema(
+      currentFields,
+      current.defaults || defaults
+    );
+    const currentValues = ensureValuesForSchema(
+      currentFields,
+      current.values,
+      currentDefaults
+    );
+    const currentDetachedVisuals = normalizeDetachedVisuals(
+      current.detachedVisuals,
+      currentFields
+    );
+    const currentStatus = asObject(current.status);
+    return {
+      version: AUTHORING_DRAFT_VERSION,
+      sourceTemplateId:
+        normalizeText(current.sourceTemplateId) || sourceTemplateId,
+      fieldsSchema: currentFields,
+      defaults: currentDefaults,
+      values: currentValues,
+      detachedVisuals: currentDetachedVisuals,
+      templateInput: current.templateInput || null,
+      metadata: currentValues.__eventDetails || null,
+      status: {
+        isReady: currentStatus.isReady !== false,
+        issues: Array.isArray(currentStatus.issues) ? currentStatus.issues : [],
+      },
+    };
+  }, [defaults, fieldsSchema, sourceTemplateId]);
 
   return {
     loading,
+    hydrated,
     saving,
     error,
     canConfigure,
@@ -1818,6 +2734,8 @@ export default function useTemplateFieldAuthoring({
     sourceTemplateId,
     fieldsSchema,
     defaults,
+    values,
+    detachedVisuals,
     status,
     fieldIndexByElementId,
     selectedFieldKey,
@@ -1831,6 +2749,13 @@ export default function useTemplateFieldAuthoring({
     unlinkSelection,
     deleteField,
     updateFieldDefaultValue,
+    updateTemplateFieldValue,
+    updateTemplateFieldValues,
+    getDynamicFieldRepresentationStatus,
+    getDynamicVisualHistoryState,
+    restoreDynamicVisualHistoryState,
+    restoreDynamicFieldRepresentation,
+    commitDynamicVisualMutation,
     updateFieldDateTextFormat,
     updateSelectedFieldDateTextFormat,
     updateEventPersonNames,
@@ -1845,13 +2770,7 @@ export default function useTemplateFieldAuthoring({
     getFieldUsage,
     repairSnapshot,
     reloadAvailableFields,
-    getSnapshot: () => ({
-      version: AUTHORING_DRAFT_VERSION,
-      sourceTemplateId,
-      fieldsSchema,
-      defaults,
-      status,
-    }),
+    getSnapshot,
     getStatus: () => ({
       isReady: status.isReady,
       issues: Array.isArray(status.issues) ? status.issues : [],

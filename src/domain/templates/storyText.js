@@ -22,34 +22,6 @@ function asObject(value) {
   return value;
 }
 
-function parsePath(path) {
-  const source = normalizeText(path);
-  if (!source) return [];
-
-  return source
-    .replace(/\[(\d+)\]/g, ".$1")
-    .split(".")
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-}
-
-function readObjectPathValue(object, path) {
-  const segments = parsePath(path);
-  if (!segments.length) return "";
-
-  let current = object;
-  for (const segment of segments) {
-    if (!current || typeof current !== "object") return "";
-    current = current[segment];
-  }
-
-  if (typeof current === "string") return current;
-  if (typeof current === "number" || typeof current === "boolean") {
-    return String(current);
-  }
-  return "";
-}
-
 function isTextObject(object) {
   return normalizeText(object?.tipo).toLowerCase() === "texto";
 }
@@ -244,10 +216,7 @@ export function resolveStoryTextSidebarBinding({
   const field = fields.find((entry) => isStoryTextField(entry)) || null;
   const fieldKey = normalizeText(field?.key);
   const { target, targetObject } = resolveStoryTextTarget(field, objetos);
-  const targetValue = targetObject
-    ? readObjectPathValue(targetObject, target?.path || "texto")
-    : undefined;
-  const fallbackValue = fieldKey
+  const value = fieldKey
     ? normalizeStoryTextValue(safeDefaults[fieldKey])
     : "";
 
@@ -256,7 +225,7 @@ export function resolveStoryTextSidebarBinding({
     fieldKey,
     target,
     objectId: normalizeText(targetObject?.id),
-    value: targetObject ? normalizeStoryTextValue(targetValue) : fallbackValue,
+    value,
     hasBinding: Boolean(fieldKey && targetObject),
   };
 }
@@ -271,10 +240,7 @@ export function resolveDressCodeSidebarBinding({
   const field = fields.find((entry) => isDressCodeField(entry)) || null;
   const fieldKey = normalizeText(field?.key);
   const { target, targetObject } = resolveStoryTextTarget(field, objetos);
-  const targetValue = targetObject
-    ? readObjectPathValue(targetObject, target?.path || "texto")
-    : undefined;
-  const fallbackValue = fieldKey
+  const value = fieldKey
     ? normalizeStoryTextValue(safeDefaults[fieldKey])
     : "";
 
@@ -283,7 +249,7 @@ export function resolveDressCodeSidebarBinding({
     fieldKey,
     target,
     objectId: normalizeText(targetObject?.id),
-    value: targetObject ? normalizeStoryTextValue(targetValue) : fallbackValue,
+    value,
     hasBinding: Boolean(fieldKey && targetObject),
   };
 }

@@ -55,7 +55,7 @@ test("template creation overlays the live render snapshot on the authorized draf
   assert.deepEqual(result.payload, { nombre: "Borrador original" });
 });
 
-test("template copy authoring repair is in-memory and preserves semantic date fields", () => {
+test("template copy authoring repair is in-memory and preserves all data fields", () => {
   const source = {
     version: 1,
     sourceTemplateId: "template-base",
@@ -96,16 +96,19 @@ test("template copy authoring repair is in-memory and preserves semantic date fi
   assert.deepEqual(source, original);
   assert.equal(result.changed, true);
   assert.equal(result.status.isReady, true);
-  assert.deepEqual(result.removedFieldKeys, ["temporary_copy"]);
+  assert.deepEqual(result.removedFieldKeys, []);
   assert.deepEqual(
     result.removedTargets.map((entry) => entry.targetId),
     ["deleted-date", "deleted-text"]
   );
-  assert.equal(result.snapshot.fieldsSchema.length, 1);
+  assert.equal(result.snapshot.fieldsSchema.length, 2);
   assert.equal(result.snapshot.fieldsSchema[0].key, "event_ceremony_date");
   assert.deepEqual(result.snapshot.fieldsSchema[0].applyTargets, []);
+  assert.equal(result.snapshot.fieldsSchema[1].key, "temporary_copy");
+  assert.deepEqual(result.snapshot.fieldsSchema[1].applyTargets, []);
   assert.deepEqual(result.snapshot.defaults, {
     event_ceremony_date: "2027-01-05",
+    temporary_copy: "Anterior",
   });
 });
 

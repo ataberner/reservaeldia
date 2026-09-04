@@ -1,5 +1,13 @@
 import { prepareGroupAwareRenderState } from "../../../shared/groupRenderContract.js";
+import {
+  normalizeFunctionalAssociation,
+  STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES,
+} from "../../../shared/functionalAssociations.js";
 import { isSectionProtectedById } from "./protectedSections.js";
+
+const STANDALONE_FUNCTIONAL_ASSOCIATIONS = new Set(
+  STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES
+);
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -140,7 +148,50 @@ function stripGroupChildRootFields(child) {
   delete nextChild.seccionId;
   delete nextChild.anclaje;
   delete nextChild.yNorm;
+  delete nextChild.functionalAssociation;
   return nextChild;
+}
+
+function resolveGroupingFunctionalAssociation(objects) {
+  const associations = asArray(objects).map((object) => {
+    const rawAssociation = normalizeText(object?.functionalAssociation);
+    return {
+      rawAssociation,
+      association: normalizeFunctionalAssociation(rawAssociation),
+    };
+  });
+  const configured = associations.filter((entry) => entry.rawAssociation);
+  if (configured.length === 0) {
+    return { eligible: true, association: null };
+  }
+  if (configured.length !== associations.length) {
+    return {
+      eligible: false,
+      reason: "selection-functional-association-mismatch",
+      association: null,
+    };
+  }
+
+  const normalized = configured[0]?.association || null;
+  if (
+    !normalized ||
+    configured.some((entry) => entry.association !== normalized)
+  ) {
+    return {
+      eligible: false,
+      reason: "selection-functional-association-mismatch",
+      association: null,
+    };
+  }
+  if (!STANDALONE_FUNCTIONAL_ASSOCIATIONS.has(normalized)) {
+    return {
+      eligible: false,
+      reason: "selection-functional-association-unsupported",
+      association: normalized,
+    };
+  }
+
+  return { eligible: true, association: normalized };
 }
 
 function normalizeSelectionFrame(selectionFrame) {
@@ -295,6 +346,19 @@ export function resolveGroupingSelectionCandidate({
     };
   }
 
+  const functionalAssociation = resolveGroupingFunctionalAssociation(
+    orderedSelectedObjects
+  );
+  if (!functionalAssociation.eligible) {
+    return {
+      eligible: false,
+      reason: functionalAssociation.reason,
+      selectedIds: safeSelectedIds,
+      selectedObjects: orderedSelectedObjects,
+      selectedIndices: orderedSelectedIndices,
+    };
+  }
+
   return {
     eligible: true,
     reason: "ready",
@@ -304,6 +368,7 @@ export function resolveGroupingSelectionCandidate({
     firstIndex: orderedSelectedIndices[0],
     sectionId,
     anchor,
+    functionalAssociation: functionalAssociation.association,
   };
 }
 
@@ -388,6 +453,9 @@ export function buildGroupedSelectionState({
       };
     }),
   };
+  if (selection.functionalAssociation) {
+    nextGroup.functionalAssociation = selection.functionalAssociation;
+  }
 
   if (sectionMode === "pantalla") {
     const yNorm = clamp01(localY / Math.max(1, toFiniteNumber(alturaPantalla, 500) || 500));
@@ -524,6 +592,24 @@ export function resolveUngroupSelectionCandidate({
     };
   }
 
+
+  const groupFunctionalAssociation = normalizeFunctionalAssociation(
+    group?.functionalAssociation
+  );
+  if (
+    groupFunctionalAssociation &&
+    !STANDALONE_FUNCTIONAL_ASSOCIATIONS.has(groupFunctionalAssociation)
+  ) {
+    return {
+      eligible: false,
+      reason: "group-functional-association-ungroup-unsupported",
+      selectedIds: safeSelectedIds,
+      group,
+      groupIndex,
+      groupChildren,
+    };
+  }
+
   const preparedState = prepareGroupAwareRenderState({
     objetos: safeObjetos,
     secciones: asArray(secciones),
@@ -582,8 +668,65 @@ export function resolveUngroupSelectionCandidate({
     sectionId: normalizeText(group?.seccionId),
     anchor: normalizeAnchor(group?.anclaje),
     sectionMode: normalizeSectionMode(targetSection.section?.altoModo),
+    functionalAssociation: groupFunctionalAssociation,
     contractIssues: [],
   };
+}
+
+export function materializeGroupChildAsRoot({
+  group,
+  child,
+  secciones,
+  alturaPantalla = 500,
+  sectionId = null,
+  anchor = null,
+  sectionMode = null,
+  functionalAssociation,
+} = {}) {
+  if (!child || typeof child !== "object" || Array.isArray(child)) return null;
+
+  const resolvedSectionId = normalizeText(sectionId) || normalizeText(group?.seccionId);
+  const sectionMetrics = buildSectionMetrics(secciones);
+  const targetSection = sectionMetrics.get(resolvedSectionId);
+  const resolvedSectionMode = normalizeSectionMode(
+    sectionMode || targetSection?.section?.altoModo
+  );
+  const resolvedAnchor = normalizeText(anchor)
+    ? normalizeAnchor(anchor)
+    : normalizeAnchor(group?.anclaje);
+  const safeHeight = Math.max(1, toFiniteNumber(alturaPantalla, 500) || 500);
+  const groupX = toFiniteNumber(group?.x, 0) || 0;
+  const groupLocalY = resolveObjectLocalY(group, {
+    alturaPantalla: safeHeight,
+    sectionMode: resolvedSectionMode,
+  });
+  const inheritedAssociation = normalizeFunctionalAssociation(
+    functionalAssociation === undefined
+      ? group?.functionalAssociation
+      : functionalAssociation
+  );
+  const nextChild = {
+    ...stripGroupChildRootFields(deepClone(child)),
+    seccionId: resolvedSectionId,
+    anclaje: resolvedAnchor,
+    x: roundMetric(groupX + (toFiniteNumber(child?.x, 0) || 0), 3),
+    y: roundMetric(groupLocalY + (toFiniteNumber(child?.y, 0) || 0), 3),
+  };
+
+  if (STANDALONE_FUNCTIONAL_ASSOCIATIONS.has(inheritedAssociation)) {
+    nextChild.functionalAssociation = inheritedAssociation;
+  }
+
+  if (resolvedSectionMode === "pantalla") {
+    const yNorm = clamp01((toFiniteNumber(nextChild.y, 0) || 0) / safeHeight);
+    if (Number.isFinite(yNorm)) {
+      nextChild.yNorm = roundMetric(yNorm, 6);
+    }
+  } else {
+    delete nextChild.yNorm;
+  }
+
+  return nextChild;
 }
 
 export function buildUngroupedSelectionState({
@@ -610,33 +753,18 @@ export function buildUngroupedSelectionState({
 
   const safeObjetos = asArray(objetos);
   const group = selection.group || null;
-  const safeHeight = Math.max(1, toFiniteNumber(alturaPantalla, 500) || 500);
-  const groupX = toFiniteNumber(group?.x, 0) || 0;
-  const groupLocalY = resolveObjectLocalY(group, {
-    alturaPantalla: safeHeight,
-    sectionMode: selection.sectionMode,
-  });
-
-  const restoredChildren = selection.groupChildren.map((child) => {
-    const nextChild = {
-      ...stripGroupChildRootFields(deepClone(child)),
-      seccionId: selection.sectionId,
-      anclaje: selection.anchor,
-      x: roundMetric(groupX + (toFiniteNumber(child?.x, 0) || 0), 3),
-      y: roundMetric(groupLocalY + (toFiniteNumber(child?.y, 0) || 0), 3),
-    };
-
-    if (selection.sectionMode === "pantalla") {
-      const yNorm = clamp01((toFiniteNumber(nextChild.y, 0) || 0) / safeHeight);
-      if (Number.isFinite(yNorm)) {
-        nextChild.yNorm = roundMetric(yNorm, 6);
-      }
-    } else {
-      delete nextChild.yNorm;
-    }
-
-    return nextChild;
-  });
+  const restoredChildren = selection.groupChildren.map((child) =>
+    materializeGroupChildAsRoot({
+      group,
+      child,
+      secciones,
+      alturaPantalla,
+      sectionId: selection.sectionId,
+      anchor: selection.anchor,
+      sectionMode: selection.sectionMode,
+      functionalAssociation: selection.functionalAssociation,
+    })
+  );
 
   const nextObjetos = [
     ...safeObjetos.slice(0, selection.groupIndex),

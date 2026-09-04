@@ -194,11 +194,12 @@ export function resolveEventTimesFromAuthoring({
   const safeFeature = normalizeEventDetailFeature(feature);
   const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, safeFeature);
   const endKey = getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME, safeFeature);
+  const hasStartValue = Object.prototype.hasOwnProperty.call(safeDefaults, startKey);
 
   return {
-    startTime:
-      normalizeEventTimeValue(safeDefaults[startKey]) ||
-      normalizeEventTimeValue(fallbackStartTime),
+    startTime: hasStartValue
+      ? normalizeEventTimeValue(safeDefaults[startKey])
+      : normalizeEventTimeValue(fallbackStartTime),
     endTime: normalizeEventTimeValue(safeDefaults[endKey]),
     fields: collectEventTimeFields(fieldsSchema).filter(
       (field) => resolveEventTimeFieldFeature(field) === safeFeature

@@ -3,6 +3,10 @@ import { recordCountdownAuditSnapshot } from "../../../domain/countdownAudit/run
 import { pushEditorBreadcrumb } from "../../../lib/monitoring/editorIssueReporter.js";
 import { buildPersistableRenderState } from "./borradorSyncRenderState.js";
 import { persistEditorSessionSnapshot } from "./editorSessionPersistence.js";
+import { normalizeDraftTemplateInput } from "../../../domain/drafts/sourceOfTruth.js";
+import {
+  normalizeTemplateAuthoringDraft,
+} from "../../../../shared/templates/contract.js";
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -78,6 +82,33 @@ export async function persistBorradorSyncState({
   const giftsLimpios = persistedRenderState.gifts;
   const eventDetailsLimpio = persistedRenderState.eventDetails;
   const countdownForAudit = persistedRenderState.countdownForAudit;
+  const authoringSnapshot =
+    typeof safeState.getTemplateAuthoringSnapshot === "function"
+      ? safeState.getTemplateAuthoringSnapshot()
+      : null;
+  const normalizedAuthoring = authoringSnapshot && typeof authoringSnapshot === "object"
+    ? normalizeTemplateAuthoringDraft(
+        {
+          ...authoringSnapshot,
+          defaults:
+            session.kind === "template"
+              ? authoringSnapshot.values
+              : authoringSnapshot.defaults,
+        },
+        authoringSnapshot.sourceTemplateId || null
+      )
+    : null;
+  const normalizedTemplateInput =
+    session.kind === "draft" && normalizedAuthoring
+      ? normalizeDraftTemplateInput({
+          templateInput: {
+            ...(authoringSnapshot.templateInput || {}),
+            values: authoringSnapshot.values,
+          },
+          fieldsSchema: normalizedAuthoring.fieldsSchema,
+          defaults: normalizedAuthoring.defaults,
+        })
+      : null;
 
   await persistEditorSessionSnapshot({
     state: {
@@ -96,6 +127,10 @@ export async function persistBorradorSyncState({
       rsvp: rsvpLimpio,
       gifts: giftsLimpios,
       eventDetails: eventDetailsLimpio,
+      ...(normalizedAuthoring
+        ? { templateAuthoringDraft: normalizedAuthoring }
+        : {}),
+      ...(normalizedTemplateInput ? { templateInput: normalizedTemplateInput } : {}),
     },
   });
 

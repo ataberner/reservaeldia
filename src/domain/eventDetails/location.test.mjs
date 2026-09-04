@@ -7,18 +7,63 @@ import {
   buildEventGoogleMapClearPatch,
   buildEventGoogleMapInsertObject,
   buildEventGoogleMapObjectPatch,
+  buildEventGoogleMapProjectionPatches,
   buildEventLocationDefaults,
+  collectEventGoogleMapObjects,
   ensureEventLocationFields,
   formatEventAddressText,
   findEventGoogleMapObject,
   getEventLocationFieldKey,
+  hasEventLocationProviderMetadataEntry,
   isEventGoogleMapVisible,
+  mergeEventDetailsValueMetadata,
+  migrateLegacyEventLocationProviderMetadata,
   normalizeAddressTextFormatPreset,
+  normalizeEventLocationProviderMetadata,
   normalizeGoogleAddressComponents,
   normalizeGooglePlaceInput,
+  readEventLocationProviderMetadata,
   resolveEventLocationFromAuthoring,
+  setEventLocationProviderMetadata,
   updateEventAddressTextFormatInSchema,
 } from "./location.js";
+
+test("concurrent event-details metadata patches preserve the other event phase", () => {
+  const ceremony = {
+    source: "google_places",
+    placeId: "ceremony-place",
+    displayName: "Templo",
+    formattedAddress: "Calle 1",
+    addressComponents: [],
+    lat: -34.6,
+    lng: -58.4,
+  };
+  const party = {
+    source: "google_places",
+    placeId: "party-place",
+    displayName: "Salon",
+    formattedAddress: "Calle 2",
+    addressComponents: [],
+    lat: -34.5,
+    lng: -58.5,
+  };
+  const baseValues = {
+    __eventDetails: { locations: { ceremony } },
+  };
+
+  assert.deepEqual(
+    mergeEventDetailsValueMetadata(baseValues, {
+      __eventDetails: { locations: { party } },
+    }).__eventDetails.locations,
+    { ceremony, party }
+  );
+  assert.deepEqual(
+    mergeEventDetailsValueMetadata(baseValues, {
+      __eventDetails: { locations: { party: null } },
+    }).__eventDetails.locations,
+    { ceremony, party: null }
+  );
+});
 
 const GOOGLE_ADDRESS_COMPONENTS = [
   {
@@ -393,4 +438,267 @@ test("findEventGoogleMapObject uses the first google map object", () => {
   ]);
 
   assert.equal(found.id, "map-1");
+});
+
+test("structured location metadata normalizes under the reserved values namespace", () => {
+  const values = setEventLocationProviderMetadata(
+    { event_ceremony_venue_address: "Av. Corrientes 1234" },
+    "ceremony",
+    {
+      googlePlaceId: "place-123",
+      googleDisplayName: "Salon",
+      googleFormattedAddress: "Av. Corrientes 1234, CABA",
+      googleAddressComponents: GOOGLE_ADDRESS_COMPONENTS,
+      googleLat: -34.6,
+      googleLng: -58.4,
+    }
+  );
+
+  assert.equal(hasEventLocationProviderMetadataEntry(values, "ceremony"), true);
+  assert.deepEqual(readEventLocationProviderMetadata(values, "ceremony"), {
+    source: "google_places",
+    placeId: "place-123",
+    displayName: "Salon",
+    formattedAddress: "Av. Corrientes 1234, CABA",
+    addressComponents: GOOGLE_ADDRESS_COMPONENTS,
+    lat: -34.6,
+    lng: -58.4,
+  });
+  assert.equal(readEventLocationProviderMetadata(values, "party"), null);
+
+  const cleared = setEventLocationProviderMetadata(values, "ceremony", null);
+  assert.equal(hasEventLocationProviderMetadataEntry(cleared, "ceremony"), true);
+  assert.equal(readEventLocationProviderMetadata(cleared, "ceremony"), null);
+});
+
+test("legacy map metadata migrates once from grouped children", () => {
+  const objetos = [
+    {
+      id: "group-location",
+      tipo: "grupo",
+      children: [
+        {
+          id: "party-map",
+          tipo: "mapa-google",
+          eventDetailsFeature: "party",
+          googlePlaceId: "party-place",
+          googleDisplayName: "Estancia",
+          googleFormattedAddress: "Ruta 8 km 40",
+          googleLat: -34.3,
+          googleLng: -58.8,
+        },
+      ],
+    },
+  ];
+
+  const migrated = migrateLegacyEventLocationProviderMetadata({
+    values: {},
+    objetos,
+    feature: "party",
+  });
+  const remigrated = migrateLegacyEventLocationProviderMetadata({
+    values: migrated.values,
+    objetos: [
+      {
+        ...objetos[0],
+        children: [{ ...objetos[0].children[0], googlePlaceId: "stale-place" }],
+      },
+    ],
+    feature: "party",
+  });
+
+  assert.equal(migrated.changed, true);
+  assert.equal(migrated.sourceObjectId, "party-map");
+  assert.equal(migrated.metadata.placeId, "party-place");
+  assert.equal(remigrated.changed, false);
+  assert.equal(remigrated.metadata.placeId, "party-place");
+});
+
+test("map collectors inherit group associations and honor explicit child phases", () => {
+  const objetos = [
+    {
+      id: "party-group",
+      tipo: "grupo",
+      functionalAssociation: "party",
+      children: [
+        {
+          id: "party-map-inherited",
+          tipo: "mapa-google",
+          googlePlaceId: "party-place",
+        },
+        {
+          id: "ceremony-map-explicit",
+          tipo: "mapa-google",
+          eventDetailsFeature: "ceremony",
+          googlePlaceId: "ceremony-place",
+        },
+      ],
+    },
+    {
+      id: "party-map-standalone",
+      tipo: "mapa-google",
+      functionalAssociation: "party",
+      googlePlaceId: "standalone-party-place",
+    },
+    {
+      id: "ceremony-map-legacy-default",
+      tipo: "mapa-google",
+      googlePlaceId: "legacy-ceremony-place",
+    },
+  ];
+
+  assert.deepEqual(
+    collectEventGoogleMapObjects(objetos, "party").map(({ id }) => id),
+    ["party-map-inherited", "party-map-standalone"]
+  );
+  assert.deepEqual(
+    collectEventGoogleMapObjects(objetos, "ceremony").map(({ id }) => id),
+    ["ceremony-map-explicit", "ceremony-map-legacy-default"]
+  );
+});
+
+test("legacy map metadata skips invalid projections and uses the first valid map", () => {
+  const migrated = migrateLegacyEventLocationProviderMetadata({
+    values: {},
+    feature: "ceremony",
+    objetos: [
+      { id: "map-without-place", tipo: "mapa-google" },
+      {
+        id: "map-valid",
+        tipo: "mapa-google",
+        googlePlaceId: "ceremony-place",
+        googleDisplayName: "Salon valido",
+        googleFormattedAddress: "Calle 123",
+      },
+      {
+        id: "map-later",
+        tipo: "mapa-google",
+        googlePlaceId: "later-place",
+      },
+    ],
+  });
+
+  assert.equal(migrated.sourceObjectId, "map-valid");
+  assert.equal(migrated.metadata.placeId, "ceremony-place");
+});
+
+test("legacy migration records an explicit empty provider value when no map exists", () => {
+  const result = migrateLegacyEventLocationProviderMetadata({
+    values: {},
+    objetos: [],
+    feature: "ceremony",
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.metadata, null);
+  assert.equal(
+    hasEventLocationProviderMetadataEntry(result.values, "ceremony"),
+    true
+  );
+});
+
+test("map collectors and projections cover every matching grouped view", () => {
+  const objetos = [
+    {
+      id: "map-first",
+      tipo: "mapa-google",
+      eventDetailsFeature: "ceremony",
+      width: 300,
+    },
+    {
+      id: "group-maps",
+      tipo: "grupo",
+      children: [
+        {
+          id: "map-nested",
+          tipo: "mapa-google",
+          eventDetailsFeature: "ceremony",
+          width: 420,
+        },
+        {
+          id: "map-party",
+          tipo: "mapa-google",
+          eventDetailsFeature: "party",
+        },
+      ],
+    },
+  ];
+  const location = {
+    googlePlaceId: "place-new",
+    googleDisplayName: "Nuevo lugar",
+    googleFormattedAddress: "Calle Nueva 10",
+    googleLat: -34.1,
+    googleLng: -58.1,
+  };
+
+  assert.deepEqual(
+    collectEventGoogleMapObjects(objetos, "ceremony").map(({ id }) => id),
+    ["map-first", "map-nested"]
+  );
+  assert.equal(findEventGoogleMapObject(objetos, "ceremony").id, "map-first");
+  const patches = buildEventGoogleMapProjectionPatches({
+    objetos,
+    location,
+    feature: "ceremony",
+    showMap: true,
+  });
+  assert.deepEqual(
+    patches.map(({ objectId }) => objectId),
+    ["map-first", "map-nested"]
+  );
+  assert.equal(patches[0].patch.googlePlaceId, "place-new");
+  assert.equal(patches[1].patch.mostrarMapa, true);
+  assert.equal(Object.hasOwn(patches[0].patch, "width"), false);
+  assert.equal(Object.hasOwn(patches[0].patch, "googleAddressComponents"), false);
+});
+
+test("structured values override stale map metadata, including explicit clears", () => {
+  const valuesWithPlace = setEventLocationProviderMetadata(
+    {
+      event_ceremony_venue_name: "Dato estructurado",
+      event_ceremony_venue_address: "Calle estructurada 20",
+    },
+    "ceremony",
+    {
+      placeId: "canonical-place",
+      displayName: "Proveedor",
+      formattedAddress: "Calle estructurada 20, Argentina",
+      lat: null,
+      lng: null,
+    }
+  );
+  const staleMap = {
+    id: "map",
+    tipo: "mapa-google",
+    eventDetailsFeature: "ceremony",
+    googlePlaceId: "stale-place",
+    googleDisplayName: "Stale",
+    googleFormattedAddress: "Stale address",
+    mostrarMapa: true,
+  };
+  const resolved = resolveEventLocationFromAuthoring({
+    fieldsSchema: ensureEventLocationFields({ fieldsSchema: [] }).fieldsSchema,
+    defaults: {},
+    values: valuesWithPlace,
+    objetos: [staleMap],
+  });
+  const cleared = resolveEventLocationFromAuthoring({
+    fieldsSchema: ensureEventLocationFields({ fieldsSchema: [] }).fieldsSchema,
+    defaults: {},
+    values: setEventLocationProviderMetadata(valuesWithPlace, "ceremony", null),
+    objetos: [staleMap],
+  });
+
+  assert.equal(resolved.googlePlaceId, "canonical-place");
+  assert.equal(resolved.venueName, "Dato estructurado");
+  assert.equal(resolved.googleLat, null);
+  assert.equal(cleared.googlePlaceId, "");
+  assert.equal(cleared.hasGooglePlace, false);
+});
+
+test("provider metadata normalization rejects records without a Place ID", () => {
+  assert.equal(
+    normalizeEventLocationProviderMetadata({ formattedAddress: "Calle 123" }),
+    null
+  );
 });

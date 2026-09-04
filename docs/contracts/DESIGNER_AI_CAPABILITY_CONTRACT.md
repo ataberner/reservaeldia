@@ -37,7 +37,8 @@ Diseñador AI -> actions allowlisted o controles locales -> esos mismos owners
 ```
 
 Una capacidad solo existe para Designer AI cuando el snapshot vigente demuestra
-que el control/binding equivalente está disponible. El prompt no puede ampliar
+que el field de schema o control equivalente está disponible. Para fields
+dinámicos no se exige una vista vinculada. El prompt no puede ampliar
 esta superficie. Que una capacidad quede fuera del interrogatorio proactivo no
 la elimina: puede seguir disponible ante un pedido explícito. El conjunto de
 capabilities y el conjunto de pendientes del recorrido guiado son contratos
@@ -58,12 +59,19 @@ Designer AI calcula su snapshot desde:
 
 - nombre/metadata: `dashboardDocumentNameBridge` y `DashboardHeader`;
 - render state: `editorSnapshotAdapter` y bridges de `CanvasEditor`;
-- authoring fields/defaults/targets: `getTemplateAuthoringSnapshot`;
+- authoring schema, structured values, targets and recovery metadata: `getTemplateAuthoringSnapshot`;
 - portada: cover bridge existente;
 - dominios: normalizadores de event details, RSVP, Gifts, Gallery y CTAs.
 
 El borrador vigente es la fuente de verdad para valores. El ledger conserva
 procedencia y decisiones, pero no reemplaza el dato efectivo ni su owner.
+
+Para campos dinámicos, la disponibilidad se deriva de `fieldsSchema` y del
+`eventDetailsRole` explícito, no de que exista una vista vinculada. En drafts,
+Designer AI lee y escribe `templateInput.values` por los mismos owners que el
+sidebar. `applyTargets: []` es un field data-only válido: la action actualiza el
+dato y ninguna action ni control de Designer AI restaura o inserta una vista como
+efecto secundario.
 
 ## 4. Inventario de capacidades V1
 
@@ -75,23 +83,24 @@ funcionalidad continúa en su documentación/código de dominio, según la secci
 | Capacidad | Disponibilidad | Owner/mutación | Información o condición requerida |
 | --- | --- | --- | --- |
 | Nombre visible del borrador | Draft editable, nunca template | `document.set_name` -> document-name bridge/header | Nombre explícito o regla automática segura. |
-| Nombres de las dos personas | Existen fields/bindings de personas | `event.set_people` -> `updateTemplateAuthoringEventPersonNames` | Ambos strings; se actualizan targets vinculados. |
+| Nombres de las dos personas | Existen fields con roles de personas | `event.set_people` -> adapter de nombres -> field-value owner | Ambos strings; se actualizan todas las vistas válidas, si existen. |
 | Modalidad | Siempre en draft V1 | `event.set_mode` -> `eventDetails.mode` | `single` o `ceremony_party`; inferencia solo inequívoca. |
-| Fecha/inicio/fin de Ceremony | Binding de fecha o fields de horario Ceremony | `event.set_datetime` -> authoring owners + countdown vinculado | Phase + al menos un valor; fecha `YYYY-MM-DD`, hora `HH:MM`. |
-| Fecha/inicio/fin de Party | Binding/fields Party y modo efectivo `ceremony_party` | Mismo owner con feature Party | Party debe estar activa antes o en el mismo lote. |
+| Fecha/inicio/fin de Ceremony | Fields con roles Ceremony | `event.set_datetime` -> field-value owner + proyecciones vinculadas | Phase + al menos un valor; fecha `YYYY-MM-DD`, hora `HH:MM`. |
+| Fecha/inicio/fin de Party | Fields con roles Party y modo efectivo `ceremony_party` | Mismo owner con feature Party | Party debe estar activa antes o en el mismo lote. |
 | Lugar/dirección manual de Ceremony | Fields de ubicación Ceremony | `event.set_location_text` -> `locationAuthoring` -> authoring owner | Phase, venue name y address strings; no inventar dirección. La escritura manual desvincula metadata Google previa. |
 | Lugar/dirección manual de Party | Fields de ubicación Party y Party activa | Mismo owner con feature Party | No mezclar targets de Ceremony y Party. |
 | Selección precisa de Places | Ubicación de la phase disponible | Control local `google_place_picker` -> control especializado -> `locationAuthoring` | El modelo solo indica phase; búsqueda, selección y metadata permanecen locales. |
-| Dress Code visible/texto | Binding Dress Code existente | `event.set_dress_code` -> root config + target dinámico | `enabled` y texto; al desactivar se preserva valor normalizado. |
+| Dress Code visible/texto | Field con rol `dress_code` | `event.set_dress_code` -> root config + field-value owner | `enabled` y texto; al desactivar o faltar una vista se preserva el valor normalizado. |
 
-`event.set_datetime` conserva el countdown vinculado mediante el owner de fecha.
-Eso no habilita visibilidad, formato, layout ni preset del countdown.
+`event.set_datetime` proyecta todos los countdowns válidos de la phase mediante
+el owner de fecha. Su ISO usa fecha y horario de inicio canónicos, nunca el
+horario de fin. Eso no habilita visibilidad, formato, layout ni preset.
 
 ### 4.2 Texto e imágenes
 
 | Capacidad | Disponibilidad | Owner/mutación | Información o condición requerida |
 | --- | --- | --- | --- |
-| Texto de historia | Binding real `texto_historia` | `story.set_text` -> default con `applyTargets:true` | Texto de hasta el límite ejecutable; conserva geometría/estilo del objeto vinculado. |
+| Texto de historia | Field `texto_historia` declarado | `story.set_text` -> field-value owner | Texto de hasta el límite ejecutable; conserva geometría/estilo de cada vista y funciona sin vistas. |
 | Reemplazo de portada | Portada efectiva resuelta | Control local `cover_upload` | No acepta URL/media del modelo; no crea portada ausente. |
 | Contenido de slot Gallery | Gallery real y slot visible vigente | Control local `gallery_cell_upload` | `galleryId`, `cellId`/índice existentes; media queda local. |
 | Orden de fotos Gallery | Gallery real con origen poblado y destino distinto | `gallery.move_photo` -> `galleryMutations` | IDs/índices del snapshot; no cambia layout/preset. |
@@ -185,7 +194,7 @@ proactivo extenso.
   `ceremony_party` antes de pedir indiscriminadamente fechas, horarios o lugares.
   `single` vuelve Party no aplicable; `ceremony_party` habilita los fields reales
   disponibles para ambas fases.
-- **Datos del evento:** se completan únicamente los bindings existentes de fecha,
+- **Datos del evento:** se completan únicamente los fields declarados de fecha,
   inicio, fin, lugar y dirección para las fases aplicables. End time y venue name
   pueden resolverse solo mediante las reglas seguras ya versionadas. Lugar y
   dirección aportados por chat se escriben inmediatamente como ubicación manual.
@@ -205,7 +214,7 @@ proactivo extenso.
   no pendientes del recorrido.
 - **Dress Code:** se consulta si se desea mostrar. Una negativa conserva el valor
   normalizado oculto y continúa. Una afirmativa requiere el texto real y el
-  binding disponible.
+  field disponible; no requiere una vista materializada.
 - **Portada:** se omite si `availability.cover` es falso. Si existe, el cambio usa
   `cover_upload` y solo queda resuelto ante cambio real del fingerprint.
 - **Galerías:** se omiten si no hay una Gallery real con slots editables. Las
@@ -344,8 +353,9 @@ corresponde al dominio. Portada exige un cambio real del fingerprint. Gallery
 exige la acción explícita de finalización del usuario y la persistencia
 confirmada de su hoja `guided_completion`; los fingerprints de slots se usan
 solo para distinguir cambios durante la edición. Places exige que la selección
-esperada se refleje en el owner. Abrir o cerrar cualquier control no completa
-nada.
+esperada se refleje en el namespace estructurado del owner. La selección parchea
+todas las vistas de mapa ya existentes para esa phase, pero no recrea una vista
+eliminada. Abrir o cerrar cualquier control no completa nada.
 
 En `ceremony_party`, `event.ceremony.{venue_name,address,place_selection}` y
 `event.party.{venue_name,address,place_selection}` son hojas independientes. La
@@ -423,9 +433,10 @@ El validador debe rechazar:
 - texto/estilo genérico de CTAs;
 - código, comandos, Firestore, Storage, secrets o eventos arbitrarios.
 
-Los únicos side effects acotados de creación son los ya pertenecientes a owners
-existentes: CTA RSVP/Gifts al activar su root config y mapa oculto tras una
-selección local real de Places.
+Los únicos side effects acotados de creación son los CTA RSVP/Gifts ya
+pertenecientes a sus owners al activar la root config. Una selección local real
+de Places actualiza el dato estructurado y mapas existentes; nunca inserta un
+mapa ausente.
 
 ## 10. Ledger, procedencia y completitud
 
@@ -433,7 +444,7 @@ selección local real de Places.
 
 | Estado | Semántica | Terminal |
 | --- | --- | --- |
-| `unavailable` | El control/binding no existe en este draft. | Fuera del denominador. |
+| `unavailable` | El field/control no existe en este draft; la ausencia de una vista no alcanza para este estado. | Fuera del denominador. |
 | `pending` | Existe pero no tiene valor/decisión confiable. | No. |
 | `needs_clarification` | Dato parcial, ambiguo o conflictivo. | No. |
 | `requires_control` | Requiere uploader/Gallery/Places local. | No. |
@@ -548,6 +559,11 @@ El flujo ejecutable actual es:
    resolutions otra vez.
 5. `designerAiActionExecutor.js` delega en owners existentes.
 6. El panel relee, reconcilia y persiste `designerAiConversation`.
+
+La ejecución de fields dinámicos delega en `updateTemplateFieldValue(s)` mediante
+los adapters específicos existentes. La proyección actualiza cero, una o varias
+vistas válidas; `detachedVisuals` no se consulta y la reinserción visual queda
+fuera de las capabilities de Designer AI.
 
 La arquitectura completa, incluido el límite client-side de tools, está en
 `AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.2.0`; el ledger

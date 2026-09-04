@@ -20,10 +20,11 @@ test("admin section menus expose Countdown through the section-only association 
   );
 });
 
-test("Detalles del evento keeps the existing countdown visibility field as the authority", () => {
+test("Detalles del evento delegates countdown visibility to the dynamic field owner", () => {
   assert.match(eventDetailsSource, /Mostrar contador con cuenta regresiva/);
   assert.match(
     eventDetailsSource,
-    /dispatchCountdownPatch\(details\.countdownId,\s*\{\s*mostrarCuentaRegresiva: checked/s
+    /updateLinkedFieldDefault\(details\.fieldKey,[\s\S]*representationVisibility: checked,[\s\S]*representationKind: "countdown"/
   );
+  assert.doesNotMatch(eventDetailsSource, /dispatchCountdownPatch/);
 });

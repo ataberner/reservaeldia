@@ -1,5 +1,6 @@
 // src/components/editor/history/useHistoryManager.js
 import { useEffect, useRef } from "react";
+import { evaluateEditorHistoryCapture } from "./historyState.js";
 
 /**
  * Maneja el historial (undo/redo) del editor:
@@ -13,6 +14,8 @@ export default function useHistoryManager({
     cargado,
     objetos,
     secciones,
+    dynamicVisualState = null,
+    authoringHydrated = true,
 
     setHistorial,
     setFuturos,
@@ -31,27 +34,32 @@ export default function useHistoryManager({
     };
 
     useEffect(() => {
-        if (!cargado) return;
+        const interactionActive = Boolean(
+            window._resizeData?.isResizing || window._isDragging || window._grupoLider
+        );
+        const decision = evaluateEditorHistoryCapture({
+            cargado,
+            authoringHydrated,
+            suppressed: Boolean(ignoreNextUpdateRef.current),
+            interactionActive,
+            lastSignature: lastSnapshotRef.current,
+            objetos,
+            secciones,
+            dynamicVisualState,
+        });
+        lastSnapshotRef.current = decision.nextBaselineSignature;
 
-        if (ignoreNextUpdateRef.current) {
+        if (decision.consumeSuppression) {
             requestAnimationFrame(() => {
                 ignoreNextUpdateRef.current = Math.max(0, (ignoreNextUpdateRef.current || 0) - 1);
             });
             return;
         }
-
-
-        // No guardar historial durante transformaciones o drag activo.
-        if (window._resizeData?.isResizing || window._isDragging || window._grupoLider) return;
-
-        const estadoComparable = { objetos, secciones };
-        const estadoStringified = JSON.stringify(estadoComparable);
-        if (estadoStringified === lastSnapshotRef.current) return;
-        lastSnapshotRef.current = estadoStringified;
+        if (!decision.shouldCapture) return;
 
         const maxHistorial = isMobileRuntime() ? 12 : 20;
         const estadoCompleto = {
-            ...estadoComparable,
+            ...decision.comparable,
             timestamp: Date.now(),
         };
         setHistorial((prev) => {
@@ -60,5 +68,14 @@ export default function useHistoryManager({
 
         // Limpiar futuros cuando hay nuevos cambios
         setFuturos([]);
-    }, [objetos, secciones, cargado, setHistorial, setFuturos, ignoreNextUpdateRef]);
+    }, [
+        objetos,
+        secciones,
+        dynamicVisualState,
+        authoringHydrated,
+        cargado,
+        setHistorial,
+        setFuturos,
+        ignoreNextUpdateRef,
+    ]);
 }

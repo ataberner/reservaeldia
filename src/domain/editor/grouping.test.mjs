@@ -5,6 +5,7 @@ import {
   buildGroupedSelectionState,
   resolveMultiSelectionMenuCandidate,
   buildUngroupedSelectionState,
+  materializeGroupChildAsRoot,
   resolveGroupingSelectionCandidate,
   resolveUngroupSelectionCandidate,
 } from "./grouping.js";
@@ -854,4 +855,145 @@ test("rejects mixed-section, mixed-anchor, missing-root, grouped, and unsupporte
     }).reason,
     "unsupported-object-family"
   );
+});
+
+test("grouping moves a shared standalone functional association to the group root", () => {
+  const result = buildGroupedSelectionState({
+    objetos: [
+      {
+        id: "party-title",
+        tipo: "texto",
+        seccionId: "details",
+        functionalAssociation: "party",
+        x: 100,
+        y: 120,
+        width: 180,
+        height: 30,
+      },
+      {
+        id: "party-address",
+        tipo: "texto",
+        seccionId: "details",
+        functionalAssociation: "party",
+        x: 100,
+        y: 180,
+        width: 220,
+        height: 30,
+      },
+    ],
+    secciones: [createFixedSection("details")],
+    selectedIds: ["party-title", "party-address"],
+    selectionFrame: { x: 100, y: 120, width: 220, height: 90 },
+    groupId: "party-group",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.group.functionalAssociation, "party");
+  assert.equal(
+    result.group.children.some((child) => "functionalAssociation" in child),
+    false
+  );
+});
+
+test("grouping rejects mixed or unsupported standalone functional associations", () => {
+  const base = {
+    tipo: "texto",
+    seccionId: "details",
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 30,
+  };
+  assert.equal(
+    resolveGroupingSelectionCandidate({
+      objetos: [
+        { ...base, id: "party", functionalAssociation: "party" },
+        { ...base, id: "plain", x: 120 },
+      ],
+      selectedIds: ["party", "plain"],
+    }).reason,
+    "selection-functional-association-mismatch"
+  );
+  assert.equal(
+    resolveGroupingSelectionCandidate({
+      objetos: [
+        { ...base, id: "rsvp-a", functionalAssociation: "rsvp" },
+        { ...base, id: "rsvp-b", x: 120, functionalAssociation: "rsvp" },
+      ],
+      selectedIds: ["rsvp-a", "rsvp-b"],
+    }).reason,
+    "selection-functional-association-unsupported"
+  );
+});
+
+test("ungrouping propagates safe associations and blocks group-only associations", () => {
+  const partyGroup = {
+    id: "party-group",
+    tipo: "grupo",
+    seccionId: "details",
+    anclaje: "content",
+    functionalAssociation: "party",
+    x: 80,
+    y: 100,
+    width: 220,
+    height: 100,
+    children: [
+      { id: "title", tipo: "texto", x: 20, y: 15, width: 180, height: 30 },
+      { id: "address", tipo: "texto", x: 20, y: 55, width: 180, height: 30 },
+    ],
+  };
+  const result = buildUngroupedSelectionState({
+    objetos: [partyGroup],
+    secciones: [createFixedSection("details")],
+    selectedIds: ["party-group"],
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    result.restoredChildren.map((child) => child.functionalAssociation),
+    ["party", "party"]
+  );
+  assert.equal(result.restoredChildren[0].x, 100);
+  assert.equal(result.restoredChildren[0].y, 115);
+
+  assert.equal(
+    resolveUngroupSelectionCandidate({
+      objetos: [{ ...partyGroup, id: "rsvp-group", functionalAssociation: "rsvp" }],
+      secciones: [createFixedSection("details")],
+      selectedIds: ["rsvp-group"],
+    }).reason,
+    "group-functional-association-ungroup-unsupported"
+  );
+});
+
+test("materializeGroupChildAsRoot restores pantalla authority without siblings", () => {
+  const result = materializeGroupChildAsRoot({
+    group: {
+      id: "ceremony-group",
+      tipo: "grupo",
+      seccionId: "hero",
+      anclaje: "content",
+      functionalAssociation: "ceremony",
+      x: 60,
+      y: 999,
+      yNorm: 0.2,
+    },
+    child: {
+      id: "ceremony-child",
+      tipo: "texto",
+      x: 25,
+      y: 40,
+      yNorm: 0.9,
+      functionalAssociation: "party",
+    },
+    secciones: [createPantallaSection("hero")],
+    alturaPantalla: 500,
+  });
+
+  assert.equal(result.id, "ceremony-child");
+  assert.equal(result.x, 85);
+  assert.equal(result.y, 140);
+  assert.equal(result.yNorm, 0.28);
+  assert.equal(result.functionalAssociation, "ceremony");
+  assert.equal("children" in result, false);
 });

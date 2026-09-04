@@ -39,6 +39,10 @@ export default function useEditorWindowBridge({
   elementRefs,
   getTemplateAuthoringSnapshot,
   getTemplateAuthoringStatus,
+  getDynamicFieldRepresentationStatus,
+  restoreDynamicFieldRepresentation,
+  updateTemplateFieldValue,
+  updateTemplateFieldValues,
   updateTemplateAuthoringDefault,
   updateTemplateAuthoringDateTextFormat,
   updateTemplateAuthoringSelectedDateTextFormat,
@@ -273,11 +277,11 @@ export default function useEditorWindowBridge({
       objetos,
     });
     if (!target) return false;
-
-    const targetRect = resolveTargetViewportRect(target);
-    if (!targetRect) return false;
-
-    return scrollToViewportRect(targetRect, options);
+    return focusEditorObjectById(target.rootObjectId || target.objectId, {
+      ...options,
+      select: true,
+      source: options?.source || "dynamic-field-indicator",
+    });
   };
 
   const replaceFirstSectionBackgroundImage = (imageInput, options = {}) => {
@@ -315,6 +319,22 @@ export default function useEditorWindowBridge({
       stageRef: stageRef.current,
       getHistorial: () => ({ historial: historialLength, futuros: futurosLength }),
       getTemplateAuthoringSnapshot: templateAuthoringSnapshotReader,
+      getDynamicFieldRepresentationStatus:
+        typeof getDynamicFieldRepresentationStatus === "function"
+          ? getDynamicFieldRepresentationStatus
+          : undefined,
+      restoreDynamicFieldRepresentation:
+        typeof restoreDynamicFieldRepresentation === "function"
+          ? restoreDynamicFieldRepresentation
+          : undefined,
+      updateTemplateFieldValue:
+        typeof updateTemplateFieldValue === "function"
+          ? updateTemplateFieldValue
+          : undefined,
+      updateTemplateFieldValues:
+        typeof updateTemplateFieldValues === "function"
+          ? updateTemplateFieldValues
+          : undefined,
       scrollToDynamicFieldTarget,
       scrollToEditorObjectById,
       focusEditorObjectById,
@@ -412,6 +432,10 @@ export default function useEditorWindowBridge({
     elementRefs,
     getTemplateAuthoringSnapshot,
     getTemplateAuthoringStatus,
+    getDynamicFieldRepresentationStatus,
+    restoreDynamicFieldRepresentation,
+    updateTemplateFieldValue,
+    updateTemplateFieldValues,
     updateTemplateAuthoringDefault,
     updateTemplateAuthoringDateTextFormat,
     updateTemplateAuthoringSelectedDateTextFormat,

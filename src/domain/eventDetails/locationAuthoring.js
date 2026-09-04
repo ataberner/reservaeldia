@@ -1,4 +1,3 @@
-import { EDITOR_BRIDGE_EVENTS } from "../../lib/editorBridgeContracts.js";
 import {
   readCanvasEditorMethod,
   readEditorObjects,
@@ -6,9 +5,6 @@ import {
 import { normalizeEventDetailFeature } from "./features.js";
 import {
   buildEventGoogleMapClearPatch,
-  buildEventGoogleMapInsertObject,
-  buildEventGoogleMapObjectPatch,
-  findEventGoogleMapObject,
   formatEventAddressText,
   normalizeGooglePlaceInput,
   resolveEventLocationFromAuthoring,
@@ -16,18 +12,6 @@ import {
 
 function normalizeText(value) {
   return String(value || "").trim();
-}
-
-function createRuntimeEvent(targetWindow, name, detail) {
-  const EventCtor = targetWindow?.CustomEvent || globalThis.CustomEvent;
-  if (typeof EventCtor === "function") return new EventCtor(name, { detail });
-  const event = new targetWindow.Event(name);
-  event.detail = detail;
-  return event;
-}
-
-function dispatchRuntimeEvent(targetWindow, name, detail) {
-  targetWindow.dispatchEvent(createRuntimeEvent(targetWindow, name, detail));
 }
 
 function requireEditorMethod(targetWindow, name) {
@@ -49,6 +33,7 @@ export function readEventLocationAuthoringState(targetWindow, feature) {
   return resolveEventLocationFromAuthoring({
     fieldsSchema: authoring.fieldsSchema,
     defaults: authoring.defaults,
+    values: authoring.values,
     objetos: readEditorObjects(targetWindow),
     feature: safeFeature,
   });
@@ -75,7 +60,7 @@ export function buildSelectedGoogleEventLocation({ currentLocation, googlePlace,
     googleLat: place.lat,
     googleLng: place.lng,
     hasGooglePlace: true,
-    showMap: false,
+    showMap: current.showMap === true,
   };
   nextLocation.address = formatEventAddressText({
     address: current.address,
@@ -101,48 +86,43 @@ export async function applyEventGooglePlaceSelection({ targetWindow, feature, go
 
   await updateLocation(nextLocation, { feature: safeFeature });
 
-  const objects = readEditorObjects(targetWindow);
-  const mapObject = findEventGoogleMapObject(objects, safeFeature);
-  const patch = buildEventGoogleMapObjectPatch(
-    {
-      ...nextLocation,
-      width: mapObject?.width,
-      height: mapObject?.height,
-    },
-    { showMap: false, feature: safeFeature }
-  );
-  if (mapObject?.id) {
-    dispatchRuntimeEvent(targetWindow, EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT, {
-      id: mapObject.id,
-      cambios: patch,
-    });
-    return { ...nextLocation, mapObjectId: mapObject.id };
-  }
-
-  const inserted = buildEventGoogleMapInsertObject(nextLocation, {
-    feature: safeFeature,
-  });
-  dispatchRuntimeEvent(targetWindow, EDITOR_BRIDGE_EVENTS.INSERT_ELEMENT, inserted);
-  return { ...nextLocation, mapObjectId: inserted.id };
+  const mapObjectIds = Array.isArray(currentLocation.mapObjectIds)
+    ? currentLocation.mapObjectIds
+    : [];
+  return {
+    ...nextLocation,
+    mapObjectId: mapObjectIds[0] || "",
+    mapObjectIds,
+  };
 }
 
-export async function applyManualEventLocationText({
-  targetWindow,
-  feature,
-  venueName,
-  address,
-}) {
+export async function applyManualEventLocationText(options = {}) {
+  const {
+    targetWindow,
+    feature,
+    venueName,
+    address,
+  } = options;
   const safeFeature = normalizeEventDetailFeature(feature);
   const currentLocation = readEventLocationAuthoringState(targetWindow, safeFeature);
-  const clearPatch = buildEventGoogleMapClearPatch();
+  const hasVenueNamePatch = Object.prototype.hasOwnProperty.call(
+    options,
+    "venueName"
+  );
+  const hasAddressPatch = Object.prototype.hasOwnProperty.call(options, "address");
+  const clearPatch = hasAddressPatch ? buildEventGoogleMapClearPatch() : {};
   const nextLocation = {
     ...currentLocation,
     ...clearPatch,
-    venueName: normalizeText(venueName),
-    address: normalizeText(address),
+    ...(hasVenueNamePatch ? { venueName: normalizeText(venueName) } : {}),
+    ...(hasAddressPatch ? { address: normalizeText(address) } : {}),
     eventDetailsFeature: safeFeature,
-    showMap: false,
-    hasGooglePlace: false,
+    ...(hasAddressPatch
+      ? {
+          showMap: false,
+          hasGooglePlace: false,
+        }
+      : {}),
   };
   const updateLocation = requireEditorMethod(
     targetWindow,
@@ -151,12 +131,17 @@ export async function applyManualEventLocationText({
 
   await updateLocation(nextLocation, { feature: safeFeature });
 
-  const mapObject = findEventGoogleMapObject(readEditorObjects(targetWindow), safeFeature);
-  if (mapObject?.id) {
-    dispatchRuntimeEvent(targetWindow, EDITOR_BRIDGE_EVENTS.UPDATE_ELEMENT, {
-      id: mapObject.id,
-      cambios: clearPatch,
-    });
-  }
-  return { ...nextLocation, mapObjectId: mapObject?.id || "" };
+  const mapObjectIds = Array.isArray(currentLocation.mapObjectIds)
+    ? currentLocation.mapObjectIds
+    : [];
+  return {
+    ...nextLocation,
+    mapObjectId: mapObjectIds[0] || currentLocation.mapObjectId || "",
+    mapObjectIds:
+      mapObjectIds.length > 0
+        ? mapObjectIds
+        : Array.isArray(currentLocation.mapObjectIds)
+          ? currentLocation.mapObjectIds
+          : [],
+  };
 }

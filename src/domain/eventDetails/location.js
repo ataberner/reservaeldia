@@ -3,6 +3,7 @@ import {
   getEventDetailFeatureLabel,
   normalizeEventDetailFeature,
 } from "./features.js";
+import { normalizeFunctionalAssociation } from "../../../shared/functionalAssociations.js";
 
 export const EVENT_LOCATION_ROLES = Object.freeze({
   VENUE_NAME: "venue_name",
@@ -19,6 +20,9 @@ export const EVENT_LOCATION_FIELD_KEYS = Object.freeze({
     [EVENT_LOCATION_ROLES.VENUE_ADDRESS]: "event_party_venue_address",
   }),
 });
+
+export const TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY = "__eventDetails";
+export const EVENT_LOCATION_PROVIDER_SOURCE = "google_places";
 
 export const DEFAULT_ADDRESS_TEXT_FORMAT_PRESET = "event_address_full_google";
 export const ADDRESS_TEXT_FORMAT_PRESETS = Object.freeze([
@@ -83,6 +87,7 @@ function toFiniteNumber(value, fallback = null) {
 }
 
 function normalizeNullableCoordinate(value) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -404,6 +409,134 @@ export function normalizeGooglePlaceInput(value) {
   };
 }
 
+export function normalizeEventLocationProviderMetadata(value) {
+  const source = asObject(value);
+  const googlePlace = normalizeGooglePlaceInput({
+    placeId: source.placeId || source.googlePlaceId,
+    displayName:
+      source.displayName || source.googleDisplayName || source.venueName,
+    formattedAddress:
+      source.formattedAddress || source.googleFormattedAddress || source.address,
+    addressComponents:
+      source.addressComponents || source.googleAddressComponents,
+    location: {
+      lat: Object.prototype.hasOwnProperty.call(source, "lat")
+        ? source.lat
+        : source.googleLat,
+      lng: Object.prototype.hasOwnProperty.call(source, "lng")
+        ? source.lng
+        : source.googleLng,
+    },
+  });
+  if (!googlePlace.placeId) return null;
+
+  return {
+    source: EVENT_LOCATION_PROVIDER_SOURCE,
+    placeId: googlePlace.placeId,
+    displayName: googlePlace.displayName,
+    formattedAddress: googlePlace.formattedAddress,
+    addressComponents: googlePlace.addressComponents,
+    lat: googlePlace.lat,
+    lng: googlePlace.lng,
+  };
+}
+
+function readEventLocationMetadataEntries(values) {
+  const safeValues = asObject(values);
+  const eventDetails = asObject(
+    safeValues[TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY]
+  );
+  return asObject(eventDetails.locations);
+}
+
+export function hasEventLocationProviderMetadataEntry(
+  values,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  return Object.prototype.hasOwnProperty.call(
+    readEventLocationMetadataEntries(values),
+    safeFeature
+  );
+}
+
+export function readEventLocationProviderMetadata(
+  values,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const locations = readEventLocationMetadataEntries(values);
+  if (!Object.prototype.hasOwnProperty.call(locations, safeFeature)) return null;
+  return normalizeEventLocationProviderMetadata(locations[safeFeature]);
+}
+
+export function setEventLocationProviderMetadata(
+  values,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
+  metadata = null
+) {
+  const safeValues = { ...asObject(values) };
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const currentEventDetails = asObject(
+    safeValues[TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY]
+  );
+  const currentLocations = asObject(currentEventDetails.locations);
+  const normalizedMetadata = normalizeEventLocationProviderMetadata(metadata);
+
+  return {
+    ...safeValues,
+    [TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY]: {
+      ...currentEventDetails,
+      locations: {
+        ...currentLocations,
+        // `null` is intentional: it records a canonical clear and prevents a
+        // later compatibility read from reviving stale canvas metadata.
+        [safeFeature]: normalizedMetadata,
+      },
+    },
+  };
+}
+
+export function mergeEventDetailsValueMetadata(baseValues, valuesPatch) {
+  const safeBaseValues = asObject(baseValues);
+  const safePatch = asObject(valuesPatch);
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      safePatch,
+      TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY
+    )
+  ) {
+    return safePatch;
+  }
+
+  const baseEventDetails = asObject(
+    safeBaseValues[TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY]
+  );
+  const patchEventDetails = asObject(
+    safePatch[TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY]
+  );
+  const hasLocationsPatch = Object.prototype.hasOwnProperty.call(
+    patchEventDetails,
+    "locations"
+  );
+
+  return {
+    ...safePatch,
+    [TEMPLATE_INPUT_EVENT_DETAILS_VALUES_KEY]: {
+      ...baseEventDetails,
+      ...patchEventDetails,
+      ...(hasLocationsPatch
+        ? {
+            locations: {
+              ...asObject(baseEventDetails.locations),
+              ...asObject(patchEventDetails.locations),
+            },
+          }
+        : {}),
+    },
+  };
+}
+
 export function normalizeAddressTextFormatPreset(preset) {
   const safePreset = normalizeText(preset);
   return ADDRESS_TEXT_FORMAT_PRESET_SET.has(safePreset)
@@ -497,14 +630,104 @@ export function isGoogleMapObject(objeto) {
   return normalizeText(objeto?.tipo).toLowerCase() === MAP_OBJECT_TYPE;
 }
 
-export function findEventGoogleMapObject(objetos, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
-  const safeFeature = normalizeEventDetailFeature(feature);
-  return (
-    (Array.isArray(objetos) ? objetos : []).find((objeto) =>
-      isGoogleMapObject(objeto) &&
-        normalizeEventDetailFeature(objeto?.eventDetailsFeature) === safeFeature
-    ) || null
+function normalizeDeclaredEventDetailFeature(value) {
+  const token = normalizeText(value).toLowerCase();
+  if (
+    token !== EVENT_DETAIL_FEATURES.CEREMONY &&
+    token !== EVENT_DETAIL_FEATURES.PARTY &&
+    token !== "ceremonia" &&
+    token !== "fiesta"
+  ) {
+    return null;
+  }
+  return normalizeEventDetailFeature(token);
+}
+
+function resolveInheritedEventDetailFeature(objeto, inheritedFeature = null) {
+  const explicitFeature = normalizeDeclaredEventDetailFeature(
+    objeto?.eventDetailsFeature
   );
+  if (explicitFeature) return explicitFeature;
+
+  const association = normalizeFunctionalAssociation(
+    objeto?.functionalAssociation
+  );
+  if (
+    association === EVENT_DETAIL_FEATURES.CEREMONY ||
+    association === EVENT_DETAIL_FEATURES.PARTY
+  ) {
+    return association;
+  }
+
+  return normalizeDeclaredEventDetailFeature(inheritedFeature);
+}
+
+export function collectEventGoogleMapObjects(
+  objetos,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY
+) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const matches = [];
+  const visit = (objeto, inheritedFeature = null) => {
+    const safeObject = asObject(objeto);
+    const effectiveFeature = resolveInheritedEventDetailFeature(
+      safeObject,
+      inheritedFeature
+    );
+
+    if (
+      isGoogleMapObject(safeObject) &&
+      (effectiveFeature || EVENT_DETAIL_FEATURES.CEREMONY) === safeFeature
+    ) {
+      matches.push(objeto);
+    }
+
+    if (
+      normalizeText(safeObject.tipo).toLowerCase() === "grupo" &&
+      Array.isArray(safeObject.children)
+    ) {
+      safeObject.children.forEach((child) => visit(child, effectiveFeature));
+    }
+  };
+
+  (Array.isArray(objetos) ? objetos : []).forEach((objeto) => visit(objeto));
+  return matches;
+}
+
+export function findEventGoogleMapObject(objetos, feature = EVENT_DETAIL_FEATURES.CEREMONY) {
+  return collectEventGoogleMapObjects(objetos, feature)[0] || null;
+}
+
+export function migrateLegacyEventLocationProviderMetadata({
+  values,
+  objetos,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
+} = {}) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  if (hasEventLocationProviderMetadataEntry(values, safeFeature)) {
+    return {
+      values: asObject(values),
+      metadata: readEventLocationProviderMetadata(values, safeFeature),
+      changed: false,
+      sourceObjectId: "",
+    };
+  }
+
+  const sourceObject =
+    collectEventGoogleMapObjects(objetos, safeFeature).find((candidate) =>
+      Boolean(normalizeEventLocationProviderMetadata(candidate))
+    ) || null;
+  const metadata = normalizeEventLocationProviderMetadata(sourceObject);
+  return {
+    values: setEventLocationProviderMetadata(
+      values,
+      safeFeature,
+      metadata
+    ),
+    metadata,
+    changed: true,
+    sourceObjectId: normalizeText(sourceObject?.id),
+  };
 }
 
 export function isEventGoogleMapVisible(objeto) {
@@ -519,14 +742,17 @@ export function isEventGoogleMapVisible(objeto) {
 export function resolveEventLocationFromAuthoring({
   fieldsSchema,
   defaults,
+  values,
   objetos,
   feature = EVENT_DETAIL_FEATURES.CEREMONY,
 } = {}) {
   const safeDefaults = asObject(defaults);
+  const safeValues = asObject(values);
   const safeFeature = normalizeEventDetailFeature(feature);
   const nameKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME, safeFeature);
   const addressKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS, safeFeature);
-  const mapObject = findEventGoogleMapObject(objetos, safeFeature);
+  const mapObjects = collectEventGoogleMapObjects(objetos, safeFeature);
+  const mapObject = mapObjects[0] || null;
   const fields = collectEventLocationFields(fieldsSchema).filter(
     (field) => resolveEventLocationFieldFeature(field) === safeFeature
   );
@@ -537,35 +763,63 @@ export function resolveEventLocationFromAuthoring({
         EVENT_LOCATION_ROLES.VENUE_ADDRESS
     ) || null;
   const addressTextFormatPreset = resolveEventAddressTextFormatPreset(addressField);
-  const googleAddressComponents = normalizeGoogleAddressComponents(
-    mapObject?.googleAddressComponents
+  const hasStructuredMetadata = hasEventLocationProviderMetadataEntry(
+    safeValues,
+    safeFeature
   );
-  const defaultAddress = normalizeText(safeDefaults[addressKey]);
-  const googleFormattedAddress = normalizeText(mapObject?.googleFormattedAddress);
-  const hasGooglePlace = Boolean(normalizeText(mapObject?.googlePlaceId));
+  const providerMetadata = hasStructuredMetadata
+    ? readEventLocationProviderMetadata(safeValues, safeFeature)
+    : normalizeEventLocationProviderMetadata(mapObject);
+  const googleAddressComponents = normalizeGoogleAddressComponents(
+    providerMetadata?.addressComponents
+  );
+  const hasStructuredName = Object.prototype.hasOwnProperty.call(
+    safeValues,
+    nameKey
+  );
+  const hasStructuredAddress = Object.prototype.hasOwnProperty.call(
+    safeValues,
+    addressKey
+  );
+  const venueName = normalizeText(
+    hasStructuredName ? safeValues[nameKey] : safeDefaults[nameKey]
+  );
+  const addressValue = normalizeText(
+    hasStructuredAddress ? safeValues[addressKey] : safeDefaults[addressKey]
+  );
+  const googleFormattedAddress = normalizeText(
+    providerMetadata?.formattedAddress
+  );
+  const hasGooglePlace = Boolean(providerMetadata?.placeId);
 
   return {
     venueName:
-      normalizeText(safeDefaults[nameKey]) ||
-      normalizeText(mapObject?.googleDisplayName),
+      venueName ||
+      (!hasStructuredName ? normalizeText(providerMetadata?.displayName) : ""),
     address:
       hasGooglePlace
         ? formatEventAddressText({
-            address: defaultAddress,
+            address: addressValue,
             googleFormattedAddress,
             googleAddressComponents,
             preset: addressTextFormatPreset,
           })
-        : defaultAddress || googleFormattedAddress,
-    googlePlaceId: normalizeText(mapObject?.googlePlaceId),
-    googleDisplayName: normalizeText(mapObject?.googleDisplayName),
+        : addressValue ||
+          (!hasStructuredAddress ? googleFormattedAddress : ""),
+    googlePlaceId: normalizeText(providerMetadata?.placeId),
+    googleDisplayName: normalizeText(providerMetadata?.displayName),
     googleFormattedAddress,
     googleAddressComponents,
-    googleLat: normalizeNullableCoordinate(mapObject?.googleLat),
-    googleLng: normalizeNullableCoordinate(mapObject?.googleLng),
-    showMap: Boolean(mapObject?.googlePlaceId) && mapObject?.mostrarMapa === true,
+    googleLat: normalizeNullableCoordinate(providerMetadata?.lat),
+    googleLng: normalizeNullableCoordinate(providerMetadata?.lng),
+    showMap:
+      hasGooglePlace &&
+      mapObjects.some((candidate) => candidate?.mostrarMapa === true),
     hasGooglePlace,
     mapObjectId: normalizeText(mapObject?.id),
+    mapObjectIds: mapObjects
+      .map((candidate) => normalizeText(candidate?.id))
+      .filter(Boolean),
     addressTextFormatPreset,
     fields,
   };
@@ -601,41 +855,65 @@ export function buildEventLocationDefaults({
   return safeDefaults;
 }
 
-export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
+export function buildEventGoogleMapProjectionPatch(location = {}, options = {}) {
   const safeLocation = asObject(location);
   const feature = normalizeEventDetailFeature(options.feature || safeLocation.eventDetailsFeature);
-  const googlePlace =
+  const providerMetadata = normalizeEventLocationProviderMetadata(
     safeLocation.googlePlace && typeof safeLocation.googlePlace === "object"
-      ? normalizeGooglePlaceInput(safeLocation.googlePlace)
-      : {
-          placeId: normalizeText(safeLocation.googlePlaceId),
-          displayName: normalizeText(safeLocation.googleDisplayName || safeLocation.venueName),
-          formattedAddress: normalizeText(
-            safeLocation.googleFormattedAddress || safeLocation.address
-          ),
-          addressComponents: normalizeGoogleAddressComponents(
-            safeLocation.googleAddressComponents
-          ),
-          lat: normalizeNullableCoordinate(safeLocation.googleLat),
-          lng: normalizeNullableCoordinate(safeLocation.googleLng),
-        };
-  const hasGooglePlace = Boolean(googlePlace.placeId);
-  const showMap =
-    hasGooglePlace &&
-    (Object.prototype.hasOwnProperty.call(options, "showMap")
-      ? options.showMap === true
-      : safeLocation.showMap === true);
+      ? safeLocation.googlePlace
+      : safeLocation
+  );
+  const hasGooglePlace = Boolean(providerMetadata?.placeId);
+  const hasShowMapOption = Object.prototype.hasOwnProperty.call(options, "showMap");
+  const hasLocationShowMap = Object.prototype.hasOwnProperty.call(
+    safeLocation,
+    "showMap"
+  );
 
   return {
-    tipo: MAP_OBJECT_TYPE,
     eventDetailsFeature: feature,
-    googlePlaceId: googlePlace.placeId,
-    googleDisplayName: googlePlace.displayName,
-    googleFormattedAddress: googlePlace.formattedAddress,
-    googleAddressComponents: googlePlace.addressComponents,
-    googleLat: googlePlace.lat,
-    googleLng: googlePlace.lng,
-    mostrarMapa: showMap,
+    googlePlaceId: providerMetadata?.placeId || "",
+    googleDisplayName: providerMetadata?.displayName || "",
+    googleFormattedAddress: providerMetadata?.formattedAddress || "",
+    googleLat: providerMetadata?.lat ?? null,
+    googleLng: providerMetadata?.lng ?? null,
+    ...(hasShowMapOption || hasLocationShowMap
+      ? {
+          mostrarMapa:
+            hasGooglePlace &&
+            (hasShowMapOption
+              ? options.showMap === true
+              : safeLocation.showMap === true),
+        }
+      : {}),
+  };
+}
+
+export function buildEventGoogleMapProjectionPatches({
+  objetos,
+  location,
+  feature = EVENT_DETAIL_FEATURES.CEREMONY,
+  showMap,
+} = {}) {
+  const safeFeature = normalizeEventDetailFeature(feature);
+  const options = { feature: safeFeature };
+  if (typeof showMap === "boolean") options.showMap = showMap;
+  const patch = buildEventGoogleMapProjectionPatch(location, options);
+
+  return collectEventGoogleMapObjects(objetos, safeFeature)
+    .map((mapObject) => normalizeText(mapObject?.id))
+    .filter(Boolean)
+    .map((objectId) => ({ objectId, patch: { ...patch } }));
+}
+
+export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
+  const safeLocation = asObject(location);
+  const projectionOptions = Object.prototype.hasOwnProperty.call(options, "showMap")
+    ? options
+    : { ...options, showMap: safeLocation.showMap === true };
+  return {
+    tipo: MAP_OBJECT_TYPE,
+    ...buildEventGoogleMapProjectionPatch(safeLocation, projectionOptions),
     width: Math.max(MIN_MAP_SIZE, toFiniteNumber(safeLocation.width, DEFAULT_MAP_WIDTH)),
     height: Math.max(MIN_MAP_SIZE, toFiniteNumber(safeLocation.height, DEFAULT_MAP_HEIGHT)),
   };

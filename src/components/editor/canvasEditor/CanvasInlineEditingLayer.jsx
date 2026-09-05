@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import HiddenSemanticTextBackend from "@/components/editor/textSystem/render/domSemantic/HiddenSemanticTextBackend";
 import DividersOverlayStage from "@/components/canvas/DividersOverlayStage";
+import LinkedFieldTypedInlineEditor from "@/components/editor/canvasEditor/LinkedFieldTypedInlineEditor";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 import {
   emitInlineCaretScrollDebugEvent,
@@ -91,6 +92,8 @@ export default function CanvasInlineEditingLayer({
   zoom,
   altoCanvasDinamico,
   seccionesOrdenadas,
+  onValueChange,
+  onRequestFinish,
 }) {
   const emitCanvasInlineLayerDebug = useCallback((eventName, extra = {}) => {
     if (!isInlineCaretScrollDebugEnabled()) return null;
@@ -142,8 +145,10 @@ export default function CanvasInlineEditingLayer({
     });
   }, [editing?.id, elementRefs, textEditController]);
 
+  const isTypedLinkedField =
+    Boolean(editing?.linkedField) && editing.linkedField.controlKind !== "text";
   const semanticBackend =
-    editing.id && elementRefs.current[editing.id] && (() => {
+    !isTypedLinkedField && editing.id && elementRefs.current[editing.id] && (() => {
       const objetoEnEdicion = objetos.find((o) => o.id === editing.id);
       const keepCenterDuringEdit =
         Boolean(objetoEnEdicion) &&
@@ -160,6 +165,18 @@ export default function CanvasInlineEditingLayer({
           />
         );
       })();
+  const typedBackend =
+    isTypedLinkedField && editing.id && elementRefs.current[editing.id]
+      ? (
+          <LinkedFieldTypedInlineEditor
+            editing={editing}
+            node={elementRefs.current[editing.id]}
+            scaleVisual={escalaVisual}
+            onChange={onValueChange}
+            onRequestFinish={onRequestFinish}
+          />
+        )
+      : null;
 
   useEffect(() => {
     if (!editing?.id) return undefined;
@@ -199,6 +216,9 @@ export default function CanvasInlineEditingLayer({
       {semanticBackend && typeof document !== "undefined"
         ? createPortal(semanticBackend, document.body)
         : semanticBackend}
+      {typedBackend && typeof document !== "undefined"
+        ? createPortal(typedBackend, document.body)
+        : typedBackend}
 
       {!isMobile && (
         <DividersOverlayStage

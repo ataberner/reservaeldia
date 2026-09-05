@@ -8,6 +8,8 @@ import {
   resolveDynamicFieldVisualStatus,
   resolveDynamicFieldScrollTarget,
   resolveDynamicTextFieldForObject,
+  resolveDynamicTextInlineEditDescriptor,
+  normalizeDynamicInlineFieldValue,
   restoreDynamicFieldVisual,
 } from "./dynamicFieldTargets.js";
 
@@ -547,6 +549,165 @@ test("dynamic text lookup only returns explicit textual object targets", () => {
       fieldKey: "event-title",
       target: fieldsSchema[1].applyTargets[0],
     }
+  );
+});
+
+test("dynamic inline descriptors preserve field, target, role and typed controls", () => {
+  const target = {
+    scope: "objeto",
+    id: "date-label",
+    path: "texto",
+    mode: "set",
+    transform: { kind: "date_to_text", preset: "event_date_day_month_es_ar" },
+  };
+  const fieldsSchema = [
+    {
+      key: "event-date",
+      label: "Fecha",
+      type: "date",
+      eventDetailsRole: "ceremony_date",
+      validation: { maxLength: 40 },
+      applyTargets: [target],
+    },
+  ];
+
+  assert.deepEqual(
+    resolveDynamicTextInlineEditDescriptor({
+      fieldsSchema,
+      values: { "event-date": "2026-12-13T18:00" },
+      objectId: "date-label",
+    }),
+    {
+      fieldKey: "event-date",
+      fieldType: "date",
+      label: "Fecha",
+      eventDetailsRole: "ceremony_date",
+      eventDetailsFormat: null,
+      target,
+      controlKind: "date",
+      dateTextFormatPreset: "event_date_day_month_es_ar",
+      includesTime: false,
+      openOnSelect: true,
+      eventDetailsFeature: "ceremony",
+      eventStartTimeFieldKey: "event_ceremony_start_time",
+      multiline: false,
+      maxLength: 40,
+      value: "2026-12-13",
+    }
+  );
+});
+
+test("date inline controls follow the selected target preset without changing it", () => {
+  const dateOnlyTarget = {
+    scope: "objeto",
+    id: "date-only",
+    path: "texto",
+    transform: { kind: "date_to_text", preset: "event_date_short_es_ar" },
+  };
+  const dateTimeTarget = {
+    scope: "objeto",
+    id: "date-time",
+    path: "texto",
+    transform: { kind: "date_to_text", preset: "event_datetime_short_es_ar" },
+  };
+  const fieldsSchema = [
+    {
+      key: "event_ceremony_date",
+      type: "date",
+      eventDetailsRole: "ceremony_date",
+      dateTextFormatPreset: "event_datetime_long_es_ar",
+      applyTargets: [dateOnlyTarget, dateTimeTarget],
+    },
+    {
+      key: "event_ceremony_start_time",
+      type: "time",
+      eventDetailsRole: "ceremony_start_time",
+      applyTargets: [],
+    },
+  ];
+  const values = {
+    event_ceremony_date: "2026-12-13",
+    event_ceremony_start_time: "18:30",
+  };
+
+  const dateOnly = resolveDynamicTextInlineEditDescriptor({
+    fieldsSchema,
+    values,
+    objectId: "date-only",
+  });
+  const dateTime = resolveDynamicTextInlineEditDescriptor({
+    fieldsSchema,
+    values,
+    objectId: "date-time",
+  });
+
+  assert.equal(dateOnly.controlKind, "date");
+  assert.equal(dateOnly.value, "2026-12-13");
+  assert.equal(dateOnly.includesTime, false);
+  assert.deepEqual(dateOnly.target.transform, dateOnlyTarget.transform);
+  assert.equal(dateTime.controlKind, "datetime-local");
+  assert.equal(dateTime.value, "2026-12-13T18:30");
+  assert.equal(dateTime.includesTime, true);
+  assert.equal(dateTime.eventStartTimeFieldKey, "event_ceremony_start_time");
+  assert.deepEqual(dateTime.target.transform, dateTimeTarget.transform);
+});
+
+test("dynamic inline descriptors resolve grouped child ids from their explicit targets", () => {
+  const target = {
+    scope: "objeto",
+    id: "group-child-title",
+    path: "texto",
+    transform: { kind: "identity" },
+  };
+  const descriptor = resolveDynamicTextInlineEditDescriptor({
+    fieldsSchema: [
+      {
+        key: "event-title",
+        type: "text",
+        applyTargets: [target],
+      },
+    ],
+    defaults: { "event-title": "Fiesta" },
+    objectId: "group-child-title",
+  });
+
+  assert.equal(descriptor.fieldKey, "event-title");
+  assert.equal(descriptor.value, "Fiesta");
+  assert.deepEqual(descriptor.target, target);
+});
+
+test("dynamic inline value normalization constrains short text without changing textarea", () => {
+  assert.equal(
+    normalizeDynamicInlineFieldValue({
+      descriptor: { fieldType: "text", maxLength: 12 },
+      value: "Cena\n  y baile largo",
+    }),
+    "Cena y baile"
+  );
+  assert.equal(
+    normalizeDynamicInlineFieldValue({
+      descriptor: { fieldType: "textarea" },
+      value: "Una linea\r\nOtra linea",
+    }),
+    "Una linea\nOtra linea"
+  );
+  assert.equal(
+    normalizeDynamicInlineFieldValue({
+      descriptor: {
+        fieldType: "text",
+        eventDetailsRole: "couple_names",
+        eventDetailsFormat: "linebreak",
+      },
+      value: "Ana\nLuis\nGomez",
+    }),
+    "Ana\nLuis Gomez"
+  );
+  assert.equal(
+    normalizeDynamicInlineFieldValue({
+      descriptor: { fieldType: "date", controlKind: "datetime-local" },
+      value: "2027-04-12T19:45",
+    }),
+    "2027-04-12T19:45"
   );
 });
 

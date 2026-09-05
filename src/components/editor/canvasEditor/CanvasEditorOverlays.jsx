@@ -3,7 +3,6 @@ import MenuOpcionesElemento from "@/components/MenuOpcionesElemento";
 import FloatingTextToolbar from "@/components/editor/toolbar/FloatingTextToolbar";
 import TemplateFieldBadgeOverlay from "@/components/editor/templateAuthoring/TemplateFieldBadgeOverlay";
 import ConfirmDeleteSectionModal from "@/components/editor/sections/ConfirmDeleteSectionModal";
-import DynamicFieldInlineNotice from "@/components/editor/templateAuthoring/DynamicFieldInlineNotice";
 import DynamicVisualDeleteDialog from "@/components/editor/templateAuthoring/DynamicVisualDeleteDialog";
 
 export default function CanvasEditorOverlays({
@@ -77,9 +76,6 @@ export default function CanvasEditorOverlays({
   onSetCoverImage,
   canvasUiSuppressed = false,
   backgroundEditSectionId = null,
-  dynamicFieldInlineNotice = null,
-  onGoToDynamicField = null,
-  onCloseDynamicFieldInlineNotice = null,
   dynamicVisualDeleteDialog = null,
 }) {
   const workspaceStateLabel =
@@ -90,6 +86,7 @@ export default function CanvasEditorOverlays({
         : "Publicada";
   const shouldShowTemplateFieldBadge =
     canManageSite && templateWorkspace?.mode === "template_edit";
+  const shouldShowLinkedFieldBadge = !readOnly && !shouldShowTemplateFieldBadge;
   const overlayKind = overlaySelection?.kind || null;
   const menuSelection = overlaySelection?.menuItem || null;
   const isBackgroundDecorationEditing = overlayKind === "background-decoration";
@@ -176,16 +173,21 @@ export default function CanvasEditorOverlays({
         </div>
       )}
 
-      {shouldShowTemplateFieldBadge && (
+      {(shouldShowTemplateFieldBadge || shouldShowLinkedFieldBadge) && (
         <TemplateFieldBadgeOverlay
           layoutRootRef={editorOverlayRootRef}
           stageRef={stageRef}
           elementRefs={elementRefs}
-          selectedElementId={elementosSeleccionados[0] || ""}
-          hoveredElementId={hoverId || ""}
+          selectedElementId={
+            shouldShowTemplateFieldBadge || elementosSeleccionados.length === 1
+              ? elementosSeleccionados[0] || ""
+              : ""
+          }
+          hoveredElementId={shouldShowTemplateFieldBadge ? hoverId || "" : ""}
           fieldIndexByElementId={templateAuthoring.fieldIndexByElementId}
           fieldsSchema={templateAuthoring.fieldsSchema}
           isMobile={isMobile}
+          displayMode={shouldShowTemplateFieldBadge ? "template" : "linked"}
         />
       )}
 
@@ -275,14 +277,6 @@ export default function CanvasEditorOverlays({
         isDeleting={isDeletingSection}
         onCancel={cerrarModalBorrarSeccion}
         onConfirm={confirmarBorrarSeccion}
-      />
-
-      <DynamicFieldInlineNotice
-        notice={dynamicFieldInlineNotice}
-        anchorRef={botonOpcionesRef}
-        isMobile={isMobile}
-        onGoToField={onGoToDynamicField}
-        onClose={onCloseDynamicFieldInlineNotice}
       />
 
       <DynamicVisualDeleteDialog

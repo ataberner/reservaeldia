@@ -32,6 +32,7 @@ export default function TemplateFieldBadgeOverlay({
   fieldIndexByElementId,
   fieldsSchema,
   isMobile = false,
+  displayMode = "template",
 }) {
   const [runtimeDragActive, setRuntimeDragActive] = useState(false);
   const [badgeState, setBadgeState] = useState({
@@ -92,7 +93,10 @@ export default function TemplateFieldBadgeOverlay({
         return;
       }
 
-      const candidateIds = [normalizeText(selectedElementId), normalizeText(hoveredElementId)].filter(Boolean);
+      const candidateIds = [
+        normalizeText(selectedElementId),
+        ...(displayMode === "template" ? [normalizeText(hoveredElementId)] : []),
+      ].filter(Boolean);
       const candidateId = candidateIds.find(
         (id) => normalizeText(safeFieldIndexByElementId[id])
       );
@@ -142,7 +146,7 @@ export default function TemplateFieldBadgeOverlay({
         const label = normalizeText(field?.label) || fieldKey;
         setBadgeState({
           visible: true,
-          text: `Campo: ${label}`,
+          text: displayMode === "linked" ? `🔗 ${label}` : `Campo: ${label}`,
           left,
           top,
         });
@@ -168,6 +172,7 @@ export default function TemplateFieldBadgeOverlay({
     };
   }, [
     elementRefs,
+    displayMode,
     fieldByKey,
     hoveredElementId,
     isMobile,
@@ -180,9 +185,16 @@ export default function TemplateFieldBadgeOverlay({
 
   if (!badgeState.visible) return null;
 
+  const isLinkedIndicator = displayMode === "linked";
+
   return (
     <div
-      className="pointer-events-none absolute z-[65] max-w-[220px] rounded-md border border-violet-300 bg-violet-600/95 px-2 py-1 text-[11px] font-medium text-white shadow-lg"
+      data-linked-field-indicator={isLinkedIndicator ? "true" : undefined}
+      className={
+        isLinkedIndicator
+          ? "pointer-events-none absolute z-[65] max-w-[220px] truncate rounded-full border border-violet-200 bg-white/90 px-2 py-0.5 text-[10px] font-medium text-violet-700 shadow-sm"
+          : "pointer-events-none absolute z-[65] max-w-[220px] rounded-md border border-violet-300 bg-violet-600/95 px-2 py-1 text-[11px] font-medium text-white shadow-lg"
+      }
       style={{
         left: `${badgeState.left}px`,
         top: `${badgeState.top}px`,

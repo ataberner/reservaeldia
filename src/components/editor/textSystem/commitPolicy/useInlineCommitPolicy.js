@@ -13,6 +13,7 @@ import {
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
 import { canEditObject } from "@/domain/editor/protectedSections";
+import { normalizeDynamicInlineFieldValue } from "@/domain/templates/dynamicFieldTargets";
 
 export default function useCanvasEditorInlineCommitHandlers({
   editing,
@@ -30,9 +31,13 @@ export default function useCanvasEditorInlineCommitHandlers({
   setObjetos,
   setElementosSeleccionados,
   setMostrarPanelZ,
+  onLinkedInlineValueChange,
 }) {
   const onInlineChange = (nextValue) => {
-    const nextText = String(nextValue ?? "");
+    const linkedField = editing.linkedField || null;
+    const nextText = linkedField
+      ? normalizeDynamicInlineFieldValue({ descriptor: linkedField, value: nextValue })
+      : String(nextValue ?? "");
     const prevStats = getInlineLineStats(editing.value);
     const nextStats = getInlineLineStats(nextText);
     if (
@@ -53,7 +58,23 @@ export default function useCanvasEditorInlineCommitHandlers({
       id: editing.id || getCurrentInlineEditingId() || null,
       valueLength: nextText.length,
     });
-    updateEdit(nextValue);
+    updateEdit(nextText);
+    if (linkedField && typeof onLinkedInlineValueChange === "function") {
+      Promise.resolve(
+        onLinkedInlineValueChange({
+          fieldKey: linkedField.fieldKey,
+          value: nextText,
+          phase: "change",
+          descriptor: linkedField,
+        })
+      ).catch((error) => {
+        inlineDebugLog("linked-inline-change-failed", {
+          id: editing.id || null,
+          fieldKey: linkedField.fieldKey,
+          error: String(error),
+        });
+      });
+    }
   };
 
   const onInlineDebugEvent = (eventName, payload = {}) => {
@@ -63,7 +84,7 @@ export default function useCanvasEditorInlineCommitHandlers({
     });
   };
 
-  const onInlineFinish = () => {
+  const onInlineFinish = (finishReason = "blur") => {
     const finishId = editing.id;
     if (!finishId) return;
 
@@ -76,9 +97,11 @@ export default function useCanvasEditorInlineCommitHandlers({
       overlayRoot?.querySelector?.('[data-inline-editor-content="true"]') ||
       overlayRoot?.querySelector?.('[contenteditable="true"]');
     const domRawText =
-      overlayEditor && typeof overlayEditor.innerText === "string"
-        ? overlayEditor.innerText
-        : null;
+      overlayEditor?.tagName === "INPUT" && typeof overlayEditor.value === "string"
+        ? overlayEditor.value
+        : overlayEditor && typeof overlayEditor.innerText === "string"
+          ? overlayEditor.innerText
+          : null;
 
     const textoNuevoRaw =
       domRawText == null
@@ -156,6 +179,72 @@ export default function useCanvasEditorInlineCommitHandlers({
       });
       restoreElementDrag(finishId);
       clearCurrentInlineEditingIdIfMatches(finishId);
+      return;
+    }
+
+    const linkedField = editing.linkedField || null;
+    if (linkedField) {
+      const finalValue = normalizeDynamicInlineFieldValue({
+        descriptor: linkedField,
+        value:
+          finishReason === "escape"
+            ? editing.originalValue
+            : textoNuevoRaw,
+      });
+      if (typeof onLinkedInlineValueChange === "function") {
+        Promise.resolve(
+          onLinkedInlineValueChange({
+            fieldKey: linkedField.fieldKey,
+            value: finalValue,
+            phase: finishReason === "escape" ? "cancel" : "commit",
+            descriptor: linkedField,
+          })
+        ).catch((error) => {
+          inlineDebugLog("linked-inline-finish-failed", {
+            id: finishId,
+            fieldKey: linkedField.fieldKey,
+            finishReason,
+            error: String(error),
+          });
+        });
+      }
+
+      inlineCommitDebugRef.current = { id: null };
+      inlineEditPreviewRef.current = { id: null, centerX: null };
+      flushSync(() => {
+        setInlineOverlayMountedId((prev) => (prev === finishId ? null : prev));
+        setInlineOverlayMountSession((prev) => {
+          const prevId = prev?.mounted ? prev.id : null;
+          if (prevId !== finishId) return prev;
+          return {
+            id: null,
+            sessionId: null,
+            mounted: false,
+            swapCommitted: false,
+            phase:
+              finishReason === "escape"
+                ? "finish-linked-cancel"
+                : "finish-linked-commit",
+            token: Number(prev?.token || 0),
+            offsetY: 0,
+            offsetRevision: null,
+            offsetSource: null,
+            offsetSpace: "content-ink",
+            renderAuthority: "konva",
+            caretVisible: false,
+            paintStable: false,
+          };
+        });
+        finishEdit();
+      });
+      restoreElementDrag(finishId);
+      clearCurrentInlineEditingIdIfMatches(finishId);
+      captureInlineSnapshot("finish: linked-field", {
+        id: finishId,
+        fieldKey: linkedField.fieldKey,
+        finishReason,
+        valueLength: finalValue.length,
+      });
       return;
     }
 

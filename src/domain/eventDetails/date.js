@@ -12,6 +12,11 @@ import {
   isTextualTemplateTargetPath,
   normalizeDateTextFormatPreset,
 } from "../templates/fieldValueResolver.js";
+import {
+  EVENT_TIME_ROLES,
+  getEventTimeFieldKey,
+  normalizeEventTimeValue,
+} from "./time.js";
 
 export const EVENT_DATE_FIELD_KEYS = Object.freeze({
   [EVENT_DETAIL_FEATURES.CEREMONY]: "event_ceremony_date",
@@ -284,6 +289,120 @@ export function isEventDateField(field, feature = null) {
   if (!isKnown) return false;
   if (!feature) return true;
   return resolveEventDateFieldFeature(safeField) === normalizeEventDetailFeature(feature);
+}
+
+function readAuthoringValue(values, defaults, fieldKey) {
+  const safeValues = asObject(values);
+  const safeDefaults = asObject(defaults);
+  if (Object.prototype.hasOwnProperty.call(safeValues, fieldKey)) {
+    return safeValues[fieldKey];
+  }
+  return safeDefaults[fieldKey];
+}
+
+export function resolveEventDateAuthoringParts({
+  field,
+  fieldsSchema,
+  values,
+  defaults,
+} = {}) {
+  if (!isEventDateField(field)) return null;
+
+  const feature = resolveEventDateFieldFeature(field);
+  const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const startTimeRole = `${feature}_${EVENT_TIME_ROLES.START_TIME}`;
+  const startTimeField = fields.find(
+    (candidate) =>
+      normalizeText(candidate?.eventDetailsRole).toLowerCase() === startTimeRole
+  );
+  const dateFieldKey = normalizeText(field?.key);
+  const startTimeFieldKey =
+    normalizeText(startTimeField?.key) ||
+    getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, feature);
+
+  return {
+    feature,
+    dateFieldKey,
+    startTimeFieldKey,
+    date: normalizeVisibleEventDateValue(
+      readAuthoringValue(values, defaults, dateFieldKey)
+    ),
+    time: normalizeEventTimeValue(
+      readAuthoringValue(values, defaults, startTimeFieldKey)
+    ),
+  };
+}
+
+export function buildEventDateInlineControlValue({
+  date,
+  time,
+  includeTime = false,
+} = {}) {
+  const safeDate = normalizeVisibleEventDateValue(date);
+  if (!safeDate) return "";
+  if (!includeTime) return safeDate;
+
+  return `${safeDate}T${normalizeEventTimeValue(time) || "00:00"}`;
+}
+
+export function splitEventDateInlineControlValue(value) {
+  const raw = normalizeText(value);
+  const timeMatch = raw.match(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/);
+  return {
+    date: normalizeVisibleEventDateValue(raw),
+    time: normalizeEventTimeValue(timeMatch?.[1]),
+  };
+}
+
+export function resolveEventDateTargetProjectionValue({
+  field,
+  fieldsSchema,
+  values,
+  defaults,
+} = {}) {
+  const parts = resolveEventDateAuthoringParts({
+    field,
+    fieldsSchema,
+    values,
+    defaults,
+  });
+  if (!parts) {
+    return readAuthoringValue(values, defaults, normalizeText(field?.key));
+  }
+
+  return buildEventDateInlineControlValue({
+    date: parts.date,
+    time: parts.time,
+    includeTime: Boolean(parts.time),
+  });
+}
+
+export function expandEventDateProjectionFieldKeys({
+  fieldsSchema,
+  fieldKeys,
+} = {}) {
+  const fields = Array.isArray(fieldsSchema) ? fieldsSchema : [];
+  const expanded = new Set(
+    (Array.isArray(fieldKeys) ? fieldKeys : [fieldKeys])
+      .map((key) => normalizeText(key))
+      .filter(Boolean)
+  );
+
+  fields.forEach((field) => {
+    const fieldKey = normalizeText(field?.key);
+    const role = normalizeText(field?.eventDetailsRole).toLowerCase();
+    if (!fieldKey || !expanded.has(fieldKey)) return;
+    if (role !== "ceremony_start_time" && role !== "party_start_time") return;
+
+    const feature = role.startsWith("party_")
+      ? EVENT_DETAIL_FEATURES.PARTY
+      : EVENT_DETAIL_FEATURES.CEREMONY;
+    const dateField = fields.find((candidate) => isEventDateField(candidate, feature));
+    const dateFieldKey = normalizeText(dateField?.key);
+    if (dateFieldKey) expanded.add(dateFieldKey);
+  });
+
+  return Array.from(expanded);
 }
 
 export function buildEventDateField(feature = EVENT_DETAIL_FEATURES.CEREMONY) {

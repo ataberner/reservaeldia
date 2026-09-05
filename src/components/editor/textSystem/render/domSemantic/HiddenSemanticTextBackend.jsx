@@ -921,7 +921,11 @@ function HiddenSemanticTextBackend({
             suppressContentEditableWarning
             spellCheck={false}
             role="textbox"
-            aria-multiline="true"
+            aria-multiline={
+              editing?.linkedField
+                ? editing.linkedField.multiline === true
+                : true
+            }
             onInput={controller?.handleInput}
             onFocus={controller?.handleFocus}
             onBlur={controller?.handleBlur}

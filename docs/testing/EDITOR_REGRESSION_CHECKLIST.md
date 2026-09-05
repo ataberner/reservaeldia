@@ -284,7 +284,7 @@ Resultado esperado:
 3. Confirmar que la opcion dinamica aparece como `Texto historia`.
 4. Vincular el texto a `Texto historia`.
 5. Abrir el Tab Texto y editar el campo bajo `Nuestra historia`.
-6. Intentar editar inline el mismo contenido directamente desde el canvas y usar `Ir al campo`.
+6. Editar inline el mismo contenido directamente desde el canvas, confirmar y repetir cancelando con `Escape`.
 7. Abrir un borrador o plantilla que declara `Texto historia` pero no tiene ninguna vista vinculada; repetir con un documento que no declara el field.
 8. Con el transformer, cambiar el ancho de la caja del texto marcado y volver a editar desde `Nuestra historia`.
 9. Abrir el modo asistente en un borrador con `Texto historia` vinculado.
@@ -292,6 +292,7 @@ Resultado esperado:
 11. Repetir la revision del engranaje con un usuario sin permiso admin/superadmin sobre un borrador que hereda el campo.
 12. En el asistente o Tab Evento, enfocar nombre, fecha, hora, lugar y direccion con textos dinamicos vinculados en diferentes secciones.
 13. En el Tab Texto, enfocar y editar `Nuestra historia` con su texto vinculado fuera del viewport actual.
+14. Vincular dos vistas al mismo field, una como child de grupo, y editar primero desde canvas y luego desde sidebar.
 
 Resultado esperado:
 
@@ -301,7 +302,10 @@ Resultado esperado:
 - editar desde el sidebar actualiza el texto del canvas
 - el texto editado desde el sidebar conserva el ancho y la alineacion de la caja; si el contenido es largo, envuelve dentro de esa caja
 - el transformer del canvas sigue pudiendo cambiar el ancho de la caja del texto marcado
-- el contenido vinculado no entra a inline edit; se explica que se edita desde los datos y `Ir al campo` abre/enfoca el input estable sin duplicar seleccion ni owner
+- el contenido vinculado usa la misma UX inline que un texto normal, pero cambia el valor estructurado y todas sus vistas sin escribir directamente el objeto seleccionado
+- al seleccionar una única vista vinculada aparece arriba el indicador discreto `🔗 <nombre del campo>`; no aparece en texto común ni en multiselección y no bloquea clicks
+- `Escape` restaura el valor de entrada en canvas y sidebar; vaciar el contenido no elimina ni desvincula la vista
+- editar desde canvas o sidebar actualiza las dos vistas, incluido el child agrupado, y conserva ancho, alineacion y wrapping
 - en modo asistente, el paso `Texto` aparece despues de `Evento` si existe `Texto historia` en schema, no por presencia de una vista
 - el Tab Texto en modo asistente muestra solo `Nuestra historia` y su caja de texto
 - un usuario sin permiso no puede reasignar el campo desde el engranaje y el vinculo heredado no se elimina
@@ -357,11 +361,13 @@ Resultado esperado:
 1. Editar un texto inline.
 2. Confirmar el cambio.
 3. Abrir preview de inmediato.
+4. Repetir con un texto vinculado y con un field date/time editado desde su control tipado anclado.
 
 Resultado esperado:
 
 - preview muestra el texto ya confirmado
 - no reaparece el texto anterior por debounce pendiente
+- los targets vinculados conservan sus transforms y preview no serializa estado de la sesion inline
 
 ### [ ] Preview despues de mutacion directa de seccion
 
@@ -664,11 +670,20 @@ Resultado esperado:
 11. Crear múltiples mapas y countdowns de una phase; editar sus fields y comprobar que todas las vistas reciben la proyección.
 12. Quitar todos los mapas/countdowns, cambiar datos o seleccionar Places y confirmar que no se reinsertan automáticamente; restaurarlos desde su indicador especializado.
 13. Después de seleccionar Places, editar sólo el nombre del lugar y comprobar que la selección se conserva; editar la dirección y comprobar que se limpia.
+14. Editar inline nombres individuales y combinados, lugar, dirección, Dress Code y texto largo; verificar sidebar, todas las vistas y layout.
+15. Seleccionar targets de fecha con formatos sólo fecha y fecha + hora; comprobar que el texto del canvas conserva su formato durante toda la sesión, que aparece el control compacto con el picker nativo cerrado, abrirlo desde el icono de calendario y probar Enter, blur, `Escape` y apertura inmediata de preview.
+16. Pegar varias líneas en un field corto y superar un `maxLength` declarado; repetir con textarea y con nombres combinados en formato de dos líneas.
+17. Con dos targets del mismo field de fecha usando presets distintos, cambiar fecha/hora inline y luego cambiar sólo el formato del target seleccionado desde el sidebar.
 
 Resultado esperado:
 
 - `Un solo evento` mantiene Ceremonia activa y Fiesta inactiva
 - `Ceremonia y fiesta` mantiene ambas funcionalidades activas
+- canvas y sidebar escriben sobre el mismo valor estructurado; cada cambio se proyecta a todas las vistas sin crear otro owner ni otra entrada de history visual
+- los fields cortos no aceptan contenido multilinea incompatible, textarea conserva sus líneas y `couple_names:linebreak` conserva un único separador semántico
+- fecha/hora almacenan valores tipados separados; un target fecha + hora actualiza ambos, un cambio de hora desde sidebar lo reproyecta, y cada target mantiene su transform explícito
+- seleccionar fecha abre el control compacto con el picker nativo cerrado y el canvas nunca muestra transitoriamente el valor crudo del input; el icono de calendario abre el picker y agrega hora sólo si el preset efectivo del target la muestra; editar el valor nunca cambia el preset y el selector de formato del sidebar cambia únicamente el target seleccionado
+- editar una dirección manual limpia Places/mapas, editar sólo el nombre del lugar los conserva, y ningún cambio de contenido altera width/alignment/wrapping
 - los datos de Fiesta se conservan aunque el bloque no se muestre
 - `templateInput.values` conserva los valores aunque no haya vistas; `eventDetails.dressCode.value` es sólo el mirror del field `dress_code`
 - los campos dinamicos `event_ceremony_*` y `event_party_*` sincronizan tab, canvas, preview y HTML publico

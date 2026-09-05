@@ -223,10 +223,20 @@ The dynamic-field bridge surface is:
 
 Existing person-name, location, date/time, and
 `updateTemplateAuthoringDefault` methods are compatibility adapters over those
-owners. `editor:dynamic-field-edit-request` carries normalized
-`{ fieldKey, objectId }` from a linked canvas text to the owning sidebar field;
-it is the only event for that handoff and does not authorize inline content
-mutation.
+owners. Linked canvas text resolves its field descriptor directly from
+`fieldsSchema.applyTargets` and delegates changes to the corresponding authoring
+adapter. The normal DOM inline lifecycle handles text-like values; an anchored
+native control handles date/time values. Both paths update the canonical value
+bag and let target application project it back to every canvas view. They do not
+use a window event or patch a linked object's content directly.
+
+For linked date text, selection opens the compact native control immediately,
+while the browser picker stays closed until the user activates the control's
+calendar icon. The selected target's effective `date_to_text` preset determines
+whether the control also exposes time; editing updates the structured event
+date/start-time values without changing that preset. Target format remains a
+target-specific sidebar operation, so two views of the same date can keep
+different presentations.
 
 `window.canvasEditor.getCoverImage()` exposes the effective editor-session cover to
 the Sidebar. It resolves the visual referenced by `portadaSource`. Template sessions

@@ -426,14 +426,54 @@ The Konva -> DOM handoff MUST be phase-atomic:
 
 ### 10.5 Linked Dynamic Text
 
-A text-content path governed by a dynamic-field target MUST NOT enter the DOM
-inline-content session. The object remains eligible for visual transforms, but
-its content is edited only through the structured value owner. The attempted
-entry communicates `Este texto se edita desde los datos de la invitación · Ir al campo`;
-that action emits the normalized
-`editor:dynamic-field-edit-request` detail `{ fieldKey, objectId }`, opens the
-owning sidebar panel, and focuses its stable input. It MUST NOT introduce a
-second value mutation or selection authority.
+A text-content path governed by a dynamic-field target MAY enter the existing
+inline session, but the canvas object MUST remain a projection rather than a
+content owner. Every accepted canvas change delegates to the same structured
+field owner used by the sidebar; `applyTargets` then refreshes every linked
+target, including grouped children. Inline commit MUST NOT patch the target
+object's text path directly.
+
+Selecting one linked target shows a small non-interactive indicator above its
+canvas bounds using the canonical field label (for example,
+`🔗 Nombres de los novios`). The indicator is a derived overlay only: it does
+not own selection, content, geometry, or binding state, and it does not appear
+for ordinary unlinked text or multi-selection.
+
+Text, location, and URL fields use a single-line DOM editor; textarea fields use
+the normal multiline DOM editor. Selecting a linked date target opens its
+compact native date control immediately, but MUST NOT programmatically open the
+browser picker: the picker remains closed until the user activates the native
+calendar control. When that target's effective `date_to_text` preset includes
+time, the control includes date and time. The canvas keeps showing the
+projection produced by that target transform. Changing the value MUST NOT
+rewrite `target.transform`: an explicit target preset retains precedence over
+the field fallback, and the format of the selected target is changed only
+through the sidebar format selector.
+
+For event-date roles, the date and start time remain separate structured field
+values even when one target renders them together. A date-time inline change
+updates both values through the authoring owner, and a start-time change from the
+sidebar reprojects date-time targets as well as ordinary time targets. Date-only
+targets keep their own date-only format.
+
+Single-line fields normalize pasted line breaks and Enter finishes the session.
+Declared `validation.maxLength` remains effective. A `couple_names` field with
+`linebreak` format may retain its one semantic separator and delegates through
+the structured two-name owner. When inline editing replaces the couple
+separator (for example `y` with `&`, `+`, or a short word), the canonical
+current field value owns that personalized separator; the field's
+`eventDetailsFormat` remains its initial fallback. Later edits to either
+structured name from the sidebar MUST preserve the current separator.
+Location-address editing delegates through the
+manual-address owner and therefore clears stale Places/map state; venue-name
+editing preserves that metadata.
+
+Change, blur/Enter commit, and Escape cancellation all use the structured field
+owner. Escape restores the canonical value captured at entry. Clearing the
+field clears its data and projections but MUST NOT delete or unlink the visual
+target. Width, alignment, wrapping, position, and other text-box geometry remain
+owned by the canvas object. No custom event, mirror, or second value authority is
+introduced for this interaction.
 
 ## 10A. DYNAMIC VIEW INTERACTION CONTRACT
 

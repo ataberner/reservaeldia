@@ -9,6 +9,8 @@ import {
   formatEventCoupleNames,
   getEventPersonNameFieldKey,
   inferEventCoupleNamesFormat,
+  resolveEventCoupleNamesConnector,
+  resolveEventCoupleNamesInlineEdit,
   resolveEventPersonNameVisualFieldKeys,
   resolveEventPersonNamesState,
   resolveEventPersonNamesFromAuthoring,
@@ -66,6 +68,77 @@ test("infers and splits couple names from common separators", () => {
   });
 });
 
+test("keeps both structured names while an inline connector is being replaced", () => {
+  assert.deepEqual(
+    resolveEventCoupleNamesInlineEdit({
+      text: "Sofia  Mateo",
+      currentNames: {
+        primaryName: "Sofia",
+        secondaryName: "Mateo",
+      },
+      currentValue: "Sofia & Mateo",
+      field: { eventDetailsFormat: EVENT_COUPLE_NAME_FORMATS.AMPERSAND },
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+      format: EVENT_COUPLE_NAME_FORMATS.AMPERSAND,
+      connector: "&",
+    }
+  );
+  assert.deepEqual(
+    resolveEventCoupleNamesInlineEdit({
+      text: "Sofia y Mateo",
+      currentNames: {
+        primaryName: "Sofia",
+        secondaryName: "Mateo",
+      },
+      currentValue: "Sofia & Mateo",
+      field: { eventDetailsFormat: EVENT_COUPLE_NAME_FORMATS.AMPERSAND },
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+      format: EVENT_COUPLE_NAME_FORMATS.AND,
+      connector: "y",
+    }
+  );
+  assert.deepEqual(
+    resolveEventCoupleNamesInlineEdit({
+      text: "Sofia con Mateo",
+      currentNames: {
+        primaryName: "Sofia",
+        secondaryName: "Mateo",
+      },
+      currentValue: "Sofia y Mateo",
+      field: { eventDetailsFormat: EVENT_COUPLE_NAME_FORMATS.AND },
+    }),
+    {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+      format: EVENT_COUPLE_NAME_FORMATS.AND,
+      connector: "con",
+    }
+  );
+  assert.deepEqual(
+    resolveEventCoupleNamesInlineEdit({
+      text: "Sofi con Mateo",
+      currentNames: {
+        primaryName: "Sofia",
+        secondaryName: "Mateo",
+      },
+      currentValue: "Sofia con Mateo",
+      field: { eventDetailsFormat: EVENT_COUPLE_NAME_FORMATS.AND },
+    }),
+    {
+      primaryName: "Sofi",
+      secondaryName: "Mateo",
+      format: EVENT_COUPLE_NAME_FORMATS.AND,
+      connector: "con",
+    }
+  );
+});
+
 test("ensures event person fields and computes defaults by format", () => {
   const ensured = ensureEventPersonNameFields({
     fieldsSchema: [],
@@ -99,6 +172,56 @@ test("ensures event person fields and computes defaults by format", () => {
     ],
     "Sofia & Mateo"
   );
+});
+
+test("preserves a personalized couple connector when sidebar names change", () => {
+  const ensured = ensureEventPersonNameFields({
+    fieldsSchema: [],
+    includeBaseFields: true,
+    coupleFormats: [EVENT_COUPLE_NAME_FORMATS.AND],
+  });
+  const coupleField = ensured.fieldsSchema.find(
+    (field) => field.eventDetailsRole === EVENT_PERSON_NAME_ROLES.COUPLE
+  );
+  const primaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY);
+  const secondaryKey = getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY);
+  const inlineDefaults = buildEventPersonNameDefaults({
+    fieldsSchema: ensured.fieldsSchema,
+    defaults: {
+      [coupleField.key]: "Sofia y Mateo",
+      [primaryKey]: "Sofia",
+      [secondaryKey]: "Mateo",
+    },
+    names: {
+      primaryName: "Sofia",
+      secondaryName: "Mateo",
+    },
+    coupleValueByFieldKey: {
+      [coupleField.key]: "Sofia con Mateo",
+    },
+  });
+  const defaults = buildEventPersonNameDefaults({
+    fieldsSchema: ensured.fieldsSchema,
+    defaults: inlineDefaults,
+    names: {
+      primaryName: "Sofi",
+      secondaryName: "Mateo",
+    },
+  });
+
+  assert.equal(coupleField.eventDetailsFormat, EVENT_COUPLE_NAME_FORMATS.AND);
+  assert.equal(
+    resolveEventCoupleNamesConnector({
+      field: coupleField,
+      value: defaults[coupleField.key],
+      names: {
+        primaryName: "Sofi",
+        secondaryName: "Mateo",
+      },
+    }),
+    "con"
+  );
+  assert.equal(defaults[coupleField.key], "Sofi con Mateo");
 });
 
 test("resolves names from source defaults or combined fallback", () => {

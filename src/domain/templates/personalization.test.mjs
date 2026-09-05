@@ -352,6 +352,73 @@ test("post-copy personalization patch syncs dress code field to event details an
   });
 });
 
+test("post-copy personalization reprojects date-time text when only event start time changes", () => {
+  const template = {
+    fieldsSchema: [
+      {
+        key: "event_ceremony_date",
+        type: "date",
+        eventDetailsRole: "ceremony_date",
+        applyTargets: [
+          {
+            scope: "objeto",
+            id: "event-date-time",
+            path: "texto",
+            transform: {
+              kind: "date_to_text",
+              preset: "event_datetime_short_es_ar",
+            },
+          },
+        ],
+      },
+      {
+        key: "event_ceremony_start_time",
+        type: "time",
+        eventDetailsRole: "ceremony_start_time",
+        applyTargets: [],
+      },
+    ],
+    defaults: {
+      event_ceremony_date: "2027-04-12",
+      event_ceremony_start_time: "19:00",
+    },
+  };
+  const patch = preparePostCopyTemplatePersonalizationPatch({
+    template,
+    draftData: {
+      objetos: [
+        {
+          id: "event-date-time",
+          tipo: "texto",
+          texto: "12/04/2027, 19:00",
+          width: 320,
+          align: "center",
+          textWrapMode: "word",
+          __autoWidth: false,
+        },
+      ],
+      secciones: [],
+    },
+    resolvedValues: {
+      event_ceremony_date: "2027-04-12",
+      event_ceremony_start_time: "21:30",
+    },
+  });
+
+  assert.deepEqual(patch.changedKeys, ["event_ceremony_start_time"]);
+  assert.equal(patch.objetos[0].texto, "12/04/2027, 21:30");
+  assert.equal(patch.objetos[0].width, 320);
+  assert.equal(patch.objetos[0].align, "center");
+  assert.equal(patch.objetos[0].textWrapMode, "word");
+  assert.deepEqual(
+    template.fieldsSchema[0].applyTargets[0].transform,
+    {
+      kind: "date_to_text",
+      preset: "event_datetime_short_es_ar",
+    }
+  );
+});
+
 test("post-copy personalization accepts changed data-only fields without visual fallback", () => {
   const patch = preparePostCopyTemplatePersonalizationPatch({
     template: {

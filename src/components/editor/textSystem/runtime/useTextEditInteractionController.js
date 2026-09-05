@@ -369,6 +369,7 @@ export default function useTextEditInteractionController({
   });
 
   const editingId = editing?.id || null;
+  const linkedField = editing?.linkedField || null;
   const sessionValue = useMemo(
     () => String(editing?.value ?? ""),
     [editing?.value]
@@ -703,7 +704,7 @@ export default function useTextEditInteractionController({
       id: editingId,
       reason,
     });
-    onFinish?.();
+    onFinish?.(reason);
     return true;
   }, [editingId, onDebugEvent, onFinish]);
 
@@ -964,6 +965,11 @@ export default function useTextEditInteractionController({
       });
     }
     if (event.key === "Enter" && !event.isComposing) {
+      if (linkedField && linkedField.multiline !== true) {
+        event.preventDefault();
+        requestFinish("enter");
+        return;
+      }
       const editorEl = editorRef.current;
       const currentRange = getSelectionRangeInsideEditor(editorEl);
       const currentPosition = currentRange
@@ -1006,7 +1012,7 @@ export default function useTextEditInteractionController({
       event.preventDefault();
       requestFinish("tab");
     }
-  }, [requestFinish, syncDecorations]);
+  }, [linkedField, requestFinish, syncDecorations]);
 
   const handleSelectionMutation = useCallback((event) => {
     event?.stopPropagation?.();

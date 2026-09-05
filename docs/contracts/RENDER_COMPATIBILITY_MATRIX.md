@@ -51,6 +51,13 @@ es válido y no emite HTML, mientras una vista restaurada vuelve a usar el mismo
 shape público del objeto existente; este contrato no agrega nodos, atributos ni
 payload público nuevos.
 
+La personalización materializa cada target de fecha con su propio
+`date_to_text.preset`. Para roles de fecha de evento, los targets cuyo preset
+incluye hora combinan durante esa proyección el field de fecha con el field
+explícito `ceremony_start_time` o `party_start_time`; los targets de sólo fecha
+ignoran la parte horaria. Esa combinación no modifica schema ni agrega metadata
+al payload de render.
+
 En mobile, el fit posterior al reflow debe mantener completamente dentro del
 ancho del viewport a los objetos de contenido e interaccion de `.sec-content`,
 incluidos texto, CTA, iconos, Gallery y el wrapper unico de un grupo. El ajuste
@@ -151,7 +158,7 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 
 | Item | Persistencia | Editor | Preview | Publish | Paridad hoy | Preflight publish | Decision operativa |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `texto` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer/metricas | no bloquea por si solo | usar con checklist; la personalizacion de lugar/direccion conserva `width` y wrap del objeto vinculado |
+| `texto` | `si` | `soportado` | `soportado` | `soportado` | `parcial` por renderer/metricas | no bloquea por si solo | usar con checklist; la personalizacion conserva layout vinculado y cada target de fecha conserva su preset, combinando la hora de inicio sólo cuando ese preset la muestra |
 | `imagen` | `si` | `soportado` | `parcial` | `parcial` | `parcial` | puede bloquear por `image-asset-unresolved` o `image-crop-not-materialized` | usar con restricciones |
 | `icono` raster | `si` | `soportado` | `soportado` | `parcial` | `alta` si `src` ya es publico | puede bloquear por `icon-asset-unresolved` | usar con restricciones |
 | `icono` SVG canonico (`tipo='icono'`, `formato='svg'`, `iconRender` v1) | `si` | `soportado` como imagen del snapshot compartido | `soportado` | `soportado` | `alta`: misma composicion/data URL, `contain`, paints fijos y `currentColor` selectivo | bloquea por `icon-svg-canonical-invalid` | contrato moderno para inserciones nuevas |

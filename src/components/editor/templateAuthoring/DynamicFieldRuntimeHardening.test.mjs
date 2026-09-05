@@ -14,6 +14,26 @@ const persistenceSource = fs.readFileSync(
   new URL("../persistence/borradorSyncPersist.js", import.meta.url),
   "utf8"
 );
+const commitPolicySource = fs.readFileSync(
+  new URL("../textSystem/commitPolicy/useInlineCommitPolicy.js", import.meta.url),
+  "utf8"
+);
+const stageComposerSource = fs.readFileSync(
+  new URL("../textSystem/render/konva/CanvasStageContentComposer.jsx", import.meta.url),
+  "utf8"
+);
+const typedInlineEditorSource = fs.readFileSync(
+  new URL("../canvasEditor/LinkedFieldTypedInlineEditor.jsx", import.meta.url),
+  "utf8"
+);
+const fieldBadgeSource = fs.readFileSync(
+  new URL("./TemplateFieldBadgeOverlay.jsx", import.meta.url),
+  "utf8"
+);
+const canvasOverlaysSource = fs.readFileSync(
+  new URL("../canvasEditor/CanvasEditorOverlays.jsx", import.meta.url),
+  "utf8"
+);
 
 function readCallbackSlice(name, nextName) {
   const start = hookSource.indexOf(`const ${name} = useCallback`);
@@ -87,6 +107,72 @@ test("location writes rebase on latest values and patch only the reached phase",
     locationSlice,
     /const valuesPatch = \{ __eventDetails: nextValues\.__eventDetails \}/
   );
+});
+
+test("canvas-linked text changes delegate by explicit event-details role", () => {
+  const linkedInlineSlice = readCallbackSlice(
+    "updateLinkedTextFromCanvas",
+    "linkSelectionToEventTime"
+  );
+
+  assert.match(linkedInlineSlice, /normalizeDynamicInlineFieldValue/);
+  assert.match(linkedInlineSlice, /EVENT_PERSON_NAME_ROLES\.COUPLE/);
+  assert.match(linkedInlineSlice, /resolveEventCoupleNamesInlineEdit/);
+  assert.match(linkedInlineSlice, /coupleValueByFieldKey/);
+  assert.match(linkedInlineSlice, /updateEventPersonNames/);
+  assert.match(linkedInlineSlice, /EVENT_LOCATION_ROLES\.VENUE_ADDRESS/);
+  assert.match(linkedInlineSlice, /buildEventGoogleMapClearPatch/);
+  assert.match(linkedInlineSlice, /updateEventLocation/);
+  assert.match(linkedInlineSlice, /updateEventTimes/);
+  assert.match(linkedInlineSlice, /isEventDateField/);
+  assert.match(linkedInlineSlice, /splitEventDateInlineControlValue/);
+  assert.match(linkedInlineSlice, /event-date-time-inline-update/);
+  assert.match(linkedInlineSlice, /updateTemplateFieldValues/);
+  assert.match(linkedInlineSlice, /updateTemplateFieldValue/);
+});
+
+test("linked inline commits never mutate the canvas text object directly", () => {
+  const linkedStart = commitPolicySource.indexOf(
+    "const linkedField = editing.linkedField || null;",
+    commitPolicySource.indexOf("const onInlineFinish")
+  );
+  const normalCommitStart = commitPolicySource.indexOf(
+    "const textoNuevoValidado",
+    linkedStart
+  );
+  assert.notEqual(linkedStart, -1);
+  assert.notEqual(normalCommitStart, -1);
+
+  const linkedCommitSlice = commitPolicySource.slice(linkedStart, normalCommitStart);
+  assert.match(linkedCommitSlice, /editing\.originalValue/);
+  assert.match(linkedCommitSlice, /descriptor: linkedField/);
+  assert.match(linkedCommitSlice, /phase: finishReason === "escape" \? "cancel" : "commit"/);
+  assert.doesNotMatch(linkedCommitSlice, /setObjetos/);
+  assert.match(commitPolicySource.slice(normalCommitStart), /setObjetos\(actualizado\)/);
+});
+
+test("linked fields enter the existing inline lifecycle and typed fields use native inputs", () => {
+  assert.match(stageComposerSource, /onResolveDynamicFieldInlineEdit/);
+  assert.match(stageComposerSource, /startEdit\(id, initialText, \{[\s\S]*linkedField,/);
+  assert.doesNotMatch(stageComposerSource, /onDynamicFieldInlineBlocked/);
+  assert.match(typedInlineEditorSource, /type=\{inputType\}/);
+  assert.match(typedInlineEditorSource, /input\.focus\(\{ preventScroll: true \}\)/);
+  assert.doesNotMatch(typedInlineEditorSource, /showPicker/);
+  assert.match(typedInlineEditorSource, /onRequestFinish\?\.\("escape"\)/);
+  assert.match(typedInlineEditorSource, /data-preserve-inline-edit="true"/);
+  assert.match(stageComposerSource, /linkedFieldForSelection\?\.openOnSelect === true/);
+  assert.match(stageComposerSource, /reason: "linked-date-selected"/);
+  assert.match(
+    stageComposerSource,
+    /editing\.linkedField\.controlKind !== "text"[\s\S]*supportsInlinePreview && !usesTypedLinkedControl/
+  );
+});
+
+test("a selected linked field shows its schema label without adding hover ownership", () => {
+  assert.match(canvasOverlaysSource, /displayMode=\{shouldShowTemplateFieldBadge \? "template" : "linked"\}/);
+  assert.match(fieldBadgeSource, /displayMode === "linked" \? `🔗 \$\{label\}`/);
+  assert.match(fieldBadgeSource, /displayMode === "template" \? \[normalizeText\(hoveredElementId\)\] : \[\]/);
+  assert.match(fieldBadgeSource, /data-linked-field-indicator/);
 });
 
 test("restore reads one latest state and changes visibility only on the restored map", () => {

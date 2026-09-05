@@ -1036,7 +1036,7 @@ export default function CanvasStageContent({
   onBackgroundEditInteractionChange,
   postDragDiagnosticMenuTargetIds = [],
   canManageSite = false,
-  onDynamicFieldInlineBlocked = null,
+  onResolveDynamicFieldInlineEdit = null,
 }) {
   const inlineIntentRef = useRef({ candidateId: null, armedAtMs: 0 });
   const inlineActivationRef = useRef({
@@ -9375,22 +9375,18 @@ export default function CanvasStageContent({
   }) => {
     if (!id || !targetObj) return;
 
-    if (
-      typeof onDynamicFieldInlineBlocked === "function" &&
-      onDynamicFieldInlineBlocked({ objectId: id, object: targetObj }) === true
-    ) {
-      clearInlineActivation("dynamic-field-owned-content", {
-        id,
-        sourceGesture,
-        sourceReason: sourceReason || null,
-      });
-      clearInlineIntent("dynamic-field-owned-content", { id });
-      return;
-    }
+    const linkedField =
+      typeof onResolveDynamicFieldInlineEdit === "function"
+        ? onResolveDynamicFieldInlineEdit({ objectId: id, object: targetObj })
+        : null;
 
     const initialText = String(
-      targetObj?.texto ??
+      linkedField?.value ??
+        targetObj?.texto ??
         getFunctionalCtaDefaultText(targetObj)
+    );
+    const usesTypedLinkedControl = Boolean(
+      linkedField && linkedField.controlKind !== "text"
     );
 
     armInlineActivation(id, "start-inline-decision", {
@@ -9401,7 +9397,9 @@ export default function CanvasStageContent({
     const startAttempt = Number(pendingInlineStartRef.current || 0) + 1;
     pendingInlineStartRef.current = startAttempt;
 
-    const fontWait = await ensureInlineFontReady(targetObj?.fontFamily);
+    const fontWait = usesTypedLinkedControl
+      ? { waited: false, ready: true, reason: "typed-linked-control" }
+      : await ensureInlineFontReady(targetObj?.fontFamily);
     if (pendingInlineStartRef.current !== startAttempt) {
       clearInlineActivation("start-inline-stale-attempt", {
         id,
@@ -9535,6 +9533,8 @@ export default function CanvasStageContent({
     startEdit(id, initialText, {
       initialCaretClientPoint: sourceClientPoint,
       entrySelectionMode: INLINE_ENTRY_SELECTION_MODE_SELECT_ALL,
+      linkedField,
+      originalValue: linkedField ? initialText : undefined,
     });
     node?.draggable(false);
     node?.getLayer?.()?.batchDraw?.();
@@ -9562,7 +9562,7 @@ export default function CanvasStageContent({
     ensureInlineFontReady,
     inlineDebugLog,
     inlineEditPreviewRef,
-    onDynamicFieldInlineBlocked,
+    onResolveDynamicFieldInlineEdit,
     obtenerCentroVisualTextoX,
     obtenerMetricasNodoInline,
     pendingInlineStartRef,
@@ -9900,14 +9900,26 @@ export default function CanvasStageContent({
       meta,
       selectionSnapshot,
     });
+    const linkedFieldForSelection =
+      (decision.decision === "select_only" || decision.decision === "select_and_drag") &&
+      typeof onResolveDynamicFieldInlineEdit === "function"
+        ? onResolveDynamicFieldInlineEdit({ objectId: id, object: obj })
+        : null;
+    const effectiveDecision = linkedFieldForSelection?.openOnSelect === true
+      ? {
+          ...decision,
+          decision: "start_inline",
+          reason: "linked-date-selected",
+        }
+      : decision;
     logInlineIntent("selection-intent-decision", {
       id,
       tipo: obj?.tipo || null,
       gesture,
       selectionOrigin: meta?.selectionOrigin || "gesture",
       allowSameGestureDragRequested: meta?.allowSameGestureDrag === true,
-      decision: decision?.decision || null,
-      reason: decision?.reason || null,
+      decision: effectiveDecision?.decision || null,
+      reason: effectiveDecision?.reason || null,
       selectionSnapshot,
       editingId: editing.id || null,
       pointer: getCanvasPointerDebugInfo(event),
@@ -9918,8 +9930,8 @@ export default function CanvasStageContent({
       gesture,
       selectionOrigin: meta?.selectionOrigin || "gesture",
       allowSameGestureDragRequested: meta?.allowSameGestureDrag === true,
-      decision: decision?.decision || null,
-      reason: decision?.reason || null,
+      decision: effectiveDecision?.decision || null,
+      reason: effectiveDecision?.reason || null,
       selectionSnapshot,
       target: getKonvaNodeDebugInfo(event?.target),
       currentTarget: getKonvaNodeDebugInfo(event?.currentTarget),
@@ -9931,9 +9943,9 @@ export default function CanvasStageContent({
       id,
       obj,
       event,
-      decision: decision.decision,
-      gesture: decision.gesture,
-      reason: decision.reason || null,
+      decision: effectiveDecision.decision,
+      gesture: effectiveDecision.gesture,
+      reason: effectiveDecision.reason || null,
     });
   }, [
     applyInlineIntentDecision,
@@ -9941,6 +9953,7 @@ export default function CanvasStageContent({
     decideInlineIntent,
     editing.id,
     elementosSeleccionados,
+    onResolveDynamicFieldInlineEdit,
     runtimeSelectedIds,
   ]);
 
@@ -10875,8 +10888,13 @@ export default function CanvasStageContent({
     }
 
     const supportsInlinePreview = isSemanticInlineEditableObject(obj);
+    const usesTypedLinkedControl = Boolean(
+      editing.id === obj.id &&
+      editing.linkedField &&
+      editing.linkedField.controlKind !== "text"
+    );
     const objPreview =
-      editing.id === obj.id && supportsInlinePreview
+      editing.id === obj.id && supportsInlinePreview && !usesTypedLinkedControl
         ? (() => {
           const textoPreview = String(editing.value ?? "");
           const textoOriginal = String(obj.texto ?? "");

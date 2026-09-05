@@ -155,15 +155,162 @@ export function splitEventCoupleNamesText(text) {
   };
 }
 
+export function resolveEventCoupleNamesValueFormat({ field, value } = {}) {
+  const parsed = splitEventCoupleNamesText(value);
+  if (parsed.primaryName && parsed.secondaryName) return parsed.format;
+  return normalizeEventCoupleNamesFormat(asObject(field).eventDetailsFormat);
+}
+
+function resolveEventCoupleNamesDefaultConnector(format) {
+  const safeFormat = normalizeEventCoupleNamesFormat(format);
+  if (safeFormat === EVENT_COUPLE_NAME_FORMATS.AMPERSAND) return "&";
+  if (safeFormat === EVENT_COUPLE_NAME_FORMATS.LINEBREAK) return "\n";
+  return "y";
+}
+
+function extractEventCoupleNamesConnector(text, names) {
+  const raw = String(text || "").trim();
+  const primaryName = normalizeText(names?.primaryName);
+  const secondaryName = normalizeText(names?.secondaryName);
+  if (
+    !raw ||
+    !primaryName ||
+    !secondaryName ||
+    !raw.startsWith(primaryName) ||
+    !raw.endsWith(secondaryName)
+  ) {
+    return "";
+  }
+
+  const connectorStart = primaryName.length;
+  const connectorEnd = raw.length - secondaryName.length;
+  const isConnectorBoundary = (value) => Boolean(value) && !/[\p{L}\p{N}_]/u.test(value);
+  if (
+    connectorStart >= connectorEnd ||
+    !isConnectorBoundary(raw[connectorStart]) ||
+    !isConnectorBoundary(raw[connectorEnd - 1])
+  ) {
+    return "";
+  }
+
+  const connector = raw
+    .slice(connectorStart, connectorEnd)
+    .trim();
+  if (!connector) return "";
+  return /\r?\n/.test(connector) ? "\n" : connector;
+}
+
+export function resolveEventCoupleNamesConnector({
+  field,
+  value,
+  names,
+  fallbackNames,
+} = {}) {
+  const explicitConnector =
+    extractEventCoupleNamesConnector(value, names) ||
+    extractEventCoupleNamesConnector(value, fallbackNames);
+  if (explicitConnector) return explicitConnector;
+
+  const parsed = splitEventCoupleNamesText(value);
+  if (parsed.primaryName && parsed.secondaryName) {
+    return resolveEventCoupleNamesDefaultConnector(parsed.format);
+  }
+  return resolveEventCoupleNamesDefaultConnector(asObject(field).eventDetailsFormat);
+}
+
+export function resolveEventCoupleNamesInlineEdit({
+  text,
+  currentNames,
+  currentValue,
+  field,
+} = {}) {
+  const parsed = splitEventCoupleNamesText(text);
+  const currentConnector = resolveEventCoupleNamesConnector({
+    field,
+    value: currentValue,
+    names: currentNames,
+  });
+  if (!parsed.primaryName) {
+    return {
+      ...parsed,
+      connector: currentConnector,
+    };
+  }
+
+  if (parsed.secondaryName) {
+    return {
+      ...parsed,
+      connector: resolveEventCoupleNamesDefaultConnector(parsed.format),
+    };
+  }
+
+  const primaryName = normalizeText(currentNames?.primaryName);
+  const secondaryName = normalizeText(currentNames?.secondaryName);
+  const explicitConnector = extractEventCoupleNamesConnector(text, currentNames);
+  if (explicitConnector) {
+    return {
+      primaryName,
+      secondaryName,
+      format: inferEventCoupleNamesFormat(text),
+      connector: explicitConnector,
+    };
+  }
+
+  const comparable = (value) => String(value || "").replace(/\s+/g, "").toLowerCase();
+  if (
+    primaryName &&
+    secondaryName &&
+    comparable(parsed.primaryName) === comparable(`${primaryName}${secondaryName}`)
+  ) {
+    return {
+      primaryName,
+      secondaryName,
+      format: resolveEventCoupleNamesValueFormat({ field, value: currentValue }),
+      connector: currentConnector,
+    };
+  }
+
+  if (currentConnector && currentConnector !== "\n") {
+    const escapedConnector = currentConnector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const connectorBoundary = /^[\p{L}\p{N}_]+$/u.test(currentConnector)
+      ? `\\s+${escapedConnector}\\s+`
+      : `\\s*${escapedConnector}\\s*`;
+    const connectorMatch = String(text || "").trim().match(
+      new RegExp(`^(.+?)${connectorBoundary}(.+)$`, "u")
+    );
+    if (connectorMatch) {
+      return {
+        primaryName: normalizeText(connectorMatch[1]),
+        secondaryName: normalizeText(connectorMatch[2]),
+        format: resolveEventCoupleNamesValueFormat({ field, value: currentValue }),
+        connector: currentConnector,
+      };
+    }
+  }
+
+  return {
+    ...parsed,
+    connector: currentConnector,
+  };
+}
+
 export function formatEventCoupleNames({
   primaryName = "",
   secondaryName = "",
   format = EVENT_COUPLE_NAME_FORMATS.AND,
+  connector,
 } = {}) {
   const first = normalizeText(primaryName);
   const second = normalizeText(secondaryName);
   if (!first) return second;
   if (!second) return first;
+
+  const rawConnector = String(connector ?? "");
+  if (/\r?\n/.test(rawConnector)) return `${first}\n${second}`;
+  const explicitConnector = rawConnector.trim();
+  if (explicitConnector) {
+    return `${first} ${explicitConnector} ${second}`;
+  }
 
   const safeFormat = normalizeEventCoupleNamesFormat(format);
   if (safeFormat === EVENT_COUPLE_NAME_FORMATS.AMPERSAND) {
@@ -187,7 +334,7 @@ export function isEventPersonNameField(field) {
   return Boolean(normalizeEventPersonNameRole(asObject(field).eventDetailsRole));
 }
 
-export function resolveEventPersonNameValueForField(field, names = {}) {
+export function resolveEventPersonNameValueForField(field, names = {}, options = {}) {
   const safeField = asObject(field);
   const role = normalizeEventPersonNameRole(safeField.eventDetailsRole);
   if (role === EVENT_PERSON_NAME_ROLES.PRIMARY) return normalizeText(names.primaryName);
@@ -196,7 +343,16 @@ export function resolveEventPersonNameValueForField(field, names = {}) {
     return formatEventCoupleNames({
       primaryName: names.primaryName,
       secondaryName: names.secondaryName,
-      format: safeField.eventDetailsFormat,
+      format: resolveEventCoupleNamesValueFormat({
+        field: safeField,
+        value: asObject(options).currentValue,
+      }),
+      connector: resolveEventCoupleNamesConnector({
+        field: safeField,
+        value: asObject(options).currentValue,
+        names,
+        fallbackNames: asObject(options).fallbackNames,
+      }),
     });
   }
   return "";
@@ -417,8 +573,18 @@ export function buildEventPersonNameDefaults({
   fieldsSchema,
   defaults,
   names,
+  coupleValueByFieldKey,
 } = {}) {
   const safeDefaults = { ...asObject(defaults) };
+  const safeCoupleValueByFieldKey = asObject(coupleValueByFieldKey);
+  const previousNames = {
+    primaryName: normalizeText(
+      safeDefaults[getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.PRIMARY)]
+    ),
+    secondaryName: normalizeText(
+      safeDefaults[getEventPersonNameFieldKey(EVENT_PERSON_NAME_ROLES.SECONDARY)]
+    ),
+  };
   const safeNames = {
     primaryName: normalizeText(names?.primaryName),
     secondaryName: normalizeText(names?.secondaryName),
@@ -427,7 +593,16 @@ export function buildEventPersonNameDefaults({
   collectEventPersonNameFields(fieldsSchema).forEach((field) => {
     const fieldKey = normalizeText(field.key);
     if (!fieldKey) return;
-    safeDefaults[fieldKey] = resolveEventPersonNameValueForField(field, safeNames);
+    const currentValue = Object.prototype.hasOwnProperty.call(
+      safeCoupleValueByFieldKey,
+      fieldKey
+    )
+      ? safeCoupleValueByFieldKey[fieldKey]
+      : safeDefaults[fieldKey];
+    safeDefaults[fieldKey] = resolveEventPersonNameValueForField(field, safeNames, {
+      currentValue,
+      fallbackNames: previousNames,
+    });
   });
 
   return safeDefaults;

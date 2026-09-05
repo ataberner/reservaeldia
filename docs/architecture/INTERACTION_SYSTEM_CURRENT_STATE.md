@@ -476,9 +476,31 @@ Current inline editing is a multi-surface lifecycle, not a single React state to
 Current entry path:
 
 1. text selection and inline-intent logic starts from the stage/object gesture path
-2. `editing.id` becomes active in editor state
-3. `CanvasInlineEditingLayer.jsx` mounts the DOM-side backend for the active text node
-4. `HiddenSemanticTextBackend.jsx` computes projected geometry from the live Konva text node
+2. a dynamic textual target, when present, resolves its descriptor from the live authoring schema and values
+3. `editing.id` becomes active in editor state and retains that optional binding in the same session
+4. `CanvasInlineEditingLayer.jsx` mounts the DOM-side backend for the active text node
+5. `HiddenSemanticTextBackend.jsx` computes projected geometry from the live Konva text node; date/time bindings instead mount one native typed input anchored from that same node geometry
+
+Current linked-value path:
+
+1. text-like input is normalized according to its field type, multiline policy, and declared maximum length
+2. the canvas callback delegates to `useTemplateFieldAuthoring.updateLinkedTextFromCanvas(...)`
+3. explicit `eventDetailsRole` selects the person-name, location, or time owner; other fields use the generic value owner
+4. target application projects the canonical value to every target and the normal authoring-change notification refreshes sidebar consumers
+5. linked commit never patches `objeto.texto`; Escape sends the entry value through the same owner and empty values leave the visual target linked
+
+For a date-linked target, the first valid selection starts the typed branch
+directly and focuses its compact control. It does not call `showPicker`; the
+browser picker remains closed until the user activates the native calendar
+icon. The effective target preset, with its explicit transform ahead of the
+field fallback, selects `date` or `datetime-local`. Event date-time edits are
+split back into the explicit date and phase start-time fields; changes to either
+field reproject all date views while leaving every target transform and text-box
+layout property untouched. While the typed control owns its raw input value,
+Konva keeps rendering the current target projection; it never substitutes the
+raw `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm` control value during the session. The
+sidebar format selector remains the only authoring operation that changes the
+selected target's date preset.
 
 Current caret reposition path while the same inline session remains active:
 
@@ -683,7 +705,7 @@ Timing-sensitive boundary:
 Current execution order for inline swap is:
 
 1. editor enters inline editing state for a text id
-2. `CanvasInlineEditingLayer.jsx` mounts the DOM-side backend
+2. `CanvasInlineEditingLayer.jsx` mounts the DOM-side backend; a date/time-linked session mounts its anchored native input and keeps Konva as visual text authority
 3. `useInlinePhaseAtomicLifecycle.js` prepares fonts and offset data
 4. it emits `ready_to_swap`
 5. `useInlineSessionRuntime.js` commits swap state in a microtask
@@ -693,6 +715,10 @@ Current execution order for inline swap is:
 9. authority becomes `dom-editable`
 10. caret becomes visible and editable focus is reclaimed
 11. finish/done/cancel clears the mount session and returns authority to Konva
+
+Steps 3-10 apply to the text DOM/Konva swap. The typed linked-field branch uses
+the same `editing.id`, finish boundary, and critical-action drain without taking
+visual text authority away from Konva.
 
 Timing-sensitive boundaries:
 

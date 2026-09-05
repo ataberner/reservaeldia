@@ -177,7 +177,7 @@ function buildDateTextFormatOptions(includeTime = false) {
   };
 }
 
-function shouldIncludeTimeInDateText(preset) {
+export function dateTextFormatPresetIncludesTime(preset) {
   const safePreset = normalizeText(preset);
 
   if (
@@ -205,7 +205,7 @@ export function isDateTextFormatPreset(preset) {
 
 function formatDateTextPreset(date, preset, fieldType = "") {
   const safePreset = normalizeDateTextFormatPreset(preset, fieldType);
-  const includeTime = shouldIncludeTimeInDateText(safePreset);
+  const includeTime = dateTextFormatPresetIncludesTime(safePreset);
 
   if (safePreset === "event_date_long_es_ar") {
     return new Intl.DateTimeFormat("es-AR", buildDateTextFormatOptions(includeTime)).format(date);

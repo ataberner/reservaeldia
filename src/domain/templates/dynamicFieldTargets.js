@@ -1,15 +1,31 @@
 import { materializeGroupChildAsRoot } from "../editor/grouping.js";
 import { applyFunctionalAssociationsToRenderState } from "../../../shared/functionalAssociations.js";
 import {
+  dateTextFormatPresetIncludesTime,
   isDateLikeTemplateFieldType,
   isTextualTemplateTargetPath,
+  normalizeTemplateInputValueForFieldType,
+  resolveEffectiveTemplateTargetTransform,
 } from "./fieldValueResolver.js";
 import {
   resolveEventPersonNameVisualFieldKeys,
 } from "../eventDetails/personNames.js";
+import {
+  buildEventDateInlineControlValue,
+  resolveEventDateAuthoringParts,
+} from "../eventDetails/date.js";
 
 const DETACHED_VISUALS_VERSION = 1;
 const GALLERY_OBJECT_TYPES = new Set(["galeria", "gallery"]);
+const DYNAMIC_INLINE_FIELD_TYPES = new Set([
+  "text",
+  "textarea",
+  "date",
+  "time",
+  "datetime",
+  "location",
+  "url",
+]);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -544,6 +560,145 @@ export function resolveDynamicTextFieldForObject({ fieldsSchema, objectId } = {}
     }
   }
   return null;
+}
+
+function toPositiveInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.max(1, Math.round(numeric));
+}
+
+function resolveDynamicInlineCanonicalValue({ fieldKey, values, defaults }) {
+  const safeValues = asObject(values);
+  const safeDefaults = asObject(defaults);
+  return Object.prototype.hasOwnProperty.call(safeValues, fieldKey)
+    ? safeValues[fieldKey]
+    : safeDefaults[fieldKey];
+}
+
+export function normalizeDynamicInlineFieldValue({ descriptor, field, value } = {}) {
+  const source = asObject(descriptor);
+  const safeField = Object.keys(asObject(field)).length ? asObject(field) : source;
+  const fieldType = normalizeText(
+    source.fieldType || safeField.type || "text"
+  ).toLowerCase();
+  const eventDetailsRole = normalizeText(
+    source.eventDetailsRole || safeField.eventDetailsRole
+  ).toLowerCase();
+  const eventDetailsFormat = normalizeText(
+    source.eventDetailsFormat || safeField.eventDetailsFormat
+  ).toLowerCase();
+  const maxLength = toPositiveInteger(
+    source.maxLength || asObject(safeField.validation).maxLength
+  );
+
+  if (source.controlKind === "datetime-local") {
+    return normalizeTemplateInputValueForFieldType("datetime", value);
+  }
+  if (source.controlKind === "date") {
+    return normalizeTemplateInputValueForFieldType("date", value);
+  }
+  if (fieldType === "date" || fieldType === "datetime") {
+    return normalizeTemplateInputValueForFieldType(fieldType, value);
+  }
+  if (fieldType === "time") return normalizeText(value);
+
+  let nextValue = String(value ?? "").replace(/\r\n?/g, "\n");
+  const allowsCoupleLinebreak =
+    eventDetailsRole === "couple_names" && eventDetailsFormat === "linebreak";
+  const multiline = fieldType === "textarea" || allowsCoupleLinebreak;
+
+  if (allowsCoupleLinebreak) {
+    const lines = nextValue.split(/\n+/);
+    if (lines.length > 1) {
+      nextValue = `${lines.shift()}\n${lines.join(" ").replace(/\s+/g, " ")}`;
+    }
+  } else if (!multiline) {
+    nextValue = nextValue.replace(/\s*\n+\s*/g, " ");
+  }
+
+  return maxLength ? nextValue.slice(0, maxLength) : nextValue;
+}
+
+export function resolveDynamicTextInlineEditDescriptor({
+  fieldsSchema,
+  values,
+  defaults,
+  objectId,
+} = {}) {
+  const binding = resolveDynamicTextFieldForObject({ fieldsSchema, objectId });
+  if (!binding?.fieldKey) return null;
+
+  const field = asArray(fieldsSchema).find(
+    (candidate) => normalizeText(candidate?.key) === binding.fieldKey
+  );
+  if (!field) return null;
+
+  const fieldType = normalizeText(field.type || "text").toLowerCase();
+  if (!DYNAMIC_INLINE_FIELD_TYPES.has(fieldType)) return null;
+
+  const eventDetailsRole = normalizeText(field.eventDetailsRole).toLowerCase();
+  const eventDetailsFormat = normalizeText(field.eventDetailsFormat).toLowerCase();
+  const multiline =
+    fieldType === "textarea" ||
+    (eventDetailsRole === "couple_names" && eventDetailsFormat === "linebreak");
+  const maxLength = toPositiveInteger(asObject(field.validation).maxLength);
+  const targetTransform = isDateLikeTemplateFieldType(fieldType)
+    ? resolveEffectiveTemplateTargetTransform({ field, target: binding.target })
+    : null;
+  const dateTextFormatPreset =
+    targetTransform?.kind === "date_to_text" ? targetTransform.preset : null;
+  const includesTime = Boolean(
+    dateTextFormatPreset &&
+      dateTextFormatPresetIncludesTime(dateTextFormatPreset)
+  );
+  const eventDateParts = isDateLikeTemplateFieldType(fieldType)
+    ? resolveEventDateAuthoringParts({
+        field,
+        fieldsSchema,
+        values,
+        defaults,
+      })
+    : null;
+  const controlKind = isDateLikeTemplateFieldType(fieldType)
+    ? (includesTime ? "datetime-local" : "date")
+    : (fieldType === "time" ? "time" : "text");
+  const descriptor = {
+    fieldKey: binding.fieldKey,
+    fieldType,
+    label: normalizeText(field.label || field.key),
+    eventDetailsRole: eventDetailsRole || null,
+    eventDetailsFormat: eventDetailsFormat || null,
+    target: binding.target,
+    controlKind,
+    dateTextFormatPreset,
+    includesTime,
+    openOnSelect: controlKind === "date" || controlKind === "datetime-local",
+    eventDetailsFeature: eventDateParts?.feature || null,
+    eventStartTimeFieldKey: eventDateParts?.startTimeFieldKey || null,
+    multiline,
+    maxLength,
+  };
+
+  const canonicalValue = eventDateParts
+    ? buildEventDateInlineControlValue({
+        date: eventDateParts.date,
+        time: eventDateParts.time,
+        includeTime: includesTime,
+      })
+    : resolveDynamicInlineCanonicalValue({
+        fieldKey: binding.fieldKey,
+        values,
+        defaults,
+      });
+
+  return {
+    ...descriptor,
+    value: normalizeDynamicInlineFieldValue({
+      descriptor,
+      value: canonicalValue,
+    }),
+  };
 }
 
 export function resolveDynamicFieldScrollTarget({

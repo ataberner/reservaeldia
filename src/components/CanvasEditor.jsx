@@ -123,12 +123,8 @@ import {
 } from "@/domain/dashboard/editorCanvasLayout";
 import {
   planDynamicFieldVisualDeletion,
-  resolveDynamicTextFieldForObject,
+  resolveDynamicTextInlineEditDescriptor,
 } from "@/domain/templates/dynamicFieldTargets";
-import {
-  EDITOR_BRIDGE_EVENTS,
-  buildDynamicFieldEditRequestDetail,
-} from "@/lib/editorBridgeContracts";
 
 const SIDEBAR_PANEL_CANVAS_RESIZE_SETTLE_MS = DASHBOARD_EDITOR_CANVAS_TRANSITION_MS + 60;
 const CANVAS_DESKTOP_WIDTH_PX = 800;
@@ -454,7 +450,6 @@ export default function CanvasEditor({
   const [isBackgroundEditInteracting, setIsBackgroundEditInteracting] = useState(false);
   const [deleteSectionModal, setDeleteSectionModal] = useState({ isOpen: false, sectionId: null });
   const [isDeletingSection, setIsDeletingSection] = useState(false);
-  const [dynamicFieldInlineNotice, setDynamicFieldInlineNotice] = useState(null);
   const [dynamicVisualDeleteState, setDynamicVisualDeleteState] = useState({
     isOpen: false,
     isConfirming: false,
@@ -994,29 +989,18 @@ export default function CanvasEditor({
     templateAuthoring.hydrated === true
       ? templateAuthoring.getSnapshot()
       : null;
-  const handleDynamicFieldInlineBlocked = useCallback(
+  const resolveDynamicFieldInlineEdit = useCallback(
     ({ objectId } = {}) => {
-      const binding = resolveDynamicTextFieldForObject({
-        fieldsSchema: templateAuthoring.fieldsSchema,
+      const authoringSnapshot = templateAuthoring.getSnapshot();
+      return resolveDynamicTextInlineEditDescriptor({
+        fieldsSchema: authoringSnapshot.fieldsSchema,
+        values: authoringSnapshot.values,
+        defaults: authoringSnapshot.defaults,
         objectId,
       });
-      if (!binding?.fieldKey) return false;
-      setDynamicFieldInlineNotice({
-        fieldKey: binding.fieldKey,
-        objectId: String(objectId || "").trim(),
-      });
-      return true;
     },
-    [templateAuthoring.fieldsSchema]
+    [templateAuthoring]
   );
-  const goToDynamicFieldFromInlineNotice = useCallback(() => {
-    const detail = buildDynamicFieldEditRequestDetail(dynamicFieldInlineNotice || {});
-    if (!detail.fieldKey || typeof window === "undefined") return;
-    window.dispatchEvent(
-      new CustomEvent(EDITOR_BRIDGE_EVENTS.DYNAMIC_FIELD_EDIT_REQUEST, { detail })
-    );
-    setDynamicFieldInlineNotice(null);
-  }, [dynamicFieldInlineNotice]);
   const restoreDynamicFieldRepresentationAndFocus = useCallback(
     async (request = {}) => {
       const flushResult = await flushEditorPersistence({
@@ -1300,7 +1284,6 @@ export default function CanvasEditor({
       )}`;
       const anchorRect = botonOpcionesRef.current?.getBoundingClientRect?.() || null;
       captureDynamicVisualDeleteFocus({ preferOptionButton: true });
-      setDynamicFieldInlineNotice(null);
       setDynamicVisualDeleteState({
         isOpen: true,
         isConfirming: false,
@@ -1370,7 +1353,6 @@ export default function CanvasEditor({
         editorSession?.id || slug || ""
       )}`;
       captureDynamicVisualDeleteFocus();
-      setDynamicFieldInlineNotice(null);
       setDynamicVisualDeleteState({
         isOpen: true,
         isConfirming: false,
@@ -2139,6 +2121,7 @@ export default function CanvasEditor({
       setElementosSeleccionados,
       setMostrarPanelZ,
       obtenerMetricasNodoInline,
+      onLinkedInlineValueChange: templateAuthoring.updateLinkedTextFromCanvas,
     }),
   });
 
@@ -2173,7 +2156,7 @@ export default function CanvasEditor({
   const requestInlineEditFinish = useCallback((reason = "manual") => {
     const handled = textEditInteractionController.requestFinish(reason);
     if (!handled && editing.id) {
-      onInlineFinish();
+      onInlineFinish(reason);
       return true;
     }
     return handled;
@@ -2656,7 +2639,7 @@ export default function CanvasEditor({
                 onBackgroundEditInteractionChange={handleBackgroundEditInteractionChange}
                 postDragDiagnosticMenuTargetIds={postDragDiagnosticMenuTargetIds}
                 canManageSite={canManageSite}
-                onDynamicFieldInlineBlocked={handleDynamicFieldInlineBlocked}
+                onResolveDynamicFieldInlineEdit={resolveDynamicFieldInlineEdit}
               />
 
 
@@ -2674,6 +2657,8 @@ export default function CanvasEditor({
                 zoom={zoom}
                 altoCanvasDinamico={renderAltoCanvas}
                 seccionesOrdenadas={renderSeccionesOrdenadas}
+                onValueChange={onInlineChange}
+                onRequestFinish={requestInlineEditFinish}
               />
             )}
 
@@ -2765,9 +2750,6 @@ export default function CanvasEditor({
           }
           backgroundEditSectionId={backgroundEditSectionId}
           sectionDecorationEdit={sectionDecorationEdit}
-          dynamicFieldInlineNotice={dynamicFieldInlineNotice}
-          onGoToDynamicField={goToDynamicFieldFromInlineNotice}
-          onCloseDynamicFieldInlineNotice={() => setDynamicFieldInlineNotice(null)}
           dynamicVisualDeleteDialog={{
             ...dynamicVisualDeleteState,
             onCancel: cancelDynamicVisualDelete,

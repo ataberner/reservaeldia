@@ -5,6 +5,10 @@ import {
   getChangedKeys,
 } from "./formModel.js";
 import { resolveTemplateTargetValuePair } from "./fieldValueResolver.js";
+import {
+  expandEventDateProjectionFieldKeys,
+  resolveEventDateTargetProjectionValue,
+} from "../eventDetails/date.js";
 
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -64,6 +68,8 @@ export function buildTemplatePersonalizationFieldPlan({
   field,
   nextValue,
   defaultValue,
+  targetNextValue = nextValue,
+  targetDefaultValue = defaultValue,
 } = {}) {
   const safeField = asObject(field);
   const key = normalizeText(safeField.key);
@@ -77,8 +83,8 @@ export function buildTemplatePersonalizationFieldPlan({
       const resolvedValues = resolveTemplateTargetValuePair({
         field: safeField,
         target,
-        nextValue,
-        defaultValue,
+        nextValue: targetNextValue,
+        defaultValue: targetDefaultValue,
       });
 
       return {
@@ -148,7 +154,11 @@ export function buildTemplatePersonalizationPlan({
     resolvedValues: safeResolvedValues,
   });
 
-  const fieldPlans = changedKeys
+  const projectionFieldKeys = expandEventDateProjectionFieldKeys({
+    fieldsSchema: formState.fields,
+    fieldKeys: changedKeys,
+  });
+  const fieldPlans = projectionFieldKeys
     .map((key) => {
       const field = formState.fields.find((entry) => entry.key === key);
       if (!field) return null;
@@ -157,6 +167,18 @@ export function buildTemplatePersonalizationPlan({
         field,
         nextValue: safeResolvedValues[key],
         defaultValue: defaults[key],
+        targetNextValue: resolveEventDateTargetProjectionValue({
+          field,
+          fieldsSchema: formState.fields,
+          values: safeResolvedValues,
+          defaults,
+        }),
+        targetDefaultValue: resolveEventDateTargetProjectionValue({
+          field,
+          fieldsSchema: formState.fields,
+          values: defaults,
+          defaults,
+        }),
       });
     })
     .filter(Boolean);

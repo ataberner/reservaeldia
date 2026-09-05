@@ -18,6 +18,8 @@ export default function useInlineEditor() {
     value: "",
     initialCaretClientPoint: null,
     entrySelectionMode: null,
+    linkedField: null,
+    originalValue: "",
   });
 
   const startEdit = useCallback(
@@ -33,6 +35,8 @@ export default function useInlineEditor() {
           options?.entrySelectionMode,
           { initialCaretClientPoint }
         ),
+        linkedField: options?.linkedField || null,
+        originalValue: String(options?.originalValue ?? val ?? ""),
       });
     },
     []
@@ -48,6 +52,8 @@ export default function useInlineEditor() {
         value: "",
         initialCaretClientPoint: null,
         entrySelectionMode: null,
+        linkedField: null,
+        originalValue: "",
       }),
     []
   );

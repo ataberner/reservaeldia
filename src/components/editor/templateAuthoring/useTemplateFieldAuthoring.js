@@ -21,13 +21,17 @@ import {
   buildEventPersonNameDefaults,
   collectEventPersonNameFields,
   ensureEventPersonNameFields,
+  formatEventCoupleNames,
   getEventPersonNameFieldKey,
   inferEventCoupleNamesFormat,
   normalizeEventPersonNameRole,
+  resolveEventCoupleNamesInlineEdit,
   resolveEventPersonNamesFromAuthoring,
   splitEventCoupleNamesText,
 } from "@/domain/eventDetails/personNames.js";
 import {
+  EVENT_LOCATION_ROLES,
+  buildEventGoogleMapClearPatch,
   buildEventLocationDefaults,
   buildEventGoogleMapInsertObject,
   buildEventGoogleMapProjectionPatches,
@@ -53,9 +57,13 @@ import {
   resolveEventTimesFromAuthoring,
 } from "@/domain/eventDetails/time.js";
 import {
+  expandEventDateProjectionFieldKeys,
   ensureEventDateField,
   getEventDateFieldKey,
+  isEventDateField,
+  resolveEventDateTargetProjectionValue,
   resolveEventDateFieldFeature,
+  splitEventDateInlineControlValue,
 } from "@/domain/eventDetails/date.js";
 import { normalizeEventDetailFeature } from "@/domain/eventDetails/features.js";
 import {
@@ -88,6 +96,7 @@ import {
 import {
   preserveRecoveredTextBoxLayout,
   restoreDynamicFieldVisual,
+  normalizeDynamicInlineFieldValue,
   resolveDynamicFieldVisualStatus,
 } from "@/domain/templates/dynamicFieldTargets.js";
 import computeInsertDefaults from "@/components/editor/events/computeInsertDefaults.js";
@@ -915,12 +924,23 @@ export default function useTemplateFieldAuthoring({
 
       let nextObjects = baseObjects;
       if (options.applyTargets !== false) {
+        const projectionFieldKeys = new Set(
+          expandEventDateProjectionFieldKeys({
+            fieldsSchema: effectiveFieldsSchema,
+            fieldKeys: Object.keys(filteredPatch),
+          })
+        );
         effectiveFieldsSchema.forEach((field) => {
           const fieldKey = normalizeText(field?.key);
-          if (!fieldKey || !Object.prototype.hasOwnProperty.call(filteredPatch, fieldKey)) return;
+          if (!fieldKey || !projectionFieldKeys.has(fieldKey)) return;
           const patches = buildTemplateAuthoringTargetPatches({
             field,
-            value: nextValues[fieldKey],
+            value: resolveEventDateTargetProjectionValue({
+              field,
+              fieldsSchema: effectiveFieldsSchema,
+              values: nextValues,
+              defaults: baseDefaults,
+            }),
             objetos: nextObjects,
             secciones: baseSections,
           });
@@ -1085,15 +1105,32 @@ export default function useTemplateFieldAuthoring({
   );
 
   const updateEventPersonNames = useCallback(
-    async (patch = {}) => {
+    async (patch = {}, options = {}) => {
       if (!canUseExistingFields) {
         throw new Error("Este borrador no esta vinculado a una plantilla base.");
       }
 
+      const liveState = latestAuthoringStateRef.current;
+      const liveSnapshot = asObject(liveState.snapshot);
+      const liveFieldsSchema = Array.isArray(liveSnapshot.fieldsSchema)
+        ? liveSnapshot.fieldsSchema
+        : fieldsSchema;
+      const liveDefaults = ensureDefaultsForSchema(
+        liveFieldsSchema,
+        liveSnapshot.defaults || defaults
+      );
+      const liveValues = ensureValuesForSchema(
+        liveFieldsSchema,
+        liveSnapshot.values,
+        liveDefaults
+      );
+      const liveObjects = Array.isArray(liveState.objetos)
+        ? liveState.objetos
+        : safeObjetos;
       const currentNames = resolveEventPersonNamesFromAuthoring({
-        fieldsSchema,
-        defaults: values,
-        objetos: safeObjetos,
+        fieldsSchema: liveFieldsSchema,
+        defaults: liveValues,
+        objetos: liveObjects,
       });
       const safePatch = asObject(patch);
       const nextNames = {
@@ -1106,9 +1143,9 @@ export default function useTemplateFieldAuthoring({
       };
       const ensureResult = canConfigure
         ? ensureEventPersonNameFields({
-            fieldsSchema,
+            fieldsSchema: liveFieldsSchema,
             includeBaseFields: true,
-            coupleFormats: collectEventPersonNameFields(fieldsSchema)
+            coupleFormats: collectEventPersonNameFields(liveFieldsSchema)
               .filter(
                 (field) =>
                   normalizeEventPersonNameRole(field.eventDetailsRole) ===
@@ -1117,16 +1154,18 @@ export default function useTemplateFieldAuthoring({
               .map((field) => field.eventDetailsFormat),
           })
         : {
-            fieldsSchema,
+            fieldsSchema: liveFieldsSchema,
             changed: false,
           };
       const nextFieldsSchema = ensureResult.fieldsSchema;
+      const coupleValueByFieldKey = asObject(options.coupleValueByFieldKey);
       const nextValues = ensureValuesForSchema(
         nextFieldsSchema,
         buildEventPersonNameDefaults({
           fieldsSchema: nextFieldsSchema,
-          defaults: values,
+          defaults: liveValues,
           names: nextNames,
+          coupleValueByFieldKey,
         })
       );
       const valuesPatch = Object.fromEntries(
@@ -1144,10 +1183,10 @@ export default function useTemplateFieldAuthoring({
     [
       canConfigure,
       canUseExistingFields,
+      defaults,
       fieldsSchema,
       safeObjetos,
       updateTemplateFieldValues,
-      values,
     ]
   );
 
@@ -1525,6 +1564,141 @@ export default function useTemplateFieldAuthoring({
       fieldsSchema,
       updateTemplateFieldValues,
       values,
+    ]
+  );
+
+  const updateLinkedTextFromCanvas = useCallback(
+    async ({ fieldKey, value, descriptor } = {}) => {
+      const safeFieldKey = normalizeText(fieldKey);
+      if (!safeFieldKey) return false;
+
+      const liveSnapshot = asObject(latestAuthoringStateRef.current.snapshot);
+      const liveFieldsSchema = Array.isArray(liveSnapshot.fieldsSchema)
+        ? liveSnapshot.fieldsSchema
+        : fieldsSchema;
+      const field = liveFieldsSchema.find(
+        (candidate) => normalizeText(candidate?.key) === safeFieldKey
+      );
+      if (!field) return false;
+
+      const inlineDescriptor = {
+        ...asObject(descriptor),
+        fieldType: normalizeText(descriptor?.fieldType || field.type || "text"),
+        eventDetailsRole: normalizeText(
+          descriptor?.eventDetailsRole || field.eventDetailsRole
+        ),
+      };
+      const nextValue = normalizeDynamicInlineFieldValue({
+        descriptor: inlineDescriptor,
+        field,
+        value,
+      });
+      if (isEventDateField(field)) {
+        const feature = resolveEventDateFieldFeature(field);
+        const parts = splitEventDateInlineControlValue(nextValue);
+        if (inlineDescriptor.includesTime === true) {
+          const ensureResult = ensureEventTimeFields({
+            fieldsSchema: liveFieldsSchema,
+            feature,
+          });
+          const startTimeFieldKey =
+            normalizeText(inlineDescriptor.eventStartTimeFieldKey) ||
+            getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, feature);
+          return updateTemplateFieldValues(
+            {
+              [safeFieldKey]: parts.date,
+              [startTimeFieldKey]: parts.time,
+            },
+            {
+              fieldsSchema: ensureResult.fieldsSchema,
+              applyTargets: true,
+              reason: "event-date-time-inline-update",
+            }
+          );
+        }
+        return updateTemplateFieldValue(safeFieldKey, parts.date, {
+          reason: "event-date-inline-update",
+        });
+      }
+      const personNameRole = normalizeEventPersonNameRole(field.eventDetailsRole);
+      if (personNameRole === EVENT_PERSON_NAME_ROLES.PRIMARY) {
+        return updateEventPersonNames({ primaryName: nextValue });
+      }
+      if (personNameRole === EVENT_PERSON_NAME_ROLES.SECONDARY) {
+        return updateEventPersonNames({ secondaryName: nextValue });
+      }
+      if (personNameRole === EVENT_PERSON_NAME_ROLES.COUPLE) {
+        const liveDefaults = ensureDefaultsForSchema(
+          liveFieldsSchema,
+          liveSnapshot.defaults
+        );
+        const liveValues = ensureValuesForSchema(
+          liveFieldsSchema,
+          liveSnapshot.values,
+          liveDefaults
+        );
+        const currentNames = resolveEventPersonNamesFromAuthoring({
+          fieldsSchema: liveFieldsSchema,
+          defaults: liveValues,
+          objetos: latestAuthoringStateRef.current.objetos,
+        });
+        const names = resolveEventCoupleNamesInlineEdit({
+          text: nextValue,
+          currentNames,
+          currentValue: liveValues[safeFieldKey],
+          field,
+        });
+        return updateEventPersonNames(
+          {
+            primaryName: names.primaryName,
+            secondaryName: names.secondaryName,
+          },
+          {
+            coupleValueByFieldKey: {
+              [safeFieldKey]: formatEventCoupleNames(names),
+            },
+          }
+        );
+      }
+
+      const locationRole = normalizeEventLocationRole(field.eventDetailsRole);
+      if (locationRole) {
+        const feature = resolveEventLocationFieldFeature(field);
+        if (locationRole === EVENT_LOCATION_ROLES.VENUE_ADDRESS) {
+          return updateEventLocation(
+            {
+              ...buildEventGoogleMapClearPatch(),
+              address: nextValue,
+              showMap: false,
+            },
+            { feature }
+          );
+        }
+        return updateEventLocation({ venueName: nextValue }, { feature });
+      }
+
+      const timeRole = normalizeEventTimeRole(field.eventDetailsRole);
+      if (timeRole) {
+        const feature = resolveEventTimeFieldFeature(field);
+        return updateEventTimes(
+          timeRole === EVENT_TIME_ROLES.END_TIME
+            ? { endTime: nextValue }
+            : { startTime: nextValue },
+          { feature }
+        );
+      }
+
+      return updateTemplateFieldValue(safeFieldKey, nextValue, {
+        reason: "dynamic-field-inline-update",
+      });
+    },
+    [
+      fieldsSchema,
+      updateEventLocation,
+      updateEventPersonNames,
+      updateEventTimes,
+      updateTemplateFieldValue,
+      updateTemplateFieldValues,
     ]
   );
 
@@ -2170,7 +2344,12 @@ export default function useTemplateFieldAuthoring({
           projectedObjects,
           buildTemplateAuthoringTargetPatches({
             field,
-            value: currentValues[fieldKey],
+            value: resolveEventDateTargetProjectionValue({
+              field,
+              fieldsSchema: nextFieldsSchema,
+              values: currentValues,
+              defaults: baseDefaults,
+            }),
             objetos: projectedObjects,
             secciones: nextSections,
           })
@@ -2479,7 +2658,12 @@ export default function useTemplateFieldAuthoring({
           nextObjects,
           buildTemplateAuthoringTargetPatches({
             field: candidate,
-            value: liveValues[candidateKey],
+            value: resolveEventDateTargetProjectionValue({
+              field: candidate,
+              fieldsSchema: restored.nextFieldsSchema,
+              values: liveValues,
+              defaults: liveDefaults,
+            }),
             objetos: nextObjects,
             secciones: liveSections,
           })
@@ -2763,6 +2947,7 @@ export default function useTemplateFieldAuthoring({
     updateEventLocation,
     linkSelectionToEventLocation,
     updateEventTimes,
+    updateLinkedTextFromCanvas,
     linkSelectionToEventTime,
     linkSelectionToEventDate,
     linkSelectionToStoryText,

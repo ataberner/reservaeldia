@@ -2,9 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildEventDateInlineControlValue,
   ensureEventDateField,
+  expandEventDateProjectionFieldKeys,
   getEventDateFieldKey,
+  resolveEventDateAuthoringParts,
   resolveEventDateSidebarBinding,
+  resolveEventDateTargetProjectionValue,
+  splitEventDateInlineControlValue,
 } from "./date.js";
 import {
   linkElementToField,
@@ -12,6 +17,152 @@ import {
 import {
   buildTemplateAuthoringTargetPatches,
 } from "../templates/authoring/targetApplication.js";
+
+test("event date inline values keep date and start time in their structured fields", () => {
+  const fieldsSchema = [
+    {
+      key: "event_ceremony_date",
+      type: "date",
+      eventDetailsRole: "ceremony_date",
+      applyTargets: [],
+    },
+    {
+      key: "event_ceremony_start_time",
+      type: "time",
+      eventDetailsRole: "ceremony_start_time",
+      applyTargets: [],
+    },
+  ];
+  const values = {
+    event_ceremony_date: "2027-04-12",
+    event_ceremony_start_time: "19:45",
+  };
+
+  assert.deepEqual(
+    resolveEventDateAuthoringParts({
+      field: fieldsSchema[0],
+      fieldsSchema,
+      values,
+    }),
+    {
+      feature: "ceremony",
+      dateFieldKey: "event_ceremony_date",
+      startTimeFieldKey: "event_ceremony_start_time",
+      date: "2027-04-12",
+      time: "19:45",
+    }
+  );
+  assert.equal(
+    buildEventDateInlineControlValue({
+      date: values.event_ceremony_date,
+      time: values.event_ceremony_start_time,
+      includeTime: true,
+    }),
+    "2027-04-12T19:45"
+  );
+  assert.deepEqual(splitEventDateInlineControlValue("2028-05-03T21:10"), {
+    date: "2028-05-03",
+    time: "21:10",
+  });
+  assert.equal(
+    resolveEventDateTargetProjectionValue({
+      field: fieldsSchema[0],
+      fieldsSchema,
+      values,
+    }),
+    "2027-04-12T19:45"
+  );
+  assert.deepEqual(
+    expandEventDateProjectionFieldKeys({
+      fieldsSchema,
+      fieldKeys: ["event_ceremony_start_time"],
+    }),
+    ["event_ceremony_start_time", "event_ceremony_date"]
+  );
+});
+
+test("event date projection refreshes date-only and date-time targets without touching format or layout", () => {
+  const fieldsSchema = [
+    {
+      key: "event_party_date",
+      type: "date",
+      eventDetailsRole: "party_date",
+      applyTargets: [
+        {
+          scope: "objeto",
+          id: "party-date-short",
+          path: "texto",
+          transform: {
+            kind: "date_to_text",
+            preset: "event_date_slash_short_year_es_ar",
+          },
+        },
+        {
+          scope: "objeto",
+          id: "party-date-time",
+          path: "texto",
+          transform: {
+            kind: "date_to_text",
+            preset: "event_datetime_short_es_ar",
+          },
+        },
+      ],
+    },
+    {
+      key: "event_party_start_time",
+      type: "time",
+      eventDetailsRole: "party_start_time",
+      applyTargets: [],
+    },
+  ];
+  const originalTargets = structuredClone(fieldsSchema[0].applyTargets);
+  const value = resolveEventDateTargetProjectionValue({
+    field: fieldsSchema[0],
+    fieldsSchema,
+    values: {
+      event_party_date: "2027-04-12",
+      event_party_start_time: "23:30",
+    },
+  });
+  const patches = buildTemplateAuthoringTargetPatches({
+    field: fieldsSchema[0],
+    value,
+    objetos: [
+      {
+        id: "party-date-short",
+        tipo: "texto",
+        texto: "Anterior",
+        width: 280,
+        align: "center",
+        textWrapMode: "word",
+        __autoWidth: false,
+      },
+      {
+        id: "party-date-time",
+        tipo: "texto",
+        texto: "Anterior",
+        width: 360,
+        align: "right",
+        textWrapMode: "word",
+        __autoWidth: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    patches.map((entry) => [entry.objectId, entry.patch.texto]),
+    [
+      ["party-date-short", "12/4/27"],
+      ["party-date-time", "12/04/2027, 23:30"],
+    ]
+  );
+  patches.forEach(({ patch }) => {
+    assert.equal(Object.prototype.hasOwnProperty.call(patch, "width"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(patch, "align"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(patch, "textWrapMode"), false);
+  });
+  assert.deepEqual(fieldsSchema[0].applyTargets, originalTargets);
+});
 
 test("event date predefined field links countdown and text targets", () => {
   const fieldKey = getEventDateFieldKey();

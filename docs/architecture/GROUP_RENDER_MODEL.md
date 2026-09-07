@@ -56,8 +56,8 @@ families), with these group-local differences:
 - Full-document collectors must recurse into `children[]` whenever they collect render
   capabilities or document-level dependencies from objects. This includes Google Fonts,
   countdown runtime activation, gallery lightbox activation, and functional CTA presence.
-- Functional visibility is derived before editor/preview/publish render from `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode`, and `eventDetails.dressCode.enabled`. In a shared section, inactive functional groups are omitted; if only one associated functionality remains visible among the section's functional groups, the renderer applies a reversible horizontal offset to all visible groups for that functionality based on their joint bounding box. This offset is not persisted as group `x`.
-- Standalone Ceremony/Party/Dress Code roots use the same functional visibility decision but do not participate in the group-only joint-centering offset.
+- Functional visibility is derived before editor/preview/publish render from `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode`, and `eventDetails.dressCode.enabled`. In a shared section, inactive functional owners are omitted; if only one associated functionality remains visible among the section's functional owners, the renderer applies a reversible horizontal offset to all visible owners for that functionality based on their joint bounding box. This offset is not persisted as object or group `x`.
+- Standalone Ceremony/Party/Dress Code roots participate independently in that joint-centering calculation. They keep their root identity and normal render contract; the derived offset neither creates a wrapper nor changes their persisted geometry.
 - Admin assignment keeps RSVP/Gifts singleton per section and allows multiple Ceremony/Party/Dress Code groups per section. Group children must not carry `functionalAssociation`.
 
 ### Dynamic View Detachment

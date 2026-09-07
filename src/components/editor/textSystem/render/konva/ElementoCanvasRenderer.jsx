@@ -4889,7 +4889,11 @@ export default function ElementoCanvas({
             }
             handleRef(node);
           }}
-          x={validX + textOriginOffsetX}
+          x={
+            validX +
+            (hasFunctionalRenderOffsetX ? functionalRenderOffsetX : 0) +
+            textOriginOffsetX
+          }
           y={validY}
           offsetX={textOriginOffsetX}
           offsetY={0}

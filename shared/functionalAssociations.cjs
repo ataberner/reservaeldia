@@ -460,6 +460,12 @@ function resolveGroupAbsoluteBounds(group) {
   return transformed;
 }
 
+function resolveFunctionalOwnerAbsoluteBounds(object) {
+  return isGroupObject(object)
+    ? resolveGroupAbsoluteBounds(object)
+    : resolveObjectLocalBounds(object);
+}
+
 function buildSectionLookup(secciones) {
   const lookup = new Map();
   (Array.isArray(secciones) ? secciones : []).forEach((section) => {
@@ -488,6 +494,33 @@ function collectFunctionalGroupsBySection(objetos, visibleSectionIds) {
     groupsBySection.get(sectionId)[association].push(safeObject);
   });
   return groupsBySection;
+}
+
+function collectCenterableFunctionalOwnersBySection(objetos, visibleSectionIds) {
+  const ownersBySection = new Map();
+  (Array.isArray(objetos) ? objetos : []).forEach((object) => {
+    const safeObject = asObject(object);
+    if (
+      !isGroupObject(safeObject) &&
+      !isStandaloneFunctionalAssociationOwner(safeObject)
+    ) {
+      return;
+    }
+    const sectionId = normalizeText(safeObject.seccionId);
+    if (!sectionId || (visibleSectionIds && !visibleSectionIds.has(sectionId))) return;
+    const association = normalizeFunctionalAssociation(
+      safeObject[FUNCTIONAL_ASSOCIATION_FIELD]
+    );
+    if (!association) return;
+    if (!ownersBySection.has(sectionId)) {
+      ownersBySection.set(
+        sectionId,
+        Object.fromEntries(FUNCTIONAL_ASSOCIATION_VALUES.map((value) => [value, []]))
+      );
+    }
+    ownersBySection.get(sectionId)[association].push(safeObject);
+  });
+  return ownersBySection;
 }
 
 function hasActiveStandaloneAssociationInSection(objetos, sectionId, enabled) {
@@ -552,6 +585,10 @@ function applyFunctionalAssociationsToRenderState({
   });
 
   const groupsBySection = collectFunctionalGroupsBySection(sourceObjetos, visibleSectionIdsAfterGlobal);
+  const centerableOwnersBySection = collectCenterableFunctionalOwnersBySection(
+    sourceObjetos,
+    visibleSectionIdsAfterGlobal
+  );
 
   groupsBySection.forEach((groupSet, sectionId) => {
     const section = sectionLookup.get(sectionId);
@@ -582,20 +619,23 @@ function applyFunctionalAssociationsToRenderState({
     return sectionId && !hiddenSectionIds.has(sectionId);
   });
 
+  const centeredObjectDeltas = new Map();
   const centeredGroupDeltas = new Map();
-  groupsBySection.forEach((groupSet, sectionId) => {
+  centerableOwnersBySection.forEach((ownerSet, sectionId) => {
     if (hiddenSectionIds.has(sectionId)) return;
     const section = sectionLookup.get(sectionId);
     const sectionAssociation = normalizeSectionFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (sectionAssociation) return;
 
-    const typesPresent = FUNCTIONAL_ASSOCIATION_VALUES.filter((association) => groupSet[association].length > 0);
+    const typesPresent = FUNCTIONAL_ASSOCIATION_VALUES.filter((association) => ownerSet[association].length > 0);
     const activeTypes = typesPresent.filter((association) => enabled[association] === true);
     if (typesPresent.length < 2 || activeTypes.length !== 1) return;
 
     const activeAssociation = activeTypes[0];
-    const visibleGroups = groupSet[activeAssociation];
-    const jointBounds = unionBounds(visibleGroups.map((group) => resolveGroupAbsoluteBounds(group)));
+    const visibleOwners = ownerSet[activeAssociation];
+    const jointBounds = unionBounds(
+      visibleOwners.map((object) => resolveFunctionalOwnerAbsoluteBounds(object))
+    );
     if (!jointBounds || jointBounds.width <= 0) return;
 
     const safeCanvasWidth = toPositiveNumber(canvasWidth, DEFAULT_CANVAS_WIDTH) || DEFAULT_CANVAS_WIDTH;
@@ -604,9 +644,11 @@ function applyFunctionalAssociationsToRenderState({
     const deltaX = roundMetric(targetCenterX - currentCenterX, 3);
     if (!deltaX) return;
 
-    visibleGroups.forEach((group) => {
-      const groupId = normalizeText(group.id);
-      if (groupId) centeredGroupDeltas.set(groupId, deltaX);
+    visibleOwners.forEach((object) => {
+      const objectId = normalizeText(object.id);
+      if (!objectId) return;
+      centeredObjectDeltas.set(objectId, deltaX);
+      if (isGroupObject(object)) centeredGroupDeltas.set(objectId, deltaX);
     });
   });
 
@@ -630,8 +672,8 @@ function applyFunctionalAssociationsToRenderState({
     }
 
     let nextObject = normalizeCtaVisibilityForFeatureState(safeObject, enabled);
-    if (isGroupObject(nextObject) && centeredGroupDeltas.has(objectId)) {
-      nextObject = addRenderOffset(nextObject, centeredGroupDeltas.get(objectId), {
+    if (centeredObjectDeltas.has(objectId)) {
+      nextObject = addRenderOffset(nextObject, centeredObjectDeltas.get(objectId), {
         materializeOffsets,
       });
     }
@@ -644,6 +686,7 @@ function applyFunctionalAssociationsToRenderState({
     enabled,
     hiddenSectionIds: Array.from(hiddenSectionIds),
     hiddenObjectIds: Array.from(hiddenObjectIds),
+    centeredObjectDeltas: Object.fromEntries(centeredObjectDeltas.entries()),
     centeredGroupDeltas: Object.fromEntries(centeredGroupDeltas.entries()),
     warnings,
   };
@@ -680,6 +723,136 @@ function setSectionFunctionalAssociation({ secciones, objetos, sectionId, associ
     secciones: changed ? nextSecciones : secciones,
     objetos: changed ? nextObjetos : objetos,
     changed,
+  };
+}
+
+function setStandaloneFunctionalAssociation({
+  secciones,
+  objetos,
+  objectIds,
+  association,
+} = {}) {
+  const safeSecciones = Array.isArray(secciones) ? secciones : [];
+  const safeObjetos = Array.isArray(objetos) ? objetos : [];
+  const normalizedAssociation = normalizeFunctionalAssociation(association);
+  const hasConfiguredAssociation = Boolean(normalizeText(association));
+
+  if (
+    hasConfiguredAssociation &&
+    !STANDALONE_FUNCTIONAL_ASSOCIATION_SET.has(normalizedAssociation)
+  ) {
+    return {
+      ok: false,
+      changed: false,
+      reason: "standalone-functional-association-unsupported",
+      secciones,
+      objetos,
+    };
+  }
+
+  const normalizedObjectIds = Array.from(
+    new Set(
+      (Array.isArray(objectIds) ? objectIds : [])
+        .map((objectId) => normalizeText(objectId))
+        .filter(Boolean)
+    )
+  );
+  if (normalizedObjectIds.length === 0) {
+    return {
+      ok: false,
+      changed: false,
+      reason: "standalone-functional-selection-empty",
+      secciones,
+      objetos,
+    };
+  }
+
+  const targetIdSet = new Set(normalizedObjectIds);
+  const sectionIdSet = new Set(
+    safeSecciones
+      .map((section) => normalizeText(asObject(section).id))
+      .filter(Boolean)
+  );
+  const targetObjects = safeObjetos.filter((object) =>
+    targetIdSet.has(normalizeText(asObject(object).id))
+  );
+  const hasInvalidTarget =
+    targetObjects.length !== targetIdSet.size ||
+    targetObjects.some((object) => {
+      const safeObject = asObject(object);
+      const sectionId = normalizeText(safeObject.seccionId);
+      return isGroupObject(safeObject) || !sectionId || !sectionIdSet.has(sectionId);
+    });
+
+  if (hasInvalidTarget) {
+    return {
+      ok: false,
+      changed: false,
+      reason: "standalone-functional-selection-invalid",
+      secciones,
+      objetos,
+    };
+  }
+
+  const targetSectionIds = new Set(
+    targetObjects.map((object) => normalizeText(asObject(object).seccionId))
+  );
+  let changed = false;
+  const nextSecciones = normalizedAssociation
+    ? safeSecciones.map((section) => {
+        const safeSection = asObject(section);
+        const sectionId = normalizeText(safeSection.id);
+        if (
+          !targetSectionIds.has(sectionId) ||
+          !normalizeSectionFunctionalAssociation(
+            safeSection[FUNCTIONAL_ASSOCIATION_FIELD]
+          )
+        ) {
+          return section;
+        }
+        changed = true;
+        return setFunctionalAssociationField(
+          safeSection,
+          null,
+          normalizeSectionFunctionalAssociation
+        );
+      })
+    : safeSecciones;
+
+  const nextObjetos = safeObjetos.map((object) => {
+    const safeObject = asObject(object);
+    const objectId = normalizeText(safeObject.id);
+    if (!targetIdSet.has(objectId)) return object;
+
+    if (normalizedAssociation) {
+      if (
+        normalizeText(safeObject[FUNCTIONAL_ASSOCIATION_FIELD]) ===
+        normalizedAssociation
+      ) {
+        return object;
+      }
+      changed = true;
+      return setFunctionalAssociationField(safeObject, normalizedAssociation);
+    }
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        safeObject,
+        FUNCTIONAL_ASSOCIATION_FIELD
+      )
+    ) {
+      return object;
+    }
+    changed = true;
+    return setFunctionalAssociationField(safeObject, null);
+  });
+
+  return {
+    ok: true,
+    changed,
+    reason: changed ? "updated" : "no-change",
+    secciones: changed ? nextSecciones : secciones,
+    objetos: changed ? nextObjetos : objetos,
   };
 }
 
@@ -814,5 +987,6 @@ module.exports = {
   sanitizeMovedGroupFunctionalAssociation,
   setGroupFunctionalAssociation,
   setSectionFunctionalAssociation,
+  setStandaloneFunctionalAssociation,
   stripFunctionalAssociationFromClonedObject,
 };

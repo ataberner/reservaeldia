@@ -498,6 +498,73 @@ test("prepared render payload applies functional group visibility and centering 
   assert.doesNotMatch(html, /data-obj-id="gifts-group"/);
 });
 
+test("preview and publish keep standalone functional roots independent and equally visible", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {},
+  });
+  t.after(() => storageMock.restore());
+
+  const prepared = await prepareRenderPayload({
+    secciones: [{ id: "shared", orden: 0, altoModo: "fijo", altura: 420 }],
+    objetos: [
+      {
+        id: "ceremony-title",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 72,
+        y: 64,
+        width: 220,
+        height: 36,
+        texto: "Ceremonia",
+        fontFamily: "Cormorant Garamond",
+        functionalAssociation: "ceremony",
+      },
+      {
+        id: "party-title",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 320,
+        y: 64,
+        width: 220,
+        height: 36,
+        texto: "Fiesta",
+        functionalAssociation: "party",
+      },
+      {
+        id: "dress-title",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 72,
+        y: 140,
+        width: 220,
+        height: 36,
+        texto: "Dress Code",
+        functionalAssociation: "dress_code",
+      },
+    ],
+    eventDetails: {
+      mode: "single",
+      dressCode: { enabled: false, value: "Formal" },
+    },
+  });
+
+  assert.deepEqual(prepared.objetosFinales.map((object) => object.id), ["ceremony-title"]);
+  assert.equal(prepared.objetosFinales[0].tipo, "texto");
+  assert.equal(prepared.objetosFinales[0].x, 290);
+  assert.equal(prepared.objetosFinales[0].fontFamily, "Cormorant Garamond");
+  assert.equal(prepared.objetosFinales[0].functionalAssociation, "ceremony");
+  assert.equal(prepared.objetosFinales.some((object) => object.tipo === "grupo"), false);
+
+  const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, { isPreview: true });
+  const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, { isPreview: false });
+  [previewHtml, publishHtml].forEach((html) => {
+    assert.match(html, /data-obj-id="ceremony-title"/);
+    assert.doesNotMatch(html, /data-obj-id="party-title"/);
+    assert.doesNotMatch(html, /data-obj-id="dress-title"/);
+  });
+});
+
 test("validation ignores a disabled functional section and its omitted objects", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,

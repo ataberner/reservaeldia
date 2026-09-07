@@ -9,6 +9,7 @@ import {
   sanitizeMovedGroupFunctionalAssociation,
   setGroupFunctionalAssociation,
   setSectionFunctionalAssociation,
+  setStandaloneFunctionalAssociation,
   stripFunctionalAssociationFromClonedObject,
 } from "./functionalAssociations.js";
 
@@ -543,7 +544,85 @@ test("standalone ceremony, party, and dress-code roots follow functional visibil
     "legacy-rsvp-root",
   ]);
   assert.deepEqual(result.hiddenObjectIds, ["party-map", "dress-title"]);
+  assert.deepEqual(result.centeredObjectDeltas, {});
   assert.deepEqual(result.centeredGroupDeltas, {});
+});
+
+test("standalone ceremony roots center jointly in single-event mode without becoming a group", () => {
+  const secciones = [{ id: "shared", orden: 0, altura: 400 }];
+  const objetos = [
+    {
+      id: "ceremony-title",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 80,
+      y: 40,
+      width: 100,
+      height: 30,
+      functionalAssociation: "ceremony",
+    },
+    {
+      id: "ceremony-place",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 70,
+      y: 100,
+      width: 120,
+      height: 30,
+      functionalAssociation: "ceremony",
+    },
+    {
+      id: "party-title",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 560,
+      y: 40,
+      width: 120,
+      height: 30,
+      functionalAssociation: "party",
+    },
+  ];
+  const originalSnapshot = structuredClone({ secciones, objetos });
+
+  const canvasState = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    eventDetails: { mode: "single" },
+    materializeOffsets: false,
+  });
+
+  assert.deepEqual({ secciones, objetos }, originalSnapshot);
+  assert.deepEqual(canvasState.objetos.map((object) => object.id), [
+    "ceremony-title",
+    "ceremony-place",
+  ]);
+  assert.deepEqual(canvasState.centeredObjectDeltas, {
+    "ceremony-title": 270,
+    "ceremony-place": 270,
+  });
+  assert.deepEqual(canvasState.centeredGroupDeltas, {});
+  assert.equal(canvasState.objetos[0].x, 80);
+  assert.equal(canvasState.objetos[0].__functionalRenderOffsetX, 270);
+  assert.equal(canvasState.objetos[1].x, 70);
+  assert.equal(canvasState.objetos[1].__functionalRenderOffsetX, 270);
+  assert.equal(canvasState.objetos.some((object) => object.tipo === "grupo"), false);
+
+  const publishState = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    eventDetails: { mode: "single" },
+  });
+  assert.equal(publishState.objetos[0].x, 350);
+  assert.equal(publishState.objetos[1].x, 340);
+
+  const allEventsState = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    eventDetails: { mode: "ceremony_party" },
+    materializeOffsets: false,
+  });
+  assert.deepEqual(allEventsState.centeredObjectDeltas, {});
+  assert.deepEqual(allEventsState.objetos.map((object) => object.x), [80, 70, 560]);
 });
 
 test("an active standalone owner keeps a shared section visible beside inactive groups", () => {
@@ -564,6 +643,128 @@ test("an active standalone owner keeps a shared section visible beside inactive 
   assert.deepEqual(result.secciones.map((section) => section.id), ["shared"]);
   assert.deepEqual(result.objetos.map((object) => object.id), ["ceremony-root"]);
   assert.deepEqual(result.hiddenObjectIds, ["party-group"]);
+});
+
+test("standalone assignment keeps selected roots structurally independent", () => {
+  const secciones = [{ id: "shared", orden: 0, altura: 400 }];
+  const objetos = [
+    {
+      id: "ceremony-title",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 80,
+      y: 40,
+      width: 180,
+      texto: "Ceremonia",
+      fontFamily: "Cormorant Garamond",
+      applyTargets: [{ id: "ceremony-title", path: "texto" }],
+    },
+    {
+      id: "ceremony-place",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 80,
+      y: 100,
+      width: 220,
+      texto: "Registro Civil",
+      fontFamily: "Montserrat",
+    },
+    {
+      id: "shared-decoration",
+      tipo: "icono",
+      seccionId: "shared",
+      x: 360,
+      y: 20,
+    },
+  ];
+  const originalSnapshot = structuredClone({ secciones, objetos });
+
+  const result = setStandaloneFunctionalAssociation({
+    secciones,
+    objetos,
+    objectIds: ["ceremony-place", "ceremony-title", "ceremony-title"],
+    association: "ceremonia",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.deepEqual({ secciones, objetos }, originalSnapshot);
+  assert.deepEqual(result.objetos.map((object) => object.id), objetos.map((object) => object.id));
+  assert.equal(result.objetos.some((object) => object.tipo === "grupo"), false);
+  assert.deepEqual(result.objetos[0], {
+    ...objetos[0],
+    functionalAssociation: "ceremony",
+  });
+  assert.deepEqual(result.objetos[1], {
+    ...objetos[1],
+    functionalAssociation: "ceremony",
+  });
+  assert.equal(result.objetos[2], objetos[2]);
+});
+
+test("standalone assignment reassigns roots, clears section ownership, and removes only selected associations", () => {
+  const assigned = setStandaloneFunctionalAssociation({
+    secciones: [
+      { id: "ceremony", orden: 0, functionalAssociation: "party" },
+      { id: "dress", orden: 1, functionalAssociation: "dress_code" },
+    ],
+    objetos: [
+      { id: "title", tipo: "texto", seccionId: "ceremony", functionalAssociation: "party" },
+      { id: "place", tipo: "texto", seccionId: "ceremony" },
+      { id: "dress-copy", tipo: "texto", seccionId: "dress", functionalAssociation: "dress_code" },
+      { id: "untouched", tipo: "icono", seccionId: "dress", functionalAssociation: "party" },
+    ],
+    objectIds: ["title", "place", "dress-copy"],
+    association: "ceremony",
+  });
+
+  assert.equal(assigned.ok, true);
+  assert.equal(assigned.secciones.some((section) => "functionalAssociation" in section), false);
+  assert.deepEqual(
+    assigned.objetos.slice(0, 3).map((object) => object.functionalAssociation),
+    ["ceremony", "ceremony", "ceremony"]
+  );
+  assert.equal(assigned.objetos[3].functionalAssociation, "party");
+
+  const cleared = setStandaloneFunctionalAssociation({
+    secciones: assigned.secciones,
+    objetos: assigned.objetos,
+    objectIds: ["title", "dress-copy"],
+    association: null,
+  });
+
+  assert.equal(cleared.ok, true);
+  assert.equal("functionalAssociation" in cleared.objetos[0], false);
+  assert.equal(cleared.objetos[1].functionalAssociation, "ceremony");
+  assert.equal("functionalAssociation" in cleared.objetos[2], false);
+  assert.equal(cleared.objetos[3].functionalAssociation, "party");
+});
+
+test("standalone assignment rejects group-only associations and invalid selections atomically", () => {
+  const secciones = [{ id: "shared", orden: 0 }];
+  const objetos = [
+    { id: "title", tipo: "texto", seccionId: "shared" },
+    group({ id: "preserved-group", association: "party", x: 200 }),
+  ];
+
+  [
+    { objectIds: ["title"], association: "rsvp" },
+    { objectIds: ["title"], association: "gifts" },
+    { objectIds: ["title"], association: "unknown" },
+    { objectIds: ["preserved-group"], association: "ceremony" },
+    { objectIds: ["title", "missing"], association: "party" },
+    { objectIds: [], association: "party" },
+  ].forEach((request) => {
+    const result = setStandaloneFunctionalAssociation({
+      secciones,
+      objetos,
+      ...request,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.changed, false);
+    assert.equal(result.secciones, secciones);
+    assert.equal(result.objetos, objetos);
+  });
 });
 
 test("section ownership and cloning clear functional associations from standalone roots", () => {

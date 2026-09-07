@@ -33,3 +33,31 @@ test("applyObjectUpdateById updates a preserved group child by id", () => {
   assert.equal(next[0].children[0].texto, "Mara");
   assert.equal(next[0].children[1], objetos[0].children[1]);
 });
+
+test("root text and geometry updates preserve its standalone functional association", () => {
+  const objetos = [
+    {
+      id: "ceremony-title",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 80,
+      y: 40,
+      texto: "Ceremonia",
+      fontFamily: "Cormorant Garamond",
+      functionalAssociation: "ceremony",
+      applyTargets: [{ id: "ceremony-title", path: "texto" }],
+    },
+  ];
+
+  const next = applyObjectUpdateById(objetos, "ceremony-title", {
+    x: 140,
+    texto: "Nuestra ceremonia",
+    fontFamily: "Montserrat",
+  });
+
+  assert.equal(next[0].x, 140);
+  assert.equal(next[0].texto, "Nuestra ceremonia");
+  assert.equal(next[0].fontFamily, "Montserrat");
+  assert.equal(next[0].functionalAssociation, "ceremony");
+  assert.deepEqual(next[0].applyTargets, objetos[0].applyTargets);
+});

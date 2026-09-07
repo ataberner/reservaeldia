@@ -14,6 +14,7 @@ export const resolveGroupAbsoluteBounds = runtime.resolveGroupAbsoluteBounds;
 export const sanitizeMovedGroupFunctionalAssociation = runtime.sanitizeMovedGroupFunctionalAssociation;
 export const setGroupFunctionalAssociation = runtime.setGroupFunctionalAssociation;
 export const setSectionFunctionalAssociation = runtime.setSectionFunctionalAssociation;
+export const setStandaloneFunctionalAssociation = runtime.setStandaloneFunctionalAssociation;
 export const stripFunctionalAssociationFromClonedObject = runtime.stripFunctionalAssociationFromClonedObject;
 
 export default runtime;

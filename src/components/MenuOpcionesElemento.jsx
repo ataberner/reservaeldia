@@ -13,7 +13,9 @@ import { canEditObject } from "@/domain/editor/protectedSections";
 import { resolveUngroupSelectionCandidate } from "@/domain/editor/grouping";
 import {
     normalizeFunctionalAssociation,
+    STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES,
     setGroupFunctionalAssociation,
+    setStandaloneFunctionalAssociation,
 } from "../../shared/functionalAssociations.js";
 import TemplateDynamicFieldMenuSection from "@/components/editor/templateAuthoring/TemplateDynamicFieldMenuSection";
 import { classifyRenderObjectContract } from "../../shared/renderContractPolicy.js";
@@ -41,6 +43,10 @@ const DEFAULT_LINK_FLYOUT_SIZE = { width: 320, height: 180 };
 const DEFAULT_EFFECTS_FLYOUT_SIZE = { width: 300, height: 320 };
 const DEFAULT_LAYER_FLYOUT_SIZE = { width: 224, height: 180 };
 const DEFAULT_USE_AS_FLYOUT_SIZE = { width: 360, height: 360 };
+const MIXED_FUNCTIONAL_ASSOCIATION_VALUE = "__mixed__";
+const STANDALONE_FUNCTIONAL_ASSOCIATION_SET = new Set(
+    STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES
+);
 const BACKGROUND_MOTION_EFFECT_OPTIONS = Object.freeze([
     {
         value: "none",
@@ -209,9 +215,15 @@ export default function MenuOpcionesElemento({
         ),
         [menuContext?.selectedIds]
     );
-    const multiSelectionCount = Array.isArray(menuContext?.selectedObjects)
-        ? menuContext.selectedObjects.length
-        : multiSelectionIds.length;
+    const multiSelectionObjects = useMemo(
+        () => (
+            Array.isArray(menuContext?.selectedObjects)
+                ? menuContext.selectedObjects
+                : []
+        ),
+        [menuContext?.selectedObjects]
+    );
+    const multiSelectionCount = multiSelectionObjects.length || multiSelectionIds.length;
     const canGroupSelection = menuContext?.canGroupSelection === true;
     const canConfigureFunctionalAssociation = Boolean(
         canManageSite &&
@@ -221,11 +233,44 @@ export default function MenuOpcionesElemento({
     );
     const currentFunctionalAssociation =
         normalizeFunctionalAssociation(elementoSeleccionado?.functionalAssociation) || "";
+    const standaloneSelectionState = useMemo(() => {
+        const selectedObjects = isMultiSelectionMenu
+            ? multiSelectionObjects
+            : (
+                menuKind === "canvas-object" && elementoSeleccionado && !esGrupo
+                    ? [elementoSeleccionado]
+                    : []
+            );
+        if (
+            selectedObjects.length === 0 ||
+            selectedObjects.some((object) => object?.tipo === "grupo")
+        ) {
+            return { eligible: false, value: "" };
+        }
+
+        const associations = selectedObjects.map((object) => {
+            const normalized = normalizeFunctionalAssociation(object?.functionalAssociation);
+            return STANDALONE_FUNCTIONAL_ASSOCIATION_SET.has(normalized)
+                ? normalized
+                : "";
+        });
+        const firstAssociation = associations[0] || "";
+        const hasUniformAssociation = associations.every(
+            (association) => association === firstAssociation
+        );
+
+        return {
+            eligible: true,
+            value: hasUniformAssociation
+                ? firstAssociation
+                : MIXED_FUNCTIONAL_ASSOCIATION_VALUE,
+        };
+    }, [elementoSeleccionado, esGrupo, isMultiSelectionMenu, menuKind, multiSelectionObjects]);
     const shouldRenderFunctionalAssociationControl =
         canConfigureFunctionalAssociation &&
         (
-            (menuKind === "canvas-object" && esGrupo) ||
-            isMultiSelectionMenu
+            (menuKind === "canvas-object" && Boolean(elementoSeleccionado)) ||
+            (isMultiSelectionMenu && standaloneSelectionState.eligible)
         );
     const authoringConfig =
         templateAuthoring && typeof templateAuthoring === "object" ? templateAuthoring : null;
@@ -262,44 +307,56 @@ export default function MenuOpcionesElemento({
         const association = normalizeFunctionalAssociation(associationValue);
 
         if (isMultiSelectionMenu) {
-            if (!association) {
-                onCerrar();
-                return;
+            if (!standaloneSelectionState.eligible) return;
+            const result = setStandaloneFunctionalAssociation({
+                secciones,
+                objetos,
+                objectIds: multiSelectionIds,
+                association,
+            });
+            if (result?.changed) {
+                setSecciones?.(result.secciones);
+                setObjetos?.(result.objetos);
             }
-            if (!canGroupSelection || typeof onAgrupar !== "function") return;
-            const result = onAgrupar({ functionalAssociation: association });
-            if (result) onCerrar();
-            return;
-        }
-
-        if (!esGrupo || !elementoSeleccionado?.id || !canMutateCanvasObject) {
             onCerrar();
             return;
         }
 
-        const result = setGroupFunctionalAssociation({
-            secciones,
-            objetos,
-            groupId: elementoSeleccionado.id,
-            association,
-        });
+        if (!elementoSeleccionado?.id || !canMutateCanvasObject) {
+            onCerrar();
+            return;
+        }
+
+        const result = esGrupo
+            ? setGroupFunctionalAssociation({
+                secciones,
+                objetos,
+                groupId: elementoSeleccionado.id,
+                association,
+            })
+            : setStandaloneFunctionalAssociation({
+                secciones,
+                objetos,
+                objectIds: [elementoSeleccionado.id],
+                association,
+            });
         if (result?.changed) {
             setSecciones?.(result.secciones);
             setObjetos?.(result.objetos);
         }
         onCerrar();
     }, [
-        canGroupSelection,
         canMutateCanvasObject,
         elementoSeleccionado?.id,
         esGrupo,
         isMultiSelectionMenu,
+        multiSelectionIds,
         objetos,
-        onAgrupar,
         onCerrar,
         secciones,
         setObjetos,
         setSecciones,
+        standaloneSelectionState.eligible,
     ]);
 
     useEffect(() => {
@@ -820,22 +877,34 @@ export default function MenuOpcionesElemento({
                     Asociacion funcional
                 </span>
                 <select
-                    value={isMultiSelectionMenu ? "" : currentFunctionalAssociation}
-                    disabled={isMultiSelectionMenu && !canGroupSelection}
+                    value={
+                        esGrupo
+                            ? currentFunctionalAssociation
+                            : standaloneSelectionState.value
+                    }
                     onChange={(event) => handleFunctionalAssociationChange(event.target.value)}
                     className="w-full rounded-lg border border-[#dac7f7] bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#9d75d8] focus:ring-2 focus:ring-[#eadffd]"
                 >
+                    {standaloneSelectionState.value === MIXED_FUNCTIONAL_ASSOCIATION_VALUE ? (
+                        <option value={MIXED_FUNCTIONAL_ASSOCIATION_VALUE} disabled>
+                            Varias asociaciones
+                        </option>
+                    ) : null}
                     <option value="">Ninguna</option>
-                    <option value="rsvp">Confirmacion de asistencia</option>
-                    <option value="gifts">Regalos</option>
+                    {esGrupo ? (
+                        <>
+                            <option value="rsvp">Confirmacion de asistencia</option>
+                            <option value="gifts">Regalos</option>
+                        </>
+                    ) : null}
                     <option value="ceremony">Ceremonia</option>
                     <option value="party">Fiesta</option>
                     <option value="dress_code">Dress Code</option>
                 </select>
             </label>
-            {isMultiSelectionMenu && !canGroupSelection ? (
+            {isMultiSelectionMenu ? (
                 <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                    La seleccion debe poder agruparse en una misma seccion.
+                    Se aplica a cada elemento sin agrupar la seleccion.
                 </p>
             ) : null}
         </div>
@@ -1198,7 +1267,7 @@ export default function MenuOpcionesElemento({
                 <PlusCircle className="w-4 h-4" /> Duplicar
             </button>
 
-            {esGrupo ? functionalAssociationControl : null}
+            {functionalAssociationControl}
 
             {esGrupo && canUngroupSelection && (
                 <button

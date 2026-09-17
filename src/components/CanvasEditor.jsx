@@ -20,6 +20,8 @@ import useGuiasCentrado from '@/hooks/useGuiasCentrado';
 import Konva from "konva";
 import { ALL_FONTS } from '../config/fonts';
 import useTemplateFieldAuthoring from "@/components/editor/templateAuthoring/useTemplateFieldAuthoring";
+import { expandSectionsForTextChanges } from "@/domain/sections/textContentExpansion";
+import { measureTextContentBottom } from "@/components/editor/textSystem/metricsLayout/services/textContentBounds";
 import useBorradorSync from "./editor/persistence/useBorradorSync";
 import useSectionsManager from "./editor/sections/useSectionsManager";
 import useEditorEvents from "./editor/events/useEditorEvents";
@@ -948,6 +950,20 @@ export default function CanvasEditor({
     Boolean(draftMeta?.templateAuthoringDraft) ||
     Boolean(draftMeta?.plantillaId);
 
+  const resolveSectionsAfterTextChange = useCallback((mutation) => {
+    if (readOnly) return mutation.sections;
+    return expandSectionsForTextChanges({
+      ...mutation,
+      measureTextBottom: ({ object, rootObject, text }) => {
+        const rootNode = elementRefs.current?.[rootObject.id];
+        const node = rootObject.id === object.id
+          ? rootNode
+          : rootNode?.findOne?.((candidate) => candidate.id() === object.id);
+        return measureTextContentBottom({ node, rootNode, object, rootObject, text });
+      },
+    });
+  }, [readOnly]);
+
   const templateAuthoring = useTemplateFieldAuthoring({
     enabled: canUseTemplateFields,
     canEditSchema: canManageSite,
@@ -960,6 +976,8 @@ export default function CanvasEditor({
     selectedElement: objetoSeleccionado,
     draftMeta,
     onReplaceObjects: setObjetos,
+    onReplaceSections: setSecciones,
+    resolveSectionsAfterTextChange,
     eventDetailsConfig,
     onReplaceEventDetails: setEventDetailsConfig,
     onSnapshotChange: (nextSnapshot) => {
@@ -2122,6 +2140,8 @@ export default function CanvasEditor({
       setMostrarPanelZ,
       obtenerMetricasNodoInline,
       onLinkedInlineValueChange: templateAuthoring.updateLinkedTextFromCanvas,
+      resolveSectionsAfterTextChange,
+      setSecciones,
     }),
   });
 

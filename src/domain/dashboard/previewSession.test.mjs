@@ -115,19 +115,21 @@ test("preview close-checkout patch only hides the checkout modal", () => {
   });
 });
 
-test("preview open flush-failure patch preserves the current preview-closed error semantics", () => {
+test("preview open failure keeps the modal open with an error and no stale HTML", () => {
   assert.deepEqual(
     buildDashboardPreviewOpenFlushFailureStatePatch({
       errorMessage: "flush-error",
     }),
     {
       publicacionVistaPreviaError: "flush-error",
-      mostrarVistaPrevia: false,
+      mostrarVistaPrevia: true,
+      htmlVistaPrevia: null,
     }
   );
   assert.deepEqual(buildDashboardPreviewOpenFlushFailureStatePatch(), {
-    publicacionVistaPreviaError: "",
-    mostrarVistaPrevia: false,
+    publicacionVistaPreviaError: "No se pudo generar la vista previa. Intenta nuevamente.",
+    mostrarVistaPrevia: true,
+    htmlVistaPrevia: null,
   });
 });
 

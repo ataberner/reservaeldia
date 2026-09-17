@@ -211,6 +211,33 @@ Resultado esperado:
 
 ## 2. Texto inline
 
+### [ ] Expansion de seccion por contenido de texto
+
+1. En una seccion con Pantalla OFF, ubicar un texto cerca del borde inferior y
+   agregar lineas o palabras que provoquen wrap; confirmar la edicion inline.
+2. Repetir con `Nuestra historia` desde el Tab Texto y desde su texto vinculado;
+   incluir dos vistas en distintas secciones y una vista dentro de un grupo.
+3. Borrar parte del contenido, vaciarlo y repetir una actualizacion sin cambios.
+4. Repetir con Pantalla ON, texto que todavia cabe y otra seccion precedente.
+5. Arrastrar, cambiar ancho/tamano, insertar imagenes y editar ornamentos sin
+   modificar contenido de texto. Repetir en desktop y mobile con zoom.
+6. Guardar/recargar y abrir preview despues de editar; comprobar tambien undo/redo
+   del texto libre y que los valores dinamicos mantienen su politica de historial.
+
+Esperado:
+
+- solo el crecimiento de contenido hacia abajo expande la altura necesaria, sin
+  margen adicional ni contraccion posterior;
+- Pantalla ON conserva su altura, y los demas gestos conservan su comportamiento;
+- las otras posiciones/tamanos y el frame de grupo permanecen intactos;
+- texto y altura se guardan juntos por el owner existente.
+
+Anclajes automatizados: `src/domain/sections/textContentExpansion.test.mjs`,
+`src/components/editor/textSystem/commitPolicy/textSectionExpansion.test.mjs` y
+`src/components/editor/textSystem/metricsLayout/services/textContentBounds.browser.test.mjs`.
+Este ultimo usa Puppeteer/Konva con datos sinteticos y requests bloqueados; valida
+geometria desktop/mobile, no una sesion completa del editor ni Firebase.
+
 ### [ ] Entrada a inline edit sin click extra
 
 1. Seleccionar un texto.
@@ -390,6 +417,22 @@ Resultado esperado:
 
 - la segunda apertura usa el estado mas reciente
 - no reaparece una snapshot vieja
+
+### [ ] Fallo de guardado al abrir preview y reintento
+
+1. En un entorno aislado, demorar o rechazar la escritura del borrador.
+2. Editar repetidamente `Nuestra historia` desde el panel y desde inline; abrir preview.
+3. Ante timeout o error, comprobar el modal en desktop y mobile.
+4. Restablecer el guardado y pulsar `Reintentar` varias veces durante la misma espera.
+5. Cerrar durante un intento pendiente y completar luego esa operacion.
+
+Resultado esperado:
+
+- el modal permanece abierto con el error y `Reintentar`, sin spinner permanente ni HTML anterior
+- no hay reintentos automaticos; los clicks repetidos comparten un intento en curso
+- los valores pendientes consecutivos guardan el ultimo snapshot completo, incluido el texto y la altura, antes del flush confirmado
+- las mutaciones de seccion/schema/history y el flush mantienen su orden; solo se agrupan snapshots de valores que aun no comenzaron a escribirse
+- la preparacion no comienza antes del guardado confirmado; cerrar impide que un resultado tardio reabra el modal
 
 ## 4. Persistencia y orden de guardado
 

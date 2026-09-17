@@ -304,6 +304,8 @@ export default function useTemplateFieldAuthoring({
   draftMeta,
   onPatchObject = null,
   onReplaceObjects = null,
+  onReplaceSections = null,
+  resolveSectionsAfterTextChange = null,
   eventDetailsConfig = null,
   onReplaceEventDetails = null,
   onSnapshotChange = null,
@@ -540,7 +542,11 @@ export default function useTemplateFieldAuthoring({
           });
       const writePromise =
         typeof enqueueDraftWrite === "function"
-          ? enqueueDraftWrite(write)
+          ? enqueueDraftWrite(write, {
+              coalesceKey: options.coalesceValueWrite === true
+                ? `${editorSession?.kind || "draft"}:${safeSlug}:dynamic-values`
+                : "",
+            })
           : Promise.resolve().then(write);
 
       lastWriteRef.current = writePromise
@@ -597,6 +603,7 @@ export default function useTemplateFieldAuthoring({
           if (options.excludeFromHistory === true) suppressNextHistoryCapture?.();
           onReplaceObjects?.(options.nextObjects);
         }
+        if (Array.isArray(options.nextSections)) onReplaceSections?.(nextSections);
         if (options.nextEventDetails) onReplaceEventDetails?.(options.nextEventDetails);
       }
       await persistSnapshot(nextSnapshot, options);
@@ -613,6 +620,7 @@ export default function useTemplateFieldAuthoring({
           if (options.excludeFromHistory === true) suppressNextHistoryCapture?.();
           onReplaceObjects?.(options.nextObjects);
         }
+        if (Array.isArray(options.nextSections)) onReplaceSections?.(nextSections);
         if (options.nextEventDetails) onReplaceEventDetails?.(options.nextEventDetails);
       }
       return nextSnapshot;
@@ -621,6 +629,7 @@ export default function useTemplateFieldAuthoring({
       hydrateSnapshot,
       onReplaceEventDetails,
       onReplaceObjects,
+      onReplaceSections,
       onSnapshotChange,
       persistSnapshot,
       suppressNextHistoryCapture,
@@ -1074,10 +1083,15 @@ export default function useTemplateFieldAuthoring({
         );
       await commitSnapshot(nextSnapshot, {
         nextObjects,
-        nextSections: baseSections,
+        nextSections: resolveSectionsAfterTextChange?.({
+          previousObjects: baseObjects,
+          nextObjects,
+          sections: baseSections,
+        }) || baseSections,
         nextEventDetails,
         reason: options.reason || "dynamic-field-value-update",
         excludeFromHistory: !recordsCanvasHistory,
+        coalesceValueWrite: !recordsCanvasHistory && !schemaChanged,
       });
       return true;
     },
@@ -1092,6 +1106,7 @@ export default function useTemplateFieldAuthoring({
       safeObjetos,
       safeSecciones,
       values,
+      resolveSectionsAfterTextChange,
     ]
   );
 

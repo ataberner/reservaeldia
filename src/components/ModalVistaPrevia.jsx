@@ -660,6 +660,7 @@ function MobilePreviewShell({
 export default function ModalVistaPrevia({
   visible,
   onClose,
+  onRetry,
   htmlContent,
   publicUrl,
   previewDisplayUrl = "",
@@ -742,6 +743,7 @@ export default function ModalVistaPrevia({
   });
   const showNoticeLayer =
     showPublishActions || publishNoticePresentation.notices.length > 0;
+  const preparationFailed = !htmlContent && Boolean(publishError);
 
   useEffect(() => {
     if (!visible || !previewTimingSessionId) return;
@@ -1307,7 +1309,7 @@ export default function ModalVistaPrevia({
             </div>
           </div>
 
-          {showNoticeLayer ? (
+          {showNoticeLayer && !preparationFailed ? (
             <PreviewPublishNoticeLayer
               notices={publishNoticePresentation.notices}
               position={noticePosition}
@@ -1319,7 +1321,20 @@ export default function ModalVistaPrevia({
             <div className="absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.9)_0%,rgba(251,247,255,0.72)_46%,rgba(244,248,255,0.78)_100%)]" />
             <div className="absolute inset-x-[12%] bottom-[6%] h-[32%] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.7),rgba(255,255,255,0)_72%)] blur-3xl" />
 
-            {isMobileViewport ? (
+            {preparationFailed ? (
+              <div className="relative flex h-full items-center justify-center overflow-y-auto p-6">
+                <div className="w-full max-w-md rounded-3xl border border-[#e9dcfb] bg-white p-6 text-center shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-800">No se pudo abrir la vista previa</h2>
+                  <p role="alert" className="mt-3 text-sm leading-6 text-slate-600">{publishError}</p>
+                  {typeof onRetry === "function" ? (
+                    <button type="button" onClick={onRetry} className={`${SECONDARY_TOOLBAR_BUTTON_CLASS} mt-5`}>
+                      <RefreshCw className="h-4 w-4" />
+                      Reintentar
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : isMobileViewport ? (
               <div
                 className="relative flex h-full min-h-0 items-center justify-center"
                 style={{

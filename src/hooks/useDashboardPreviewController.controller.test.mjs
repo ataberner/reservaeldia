@@ -327,7 +327,7 @@ test("administrative read-only preview skips persistence and keeps publication a
   assert.equal(harness.getState().mostrarCheckoutPublicacion, false);
 });
 
-test("preview open failure on flush keeps the preview closed and preserves the controller error path", async () => {
+test("preview flush failure keeps the error visible and does not generate unconfirmed HTML", async () => {
   let previewPipelineCalled = false;
   const showAlertCalls = [];
   const harness = createControllerHarness({
@@ -357,13 +357,47 @@ test("preview open failure on flush keeps the preview closed and preserves the c
     createExpectedDraftControllerState({
       overrides: {
         publicacionVistaPreviaError: "No se pudo sincronizar",
+        mostrarVistaPrevia: true,
       },
     })
   );
   assert.deepEqual(showAlertCalls, []);
 });
 
-test("preview generation error clears the loading session and a retry can commit fresh html", async () => {
+test("a failed save can be retried explicitly without duplicate writes or unconfirmed preview", async () => {
+  let attempts = 0;
+  let previewCalls = 0;
+  const pendingSave = createDeferred();
+  const harness = createControllerHarness({
+    dependencyOverrides: createTestDependencies({
+      runCriticalActionFlush: () => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.resolve({ ok: false, reason: "timeout", error: "Guardado pendiente" })
+          : pendingSave.promise;
+      },
+      runPreviewPipeline: async () => {
+        previewCalls += 1;
+        return { status: "success", htmlGenerado: "<html>confirmed</html>" };
+      },
+    }),
+  });
+  await harness.controller.generarVistaPrevia();
+  assert.equal(harness.getState().mostrarVistaPrevia, true);
+  assert.equal(harness.getState().publicacionVistaPreviaError, "Guardado pendiente");
+  const retry = harness.controller.generarVistaPrevia();
+  assert.equal(harness.controller.generarVistaPrevia(), retry);
+  await flushMicrotasks();
+  assert.equal(attempts, 2);
+  assert.equal(previewCalls, 0);
+  assert.equal(harness.getState().publicacionVistaPreviaError, "");
+  pendingSave.resolve({ ok: true });
+  await retry;
+  assert.equal(previewCalls, 1);
+  assert.equal(harness.getState().htmlVistaPrevia, "<html>confirmed</html>");
+});
+
+test("preview generation error stays visible and a retry can commit fresh html", async () => {
   let previewPipelineCalls = 0;
   const showAlertCalls = [];
   const harness = createControllerHarness({
@@ -388,13 +422,15 @@ test("preview generation error clears the loading session and a retry can commit
   });
 
   await harness.controller.generarVistaPrevia();
-  assert.equal(harness.getState().mostrarVistaPrevia, false);
+  assert.equal(harness.getState().mostrarVistaPrevia, true);
   assert.equal(harness.getState().htmlVistaPrevia, null);
+  assert.equal(harness.getState().publicacionVistaPreviaError,
+    "No se pudo generar la vista previa. Intenta nuevamente.");
 
   await harness.controller.generarVistaPrevia();
 
   assert.equal(previewPipelineCalls, 2);
-  assert.deepEqual(showAlertCalls, ["No se pudo generar la vista previa"]);
+  assert.deepEqual(showAlertCalls, []);
   assert.equal(harness.getState().mostrarVistaPrevia, true);
   assert.equal(
     harness.getState().htmlVistaPrevia,
@@ -402,7 +438,7 @@ test("preview generation error clears the loading session and a retry can commit
   );
 });
 
-test("preview open with prepared-render blockers closes the preview and stores validation", async () => {
+test("preview blockers keep the modal open with validation and without HTML", async () => {
   const validation = {
     canPublish: false,
     blockers: [{ code: "missing-section-reference" }],
@@ -441,6 +477,7 @@ test("preview open with prepared-render blockers closes the preview and stores v
       overrides: {
         publicacionVistaPreviaError:
           "No se puede publicar todavia: falta una seccion.",
+        mostrarVistaPrevia: true,
         previewAuthority: PREVIEW_AUTHORITY.DRAFT_AUTHORITATIVE,
         publishValidationResult: validation,
       },
@@ -485,6 +522,7 @@ test("inline boundary failure stops preview before flush and preserves the contr
       overrides: {
         publicacionVistaPreviaError:
           "No se pudo cerrar la edicion de texto en curso. Intenta nuevamente.",
+        mostrarVistaPrevia: true,
       },
     })
   );

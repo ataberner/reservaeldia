@@ -475,6 +475,28 @@ target. Width, alignment, wrapping, position, and other text-box geometry remain
 owned by the canvas object. No custom event, mirror, or second value authority is
 introduced for this interaction.
 
+### 10.6 Section Height After Text Content Changes
+
+Accepted text-content changes from inline editing and the sidebar MUST use the
+same section-expansion rule. If the changed text's bottom grows downward beyond
+its section, update only that section's `altura` to the required bottom in
+section-local canvas coordinates, without added padding. Multiple reached text
+views require the greatest bottom per section, including preserved-group children.
+
+- The rule MUST NOT shrink a section after shortening, clearing or restoring text.
+- `altoModo: "pantalla"` (Pantalla ON) and protected sections MUST bypass expansion.
+- Only a change to existing `tipo: "texto"` content can trigger this rule. Drag,
+  resize, typography-only changes, insertion, hydration, history replay, images,
+  ornaments and other object families retain their existing behavior.
+- Other objects' positions, sizes and group frames MUST remain unchanged.
+- Measurement uses live Konva typography/box geometry and parent transforms,
+  excluding stage zoom and preceding-section offsets; it MUST NOT use DOM overlay
+  dimensions or introduce another persisted text geometry authority.
+- Free inline text commits its new content and resulting section height together.
+  Linked inline and sidebar edits keep using the structured-field owner, which
+  applies targets and publishes/persists the resulting objects and sections in
+  the same existing ordered mutation, preserving value-only history suppression.
+
 ## 10A. DYNAMIC VIEW INTERACTION CONTRACT
 
 ### 10A.1 Derived Field Indicator

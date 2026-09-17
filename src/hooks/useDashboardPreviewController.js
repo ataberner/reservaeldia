@@ -706,7 +706,6 @@ export function createDashboardPreviewControllerRuntime({
     runPublishValidation,
     resolvePublishAction,
     schedulePublishedAuditCapture,
-    showAlert,
   } = controllerDependencies;
   const resolvedPreviewCompatibilityState =
     previewCompatibilityState && typeof previewCompatibilityState === "object"
@@ -784,8 +783,11 @@ export function createDashboardPreviewControllerRuntime({
     return true;
   };
 
-  const resetPreviewState = (previewSession = null) => {
-    return commitPreviewState(previewSession, createPublicationPreviewState());
+  const showPreviewError = (previewSession, errorMessage) => {
+    return commitPreviewState(previewSession, (prev) => ({
+      ...prev,
+      ...buildDashboardPreviewOpenFlushFailureStatePatch({ errorMessage }),
+    }));
   };
 
   const ensureDraftFlushBeforeCriticalAction = async (
@@ -1093,8 +1095,7 @@ export function createDashboardPreviewControllerRuntime({
       }
 
       if (previewResult.status === "missing-template") {
-        showAlert("No se encontro la plantilla.");
-        resetPreviewState(previewSession);
+        showPreviewError(previewSession, "No se encontro la plantilla.");
         finishPreviewTimingSession(timingSessionId, {
           reason: "missing-template",
           status: "error",
@@ -1104,8 +1105,7 @@ export function createDashboardPreviewControllerRuntime({
       }
 
       if (previewResult.status === "missing-draft") {
-        showAlert("No se encontro el borrador");
-        resetPreviewState(previewSession);
+        showPreviewError(previewSession, "No se encontro el borrador.");
         finishPreviewTimingSession(timingSessionId, {
           reason: "missing-draft",
           status: "error",
@@ -1215,8 +1215,7 @@ export function createDashboardPreviewControllerRuntime({
       }
 
       console.error("Error al generar la vista previa:", error);
-      showAlert("No se pudo generar la vista previa");
-      resetPreviewState(previewSession);
+      showPreviewError(previewSession, "No se pudo generar la vista previa. Intenta nuevamente.");
       finishPreviewTimingSession(timingSessionId, {
         reason: error?.code || error?.message || "preview-error",
         status: "error",

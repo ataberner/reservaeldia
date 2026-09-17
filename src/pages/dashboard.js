@@ -496,6 +496,7 @@ export default function Dashboard() {
 
       {/* Modal de vista previa */}
       <ModalVistaPrevia
+        onRetry={generarVistaPrevia}
         visible={mostrarVistaPrevia}
         onClose={closePreview}
         htmlContent={htmlVistaPrevia}

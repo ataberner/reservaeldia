@@ -90,6 +90,15 @@ selection/view. Recovery inserts at most one view and reapplies the current valu
 Detailed keyboard, touch, focus, group-child, and undo/redo rules are normative in
 `INTERACTION_CONTRACT.md`.
 
+Text-content section expansion is planned by
+`src/domain/sections/textContentExpansion.js`. `CanvasEditor` supplies the live
+Konva measurement adapter (`textContentBounds.js`) to both the free inline commit
+and `useTemplateFieldAuthoring.updateTemplateFieldValues`. The authoring commit
+publishes `secciones` together with `objetos` before its normal ordered persistence.
+The shared `textBoxLayout.js` preserves the renderer's existing width/wrap/origin
+policy for measurement. The normative scope and exclusions are in
+[`INTERACTION_CONTRACT.md` section 10.6](INTERACTION_CONTRACT.md#106-section-height-after-text-content-changes).
+
 ### 3.2 Immediate Interaction State
 
 Selection-sensitive interaction state is also mirrored into the internal selection runtime in `src/lib/editorSelectionRuntime.js`.
@@ -186,6 +195,7 @@ Current behavior:
 - persists section height, `altoModo`, create, delete, reorder, name, and authoring patches through `persistEditorSessionPatch`
 - shares write ordering through the draft-write coordinator for autosave, flush, and section mutation writes
 - persists a reached dynamic-field operation as one ordered session mutation over `templateInput`, `templateAuthoringDraft`, `objetos`, `secciones`, and `eventDetails`, rather than through a private authoring queue
+- coalesces consecutive, not-yet-started value-only authoring snapshots for the same session into the latest complete snapshot, including any text-driven section expansion; all superseded callers await that snapshot's write result. Started writes, schema/history mutations, ordinary autosaves, section mutations and critical flushes remain FIFO barriers and cannot be crossed by coalescing.
 - drains pending name, location, date, and time edits before a critical flush; later autosaves read the latest complete snapshot
 
 Editor modules must not call `doc(db, "borradores", slug)` to persist editor-session state. New session kinds must be represented explicitly in `normalizeEditorSession`; unsupported kinds fail closed at the persistence authority instead of falling back to draft.

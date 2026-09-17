@@ -134,6 +134,7 @@ import {
   shouldArmPredragRelease,
   shouldArmSelectedTextPrimaryRelease,
 } from "./elementInteractionDecisions.js";
+import { resolveTextBoxLayout } from "./textBoxLayout.js";
 
 function normalizeFontSize(value, fallback = 24) {
   const parsed = Number(value);
@@ -142,13 +143,6 @@ function normalizeFontSize(value, fallback = 24) {
 
 function normalizeText(value) {
   return String(value || "").trim();
-}
-
-function normalizeTextWrapMode(value) {
-  const mode = normalizeText(value).toLowerCase();
-  if (mode === "char") return "char";
-  if (mode === "word") return "word";
-  return "word";
 }
 
 function isInlineCanvasTextDebugEnabled() {
@@ -375,15 +369,6 @@ function resolveTextMeasureNode(node) {
   } catch {}
 
   return null;
-}
-
-function resolveTextTransformOriginOffset(align, width) {
-  const safeWidth = Math.max(0, Number(width) || 0);
-  const normalizedAlign = String(align || "left").trim().toLowerCase();
-
-  if (normalizedAlign === "center") return safeWidth / 2;
-  if (normalizedAlign === "right") return safeWidth;
-  return 0;
 }
 
 function logInlineIntentEmitter(eventName, payload = {}) {
@@ -4762,9 +4747,6 @@ export default function ElementoCanvas({
       });
     }
 
-        const ANCHO_CANVAS = 800;
-    const availableWidth = Math.max(1, ANCHO_CANVAS - validX);
-
     // ancho real del texto (mÃƒÂ¡xima lÃƒÂ­nea, segÃƒÂºn tu cÃƒÂ¡lculo actual)
     const realTextWidth = Math.max(
       1,
@@ -4775,24 +4757,13 @@ export default function ElementoCanvas({
 
     // Ã¢Å“â€¦ Si entra, NO usamos width (bounds ajustado)
     // Ã¢Å“â€¦ Si no entra, usamos width=available y wrap por caracteres para cortar en el borde
-    const fixedTextBoxWidth = Number(obj?.width);
-    const shouldUseFixedTextBox =
-      obj.__autoWidth === false &&
-      Number.isFinite(fixedTextBoxWidth) &&
-      fixedTextBoxWidth > 0;
-    const shouldWrapToCanvasEdge = !shouldUseFixedTextBox && realTextWidth > availableWidth;
-
-    const wrapToUse = shouldUseFixedTextBox
-      ? normalizeTextWrapMode(obj.textWrapMode)
-      : (shouldWrapToCanvasEdge ? "char" : "none");
-    const widthToUse = shouldUseFixedTextBox
-      ? fixedTextBoxWidth
-      : (shouldWrapToCanvasEdge ? availableWidth : undefined);
-    const visualTextBoxWidth = Number.isFinite(widthToUse) ? widthToUse : realTextWidth;
-    const textOriginOffsetX = resolveTextTransformOriginOffset(
-      align,
-      visualTextBoxWidth
-    );
+    const {
+      width: widthToUse,
+      wrap: wrapToUse,
+      offsetX: textOriginOffsetX,
+      availableWidth,
+      visualTextBoxWidth,
+    } = resolveTextBoxLayout(obj, realTextWidth);
     const templateDraftDebugSession = getTemplateDraftDebugSession();
     const templateDraftDebugObject =
       templateDraftDebugSession?.objectsById &&

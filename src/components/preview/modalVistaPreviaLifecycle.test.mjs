@@ -151,6 +151,6 @@ test("read-only preview still surfaces prepared validation and render errors", (
   );
   assert.match(
     modalSource,
-    /\{showNoticeLayer \? \(\s*<PreviewPublishNoticeLayer/
+    /\{showNoticeLayer && !preparationFailed \? \(\s*<PreviewPublishNoticeLayer/
   );
 });

@@ -32,6 +32,8 @@ export default function useCanvasEditorInlineCommitHandlers({
   setElementosSeleccionados,
   setMostrarPanelZ,
   onLinkedInlineValueChange,
+  resolveSectionsAfterTextChange,
+  setSecciones,
 }) {
   const onInlineChange = (nextValue) => {
     const linkedField = editing.linkedField || null;
@@ -375,8 +377,14 @@ export default function useCanvasEditorInlineCommitHandlers({
       expectedX,
       patchX: patch.x ?? null,
     });
+    const nextSections = resolveSectionsAfterTextChange?.({
+      previousObjects: objetos,
+      nextObjects: actualizado,
+      sections: secciones,
+    });
     flushSync(() => {
       setObjetos(actualizado);
+      if (nextSections && nextSections !== secciones) setSecciones(nextSections);
     });
     captureInlineSnapshot("finish: after-flush", {
       id: finishId,

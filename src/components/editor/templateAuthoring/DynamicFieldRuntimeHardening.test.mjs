@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createDraftWriteCoordinator } from "../persistence/draftWriteCoordinator.js";
 
 const hookSource = fs.readFileSync(
   new URL("./useTemplateFieldAuthoring.js", import.meta.url),
@@ -55,6 +56,63 @@ test("authoring persistence always carries the complete reached render roots", (
     /const payload = hydrateSnapshot\(nextSnapshot, renderObjects\)/
   );
   assert.match(persistSlice, /const renderPatch = \{\s*objetos: renderObjects,\s*secciones: renderSections,\s*eventDetails: renderEventDetails,/s);
+});
+
+test("queued value edits persist the latest complete text and height before the critical flush", async () => {
+  const coordinator = createDraftWriteCoordinator();
+  let releaseWrite;
+  const slowWrite = new Promise((resolve) => { releaseWrite = resolve; });
+  const writes = [];
+  const saving = [];
+  const saveCounterRef = { current: 0 };
+  const dependencies = {
+    useCallback: (callback) => callback,
+    normalizeText: (value) => String(value || "").trim(),
+    slug: "draft-test", enabled: true, userId: "test-user", sourceTemplateId: "",
+    editorSession: { kind: "draft", id: "draft-test" },
+    saveCounterRef, lastWriteRef: { current: null },
+    latestAuthoringStateRef: { current: {} },
+    setSaving: (value) => saving.push(value), setError: assert.fail,
+    normalizeEventDetailsConfig: () => ({}),
+    hydrateSnapshot: (snapshot) => snapshot,
+    enqueueDraftWrite: coordinator.enqueueDraftWrite,
+    saveAuthoringDraft: async (payload) => {
+      writes.push(payload);
+      if (writes.length === 1) await slowWrite;
+    },
+  };
+  const persist = new Function(...Object.keys(dependencies),
+    `${readCallbackSlice("persistSnapshot", "commitSnapshot")}\nreturn persistSnapshot;`
+  )(...Object.values(dependencies));
+  const writeValue = (value) => persist({ values: { texto_historia: `Historia ${value}` } }, {
+    nextObjects: [{ id: "story", texto: `Historia ${value}` }],
+    nextSections: [{ id: "section", altura: 300 + value }],
+    nextEventDetails: { mode: "single" }, coalesceValueWrite: true,
+  });
+  const promises = [writeValue(0)];
+  await Promise.resolve();
+  await Promise.resolve();
+  for (let value = 1; value <= 100; value += 1) promises.push(writeValue(value));
+  let prepared = false;
+  const flush = coordinator.enqueueDraftWrite(() => {
+    assert.equal(writes.length, 2);
+    assert.equal(writes[1].state.values.texto_historia, "Historia 100");
+    assert.deepEqual(writes[1].renderPatch, {
+      objetos: [{ id: "story", texto: "Historia 100" }],
+      secciones: [{ id: "section", altura: 400 }],
+      eventDetails: { mode: "single" },
+    });
+    prepared = true;
+  });
+  assert.equal(prepared, false);
+  releaseWrite();
+  await Promise.all([...promises, flush]);
+  await coordinator.waitForDraftWrites();
+  assert.equal(prepared, true);
+  assert.equal(saveCounterRef.current, 0);
+  assert.equal(saving.at(-1), false);
+  const updateSlice = readCallbackSlice("updateTemplateFieldValues", "updateTemplateFieldValue");
+  assert.match(updateSlice, /coalesceValueWrite: !recordsCanvasHistory && !schemaChanged/);
 });
 
 test("autosave omits dynamic metadata until authoring hydration succeeds", () => {

@@ -83,8 +83,9 @@ export function buildDashboardPreviewOpenFlushFailureStatePatch({
   errorMessage = "",
 } = {}) {
   return {
-    publicacionVistaPreviaError: errorMessage || "",
-    mostrarVistaPrevia: false,
+    publicacionVistaPreviaError: errorMessage || "No se pudo generar la vista previa. Intenta nuevamente.",
+    mostrarVistaPrevia: true,
+    htmlVistaPrevia: null,
   };
 }
 

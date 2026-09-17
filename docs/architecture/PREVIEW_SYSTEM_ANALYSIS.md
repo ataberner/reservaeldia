@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-09-06.
+> Updated from code inspection on 2026-09-17.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -83,6 +83,15 @@ Repeated open actions while the same session is still preparing share one
 in-flight operation. Closing the modal invalidates that session; a late result
 may finish at the transport level but cannot commit HTML or loading state into
 a later opening.
+
+If inline settlement, critical persistence flush, source lookup, validation or
+render preparation fails, the active modal stays open with no trusted HTML and
+a visible error. The dashboard's `Reintentar` action starts a new guarded opening
+and repeats settlement and confirmed persistence before preparation. Repeated
+clicks during that attempt share the same in-flight operation; there is no
+automatic retry loop. A preparation error replaces the loading frames on both
+desktop and mobile, including administrative read-only preview. Closing the
+modal still invalidates the failed or pending session.
 
 Both private preparation callables used by the editor preview path keep one warm
 instance with one CPU: `prepareDraftPreviewRender` and

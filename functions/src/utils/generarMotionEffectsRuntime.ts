@@ -1,6 +1,17 @@
 export function generarMotionEffectsRuntimeHTML(): string {
   return `
 <style>
+  /* Shared entrance timing for authoritative preview and published HTML. */
+  :root {
+    --mefx-entry-delay: 120ms;
+    --mefx-reveal-duration: 760ms;
+    --mefx-zoom-opacity-duration: 740ms;
+    --mefx-zoom-scale-duration: 880ms;
+    --mefx-draw-opacity-duration: 640ms;
+    --mefx-draw-scale-duration: 920ms;
+    --mefx-stagger-duration: 740ms;
+  }
+
   .mefx-preparing .mefx-reveal-init,
   .mefx-preparing .mefx-zoom-init,
   .mefx-preparing .mefx-draw-init,
@@ -13,8 +24,9 @@ export function generarMotionEffectsRuntimeHTML(): string {
     translate: 0 14px;
     will-change: opacity, translate;
     transition:
-      opacity 640ms cubic-bezier(0.22, 1, 0.36, 1),
-      translate 640ms cubic-bezier(0.22, 1, 0.36, 1);
+      opacity var(--mefx-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1),
+      translate var(--mefx-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--mefx-entry-delay);
   }
 
   .mefx-reveal-on {
@@ -28,8 +40,9 @@ export function generarMotionEffectsRuntimeHTML(): string {
     transform-origin: center center;
     will-change: opacity, scale;
     transition:
-      opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
-      scale 760ms cubic-bezier(0.22, 1, 0.36, 1);
+      opacity var(--mefx-zoom-opacity-duration) cubic-bezier(0.22, 1, 0.36, 1),
+      scale var(--mefx-zoom-scale-duration) cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--mefx-entry-delay);
   }
 
   .mefx-zoom-on {
@@ -43,8 +56,9 @@ export function generarMotionEffectsRuntimeHTML(): string {
     transform-origin: left center;
     will-change: scale;
     transition:
-      opacity 520ms ease,
-      scale 800ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      opacity var(--mefx-draw-opacity-duration) ease,
+      scale var(--mefx-draw-scale-duration) cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition-delay: var(--mefx-entry-delay);
   }
 
   .mefx-draw-on {
@@ -146,9 +160,9 @@ export function generarMotionEffectsRuntimeHTML(): string {
     translate: 0 10px;
     will-change: translate, opacity;
     transition:
-      opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
-      translate 620ms cubic-bezier(0.22, 1, 0.36, 1);
-    transition-delay: var(--mefx-stagger-delay, 0ms);
+      opacity var(--mefx-stagger-duration) cubic-bezier(0.22, 1, 0.36, 1),
+      translate var(--mefx-stagger-duration) cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: calc(var(--mefx-entry-delay) + var(--mefx-stagger-delay, 0ms));
   }
 
   .mefx-stagger-item.mefx-stagger-on {
@@ -190,40 +204,42 @@ export function generarMotionEffectsRuntimeHTML(): string {
   }
 
   @media (max-width: 767px) {
+    :root {
+      --mefx-reveal-duration: 680ms;
+      --mefx-zoom-opacity-duration: 680ms;
+      --mefx-zoom-scale-duration: 740ms;
+      --mefx-draw-opacity-duration: 680ms;
+      --mefx-draw-scale-duration: 780ms;
+      --mefx-stagger-duration: 680ms;
+    }
+
     .mefx-reveal-init {
       translate: 0 10px;
-      transition-duration: 540ms;
     }
 
     .mefx-zoom-init {
       scale: 0.99;
-      transition-duration: 580ms;
-    }
-
-    .mefx-draw-init {
-      transition-duration: 640ms;
-    }
-
-    .mefx-stagger-item {
-      transition-duration: 540ms;
     }
 
     /* Fallback robusto mobile: cuando se agrega "on", forzamos keyframes */
     .mefx-reveal-on {
-      animation: mefxRevealMobileIn 540ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation: mefxRevealMobileIn var(--mefx-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: var(--mefx-entry-delay);
     }
 
     .mefx-zoom-on {
-      animation: mefxZoomMobileIn 580ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation: mefxZoomMobileIn var(--mefx-zoom-scale-duration) cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: var(--mefx-entry-delay);
     }
 
     .mefx-draw-on {
-      animation: mefxDrawMobileIn 640ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      animation: mefxDrawMobileIn var(--mefx-draw-scale-duration) cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      animation-delay: var(--mefx-entry-delay);
     }
 
     .mefx-stagger-item.mefx-stagger-on {
-      animation: mefxRevealMobileIn 540ms cubic-bezier(0.22, 1, 0.36, 1) both;
-      animation-delay: var(--mefx-stagger-delay, 0ms);
+      animation: mefxRevealMobileIn var(--mefx-stagger-duration) cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: calc(var(--mefx-entry-delay) + var(--mefx-stagger-delay, 0ms));
     }
   }
 
@@ -492,7 +508,7 @@ export function generarMotionEffectsRuntimeHTML(): string {
     var requests = [];
 
     nodes.forEach(function(node){
-      var sample = String(node.textContent || "").replace(/\s+/g, " ").trim();
+      var sample = String(node.textContent || "").replace(/s+/g, " ").trim();
       if (!sample) return;
 
       try {

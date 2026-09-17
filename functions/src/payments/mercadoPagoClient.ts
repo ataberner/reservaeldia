@@ -1,4 +1,5 @@
 import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
+import { assertExternalEffectAllowed } from "../firebaseAdmin";
 
 function readRequiredEnv(name: string): string {
   const value = String(process.env[name] || "").trim();
@@ -11,6 +12,7 @@ function readRequiredEnv(name: string): string {
 let cachedClient: MercadoPagoConfig | null = null;
 
 export function getMercadoPagoClient(): MercadoPagoConfig {
+  assertExternalEffectAllowed("Mercado Pago");
   if (cachedClient) return cachedClient;
 
   const accessToken = readRequiredEnv("MERCADO_PAGO_ACCESS_TOKEN");

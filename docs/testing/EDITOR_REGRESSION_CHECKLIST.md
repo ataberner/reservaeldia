@@ -746,9 +746,9 @@ Resultado esperado:
 1. En edicion de plantilla como admin/superadmin, asociar una seccion completa a RSVP y otra a Regalos desde el menu de seccion.
 2. Asociar secciones completas a Ceremonia, Fiesta y Dress Code desde el mismo menu.
 3. En una seccion compartida, agrupar las columnas RSVP y Regalos desde multiseleccion y asignar cada grupo desde el engranaje.
-4. Seleccionar varios roots independientes para Ceremonia, Fiesta y Dress Code, asignar cada asociacion desde el engranaje y confirmar que no aparece ningun wrapper `tipo: "grupo"`.
+4. Seleccionar varios roots independientes para RSVP, Regalos, Ceremonia, Fiesta y Dress Code, asignar cada asociacion desde el engranaje y confirmar que no aparece ningun wrapper `tipo: "grupo"`.
 5. Volver a seleccionar por separado cada root asociado, moverlo y editar su texto o tipografia mediante el owner normal del elemento; repetir la asignacion con anchors o secciones distintas y limpiar una seleccion uniforme y otra mixta con `Ninguna`.
-6. Con un grupo historico de Ceremonia, Fiesta o Dress Code, usar `Desagrupar` y confirmar que cada child restaurado conserva la asociacion.
+6. Con un grupo historico de cualquiera de las cinco asociaciones, usar `Desagrupar` y confirmar que cada child restaurado conserva la asociacion.
 7. Alternar los switches existentes de RSVP y Regalos, la modalidad del evento para Ceremonia/Fiesta, y `Mostrar Dress Code`.
 8. Abrir preview autoritativa y publicar en un entorno de prueba; repetir la seleccion y edicion independiente en desktop y mobile.
 
@@ -757,7 +757,7 @@ Resultado esperado:
 - las opciones administrativas no aparecen en borradores normales, usuarios finales, preview ni HTML publico
 - `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode` y `eventDetails.dressCode.enabled` controlan CTA, secciones, grupos y roots standalone; no hay switches adicionales
 - una seccion asociada inactiva se omite completa, incluidas decoraciones y objetos compartidos internos
-- Ceremonia, Fiesta y Dress Code se guardan en cada root seleccionado sin cambiar IDs, orden, geometria, contenido, tipografia, targets ni seleccion logica; cada elemento sigue siendo seleccionable y editable de forma independiente
+- RSVP, Regalos, Ceremonia, Fiesta y Dress Code se guardan en cada root seleccionado sin cambiar IDs, orden, geometria, contenido, tipografia, targets ni seleccion logica; cada elemento sigue siendo seleccionable y editable de forma independiente
 - los grupos historicos no se migran automaticamente; al desagrupar uno compatible, los roots restaurados heredan la asociacion
 - en una seccion compartida, los owners de la unica funcionalidad restante —grupos o roots standalone— se centran horizontalmente como conjunto y vuelven a su posicion original al reactivar las demas funciones
 - los roots standalone reciben ese offset solo en render: no se agrupan, mantienen seleccion y edicion independientes, y recuperan su geometria persistida exacta al reactivar las demas funciones

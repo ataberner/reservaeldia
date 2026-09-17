@@ -293,11 +293,11 @@ function ensureDecorationBounds(
   sectionHeight: number,
   canvasWidth = CANVAS_WIDTH
 ): { width: number; height: number } {
-  let nextWidth = Math.max(
+  const nextWidth = Math.max(
     MIN_DECORATION_SIZE,
     Math.round(toPositiveNumber(width, DEFAULT_DECORATION_WIDTH) || DEFAULT_DECORATION_WIDTH)
   );
-  let nextHeight = Math.max(
+  const nextHeight = Math.max(
     MIN_DECORATION_SIZE,
     Math.round(toPositiveNumber(height, DEFAULT_DECORATION_HEIGHT) || DEFAULT_DECORATION_HEIGHT)
   );

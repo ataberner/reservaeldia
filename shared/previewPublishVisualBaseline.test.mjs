@@ -23,6 +23,8 @@ test("visual baseline fixtures keep the required case ids frozen", () => {
     "mixed-fijo-pantalla",
     "fixed-reflow-columns",
     "fixed-reflow-title-visual-columns",
+    "fixed-reflow-overlap-stacking",
+    "fixed-reflow-aquarelle-countdown-overlap",
     "fixed-overflow-expansion",
     "grouped-cta-fixed-section",
     "group-nested-children",
@@ -30,7 +32,72 @@ test("visual baseline fixtures keep the required case ids frozen", () => {
     "pantalla-ynorm-positioning",
     "pantalla-composition-related-text",
   ]);
-  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 17);
+  assert.equal(new Set(previewPublishVisualBaselineCaseIds).size, 19);
+});
+
+test("fixed overlap fixture freezes two exclusive backing and foreground units", () => {
+  const fixture = previewPublishVisualBaselineFixtures.find(
+    (entry) => entry.id === "fixed-reflow-overlap-stacking"
+  );
+  assert.ok(fixture);
+  const ids = fixture.publishDraft.objetos.map((object) => object.id);
+  assert.deepEqual(ids, [
+    "overlap-card-backing",
+    "overlap-card-copy",
+    "overlap-card-detail",
+    "overlap-second-card-backing",
+    "overlap-second-card-copy",
+    "overlap-second-card-detail",
+  ]);
+  assert.equal(fixture.publishDraft.objetos[0].zIndex, 1);
+  assert.equal(fixture.publishDraft.objetos[1].zIndex, 2);
+  assert.equal(fixture.publishDraft.objetos[2].zIndex, 2);
+  assert.equal(fixture.publishDraft.objetos[3].zIndex, 1);
+  assert.equal(fixture.publishDraft.objetos[4].zIndex, 2);
+  assert.equal(fixture.publishDraft.objetos[5].zIndex, 2);
+});
+
+test("Aquarelle overlap fixture freezes the production Countdown and image geometry", () => {
+  const fixture = previewPublishVisualBaselineFixtures.find(
+    (entry) => entry.id === "fixed-reflow-aquarelle-countdown-overlap"
+  );
+  assert.ok(fixture);
+  assert.equal(fixture.publishDraft.secciones.length, 1);
+  assert.equal(fixture.publishDraft.secciones[0].altura, 249);
+  assert.equal(fixture.publishDraft.secciones[0].altoModo, "fijo");
+  assert.deepEqual(
+    fixture.publishDraft.objetos.map((object) => object.id),
+    [
+      "aquarelle-countdown",
+      "aquarelle-image-rotated",
+      "aquarelle-image-left",
+    ]
+  );
+  assert.equal(fixture.publishDraft.objetos[0].countdownSchemaVersion, 2);
+  assert.equal(fixture.publishDraft.objetos[1].rotation, 40.495975179163324);
+  assert.deepEqual(
+    fixture.publishDraft.objetos.map(({ x, y, width, height }) => ({
+      x,
+      y,
+      width,
+      height,
+    })),
+    [
+      { x: 200, y: 85.632, width: 400, height: 90 },
+      {
+        x: 238.964,
+        y: 30.288,
+        width: 136.64303617309125,
+        height: 131.09191282856193,
+      },
+      {
+        x: 79.815,
+        y: 65.915,
+        width: 151.16470991069377,
+        height: 129.43478286103158,
+      },
+    ]
+  );
 });
 
 test("fixed centered Gallery fixture freezes the centered-lateral regression shape", () => {

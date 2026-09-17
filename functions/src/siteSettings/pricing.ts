@@ -1,3 +1,4 @@
+import { ensureAdminApp } from "../firebaseAdmin";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
@@ -49,12 +50,7 @@ type PricingHistoryEntry = {
 };
 
 function ensureApp() {
-  if (admin.apps.length > 0) return admin.app();
-  return admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket:
-      process.env.FIREBASE_STORAGE_BUCKET || "reservaeldia-7a440.firebasestorage.app",
-  });
+  return ensureAdminApp();
 }
 
 function db() {

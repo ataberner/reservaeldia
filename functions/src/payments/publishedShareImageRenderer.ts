@@ -78,7 +78,9 @@ export type CaptureFirstSectionShareImageDeps = {
 function loadBrowserRuntime(): BrowserRuntime {
   // Lazy-loaded by design: this keeps browser startup and dependency loading out
   // of cold paths that do not need social-image rendering.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- Preserve this synchronous loader and keep the browser dependency out of unrelated cold paths.
   const loadedPuppeteer = require("puppeteer-core");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- Chromium must remain paired with the deferred Puppeteer load above.
   const loadedChromium = require("@sparticuz/chromium");
   return {
     puppeteer: (loadedPuppeteer.default || loadedPuppeteer) as PuppeteerLike,

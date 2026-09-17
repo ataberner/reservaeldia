@@ -874,6 +874,7 @@ test("generates explicit countdown contract markers for v1 and v2 objects", () =
 
   assert.match(legacyHtml, /data-countdown-contract="v1"/);
   assert.match(legacyHtml, /data-countdown-target-source="fechaISO"/);
+  assert.match(legacyHtml, /data-mobile-cluster="isolated"/);
   assert.doesNotMatch(legacyHtml, /data-countdown-v2="1"/);
 
   const modernHtml = generarHTMLDesdeObjetos(
@@ -896,6 +897,7 @@ test("generates explicit countdown contract markers for v1 and v2 objects", () =
   assert.match(modernHtml, /data-countdown-contract="v2"/);
   assert.match(modernHtml, /data-countdown-v2="1"/);
   assert.match(modernHtml, /data-countdown-target-source="fechaObjetivo"/);
+  assert.doesNotMatch(modernHtml, /data-mobile-cluster="isolated"/);
 });
 
 test("legacy countdown HTML uses the canvas-equivalent visual bounds for horizontal centering", () => {
@@ -1789,7 +1791,7 @@ test("mobile pantalla preserves one proportional composition anchor without fixe
     /var fit = applySectionFitScale\([\s\S]*if \(secModo === "pantalla" && mobileLayoutMode !== "preserve"\) \{[\s\S]*applyPantallaCompositionUnits\(/
   );
   const pantallaFunction = html.match(
-    /function applyPantallaCompositionUnits\([\s\S]*?return result;\n  }/
+    /function applyPantallaCompositionUnits\([\s\S]*?return result;\n {2}}/
   )?.[0];
   assert.ok(pantallaFunction);
   assert.doesNotMatch(pantallaFunction, /applyClusterStack/);

@@ -213,6 +213,48 @@
       ]
     },
     {
+      "caseId": "fixed-reflow-overlap-stacking",
+      "sourceFixture": "preview-publish-hydrated-asset-parity",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "each compact backing and its offset texts form one exclusive inferred unit",
+        "the foreground texts remain above their own backing in paint order",
+        "the left inferred unit stacks before the right inferred unit",
+        "the two nearby backings never merge through proximity or transitive text links",
+        "preview and publish keep identical geometry at representative mobile viewports",
+        "desktop authored geometry remains unchanged"
+      ]
+    },
+    {
+      "caseId": "fixed-reflow-aquarelle-countdown-overlap",
+      "sourceFixture": "Aquarelle · Acuarela artística",
+      "requiredViews": [
+        "canvas-editor",
+        "preview-desktop-frame",
+        "preview-mobile-frame",
+        "publish-desktop",
+        "publish-mobile"
+      ],
+      "expectedParityMode": "shared-parity",
+      "acceptedWarningCodes": [],
+      "captureFocus": [
+        "schema-v2 Countdown participates in spatial composition inference",
+        "both image elements remain overlapped with the Countdown after mobile reflow",
+        "the three-root composition keeps its internal normalized vectors",
+        "image elements retain authored paint order above the Countdown",
+        "preview and publish keep identical geometry at representative mobile viewports",
+        "desktop authored geometry remains unchanged"
+      ]
+    },
+    {
       "caseId": "fixed-overflow-expansion",
       "sourceFixture": "preview-publish-hydrated-asset-parity",
       "requiredViews": [

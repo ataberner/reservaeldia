@@ -220,8 +220,9 @@ Preview y publicación muestran solo los métodos visibles completos. Los datos
 bancarios se presentan con acción de copiar y la lista externa abre un enlace en
 otra pestaña con aislamiento `noopener noreferrer`.
 
-La visibilidad funcional de secciones o grupos asociados a Regalos deriva de
-`gifts.enabled`; no se agrega otro switch en secciones, CTA o Designer AI.
+La visibilidad funcional de secciones, grupos o roots independientes asociados a
+Regalos deriva de `gifts.enabled`; no se agrega otro switch en secciones, CTA o
+Designer AI.
 
 ## 7. Superficie de Diseñador AI
 

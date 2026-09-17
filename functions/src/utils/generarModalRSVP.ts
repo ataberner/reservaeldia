@@ -1,4 +1,5 @@
 import { getActiveQuestions, normalizeRsvpConfig, type RSVPConfig } from "../rsvp/config";
+const { readRenderEnvironment } = require("../../shared/firebaseEnvironment.cjs");
 
 type RsvpModalRuntimeOptions = {
   previewMode?: boolean;
@@ -21,13 +22,17 @@ export function generarModalRSVPHTML(
   if (!normalized.enabled) return "";
 
   const activeQuestions = getActiveQuestions(normalized);
+  const environment = readRenderEnvironment();
+  if (environment.mode === "emulators" && normalized.sheetUrl) {
+    throw new Error("RSVP Sheets está bloqueado en el recorrido local.");
+  }
   const payloadConfig = {
     ...normalized,
     questions: activeQuestions,
-    // Compatibility: preview keeps the same serialized public endpoint and exits
-    // before network submission through the runtime previewMode branch below.
+    // Preview still exits before submission; local HTML keeps a local endpoint.
     previewMode: runtimeOptions.previewMode === true,
-    submitEndpoint: "https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit",
+    isolatedLocal: environment.mode === "emulators",
+    submitEndpoint: `${environment.functionsBaseUrl}/publicRsvpSubmit`,
   };
 
   const serializedConfig = serializeForInlineScript(payloadConfig);
@@ -670,6 +675,7 @@ export function generarModalRSVPHTML(
 
   function postOptionalSheet(sheetUrl, payload){
     if (!sheetUrl) return;
+    if (RSVP_CONFIG.isolatedLocal) throw new Error("RSVP Sheets bloqueado en local.");
 
     try {
       fetch(sheetUrl, {
@@ -684,9 +690,11 @@ export function generarModalRSVPHTML(
     var configured = RSVP_CONFIG && RSVP_CONFIG.submitEndpoint
       ? String(RSVP_CONFIG.submitEndpoint).trim()
       : "";
-    if (configured) return configured;
-
-    return "https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit";
+    if (RSVP_CONFIG.isolatedLocal && configured !== ${serializeForInlineScript(`${environment.functionsBaseUrl}/publicRsvpSubmit`)}) {
+      throw new Error("Endpoint RSVP incompatible con el entorno local.");
+    }
+    if (!configured) throw new Error("Falta el endpoint RSVP.");
+    return configured;
   }
 
   function isPreviewMode() {

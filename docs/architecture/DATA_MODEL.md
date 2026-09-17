@@ -428,7 +428,7 @@ Elements are stored in the `objetos` array. The HTML generator groups them by `s
 | `role` / `rol` | Optional | Semantic role override used by motion/runtime data attributes. |
 | `motionEffect` | Optional | Motion effect hint used by generated HTML runtime data attributes. |
 | `hidden` | Optional, CTA-only today | `hidden === true` hides `rsvp-boton` and `regalo-boton` without deleting the object. The editor, preview, and publish omit the CTA while preserving its id, geometry, style, section, rotation, group membership, and array order for later restore. Missing or `false` means visible. This field is not a second selection authority and does not apply to section-owned visuals. |
-| `functionalAssociation` | Optional, root semantic association | Standalone roots may use `"ceremony"`, `"party"`, or `"dress_code"`; group roots additionally retain their existing RSVP/Gifts support. Group children inherit the wrapper association and must not persist another one. |
+| `functionalAssociation` | Optional, root semantic association | Standalone and group roots may use `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, or `"dress_code"`. Group children inherit the wrapper association and must not persist another one. |
 
 `rsvp.enabled` and `gifts.enabled` are the functional visibility authority for RSVP/Gifts CTAs and for RSVP/Gifts `functionalAssociation` render derivation. `eventDetails.mode` is the functional visibility authority for Ceremony/Party associations: `"single"` means Ceremony active and Party inactive; `"ceremony_party"` means both active. `eventDetails.dressCode.enabled` is the Dress Code functional authority; `eventDetails.dressCode.value` is only a one-way compatibility mirror of the structured dynamic value. For section-only `functionalAssociation: "countdown"`, the existing Countdown field `mostrarCuentaRegresiva` is the authority and no root switch is added. Legacy CTA `hidden` data may still exist for compatibility, but render preparation normalizes CTA visibility from `enabled`.
 
@@ -482,7 +482,7 @@ into `children[]` for dependencies and runtimes such as Google Fonts, countdown 
 gallery lightbox support, and functional CTA detection. The detailed contract lives in
 `docs/architecture/GROUP_RENDER_MODEL.md`.
 
-`functionalAssociation` is supported only on the group root. Supported values are `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, and `"dress_code"`; missing/null means shared. In shared sections without a section-level `functionalAssociation`, inactive functional groups are omitted at render time. If exactly one functional side remains active among the functional groups in that section, render preparation derives a horizontal offset from the joint bounding box of all visible groups for that active functionality. The offset is reversible and must not be saved as the group's base `x`. Admin assignment keeps RSVP/Gifts as singleton associations per section and allows multiple Ceremony/Party/Dress Code groups in the same section.
+On grouped content, `functionalAssociation` is supported only on the group root. Supported root values are `"rsvp"`, `"gifts"`, `"ceremony"`, `"party"`, and `"dress_code"`; missing/null means shared. The same values are valid on standalone roots. In shared sections without a section-level `functionalAssociation`, inactive functional owners are omitted at render time. If exactly one functional side remains active among the functional owners in that section, render preparation derives a horizontal offset from the joint bounding box of every visible root or group for that active functionality. The offset is reversible and must not be saved as base `x`. Admin group assignment keeps RSVP/Gifts singleton per section; standalone assignment may associate every independently editable element in the corresponding column.
 
 ### `texto`
 Current text objects use these fields:
@@ -865,7 +865,7 @@ Current normalized RSVP config shape on both the client and server is:
 | `questions[].options[]` | Optional | Present for select-like questions. A non-empty explicit list owns option membership and must retain at least one entry. |
 | `sheetUrl` | Optional normalized field | Preserved by both normalizers and exposed to the RSVP modal runtime for the optional secondary sheet/webhook POST. It is not read by `publicRsvpSubmit`. |
 
-`enabled` is the single RSVP functional switch. It controls the RSVP CTA visibility and any section/group render derivation that uses `functionalAssociation: "rsvp"`.
+`enabled` is the single RSVP functional switch. It controls the RSVP CTA visibility and any section/group/standalone-root render derivation that uses `functionalAssociation: "rsvp"`.
 
 Legacy-compatible RSVP input aliases accepted by both normalizers:
 
@@ -923,7 +923,7 @@ Current normalized gifts config shape is:
 | `visibility.giftListLink` | Required after normalization | Visibility flag. |
 | `giftListUrl` | Required after normalization | Sanitized external URL, may be empty. |
 
-`enabled` is the single Gifts functional switch. It controls the gifts CTA visibility and any section/group render derivation that uses `functionalAssociation: "gifts"`.
+`enabled` is the single Gifts functional switch. It controls the gifts CTA visibility and any section/group/standalone-root render derivation that uses `functionalAssociation: "gifts"`.
 
 The cross-surface semantics of bank methods, the external list, independent
 visibility, completeness and editor/Designer AI integration are governed by

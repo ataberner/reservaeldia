@@ -503,7 +503,7 @@ test("moved functional groups keep association only without destination conflict
   assert.equal(groupConflict.objetos[1].functionalAssociation, "rsvp");
 });
 
-test("standalone ceremony, party, and dress-code roots follow functional visibility", () => {
+test("standalone functional roots follow their authoritative switches", () => {
   const objetos = [
     {
       id: "ceremony-title",
@@ -533,17 +533,19 @@ test("standalone ceremony, party, and dress-code roots follow functional visibil
   const result = applyFunctionalAssociationsToRenderState({
     secciones: [{ id: "shared", orden: 0, altura: 400 }],
     objetos,
+    rsvp: { enabled: false },
     eventDetails: {
       mode: "single",
       dressCode: { enabled: false, value: "Formal" },
     },
   });
 
-  assert.deepEqual(result.objetos.map((object) => object.id), [
-    "ceremony-title",
+  assert.deepEqual(result.objetos.map((object) => object.id), ["ceremony-title"]);
+  assert.deepEqual(result.hiddenObjectIds, [
+    "party-map",
+    "dress-title",
     "legacy-rsvp-root",
   ]);
-  assert.deepEqual(result.hiddenObjectIds, ["party-map", "dress-title"]);
   assert.deepEqual(result.centeredObjectDeltas, {});
   assert.deepEqual(result.centeredGroupDeltas, {});
 });
@@ -625,6 +627,107 @@ test("standalone ceremony roots center jointly in single-event mode without beco
   assert.deepEqual(allEventsState.objetos.map((object) => object.x), [80, 70, 560]);
 });
 
+test("standalone RSVP and Gifts columns hide and recenter from their root switches", () => {
+  const secciones = [{ id: "shared", orden: 0, altura: 400 }];
+  const objetos = [
+    {
+      id: "rsvp-title",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 80,
+      y: 40,
+      width: 180,
+      height: 30,
+      functionalAssociation: "rsvp",
+    },
+    {
+      id: "rsvp-button",
+      tipo: "rsvp-boton",
+      seccionId: "shared",
+      x: 90,
+      y: 100,
+      width: 160,
+      height: 44,
+      functionalAssociation: "rsvp",
+    },
+    {
+      id: "gifts-title",
+      tipo: "texto",
+      seccionId: "shared",
+      x: 540,
+      y: 40,
+      width: 180,
+      height: 30,
+      functionalAssociation: "gifts",
+    },
+    {
+      id: "gifts-button",
+      tipo: "regalo-boton",
+      seccionId: "shared",
+      x: 550,
+      y: 100,
+      width: 160,
+      height: 44,
+      functionalAssociation: "gifts",
+    },
+  ];
+  const originalSnapshot = structuredClone({ secciones, objetos });
+
+  const bothVisible = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    rsvp: { enabled: true },
+    gifts: { enabled: true },
+  });
+  assert.deepEqual(bothVisible.objetos.map((object) => object.x), [80, 90, 540, 550]);
+  assert.deepEqual(bothVisible.centeredObjectDeltas, {});
+
+  const onlyRsvp = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    rsvp: { enabled: true },
+    gifts: { enabled: false },
+    materializeOffsets: false,
+  });
+  assert.deepEqual(onlyRsvp.objetos.map((object) => object.id), [
+    "rsvp-title",
+    "rsvp-button",
+  ]);
+  assert.deepEqual(onlyRsvp.centeredObjectDeltas, {
+    "rsvp-title": 230,
+    "rsvp-button": 230,
+  });
+  assert.deepEqual(
+    onlyRsvp.objetos.map((object) => object.__functionalRenderOffsetX),
+    [230, 230]
+  );
+
+  const onlyGifts = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    rsvp: { enabled: false },
+    gifts: { enabled: true },
+  });
+  assert.deepEqual(onlyGifts.objetos.map((object) => object.id), [
+    "gifts-title",
+    "gifts-button",
+  ]);
+  assert.deepEqual(onlyGifts.centeredObjectDeltas, {
+    "gifts-title": -230,
+    "gifts-button": -230,
+  });
+  assert.deepEqual(onlyGifts.objetos.map((object) => object.x), [310, 320]);
+
+  const bothHidden = applyFunctionalAssociationsToRenderState({
+    secciones,
+    objetos,
+    rsvp: { enabled: false },
+    gifts: { enabled: false },
+  });
+  assert.deepEqual(bothHidden.objetos, []);
+  assert.deepEqual({ secciones, objetos }, originalSnapshot);
+});
+
 test("an active standalone owner keeps a shared section visible beside inactive groups", () => {
   const result = applyFunctionalAssociationsToRenderState({
     secciones: [{ id: "shared", orden: 0, altura: 400 }],
@@ -645,7 +748,7 @@ test("an active standalone owner keeps a shared section visible beside inactive 
   assert.deepEqual(result.hiddenObjectIds, ["party-group"]);
 });
 
-test("standalone assignment keeps selected roots structurally independent", () => {
+test("standalone RSVP assignment keeps selected roots structurally independent", () => {
   const secciones = [{ id: "shared", orden: 0, altura: 400 }];
   const objetos = [
     {
@@ -683,7 +786,7 @@ test("standalone assignment keeps selected roots structurally independent", () =
     secciones,
     objetos,
     objectIds: ["ceremony-place", "ceremony-title", "ceremony-title"],
-    association: "ceremonia",
+    association: "rsvp",
   });
 
   assert.equal(result.ok, true);
@@ -693,11 +796,11 @@ test("standalone assignment keeps selected roots structurally independent", () =
   assert.equal(result.objetos.some((object) => object.tipo === "grupo"), false);
   assert.deepEqual(result.objetos[0], {
     ...objetos[0],
-    functionalAssociation: "ceremony",
+    functionalAssociation: "rsvp",
   });
   assert.deepEqual(result.objetos[1], {
     ...objetos[1],
-    functionalAssociation: "ceremony",
+    functionalAssociation: "rsvp",
   });
   assert.equal(result.objetos[2], objetos[2]);
 });
@@ -740,7 +843,7 @@ test("standalone assignment reassigns roots, clears section ownership, and remov
   assert.equal(cleared.objetos[3].functionalAssociation, "party");
 });
 
-test("standalone assignment rejects group-only associations and invalid selections atomically", () => {
+test("standalone assignment rejects unsupported associations and invalid selections atomically", () => {
   const secciones = [{ id: "shared", orden: 0 }];
   const objetos = [
     { id: "title", tipo: "texto", seccionId: "shared" },
@@ -748,8 +851,6 @@ test("standalone assignment rejects group-only associations and invalid selectio
   ];
 
   [
-    { objectIds: ["title"], association: "rsvp" },
-    { objectIds: ["title"], association: "gifts" },
     { objectIds: ["title"], association: "unknown" },
     { objectIds: ["preserved-group"], association: "ceremony" },
     { objectIds: ["title", "missing"], association: "party" },

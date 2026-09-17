@@ -1,3 +1,4 @@
+import { ensureAdminApp } from "../firebaseAdmin";
 import { randomUUID } from "crypto";
 import { performance } from "node:perf_hooks";
 import type { Request, Response } from "express";
@@ -147,12 +148,7 @@ export type {
 } from "./publicationApprovedSessionFlow";
 export type { PublicationStateTransitionAction } from "./publicationPaymentEdge";
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket: "reservaeldia-7a440.firebasestorage.app",
-  });
-}
+ensureAdminApp("reservaeldia-7a440.firebasestorage.app");
 
 const db = admin.firestore();
 const bucket = getStorage().bucket();
@@ -1152,7 +1148,7 @@ async function collectUserHistoryDocsForSlug(params: {
   const seenPaths = new Set<string>();
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
-  while (true) {
+  for (;;) {
     let historyQuery = db
       .collection(PUBLICADAS_HISTORIAL_COLLECTION)
       .where("userId", "==", uid)

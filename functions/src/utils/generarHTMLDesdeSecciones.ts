@@ -1,4 +1,5 @@
 import { generarHTMLDesdeObjetos } from "./generarHTMLDesdeObjetos";
+const { readRenderEnvironment, localContentSecurityPolicy } = require("../../shared/firebaseEnvironment.cjs");
 import { CANVAS_BASE } from "../models/dimensionesBase";
 import { generarModalRSVPHTML } from "./generarModalRSVP";
 import { type RSVPConfig as ModalConfig } from "../rsvp/config";
@@ -757,7 +758,7 @@ export function generarHTMLDesdeSecciones(
       // Fallback manual debajo.
     }
 
-    var match = rawTransform.match(/^matrix\(([^)]+)\)$/i);
+    var match = rawTransform.match(/^matrix(([^)]+))$/i);
     if (!match) {
       return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
     }
@@ -1593,6 +1594,7 @@ export function generarHTMLDesdeSecciones(
 <!DOCTYPE html>
 <html lang="es"${slug ? ` data-slug="${escapeAttr(slug)}"` : ""}${isPreview ? ' data-preview="1"' : ""}>
 <head>
+${readRenderEnvironment().mode === "emulators" ? `<meta http-equiv="Content-Security-Policy" content="${localContentSecurityPolicy()}">` : ""}
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Invitación</title>

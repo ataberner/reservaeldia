@@ -895,7 +895,7 @@ test("grouping moves a shared standalone functional association to the group roo
   );
 });
 
-test("grouping rejects mixed or unsupported standalone functional associations", () => {
+test("grouping preserves supported standalone functional associations and rejects mixed selections", () => {
   const base = {
     tipo: "texto",
     seccionId: "details",
@@ -914,19 +914,18 @@ test("grouping rejects mixed or unsupported standalone functional associations",
     }).reason,
     "selection-functional-association-mismatch"
   );
-  assert.equal(
-    resolveGroupingSelectionCandidate({
+  const rsvpSelection = resolveGroupingSelectionCandidate({
       objetos: [
         { ...base, id: "rsvp-a", functionalAssociation: "rsvp" },
         { ...base, id: "rsvp-b", x: 120, functionalAssociation: "rsvp" },
       ],
       selectedIds: ["rsvp-a", "rsvp-b"],
-    }).reason,
-    "selection-functional-association-unsupported"
-  );
+  });
+  assert.equal(rsvpSelection.eligible, true);
+  assert.equal(rsvpSelection.functionalAssociation, "rsvp");
 });
 
-test("ungrouping propagates safe associations and blocks group-only associations", () => {
+test("ungrouping propagates functional associations to restored roots", () => {
   const partyGroup = {
     id: "party-group",
     tipo: "grupo",
@@ -956,13 +955,15 @@ test("ungrouping propagates safe associations and blocks group-only associations
   assert.equal(result.restoredChildren[0].x, 100);
   assert.equal(result.restoredChildren[0].y, 115);
 
-  assert.equal(
-    resolveUngroupSelectionCandidate({
-      objetos: [{ ...partyGroup, id: "rsvp-group", functionalAssociation: "rsvp" }],
-      secciones: [createFixedSection("details")],
-      selectedIds: ["rsvp-group"],
-    }).reason,
-    "group-functional-association-ungroup-unsupported"
+  const rsvpResult = buildUngroupedSelectionState({
+    objetos: [{ ...partyGroup, id: "rsvp-group", functionalAssociation: "rsvp" }],
+    secciones: [createFixedSection("details")],
+    selectedIds: ["rsvp-group"],
+  });
+  assert.equal(rsvpResult.ok, true);
+  assert.deepEqual(
+    rsvpResult.restoredChildren.map((child) => child.functionalAssociation),
+    ["rsvp", "rsvp"]
   );
 });
 

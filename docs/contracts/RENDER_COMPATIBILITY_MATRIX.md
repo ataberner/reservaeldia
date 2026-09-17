@@ -70,13 +70,32 @@ estado del editor/Firestore.
 
 En secciones mobile `fijo` con reflow automatico, la unidad de adaptacion no es
 siempre cada objeto raiz por separado. El runtime infiere primero unidades de
-composicion a partir de solape o proximidad acotada mas alineacion de ejes o
-bordes. Cada unidad conserva sus vectores internos de distancia, alineacion y
-orden; despues se decide si la unidad completa es anchor o flow y se apilan las
-unidades que corresponda. Un `tipo: "grupo"` persistido conserva su contrato
-atomico explicito. La inferencia no cruza `.sec-content` con `.sec-bleed`, no
-incluye capas propias de seccion y no persiste agrupaciones nuevas. `pantalla`,
-`mobileLayoutMode: preserve` y desktop conservan sus ramas existentes.
+composicion a partir de proximidad o solape sustancial y acotado. La proximidad
+y el solape ordinario que involucra texto requieren alineacion de ejes o bordes;
+el solape entre no-textos tambien debe tener cobertura y tamanos relativos
+acotados. Un backing compacto `decorative`/`background` reclama como una
+unidad exclusiva los foregrounds que contiene con solape fuerte. Un unico
+foreground conserva la regla de tamanos relativos acotados; dos o mas
+foregrounds fuertemente contenidos tambien prueban una composicion aunque cada
+texto sea pequeno frente al recuadro. Si un foreground coincide con mas de un
+backing, gana el backing elegible mas pequeno y cercano. Una caja casi del ancho
+de la seccion, una interseccion rasante o la mera cercania entre dos backings no
+constituyen evidencia de una composicion ni pueden unir unidades independientes
+de forma transitiva. Dos unidades de solape autoradas lado a lado se apilan en
+mobile en orden izquierda-derecha, moviendo primero el backing con todos sus
+foregrounds y luego la segunda unidad. Cada unidad conserva
+sus vectores internos de distancia, alineacion, orden DOM y `z-index`; una
+unidad con solape inferido no se linealiza como textos independientes en el
+stacker. Despues se decide si la unidad completa es anchor o flow y se apilan
+las unidades que corresponda. Un `tipo: "grupo"` persistido conserva su
+contrato atomico explicito. La inferencia no cruza `.sec-content` con
+`.sec-bleed`, no incluye capas propias de seccion y no persiste agrupaciones
+nuevas. `pantalla`, `mobileLayoutMode: preserve` y desktop conservan sus ramas
+existentes. Un Countdown schema v2 raiz participa en esta inferencia como un
+objeto de composicion: si sus solapes sustanciales lo conectan con imagenes
+superpuestas, el conjunto conserva una sola unidad y el stacker mantiene sus
+vectores internos, incluso para roots rotados o escalados, al ubicarla en el
+flujo mobile. Countdown v1 conserva su aislamiento de compatibilidad.
 
 Una pareja raiz no agrupada que comparte la fila autorada, pero combina un
 objeto centrado sobre el eje de la seccion con otro claramente lateral, no se
@@ -187,10 +206,10 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | composicion mobile inferida (`fijo`/`auto`) | no agrega persistencia | no cambia grupos ni geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | infiere unidades por relaciones geometricas antes de anchor/flow; preserva vectores internos, grupos explicitos y separacion content/fullbleed |
 | composicion mobile inferida (`pantalla`) | no agrega persistencia | no cambia `yNorm`, grupos ni geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | proyecta relaciones a `800 x 500`, conserva un anclaje vertical proporcional por unidad y escala offsets internos con content fit; sin ordering, stack ni expansion |
 | contencion mobile de contenido | no agrega persistencia | no cambia geometria autorada | `soportado` | `soportado` | `alta` en draft-authoritative preview/publish | sin warning especifico actual | `.sec-content` mantiene contenido/interaccion dentro del viewport; roles decorativos, capas de seccion y `.sec-bleed` conservan crop tipo cover |
-| `functionalAssociation` RSVP/Gifts/Ceremony/Party/Dress Code/Countdown | `si` en seccion o grupo raiz; roots standalone admiten Ceremony/Party/Dress Code; Countdown solo en seccion | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled`, `eventDetails.mode`, `eventDetails.dressCode.enabled` y `mostrarCuentaRegresiva` del Countdown contenido son la autoridad; asociaciones inactivas se omiten sin mutar geometria |
+| `functionalAssociation` RSVP/Gifts/Ceremony/Party/Dress Code/Countdown | `si` en seccion, grupo raiz o root standalone; Countdown solo en seccion | `soportado` como render derivado | `soportado` | `soportado` | `alta` si entra por prepared payload | sin blocker propio; valida solo el estado visible final | `rsvp.enabled`/`gifts.enabled`, `eventDetails.mode`, `eventDetails.dressCode.enabled` y `mostrarCuentaRegresiva` del Countdown contenido son la autoridad; asociaciones inactivas se omiten sin mutar geometria |
 | `anclaje: fullbleed` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque el canvas no representa la salida final | warning `fullbleed-editor-drift` | congelar contrato |
 | `enlace` | `si` | `parcial` | `soportado` | `soportado` | `parcial` | CTA funcional ignora `enlace` | usar con restricciones |
-| `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML | no tiene warning especifico actual | validar en HTML |
+| `motionEffect` | `si` | `parcial` | `soportado` | `soportado` | `parcial` porque la animacion real vive en HTML; preview autoritativa y publish comparten el mismo runtime y timing | no tiene warning especifico actual | `reveal`/`zoom`/`draw` esperan `120ms` desde su activacion visible y usan duraciones compartidas mas pausadas: desktop `760ms`/`880ms`/`920ms`, mobile `680ms`/`740ms`/`780ms`; Gallery suma su stagger sobre la misma demora base; validar en HTML |
 | published share image | `publicadas.share` + `publicadas/{slug}/share.jpg` | no | no | artefacto derivado de publish HTML | deriva de la primera `.inv > .sec`; no agrega mapeo editor/render | bloquea publish si no se genera y confirma como JPEG `1200x630` | usar [PUBLISHED_SHARE_IMAGE_CONTRACT.md](PUBLISHED_SHARE_IMAGE_CONTRACT.md) |
 
 For published share image readiness, the renderer uses the generated publish

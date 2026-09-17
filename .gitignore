@@ -91,3 +91,6 @@ trace
 
 # Runtime-only provider analysis, dry-run reports, and resume state
 /artifacts/providers/runtime/
+
+# Disposable isolated development sessions (no personal configuration copied)
+/.local-isolation/

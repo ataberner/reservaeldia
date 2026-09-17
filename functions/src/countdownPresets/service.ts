@@ -1,3 +1,4 @@
+import { ensureAdminApp } from "../firebaseAdmin";
 
 import { randomUUID } from "crypto";
 import * as admin from "firebase-admin";
@@ -21,7 +22,6 @@ import {
 import { inspectCountdownPngBuffer } from "./frameAssetValidation";
 
 // Shared CJS is the cross-runtime authority copied into Functions at build time.
-/* eslint-disable @typescript-eslint/no-var-requires -- contrato CJS compartido con frontend y scripts */
 const {
   COUNTDOWN_FRAME_ASSET_LIMITS,
   COUNTDOWN_FRAME_MIME_TYPES,
@@ -74,7 +74,6 @@ const {
     svgRef: SvgRef;
   }) => Record<string, unknown>;
 };
-/* eslint-enable @typescript-eslint/no-var-requires */
 
 type Estado = "draft" | "published" | "archived";
 type Unit = "days" | "hours" | "minutes" | "seconds";
@@ -307,6 +306,7 @@ let cssValidatorWindow: ReturnType<typeof createCssValidatorWindow> | null = nul
 
 function createCssValidatorWindow() {
   // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- This synchronous validator must load JSDOM only when used, not at Functions discovery.
   const { JSDOM } = require("jsdom") as typeof import("jsdom");
   return new JSDOM("<!doctype html><html><body></body></html>").window;
 }
@@ -319,11 +319,7 @@ function getCssValidatorWindow() {
 }
 
 function ensureApp() {
-  if (admin.apps.length > 0) return admin.app();
-  return admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "reservaeldia-7a440.firebasestorage.app",
-  });
+  return ensureAdminApp();
 }
 
 function db() {
@@ -857,6 +853,7 @@ function inspectSvg(svgText: string, fileName: string, bytes: number) {
     warnings.push("El SVG pesa mas de 200KB.");
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- SVG validation keeps JSDOM out of the synchronous Functions discovery path.
   const { JSDOM } = require("jsdom") as typeof import("jsdom");
   let dom: import("jsdom").JSDOM;
   try {

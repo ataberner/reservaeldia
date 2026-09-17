@@ -7,11 +7,16 @@ concurrency:
   group: firebase-hosting-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 permissions:
-  checks: write
   contents: read
-  pull-requests: write
 jobs:
+  verification:
+    uses: ./.github/workflows/local-verification.yml
   build_and_preview:
+    needs: verification
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     steps:

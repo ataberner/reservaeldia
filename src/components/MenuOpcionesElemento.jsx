@@ -891,12 +891,8 @@ export default function MenuOpcionesElemento({
                         </option>
                     ) : null}
                     <option value="">Ninguna</option>
-                    {esGrupo ? (
-                        <>
-                            <option value="rsvp">Confirmacion de asistencia</option>
-                            <option value="gifts">Regalos</option>
-                        </>
-                    ) : null}
+                    <option value="rsvp">Confirmacion de asistencia</option>
+                    <option value="gifts">Regalos</option>
                     <option value="ceremony">Ceremonia</option>
                     <option value="party">Fiesta</option>
                     <option value="dress_code">Dress Code</option>

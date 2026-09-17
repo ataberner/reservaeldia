@@ -1,4 +1,9 @@
+import environmentContract from "./shared/firebaseEnvironment.cjs";
 const isDev = process.env.NODE_ENV === "development";
+if (isDev) {
+  environmentContract.readClientEnvironment();
+  if (!process.env.RESERVA_LOCAL_SESSION) throw new Error("Iniciar desarrollo con npm run dev (sesión aislada requerida).");
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -12,6 +17,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  ...(isDev ? {
+    async headers() {
+      return [{ source: "/:path*", headers: [
+        { key: "Content-Security-Policy", value: environmentContract.localContentSecurityPolicy() },
+        { key: "X-DNS-Prefetch-Control", value: "off" },
+      ] }];
+    },
+  } : {}),
 };
 
 export default nextConfig;

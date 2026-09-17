@@ -361,6 +361,7 @@ test("executePublicationPublish preserves first-publication writes, html path, a
     harness.calls.savedHtml[0].html,
     /name="robots" content="noindex, noarchive"/
   );
+  assert.match(harness.calls.savedHtml[0].html, /--mefx-entry-delay:\s*120ms;/);
   assert.doesNotMatch(harness.calls.savedHtml[0].html, /nofollow|nosnippet/);
   assert.equal(harness.calls.writes.length, 1);
   assert.equal(harness.calls.iconUsage.length, 1);
@@ -425,6 +426,63 @@ test("executePublicationPublish preserves first-publication writes, html path, a
     templateName: "Fiesta de Lucia",
     operation: "new",
   });
+});
+
+test("executePublicationPublish stores HTML with only the enabled standalone functional column", async (t) => {
+  const { draftData, artifacts } = await createExecutionInput(t, {
+    secciones: [{ id: "shared", orden: 0, altoModo: "fijo", altura: 420 }],
+    objetos: [
+      {
+        id: "rsvp-copy",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 80,
+        y: 60,
+        width: 180,
+        height: 32,
+        texto: "Asistencia",
+        functionalAssociation: "rsvp",
+      },
+      {
+        id: "gifts-copy",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 540,
+        y: 60,
+        width: 180,
+        height: 32,
+        texto: "Regalos",
+        functionalAssociation: "gifts",
+      },
+    ],
+    rsvp: { enabled: false },
+    gifts: { enabled: true },
+  });
+  const harness = createExecutionHarness();
+
+  await executePublicationPublish({
+    draftSlug: "draft-functional-columns",
+    publicSlug: "columnas-funcionales",
+    uid: "user-1",
+    operation: "new",
+    paymentSessionId: "session-functional-columns",
+    draftData,
+    existingData: null,
+    artifacts,
+    now: new Date("2026-03-27T09:00:00.000Z"),
+    ...harness.deps,
+  });
+
+  assert.equal(harness.calls.savedHtml.length, 1);
+  assert.equal(
+    harness.calls.savedHtml[0].filePath,
+    "publicadas/columnas-funcionales/index.html"
+  );
+  assert.doesNotMatch(harness.calls.savedHtml[0].html, /data-obj-id="rsvp-copy"/);
+  assert.match(harness.calls.savedHtml[0].html, /data-obj-id="gifts-copy"/);
+  assert.equal(harness.calls.writes.length, 1);
+  assert.equal("objetos" in harness.calls.writes[0].publicationWrite, false);
+  assert.equal("secciones" in harness.calls.writes[0].publicationWrite, false);
 });
 
 test("executePublicationPublish falls back to compatibility metadata only when modern draft metadata is absent", async (t) => {

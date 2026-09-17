@@ -394,7 +394,7 @@ export function buildScript(cfg: NormalizedConfig): string {
           var itDump = list[iDump];
           if (!itDump || !itDump.node) continue;
           var nDump = itDump.node;
-          var textRaw = ((nDump.textContent || "").trim()).replace(/\s+/g, " ");
+          var textRaw = ((nDump.textContent || "").trim()).replace(/s+/g, " ");
           var isTextDump = (nDump.getAttribute("data-debug-texto") || "") === "1";
           var clsDump = (nDump.className && typeof nDump.className === "string") ? nDump.className : "";
           var rootZone = (nDump.closest && nDump.closest(".sec-bleed")) ? "bleed" : "content";
@@ -1189,7 +1189,8 @@ export function buildScript(cfg: NormalizedConfig): string {
             w: +c.width.toFixed(1),
             h: +c.height.toFixed(1),
             cx: +c.cx.toFixed(1),
-            items: c.items.length
+            items: c.items.length,
+            preservesOverlap: !!c.preservesOverlap
           };
         })
       });

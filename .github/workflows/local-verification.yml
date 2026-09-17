@@ -1,0 +1,76 @@
+name: Isolated local verification
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.5'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21.0.8+9'
+      # Public OS dependencies for the lockfile-pinned Puppeteer browser.
+      - name: Prepare browser system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2 libatk-bridge2.0-0 libatk1.0-0 libcups2 libdbus-1-3 libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxshmfence1 fonts-liberation
+      - name: Prepare disposable workspace and public tools
+        id: prepare
+        run: npm run local:prepare
+      - name: Verify current guarantees
+        run: npm --prefix "$VERIFY_WORKSPACE" run verify:local
+        env:
+          VERIFY_WORKSPACE: ${{ steps.prepare.outputs.workspace }}
+      - name: Preserve synthetic evidence on success or failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          include-hidden-files: true
+          if-no-files-found: error
+          path: |
+            .local-isolation/reports/run-*/result.json
+            .local-isolation/reports/run-*/root-packages.log
+            .local-isolation/reports/run-*/functions-packages.log
+            .local-isolation/reports/run-*/tools-packages.log
+            .local-isolation/reports/run-*/firestore-download.log
+            .local-isolation/reports/run-*/storage-download.log
+            .local-isolation/reports/run-*/chrome-download.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/result.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/session.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/source-manifest.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/lint-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/lint.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/contracts-input.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/contracts-built.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/contracts-tests.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/contracts-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/rules-source.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/rules-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/integration-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/browser-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/verified.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/tooling.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/configuration.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/sync.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/compile.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/backend.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/compatibility.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/emulators.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/rules-countdown.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/integration.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/seed.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/next.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/browser.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline.log

@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-08-29.
+> Updated from code inspection on 2026-09-06.
 >
 > This document describes current behavior only. It is the central preview reference for authority, iframe parity, mobile scroll, and mobile height behavior.
 
@@ -18,6 +18,8 @@ Reviewed anchors:
 - `functions/src/render/prepareRenderPayload.ts`
 - `functions/src/utils/generarHTMLDesdeSecciones.ts`
 - `functions/src/utils/mobileSmartLayout/scriptTemplate.ts`
+- `functions/src/utils/mobileSmartLayout/dom.ts`
+- `functions/src/utils/mobileSmartLayout/stacking.ts`
 
 ## 1. Current Preview Contract
 
@@ -141,7 +143,7 @@ Publish and draft-authoritative preview share the same backend prepared payload 
 
 Publish stores final HTML in Firebase Storage and remains the delivery artifact source. Draft-authoritative preview uses the same preparation and validation contract before generating temporary preview HTML.
 
-Render preparation also applies functional associations before validation and HTML generation. `rsvp.enabled` and `gifts.enabled` are the functional switch authority for RSVP/Gifts, `eventDetails.mode` is the authority for Ceremony/Party (`"single"` keeps Ceremony active and Party inactive; `"ceremony_party"` keeps both active), and `eventDetails.dressCode.enabled` is the authority for Dress Code. Section-level associations omit whole sections; group-level associations in shared sections omit inactive groups and may derive a reversible horizontal offset for the remaining active functionality. This derivation is shared by draft-authoritative preview and publish and does not mutate stored `objetos` or `secciones`; Dress Code text is carried by `eventDetails.dressCode.value` and the `event_dress_code` dynamic field.
+Render preparation also applies functional associations before validation and HTML generation. `rsvp.enabled` and `gifts.enabled` are the functional switch authority for RSVP/Gifts, `eventDetails.mode` is the authority for Ceremony/Party (`"single"` keeps Ceremony active and Party inactive; `"ceremony_party"` keeps both active), and `eventDetails.dressCode.enabled` is the authority for Dress Code. Section-level associations omit whole sections; root/group associations in shared sections omit inactive owners and may derive a reversible horizontal offset for every remaining owner of the active functionality. This derivation is shared by draft-authoritative preview and publish and does not mutate stored `objetos` or `secciones`; Dress Code text is carried by `eventDetails.dressCode.value` and the `event_dress_code` dynamic field.
 
 Successful publish also requires the generated social share artifact. The backend
 must capture the first `.inv > .sec` from the generated publish HTML, validate
@@ -372,17 +374,35 @@ Section height is decided by a combination of generation-time section mode and r
 The smart-layout runtime is enabled for mobile and is configured for fixed sections by default. It measures generated DOM nodes, infers composition units, decides whether reflow is needed, stacks those units when needed, applies fit scale, and can expand fixed-section height to avoid clipping.
 
 For `fijo` sections in automatic mobile layout, composition inference happens
-before the anchor/flow split. Bounded overlap or horizontal/vertical proximity
-must also share a meaningful center or edge axis; this allows a title and
-subtitle, a visual plus its label, or a run of aligned copy to retain their
-authored internal vectors without adding type-specific layout cases. A unit
-containing an anchor remains together above the mobile flow, while flow units
-are ordered and stacked as blocks. Persisted `tipo: "grupo"` wrappers keep
-their stronger explicit isolated-unit contract. `.sec-content` and
-`.sec-bleed` never merge into one inferred unit, and section-owned visuals
-remain outside object clustering. This is generated-DOM geometry only: no
-inferred relationship is written to `objetos`, `secciones`, the editor, or
-Firestore.
+before the anchor/flow split. Horizontal/vertical proximity and text-involving
+ordinary overlap require a meaningful center or edge axis; non-text overlap
+must still cover a substantial area with bounded relative sizes. A compact
+decorative/background backing claims strongly contained foregrounds as an
+exclusive overlap unit. One foreground retains the bounded relative-size rule;
+two or more contained foregrounds can establish the card even when each text is
+small relative to its backing. When backings nest, the smallest eligible and
+nearest backing owns the foreground. Near-section-width boxes are not eligible
+owners, and adjacent backings or text rows cannot bridge two accepted owners by
+proximity. Two inferred overlap units authored side by side enter the two-column
+mobile path even when each side contributes only one unit, so the left card is
+stacked with all of its foregrounds before the right card. This preserves
+authored cards and labels without allowing a section-sized box or a grazing
+intersection to become a transitive cluster bridge. An inferred
+overlap unit keeps its DOM/`z-index` paint order and is not text-linearized by
+the rows stacker. A unit containing an anchor remains together above the mobile
+flow, while flow units are ordered and stacked as blocks. Persisted
+`tipo: "grupo"` wrappers keep their stronger explicit isolated-unit contract.
+Schema-v2 Countdown roots remain atomic render objects but are not isolated
+from root-level spatial inference; substantially overlapping image roots can
+therefore form the same unit and the stacker preserves the unit's internal
+vectors while placing it in mobile flow. For rotated or scaled members, the
+stacker targets their rendered bounds rather than reusing those bounds as raw
+CSS origins, so transforms do not apply their visual offset twice. Legacy
+schema-v1 Countdown isolation remains unchanged.
+`.sec-content` and `.sec-bleed` never merge into one inferred unit, and
+section-owned visuals remain outside object clustering. This is generated-DOM
+geometry only: no inferred relationship is written to `objetos`, `secciones`,
+the editor, or Firestore.
 
 The final mobile fit pass also owns horizontal containment for generated
 content. It measures non-decorative `.sec-content` objects after base geometry,
@@ -440,7 +460,7 @@ Height model markers:
 
 Runtime decisions are intentionally separate from generation decisions. Generation writes section/object HTML and base CSS; the runtime reacts to actual mobile viewport, font/image readiness, and DOM measurements.
 
-Functional group centering is a generation/prepared-payload derivation that runs before mobile smart layout. On mobile, the smart-layout runtime still treats a group wrapper as one layout unit, so the derived horizontal offset becomes the baseline position and does not alter `yNorm` or group-child local coordinates.
+Functional owner centering is a generation/prepared-payload derivation that runs before mobile smart layout. Standalone roots keep independent layout identity, while the smart-layout runtime still treats a group wrapper as one layout unit; the derived horizontal offset becomes the baseline position and does not alter `yNorm` or group-child local coordinates.
 
 `decoracionesBorde` is generated as a section-owned edge layer, not as an object. It stays out of mobile smart layout, uses renderer-owned `--edgezoom` compensation, and sizes the edge band from section height with separate desktop/mobile ratios. This keeps top/bottom ornaments viewport-width and visually balanced in `pantalla` sections during draft-authoritative preview and publish.
 

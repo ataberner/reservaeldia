@@ -1,7 +1,6 @@
 import sharp from "sharp";
 
 // Shared CJS is the cross-runtime authority copied into Functions at build time.
-/* eslint-disable @typescript-eslint/no-var-requires -- contrato CJS compartido con frontend y scripts */
 const {
   COUNTDOWN_FRAME_ASSET_LIMITS,
   COUNTDOWN_FRAME_MIME_TYPES,
@@ -30,7 +29,6 @@ const {
     };
   };
 };
-/* eslint-enable @typescript-eslint/no-var-requires */
 
 export type CountdownPngInspection = {
   valid: true;

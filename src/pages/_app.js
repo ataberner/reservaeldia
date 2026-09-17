@@ -9,6 +9,7 @@ import {
   isGoogleAnalyticsEnabled,
 } from '@/config/googleAnalytics';
 import { initializeCountdownAuditRuntime } from "@/domain/countdownAudit/runtime";
+import LocalEnvironmentNotice from "@/components/LocalEnvironmentNotice";
 
 const VIEWPORT_CONTENT = 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover';
 const PRIVATE_ROUTE_PREFIXES = ["/dashboard", "/admin"];
@@ -111,6 +112,7 @@ export default function MyApp({ Component, pageProps }) {
         <link rel="dns-prefetch" href="//reservaeldia.com.ar" />
       </Head>
       <Component {...pageProps} />
+      <LocalEnvironmentNotice />
       {isGoogleAnalyticsEnabled && (
         <GoogleAnalytics gaId={googleAnalyticsMeasurementId} />
       )}

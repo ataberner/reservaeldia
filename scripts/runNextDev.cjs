@@ -2,8 +2,9 @@ const fs = require("fs");
 const net = require("net");
 const path = require("path");
 const { spawn } = require("child_process");
+const { readClientEnvironment } = require("../shared/firebaseEnvironment.cjs");
 
-const DEFAULT_PORT = 3000;
+const DEFAULT_PORT = 3100;
 
 function parsePort(args) {
   if (args.length === 1) {
@@ -66,6 +67,10 @@ async function isPortAvailable(port) {
 }
 
 async function main() {
+  readClientEnvironment();
+  if (!process.env.RESERVA_LOCAL_SESSION || path.resolve(process.cwd()) !== path.resolve(process.env.RESERVA_LOCAL_SESSION, "workspace")) {
+    throw new Error("Usar npm run dev: Next sólo se inicia dentro de la copia aislada.");
+  }
   const forwardedArgs = process.argv.slice(2);
   const port = parsePort(forwardedArgs);
   const available = await isPortAvailable(port);
@@ -80,11 +85,11 @@ async function main() {
   const cwd = process.cwd();
   const distDir = `.next-dev-${port}`;
   const distPath = path.join(cwd, distDir);
-  fs.rmSync(distPath, { recursive: true, force: true });
+  if (fs.existsSync(distPath)) throw new Error("La sesión ya tiene una caché Next; iniciar una nueva sesión con npm run dev.");
 
   const nextBin = path.join(cwd, "node_modules", "next", "dist", "bin", "next");
   const nextForwardedArgs = normalizeForwardedArgs(forwardedArgs);
-  const nextArgs = ["dev"];
+  const nextArgs = ["dev", "--hostname", "127.0.0.1"];
   if (!hasPortArg(forwardedArgs)) {
     nextArgs.push("-p", String(port));
   }

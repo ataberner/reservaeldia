@@ -384,6 +384,76 @@ test("preview render payload applies functional associations before generation",
   assert.equal(payload.giftPreviewConfig.enabled, false);
 });
 
+test("preview render payload centers the remaining standalone RSVP or Gifts column", () => {
+  const source = {
+    secciones: [{ id: "shared", orden: 0, altura: 420 }],
+    objetos: [
+      {
+        id: "rsvp-copy",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 80,
+        y: 60,
+        width: 180,
+        height: 32,
+        functionalAssociation: "rsvp",
+      },
+      {
+        id: "rsvp-cta",
+        tipo: "rsvp-boton",
+        seccionId: "shared",
+        x: 90,
+        y: 110,
+        width: 160,
+        height: 44,
+        functionalAssociation: "rsvp",
+      },
+      {
+        id: "gifts-copy",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 540,
+        y: 60,
+        width: 180,
+        height: 32,
+        functionalAssociation: "gifts",
+      },
+      {
+        id: "gifts-cta",
+        tipo: "regalo-boton",
+        seccionId: "shared",
+        x: 550,
+        y: 110,
+        width: 160,
+        height: 44,
+        functionalAssociation: "gifts",
+      },
+    ],
+  };
+
+  const onlyRsvp = buildDashboardPreviewRenderPayload({
+    ...source,
+    rsvp: { enabled: true },
+    gifts: { enabled: false },
+  });
+  assert.deepEqual(onlyRsvp.objetos.map((object) => object.id), [
+    "rsvp-copy",
+    "rsvp-cta",
+  ]);
+  assert.deepEqual(onlyRsvp.objetos.map((object) => object.x), [310, 320]);
+
+  const onlyGifts = buildDashboardPreviewRenderPayload({
+    ...source,
+    rsvp: { enabled: false },
+    gifts: { enabled: true },
+  });
+  assert.deepEqual(onlyGifts.objetos.map((object) => object.id), [
+    "gifts-copy",
+    "gifts-cta",
+  ]);
+  assert.deepEqual(onlyGifts.objetos.map((object) => object.x), [310, 320]);
+});
+
 test("preview render payload derives complete countdown section visibility from the existing flag", () => {
   const buildPayload = (mostrarCuentaRegresiva) =>
     buildDashboardPreviewRenderPayload({

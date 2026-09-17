@@ -3,11 +3,11 @@
    "name": "reservaeldia",
    "version": "1.0.0",
    "scripts": {
-      "dev": "cross-env NEXT_PUBLIC_FIREBASE_MODE=prod node scripts/runNextDev.cjs",
-      "dev:functions": "npm --prefix functions run build && cross-env NEXT_PUBLIC_FIREBASE_MODE=functions-local concurrently -k \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions\" \"node scripts/runNextDev.cjs\"",
-      "emulators": "npm --prefix functions run build && firebase emulators:start --only auth,firestore,functions",
-      "dev:emulators": "npm --prefix functions run build && cross-env NEXT_PUBLIC_FIREBASE_MODE=emulators concurrently -k \"npm --prefix functions run build:watch\" \"firebase emulators:start --only auth,firestore,functions\" \"node scripts/runNextDev.cjs\"",
-      "dev:reset": "node -e \"const fs=require('fs'); fs.readdirSync('.').filter((d)=>d==='.next'||d==='.next-dev'||d.startsWith('.next-dev-')).forEach((d)=>fs.rmSync(d,{recursive:true,force:true}))\" && cross-env NEXT_PUBLIC_FIREBASE_MODE=prod node scripts/runNextDev.cjs",
+      "dev": "node scripts/local/runLocal.cjs dev",
+      "dev:functions": "node scripts/local/runLocal.cjs dev",
+      "emulators": "node scripts/local/runLocal.cjs emulators",
+      "dev:emulators": "node scripts/local/runLocal.cjs dev",
+      "dev:reset": "node scripts/local/runLocal.cjs dev",
       "build": "node scripts/retainNextStaticAssets.cjs capture && next build && node scripts/retainNextStaticAssets.cjs finalize && node scripts/verifyNextStaticRelease.cjs",
       "build:next": "next build",
       "export": "next export",
@@ -43,7 +43,14 @@
       "hosting:bootstrap": "node scripts/bootstrapNextStaticHistory.cjs --origin https://reservaeldia.com.ar",
       "verify:hosting:production": "node scripts/verifyNextStaticRelease.cjs --origin https://reservaeldia.com.ar",
       "deploy:full": "npm run hosting:bootstrap && npm run build && firebase deploy --only hosting && npm run verify:hosting:production && npm run deploy:functions:batched",
-      "deploy:hosting": "npm run hosting:bootstrap && npm run build && firebase deploy --only hosting && npm run verify:hosting:production"
+      "deploy:hosting": "npm run hosting:bootstrap && npm run build && firebase deploy --only hosting && npm run verify:hosting:production",
+      "local:check": "node scripts/local/runLocal.cjs check",
+      "test:local:unit": "node --test scripts/local/environment.test.mjs src/firebaseInitializationContract.test.mjs",
+      "test:local": "node scripts/local/runLocal.cjs test",
+      "test:local:rules": "node scripts/local/runLocal.cjs rules",
+      "local:prepare": "node scripts/local/prepareLocal.cjs",
+      "verify:local": "node scripts/local/runLocal.cjs verify",
+      "test:local:negative": "node scripts/local/verifyNegative.cjs"
    },
    "dependencies": {
       "@next/third-parties": "^15.3.2",

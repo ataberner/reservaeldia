@@ -9,8 +9,16 @@ on:
 concurrency:
   group: firebase-hosting-live
   cancel-in-progress: false
+permissions:
+  contents: read
 jobs:
+  verification:
+    uses: ./.github/workflows/local-verification.yml
   build_and_deploy:
+    needs: verification
+    permissions:
+      contents: read
+      checks: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

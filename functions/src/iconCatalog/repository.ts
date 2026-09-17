@@ -1,3 +1,4 @@
+import { ensureAdminApp } from "../firebaseAdmin";
 import { createHash, randomUUID } from "crypto";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
@@ -28,11 +29,7 @@ type ListIconDocsCursor = {
 };
 
 function ensureApp() {
-  if (admin.apps.length > 0) return admin.app();
-  return admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket: "reservaeldia-7a440.firebasestorage.app",
-  });
+  return ensureAdminApp();
 }
 
 export function db() {

@@ -61,7 +61,7 @@ async function scanCollectionForCandidates(collectionName: string): Promise<{
   let scanned = 0;
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
-  while (true) {
+  for (;;) {
     let query = db()
       .collection(collectionName)
       .orderBy(admin.firestore.FieldPath.documentId())

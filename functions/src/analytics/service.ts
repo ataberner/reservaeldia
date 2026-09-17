@@ -1,3 +1,5 @@
+import { ensureAdminApp } from "../firebaseAdmin";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
@@ -9,12 +11,7 @@ import * as path from "node:path";
 import { BUSINESS_METRIC_CATALOG } from "./catalog";
 import { requireSuperAdmin } from "../auth/adminAuth";
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket: "reservaeldia-7a440.firebasestorage.app",
-  });
-}
+ensureAdminApp("reservaeldia-7a440.firebasestorage.app");
 
 const db = admin.firestore();
 
@@ -654,7 +651,7 @@ async function queueAnalyticsEvent(
       eventId,
       schemaVersion: 1,
       eventName,
-      timestamp: admin.firestore.Timestamp.fromDate(eventTimestamp),
+      timestamp: Timestamp.fromDate(eventTimestamp),
       businessDateKey: periodKeys.dateKey,
       businessWeekKey: periodKeys.weekKey,
       businessMonthKey: periodKeys.monthKey,
@@ -666,8 +663,8 @@ async function queueAnalyticsEvent(
       processingAttempts: 0,
       processedAt: null,
       lastProcessingError: null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     await eventRef.set(payload);
@@ -3073,7 +3070,7 @@ async function buildRawAnalyticsCsv(exportId: string, exportData: JsonMap): Prom
     }
     await writeRawCsvLine(stream, [...RAW_EXPORT_COLUMNS]);
 
-    while (true) {
+    for (;;) {
       let query: FirebaseFirestore.Query = db
         .collection(ANALYTICS_EVENTS_COLLECTION)
         .where("businessDateKey", ">=", range.fromDate)
@@ -3385,7 +3382,7 @@ async function scanCollection(
 ): Promise<void> {
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
-  while (true) {
+  for (;;) {
     let query: FirebaseFirestore.Query = db
       .collection(collectionName)
       .orderBy(admin.firestore.FieldPath.documentId())
@@ -3746,7 +3743,7 @@ async function executeBusinessAnalyticsRebuildJob(jobRef: FirebaseFirestore.Docu
     });
 
     await heartbeat("processing_pending_events");
-    while (true) {
+    for (;;) {
       const processed = await processPendingAnalyticsBatch("pending", 200);
       counters.processedPendingEvents += processed;
       await heartbeat("processing_pending_events");
@@ -3754,7 +3751,7 @@ async function executeBusinessAnalyticsRebuildJob(jobRef: FirebaseFirestore.Docu
     }
 
     await heartbeat("processing_failed_events");
-    while (true) {
+    for (;;) {
       const processed = await processPendingAnalyticsBatch("failed", 100);
       counters.processedFailedEvents += processed;
       await heartbeat("processing_failed_events");

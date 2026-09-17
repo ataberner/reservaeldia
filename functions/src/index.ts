@@ -1,3 +1,5 @@
+import { FieldValue } from "firebase-admin/firestore";
+import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";
 import { defineSecret } from "firebase-functions/params";
@@ -173,6 +175,7 @@ const {
 
 function loadJSDOM() {
   // Lazy-loaded to reduce Functions startup cost during emulator discovery/cold start.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- Callers need the synchronous constructor without loading JSDOM at discovery.
   return require("jsdom") as typeof import("jsdom");
 }
 
@@ -247,12 +250,7 @@ const publicVisitSigningSecret = defineSecret("PUBLIC_VISIT_SIGNING_SECRET");
 const openAiApiKey = defineSecret("OPENAI_API_KEY");
 
 // Inicialización de Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket: "reservaeldia-7a440.firebasestorage.app",
-  });
-}
+ensureAdminApp("reservaeldia-7a440.firebasestorage.app");
 
 const db = admin.firestore();
 const bucket = getStorage().bucket();
@@ -1275,7 +1273,7 @@ app.post("/i/:slug/visit", async (req: Request, res: Response) => {
       publicationRef,
       eventId: buildPublicVisitEventId(slug, verifiedToken.nonce),
       visitorHash,
-      createdAtValue: admin.firestore.FieldValue.serverTimestamp(),
+      createdAtValue: FieldValue.serverTimestamp(),
     });
     if (recordStatus === "unavailable") {
       res.status(404).end();
@@ -1533,7 +1531,7 @@ export const copiarPlantillaHTML = onCall(
     estadoBorrador: DRAFT_STATES.ACTIVE,
     enPapeleraAt: null,
     eliminacionDefinitivaAt: null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   return {
@@ -1934,7 +1932,7 @@ export const publicRsvpSubmit = onRequest(
         mensaje: legacyMensaje,
         userAgent: toLimitedString(req.headers["user-agent"], 512),
         source: "public-rsvp-submit",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       };
 
       const docRef = await publicationRef.collection("rsvps").add(payload);
@@ -2070,7 +2068,7 @@ export const copiarPlantilla = onCall(
       template: plantillaNormalizada as Record<string, unknown>,
       templateId: plantillaId,
       uid,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
     const rsvp =
       plantillaNormalizada.rsvp && typeof plantillaNormalizada.rsvp === "object"
@@ -2112,8 +2110,8 @@ export const copiarPlantilla = onCall(
       ...(rsvp ? { rsvp } : {}),
       ...(gifts ? { gifts } : {}),
       eventDetails,
-      ultimaEdicion: admin.firestore.FieldValue.serverTimestamp(),
-      creado: admin.firestore.FieldValue.serverTimestamp(),
+      ultimaEdicion: FieldValue.serverTimestamp(),
+      creado: FieldValue.serverTimestamp(),
     });
 
 
@@ -2576,12 +2574,12 @@ export const upsertUserProfile = onCall(
       nombreCompleto,
       fechaNacimiento,
       profileComplete: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       updatedFrom: source,
     };
 
     if (!existingSnap.exists) {
-      payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+      payload.createdAt = FieldValue.serverTimestamp();
     }
 
     await profileRef.set(payload, { merge: true });
@@ -2746,7 +2744,7 @@ export const updateMyUiPreferences = onCall(
     const userRef = db.collection("usuarios").doc(uid);
     const existingSnap = await userRef.get();
 
-    const updatedAtValue = admin.firestore.FieldValue.serverTimestamp();
+    const updatedAtValue = FieldValue.serverTimestamp();
     const payload = buildUserUiPreferencesMergePayload({
       patch,
       updatedAtValue,
@@ -2754,7 +2752,7 @@ export const updateMyUiPreferences = onCall(
 
     if (!existingSnap.exists) {
       payload.uid = uid;
-      payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+      payload.createdAt = FieldValue.serverTimestamp();
     }
 
     await userRef.set(payload, { merge: true });
@@ -2823,7 +2821,7 @@ export const reportClientIssue = onCall(
       runtime,
       clientReportId,
       breadcrumbs,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     };
 
     const created = await db.collection("clientIssues").add(issueDoc);

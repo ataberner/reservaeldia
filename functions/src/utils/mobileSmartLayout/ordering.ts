@@ -15,7 +15,6 @@ export function jsOrderingBlock(): string {
       var o = clusters.slice().sort(function(a,b){ return a.top - b.top; });
       return { groups: [o], mode: "one" };
     }
-
     function clusterHasText(c){
       if (!c || !c.items || !c.items.length) return false;
       for (var iTxt=0; iTxt<c.items.length; iTxt++){
@@ -193,6 +192,13 @@ export function jsOrderingBlock(): string {
 
       var anyForceCenter = (sA.force > 0 || sB.force > 0);
       var bothMixed = (sA.text > 0 && sA.non > 0 && sB.text > 0 && sB.non > 0);
+      var splitAcrossMid =
+        (cA.cx < mid && cB.cx >= mid) ||
+        (cB.cx < mid && cA.cx >= mid);
+      var bothInferredOverlapUnits =
+        !!cA.preservesOverlap &&
+        !!cB.preservesOverlap &&
+        bothMixed;
       // Señal robusta de "par de columnas":
       // - están lado a lado y pasan split left/right
       // - y además no son simplemente 2 textos sueltos en una fila
@@ -219,16 +225,23 @@ export function jsOrderingBlock(): string {
         return { groups: [verticalPair], mode: "rows" };
       }
 
-      if (looksTwo && sideBySide && hasColumnSignal && pairInvasion <= pairInvasionLimit) {
+      if (
+        (looksTwo || (splitAcrossMid && bothInferredOverlapUnits)) &&
+        sideBySide &&
+        hasColumnSignal &&
+        pairInvasion <= pairInvasionLimit
+      ) {
         var leftPair = (cA.cx <= cB.cx) ? [cA] : [cB];
         var rightPair = (cA.cx <= cB.cx) ? [cB] : [cA];
         mslLog("order:two:pairPolicy", {
           mode: "two",
-          reason: "pairColumns",
+          reason: bothInferredOverlapUnits ? "pairOverlapCompositions" : "pairColumns",
           topDelta: +topDelta.toFixed(1),
           xOverlapRatio: +xOverlapRatio.toFixed(3),
           hasColumnSignal: hasColumnSignal,
           bothMixed: bothMixed,
+          bothInferredOverlapUnits: bothInferredOverlapUnits,
+          splitAcrossMid: splitAcrossMid,
           anyForceCenter: anyForceCenter,
           pairInvasion: +pairInvasion.toFixed(3),
           pairInvasionLimit: +pairInvasionLimit.toFixed(3),

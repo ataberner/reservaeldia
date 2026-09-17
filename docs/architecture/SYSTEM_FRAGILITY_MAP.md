@@ -2,13 +2,22 @@
 
 > Status: Current Audit / Risk Map.
 >
-> Updated from code inspection on 2026-04-27.
+> Broad editor/render inspection: 2026-04-27. Targeted operational revalidation:
+> 2026-09-10, scoped to F9's shared-copy mechanism and F10–F15 below. Earlier
+> editor/render findings retain their original evidence date; they were not
+> exhaustively re-audited or closed by the documentation work.
 >
-> Required references revalidated: `docs/architecture/ARCHITECTURE_OVERVIEW.md`, `docs/architecture/ARCHITECTURE_GUIDELINES.md`, `docs/architecture/EDITOR_SYSTEM.md`, `docs/architecture/DATA_MODEL.md`, `docs/architecture/INTERACTION_CONTRACT.md`, `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`, `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`, `docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md`, `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`, `docs/contracts/GALLERY_SYSTEM_CONTRACT.md`, `docs/contracts/GALLERY_EDITOR_CONTRACT.md`, `docs/contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md`, `docs/contracts/GALLERY_VIEWER_RENDER_CONTRACT.md`.
+> References from the 2026-04-27 review: `docs/architecture/ARCHITECTURE_OVERVIEW.md`, `docs/architecture/ARCHITECTURE_GUIDELINES.md`, `docs/architecture/EDITOR_SYSTEM.md`, `docs/architecture/DATA_MODEL.md`, `docs/architecture/INTERACTION_CONTRACT.md`, `docs/architecture/INTERACTION_SYSTEM_CURRENT_STATE.md`, `docs/architecture/PREVIEW_SYSTEM_ANALYSIS.md`, `docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md`, `docs/contracts/RENDER_COMPATIBILITY_MATRIX.md`, `docs/contracts/GALLERY_SYSTEM_CONTRACT.md`, `docs/contracts/GALLERY_EDITOR_CONTRACT.md`, `docs/contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md`, `docs/contracts/GALLERY_VIEWER_RENDER_CONTRACT.md`.
 >
 > Debug evidence reviewed: `docs/debug/inline-focus-rca-evidence.md`.
 >
-> Rule for this document: findings below describe the current implementation and current runtime contracts, not intended architecture.
+> Rule for this document: distinguish observed implementation, normative claims,
+> hypotheses and pending work. Actions are recommendations, not accepted
+> architectural decisions or authorization to implement them. Documenting a risk
+> does not close it. Local inspection does not establish deployed exposure.
+>
+> For current operational priorities and closure evidence, start at
+> [Operational Readiness](#operational-readiness).
 
 ## 1. Executive Read
 
@@ -195,11 +204,115 @@ No previous item is fully obsolete. Some are better constrained than before beca
 - Level: MEDIUM
 - Type: Backend / Infra
 - Revalidates: `V4`, `I1`, `I3`, `I4`
-- Evidence: `buildPreviewDisplayUrl()` hardcodes `https://reservaeldia.com.ar/i/...`; `generarModalRSVP.ts` hardcodes `https://us-central1-reservaeldia-7a440.cloudfunctions.net/publicRsvpSubmit`; render-contract files still exist under `shared/`, `functions/shared/`, and `functions/lib/shared/`; generated RSVP payload and `publicRsvpSubmit` still carry both modern structured fields and legacy compatibility fields.
+- Evidence: `buildPreviewDisplayUrl()` hardcodes `https://reservaeldia.com.ar/i/...`; render-contract files still exist under `shared/`, `functions/shared/`, and `functions/lib/shared/`; generated RSVP payload and `publicRsvpSubmit` still carry both modern structured fields and legacy compatibility fields. Revalidation 2026-09-11: `generarModalRSVP.ts` now uses `shared/firebaseEnvironment.cjs`; production destination is preserved and the isolated path uses the demo endpoint (F12).
 - Failure mode: environment-specific drift, generated HTML tied to production endpoints, and contract-copy divergence across runtimes.
 - Action: `P2` move public base URL and RSVP endpoint to one shared runtime config and treat copied render-contract files as build artifacts from a single checked-in source.
 - Expected impact: lowers deployment drift and makes parity testing portable.
 - Compatibility risk: Low if config defaults match current production values.
+
+Shared-copy revalidation on 2026-09-10: see F15 for the current source/copy
+mechanism, watch gap and closure evidence. Phase 4A updates the RSVP destination
+boundary only; other public-URL fallbacks, legacy payload compatibility and the
+shared watch gap are not closed by this work.
+
+<a id="operational-readiness"></a>
+
+### Operational Readiness — Targeted Revalidation, 2026-09-10
+
+Scope: local working-tree documentation, Rules, Firebase initialization,
+package scripts, two Hosting workflows, selected migrations, shared-copy script,
+and focused code/test inspection. The tree already contained uncommitted changes.
+No production probes, remote operations, builds, migrations or deployments were
+performed. Lint was executed locally without fixing or caching; see F13.
+
+Evidence labels: HECHO = inspected source or executed result; DECLARACIÓN =
+normative/documented claim; CONTRADICCIÓN = incompatible sources; PENDIENTE =
+missing verification or implementation. Static confirmation is not an emulator
+test or evidence of the version deployed to a service.
+
+Priorities here are scoped to operational readiness: P0 before relying on the
+affected permission/isolation boundary; P1 before relying on the affected
+verification, migration or shared-runtime workflow. They do not authorize fixes
+or block independent documentation/read-only investigation. Existing editor
+priorities below remain separate recommendations from the earlier review.
+
+### F10. Firestore Compatibility Fallback Grants Broad Authenticated Access
+
+- Priority / surface: **P0**, Firestore client reads/writes and administrative collections.
+- HECHO / evidence: [firestore.rules](../../firestore.rules), final `match /{collection}/{document=**}`, permits authenticated reads and writes except for its explicit exclusion list. 4B2A adds `usuarios`, `publicadas`, `publicadas_historial`; 4B2B adds `countdownPresets`. Unmodeled child collections under the 4B2A families retain explicit compatibility grants. `iconos`, `iconos_audit`, `decoraciones`, analytics and other remaining roots still overlap the broad fallback; their narrower restrictions do not remove its grant.
+- DECLARACIÓN / CONTRADICCIÓN: [Architecture Guidelines](ARCHITECTURE_GUIDELINES.md), Security First, requires user ownership. Authentication alone in the fallback does not enforce owner or administrative boundaries.
+- Verification, 2026-09-11: **reproduced with client SDKs subject to the then-current Rules** in `demo-reservaeldia-local`, FASE 4B1. [Per-case baseline](../testing/SECURITY_RULES_BASELINE_4B1.md): 178 Firestore probes, including 46 acceptance violations (ownership, backend publication/visits and countdown invariants). Characterization also reproduced fallback grants on every named analytics root, audit/snapshot collections and descendants despite their specific restrictions. [Access matrix and 4B2 scope](../contracts/SECURITY_CONTRACT.md#access-matrix). Rules unchanged during 4B1; **F10 remains open**. Deployed version/exposure and real exploitation were not inspected.
+- Conditioned work: changes relying on private-user or admin-only access must explicitly address this gap within authorized scope; a UI/backend guard alone cannot certify client Rules isolation.
+- Local mitigation, 4B2A, 2026-09-11: [per-ID comparison](../testing/SECURITY_RULES_4B2A.md) verifies **41 Firestore acceptance violations corrected**, including ownership, publication/visit backend writes and filtered owner queries. All selected A1/A2 cases pass; its historical run retained five A4 countdown failures, addressed in 4B2B below. Private profile/RSVP/history own writes and raw owner visit reads are still observed permissions pending policy. **F10 remains open**, locally mitigated only for the [selected operations](../contracts/SECURITY_CONTRACT.md#phase-4b2a); no deployed Rules or other delivery channel was inspected.
+- Local mitigation, 4B2B, 2026-09-11: [comparison and executed evidence](../testing/SECURITY_RULES_4B2B.md) corrects the **five original A4 violations**. Root/administrative descendants reject ordinary reads even when published; all countdown SDK writes (including create, versions, operation records and admin claims) are denied. The current admin predicate is preserved, not unified. Raw authenticated version reads remain observed/pending. A1/A2/A3 pass without regression. The full Rules command passes its bounded cases; blocked handlers and deployed state remain unverified. **F10 remains open**.
+- Closure evidence: an approved access matrix for affected collections and subcollections, corrected overlapping grants, isolated positive/negative Rules tests for owner, other user, anonymous and administrative identities, and compatibility coverage for required public access. Deployment status needs separately authorized evidence; a local fix alone cannot close deployed-state uncertainty.
+
+### F11. Storage Fallback Overlaps Restricted Asset Paths
+
+- Priority / surface: **P0**, uploaded user assets and administrative catalogs in Storage.
+- HECHO / evidence: [storage.rules](../../storage.rules), `match /{topLevel}/{allPaths=**}`, still grants authenticated access outside `proveedores`, `usuarios`, `thumbnails_borradores`, `publicadas` and `assets`. 4B2A scopes image/thumbnail paths by UID and forbids all client writes to `publicadas/**`. 4B2B protects countdown staging/frames/thumbnails; other assets namespaces and unmodeled countdown families retain explicit compatibility grants, as do unmodeled user folders/objects. Other catalog, shared, preview and export prefixes still overlap the broad fallback despite their specific restrictions.
+- DECLARACIÓN / CONTRADICCIÓN: the same ownership and user-scoped-path requirements apply. Provider-specific checks are not a general bucket isolation guarantee.
+- Verification, 2026-09-11: **reproduced through Storage client SDK operations**, FASE 4B1, same demo bucket and the then-current Rules. [Per-case baseline](../testing/SECURITY_RULES_BASELINE_4B1.md): 122 Storage probes, including 33 acceptance violations (foreign user assets and create/replace/delete of published artifacts); characterization reproduces overlap on icon/decor/shared/export prefixes. Provider-specific deny/shape/public-tuple probes are separate from accepting its pending public projection. **F11 remains open**; Rules were not changed during 4B1. Deployed Rules, IAM, download tokens, signed URLs and actual remote bucket exposure remain unverified.
+- Conditioned work: upload/delete/catalog work cannot assume another user's or an admin asset is protected merely because the path is named for an owner.
+- Local mitigation, 4B2A, 2026-09-11: [per-ID comparison](../testing/SECURITY_RULES_4B2A.md) verifies **33 Storage acceptance violations corrected**; all selected and new A1/A2 probes pass, including owner positives, exact-prefix objects, nested paths and admin writes against published artifacts. Authenticated published SDK reads remain observed; download tokens, signed URLs, IAM and HTTP remain outside these tests. **F11 remains open**, without remote application or certification.
+- Local mitigation, 4B2B, 2026-09-11: [A4 evidence](../testing/SECURITY_RULES_4B2B.md) verifies ordinary/absent-session denial for staging/draft and mixed ancestor listings, and denies all SDK writes to countdown staging/frames/thumbnails, including exact prefix objects, nested SVG/PNG, legacy frames and administrative claims. Existing admin reads/listings and authenticated non-draft reads are characterized separately; other catalog namespaces retain compatibility. Five Storage characterizations change allow→deny under A4. First run exposed four unintended admin-list denials; the corrected Rules passed a full fresh-session rerun without changing those assertions. Tokens/public delivery/retention are unchanged and unverified by Rules. **F11 remains open**.
+- Closure evidence: scoped access policy distinguishing private assets, intended public delivery and administrative writes; removal of broad overlapping grants; isolated tests for ownership, roles, anonymous/public reads and upload constraints; separately authorized verification of any deployed change.
+
+### F12. Local Development Does Not Guarantee Service Isolation
+
+- Priority / surface: **P0**, frontend, Functions emulator and generated/public endpoints used during local work.
+- Status, revalidated 2026-09-11: **partially resolved by FASE 4A**. The supported development/verification path is implemented and exercised; unrestricted feature parity and specialized local/operational paths remain outside the demonstrated boundary.
+- HECHO / implementation: [root commands](../../package.json), including `dev:reset`, and Functions development aliases use [runLocal.cjs](../../scripts/local/runLocal.cjs). It explicitly selects `demo-reservaeldia-local`, all four emulators and a generated local configuration; `.firebaserc` and the production Firebase configuration are preserved. Builds run in a sanitized copy of current sources, including uncommitted work, without personal env files, credentials or imported data fixtures.
+- HECHO / implementation: [shared environment contract](../../shared/firebaseEnvironment.cjs), [client initialization](../../src/config/initializeFirebaseServices.js) and [Admin initialization](../../functions/src/firebaseAdmin.ts) reject incompatible/incomplete destinations and connect Auth, Firestore, Functions and Storage before use. Node transport guards, browser/generated-HTML CSP, provider guards and the emulator-only handler allowlist prevent remote effects on the supported path. Generated RSVP resolves locally; Sheets and the local RSVP handler are disabled.
+- Executed evidence: configuration/initialization and negative tests; temporary Functions compilation; real synthetic Auth, Firestore, Storage upload/read/delete and existing Functions operations; desktop/mobile browser CSP; absent-emulator failures without production fallback. See [Development Workflow](../operations/DEVELOPMENT_WORKFLOW.md#evidencia-4a--2026-09-11) for final runs, versions and reproducible evidence. Admin corroboration verifies destinations, not Rules authorization.
+- PENDIENTE / remaining boundary: enabling and verifying preview/publication, catalog/admin, schedulers/triggers and other disabled handlers; specialized provider/emulator and administrative scripts still require their own destination/effect review. Public-resource fidelity and OS/browser-wide network isolation are not claimed. These gaps cannot be closed by pointing at a running emulator or a passing Admin test.
+- Conditioned work: use the documented launcher and synthetic fixtures for 4B. Extend the local allowlist only after tracing dependencies and adding effect/destination evidence; do not enable a blocked provider with real credentials. F10/F11, F13/F14/F15 and Q1 are not resolved by 4A.
+- Closure evidence: explicit isolated service configuration including Storage and backend dependencies, failure on unintended production routing, a destination matrix for each mode and generated endpoint, and isolated tests demonstrating all services remain within the intended environment. Keep production-backed development explicit if retained by decision.
+
+### F13. CI Coverage Remains Incomplete
+
+- Priority / surface: **P1**, regression confidence and release checks.
+- Historical baseline, 2026-09-10: the two Hosting workflows installed/built/deployed without explicit domain tests, Functions lint/build or Rules tests. The root build's static-release verification did not cover those obligations. The merge workflow also bootstraps history and verifies live Hosting; these destinations/stages are preserved.
+- Executed evidence, 2026-09-10: from `functions/`, `node node_modules/eslint/bin/eslint.js . --format json` (the local executable behind `eslint .`, no fix/cache) returned **exit 1: 52 errors, 228 warnings across 117 results**. Examples include parser/project mismatch for `functions/index.js` and `functions/shared/eventDetailsConfig.js`, outside the `src`-only [tsconfig](../../functions/tsconfig.json); see [.eslintrc.js](../../functions/.eslintrc.js).
+- Historical verification: workflow/script gap **confirmed statically** and lint failure **reproduced on the then-existing working tree**. Attribution to individual preexisting edits was not verified; no application code/config was changed by that documentation task.
+- Local mitigation, FASE 5A: [canonical verification/preparation](../operations/DEVELOPMENT_WORKFLOW.md#verification-5a) reuses 4A/4B2 launchers/tests, adds explicit evidence/failure/cleanup control and prepares a secret-free reusable workflow. Hosting jobs explicitly require `verification`; fork PRs can verify while same-repository preview restrictions remain. [Execution and static CI evidence](../testing/LOCAL_VERIFICATION_5A.md) separates local results, controlled negative checks and the workflow dependency graph.
+- Local lint mitigation, FASE 5B: [coverage and evidence](../testing/FUNCTIONS_LINT_5B.md) records a new original-command baseline of **57 errors / 229 warnings / 118 files**, independent of the historical 52/228. Functions lint now covers maintained TS/TSX/JS/CJS/MJS, scripts/config/tests and exact canonical shared sources, with compatible parsers, unchanged production tsconfig and lockfile versions. The repaired local scope is **192 files, zero errors, 233 visible warnings**. `verify:local` makes this script mandatory before costly suites; the reusable workflow keeps consuming that command and preserving its diagnostics. The final local integral passed **1474/1474** plus lint; a new TypeScript file compiled successfully but failed lint, propagated exit 1, preserved evidence and skipped dependent stages. The existing Rules/interruption/prerequisite negatives also passed their expected-failure assertions and cleanup.
+- Status: **open, partially mitigated**. **CI preparada, pendiente de validación remota**. GitHub execution, effective remote blocking and branch protection/required checks remain unverified. The command excludes frontend lint, production Next build/export, all-domain tests and blocked handlers; 5C adds mapped-copy/watch checks under F15, without live Functions reload or original-to-prepared synchronization. It does not certify complete quality, deployed Rules, remote configuration or Q1. Warnings retain typing/unused-variable debt. F10/F11 and Q1 keep their states; F12's scope is not expanded.
+- Conditioned work: do not claim release readiness or domain correctness from Hosting build or lint success. Preserve warning visibility, justified coverage and negative controls; distinguish local results/static configuration from remote guarantees.
+- Remaining closure evidence: demonstrate required checks executing and blocking failures in the intended remote workflow, assess the other release/domain checks and obtain remote policy evidence under separate authorization. 5B does not close F13 as a whole.
+
+### F14. Migration Safeguards Vary By Script
+
+- Priority / surface: **P1**, persistent data, catalog assets and recovery.
+- HECHO / evidence: [migrateCountdownPresets.cjs](../../scripts/migrateCountdownPresets.cjs) and [migrateIconCatalogV2.cjs](../../scripts/migrateIconCatalogV2.cjs) set `dryRun` only when `--dry-run` is present; their normal paths commit writes using application-default credentials and a product bucket fallback. Countdown can also create/upload thumbnails. [migrateEventDetailsCeremonyParty.cjs](../../scripts/migrateEventDetailsCeremonyParty.cjs) instead defaults to dry-run unless `--apply`, but still reads collections through Admin credentials and has no explicit project-confirmation gate in its argument parser.
+- Counterexample / existing protection: [countdownPhase0.cjs](../../scripts/countdownPhase0.cjs), `runRestore`, verifies the archive, checks source/destination, defaults to a plan, requires `--apply` plus matching `--confirm-project` for writes, and guards overwrite. Its [runbook](../operations/COUNTDOWN_PHASE_0_RUNBOOK.md) describes backup/restore. Those protections do not automatically apply to other scripts.
+- Verification: **confirmed in selected scripts**, not an exhaustive migration audit; none executed. Recovery/idempotency across all migrators remains **pending**.
+- Conditioned work: any migration needs a review of that exact script, resolved target, read/write effects and recovery evidence; neither a script name nor a dry-run label supplies permission or isolation.
+- Closure evidence: inventory of mutating entrypoints, explicit targets and write opt-in, safe defaults, scoped backup/recovery where needed, idempotency/resume and failure tests on disposable fixtures. Validate each script instead of inferring coverage from the countdown runbook.
+
+### F15. Shared Contract Synchronization And Live Consumption
+
+- Priority / surface: **P1**, frontend/backend contract consistency; refines F9 / I1.
+- Historical mechanism, 2026-09-10: [syncTemplateContract.cjs](../../functions/scripts/syncTemplateContract.cjs) copied `shared/` into `functions/shared/` and `functions/lib/shared/` before `tsc` in build; `build:watch` ran only `tsc --watch`. At that inspection only the preexisting `functionalAssociations.cjs` pair was hash-compared; no build/sync or exhaustive freshness/watch test was run. This remains a historical baseline, not the current implementation.
+- Local implementation, FASE 5C: the same executable map owns sources, targets and input/build classification for sync, read-only checks, lint and watch. Build serializes sync/TypeScript/check; watch observes canonical inputs plus its own src/tsconfig, coalesces saves and reports pending/error/recovery/readiness. It skips identical writes and never deletes unmapped files. The integrated gate checks required input copies before sync, tests synchronization/watch in a disposable tree, and checks all generated copies before consumers. [Commands, tree boundaries and restart procedure](../operations/DEVELOPMENT_WORKFLOW.md#shared-contracts-5c).
+- Evidence and status: **partially mitigated; copy/watch mechanism repaired locally, live-consumption limits remain**. [5C execution evidence](../testing/SHARED_CONTRACTS_5C.md) separates all mapped byte pairs, active source changes, replacement/burst recovery, missing/altered/unwritable cases, a real compiled consumer and owned cleanup. An already loaded CommonJS consumer retains old HTML; a fresh process reads the changed contract. Equality and successful compilation therefore do not establish hot reload of a running Functions service. Only Windows/Node 20 is exercised locally; other OSes and remote CI are not certified.
+- Remaining limits: preparation/dev still take snapshots. Watch in a prepared/session copy cannot observe subsequent edits to the original tree. Recreate preparation/session when required, wait for readiness and restart consumers; no general repository propagation or Functions module-cache invalidation is implemented. Do not hand-edit generated destinations or infer coverage for unmapped files. Live reload, other runtime/OS evidence and broader propagation require their own scope. F10/F11, Q1, migration safeguards and remote CI/branch-protection states are unchanged.
+
+<a id="open-operational-decisions"></a>
+
+### Open Operational Decisions
+
+**Q1 — Administrative identity policy. Decision: proposed alternatives, unresolved.
+Implementation/verification: divergent local interpretations confirmed; chosen policy pending.**
+
+- Question: which identity representation grants admin/superadmin access consistently across backend and client Rules, and who provisions/revokes it?
+- Evidence: [adminAuth.ts](../../functions/src/auth/adminAuth.ts), `isAdmin`, accepts `token.admin` or a UID in server environment/runtime-config lists; the `role` branch is commented out and `token.superadmin` is not checked. Both Rules' `isAdmin` accept `admin`, `superadmin` or `role == "admin"` claims. Callers include [iconCatalog/service.ts](../../functions/src/iconCatalog/service.ts) and [decorCatalog/service.ts](../../functions/src/decorCatalog/service.ts). Which claims/UID configuration actually exist remotely was not inspected.
+- Alternatives, not accepted choices: [4B1 concrete analysis and recommendation](../contracts/SECURITY_CONTRACT.md#q1-proposal) compares canonical versioned claims with explicit capabilities (recommended) against a documented hybrid of server configuration and claims. It defines proposed user/admin/superadmin capabilities, provisioning/revocation owners, preservation of unrelated claims, previous-token handling, compatibility and transition costs. Existing permissive fallbacks F10/F11 must be corrected regardless of representation.
+- Decisions still required: Q1-A accepts or changes the proposed representation/capability matrix; Q1-B designates superadmin provisioning/approval owners and confirms delegated management of other admins; Q1-C chooses revocation freshness and the legacy-claim transition. Exact choices and dependent changes are in the linked analysis. Current remote claims, UID configuration, external issuers and compatibility needs remain unknown; no real identities were inspected.
+- Priority / dependent change: **P0** for role-policy unification, claims transitions and administrative authorization tests. Do not select a representation by making tests match one existing implementation. Closure requires an accepted policy in the responsible security/domain authority, compatibility/transition plan where needed and isolated cross-layer allow/deny tests.
+- This entry remains the sole decision register. The [security contract](../contracts/SECURITY_CONTRACT.md) is a traced matrix plus accepted obligations and clearly marked proposals, not blanket policy acceptance. Record the explicit resolution here with a link to its accepted sections; mark implementation/verification separately. Characterization passing does not resolve Q1.
+
+Product decisions already have an owner: [AI Assistant Conversation Contract](../contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md), section 2, records accepted style choices and pending length, structure, emojis, follow-up name use and related questions. They remain there; this review neither accepts new choices nor duplicates that register. Ordinary lint, fallback-rule, watch and migration corrections above are technical pending work, not product decisions.
 
 ## 4. Systemic Fragility
 
@@ -226,6 +339,10 @@ No previous item is fully obsolete. Some are better constrained than before beca
 
 ## 6. Immediate Action Order
 
+The following is the earlier editor/render recommendation order. For permission,
+environment, migration and verification readiness, apply F10–F15 and Q1 first
+when the task depends on those boundaries; this list is not execution authority.
+
 1. `P0` Keep the prepared render payload boundary covered by regression tests as render contracts evolve.
 2. `P0` Collapse selection authority to one imperative runtime bridge and remove selection fallback reads from legacy globals.
 3. `P0` Export one explicit inline session state and make critical actions wait on that state.
@@ -239,4 +356,7 @@ No previous item is fully obsolete. Some are better constrained than before beca
 
 The system is not mainly fragile because it is undocumented anymore. It is fragile because the editor, preview, and publish paths still cross different authority boundaries at the exact moments that matter: selection handoff, inline settle, preview preflight, and publish preparation.
 
-If only one thing changes first, it should be this: any preview path that does not use the publish prepared payload must stay explicitly non-authoritative.
+For render parity, any preview path that does not use the publish prepared
+payload must stay explicitly non-authoritative. Operational readiness also
+depends on the open permission, environment and verification work above; this
+documentation update does not certify the repository or deployment as safe.

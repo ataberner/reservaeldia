@@ -498,6 +498,88 @@ test("prepared render payload applies functional group visibility and centering 
   assert.doesNotMatch(html, /data-obj-id="gifts-group"/);
 });
 
+test("prepared preview and publish hide standalone RSVP roots and center the Gifts column", async (t) => {
+  const storageMock = installFirebaseStorageMock({
+    defaultBucketName: FIXTURE_BUCKET,
+    files: {},
+  });
+  t.after(() => storageMock.restore());
+
+  const prepared = await prepareRenderPayload({
+    secciones: [{ id: "shared", orden: 0, altoModo: "fijo", altura: 420 }],
+    objetos: [
+      {
+        id: "rsvp-copy",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 80,
+        y: 60,
+        width: 180,
+        height: 32,
+        texto: "Asistencia",
+        functionalAssociation: "rsvp",
+      },
+      {
+        id: "rsvp-cta",
+        tipo: "rsvp-boton",
+        seccionId: "shared",
+        x: 90,
+        y: 110,
+        width: 160,
+        height: 44,
+        functionalAssociation: "rsvp",
+      },
+      {
+        id: "gifts-copy",
+        tipo: "texto",
+        seccionId: "shared",
+        x: 540,
+        y: 60,
+        width: 180,
+        height: 32,
+        texto: "Regalos",
+        functionalAssociation: "gifts",
+      },
+      {
+        id: "gifts-cta",
+        tipo: "regalo-boton",
+        seccionId: "shared",
+        x: 550,
+        y: 110,
+        width: 160,
+        height: 44,
+        texto: "Ver regalos",
+        functionalAssociation: "gifts",
+      },
+    ],
+    rsvp: { enabled: false },
+    gifts: {
+      enabled: true,
+      bank: { alias: "ANA.LUIS" },
+      visibility: { alias: true },
+    },
+  });
+  const validation = validatePreparedRenderPayload(prepared);
+
+  assert.equal(validation.canPublish, true);
+  assert.deepEqual(prepared.objetosFinales.map((object) => object.id), [
+    "gifts-copy",
+    "gifts-cta",
+  ]);
+  assert.deepEqual(prepared.objetosFinales.map((object) => object.x), [310, 320]);
+  assert.equal(prepared.functionalCtaContract.rsvp.enabled, false);
+  assert.equal(prepared.functionalCtaContract.gifts.enabled, true);
+
+  const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, { isPreview: true });
+  const publishHtml = generateHtmlFromPreparedRenderPayload(prepared, { isPreview: false });
+  [previewHtml, publishHtml].forEach((html) => {
+    assert.doesNotMatch(html, /data-obj-id="rsvp-copy"/);
+    assert.doesNotMatch(html, /data-obj-id="rsvp-cta"/);
+    assert.match(html, /data-obj-id="gifts-copy"/);
+    assert.match(html, /data-obj-id="gifts-cta"/);
+  });
+});
+
 test("preview and publish keep standalone functional roots independent and equally visible", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,
@@ -740,6 +822,9 @@ test("preview and publish html can be generated from the same prepared render pa
   for (const html of [previewHtml, publishHtml]) {
     assert.match(html, /class="inv-loader"/);
     assert.match(html, /stroke:\s*#692B9A/i);
+    assert.match(html, /--mefx-entry-delay:\s*120ms;/);
+    assert.match(html, /--mefx-reveal-duration:\s*760ms;/);
+    assert.match(html, /--mefx-reveal-duration:\s*680ms;/);
     assert.doesNotMatch(html, /#cf4f89/i);
   }
 });

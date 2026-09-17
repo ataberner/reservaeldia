@@ -38,7 +38,7 @@ families), with these group-local differences:
 - `yNorm` belongs to the group in `altoModo: "pantalla"` sections, not the child.
 - Nested groups are not supported in the v1 contract.
 - `functionalAssociation` is supported only on the group root. Children must not carry their own functional association.
-- Standalone root objects may carry `functionalAssociation: "ceremony" | "party" | "dress_code"`; this does not authorize those values on a grouped child, which continues to inherit the wrapper.
+- Standalone root objects may carry any supported `functionalAssociation`: `"rsvp" | "gifts" | "ceremony" | "party" | "dress_code"`. This does not authorize those values on a grouped child, which continues to inherit the wrapper.
 - Group-root and child `id` values are globally unique within the render-object tree. Duplicating or pasting a group must allocate a fresh identity for the wrapper and every child; ungrouping must never expose child IDs that alias another root or grouped child.
 - Draft-to-template creation validates that uniqueness again at the client payload boundary and at the backend persistence boundary. A read-only administrative copy must reject ambiguous identities; it must not silently re-key them because existing selection and dynamic-field targets cannot be reassigned safely without authoring context.
 - Dynamic-field `applyTargets` remain attached to the original object identities when a group is cloned. A cloned child is unlinked until authoring explicitly assigns its fresh ID to a field.
@@ -57,8 +57,8 @@ families), with these group-local differences:
   capabilities or document-level dependencies from objects. This includes Google Fonts,
   countdown runtime activation, gallery lightbox activation, and functional CTA presence.
 - Functional visibility is derived before editor/preview/publish render from `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode`, and `eventDetails.dressCode.enabled`. In a shared section, inactive functional owners are omitted; if only one associated functionality remains visible among the section's functional owners, the renderer applies a reversible horizontal offset to all visible owners for that functionality based on their joint bounding box. This offset is not persisted as object or group `x`.
-- Standalone Ceremony/Party/Dress Code roots participate independently in that joint-centering calculation. They keep their root identity and normal render contract; the derived offset neither creates a wrapper nor changes their persisted geometry.
-- Admin assignment keeps RSVP/Gifts singleton per section and allows multiple Ceremony/Party/Dress Code groups per section. Group children must not carry `functionalAssociation`.
+- Standalone RSVP/Gifts/Ceremony/Party/Dress Code roots participate independently in that joint-centering calculation. They keep their root identity and normal render contract; the derived offset neither creates a wrapper nor changes their persisted geometry.
+- Admin group assignment keeps RSVP/Gifts singleton per section and allows multiple Ceremony/Party/Dress Code groups per section. Standalone assignment may associate multiple independently editable roots with any supported value. Group children must not carry `functionalAssociation`.
 
 ### Dynamic View Detachment
 

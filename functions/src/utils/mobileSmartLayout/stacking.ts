@@ -289,7 +289,15 @@ export function jsStackingBlock(): string {
         for (var tc=0; tc<c.items.length; tc++){
           if ((c.items[tc].node.getAttribute("data-debug-texto") || "") === "1") textCount++;
         }
-        var linearizeCluster = (mode === "rows" && c.items.length > 1 && textCount >= 2);
+        // An inferred overlay is one visual plane. Linearizing its text nodes
+        // would separate foreground copy from its authored backing and erase
+        // the original paint relationship.
+        var linearizeCluster = (
+          mode === "rows" &&
+          c.items.length > 1 &&
+          textCount >= 2 &&
+          !c.preservesOverlap
+        );
         var clusterBottomUsed = clusterTop + c.height;
 
         // Caso especial: en rows, si el cluster agrupa varios textos, lo
@@ -393,7 +401,7 @@ export function jsStackingBlock(): string {
               lit.node.style.setProperty("--text-zoom", "1");
               var tfLin = lit.node.style.transform || "";
               if (tfLin.indexOf("translateX(") !== -1) {
-                lit.node.style.transform = tfLin.replace(/translateX\([^)]*\)/, "translateX(0px)");
+                lit.node.style.transform = tfLin.replace(/translateX([^)]*)/, "translateX(0px)");
               }
             }
 
@@ -429,79 +437,14 @@ export function jsStackingBlock(): string {
           var keepAlign = (it.node.getAttribute("data-mobile-align") || "") === "keep";
           if (keepAlign) newLeft = it.left;
 
-          // En multi-col, neutralizamos SIEMPRE translateX(...) de textos
-          // para que la posiciÃ³n left calculada sea la referencia visual real.
-          var isShortTextBox = false;
-          var shouldRecenterTextItem = false;
-          var recenterGuardBlocked = false;
-          var centerByAlign = false;
-          var targetTextCenterX = NaN;
+          // En multi-col, left se calcula desde el rect visual medido. Si el
+          // texto conserva translateX(...), ese desplazamiento se aplicarÃ­a una
+          // segunda vez. Neutralizamos solo esa parte del transform: la caja y
+          // su alineaciÃ³n interna siguen siendo las authored del cluster.
           if (isTextNode && isMultiColLayout) {
             var tf = it.node.style.transform || "";
             if (tf.indexOf("translateX(") !== -1) {
-              it.node.style.transform = tf.replace(/translateX\([^)]*\)/, "translateX(0px)");
-            }
-            isShortTextBox = (it.width || 0) <= (info.usableW * 0.5) && (it.height || 0) <= 42;
-            var taCurrent = ((it.node.style && it.node.style.textAlign) || "").toLowerCase();
-            centerByAlign = taCurrent === "center";
-            var shouldCenterVisualText =
-              (shouldCenterTextWithinCluster || isShortTextBox || centerByAlign) &&
-              !keepAlign;
-            shouldRecenterTextItem =
-              shouldCenterVisualText &&
-              !isTextOnlyCluster &&
-              isFinite(colReferenceCenterX);
-            if (shouldRecenterTextItem) {
-              var prevLeftTxt = newLeft;
-              var currentCenterX = prevLeftTxt + (it.width || 0) / 2;
-              var sourceItemCenterX = (it.left || 0) + (it.width || 0) / 2;
-              var sourceDriftItemX = isFinite(colSourceReferenceCenterX)
-                ? (sourceItemCenterX - colSourceReferenceCenterX)
-                : NaN;
-              var targetCenterX = colReferenceCenterX;
-              // En textos centrados (o labels cortos forzados al centro),
-              // no arrastramos drift horizontal del layout original para
-              // evitar corrimientos laterales en mobile.
-              var preserveSourceDrift =
-                !centerByAlign &&
-                !shouldCenterTextWithinCluster &&
-                !isShortTextBox;
-              if (preserveSourceDrift && isFinite(sourceDriftItemX)) {
-                targetCenterX += sourceDriftItemX;
-              }
-              // Guard rail: si la recorreccion propuesta se aleja demasiado del
-              // centro ya calculado para el cluster, no la aplicamos.
-              var maxRecenterShift = Math.max(18, info.usableW * 0.08);
-              if (isFinite(currentCenterX) && isFinite(targetCenterX) && Math.abs(targetCenterX - currentCenterX) > maxRecenterShift) {
-                recenterGuardBlocked = true;
-                shouldRecenterTextItem = false;
-                targetCenterX = currentCenterX;
-              }
-              targetTextCenterX = targetCenterX;
-              newLeft = targetCenterX - (it.width || 0) / 2;
-              if (Math.abs(newLeft - prevLeftTxt) > 0.5) {
-                mslLog("stack:item:textRecenter", {
-                  g: g,
-                  j: j,
-                  ii: ii,
-                  prevLeft: +prevLeftTxt.toFixed(1),
-                  newLeft: +newLeft.toFixed(1),
-                  itemW: +(it.width || 0).toFixed(1),
-                  refCenterX: +colReferenceCenterX.toFixed(1),
-                  sourceRefCenterX: (typeof colSourceReferenceCenterX === "number" && isFinite(colSourceReferenceCenterX)) ? +colSourceReferenceCenterX.toFixed(1) : null,
-                  sourceDriftX: isFinite(sourceDriftItemX) ? +sourceDriftItemX.toFixed(1) : null,
-                  preserveSourceDrift: preserveSourceDrift,
-                  guardBlocked: recenterGuardBlocked,
-                  shortBox: isShortTextBox,
-                  centerByAlign: centerByAlign
-                });
-              }
-            }
-            if (shouldCenterVisualText) {
-              it.node.style.textAlign = "center";
-              it.node.style.transformOrigin = "top center";
-              // Evita encogimiento horizontal heredado que desplaza el centro visual.
-              it.node.style.setProperty("--text-zoom", "1");
+              it.node.style.transform = tf.replace(/translateX([^)]*)/, "translateX(0px)");
             }
           }
 
@@ -511,29 +454,34 @@ export function jsStackingBlock(): string {
           it.node.style.right = "auto";
           it.node.style.marginLeft = "0px";
 
-          // CorrecciÃ³n final por posiciÃ³n renderizada real del texto
-          // (fuentes/transform pueden introducir desvÃ­os visuales sub-pÃ­xel).
-          if (isTextNode && isMultiColLayout && shouldRecenterTextItem) {
-            var rrTxt = relRect(it.node, rootEl);
-            var renderedCenterX = (rrTxt.left || 0) + (rrTxt.width || 0) / 2;
-            var targetRenderCenterX = isFinite(targetTextCenterX) ? targetTextCenterX : colReferenceCenterX;
-            var renderDelta = renderedCenterX - targetRenderCenterX;
-            if (isFinite(renderDelta) && Math.abs(renderDelta) > 0.6) {
-              var correctedLeft = newLeft - renderDelta;
-              if (isFinite(correctedLeft)) {
-                mslLog("stack:item:textRenderAdjust", {
-                  g: g,
-                  j: j,
-                  ii: ii,
-                  prevLeft: +newLeft.toFixed(1),
-                  correctedLeft: +correctedLeft.toFixed(1),
-                  renderedCenterX: +renderedCenterX.toFixed(1),
-                  refCenterX: +targetRenderCenterX.toFixed(1),
-                  delta: +renderDelta.toFixed(2)
-                });
-                newLeft = correctedLeft;
-                it.node.style.left = (newLeft - (info.padL || 0)) + "px";
-              }
+          // _relTop/_relLeft describe the rendered bounds measured before
+          // reflow. A rotated/scaled root has a visual origin that differs
+          // from its CSS top/left origin, so assigning those bounds directly
+          // would apply the transform offset a second time and deform an
+          // inferred overlay. Correct the CSS translation once so the visual
+          // bounds land on the authored target inside the composition unit.
+          if (c.preservesOverlap) {
+            var placedRect = relRect(it.node, rootEl);
+            var visualDeltaLeft = Number(placedRect.left || 0) - newLeft;
+            var visualDeltaTop = Number(placedRect.top || 0) - newTop;
+            var correctedVisualBounds = false;
+            if (isFinite(visualDeltaLeft) && Math.abs(visualDeltaLeft) > 0.25) {
+              cssLeft -= visualDeltaLeft;
+              it.node.style.left = cssLeft + "px";
+              correctedVisualBounds = true;
+            }
+            if (isFinite(visualDeltaTop) && Math.abs(visualDeltaTop) > 0.25) {
+              it.node.style.top = (newTop - visualDeltaTop) + "px";
+              correctedVisualBounds = true;
+            }
+            if (correctedVisualBounds) {
+              mslLog("stack:item:preserveVisualBounds", {
+                g: g,
+                j: j,
+                ii: ii,
+                deltaLeft: +visualDeltaLeft.toFixed(2),
+                deltaTop: +visualDeltaTop.toFixed(2)
+              });
             }
           }
 

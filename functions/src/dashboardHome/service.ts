@@ -1,3 +1,4 @@
+import { ensureAdminApp } from "../firebaseAdmin";
 import * as admin from "firebase-admin";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
@@ -34,12 +35,7 @@ type DashboardHomeConfig = {
 };
 
 function ensureApp() {
-  if (admin.apps.length > 0) return admin.app();
-  return admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket:
-      process.env.FIREBASE_STORAGE_BUCKET || "reservaeldia-7a440.firebasestorage.app",
-  });
+  return ensureAdminApp();
 }
 
 function db() {

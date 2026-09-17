@@ -7,15 +7,55 @@ It explains which documents are authoritative, which documents describe current
 implementation, which documents are historical, and which documents should be
 loaded for each subsystem before making changes.
 
-When code and documentation disagree, current code is the source of truth. The
-correct follow-up is to update the affected documentation and tests, not to
-silently implement against stale prose.
+Start with [AGENTS.md](../AGENTS.md) for task authorization, working procedure,
+Definition of Done, and delivery evidence. This index owns documentary authority
+and routing. The Prompt Builder is a consumer of these authorities, not a
+requirement for working here or an independent source of authorization.
+
+<a id="authority-and-conflicts"></a>
+
+## 0. Authority And Conflicts
+
+The original request and its restrictions authorize work; documents constrain
+how authorized work is performed. Code demonstrates current implementation,
+not automatically correct or intended behavior.
+
+| Authority / evidence | How to use it |
+| --- | --- |
+| Current normative contracts and accepted decisions | Define expected obligations within their scope, including deliberate compatibility guarantees. A decision may precede implementation; keep that gap explicit. |
+| Architecture standards, subsystem maps and data model | Guidelines define general standards; maps identify boundaries and owners. Normative data-model sections have contract authority; descriptive sections record implementation. Classify the relevant section, not just the filename. |
+| Tests and testing baselines | Evidence and regression expectations interpreted against valid contracts. Passing tests do not legitimize a contract violation; obsolete expectations may require correction. |
+| Current implementation | Evidence of what executable paths do, including defects, fallbacks and generated consumers. Trace callers and owners before inferring intent. |
+| Comments, audits, RCA, proposals and historical records | Context or evidence with scope/date; not authority to override an accepted obligation. Risk findings guide verification and record open work. |
+
+Within the same level, use the most specific canonical owner for the rule. For
+example, Gallery mutation semantics belong to its editor contract, preset
+semantics to its layout contract, and viewer behavior to its viewer contract.
+Specificity does not silently repeal an incompatible accepted obligation.
+
+When sources conflict:
+
+1. Record the expected obligation and observed behavior, their sources, decision
+   status, verification scope, and the affected consumers/tests.
+2. Classify the discrepancy: implementation defect, stale descriptive documentation
+   or test, deliberate contract change, or unresolved conflict between authorities.
+3. A bug is corrected toward its valid contract when correction is authorized;
+   do not rewrite a contract or test to excuse it. Stale documentation is corrected
+   in its smallest owner when the expected behavior is established by evidence.
+4. A deliberate change needs authorization for that contractual change. Two
+   incompatible accepted authorities need explicit resolution in the responsible
+   document, with rationale and replacement links; neither code nor recency nor
+   specificity alone settles the conflict. Continue independent work meanwhile.
+
+Without a focused document, investigate owners, consumers and tests and resolve
+evidence-backed local details. Material permissions, data, business or compatibility
+decisions must remain explicit questions until resolved; see the decision routes below.
 
 ## 1. Documentation Taxonomy
 
 | Category | Purpose | Authority | Maintenance rule | New docs belong here when |
 | --- | --- | --- | --- | --- |
-| Contract | Defines invariants that multiple runtimes or modules must preserve. | Authoritative for future changes once verified against code. | Update in the same change as any behavior or schema contract change. Include testing anchors. | The behavior crosses editor, preview, publish, backend validation, public delivery, persistence, or shared runtime helpers. |
+| Contract | Defines invariants that multiple runtimes or modules must preserve. | Normative when current and accepted; code verification measures compliance, not acceptance. | Update for an authorized behavior or schema contract change; record pending implementation and testing anchors explicitly. | The behavior crosses editor, preview, publish, backend validation, public delivery, persistence, or shared runtime helpers. |
 | Architecture/System | Explains subsystem boundaries, ownership, and high-level flow. | Authoritative for subsystem routing and ownership, but not always normative for low-level behavior. | Keep concise and link to focused contracts instead of duplicating them. | A subsystem needs a map of owners, flows, and integration points. |
 | Current Implementation Map | Records how the implementation behaves today, including compatibility branches and known drift. | Authoritative as an implementation snapshot until code changes. | Date or note material revalidation; do not use as target-state planning. | The repo needs an observed map of complex current behavior. |
 | Testing | Defines manual or fixture-based regression anchors. | Authoritative for verification scope, not for product architecture by itself. | Update when contracts, fixtures, parity boundaries, or manual regression surfaces change. | A behavior needs repeatable manual or automated verification guidance. |
@@ -36,7 +76,7 @@ Recommended labels:
 | --- | --- |
 | `Status: Canonical Contract` | Normative contract for future implementation. |
 | `Status: Canonical Architecture Reference` | Primary architecture or governance reference for a subsystem. |
-| `Status: Current Implementation Map` | Observed implementation behavior; code wins if drift is found. |
+| `Status: Current Implementation Map` | Observed implementation behavior; revalidate against code without redefining normative obligations. |
 | `Status: Current Implementation Inventory` | Observed inventory of files, selectors, values, or ownership. |
 | `Status: Current Audit / Risk Map` | Risk or fragility analysis grounded in current code. |
 | `Status: Testing Baseline` | Required or recommended regression baseline. |
@@ -47,10 +87,29 @@ Recommended labels:
 Do not add status labels mechanically to every document. Add them when the file is
 likely to be used as an authority by humans or AI agents.
 
+Document category is separate from decision and implementation status. For a
+material decision, use these independent fields in its existing owner:
+
+| Field | States and meaning |
+| --- | --- |
+| Decision status | `proposed`: under consideration; `accepted`: authorized normative choice with source/rationale; `replaced`: superseded with a replacement link; `rejected`: not adopted, retain rationale if useful. |
+| Implementation / verification status | `pending`: not implemented or not checked (say which); `implemented`: present in code with anchors; `verified`: supported by named checks, results, date and environment. Partial coverage must name the remaining gap. |
+
+An accepted decision can be documented before implementation. Do not label an
+unexecuted check as verified or infer deployed behavior from local inspection.
+Existing status wording need not be relabeled in bulk. When ambiguity matters,
+clarify the relevant section rather than declaring the whole document accepted
+or verified. Separate HECHO (checked fact), DECLARACIÓN (documented claim),
+DECISIÓN, HIPÓTESIS, PENDIENTE and CONTRADICCIÓN when evidence could be confused.
+
 ## 3. Canonical Source-Of-Truth Set
 
 | Area | Canonical docs | Role |
 | --- | --- | --- |
+| Operational entry | [AGENTS.md](../AGENTS.md) | Authorization, pre-change procedure, Definition of Done, and final evidence. This index owns documentary hierarchy and maintenance. |
+| Procedures by task type | [CHANGE_WORKFLOW.md](operations/CHANGE_WORKFLOW.md) | Focused preparation, sequence, evidence and decision boundaries for seven types of work; subordinate to the original request and AGENTS.md. |
+| Isolated local development and verification | [DEVELOPMENT_WORKFLOW.md](operations/DEVELOPMENT_WORKFLOW.md), [5A historical evidence](testing/LOCAL_VERIFICATION_5A.md), [5B Functions lint evidence](testing/FUNCTIONS_LINT_5B.md), [5C shared-copy/watch evidence](testing/SHARED_CONTRACTS_5C.md) | Phase 4A launcher, 5A reproducible preparation/integrated gate, mandatory Functions lint from 5B and shared-contract checks/watch from 5C; prerequisites, destinations, synthetic fixtures, evidence and cleanup. CI preparation/static checks are distinct from remote execution. Does not define Rules or Q1 policy. |
+| Security and access | [SECURITY_CONTRACT.md](contracts/SECURITY_CONTRACT.md), [Rules baseline 4B1](testing/SECURITY_RULES_BASELINE_4B1.md), [4B2A comparison](testing/SECURITY_RULES_4B2A.md), [4B2B countdown evidence](testing/SECURITY_RULES_4B2B.md) | Traced matrix separates accepted obligations, observed permissions and proposed Q1 policy. Q1 remains in the risk map. 4B2A corrects selected ownership/backend writes; 4B2B protects countdown A4 with effective demo evidence. Remaining permissions, blocked handlers and remote application are not certified. |
 | Product and system architecture | [ARCHITECTURE_GUIDELINES.md](architecture/ARCHITECTURE_GUIDELINES.md), [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md) | Product/architecture rules and whole-system map. |
 | Data and persistence | [DATA_MODEL.md](architecture/DATA_MODEL.md), [PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) | Canonical draft/publication/render-state data model and the provider persistence, import, image-enrichment, and durable-resume contract. |
 | Editor subsystem | [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), [INTERACTION_CONTRACT.md](architecture/INTERACTION_CONTRACT.md), [INTERACTION_SYSTEM_CURRENT_STATE.md](architecture/INTERACTION_SYSTEM_CURRENT_STATE.md) | Editor boundary, normative interaction rules, and current implementation map. |
@@ -110,12 +169,47 @@ Audits and historical records must not be treated as current contracts:
 
 ## 5. Reading Order By Subsystem
 
+These routes are selectors, not mandatory whole-document reading lists. Start
+with the affected subsystem and expand only when its actual flow reaches another
+boundary. Consult Architecture Guidelines for code changes and use maps/tests
+to trace the concrete owners; do not load every adjacent domain preemptively.
+
+For task-specific preparation and evidence, select [investigation](operations/CHANGE_WORKFLOW.md#investigar),
+[bug fix](operations/CHANGE_WORKFLOW.md#corregir), [implementation](operations/CHANGE_WORKFLOW.md#implementar),
+[refactor](operations/CHANGE_WORKFLOW.md#refactorizar), [performance](operations/CHANGE_WORKFLOW.md#rendimiento),
+[review/audit](operations/CHANGE_WORKFLOW.md#revisar), or [documentation/tests](operations/CHANGE_WORKFLOW.md#documentar-tests).
+This selection adds no permissions and does not replace the subsystem route.
+
+### Permissions, Environments And Operational Risk
+
+1. [ARCHITECTURE_GUIDELINES.md](architecture/ARCHITECTURE_GUIDELINES.md), Data & Backend Principles, for the existing ownership obligations.
+   Use [SECURITY_CONTRACT.md](contracts/SECURITY_CONTRACT.md#access-matrix) for resource/actor/channel mapping and its explicitly proposed Q1 analysis; use the historical [4B1 baseline](testing/SECURITY_RULES_BASELINE_4B1.md), [4B2A comparison](testing/SECURITY_RULES_4B2A.md) and [4B2B countdown evidence](testing/SECURITY_RULES_4B2B.md) for executed evidence, not policy acceptance.
+2. [SYSTEM_FRAGILITY_MAP.md](architecture/SYSTEM_FRAGILITY_MAP.md#operational-readiness), F10–F15 and the linked open decision, for local evidence, priorities and closure conditions. Before running development/emulator checks, use [DEVELOPMENT_WORKFLOW.md](operations/DEVELOPMENT_WORKFLOW.md) for the isolated 4A path.
+3. The affected domain contract from this index; inspect `firestore.rules`, `storage.rules`, `src/firebase.js`, `functions/src/auth/adminAuth.ts`, and the actual caller as applicable.
+4. For countdown protection/restore, [COUNTDOWN_PHASE_0_RUNBOOK.md](operations/COUNTDOWN_PHASE_0_RUNBOOK.md); for provider operations, [PROVIDER_DATA_MODEL.md](architecture/PROVIDER_DATA_MODEL.md) and [provider runbook](../scripts/providers/README.md).
+
+These references do not constitute a complete security contract or an isolated
+environment procedure. The risk register records those technical gaps; do not
+assume a command is safe because its name contains `dev`, `emulators` or `dry-run`.
+
+### Decisions And Missing Authority
+
+- Cross-system choices: [architectural decision register](architecture/ARCHITECTURE_OVERVIEW.md#architectural-decisions) distinguishes current accepted obligations, implementation evidence and unrecorded historical alternatives; detailed decisions remain in their specific contracts.
+- Conversational product choices: [AI_ASSISTANT_CONVERSATION_CONTRACT.md](contracts/AI_ASSISTANT_CONVERSATION_CONTRACT.md), section 2, keeps accepted choices and pending style questions together. Capability decisions belong to [DESIGNER_AI_CAPABILITY_CONTRACT.md](contracts/DESIGNER_AI_CAPABILITY_CONTRACT.md).
+- Role policy unresolved across Rules/backend: [Q1 in the risk register](architecture/SYSTEM_FRAGILITY_MAP.md#open-operational-decisions) holds the question, alternatives, missing information and dependent change until an explicit policy is accepted.
+- For other domains, search their canonical contract/map first. Record a necessary open question there with alternatives, missing evidence and the change it blocks; do not turn an ordinary bug or implementation task into a product decision.
+
 ### Core Architecture
 
 1. [ARCHITECTURE_GUIDELINES.md](architecture/ARCHITECTURE_GUIDELINES.md)
 2. [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md)
 3. [DATA_MODEL.md](architecture/DATA_MODEL.md)
 4. [SYSTEM_FRAGILITY_MAP.md](architecture/SYSTEM_FRAGILITY_MAP.md) when assessing risk.
+
+For code quality, use the [practical standards and tooling limits](architecture/ARCHITECTURE_GUIDELINES.md#code-quality-standards).
+For actual ownership, start at [current boundaries](architecture/ARCHITECTURE_OVERVIEW.md#current-boundaries);
+for shared consumers, use the [source/adapter/copy map](architecture/ARCHITECTURE_OVERVIEW.md#shared-contract-copies).
+These maps distinguish current implementation/debt from standards for future changes.
 
 ### Editor System
 
@@ -195,7 +289,17 @@ Phase 0 operational runbook.
 2. [GALLERY_EDITOR_CONTRACT.md](contracts/GALLERY_EDITOR_CONTRACT.md) for editor/sidebar mutations.
 3. [GALLERY_LAYOUT_PRESETS_CONTRACT.md](contracts/GALLERY_LAYOUT_PRESETS_CONTRACT.md) for preset availability and layout semantics.
 4. [GALLERY_VIEWER_RENDER_CONTRACT.md](contracts/GALLERY_VIEWER_RENDER_CONTRACT.md) for generated HTML and public viewer behavior.
-5. [DATA_MODEL.md](architecture/DATA_MODEL.md), [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md), and [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) for integration boundaries.
+5. Add [DATA_MODEL.md](architecture/DATA_MODEL.md) for persistence, [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md) for general editor ownership, or [RENDER_COMPATIBILITY_MATRIX.md](contracts/RENDER_COMPATIBILITY_MATRIX.md) for output only when the change reaches that boundary.
+
+For a local Gallery mutation, start with the system/editor contracts,
+`src/domain/gallery/galleryMutations.js`, `src/domain/gallery/sidebarModel.js`
+and their tests. General interaction docs are needed if selection/drag/overlay
+ownership is reached; Assistant, checkout and countdown docs are not default context.
+
+### Editor Runtime, Persistence And Dashboard Capture
+
+- Hydration, autosave, flush and bridges: [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md) and the persistence/runtime sections of [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md); start at `src/components/editor/persistence/editorSessionPersistence.js`, `src/components/editor/persistence/draftWriteCoordinator.js`, `src/lib/editorBridgeContracts.js`, `src/domain/drafts/criticalFlush.js` and `src/domain/drafts/flushGate.js` as applicable.
+- Dashboard thumbnails/clean canvas export: the clean-image checks in [EDITOR_REGRESSION_CHECKLIST.md](testing/EDITOR_REGRESSION_CHECKLIST.md), `src/utils/dashboardCanvasExport.js`, `src/utils/guardarThumbnail.js` and `src/utils/dashboardCanvasExport.test.mjs`. Add the preview or share-image contract only if that distinct artifact is affected.
 
 ### Regalos
 
@@ -292,6 +396,37 @@ For countdown inventory, backup/restore, telemetry, feature flags, and the
 frozen-clock visual baseline, use
 [COUNTDOWN_PHASE_0_RUNBOOK.md](operations/COUNTDOWN_PHASE_0_RUNBOOK.md).
 
+<a id="verification-entry-points"></a>
+
+### Verification Entry Points And Command Effects
+
+Choose checks from the affected contract and inspect their imports/setup before
+running them. The 5C shared-copy/watch and integrated entries were revalidated on
+2026-09-12; the 4A/5A local entries retain their 2026-09-11 baseline; other
+definitions retain the 2026-09-10 inspection baseline. Recheck the current
+scripts before use. This list is navigation, not permission to operate services.
+
+| Entry | Actual effect / limitation |
+| --- | --- |
+| `node --test <verified-test-path>` | Runs selected Node tests. Inspect the chosen file for build, filesystem, network or emulator setup; the runner name alone promises no isolation. Root and Functions packages currently have no general `test` script. |
+| `npm --prefix functions run build` | Synchronizes mapped shared copies, compiles TypeScript into `functions/lib/`, then checks all mapped targets. Reports prior differences; this is a write operation. |
+| `npm --prefix functions run build:watch` | Observes mapped canonical sources and Functions src/tsconfig in its own tree; serial sync/compile/check, explicit errors/readiness, bounded compiler and owned cleanup. Does not propagate original-tree edits into prepared copies or reload live Functions modules. [5C effects and restarts](operations/DEVELOPMENT_WORKFLOW.md#shared-contracts-5c). |
+| `npm --prefix functions run contracts:check`, `contracts:check:built` | Read-only byte comparisons from the single map. Input check permits absent compiled output; built check requires all destinations. Missing/unreadable/different files fail with concrete paths and hashes. Neither command repairs copies. |
+| `npm --prefix functions run contracts:sync`, `test:contracts` | Sync explicitly writes only differing mapped copies and records prior state. Tests use a disposable copy and the existing isolation/process supervisor to exercise watch, negative cases and real consumption; selected synthetic evidence is retained. |
+| `npm run build` | Captures retained static assets, runs Next build/export according to configuration, finalizes retained assets and verifies the static release; writes build/history artifacts. It does not replace domain tests or Rules checks. |
+| `npm run dev`, `npm run dev:functions`, `npm run dev:emulators`, `npm run dev:reset`, `npm run emulators` | Start a new isolated demo session, build in a working-tree source copy, connect all four emulators and block unreviewed handlers. See [Development Workflow](operations/DEVELOPMENT_WORKFLOW.md) for destinations, generated files and limits. |
+| `npm run local:prepare` | Public-network preparation in a disposable current-source copy: three lockfiles, pinned local CLI, emulator JARs and Puppeteer Chrome; empty personal/npm config, no production credentials. Does not alter the original dependency trees. Prints the prepared workspace; repeat after source changes. [Preparation](operations/DEVELOPMENT_WORKFLOW.md#verification-5a). |
+| `npm run verify:local` | Canonical 5A/5B/5C gate from the prepared workspace: prerequisites, input-copy check before sync, mandatory Functions lint with visible warnings, tooling/static CI checks, sync/watch behavior tests, configuration once, temporary sync/Functions compilation and built-copy check before consumers, backend/blocked-transport compatibility, Rules/countdown, synthetic SDK/callable/browser integration and offline/no-fallback check. Sequential shared resources; fresh Rules/hashes, explicit stage reports, deadlines and owned-process cleanup. No frontend lint, production Next build, all-domain coverage, Q1 acceptance or remote verification. |
+| `npm --prefix functions run lint` | Same Functions script used by the integrated gate. Discovers TS/TSX/JS/CJS/MJS application sources, scripts, config and tests; excludes compiled output and exact mapped generated copies, linting their canonical sources instead. Zero errors required; warnings and source/configuration hashes remain in the report. [Coverage and diagnosis](operations/DEVELOPMENT_WORKFLOW.md#functions-lint-5b). |
+| `npm run local:check`, `npm run test:local:unit`, `npm run test:local` | Individual prerequisite, configuration and synthetic integration checks remain available. `test:local` includes unit checks; do not repeat them before the integrated gate. These individual entries do not evaluate Rules authorization. |
+| `npm run test:local:rules` | Dedicated Rules suite (4B1/4B2A/4B2B), reused by `verify:local` and therefore by Hosting's prerequisite CI job. Client allow/deny, synthetic fixtures, separate backend-helper characterization and pending Q1 probes; existing countdown behavior/static/mixed checks. Acceptance/characterization assertion failures return nonzero. See [runbook](operations/DEVELOPMENT_WORKFLOW.md#rules-4b1). |
+| `npm run test:local:negative` | Opt-in demonstration in another disposable copy: stale input contract, new valid TypeScript with a lint error, deliberate cross-owner acceptance regression, canonical nonzero exit, synthetic dependent stage blocked, interruption, missing CLI/invalid destination and owned cleanup. `-- --contracts-only` selects only the 5C stale-copy control. Never mutates original sources or runs Hosting; requires the same prepared tools. [5A historical evidence](testing/LOCAL_VERIFICATION_5A.md), [5B evidence](testing/FUNCTIONS_LINT_5B.md), [5C evidence](testing/SHARED_CONTRACTS_5C.md). |
+| Migration, inventory, baseline and deploy entries in [package.json](../package.json) / [Functions package](../functions/package.json) | Effects vary: even dry runs may read real data and generate reports or compile code. Inspect the implementation and applicable runbook; deployment and migration require their own authorization. |
+
+Documentation-only work normally needs diff, reference and authority checks;
+application builds or broad runtime suites are not automatically required.
+Report actual execution and omissions under the Definition of Done in AGENTS.md.
+
 ## 6. Historical Docs
 
 Historical docs are preserved for context but must not be used as current
@@ -310,15 +445,26 @@ index and reconciled with current code.
 
 ## 7. Maintenance Rules
 
-- Add this index to the first-read set for broad documentation, architecture,
-  audit, or AI-agent routing work.
-- Prefer one canonical owner per rule. Architecture docs should link to contracts
-  rather than copy detailed contract text.
-- When a contract changes, update the contract, affected architecture references,
-  and focused tests/checklists in the same change.
-- When implementation drifts from documentation, label the finding explicitly and
-  update the smallest authoritative doc that owns the rule.
-- Keep historical docs if they explain why the system is shaped this way, but mark
-  them historical/deprecated and link to the current replacement.
-- New docs should state their status, scope, authority, and maintenance trigger at
-  the top when they may be mistaken for an authoritative contract.
+- Consult this index before selecting context. Search for an existing authority
+  before creating a document; update the smallest owner of the durable rule.
+- Keep one canonical owner per rule. AGENTS.md owns the global procedure,
+  CHANGE_WORKFLOW.md owns task-specific preparation/evidence, this index owns
+  navigation/governance, Architecture Guidelines owns general standards,
+  subsystem contracts/maps own their obligations/knowledge, and the fragility map
+  owns current risks and closure conditions. Link rather than copy those rules.
+- Update docs selectively when durable behavior, authority, schema, lifecycle,
+  compatibility, operation, verification guidance or a reference changes. A bug
+  fixed toward an unchanged contract or an internal refactor/formatting change
+  needs no normative rewrite; correct a map or anchor only if it became stale.
+- An authorized implementation that changes a contract must update that contract
+  and its affected consumers/tests/references in the same change. A separately
+  accepted design decision may be documented first with implementation pending.
+- Follow section 0 before resolving drift. Do not synchronize prose/tests to a
+  defect or erase an unresolved contradiction between accepted authorities.
+- Update this index when paths, routing, authority, status, reading order or
+  replacements change, not automatically for every implementation modification.
+- Retain useful history clearly marked as historical, replaced or rejected, with
+  a current replacement when one exists. Do not promote old plans by inference.
+- Verify modified links, file paths, symbols and command definitions. Do not link
+  to future documents as if they exist. New durable docs need status, scope,
+  authority and a maintenance trigger; do not create empty or parallel rule sets.

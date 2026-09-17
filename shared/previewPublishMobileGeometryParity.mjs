@@ -135,6 +135,24 @@ export function collectMobileGeometrySnapshotFromDocument() {
 
   const objects = Array.from(document.querySelectorAll(".objeto")).map((object, index) => {
     const section = object.closest(".sec");
+    const objectRect = toRect(object);
+    const paintOrderAtCenter = typeof document.elementsFromPoint === "function"
+      ? Array.from(
+          document.elementsFromPoint(
+            objectRect.left + objectRect.width / 2,
+            objectRect.top + objectRect.height / 2
+          )
+        ).reduce((ids, element) => {
+          const objectElement = element && element.closest
+            ? element.closest(".objeto")
+            : null;
+          const id = objectElement
+            ? objectElement.getAttribute("data-obj-id") || ""
+            : "";
+          if (id && !ids.includes(id)) ids.push(id);
+          return ids;
+        }, [])
+      : [];
     return {
       index,
       id:
@@ -146,7 +164,8 @@ export function collectMobileGeometrySnapshotFromDocument() {
       lane: object.closest(".sec-bleed") ? "bleed" : "content",
       mobileCluster: object.getAttribute("data-mobile-cluster") || "",
       mobileFit: object.getAttribute("data-mobile-fit") || "",
-      rect: toRect(object),
+      paintOrderAtCenter,
+      rect: objectRect,
     };
   });
 

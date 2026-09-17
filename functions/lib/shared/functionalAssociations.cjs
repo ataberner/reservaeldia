@@ -10,6 +10,8 @@ const FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze(["rsvp", "gifts", "ceremony"
 const FUNCTIONAL_ASSOCIATION_SET = new Set(FUNCTIONAL_ASSOCIATION_VALUES);
 const SINGLETON_FUNCTIONAL_ASSOCIATION_VALUES = new Set(["rsvp", "gifts"]);
 const STANDALONE_FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze([
+  "rsvp",
+  "gifts",
   "ceremony",
   "party",
   "dress_code",

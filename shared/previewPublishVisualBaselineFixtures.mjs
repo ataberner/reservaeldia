@@ -526,6 +526,185 @@ function createMobileReflowTitleVisualColumnObjects({ seccionId = "section-detai
   ];
 }
 
+function createMobileOverlapStackingObjects({ seccionId = "section-details" } = {}) {
+  return [
+    {
+      id: "overlap-card-backing",
+      tipo: "forma",
+      figura: "rect",
+      role: "decorative",
+      seccionId,
+      x: 60,
+      y: 60,
+      width: 320,
+      height: 140,
+      color: "#d8c2ea",
+      cornerRadius: 18,
+      zIndex: 1,
+    },
+    {
+      id: "overlap-card-copy",
+      tipo: "texto",
+      seccionId,
+      x: 82,
+      y: 82,
+      width: 80,
+      texto: "Civil",
+      fontSize: 22,
+      align: "left",
+      colorTexto: "#2f2a27",
+      zIndex: 2,
+    },
+    {
+      id: "overlap-card-detail",
+      tipo: "texto",
+      seccionId,
+      x: 82,
+      y: 124,
+      width: 90,
+      texto: "17:00 hs",
+      fontSize: 16,
+      align: "left",
+      colorTexto: "#4c4640",
+      zIndex: 2,
+    },
+    {
+      id: "overlap-second-card-backing",
+      tipo: "forma",
+      figura: "rect",
+      role: "decorative",
+      seccionId,
+      x: 420,
+      y: 60,
+      width: 320,
+      height: 140,
+      color: "#6f3d91",
+      cornerRadius: 18,
+      zIndex: 1,
+    },
+    {
+      id: "overlap-second-card-copy",
+      tipo: "texto",
+      seccionId,
+      x: 442,
+      y: 82,
+      width: 80,
+      texto: "Fiesta",
+      fontSize: 22,
+      align: "left",
+      colorTexto: "#ffffff",
+      zIndex: 2,
+    },
+    {
+      id: "overlap-second-card-detail",
+      tipo: "texto",
+      seccionId,
+      x: 442,
+      y: 124,
+      width: 90,
+      texto: "21:00 hs",
+      fontSize: 16,
+      align: "left",
+      colorTexto: "#ffffff",
+      zIndex: 2,
+    },
+  ];
+}
+
+const AQUARELLE_OVERLAY_IMAGE_LEFT =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='280' viewBox='0 0 320 280'%3E%3Cpath d='M18 258C52 154 94 70 292 14C244 118 190 222 18 258Z' fill='%23c98ca6'/%3E%3C/svg%3E";
+const AQUARELLE_OVERLAY_IMAGE_ROTATED =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='288' viewBox='0 0 300 288'%3E%3Cpath d='M20 266C78 78 156 22 280 18C250 156 170 246 20 266Z' fill='%23749b80'/%3E%3C/svg%3E";
+
+function createAquarelleCountdownImageOverlapObjects({
+  seccionId = "section-details",
+} = {}) {
+  return [
+    {
+      id: "aquarelle-countdown",
+      tipo: "countdown",
+      seccionId,
+      x: 200,
+      y: 85.632,
+      width: 400,
+      height: 90,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      anclaje: "content",
+      countdownSchemaVersion: 2,
+      fechaObjetivo: "2030-06-15T12:00:00.000Z",
+      mostrarCuentaRegresiva: true,
+      visibleUnits: ["days", "hours", "minutes", "seconds"],
+      distribution: "centered",
+      gap: 8,
+      paddingX: 12,
+      paddingY: 8,
+      chipWidth: 72,
+      fontSize: 34,
+      labelSize: 12,
+      showLabels: true,
+      color: "#493737",
+      labelColor: "#6f5959",
+      boxBg: "rgba(255,255,255,0.72)",
+      boxBorder: "rgba(73,55,55,0.18)",
+    },
+    {
+      id: "aquarelle-image-rotated",
+      tipo: "imagen",
+      seccionId,
+      x: 238.964,
+      y: 30.288,
+      width: 136.64303617309125,
+      height: 131.09191282856193,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 40.495975179163324,
+      anclaje: "content",
+      src: AQUARELLE_OVERLAY_IMAGE_ROTATED,
+    },
+    {
+      id: "aquarelle-image-left",
+      tipo: "imagen",
+      seccionId,
+      x: 79.815,
+      y: 65.915,
+      width: 151.16470991069377,
+      height: 129.43478286103158,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      anclaje: "content",
+      src: AQUARELLE_OVERLAY_IMAGE_LEFT,
+    },
+  ];
+}
+
+function createAquarelleCountdownImageOverlapDraft(draft) {
+  const next = withoutRootConfigs(
+    selectDraftSlice(draft, {
+      sectionIds: ["section-details"],
+      objectIds: [],
+    })
+  );
+  next.secciones = (next.secciones || []).map((section) => {
+    const normalized = {
+      ...section,
+      altura: 249,
+      altoModo: "fijo",
+      mobileLayoutMode: "auto",
+      fondo: "#f4ece8",
+    };
+    delete normalized.fondoTipo;
+    delete normalized.fondoImagen;
+    delete normalized.decoracionesFondo;
+    delete normalized.decoracionesBorde;
+    return normalized;
+  });
+  next.objetos = createAquarelleCountdownImageOverlapObjects();
+  return next;
+}
+
 function withCenteredGallerySideObject(draft) {
   const next = deepClone(draft);
   const gallery = (next.objetos || []).find((object) => object?.id === "gallery-main");
@@ -856,6 +1035,30 @@ const fixedReflowTitleVisualColumnsPublishDraft = upsertObjects(
   }),
   createMobileReflowTitleVisualColumnObjects()
 );
+
+const fixedReflowOverlapStackingPreviewDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createMobileOverlapStackingObjects()
+);
+const fixedReflowOverlapStackingPublishDraft = upsertObjects(
+  selectDraftSlice(hydratedAssetParityFixture.publishDraft, {
+    sectionIds: ["section-details"],
+    objectIds: [],
+  }),
+  createMobileOverlapStackingObjects()
+);
+
+const fixedReflowAquarelleCountdownOverlapPreviewDraft =
+  createAquarelleCountdownImageOverlapDraft(
+    hydratedAssetParityFixture.previewDraft
+  );
+const fixedReflowAquarelleCountdownOverlapPublishDraft =
+  createAquarelleCountdownImageOverlapDraft(
+    hydratedAssetParityFixture.publishDraft
+  );
 
 const fixedOverflowPreviewDraft = upsertObjects(
   selectDraftSlice(hydratedAssetParityFixture.previewDraft, {
@@ -1228,6 +1431,40 @@ export const previewPublishVisualBaselineFixtures = Object.freeze([
       "spatially related objects preserve their internal vectors as one inferred composition unit",
       "ceremony and party visual columns both stack on the mobile center axis",
       "preview and publish keep the same centered-column geometry",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-reflow-overlap-stacking",
+    label: "Fixed section inferred overlap-group stacking",
+    purpose: "Freeze two ungrouped foreground-on-backing compositions as separate mobile reflow units.",
+    sourceFixture: "preview-publish-hydrated-asset-parity",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedReflowOverlapStackingPreviewDraft,
+    publishDraft: fixedReflowOverlapStackingPublishDraft,
+    focusCheckpoints: [
+      "each compact backing and its offset texts form one exclusive inferred unit",
+      "the foreground texts remain above their own backing in paint order",
+      "the left inferred unit stacks before the right inferred unit",
+      "the two nearby backings never merge through proximity or transitive text links",
+      "preview and publish keep identical geometry at representative mobile viewports",
+      "desktop authored geometry remains unchanged",
+    ],
+  }),
+  createVisualBaselineCase({
+    id: "fixed-reflow-aquarelle-countdown-overlap",
+    label: "Aquarelle Countdown with overlapping image elements",
+    purpose: "Freeze the authored three-root Countdown and image composition as one mobile reflow unit.",
+    sourceFixture: "Aquarelle · Acuarela artística",
+    expectedParityMode: "shared-parity",
+    previewDraft: fixedReflowAquarelleCountdownOverlapPreviewDraft,
+    publishDraft: fixedReflowAquarelleCountdownOverlapPublishDraft,
+    focusCheckpoints: [
+      "schema-v2 Countdown participates in spatial composition inference",
+      "both image elements remain overlapped with the Countdown after mobile reflow",
+      "the three-root composition keeps its internal normalized vectors",
+      "image elements retain authored paint order above the Countdown",
+      "preview and publish keep identical geometry at representative mobile viewports",
+      "desktop authored geometry remains unchanged",
     ],
   }),
   createVisualBaselineCase({

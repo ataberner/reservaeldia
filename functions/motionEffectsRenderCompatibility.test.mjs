@@ -178,7 +178,48 @@ test("grouped shapes and Google maps keep their individual motion markers", () =
   }
 });
 
-test("motion runtime discovers and activates grouped child roots", async () => {
+test("scroll entrance effects share a brief delay and slower desktop/mobile timings", () => {
+  const runtime = generarMotionEffectsRuntimeHTML();
+
+  assert.match(runtime, /--mefx-entry-delay:\s*120ms;/);
+  assert.match(runtime, /--mefx-reveal-duration:\s*760ms;/);
+  assert.match(runtime, /--mefx-zoom-scale-duration:\s*880ms;/);
+  assert.match(runtime, /--mefx-draw-scale-duration:\s*920ms;/);
+  assert.match(runtime, /--mefx-stagger-duration:\s*740ms;/);
+  assert.match(runtime, /@media \(max-width: 767px\)[\s\S]*--mefx-reveal-duration:\s*680ms;/);
+  assert.match(runtime, /@media \(max-width: 767px\)[\s\S]*--mefx-zoom-scale-duration:\s*740ms;/);
+  assert.match(runtime, /@media \(max-width: 767px\)[\s\S]*--mefx-draw-scale-duration:\s*780ms;/);
+  ["reveal", "zoom", "draw"].forEach((effect) => {
+    assert.match(
+      runtime,
+      new RegExp(
+        `\\.mefx-${effect}-init\\s*\\{[\\s\\S]*?transition-delay:\\s*var\\(--mefx-entry-delay\\);`
+      )
+    );
+  });
+  assert.match(
+    runtime,
+    /transition-delay:\s*calc\(var\(--mefx-entry-delay\) \+ var\(--mefx-stagger-delay, 0ms\)\);/
+  );
+  assert.match(
+    runtime,
+    /\.mefx-reveal-on\s*\{[\s\S]*?animation-delay:\s*var\(--mefx-entry-delay\);/
+  );
+  assert.match(
+    runtime,
+    /\.mefx-zoom-on\s*\{[\s\S]*?animation-delay:\s*var\(--mefx-entry-delay\);/
+  );
+  assert.match(
+    runtime,
+    /\.mefx-draw-on\s*\{[\s\S]*?animation-delay:\s*var\(--mefx-entry-delay\);/
+  );
+  assert.match(
+    runtime,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?transition:\s*none !important;/
+  );
+});
+
+test("motion runtime discovers and activates grouped child roots", { timeout: 10000 }, async (t) => {
   const runtime = generarMotionEffectsRuntimeHTML();
   const dom = new JSDOM(
     `<!doctype html><html><body>
@@ -195,8 +236,23 @@ test("motion runtime discovers and activates grouped child roots", async () => {
     }
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  t.after(() => dom.window.close());
   const child = dom.window.document.querySelector('[data-group-child-id="title"]');
+  // Activation crosses several animation frames. Observe the expected state
+  // with a deadline; 80ms raced those frames under installation/CI load.
+  await new Promise((resolve, reject) => {
+    const observer = new dom.window.MutationObserver(check);
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      reject(new Error("Grouped child did not activate within 2 seconds"));
+    }, 2000);
+    function check() {
+      if (!child?.classList.contains("mefx-reveal-on")) return;
+      clearTimeout(timer); observer.disconnect(); resolve();
+    }
+    observer.observe(dom.window.document.body, { attributes: true, subtree: true });
+    check();
+  });
   const cta = dom.window.document.querySelector('[data-group-child-id="cta"]');
   const countdownChip = dom.window.document.querySelector(
     '[data-group-child-id="countdown"] .cd-chip'
@@ -221,5 +277,4 @@ test("motion runtime discovers and activates grouped child roots", async () => {
     String(countdownChipRule?.style?.animation || ""),
     /mefxPulseCountdownChip/
   );
-  dom.window.close();
 });

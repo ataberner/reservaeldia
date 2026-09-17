@@ -4,7 +4,7 @@ import * as logger from "firebase-functions/logger";
 const {
   buildCountdownTelemetryEvent,
   resolveCountdownFeatureFlags,
-} = require("../../shared/countdownPhase0Contract.cjs"); // eslint-disable-line @typescript-eslint/no-var-requires
+} = require("../../shared/countdownPhase0Contract.cjs");
 
 type UnknownRecord = Record<string, unknown>;
 

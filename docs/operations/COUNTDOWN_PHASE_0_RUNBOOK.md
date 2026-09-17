@@ -6,7 +6,9 @@ This runbook covers the protection and observability infrastructure that must
 exist before countdown behavior, compatibility, or rendering is changed. It
 does not authorize a migration or a restore.
 
-Code remains the source of truth. The shared Phase 0 authority is
+Code is evidence of current command behavior; expected obligations and conflicts
+follow the [documentation authority rules](../DOCUMENTATION_INDEX.md#authority-and-conflicts).
+The shared Phase 0 implementation authority is
 `shared/countdownPhase0Contract.cjs`; the ESM wrapper and the synchronized
 Functions copies expose that same contract to the browser and backend without
 creating parallel schemas.

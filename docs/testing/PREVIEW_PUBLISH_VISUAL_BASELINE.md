@@ -62,6 +62,8 @@ These views freeze invitation rendering reference points only. They do not freez
 | `mixed-fijo-pantalla` | Protect section ordering across one `pantalla` section plus fixed sections. | `shared-parity` | all five baseline views | none | section order, `pantalla` to `fijo` relationship, cross-section stability |
 | `fixed-reflow-columns` | Protect the two-column mobile smart-layout path for fixed sections. | `shared-parity` | all five baseline views | none | fixed-only reflow, weak gutter overlap between wide text boxes, preserved column units, mobile column stacking, section height |
 | `fixed-reflow-title-visual-columns` | Protect a centered title/subtitle composition above two icon/text columns. | `shared-parity` | all five baseline views | none | heading unit, internal vectors, lane bbox isolation, centered Ceremony/Fiesta mobile stack |
+| `fixed-reflow-overlap-stacking` | Protect two adjacent ungrouped backings with multiple offset foreground texts during fixed mobile reflow. | `shared-parity` | all five baseline views | none | two exclusive inferred units, left-then-right stacking, preserved overlap/internal vectors and paint order, unchanged desktop |
+| `fixed-reflow-aquarelle-countdown-overlap` | Protect the Aquarelle schema-v2 Countdown overlapped by two ungrouped image elements. | `shared-parity` | all five baseline views | none | one inferred composition unit, both image/Countdown overlaps, normalized internal vectors, image paint order, unchanged desktop |
 | `fixed-reflow-centered-gallery-side-object` | Protect a centered two-cell Gallery beside an ungrouped lateral object. | `shared-parity` | all five baseline views | none | unchanged desktop placement, independent mobile units, centered Gallery and side object, vertical separation, clickable Gallery cell markers |
 | `fixed-overflow-expansion` | Protect fixed-section expansion when mobile content exceeds authored height. | `shared-parity` | all five baseline views | none | overflow expansion, stale iframe gaps, downstream offsets |
 | `grouped-cta-fixed-section` | Protect grouped CTA positioning and hit-layer preservation in fixed sections. | `shared-parity` | all five baseline views | none | group wrapper unit, nested CTA semantics, sibling stacking |
@@ -117,6 +119,22 @@ Frozen rule:
   centers them independently, with the authored centered unit first on a top tie
 - explicit groups or shared composition identifiers remain atomic and are the
   opt-in for preserving a side-by-side relationship between those objects
+- a compact decorative/background box claims strongly contained foregrounds as
+  one exclusive inferred overlap unit; a single foreground keeps the bounded
+  relative-size guard, while two or more contained foregrounds can establish a
+  card even when the individual text boxes are small
+- the smallest eligible backing wins nested ownership; adjacent accepted
+  backings and their text rows cannot become a transitive proximity bridge
+- two inferred overlap cards authored side by side stack left unit first and
+  right unit second, preserving every internal overlap and DOM/z-index order
+- a near-section-width box or a box that only grazes another object is not
+  overlap ownership evidence and must not become a transitive bridge between
+  otherwise independent units
+- a schema-v2 Countdown root participates in spatial composition inference;
+  when its substantial overlaps connect it with surrounding image roots, the
+  complete visual is one unit rather than an isolated Countdown plus images
+- the mobile stacker may place that inferred unit in flow but preserves its
+  internal overlap vectors and paint order
 - `pantalla`, `mobileLayoutMode: preserve`, section-owned decorations and
   desktop geometry keep their existing owners
 
@@ -179,6 +197,13 @@ Treat any of the following as a regression unless a new product or architecture 
 - split a spatially related fixed-section composition into independently
   positioned mobile items, changed its normalized internal vectors, or merged
   content and fullbleed into one inferred unit
+- separated foreground text from its bounded backing, changed their paint
+  order, merged adjacent overlap cards into one unit, reversed their authored
+  left/right mobile stack, or clustered a large grazing/full-width box as an
+  inferred overlap owner
+- isolated a schema-v2 Countdown from substantially overlapping image roots,
+  or changed the inferred unit's internal overlap vectors while placing it in
+  mobile flow
 - allowed non-decorative `.sec-content` objects to cross the mobile viewport,
   or included roles `decorative`/`background`, section-owned visuals, or the
   `.sec-bleed` cover lane in the content-fit bounds

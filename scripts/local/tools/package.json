@@ -1,0 +1,16 @@
+{
+  "name": "reservaeldia-local-verification-tools",
+  "private": true,
+  "version": "1.0.0",
+  "engines": { "node": "20 || 22" },
+  "dependencies": {
+    "firebase-tools": "14.4.0",
+    "yaml": "2.8.1"
+  },
+  "overrides": {
+    "@google-cloud/cloud-sql-connector": "1.8.0",
+    "universal-analytics": "0.5.3",
+    "re2": "1.21.5",
+    "@googleapis/sqladmin": "28.0.0"
+  }
+}

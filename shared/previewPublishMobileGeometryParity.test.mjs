@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 
 import {
   MOBILE_GEOMETRY_PARITY_DEFAULT_TOLERANCE_PX,
@@ -26,6 +27,112 @@ const NOIR_SECTION_JUNCTION_FIXTURE = Object.freeze([
 
 const DARK_SECTION_IMAGE =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="503"%3E%3Crect width="800" height="503" fill="%23101014"/%3E%3C/svg%3E';
+
+async function createCompositionClusterHarness() {
+  const [domHelpersModule, orderingModule] = await Promise.all([
+    import("../functions/lib/utils/mobileSmartLayout/dom.js"),
+    import("../functions/lib/utils/mobileSmartLayout/ordering.js"),
+  ]);
+  const { jsDomHelpersBlock } = domHelpersModule.default || domHelpersModule;
+  const { jsOrderingBlock } = orderingModule.default || orderingModule;
+  const context = vm.createContext({});
+  vm.runInContext(
+    `function mslLog() {}\n${jsDomHelpersBlock()}\n${jsOrderingBlock()}\nthis.__buildCompositionClusters = buildCompositionClusters;\nthis.__orderClustersForMobile = orderClustersForMobile;`,
+    context
+  );
+
+  function buildClusters(rawItems, rootWidth = 390) {
+    const items = rawItems.map(({ id, lane = "content", attrs = {}, ...rect }) => {
+      const attributes = {
+        "data-obj-id": id,
+        ...attrs,
+      };
+      return {
+        ...rect,
+        node: {
+          getAttribute(name) {
+            return attributes[name] ?? null;
+          },
+          closest(selector) {
+            if (selector === ".sec-bleed") return lane === "bleed" ? {} : null;
+            if (selector === ".sec-content") return lane === "content" ? {} : null;
+            return null;
+          },
+        },
+      };
+    });
+    return context.__buildCompositionClusters(items, rootWidth);
+  }
+
+  buildClusters.order = function orderClusters(
+    clusters,
+    rootWidth = 390,
+    configOverrides = {}
+  ) {
+    return context.__orderClustersForMobile(clusters, rootWidth, {
+      MIN_PER_COL_3: 2,
+      THREE_COL_SPREAD_RATIO: 0.22,
+      MIN_PER_COL_2: 2,
+      TWO_COL_SPREAD_RATIO: 0.18,
+      ROW_TOL: 28,
+      ...configOverrides,
+    });
+  };
+
+  return buildClusters;
+}
+
+async function createMobileStackHarness() {
+  const stackingModule = await import(
+    "../functions/lib/utils/mobileSmartLayout/stacking.js"
+  );
+  const { jsStackingBlock } = stackingModule.default || stackingModule;
+  const context = vm.createContext({
+    getComputedStyle() {
+      return { paddingLeft: "0", paddingRight: "0" };
+    },
+  });
+  vm.runInContext(
+    `function mslLog() {}\nfunction relRect(node) {\n  return {\n    left: parseFloat(node.style.left) || 0,\n    top: parseFloat(node.style.top) || 0,\n    width: node.__width || 0,\n    height: node.__height || 0\n  };\n}\n${jsStackingBlock()}\nthis.__applyClusterStack = applyClusterStack;`,
+    context
+  );
+
+  function createNode(id, width, height, attrs = {}, styleValues = {}) {
+    const attributes = { "data-obj-id": id, ...attrs };
+    const customProperties = new Map([
+      ["--text-zoom", styleValues.textZoom ?? ""],
+    ]);
+    const style = {
+      textAlign: styleValues.textAlign ?? "",
+      transform: styleValues.transform ?? "",
+      transformOrigin: styleValues.transformOrigin ?? "",
+      left: "",
+      top: "",
+      right: "",
+      marginLeft: "",
+      getPropertyValue(name) {
+        return customProperties.get(name) ?? "";
+      },
+      setProperty(name, value) {
+        customProperties.set(name, String(value));
+      },
+    };
+    return {
+      __width: width,
+      __height: height,
+      style,
+      getAttribute(name) {
+        return attributes[name] ?? null;
+      },
+    };
+  }
+
+  return { apply: context.__applyClusterStack, createNode };
+}
+
+function clusterObjectIds(cluster) {
+  return Array.from(cluster.items, (item) => item.node.getAttribute("data-obj-id"));
+}
 
 test("mobile geometry parity viewport set is explicit and stable", () => {
   assert.deepEqual(MOBILE_GEOMETRY_PARITY_VIEWPORTS, [
@@ -185,6 +292,356 @@ test("Noir section junction fixture keeps the consecutive dark baseline explicit
   assert.deepEqual(
     NOIR_SECTION_JUNCTION_FIXTURE.map(({ altura }) => altura),
     [662, 260, 657, 488, 737, 283, 178]
+  );
+});
+
+test("mobile composition inference preserves bounded foreground-on-backing overlap", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const clusters = buildClusters([
+    {
+      id: "card-backing",
+      top: 50,
+      left: 45,
+      width: 135,
+      height: 52,
+      attrs: { "data-role": "decorative" },
+    },
+    {
+      id: "card-copy",
+      top: 56,
+      left: 58,
+      width: 40,
+      height: 14,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+  ]);
+
+  assert.equal(clusters.length, 1);
+  assert.deepEqual(clusterObjectIds(clusters[0]), ["card-backing", "card-copy"]);
+  assert.equal(clusters[0].preservesOverlap, true);
+});
+
+test("mobile composition inference preserves Aquarelle countdown image overlap", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const clusters = buildClusters([
+    {
+      id: "count-mncleus8",
+      top: 16.984375,
+      left: 97.5,
+      width: 195,
+      height: 43.875,
+      attrs: {
+        "data-type": "countdown",
+        "data-role": "countdown",
+        "data-mobile-center": "force",
+      },
+    },
+    {
+      id: "obj-1774839195951-0",
+      top: 0,
+      left: 74.98400115966797,
+      width: 92.15357208251953,
+      height: 91.8533935546875,
+      attrs: { "data-type": "image", "data-role": "image" },
+    },
+    {
+      id: "obj-1774839231599-0",
+      top: 17.375,
+      left: 38.90625,
+      width: 73.6875,
+      height: 63.09375,
+      attrs: { "data-type": "image", "data-role": "image" },
+    },
+  ]);
+
+  assert.equal(clusters.length, 1);
+  assert.deepEqual(clusterObjectIds(clusters[0]), [
+    "count-mncleus8",
+    "obj-1774839195951-0",
+    "obj-1774839231599-0",
+  ]);
+  assert.equal(clusters[0].preservesOverlap, true);
+  const ordered = buildClusters.order(clusters);
+  assert.deepEqual(
+    Array.from(ordered.groups[0], clusterObjectIds),
+    [["count-mncleus8", "obj-1774839195951-0", "obj-1774839231599-0"]]
+  );
+});
+
+test("mobile composition inference keeps two text-on-backing cards as two exclusive units", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const clusters = buildClusters([
+    {
+      id: "left-card-backing",
+      top: 30,
+      left: 10,
+      width: 175,
+      height: 115,
+      attrs: { "data-role": "decorative", "data-type": "shape" },
+    },
+    {
+      id: "left-card-title",
+      top: 46,
+      left: 25,
+      width: 55,
+      height: 14,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+    {
+      id: "left-card-detail",
+      top: 76,
+      left: 25,
+      width: 65,
+      height: 12,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+    {
+      id: "right-card-backing",
+      top: 30,
+      left: 205,
+      width: 175,
+      height: 115,
+      attrs: { "data-role": "decorative", "data-type": "shape" },
+    },
+    {
+      id: "right-card-title",
+      top: 46,
+      left: 220,
+      width: 55,
+      height: 14,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+    {
+      id: "right-card-detail",
+      top: 76,
+      left: 220,
+      width: 65,
+      height: 12,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+  ]);
+
+  assert.deepEqual(Array.from(clusters, clusterObjectIds), [
+    ["left-card-backing", "left-card-title", "left-card-detail"],
+    ["right-card-backing", "right-card-title", "right-card-detail"],
+  ]);
+  assert.equal(clusters.length, 2);
+  assert.equal(clusters.every((cluster) => cluster.preservesOverlap), true);
+  const ordered = buildClusters.order(clusters);
+  assert.equal(ordered.mode, "two");
+  assert.deepEqual(
+    Array.from(ordered.groups, (group) => Array.from(group, clusterObjectIds)),
+    [
+      [["left-card-backing", "left-card-title", "left-card-detail"]],
+      [["right-card-backing", "right-card-title", "right-card-detail"]],
+    ]
+  );
+});
+
+test("mobile composition inference rejects incidental overlap from a large box", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const clusters = buildClusters([
+    {
+      id: "large-box",
+      top: 20,
+      left: 0,
+      width: 320,
+      height: 160,
+      attrs: { "data-role": "decorative" },
+    },
+    {
+      id: "grazing-icon",
+      top: 168,
+      left: 300,
+      width: 30,
+      height: 30,
+      attrs: { "data-role": "icon" },
+    },
+    {
+      id: "contained-icon",
+      top: 40,
+      left: 20,
+      width: 20,
+      height: 20,
+      attrs: { "data-role": "icon" },
+    },
+    {
+      id: "contained-label",
+      top: 72,
+      left: 15,
+      width: 30,
+      height: 12,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+  ]);
+
+  assert.equal(clusters.length, 3);
+  assert.deepEqual(Array.from(clusters, clusterObjectIds), [
+    ["large-box"],
+    ["contained-icon", "contained-label"],
+    ["grazing-icon"],
+  ]);
+});
+
+test("mobile composition inference leaves non-overlap proximity and explicit units unchanged", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const proximityClusters = buildClusters([
+    {
+      id: "near-icon",
+      top: 40,
+      left: 60,
+      width: 40,
+      height: 40,
+      attrs: { "data-role": "icon" },
+    },
+    {
+      id: "near-label",
+      top: 95,
+      left: 50,
+      width: 60,
+      height: 20,
+      attrs: { "data-debug-texto": "1", "data-role": "body" },
+    },
+  ]);
+  assert.equal(proximityClusters.length, 1);
+
+  const explicitClusters = buildClusters([
+    {
+      id: "explicit-large-box",
+      top: 20,
+      left: 5,
+      width: 370,
+      height: 160,
+      attrs: {
+        "data-role": "decorative",
+        "data-mobile-cluster-id": "card",
+      },
+    },
+    {
+      id: "explicit-icon",
+      top: 168,
+      left: 345,
+      width: 30,
+      height: 30,
+      attrs: {
+        "data-role": "icon",
+        "data-mobile-cluster-id": "card",
+      },
+    },
+  ]);
+  assert.equal(explicitClusters.length, 1);
+  assert.deepEqual(clusterObjectIds(explicitClusters[0]), [
+    "explicit-large-box",
+    "explicit-icon",
+  ]);
+});
+
+test("mobile composition inference keeps positive-gutter text columns in separate lanes", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const textAttrs = { "data-debug-texto": "1", "data-role": "body" };
+  const clusters = buildClusters([
+    { id: "left-label", top: 156, left: 21, width: 118, height: 14, attrs: textAttrs },
+    { id: "left-place", top: 226, left: 16.7, width: 175.5, height: 11, attrs: textAttrs },
+    { id: "left-address", top: 262, left: 16.7, width: 175.5, height: 22, attrs: textAttrs },
+    { id: "right-label", top: 156, left: 204, width: 70, height: 14, attrs: textAttrs },
+    { id: "right-place", top: 226, left: 202.1, width: 175.5, height: 11, attrs: textAttrs },
+    { id: "right-address", top: 262, left: 204, width: 175.5, height: 22, attrs: textAttrs },
+  ]);
+
+  assert.deepEqual(Array.from(clusters, clusterObjectIds), [
+    ["left-label"],
+    ["right-label"],
+    ["left-place", "left-address"],
+    ["right-place", "right-address"],
+  ]);
+
+  const ordered = buildClusters.order(clusters, 390, { MIN_PER_COL_2: 1 });
+  assert.equal(ordered.mode, "two");
+  assert.deepEqual(
+    Array.from(ordered.groups, (group) =>
+      Array.from(group, clusterObjectIds).flat()
+    ),
+    [
+      ["left-label", "left-place", "left-address"],
+      ["right-label", "right-place", "right-address"],
+    ]
+  );
+});
+
+test("mobile composition inference preserves same-lane horizontal proximity", async () => {
+  const buildClusters = await createCompositionClusterHarness();
+  const textAttrs = { "data-debug-texto": "1", "data-role": "body" };
+  const clusters = buildClusters([
+    { id: "left-inline-a", top: 40, left: 20, width: 40, height: 14, attrs: textAttrs },
+    { id: "left-inline-b", top: 40, left: 70, width: 40, height: 14, attrs: textAttrs },
+    { id: "right-signal-a", top: 40, left: 250, width: 40, height: 14, attrs: textAttrs },
+    { id: "right-signal-b", top: 100, left: 250, width: 40, height: 14, attrs: textAttrs },
+  ]);
+
+  assert.deepEqual(clusterObjectIds(clusters[0]), ["left-inline-a", "left-inline-b"]);
+});
+
+test("mobile multi-column stack preserves authored text alignment and relative box position", async () => {
+  const { apply, createNode } = await createMobileStackHarness();
+  const backingNode = createNode("backing", 30, 80);
+  const textNode = createNode(
+    "copy",
+    40,
+    20,
+    { "data-debug-texto": "1" },
+    {
+      textAlign: "left",
+      transformOrigin: "left top",
+      textZoom: "0.9",
+    }
+  );
+  const cluster = {
+    top: 100,
+    left: 200,
+    width: 100,
+    height: 100,
+    items: [
+      {
+        node: backingNode,
+        top: 110,
+        left: 210,
+        width: 30,
+        height: 80,
+        _relTop: 10,
+        _relLeft: 10,
+      },
+      {
+        node: textNode,
+        top: 120,
+        left: 230,
+        width: 40,
+        height: 20,
+        _relTop: 20,
+        _relLeft: 30,
+      },
+    ],
+    preservesOverlap: true,
+  };
+  const root = {
+    getBoundingClientRect() {
+      return { width: 390 };
+    },
+  };
+
+  apply([[cluster]], root, {
+    PAD_TOP: 0,
+    PAD_BOT: 2,
+    GAP_SCALE: 1,
+    MIN_GAP: 1,
+    MAX_GAP: 64,
+  }, "two");
+
+  assert.equal(textNode.style.textAlign, "left");
+  assert.equal(textNode.style.transformOrigin, "left top");
+  assert.equal(textNode.style.getPropertyValue("--text-zoom"), "0.9");
+  assert.equal(
+    Number.parseFloat(textNode.style.left) - Number.parseFloat(backingNode.style.left),
+    20
   );
 });
 
@@ -1317,6 +1774,70 @@ test(
       });
     }
 
+    function normalizedCompositionRelationByReference(
+      snapshot,
+      firstId,
+      secondId,
+      referenceId,
+      message
+    ) {
+      const first = requireObjectAndSection(snapshot, firstId, message);
+      const second = requireObjectAndSection(snapshot, secondId, message);
+      const reference = requireObjectAndSection(snapshot, referenceId, message);
+      assert.equal(
+        first.object.sectionId,
+        second.object.sectionId,
+        `${message}: related objects must share one section`
+      );
+      const referenceWidth = Number(reference.object.rect?.width || 0);
+      assert.ok(referenceWidth > 0, `${message}: invalid reference width`);
+      const firstCenter =
+        Number(first.object.rect?.left || 0) + Number(first.object.rect?.width || 0) / 2;
+      const secondCenter =
+        Number(second.object.rect?.left || 0) + Number(second.object.rect?.width || 0) / 2;
+      return {
+        centerDelta: (secondCenter - firstCenter) / referenceWidth,
+        topDelta:
+          (Number(second.object.rect?.top || 0) - Number(first.object.rect?.top || 0)) /
+          referenceWidth,
+        gap:
+          (Number(second.object.rect?.top || 0) - Number(first.object.rect?.bottom || 0)) /
+          referenceWidth,
+      };
+    }
+
+    function assertCompositionRelationsPreservedByReference(
+      desktopSnapshot,
+      mobileSnapshot,
+      relationPairs,
+      referenceId,
+      message,
+      tolerance = 0.012
+    ) {
+      relationPairs.forEach(([firstId, secondId]) => {
+        const desktopRelation = normalizedCompositionRelationByReference(
+          desktopSnapshot,
+          firstId,
+          secondId,
+          referenceId,
+          message
+        );
+        const mobileRelation = normalizedCompositionRelationByReference(
+          mobileSnapshot,
+          firstId,
+          secondId,
+          referenceId,
+          message
+        );
+        for (const key of ["centerDelta", "topDelta", "gap"]) {
+          assert.ok(
+            Math.abs(mobileRelation[key] - desktopRelation[key]) <= tolerance,
+            `${message}: ${firstId} -> ${secondId} ${key} changed from ${desktopRelation[key].toFixed(4)} to ${mobileRelation[key].toFixed(4)}`
+          );
+        }
+      });
+    }
+
     function normalizedCompositionCenter(snapshot, objectIds, message) {
       const entries = objectIds.map((objectId) =>
         requireObjectAndSection(snapshot, objectId, message)
@@ -1358,6 +1879,30 @@ test(
       assert.ok(
         Number(lower.rect?.top || 0) >= Number(upper.rect?.bottom || 0) - 1,
         `${message}: ${lowerId} top ${Number(lower.rect?.top || 0).toFixed(2)} overlaps ${upperId} bottom ${Number(upper.rect?.bottom || 0).toFixed(2)}`
+      );
+    }
+
+    function assertObjectsOverlap(snapshot, firstId, secondId, message) {
+      const first = requireObjectAndSection(snapshot, firstId, message).object;
+      const second = requireObjectAndSection(snapshot, secondId, message).object;
+      const overlapWidth = Math.min(first.rect.right, second.rect.right) -
+        Math.max(first.rect.left, second.rect.left);
+      const overlapHeight = Math.min(first.rect.bottom, second.rect.bottom) -
+        Math.max(first.rect.top, second.rect.top);
+      assert.ok(
+        overlapWidth > 1 && overlapHeight > 1,
+        `${message}: ${firstId} and ${secondId} no longer overlap`
+      );
+    }
+
+    function assertObjectPaintedAbove(snapshot, foregroundId, backingId, message) {
+      const foreground = requireObjectAndSection(snapshot, foregroundId, message).object;
+      const paintOrder = foreground.paintOrderAtCenter || [];
+      const foregroundIndex = paintOrder.indexOf(foregroundId);
+      const backingIndex = paintOrder.indexOf(backingId);
+      assert.ok(
+        foregroundIndex >= 0 && backingIndex >= 0 && foregroundIndex < backingIndex,
+        `${message}: expected ${foregroundId} above ${backingId}, got ${paintOrder.join(", ")}`
       );
     }
 
@@ -1695,6 +2240,8 @@ test(
         if (
           fixture.id === "fixed-reflow-columns" ||
           fixture.id === "fixed-reflow-title-visual-columns" ||
+          fixture.id === "fixed-reflow-overlap-stacking" ||
+          fixture.id === "fixed-reflow-aquarelle-countdown-overlap" ||
           fixture.id === "fixed-reflow-centered-gallery-side-object" ||
           fixture.id === "pantalla-composition-related-text"
         ) {
@@ -1801,6 +2348,78 @@ test(
               (publishHtml.match(/<div\b[^>]*data-gallery-image="1"[^>]*>/g) || []).length,
               2,
               `${fixture.id} publish must keep two viewer markers`
+            );
+          } else if (fixture.id === "fixed-reflow-overlap-stacking") {
+            [
+              ["overlap-card-backing", 60],
+              ["overlap-card-copy", 82],
+              ["overlap-card-detail", 124],
+              ["overlap-second-card-backing", 60],
+              ["overlap-second-card-copy", 82],
+              ["overlap-second-card-detail", 124],
+            ].forEach(([objectId, authoredY]) => {
+              assertFixedDesktopAuthoredTop(
+                desktopPreviewSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop preview`
+              );
+              assertFixedDesktopAuthoredTop(
+                desktopPublishSnapshot,
+                objectId,
+                authoredY,
+                `${fixture.id} desktop publish`
+              );
+            });
+            [
+              ["overlap-card-backing", "overlap-card-copy"],
+              ["overlap-card-backing", "overlap-card-detail"],
+              ["overlap-second-card-backing", "overlap-second-card-copy"],
+              ["overlap-second-card-backing", "overlap-second-card-detail"],
+            ].forEach(([backingId, foregroundId]) => {
+              assertObjectsOverlap(
+                desktopPreviewSnapshot,
+                backingId,
+                foregroundId,
+                `${fixture.id} desktop preview`
+              );
+              assertObjectPaintedAbove(
+                desktopPreviewSnapshot,
+                foregroundId,
+                backingId,
+                `${fixture.id} desktop preview`
+              );
+            });
+          } else if (fixture.id === "fixed-reflow-aquarelle-countdown-overlap") {
+            [
+              ["aquarelle-countdown", "aquarelle-image-rotated"],
+              ["aquarelle-countdown", "aquarelle-image-left"],
+              ["aquarelle-image-rotated", "aquarelle-image-left"],
+            ].forEach(([firstId, secondId]) => {
+              assertObjectsOverlap(
+                desktopPreviewSnapshot,
+                firstId,
+                secondId,
+                `${fixture.id} desktop preview`
+              );
+              assertObjectsOverlap(
+                desktopPublishSnapshot,
+                firstId,
+                secondId,
+                `${fixture.id} desktop publish`
+              );
+            });
+            assertObjectPaintedAbove(
+              desktopPreviewSnapshot,
+              "aquarelle-image-rotated",
+              "aquarelle-countdown",
+              `${fixture.id} desktop preview`
+            );
+            assertObjectPaintedAbove(
+              desktopPublishSnapshot,
+              "aquarelle-image-rotated",
+              "aquarelle-countdown",
+              `${fixture.id} desktop publish`
             );
           } else {
             [
@@ -1983,6 +2602,109 @@ test(
               publishSnapshot,
               "gallery-main",
               "centered-gallery-side-ornament",
+              `${fixture.id} publish ${viewport.id}`
+            );
+          } else if (fixture.id === "fixed-reflow-overlap-stacking") {
+            const relatedPairs = [
+              ["overlap-card-backing", "overlap-card-copy"],
+              ["overlap-card-backing", "overlap-card-detail"],
+              ["overlap-second-card-backing", "overlap-second-card-copy"],
+              ["overlap-second-card-backing", "overlap-second-card-detail"],
+            ];
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              previewSnapshot,
+              relatedPairs,
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertCompositionRelationsPreserved(
+              desktopCompositionSnapshot,
+              publishSnapshot,
+              relatedPairs,
+              `${fixture.id} publish ${viewport.id}`
+            );
+            relatedPairs.forEach(([backingId, foregroundId]) => {
+              assertObjectsOverlap(
+                previewSnapshot,
+                backingId,
+                foregroundId,
+                `${fixture.id} preview ${viewport.id}`
+              );
+              assertObjectsOverlap(
+                publishSnapshot,
+                backingId,
+                foregroundId,
+                `${fixture.id} publish ${viewport.id}`
+              );
+              assertObjectPaintedAbove(
+                previewSnapshot,
+                foregroundId,
+                backingId,
+                `${fixture.id} preview ${viewport.id}`
+              );
+              assertObjectPaintedAbove(
+                publishSnapshot,
+                foregroundId,
+                backingId,
+                `${fixture.id} publish ${viewport.id}`
+              );
+            });
+            assertObjectsVerticallySeparated(
+              previewSnapshot,
+              "overlap-card-backing",
+              "overlap-second-card-backing",
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertObjectsVerticallySeparated(
+              publishSnapshot,
+              "overlap-card-backing",
+              "overlap-second-card-backing",
+              `${fixture.id} publish ${viewport.id}`
+            );
+          } else if (fixture.id === "fixed-reflow-aquarelle-countdown-overlap") {
+            const relatedPairs = [
+              ["aquarelle-countdown", "aquarelle-image-rotated"],
+              ["aquarelle-countdown", "aquarelle-image-left"],
+              ["aquarelle-image-rotated", "aquarelle-image-left"],
+            ];
+            assertCompositionRelationsPreservedByReference(
+              desktopCompositionSnapshot,
+              previewSnapshot,
+              relatedPairs,
+              "aquarelle-countdown",
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertCompositionRelationsPreservedByReference(
+              desktopCompositionSnapshot,
+              publishSnapshot,
+              relatedPairs,
+              "aquarelle-countdown",
+              `${fixture.id} publish ${viewport.id}`
+            );
+            relatedPairs.forEach(([firstId, secondId]) => {
+              assertObjectsOverlap(
+                previewSnapshot,
+                firstId,
+                secondId,
+                `${fixture.id} preview ${viewport.id}`
+              );
+              assertObjectsOverlap(
+                publishSnapshot,
+                firstId,
+                secondId,
+                `${fixture.id} publish ${viewport.id}`
+              );
+            });
+            assertObjectPaintedAbove(
+              previewSnapshot,
+              "aquarelle-image-rotated",
+              "aquarelle-countdown",
+              `${fixture.id} preview ${viewport.id}`
+            );
+            assertObjectPaintedAbove(
+              publishSnapshot,
+              "aquarelle-image-rotated",
+              "aquarelle-countdown",
               `${fixture.id} publish ${viewport.id}`
             );
           } else if (fixture.id === "pantalla-composition-related-text") {

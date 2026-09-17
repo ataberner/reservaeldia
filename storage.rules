@@ -6,6 +6,10 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.admin == true ||
@@ -35,6 +39,69 @@ service firebase.storage {
         request.resource.contentType.matches(
           '^image/(jpeg|png|webp|gif|avif)$'
         );
+    }
+
+    // Recursive matches include the prefix object itself and every descendant.
+    match /usuarios/{uid}/imagenes/{allPaths=**} {
+      allow read, write: if isOwner(uid);
+    }
+    match /usuarios/{uid}/thumbnails/{allPaths=**} {
+      allow read, write: if isOwner(uid);
+    }
+    match /thumbnails_borradores/{uid}/{allPaths=**} {
+      allow read, write: if isOwner(uid);
+    }
+    match /publicadas/{allPaths=**} {
+      allow read: if isSignedIn(); // Existing SDK read; public delivery uses HTTP.
+      allow write: if false; // Entire backend artifact prefix, including admins.
+    }
+    // Keep unmodeled user folders observable, without re-granting private paths.
+    // Policy for these paths remains pending in SECURITY_CONTRACT.md.
+    match /usuarios/{uid}/{folder}/{allPaths=**} {
+      allow read, write: if isSignedIn() &&
+        !(folder in ["imagenes", "thumbnails"]);
+    }
+    match /usuarios/{uid} {
+      allow get, write: if isSignedIn(); // Legacy object at the UID, not a listing.
+    }
+
+    // A4: only the countdown subtree is separated from the assets fallback.
+    match /assets {
+      allow get, write: if isSignedIn(); // Existing object permission, not list.
+    }
+    match /assets/{allPaths=**} {
+      // List authorization covers possible descendants, not only a prefix object.
+      // Preserve existing admin enumeration without granting object reads/writes.
+      allow list: if isAdmin();
+    }
+    match /assets/{namespace}/{allPaths=**} {
+      allow read, write: if isSignedIn() && namespace != "countdown";
+    }
+    match /assets/countdown {
+      allow get, write: if isSignedIn(); // Unmodeled ancestor object preserved.
+    }
+    match /assets/countdown/{family}/{allPaths=**} {
+      // Unmodeled countdown namespaces retain their previous grant pending policy.
+      allow read, write: if isSignedIn() &&
+        !(family in ["staging", "frames", "thumbnails"]);
+    }
+    match /assets/countdown/staging/{allPaths=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /assets/countdown/{family} {
+      allow get: if family in ["frames", "thumbnails"] && isSignedIn();
+      allow write: if false;
+    }
+    match /assets/countdown/{family}/{presetId} {
+      allow get: if family in ["frames", "thumbnails"] && isSignedIn();
+      allow write: if false;
+    }
+    match /assets/countdown/{family}/{presetId}/{branch}/{allPaths=**} {
+      allow read: if family in ["frames", "thumbnails"] &&
+        (branch == "draft" ? isAdmin() : isSignedIn());
+      // Entire artifact containers, including exact objects and legacy frames.
+      allow write: if false;
     }
 
     match /iconos/{allPaths=**} {
@@ -69,8 +136,16 @@ service firebase.storage {
     // Compatibility fallback for existing app assets.
     match /{topLevel}/{allPaths=**} {
       allow read: if isSignedIn() &&
+        topLevel != "assets" &&
+        topLevel != "usuarios" &&
+        topLevel != "thumbnails_borradores" &&
+        topLevel != "publicadas" &&
         topLevel != "proveedores";
       allow write: if isSignedIn() &&
+        topLevel != "assets" &&
+        topLevel != "usuarios" &&
+        topLevel != "thumbnails_borradores" &&
+        topLevel != "publicadas" &&
         topLevel != "proveedores";
     }
   }

@@ -180,6 +180,188 @@ export function jsDomHelpersBlock(): string {
     return topAfter - bottomBefore;
   }
 
+  function overlapMetrics(a, b){
+    var aW = Math.max(0, Number(a && a.width || 0));
+    var aH = Math.max(0, Number(a && a.height || 0));
+    var bW = Math.max(0, Number(b && b.width || 0));
+    var bH = Math.max(0, Number(b && b.height || 0));
+    var overlapW = horizontalOverlapPx(a, b);
+    var overlapH = verticalOverlapPx(a, b);
+    var overlapArea = overlapW * overlapH;
+    var aArea = aW * aH;
+    var bArea = bW * bH;
+    var smallerArea = Math.max(1, Math.min(aArea, bArea));
+    var largerArea = Math.max(aArea, bArea);
+    var minW = Math.max(1, Math.min(aW, bW));
+    var minH = Math.max(1, Math.min(aH, bH));
+    return {
+      overlapArea: overlapArea,
+      smallerCoverage: overlapArea / smallerArea,
+      widthCoverage: overlapW / minW,
+      heightCoverage: overlapH / minH,
+      areaRatio: largerArea / smallerArea,
+      widthRatio: Math.max(aW, bW) / minW,
+      heightRatio: Math.max(aH, bH) / minH
+    };
+  }
+
+  function isBackgroundLikeCompositionItem(it){
+    if (!it || !it.node) return false;
+    var role = String(it.node.getAttribute("data-role") || "").toLowerCase();
+    return role === "decorative" || role === "background";
+  }
+
+  function hasBoundedOverlapScale(metrics){
+    return !!metrics &&
+      metrics.areaRatio <= 18 &&
+      metrics.widthRatio <= 6 &&
+      metrics.heightRatio <= 6;
+  }
+
+  function isBoundedForegroundOnBackingOverlap(a, b, metrics){
+    var aBackground = isBackgroundLikeCompositionItem(a);
+    var bBackground = isBackgroundLikeCompositionItem(b);
+    if (aBackground === bBackground) return false;
+    if (!hasBoundedOverlapScale(metrics)) return false;
+
+    // A compact backing can contain a deliberately offset foreground without
+    // sharing its center or edges. Requiring strong coverage plus bounded size
+    // keeps section-sized boxes from becoming transitive cluster bridges.
+    return metrics.smallerCoverage >= 0.72 &&
+      metrics.widthCoverage >= 0.72 &&
+      metrics.heightCoverage >= 0.72;
+  }
+
+  function isSubstantialBoundedOverlap(metrics){
+    if (!hasBoundedOverlapScale(metrics)) return false;
+    return metrics.smallerCoverage >= 0.35 &&
+      metrics.widthCoverage >= 0.32 &&
+      metrics.heightCoverage >= 0.32;
+  }
+
+  function hasExplicitCompositionIdentity(it){
+    if (!it || !it.node) return false;
+    return (it.node.getAttribute("data-mobile-cluster") || "") === "isolated" ||
+      !!(it.node.getAttribute("data-mobile-cluster-id") || "");
+  }
+
+  function isCompactOverlapBacking(it, rootWidth){
+    if (!isBackgroundLikeCompositionItem(it)) return false;
+    if (hasExplicitCompositionIdentity(it)) return false;
+
+    var width = Math.max(0, Number(it.width || 0));
+    var height = Math.max(0, Number(it.height || 0));
+    if (width < 2 || height < 2) return false;
+
+    var availableWidth = Number(rootWidth || 0);
+    // A near-section-width box is ambiguous structural/background geometry,
+    // not enough evidence to claim every object painted over it.
+    if (isFinite(availableWidth) && availableWidth > 1 && width >= availableWidth * 0.72) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function isStrongForegroundInsideBacking(backing, foreground, metrics){
+    if (!backing || !foreground || !metrics) return false;
+    if (isBackgroundLikeCompositionItem(foreground)) return false;
+    if (hasExplicitCompositionIdentity(foreground)) return false;
+
+    var backingArea = Math.max(0, Number(backing.width || 0) * Number(backing.height || 0));
+    var foregroundArea = Math.max(0, Number(foreground.width || 0) * Number(foreground.height || 0));
+    if (backingArea < 1 || foregroundArea < 1 || foregroundArea > backingArea * 1.15) return false;
+
+    var foregroundCenterX = cx(foreground);
+    var foregroundCenterY = cy(foreground);
+    var centerInside =
+      foregroundCenterX >= Number(backing.left || 0) - 1 &&
+      foregroundCenterX <= Number(backing.left || 0) + Number(backing.width || 0) + 1 &&
+      foregroundCenterY >= Number(backing.top || 0) - 1 &&
+      foregroundCenterY <= Number(backing.top || 0) + Number(backing.height || 0) + 1;
+    if (!centerInside) return false;
+
+    return metrics.smallerCoverage >= 0.62 &&
+      metrics.widthCoverage >= 0.62 &&
+      metrics.heightCoverage >= 0.62;
+  }
+
+  function inferExclusiveOverlapOwners(items, rootWidth){
+    var owners = new Array(items.length);
+    var candidates = [];
+    var membersByBacking = {};
+    for (var oi=0; oi<owners.length; oi++) owners[oi] = -1;
+
+    for (var bi=0; bi<items.length; bi++) {
+      if (!isCompactOverlapBacking(items[bi], rootWidth)) continue;
+      candidates.push({
+        index: bi,
+        area: Math.max(1, Number(items[bi].width || 0) * Number(items[bi].height || 0))
+      });
+    }
+
+    for (var fi=0; fi<items.length; fi++) {
+      var foreground = items[fi];
+      if (!foreground || isBackgroundLikeCompositionItem(foreground)) continue;
+      if (hasExplicitCompositionIdentity(foreground)) continue;
+
+      var best = null;
+      for (var ci=0; ci<candidates.length; ci++) {
+        var candidate = candidates[ci];
+        var backing = items[candidate.index];
+        if (compositionLane(backing) !== compositionLane(foreground)) continue;
+        var metrics = overlapMetrics(backing, foreground);
+        if (!isStrongForegroundInsideBacking(backing, foreground, metrics)) continue;
+
+        var centerDistance =
+          Math.abs(cx(backing) - cx(foreground)) +
+          Math.abs(cy(backing) - cy(foreground));
+        if (
+          !best ||
+          candidate.area < best.area - 1 ||
+          (Math.abs(candidate.area - best.area) <= 1 && centerDistance < best.centerDistance)
+        ) {
+          best = {
+            index: candidate.index,
+            area: candidate.area,
+            centerDistance: centerDistance,
+            boundedPair: isBoundedForegroundOnBackingOverlap(
+              backing,
+              foreground,
+              metrics
+            )
+          };
+        }
+      }
+
+      if (!best) continue;
+      if (!membersByBacking[best.index]) membersByBacking[best.index] = [];
+      membersByBacking[best.index].push({
+        index: fi,
+        boundedPair: best.boundedPair
+      });
+    }
+
+    Object.keys(membersByBacking).forEach(function(backingKey){
+      var backingIndex = Number(backingKey);
+      var members = membersByBacking[backingKey] || [];
+      // One foreground keeps the existing bounded-pair rule. Two or more
+      // strongly contained foregrounds are enough evidence for a card/label
+      // plane even when each text is tiny relative to its backing.
+      var accepted = members.length >= 2 || members.some(function(member){
+        return member.boundedPair;
+      });
+      if (!accepted) return;
+
+      owners[backingIndex] = backingIndex;
+      members.forEach(function(member){
+        owners[member.index] = backingIndex;
+      });
+    });
+
+    return owners;
+  }
+
   function cy(it){ return it.top + (it.height || 0) / 2; }
 
   function compositionLane(it){
@@ -271,7 +453,7 @@ export function jsDomHelpersBlock(): string {
     };
   }
 
-  function shouldSeparateWeakTextLaneOverlap(a, b, dividerModel){
+  function areTextItemsInOppositeLanes(a, b, dividerModel){
     if (!dividerModel || !a || !b || !a.node || !b.node) return false;
     var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
     var bIsText = (b.node.getAttribute("data-debug-texto") || "") === "1";
@@ -281,10 +463,14 @@ export function jsDomHelpersBlock(): string {
     var deadZone = Number(dividerModel.deadZone || 0);
     var aCenter = cx(a);
     var bCenter = cx(b);
-    var oppositeLanes =
+    return (
       (aCenter <= divider - deadZone && bCenter >= divider + deadZone) ||
-      (bCenter <= divider - deadZone && aCenter >= divider + deadZone);
-    if (!oppositeLanes) return false;
+      (bCenter <= divider - deadZone && aCenter >= divider + deadZone)
+    );
+  }
+
+  function shouldSeparateWeakTextLaneOverlap(a, b, dividerModel){
+    if (!areTextItemsInOppositeLanes(a, b, dividerModel)) return false;
 
     // Wide centered text boxes can overlap a few pixels in the gutter even
     // though their visual centers form two independent authored columns.
@@ -359,6 +545,15 @@ export function jsDomHelpersBlock(): string {
     var PROX_Y = 34;
     var PROX_X = 28;
     var textLaneDivider = inferTextLaneDivider(items, rootWidth);
+    var exclusiveOverlapOwners = inferExclusiveOverlapOwners(items, rootWidth);
+
+    for (var oi=0; oi<n; oi++) {
+      var overlapOwner = exclusiveOverlapOwners[oi];
+      if (overlapOwner < 0 || overlapOwner === oi) continue;
+      items[oi]._preserveCompositionOverlap = true;
+      items[overlapOwner]._preserveCompositionOverlap = true;
+      union(overlapOwner, oi);
+    }
 
     for (var i=0;i<n;i++){
       for (var j=i+1;j<n;j++){
@@ -380,6 +575,16 @@ export function jsDomHelpersBlock(): string {
           continue;
         }
 
+        var aOverlapOwner = exclusiveOverlapOwners[i];
+        var bOverlapOwner = exclusiveOverlapOwners[j];
+        if (aOverlapOwner >= 0 || bOverlapOwner >= 0) {
+          // Inferred overlap ownership is exclusive. It prevents the backings
+          // of adjacent cards (or their text rows) from becoming a transitive
+          // proximity bridge between two independent composition units.
+          if (aOverlapOwner === bOverlapOwner && aOverlapOwner >= 0) continue;
+          continue;
+        }
+
         if (shouldSeparateCenteredLateralPair(a, b, rootWidth)) continue;
 
         var aIsText = (a.node.getAttribute("data-debug-texto") || "") === "1";
@@ -387,15 +592,28 @@ export function jsDomHelpersBlock(): string {
         var involvesText = aIsText || bIsText;
 
         if (rectsOverlap(a, b, TOL)) {
+          var overlap = overlapMetrics(a, b);
+          var sharesAxis =
+            sharesVerticalCompositionAxis(a, b) ||
+            sharesHorizontalCompositionAxis(a, b);
+          var boundedBackingOverlap = isBoundedForegroundOnBackingOverlap(
+            a,
+            b,
+            overlap
+          );
+          var substantialOverlap = isSubstantialBoundedOverlap(overlap);
           // Wide text boxes must not bridge otherwise independent columns.
           if (
             !shouldSeparateWeakTextLaneOverlap(a, b, textLaneDivider) &&
             (
-              !involvesText ||
-              sharesVerticalCompositionAxis(a, b) ||
-              sharesHorizontalCompositionAxis(a, b)
+              boundedBackingOverlap ||
+              (substantialOverlap && (!involvesText || sharesAxis))
             )
-          ) union(i,j);
+          ) {
+            a._preserveCompositionOverlap = true;
+            b._preserveCompositionOverlap = true;
+            union(i,j);
+          }
           continue;
         }
 
@@ -408,7 +626,14 @@ export function jsDomHelpersBlock(): string {
 
         var hGap = horizontalGapPx(a, b);
         var nearHorizontal = hGap >= 0 && hGap <= PROX_X;
-        if (nearHorizontal && sharesHorizontalCompositionAxis(a, b)) union(i,j);
+        // A narrow positive gutter is still a column boundary. Without this
+        // guard, aligned venue/address rows can bridge both text lanes into one
+        // transitive cluster even though their boxes do not overlap.
+        if (
+          nearHorizontal &&
+          sharesHorizontalCompositionAxis(a, b) &&
+          !areTextItemsInOppositeLanes(a, b, textLaneDivider)
+        ) union(i,j);
 
       }
     }
@@ -445,7 +670,10 @@ export function jsDomHelpersBlock(): string {
         left: minLeft,
         width: maxR - minLeft,
         height: maxB - minTop,
-        cx: (minLeft + maxR) / 2
+        cx: (minLeft + maxR) / 2,
+        preservesOverlap: arr.some(function(it){
+          return it._preserveCompositionOverlap === true;
+        })
       });
     });
 

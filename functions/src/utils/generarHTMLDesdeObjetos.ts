@@ -1530,7 +1530,6 @@ ${buildTextPaintStyleCss(separatorPaint, "#111")}
 
           const htmlCountdownV2 = `
 <div class="objeto countdown-v2"
-  data-mobile-cluster="isolated"
   data-mobile-center="force"
   data-countdown
   data-countdown-contract="${escapeAttr(countdownContractVersion)}"

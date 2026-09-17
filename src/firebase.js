@@ -1,62 +1,16 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
-import { getStorage } from "firebase/storage";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
+import environmentContract from "../shared/firebaseEnvironment.cjs";
+import { initializeFirebaseServices } from "./config/initializeFirebaseServices.js";
 
-const firebaseAuthDomain =
-  process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ||
-  (process.env.NODE_ENV === "development"
-    ? "reservaeldia-7a440.firebaseapp.com"
-    : "reservaeldia.com.ar");
+export const firebaseEnvironment = environmentContract.readClientEnvironment();
+const services = initializeFirebaseServices({
+  initializeApp, getApps, getAuth, getFirestore, getFunctions, getStorage,
+  connectAuthEmulator, connectFirestoreEmulator, connectFunctionsEmulator, connectStorageEmulator,
+}, firebaseEnvironment);
 
-const firebaseConfig = {
-  apiKey: "AIzaSyALCvU48_HRp26cXpQcTX5S33Adpwfl3z4",
-  authDomain: firebaseAuthDomain,
-  projectId: "reservaeldia-7a440",
-  storageBucket: "reservaeldia-7a440.firebasestorage.app",
-  messagingSenderId: "860495975406",
-  appId: "1:860495975406:web:3a49ad0cf55d60313534ff",
-};
-
-function normalizeFirebaseMode(rawMode) {
-  switch (String(rawMode || "").trim().toLowerCase()) {
-    case "functions-local":
-      return "functions-local";
-    case "emulators":
-      return "emulators";
-    case "prod":
-    default:
-      return "prod";
-  }
-}
-
-const app = initializeApp(firebaseConfig);
-
-export const db = getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
-export const functions = getFunctions(app, "us-central1");
-
-const isLocalhost =
-  typeof window !== "undefined" &&
-  (window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1");
-
-// Safety boundary: non-local hosts always stay production-backed.
-const firebaseMode = normalizeFirebaseMode(
-  process.env.NEXT_PUBLIC_FIREBASE_MODE
-);
-const localFirebaseMode = isLocalhost ? firebaseMode : "prod";
-
-if (localFirebaseMode === "functions-local") {
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-}
-
-if (localFirebaseMode === "emulators") {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099");
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-}
-
-export default app;
+export const { db, auth, storage, functions } = services;
+export default services.app;

@@ -571,6 +571,9 @@ function mapOpenAiError(error: any): DesignerAiServiceError {
 }
 
 export function createDesignerAiOpenAiClient(apiKey: string): OpenAI {
+  // Kept lazy: this module is also used by pure interpreter tests.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- Preserve synchronous effect validation and avoid loading Admin in pure interpreter consumers.
+  require("../firebaseAdmin").assertExternalEffectAllowed("OpenAI");
   const normalizedKey = normalizeText(apiKey);
   if (!normalizedKey) throw new DesignerAiServiceError("missing-secret", "OPENAI_API_KEY no está configurada.");
   return new OpenAI({ apiKey: normalizedKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 1 });

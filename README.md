@@ -10,7 +10,14 @@ The current product flow is draft-first:
 
 ## Documentation
 
-Current canonical documentation lives under `docs/`.
+Agents and collaborators: start with [AGENTS.md](AGENTS.md) for authorization,
+the working procedure, Definition of Done, and delivery evidence. This entry
+works independently of the Prompt Builder.
+
+Current canonical documentation lives under `docs/`; use the
+[Documentation Index](docs/DOCUMENTATION_INDEX.md) to select relevant contracts
+and the [Architecture Overview](docs/architecture/ARCHITECTURE_OVERVIEW.md) for
+initial product and implementation orientation.
 
 Recommended starting points:
 
@@ -24,5 +31,8 @@ Recommended starting points:
 
 ## Notes
 
-- The repo still contains legacy paths and compatibility branches. The documentation above is current-state documentation, not a target-state design set.
-- When architecture docs and code disagree, the code is the source of truth.
+- For isolated local development and verification, follow [Development Workflow](docs/operations/DEVELOPMENT_WORKFLOW.md). The normal development commands now start a credential-free demo session with all four Firebase emulators; the runbook owns prerequisites, commands, fixtures and limitations.
+
+- The repo still contains legacy paths and compatibility branches. Documentation distinguishes normative contracts, accepted decisions, implementation maps, and historical evidence.
+- Code demonstrates current behavior; valid contracts and accepted decisions define expected behavior. Resolve discrepancies through the [index authority rules](docs/DOCUMENTATION_INDEX.md#authority-and-conflicts), rather than automatically changing docs or tests to match code.
+- Checked-in Rules and specialized operational scripts retain open risks; consult the [current risk register](docs/architecture/SYSTEM_FRAGILITY_MAP.md#operational-readiness). The demo environment does not certify permissions or administrative role policy.

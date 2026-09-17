@@ -1,3 +1,4 @@
+import { ensureAdminApp } from "../firebaseAdmin";
 import { randomUUID } from "crypto";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
@@ -26,11 +27,7 @@ const TEMPLATE_PRIVATE_STORAGE_PREFIXES = [
 export type TemplateAssetCopyCache = Map<string, Promise<string>>;
 
 function ensureApp() {
-  if (admin.apps.length > 0) return admin.app();
-  return admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "reservaeldia-7a440.firebasestorage.app",
-  });
+  return ensureAdminApp();
 }
 
 function defaultBucket() {

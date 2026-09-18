@@ -3,11 +3,6 @@ import { useRouter } from "next/router";
 import DashboardLayout from '../components/DashboardLayout';
 import DashboardHomeView from "@/components/dashboard/home/DashboardHomeView";
 import DashboardHomeStartupLoader from "@/components/dashboard/home/DashboardHomeStartupLoader";
-import DashboardTrashSection from "@/components/DashboardTrashSection";
-import ModalVistaPrevia from '@/components/ModalVistaPrevia';
-import TemplatePreviewModal from "@/components/TemplatePreviewModal";
-import PublicationCheckoutModal from "@/components/payments/PublicationCheckoutModal";
-import PublicadasGrid from "@/components/PublicadasGrid";
 import dynamic from "next/dynamic";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useDashboardAuthGate } from "@/hooks/useDashboardAuthGate";
@@ -27,7 +22,6 @@ import {
   buildDashboardPageViewState,
   buildDashboardPreviewGateState,
 } from "@/domain/dashboard/pageShell";
-import SiteManagementBoard from "@/components/admin/SiteManagementBoard";
 import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
@@ -38,6 +32,22 @@ const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
   ssr: false, // disable server-side rendering for editor
   loading: () => <p className="p-4 text-sm text-gray-500">Cargando editor...</p>,
 });
+const DashboardTrashSection = dynamic(() => import("@/components/DashboardTrashSection"), {
+  ssr: false,
+  loading: () => <p role="status" className="p-4 text-sm text-gray-500">Cargando papelera...</p>,
+});
+const PublicadasGrid = dynamic(() => import("@/components/PublicadasGrid"), {
+  ssr: false,
+  loading: () => <p role="status" className="p-4 text-sm text-gray-500">Cargando invitaciones...</p>,
+});
+const SiteManagementBoard = dynamic(() => import("@/components/admin/SiteManagementBoard"), {
+  ssr: false,
+  loading: () => <p role="status" className="p-4 text-sm text-gray-500">Cargando gestion...</p>,
+});
+// These authenticated surfaces only mount in the browser, like CanvasEditor.
+const ModalVistaPrevia = dynamic(() => import("@/components/ModalVistaPrevia"), { ssr: false });
+const TemplatePreviewModal = dynamic(() => import("@/components/TemplatePreviewModal"), { ssr: false });
+const PublicationCheckoutModal = dynamic(() => import("@/components/payments/PublicationCheckoutModal"), { ssr: false });
 const DEFAULT_TIPO_INVITACION = "boda";
 const DASHBOARD_TEMPLATE_COLLECTIONS_ANCHOR_ID = "dashboard-home-template-collections";
 
@@ -263,6 +273,23 @@ export default function Dashboard() {
     onAssistantTourPreferenceChange: userUiPreferences.updatePreferences,
     assistantTourPreviewOpen: mostrarVistaPrevia,
   });
+  const [mountedModals, setMountedModals] = useState({});
+  const templatePreviewVisible = templatePreviewModalProps.visible;
+  const checkoutVisible = previewGateState.checkoutModalVisible;
+  // Load on first use, then retain the instances so closing/reopening preserves
+  // existing modal state and runs the original visible=false cleanup effects.
+  useEffect(() => {
+    setMountedModals((previous) => {
+      if ((!mostrarVistaPrevia || previous.preview) &&
+          (!templatePreviewVisible || previous.template) &&
+          (!checkoutVisible || previous.checkout)) return previous;
+      return {
+        preview: previous.preview || mostrarVistaPrevia,
+        template: previous.template || templatePreviewVisible,
+        checkout: previous.checkout || checkoutVisible,
+      };
+    });
+  }, [checkoutVisible, mostrarVistaPrevia, templatePreviewVisible]);
   const canvasEditorProps = buildDashboardCanvasEditorProps({
     slugInvitacion,
     editorSession,
@@ -294,6 +321,7 @@ export default function Dashboard() {
   // Page-level event bridge: open a draft from external dashboard actions.
   useEffect(() => {
     const handleAbrirBorrador = (e) => {
+      if (checkingAuth || showProfileCompletion) return;
       const { slug } = e.detail;
       if (!slug) return;
 
@@ -308,7 +336,7 @@ export default function Dashboard() {
     return () => {
       window.removeEventListener("abrir-borrador", handleAbrirBorrador);
     };
-  }, [abrirBorradorEnEditor]);
+  }, [abrirBorradorEnEditor, checkingAuth, showProfileCompletion]);
 
   // Resume the template selected on the landing after auth/profile gates finish.
   useEffect(() => {
@@ -362,13 +390,30 @@ export default function Dashboard() {
   ]);
 
 
-  if (checkingAuth) return <BrowserStorageRecoveryBanner />;
+  if (checkingAuth && !usuario) return (
+    <>
+      <DashboardHomeStartupLoader fullScreen />
+      <BrowserStorageRecoveryBanner />
+    </>
+  );
   if (!usuario) return <BrowserStorageRecoveryBanner />; // Seguridad por si no se redirige
 
   return (
     <>
       <BrowserStorageRecoveryBanner />
-      <DashboardLayout {...layoutProps}>
+      {checkingAuth && <DashboardHomeStartupLoader fullScreen />}
+      {!checkingAuth && pageViewState.isHomeView && shouldRenderHomeStartupLoader && (
+        <DashboardHomeStartupLoader
+          fullScreen
+          exiting={isHomeStartupLoaderExiting}
+        />
+      )}
+      <div
+        hidden={checkingAuth}
+        inert={checkingAuth || showHomeStartupLoader ? true : undefined}
+        aria-hidden={checkingAuth || showHomeStartupLoader ? "true" : undefined}
+      >
+      <DashboardLayout key={usuario.uid} {...layoutProps}>
       {editorIssueReport && (
         <EditorIssueBanner
           report={editorIssueReport}
@@ -406,12 +451,6 @@ export default function Dashboard() {
       {/* HOME view (selector oculto + bloques de borradores y plantillas) */}
       {pageViewState.isHomeView && (
         <div className="relative w-full bg-white">
-          {shouldRenderHomeStartupLoader && (
-            <DashboardHomeStartupLoader
-              exiting={isHomeStartupLoaderExiting}
-            />
-          )}
-
           <div
             className={
               showHomeStartupLoader
@@ -488,14 +527,14 @@ export default function Dashboard() {
 
 
 
-      <TemplatePreviewModal
+      {(templatePreviewVisible || mountedModals.template) && <TemplatePreviewModal
         {...templatePreviewModalProps}
         showEventCustomization={false}
         useTemplateLabel="Usar plantilla"
-      />
+      />}
 
       {/* Modal de vista previa */}
-      <ModalVistaPrevia
+      {(mostrarVistaPrevia || mountedModals.preview) && <ModalVistaPrevia
         onRetry={generarVistaPrevia}
         visible={mostrarVistaPrevia}
         onClose={closePreview}
@@ -522,12 +561,13 @@ export default function Dashboard() {
         checkoutVisible={previewGateState.previewCheckoutVisible}
         publishValidation={publishValidationResult}
         publishValidationPending={publishValidationPending}
-      />
+      />}
 
 
       </DashboardLayout>
+      </div>
 
-      <PublicationCheckoutModal
+      {(checkoutVisible || mountedModals.checkout) && <PublicationCheckoutModal
         visible={previewGateState.checkoutModalVisible}
         onClose={closeCheckout}
         draftSlug={slugInvitacion}
@@ -535,7 +575,7 @@ export default function Dashboard() {
         currentPublicSlug={slugPublicoVistaPrevia || ""}
         currentPublicUrl={urlPublicaVistaPrevia || ""}
         onPublished={handleCheckoutPublished}
-      />
+      />}
 
       <ProfileCompletionModal
         visible={showProfileCompletion}

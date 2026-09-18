@@ -57,6 +57,8 @@ export function useDashboardAuthGate({ router }) {
   useEffect(() => {
     const auth = getAuth();
     let mounted = true;
+    let signOutRedirectPending = false;
+    let authCheckVersion = 0;
 
     const handleAuthFailure = (error, context = {}) =>
       handleDashboardStartupError({
@@ -72,6 +74,8 @@ export function useDashboardAuthGate({ router }) {
       });
 
     const signOutSafely = async (reason, user = null) => {
+      // The caller owns the notice URL; the null-user event must not replace it.
+      signOutRedirectPending = true;
       try {
         await signOut(auth);
         return true;
@@ -88,16 +92,25 @@ export function useDashboardAuthGate({ router }) {
     const unsubscribe = onAuthStateChanged(
       auth,
       (user) => {
+        if (!user && signOutRedirectPending) return;
+        const version = ++authCheckVersion;
+        const isCurrentCheck = () => mounted && version === authCheckVersion;
+        signOutRedirectPending = false;
         void (async () => {
           try {
-        if (!mounted) return;
+        if (!isCurrentCheck()) return;
         setCheckingAuth(true);
+        setShowProfileCompletion(false);
 
         if (!user) {
-          if (!mounted) return;
-          setShowProfileCompletion(false);
           setUsuario(null);
-          setCheckingAuth(false);
+          void router.replace("/").catch((error) => {
+            handleAuthFailure(error, {
+              operation: "auth-router-replace",
+              phase: "missing-session",
+            });
+            if (isCurrentCheck()) setCheckingAuth(false);
+          });
           return;
         }
 
@@ -110,7 +123,7 @@ export function useDashboardAuthGate({ router }) {
 
         if (hasOnlyPasswordProvider && user.emailVerified !== true) {
           await signOutSafely("email-not-verified", user);
-          if (!mounted) return;
+          if (!isCurrentCheck()) return;
           setShowProfileCompletion(false);
           setUsuario(null);
           setCheckingAuth(false);
@@ -124,18 +137,25 @@ export function useDashboardAuthGate({ router }) {
           return;
         }
 
+        // Start authenticated reads in parallel. checkingAuth still keeps the
+        // dashboard hidden and its entry actions blocked until profile validation.
+        setUsuario(user);
         try {
           await user.getIdToken();
+          if (!isCurrentCheck()) return;
 
           let result;
           try {
             result = await getMyProfileStatusCallable({});
           } catch {
+            if (!isCurrentCheck()) return;
             await user.getIdToken(true);
             await new Promise((resolve) => setTimeout(resolve, 700));
+            if (!isCurrentCheck()) return;
             result = await getMyProfileStatusCallable({});
           }
 
+          if (!isCurrentCheck()) return;
           const statusData = result?.data || {};
 
           if (statusData.profileComplete !== true) {
@@ -158,6 +178,7 @@ export function useDashboardAuthGate({ router }) {
 
           setUsuario(user);
         } catch (error) {
+          if (!isCurrentCheck()) return;
           console.error("Error validando estado de perfil:", error);
           const handled = handleAuthFailure(error, {
             operation: "profile-status-check",
@@ -165,7 +186,7 @@ export function useDashboardAuthGate({ router }) {
             user,
           });
           if (handled.isRecoverableStorageError) {
-            if (!mounted) return;
+            if (!isCurrentCheck()) return;
             setShowProfileCompletion(false);
             setUsuario(user || auth.currentUser || null);
             setCheckingAuth(false);
@@ -173,7 +194,7 @@ export function useDashboardAuthGate({ router }) {
           }
 
           await signOutSafely("profile-check-failed", user);
-          if (!mounted) return;
+          if (!isCurrentCheck()) return;
           setShowProfileCompletion(false);
           setUsuario(null);
           void router.replace("/?authNotice=profile-check-failed").catch((error) => {
@@ -184,28 +205,34 @@ export function useDashboardAuthGate({ router }) {
             });
           });
         } finally {
-          if (mounted) {
+          if (isCurrentCheck()) {
             setCheckingAuth(false);
           }
         }
           } catch (error) {
+            if (!isCurrentCheck()) return;
             handleAuthFailure(error, {
               operation: "auth-state-callback",
               phase: "auth-callback",
               user,
             });
             if (!mounted) return;
+            setUsuario(null);
+            setShowProfileCompletion(false);
             setCheckingAuth(false);
           }
         })();
       },
       (error) => {
+        authCheckVersion += 1;
         handleAuthFailure(error, {
           operation: "auth-state-listener",
           phase: "auth-listener-error",
           user: auth.currentUser,
         });
         if (!mounted) return;
+        setUsuario(null);
+        setShowProfileCompletion(false);
         setCheckingAuth(false);
       }
     );

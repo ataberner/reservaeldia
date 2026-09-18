@@ -64,6 +64,101 @@ This document is an ownership map for the current implementation. It does not au
 
 ## 3. Facts And Assumptions
 
+### Authenticated landing entry (2026-09-18)
+
+- `/` preserves its static public markup and metadata. `src/lib/auth/landingAuthSession.js`
+  coordinates Firebase session restoration and an expected Google return; ordinary
+  visits do not explicitly call `getRedirectResult`. The landing owns a single guarded
+  `router.replace("/dashboard")`, also used by its Login/Register completion callbacks.
+- The landing catalogue query is enabled only after Firebase reports an anonymous
+  visitor. Authenticated entries therefore skip the landing's catalogue read; the
+  dashboard continues using its existing repository and data-readiness gate. No
+  catalogue cache or alternative authentication authority was introduced.
+- `DashboardHomeStartupLoader.jsx` provides the same full-screen presentation for
+  the authenticated landing transition, dashboard profile validation, and dashboard
+  home data loading. The home loader sits outside the inert dashboard shell; profile
+  and browser-storage recovery dialogs retain their existing owners. The dashboard
+  still validates email, profile completeness and administrative access.
+- When Firebase confirms there is no session at `/dashboard/`, the existing
+  `useDashboardAuthGate` replaces the route with `/`, keeping the startup loader
+  visible during navigation. Gate-triggered sign-outs retain their specific
+  `authNotice` destination instead of racing with the anonymous redirect.
+- Dashboard publications, trash, site management, preview and checkout code loads
+  on demand in the browser (`ssr: false`, as in the existing editor). Modal instances
+  remain mounted after their first opening, preserving
+  their state and `visible=false` cleanup behavior. Editor startup remains separate.
+- Regression anchors: `src/lib/auth/landingAuthSession.test.mjs`,
+  `src/domain/dashboard/homeStartup.test.mjs`, `src/domain/dashboard/pageShell.test.mjs`,
+  and `src/domain/templates/pendingLandingTemplateSelection.test.mjs`. Local build
+  and browser evidence belongs under `.local-isolation/`; it does not certify a deploy.
+
+Verification on 2026-09-18: Next 15.3.2 build/export in an isolated demo-configured
+copy, with outbound Node traffic blocked and frontend lint omitted. Summed gzip
+JavaScript bytes from each route's build manifest plus `_app`: dashboard
+723,199 → 654,643 (-9.48%); landing 396,600 → 397,594 (+994 bytes for the shared
+transition). These are bundle sizes, not measured production latency. Browser
+checks at 1280×800 and 390×844 use a synthetic persisted Auth session, an empty
+Firestore emulator and stubbed profile/configuration callables: one document load,
+one catalogue query, visible profile-validation loader, anonymous landing/login
+availability and the mandatory completion dialog for an incomplete profile.
+Desktop also opens the deferred publications and trash views. The eight focused
+Node suites pass 49/49 tests, including Google return races, timeout and cleanup.
+Marketing photos/fonts are omitted/blocked in the isolated fixture; Google OAuth,
+real checkout and production services are not exercised. Reproduction tools and
+reports are retained in `.local-isolation/auth-entry-build.cjs`,
+`.local-isolation/auth-entry-browser.cjs` and `.local-isolation/auth-entry-after-9q2pH2/`.
+
+### Parallel dashboard startup (2026-09-18)
+
+`useDashboardAuthGate` now exposes the restored Firebase user after the existing
+email-provider check, while `checkingAuth` remains true until profile validation
+settles. The dashboard mounts its existing home readers behind a hidden, inert
+shell at that point. Drafts, active/history publications (including preview
+fallback reads), template catalogue, editorial configuration, admin access and UI
+preferences can therefore load alongside the profile callable. No second data
+owner, persistent cache or additional query was added. Anonymous and unverified
+password sessions do not mount the dashboard readers.
+
+Profile validation still gates visibility and entry actions. The external
+`abrir-borrador` bridge also observes this gate; pending landing selections and
+editor route resolution retain their existing checks. The layout is keyed by UID
+so account changes dispose the prior home readers. Each auth callback has a
+version, preventing a late profile response from reviving a signed-out session or
+finishing validation for a different account. Observer failures clear the
+preliminary user. Incomplete profiles retain the mandatory completion modal;
+sign-out notices and anonymous `/` redirection remain intact.
+
+Measured comparison: six fresh browser contexts per version, three at 1280×800
+and three at 390×844, with the same synthetic persisted Auth user, empty Firestore
+emulator, 2,000 ms profile callable and 1,500 ms editorial-config callable. Median
+time from the first profile request to the home-ready check fell from 3,931.5 ms
+to 2,026.5 ms (-48.5%). The config request starts during profile validation in all
+six optimized samples. Each sample makes one profile/config call and one catalogue
+query, with one document load and no JavaScript page exceptions. These controlled
+delays demonstrate overlap, not production latency; first-sample outliers were
+7,150 ms before and 8,780 ms after. Actual production network and Functions startup
+latency remain unmeasured.
+
+Verification: 37 Node tests pass across `src/hooks/useDashboardAuthGate.test.mjs`,
+`src/lib/auth/landingAuthSession.test.mjs`, `src/domain/dashboard/homeStartup.test.mjs`,
+`src/domain/dashboard/pageShell.test.mjs` and
+`src/domain/templates/pendingLandingTemplateSelection.test.mjs`. The auth-hook
+tests execute the current callback with offline React/SDK/router doubles using
+the repository's Functions TypeScript compiler. Browser checks also verify the
+hidden shell during validation, blocked editor-entry events, mandatory incomplete
+profile on both viewports, and anonymous redirects from home/editor URLs on both
+viewports. Next build/export passes in the isolated demo copy; frontend lint,
+real OAuth and production services are not exercised. Transient browser/bootstrap
+failures were retained and the affected scenarios rerun; marketing images/fonts
+remain omitted or blocked in this fixture.
+
+The before/after reports are under `.local-isolation/auth-entry-after-z0CI0D/` and
+`.local-isolation/auth-entry-after-f2lwuS/` (`browser-report-timings.json`), with the
+incomplete-profile and anonymous reports alongside them. The existing local
+browser helper accepts `--timings --startup-baseline` for the saved before build
+and `--timings` for the after build; `--reuse-owned` is only for this task's already
+running demo emulators. No production deployment is implied by these checks.
+
 Facts:
 
 - `src/pages/_app.js` imports both `styles/globals.css` and `styles/styles.css`, so both files apply to the landing and dashboard app routes.

@@ -1,10 +1,10 @@
 import { Heart } from "lucide-react";
 import styles from "./DashboardHomeStartupLoader.module.css";
 
-export default function DashboardHomeStartupLoader({ exiting = false }) {
+export default function DashboardHomeStartupLoader({ exiting = false, fullScreen = false }) {
   return (
     <div
-      className={`${styles.root} ${exiting ? styles.exiting : ""}`}
+      className={`${styles.root} ${fullScreen ? styles.fullScreen : ""} ${exiting ? styles.exiting : ""}`}
       role="status"
       aria-live="polite"
       aria-atomic="true"

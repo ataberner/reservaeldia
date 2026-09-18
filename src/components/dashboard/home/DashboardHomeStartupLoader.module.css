@@ -25,6 +25,16 @@
   opacity: 0;
 }
 
+.fullScreen {
+  position: fixed;
+  z-index: 60;
+}
+
+.fullScreen .viewport {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
 .viewport {
   position: sticky;
   top: 0;

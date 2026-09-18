@@ -1,7 +1,8 @@
 // pages/index.js (Next.js + JSX adaptado)
 
 import Head from 'next/head';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import DashboardHomeStartupLoader from '@/components/dashboard/home/DashboardHomeStartupLoader';
 import LoginModal from '@/lib/components/LoginModal';
 import RegisterModal from '@/lib/components/RegisterModal';
 import AppHeader from '@/components/appHeader/AppHeader';
@@ -16,6 +17,7 @@ import landingStyles from './index.module.css';
 import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase";
 import { useRouter } from "next/router";
+import { observeLandingAuth } from "@/lib/auth/landingAuthSession";
 import {
   clearPendingLandingTemplateSelection,
   savePendingLandingTemplateSelection,
@@ -39,58 +41,6 @@ import {
   serializeLandingStructuredData,
 } from "@/domain/seo/landingMetadata";
 
-async function waitForAuthUser(timeoutMs = 3500) {
-  if (auth.currentUser) return auth.currentUser;
-
-  if (typeof auth.authStateReady === "function") {
-    try {
-      await auth.authStateReady();
-      if (auth.currentUser) return auth.currentUser;
-    } catch {
-      // noop
-    }
-  }
-
-  return new Promise((resolve) => {
-    let settled = false;
-
-    const finish = (user) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      unsubscribe();
-      resolve(user || null);
-    };
-
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        finish(user);
-      }
-    });
-
-    const timer = setTimeout(() => {
-      finish(auth.currentUser || null);
-    }, timeoutMs);
-  });
-}
-
-async function resolveRedirectUser({ expectRedirect = false } = {}) {
-  const firstResult = await getRedirectResult(auth);
-  if (firstResult?.user) return firstResult.user;
-
-  if (auth.currentUser) return auth.currentUser;
-
-  const delayedUser = await waitForAuthUser(expectRedirect ? 8000 : 2000);
-  if (delayedUser) return delayedUser;
-
-  if (!expectRedirect) {
-    return auth.currentUser || null;
-  }
-
-  const secondResult = await getRedirectResult(auth);
-  return secondResult?.user || auth.currentUser || null;
-}
-
 function getAuthNoticeMessage(code) {
   if (code === "email-not-verified") {
     return "Necesitas verificar tu correo antes de entrar al dashboard. Revisa tu bandeja y spam.";
@@ -108,16 +58,31 @@ export default function Home() {
   const [showRegister, setShowRegister] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
   const [isAuthTransitioning, setIsAuthTransitioning] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+  const navigationStartedRef = useRef(false);
+  const mountedRef = useRef(false);
   const router = useRouter();
+  const enterDashboard = useCallback(() => {
+    if (!mountedRef.current || navigationStartedRef.current) return;
+    navigationStartedRef.current = true;
+    setIsAuthTransitioning(true);
+    setIsGuest(false);
+    setAuthNotice("");
+    setShowLogin(false);
+    setShowRegister(false);
+    void router.replace("/dashboard").catch(() => {
+      if (!mountedRef.current) return;
+      navigationStartedRef.current = false;
+      setIsAuthTransitioning(false);
+      setAuthNotice("No pudimos abrir tu espacio. Intenta ingresar nuevamente.");
+    });
+  }, [router]);
   const showGoogleAuthDebugLogo =
     typeof authNotice === "string" && authNotice.includes("[debug:");
   const handleUseLandingTemplate = (template) => {
     const selection = savePendingLandingTemplateSelection(template);
     if (auth.currentUser && selection?.templateId) {
-      setIsAuthTransitioning(true);
-      setShowLogin(false);
-      setShowRegister(false);
-      router.replace("/dashboard");
+      enterDashboard();
       return;
     }
 
@@ -141,29 +106,6 @@ export default function Home() {
     setShowLogin(false);
     setShowRegister(false);
   };
-
-  useEffect(() => {
-    if (auth.currentUser) {
-      setIsAuthTransitioning(true);
-      setShowLogin(false);
-      setShowRegister(false);
-      router.replace("/dashboard");
-      return;
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) return;
-      setIsAuthTransitioning(true);
-      setShowLogin(false);
-      setShowRegister(false);
-      router.replace("/dashboard");
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [router]);
-
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -209,66 +151,35 @@ export default function Home() {
 
 
   useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      const hadPendingRedirect = hasGoogleRedirectPending();
-      const cameFromGoogleAuth = isLikelyGoogleReturnNavigation();
-      const shouldExpectRedirect = hadPendingRedirect || cameFromGoogleAuth;
-      if (shouldExpectRedirect) {
-        setIsAuthTransitioning(true);
-      }
-      const redirectDebugContext = getGoogleAuthDebugContext();
-      const redirectDebugLabel = formatGoogleAuthDebugContext(
-        redirectDebugContext
-      );
-
-      try {
-        const user = await resolveRedirectUser({
-          expectRedirect: shouldExpectRedirect,
-        });
-
-        if (user && mounted) {
-          setAuthNotice("");
-          setShowLogin(false);
-          setShowRegister(false);
-          setIsAuthTransitioning(true);
-          router.replace("/dashboard");
-          return;
-        }
-
-        if (mounted && shouldExpectRedirect) {
-          setAuthNotice(
-            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: no-user; pending=${hadPendingRedirect ? "1" : "0"}; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
-          );
-          setShowLogin(true);
-          setIsAuthTransitioning(false);
-        }
-      } catch (err) {
-        console.error("Error en redirect Google:", {
-          error: err,
-          hadPendingRedirect,
-          cameFromGoogleAuth,
-          ...redirectDebugContext,
-        });
-        if (mounted && shouldExpectRedirect) {
-          setAuthNotice(
-            `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: redirect-exception; pending=${hadPendingRedirect ? "1" : "0"}; ref=${cameFromGoogleAuth ? "1" : "0"}; ${redirectDebugLabel}]`
-          );
-          setShowLogin(true);
-          setIsAuthTransitioning(false);
-        }
-      } finally {
-        if (shouldExpectRedirect) {
-          clearGoogleRedirectPending();
-        }
-      }
-    })();
-
+    mountedRef.current = true;
+    const expectRedirect = hasGoogleRedirectPending() || isLikelyGoogleReturnNavigation();
+    if (expectRedirect) setIsAuthTransitioning(true);
+    const unsubscribe = observeLandingAuth({
+      auth,
+      onAuthStateChanged,
+      getRedirectResult,
+      expectRedirect,
+      onAuthenticated: () => {
+        if (expectRedirect) clearGoogleRedirectPending();
+        enterDashboard();
+      },
+      onGuest: () => setIsGuest(true),
+      onError: (error) => {
+        const debugLabel = formatGoogleAuthDebugContext(getGoogleAuthDebugContext());
+        if (expectRedirect) clearGoogleRedirectPending();
+        setAuthNotice(expectRedirect
+          ? `No pudimos completar el ingreso con Google. Intenta nuevamente. [debug: ${error?.message === "google-redirect-no-user" ? "no-user" : "redirect-exception"}; ${debugLabel}]`
+          : "No pudimos comprobar tu sesion. Intenta ingresar nuevamente.");
+        setShowLogin(true);
+        setIsAuthTransitioning(false);
+        setIsGuest(!auth.currentUser);
+      },
+    });
     return () => {
-      mounted = false;
+      mountedRef.current = false;
+      unsubscribe();
     };
-  }, [router]);
+  }, [enterDashboard]);
 
 
   return (
@@ -307,14 +218,14 @@ export default function Home() {
       </Head>
 
       {isAuthTransitioning && (
-        <div className="auth-transition-overlay" role="status" aria-live="polite">
-          <div className="auth-transition-card">
-            <span className="auth-transition-spinner" aria-hidden="true" />
-            <p>Iniciando sesion...</p>
-          </div>
-        </div>
+        <DashboardHomeStartupLoader fullScreen />
       )}
-      
+
+      <div
+        hidden={isAuthTransitioning}
+        inert={isAuthTransitioning ? true : undefined}
+        aria-hidden={isAuthTransitioning ? "true" : undefined}
+      >
       <AppHeader
         variant="landing"
         placement="fixed"
@@ -372,6 +283,7 @@ export default function Home() {
 
       <LandingTemplateShowcase
         tipo="boda"
+        enabled={isGuest && !isAuthTransitioning}
         onUseTemplate={handleUseLandingTemplate}
       />
 
@@ -384,9 +296,11 @@ export default function Home() {
       <LandingFooter />
 
       </main>
+      </div>
 
-      {showLogin && (
+      {showLogin && !isAuthTransitioning && (
         <LoginModal
+          onAuthenticated={enterDashboard}
           onClose={handleCloseAuthModal}
           onAuthNotice={(message) => setAuthNotice(message)}
           onGoToRegister={() => {
@@ -396,8 +310,9 @@ export default function Home() {
         />
       )}
 
-      {showRegister && (
+      {showRegister && !isAuthTransitioning && (
         <RegisterModal
+          onAuthenticated={enterDashboard}
           onClose={handleCloseAuthModal}
           onAuthNotice={(message) => setAuthNotice(message)}
           onGoToLogin={() => {

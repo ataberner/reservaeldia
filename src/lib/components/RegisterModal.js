@@ -161,7 +161,7 @@ function signInWithRedirectWithTimeout(timeoutMs, provider) {
   });
 }
 
-export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
+export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice, onAuthenticated }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nombre, setNombre] = useState("");
@@ -232,6 +232,10 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice }) {
   };
 
   const continueGoogleFlow = async (user) => {
+    if (onAuthenticated) {
+      onAuthenticated(user);
+      return;
+    }
     const statusData = await getMyProfileStatusWithRetry({
       callable: getMyProfileStatusCallable,
       user,

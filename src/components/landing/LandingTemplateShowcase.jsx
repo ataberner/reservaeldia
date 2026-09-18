@@ -213,6 +213,7 @@ function LandingTemplateShowcaseSkeleton() {
 
 export default function LandingTemplateShowcase({
   tipo = "boda",
+  enabled = true,
   onUseTemplate,
 }) {
   const [templates, setTemplates] = useState([]);
@@ -222,6 +223,7 @@ export default function LandingTemplateShowcase({
   const previewRequestRef = useRef(0);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
 
     const loadTemplates = async () => {
@@ -248,7 +250,7 @@ export default function LandingTemplateShowcase({
     return () => {
       cancelled = true;
     };
-  }, [tipo]);
+  }, [enabled, tipo]);
 
   const sections = useMemo(() => buildTemplateTagSections(templates), [templates]);
 

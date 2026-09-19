@@ -1,10 +1,12 @@
 # Configuración backend: aislamiento y rotación manual
 
-Status: Operational Diagnostic Evidence. Revisión local: 2026-09-18.
+Status: Operational Diagnostic Evidence. Revisión local: 2026-09-19.
 
 Alcance: configuración de Functions v2, secretos y logging. No se consultaron
 valores de Secret Manager ni recursos remotos. No hubo deploy, envío de email,
-rotación, cambios IAM ni modificaciones de los archivos de credenciales locales.
+rotación ni cambios IAM. El 2026-09-19 se retiraron exclusivamente las tres
+variables sensibles de Mercado Pago del dotenv local de Functions, sin cambiar
+sus credenciales ni la configuración normal restante.
 El estado remoto de email es el informado por el operador, no una verificación
 remota de esta revisión. La lógica de pagos y validación HMAC permanece igual.
 
@@ -50,15 +52,15 @@ específico y se combina con A/B/C, no reemplaza la clasificación de sensibilid
 
 | Nombre | Clase | D: ámbito / consumidor | Fuente observada y destino recomendado |
 | --- | --- | --- | --- |
-| `SUPERADMINS_UIDS` | B, restringida administrativamente | Autorización, `auth/adminAuth.ts` | `.env.reservaeldia-7a440:1`; no es contraseña. No publicar ni loguear la lista. Preservar política actual. |
-| `MERCADO_PAGO_PUBLIC_KEY` | A | Checkout, se devuelve al browser | `.env.reservaeldia-7a440:2`; configuración normal. |
-| `MERCADO_PAGO_ACCESS_TOKEN` | C | Tres Functions de pagos | `.env.reservaeldia-7a440:3`; migrar a Secret Manager. |
-| `MERCADO_PAGO_CLIENT_ID` | A | Sin consumidor en código mantenido | `.env.reservaeldia-7a440:4`; retirar del entorno desplegado si no existe consumidor externo. |
-| `MERCADO_PAGO_CLIENT_SECRET` | C | Sin consumidor en código mantenido | `.env.reservaeldia-7a440:5`; rotar por exposición y retirar. No vincular ni crear un secreto que estas Functions no usan. Si otro consumidor lo necesita, gestionarlo allí en Secret Manager. |
-| `MERCADO_PAGO_WEBHOOK_URL` | B | Creación de preferencia/pago | `.env.reservaeldia-7a440:6`; configuración normal. No debe contener credenciales. |
-| `MP_WEBHOOK_SECRET` | C | `mercadoPagoWebhook` | `.env.reservaeldia-7a440:7`; migrar a Secret Manager. |
-| `GOOGLE_MAPS_EMBED_API_KEY` | A, identificador de API restringido | Render HTML y validación | `.env.reservaeldia-7a440:8`, `.env.production:1`; termina en iframe público. Mantener configuración normal con restricciones de API/referrers. |
-| `EMAIL_MODE` | B | Email | `.env.reservaeldia-7a440:9`; `defineString`, default bloqueado. Se comprobó únicamente que coincide con sandbox. |
+| `SUPERADMINS_UIDS` | B, restringida administrativamente | Autorización, `auth/adminAuth.ts` | `.env.reservaeldia-7a440`; conservada sin cambios. No publicar ni loguear la lista. |
+| `MERCADO_PAGO_PUBLIC_KEY` | A | Checkout, se devuelve al browser | `.env.reservaeldia-7a440`; configuración normal conservada sin cambios. |
+| `MERCADO_PAGO_ACCESS_TOKEN` | C | Tres Functions de pagos | Retirada de dotenv. Secret Manager según confirmación del operador; `defineSecret` y bindings locales verificados. Deploy pendiente. |
+| `MERCADO_PAGO_CLIENT_ID` | A | Sin consumidor en código mantenido | `.env.reservaeldia-7a440`; conservada sin cambios por alcance del pedido. |
+| `MERCADO_PAGO_CLIENT_SECRET` | C | Sin consumidor en el repositorio | Retirada de dotenv. Sin declaración ni binding; no crear un Secret para estas Functions. Rotación posterior pendiente, fuera de esta migración local. |
+| `MERCADO_PAGO_WEBHOOK_URL` | B | Creación de preferencia/pago | `.env.reservaeldia-7a440`; configuración normal conservada sin cambios. |
+| `MP_WEBHOOK_SECRET` | C | `mercadoPagoWebhook` | Retirada de dotenv. Secret Manager según confirmación del operador; `defineSecret` y binding local verificados. Deploy pendiente. |
+| `GOOGLE_MAPS_EMBED_API_KEY` | A, identificador de API restringido | Render HTML y validación | `.env.reservaeldia-7a440`, `.env.production`; conservada sin cambios. Termina en iframe público; mantener restricciones de API/referrers. |
+| `EMAIL_MODE` | B | Email | `.env.reservaeldia-7a440`; conservada sin cambios. `defineString`, default bloqueado; sandbox en la revisión inicial. |
 | `AWS_SES_ACCESS_KEY_ID` | C, parte del par de credenciales | Solo email | `emails/config.ts`, Secret Manager según el operador; conservar binding específico. |
 | `AWS_SES_SECRET_ACCESS_KEY` | C | Solo email | Igual que el anterior. |
 | `OPENAI_API_KEY` | C | `designerAiChat` | `defineSecret` y binding existentes; además hay nombre en `.secret.local:1` y `.secret.local.example:1`. No se inspeccionó su valor. |
@@ -95,10 +97,11 @@ su contenido sí. El backend local rechaza ADC explícitas. No copiarlo a dotenv
 
 **Las Functions continúan compartiendo una única codebase/source; la separación
 completa de configuración normal por subsistema queda pendiente.** Esta deuda es
-independiente del cierre funcional de SES. `MERCADO_PAGO_ACCESS_TOKEN` y
-`MP_WEBHOOK_SECRET` deben migrarse a Secret Manager; las credenciales expuestas
-deben rotarse posteriormente según el procedimiento manual de este documento.
-No se considera ejecutada esa migración por tener bindings preparados en código.
+independiente del cierre funcional de SES. La preparación local de la migración
+de `MERCADO_PAGO_ACCESS_TOKEN` y `MP_WEBHOOK_SECRET` quedó completada el
+2026-09-19: bindings preparados y dotenv saneados. El operador confirmó la carga
+manual de los Secrets; no se consultaron sus valores ni se verificó estado remoto.
+El despliegue y la posterior rotación siguen pendientes y fuera de este cambio.
 
 Implementado localmente:
 
@@ -115,11 +118,16 @@ Implementado localmente:
 5. Tests de bindings, descubrimiento sin leer secretos, contrato de lectura,
    errores sintéticos con credenciales, HTTP conservado y ausencia de red.
 
-**Pendiente obligatorio antes de desplegar esta migración:** crear los dos
-Secrets, retirar sus nombres de todos los dotenv seleccionables y retirar el
-Client Secret sin consumidor. Los dotenv locales permanecieron intactos por la
-restricción de no tocar credenciales. La migración local aún no es operativa en
-producción. No desplegar mientras haya un mismo nombre como env normal y secreto.
+**Preparación local completada, 2026-09-19:** se eliminaron Access Token,
+Webhook Secret y Client Secret de `functions/.env.reservaeldia-7a440`, único
+dotenv donde estaban declarados. `functions/.env.production` y `.env.local` de la raíz
+no contienen esas declaraciones y no se modificaron. Se conservaron byte a byte
+las líneas restantes del dotenv, incluidos Public Key, Client ID, Webhook URL,
+superadmins, Maps y modo de email. No se generó un backup con secretos.
+El dotenv está ignorado por Git: esta limpieza local no viaja en el diff versionado.
+La nueva prueba de `runtimeConfiguration.test.mjs` detecta la reintroducción de cualquiera
+de los tres nombres en `.env` o `.env.*` de Functions; sus errores muestran solo
+nombres. El despliegue sigue pendiente: no se afirma un cambio en producción.
 
 **Recomendación:** primero sacar todos los secretos de dotenv usando los bindings
 nativos. Para el requisito adicional de que email tampoco reciba configuración
@@ -178,6 +186,10 @@ Si `functions:secrets:set` ofrece redeployar y destruir la versión anterior,
 contestar **No**: se desplegará explícitamente después; no usar `--force`.
 
 ### Migrar almacenamiento antes de rotar
+
+Estado al 2026-09-19: paso 2 informado como realizado manualmente por el operador;
+paso 3 ejecutado y verificado localmente. No repetir la carga ni rotar como parte
+de esta preparación. Los pasos remotos siguientes no se ejecutaron.
 
 1. Tener listo este código y sus checks. Identificar en el panel MP la misma
    aplicación/cuenta que usa el checkout. No cambiar Public Key ni webhook URL.
@@ -324,9 +336,11 @@ No equivale a un proceso que solo cargue configuración de email; separar su sou
 y entrypoint también deberá aislar ese grafo de imports.
 `EMAIL_MODE` sigue parametrizado, disabled por defecto, sandbox permitido y
 production bloqueado. **No afirmar que su entorno desplegado ya está aislado**:
-no se desplegó y aún falta limpiar dotenv/separar source para configuración normal.
+el dotenv local ya está saneado, pero no se desplegó y aún falta separar source
+para configuración normal. La limpieza local no modifica revisiones existentes.
 
-Checks locales con Node 20, desde `functions/`, sin correo ni consultas remotas:
+Checks de la revisión previa (2026-09-18) con Node 20, desde `functions/`,
+sin correo ni consultas remotas:
 
 ```powershell
 npm run build
@@ -345,3 +359,38 @@ pagos/webhook y 1 assets de plantilla); build y typecheck aprobados; lint de los
 archivos modificados sin errores, con 28 warnings preexistentes (comparados con
 HEAD: index 18, publicationPayments 9, storageAssets 1). `git diff --check` sin
 errores; también se comprobaron espacios finales en los archivos nuevos.
+
+### Verificación de la migración local, 2026-09-19
+
+Se verificaron nuevamente las declaraciones `defineSecret` y los metadatos de
+todos los exports compilados: Access Token únicamente en los dos callables de
+pago y el webhook; Webhook Secret únicamente en el webhook; Client Secret sin
+consumidores ni bindings. Email conserva exclusivamente sus dos Secrets de AWS.
+No se modificó código de pagos, HMAC, webhook ni email.
+
+La prueba nueva de dotenv falló antes de la limpieza mostrando solo los tres
+nombres y pasó después. La comparación exacta en memoria contra las credenciales
+locales retiradas cubrió 11.256 archivos (versionables y configuración local),
+sin copias restantes, sin imprimir valores ni persistirlos como evidencia.
+La búsqueda adicional en 10.980 archivos de texto versionables, incluida
+documentación y fixtures, no encontró literales con formato de Access Token MP.
+Las referencias restantes son declaraciones/lecturas, documentación y pruebas
+sintéticas. No se inspeccionaron historial Git, Secret Manager ni recursos remotos.
+
+Desde `functions/`, con Node 22.13.1 disponible en esta máquina:
+
+```powershell
+npm.cmd run build
+npm.cmd run typecheck
+node --require ../scripts/local/networkGuard.cjs --test runtimeConfiguration.test.mjs transactionalEmail.test.mjs sesDiagnostics.test.mjs mercadoPagoWebhookEdge.test.mjs publicationPaymentEdge.test.mjs publicationPaymentReads.test.mjs publicationCheckoutConfig.test.mjs publicationCheckoutSessionFlow.test.mjs publicationApprovedSessionFlow.test.mjs
+node node_modules/eslint/bin/eslint.js runtimeConfiguration.test.mjs
+git diff --check
+```
+
+Resultado: **90/90 tests aprobados**, sin omisiones; build aprobado, 48 copias
+compartidas verificadas y ninguna resincronización necesaria; typecheck aprobado;
+lint del test modificado con cero errores y cero warnings; `git diff --check`
+aprobado. Aviso no bloqueante de Node: deprecación de `punycode`.
+No se repitió esta ejecución con Node 20, runtime declarado por Functions.
+El log local de tests está en `.local-isolation/mp-secret-migration-tests.tap`
+(ignorado por Git). No hubo deploy, invocaciones remotas, envíos ni rotaciones.

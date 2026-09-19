@@ -1,7 +1,7 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 
 const require = createRequire(import.meta.url);
@@ -31,6 +31,20 @@ test("deployment source excludes environment files independently of runtime inje
     for (const pattern of [".env*", ".secret*", ".runtimeconfig.json"]) {
       assert.ok(codebase.ignore.includes(pattern), `Missing source exclusion: ${pattern}`);
     }
+  }
+});
+
+test("Functions dotenv files never declare Mercado Pago secrets", () => {
+  const directory = new URL("./", import.meta.url);
+  const forbidden = new Set([
+    "MERCADO_PAGO_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "MERCADO_PAGO_CLIENT_SECRET",
+  ]);
+  for (const file of readdirSync(directory).filter((name) => /^\.env(?:\.|$)/.test(name))) {
+    const source = readFileSync(new URL(file, directory), "utf8");
+    // Report names only, never dotenv contents, even when this guard fails.
+    const declarations = source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*(?:=|:\s)/gm);
+    const leakedNames = [...declarations].map((match) => match[1]).filter((name) => forbidden.has(name));
+    assert.deepEqual(leakedNames, [], `Mercado Pago secrets forbidden in ${file}`);
   }
 });
 

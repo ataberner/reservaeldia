@@ -6,6 +6,8 @@
     "contracts:check": "node scripts/syncTemplateContract.cjs --check --input",
     "contracts:check:built": "node scripts/syncTemplateContract.cjs --check",
     "test:contracts": "node --test --test-reporter=tap scripts/contracts.test.cjs",
+    "test:emails": "node --test transactionalEmail.test.mjs sesDiagnostics.test.mjs",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "node scripts/buildContracts.cjs",
     "build:watch": "node scripts/buildContracts.cjs --watch",
     "serve": "node ../scripts/local/runLocal.cjs emulators",
@@ -20,7 +22,7 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@aws-sdk/client-ses": "^3.1120.0",
+    "@aws-sdk/client-sesv2": "3.1120.0",
     "@sparticuz/chromium": "^147.0.0",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
+    "@types/react": "19.1.5",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "concurrently": "^9.2.1",

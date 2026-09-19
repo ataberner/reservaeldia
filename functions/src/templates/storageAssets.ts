@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
+import { summarizeErrorForLog } from "../utils/safeErrorLog";
 import {
   areEquivalentStorageBuckets,
   parseBucketAndPathFromStorageValue as parseStorageAssetValue,
@@ -116,7 +117,7 @@ async function cloneTemplateAssetToSharedPath(
         plantillaId,
         sourceBucketName,
         sourcePath,
-        error,
+        error: summarizeErrorForLog(error),
       });
       return rawValue;
     }

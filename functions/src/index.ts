@@ -1,8 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
+export { testTransactionalEmail } from "./emails/testEmailFunction";
 import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";
 import { defineSecret } from "firebase-functions/params";
+import { mercadoPagoAccessToken, mercadoPagoWebhookSecret } from "./payments/mercadoPagoClient";
+import { summarizeErrorForLog } from "./utils/safeErrorLog";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
@@ -1467,7 +1470,7 @@ export const verInvitacion = onRequest(
       res.set("X-Frame-Options", "").set("Content-Type", "text/html");
       res.status(200).send(dom.serialize());
     } catch (error) {
-      logger.error("Error al servir invitacion:", error);
+      logger.error("Error al servir invitacion:", summarizeErrorForLog(error));
       res.status(500).send("Error interno del servidor");
     }
   }
@@ -1714,7 +1717,7 @@ export const preparePublicTemplatePreview = onCall(
 );
 
 export const createPublicationCheckoutSession = onCall(
-  { region: "us-central1", memory: "256MiB" },
+  { region: "us-central1", memory: "256MiB", secrets: [mercadoPagoAccessToken] },
   async (request) => createPublicationCheckoutSessionHandler(request)
 );
 
@@ -1725,6 +1728,7 @@ export const createPublicationPayment = onCall(
     timeoutSeconds: 60,
     cpu: 1,
     concurrency: 1,
+    secrets: [mercadoPagoAccessToken],
   },
   async (request) => createPublicationPaymentHandler(request)
 );
@@ -1789,6 +1793,7 @@ export const mercadoPagoWebhook = onRequest(
     timeoutSeconds: 60,
     cpu: 1,
     concurrency: 1,
+    secrets: [mercadoPagoAccessToken, mercadoPagoWebhookSecret],
   },
   async (req, res) => processMercadoPagoWebhookRequest(req, res)
 );
@@ -2204,7 +2209,7 @@ export const crearPlantilla = onCall(
         portada = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
         logger.info(`Portada subida correctamente: ${portada}`);
       } catch (error) {
-        logger.error("Error al subir portada:", error);
+        logger.error("Error al subir portada:", summarizeErrorForLog(error));
         throw new Error("Error al subir la imagen de portada");
       }
     }

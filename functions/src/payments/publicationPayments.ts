@@ -5,6 +5,7 @@ import type { Request, Response } from "express";
 import * as admin from "firebase-admin";
 import { getStorage } from "firebase-admin/storage";
 import * as logger from "firebase-functions/logger";
+import { summarizeErrorForLog } from "../utils/safeErrorLog";
 import { type CallableRequest, HttpsError } from "firebase-functions/v2/https";
 import { requireAuth, requireSuperAdmin } from "../auth/adminAuth";
 import { type GiftsConfig } from "../gifts/config";
@@ -2620,7 +2621,7 @@ export async function processMercadoPagoWebhookRequest(req: Request, res: Respon
     });
   } catch (error) {
     logger.error("Error en webhook de Mercado Pago", {
-      error: error instanceof Error ? error.message : String(error || ""),
+      error: summarizeErrorForLog(error),
     });
     res.status(500).json({ ok: false, message: "Error procesando webhook" });
   }

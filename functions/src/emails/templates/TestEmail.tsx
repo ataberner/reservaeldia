@@ -1,5 +1,7 @@
 import {
   Html,
+  Head,
+  Preview,
   Body,
   Container,
   Heading,
@@ -9,7 +11,10 @@ import {
 export function TestEmail() {
   return (
     <Html lang="es">
+      <Head />
+      <Preview>Prueba de infraestructura con datos sintéticos.</Preview>
       <Body
+        lang="es"
         style={{
           fontFamily: "Arial, sans-serif",
           backgroundColor: "#f5f5f5",
@@ -26,13 +31,17 @@ export function TestEmail() {
             Reserva el Día
           </Heading>
 
+          <Text>Hola, María de Prueba.</Text>
           <Text>
-            Este es el primer email enviado desde
-            Reserva el Día utilizando React Email y
-            Amazon SES.
+            Este correo valida React Email y Amazon SES v2 en sandbox.
+            Todos los datos son sintéticos: invitación de prueba, día 15 de
+            septiembre y confirmación número 123.
           </Text>
+          <Text>No corresponde a una compra, una cuenta ni una invitación real.</Text>
         </Container>
       </Body>
     </Html>
   );
 }
+
+export default TestEmail;

@@ -1,5 +1,12 @@
 import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
+import { defineSecret } from "firebase-functions/params";
 import { assertExternalEffectAllowed } from "../firebaseAdmin";
+
+// Firebase injects these names into process.env only for explicitly bound
+// functions. Remove their dotenv entries before deploying the migration.
+// Keep reads lazy and preserve the existing payment configuration contract.
+export const mercadoPagoAccessToken = defineSecret("MERCADO_PAGO_ACCESS_TOKEN");
+export const mercadoPagoWebhookSecret = defineSecret("MP_WEBHOOK_SECRET");
 
 function readRequiredEnv(name: string): string {
   const value = String(process.env[name] || "").trim();

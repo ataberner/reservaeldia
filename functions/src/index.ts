@@ -4,7 +4,6 @@ import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";
 import { defineSecret } from "firebase-functions/params";
-import { mercadoPagoAccessToken, mercadoPagoWebhookSecret } from "./payments/mercadoPagoClient";
 import { summarizeErrorForLog } from "./utils/safeErrorLog";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getStorage } from "firebase-admin/storage";
@@ -20,15 +19,12 @@ import {
 } from "./auth/adminAuth";
 import {
   checkPublicSlugAvailabilityHandler,
-  createPublicationCheckoutSessionHandler,
-  createPublicationPaymentHandler,
   finalizeExpiredPublicationsHandler,
   finalizePublicationBySlug,
   hardDeleteLegacyPublicationHandler,
   getPublicationCheckoutStatusHandler,
   listPublicationDiscountCodesHandler,
   listPublicationDiscountCodeUsageHandler,
-  processMercadoPagoWebhookRequest,
   prepareDraftPreviewRenderHandler,
   purgeTrashedPublicationsHandler,
   publishWithApprovedPaymentSession,
@@ -1716,23 +1712,6 @@ export const preparePublicTemplatePreview = onCall(
   }
 );
 
-export const createPublicationCheckoutSession = onCall(
-  { region: "us-central1", memory: "256MiB", secrets: [mercadoPagoAccessToken] },
-  async (request) => createPublicationCheckoutSessionHandler(request)
-);
-
-export const createPublicationPayment = onCall(
-  {
-    region: "us-central1",
-    memory: "1GiB",
-    timeoutSeconds: 60,
-    cpu: 1,
-    concurrency: 1,
-    secrets: [mercadoPagoAccessToken],
-  },
-  async (request) => createPublicationPaymentHandler(request)
-);
-
 export const getPublicationCheckoutStatus = onCall(
   { region: "us-central1", memory: "256MiB" },
   async (request) => getPublicationCheckoutStatusHandler(request)
@@ -1784,18 +1763,6 @@ export const listPublicationDiscountCodeUsage = onCall(
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
   },
   async (request) => listPublicationDiscountCodeUsageHandler(request)
-);
-
-export const mercadoPagoWebhook = onRequest(
-  {
-    region: "us-central1",
-    memory: "1GiB",
-    timeoutSeconds: 60,
-    cpu: 1,
-    concurrency: 1,
-    secrets: [mercadoPagoAccessToken, mercadoPagoWebhookSecret],
-  },
-  async (req, res) => processMercadoPagoWebhookRequest(req, res)
 );
 
 export const finalizeExpiredPublications = onSchedule(

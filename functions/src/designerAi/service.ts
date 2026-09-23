@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import { randomUUID } from "crypto";
 
 type DesignerAiLeaf = { id: string; block: string; status: string; provenance: string; rule: string | null; fingerprint: string };
@@ -576,7 +576,9 @@ export function createDesignerAiOpenAiClient(apiKey: string): OpenAI {
   require("../firebaseAdmin").assertExternalEffectAllowed("OpenAI");
   const normalizedKey = normalizeText(apiKey);
   if (!normalizedKey) throw new DesignerAiServiceError("missing-secret", "OPENAI_API_KEY no está configurada.");
-  return new OpenAI({ apiKey: normalizedKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 1 });
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- The synchronous client factory loads its SDK only at runtime, never during Functions discovery.
+  const { default: OpenAIClient } = require("openai") as typeof import("openai");
+  return new OpenAIClient({ apiKey: normalizedKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 1 });
 }
 
 export async function interpretDesignerAiChat({

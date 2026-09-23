@@ -16,6 +16,23 @@
       "predeploy": [
         "npm --prefix functions run build"
       ]
+    },
+    {
+      "source": "functions-payments",
+      "codebase": "payments",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        ".env*",
+        ".secret*",
+        ".runtimeconfig.json"
+      ],
+      "predeploy": [
+        "npm --prefix functions run build:payments"
+      ]
     }
   ],
   "firestore": {

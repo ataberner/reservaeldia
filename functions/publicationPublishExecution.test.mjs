@@ -824,7 +824,8 @@ test("executePublicationPublish fails closed when share image rollback flag disa
 });
 
 test("publish-capable functions use browser-safe runtime options", () => {
-  const source = readFileSync(new URL("./src/index.ts", import.meta.url), "utf8");
+  const source = ["./src/index.ts", "./src/payments/entrypoint.ts"]
+    .map(file => readFileSync(new URL(file, import.meta.url), "utf8")).join("\n");
   const publishCapableFunctions = [
     "publicarInvitacion",
     "createPublicationPayment",

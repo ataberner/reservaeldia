@@ -1,0 +1,109 @@
+{
+  "capturedAt": "2026-09-22T23:51:22.764Z",
+  "project": "reservaeldia-7a440",
+  "method": "Cloud Functions v2 functions.get with server-side fields selection",
+  "fields": "name,environment,url,eventTrigger,labels,buildConfig(runtime,entryPoint),serviceConfig(availableMemory,availableCpu,timeoutSeconds,maxInstanceRequestConcurrency,serviceAccountEmail,uri,ingressSettings,allTrafficOnLatestRevision,secretEnvironmentVariables(key,projectId,secret,version))",
+  "functions": [
+    {
+      "name": "projects/reservaeldia-7a440/locations/us-central1/functions/createPublicationCheckoutSession",
+      "environment": "GEN_2",
+      "url": "https://us-central1-reservaeldia-7a440.cloudfunctions.net/createPublicationCheckoutSession",
+      "trigger": "callable",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase"
+      },
+      "buildConfig": {
+        "runtime": "nodejs20",
+        "entryPoint": "createPublicationCheckoutSession"
+      },
+      "serviceConfig": {
+        "availableMemory": "256Mi",
+        "availableCpu": "0.1666",
+        "timeoutSeconds": 60,
+        "maxInstanceRequestConcurrency": 1,
+        "serviceAccountEmail": "860495975406-compute@developer.gserviceaccount.com",
+        "uri": "https://createpublicationcheckoutsession-vntxuytzsa-uc.a.run.app",
+        "ingressSettings": "ALLOW_ALL",
+        "allTrafficOnLatestRevision": true,
+        "secretEnvironmentVariables": [
+          {
+            "key": "MERCADO_PAGO_ACCESS_TOKEN",
+            "projectId": "reservaeldia-7a440",
+            "secret": "MERCADO_PAGO_ACCESS_TOKEN",
+            "version": "2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects/reservaeldia-7a440/locations/us-central1/functions/createPublicationPayment",
+      "environment": "GEN_2",
+      "url": "https://us-central1-reservaeldia-7a440.cloudfunctions.net/createPublicationPayment",
+      "trigger": "callable",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase"
+      },
+      "buildConfig": {
+        "runtime": "nodejs20",
+        "entryPoint": "createPublicationPayment"
+      },
+      "serviceConfig": {
+        "availableMemory": "1024Mi",
+        "availableCpu": "1",
+        "timeoutSeconds": 60,
+        "maxInstanceRequestConcurrency": 1,
+        "serviceAccountEmail": "860495975406-compute@developer.gserviceaccount.com",
+        "uri": "https://createpublicationpayment-vntxuytzsa-uc.a.run.app",
+        "ingressSettings": "ALLOW_ALL",
+        "allTrafficOnLatestRevision": true,
+        "secretEnvironmentVariables": [
+          {
+            "key": "MERCADO_PAGO_ACCESS_TOKEN",
+            "projectId": "reservaeldia-7a440",
+            "secret": "MERCADO_PAGO_ACCESS_TOKEN",
+            "version": "2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects/reservaeldia-7a440/locations/us-central1/functions/mercadoPagoWebhook",
+      "environment": "GEN_2",
+      "url": "https://us-central1-reservaeldia-7a440.cloudfunctions.net/mercadoPagoWebhook",
+      "trigger": "https",
+      "labels": {
+        "deployment-tool": "cli-firebase"
+      },
+      "buildConfig": {
+        "runtime": "nodejs20",
+        "entryPoint": "mercadoPagoWebhook"
+      },
+      "serviceConfig": {
+        "availableMemory": "1024Mi",
+        "availableCpu": "1",
+        "timeoutSeconds": 60,
+        "maxInstanceRequestConcurrency": 1,
+        "serviceAccountEmail": "860495975406-compute@developer.gserviceaccount.com",
+        "uri": "https://mercadopagowebhook-vntxuytzsa-uc.a.run.app",
+        "ingressSettings": "ALLOW_ALL",
+        "allTrafficOnLatestRevision": true,
+        "secretEnvironmentVariables": [
+          {
+            "key": "MERCADO_PAGO_ACCESS_TOKEN",
+            "projectId": "reservaeldia-7a440",
+            "secret": "MERCADO_PAGO_ACCESS_TOKEN",
+            "version": "2"
+          },
+          {
+            "key": "MP_WEBHOOK_SECRET",
+            "projectId": "reservaeldia-7a440",
+            "secret": "MP_WEBHOOK_SECRET",
+            "version": "1"
+          }
+        ]
+      }
+    }
+  ]
+}

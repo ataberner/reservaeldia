@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "../functions-payments/lib",
+    "noEmitOnError": true
+  },
+  "files": ["src/payments/entrypoint.ts"],
+  "include": []
+}

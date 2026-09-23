@@ -9,6 +9,8 @@
     "test:emails": "node --test transactionalEmail.test.mjs sesDiagnostics.test.mjs",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "node scripts/buildContracts.cjs",
+    "build:payments": "node scripts/buildPayments.cjs",
+    "test:payments-package": "node --test paymentsPackage.test.mjs",
     "build:watch": "node scripts/buildContracts.cjs --watch",
     "serve": "node ../scripts/local/runLocal.cjs emulators",
     "shell": "node ../scripts/local/runLocal.cjs emulators",

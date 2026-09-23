@@ -216,6 +216,87 @@ ni se refactorizaron sus flujos. El test de discovery verifica que la declaraci�
 no lea Secrets ni cargue el renderer/SES. No garantiza un tiempo máximo del
 entrypoint completo bajo cualquier carga del sistema.
 
+### Discovery compartido: revalidación local del 2026-09-19
+
+Alcance: inicialización del entrypoint completo, sin deploy, invocaciones remotas,
+lecturas de Secrets, dotenv ni credenciales reales. No se actualizaron Node ni
+dependencias ni se modificaron opciones de Functions. Firebase CLI 14.4.0 descubre
+los 105 endpoints antes de aplicar `--only`; cambiar ese selector no reduce la
+carga del módulo. Se usó el servidor del SDK firebase-functions 6.4.0 y el mismo
+`detectFromPort` de la CLI contra `/__/functions.yaml` en loopback, con su límite
+original de 10.000 ms, sin `FUNCTIONS_DISCOVERY_TIMEOUT`.
+
+Causa comprobada: `index` importa `publicationPayments`, que importa
+`publicationPublishExecution` y `publishedShareImage`; este último cargaba JSDOM
+estáticamente aun para declarar endpoints que no procesan HTML. El perfil
+instrumentado dio 990–1001 ms para la rama de pagos y 767–774 ms para JSDOM
+(tiempos inclusivos, no sumables). El antecedente informado por el operador era
+2082/1392 ms respectivamente y 5–8 s para el entrypoint. En esta nueva serie no
+se reprodujo un timeout; la variación de máquina/caché impide equiparar ambas
+series como una comparación controlada.
+
+Se difirió únicamente JSDOM a `createShareImageDom`, conservando las dos llamadas
+reales, el constructor, los argumentos, la serialización y la API síncrona.
+Node conserva el módulo cargado después del primer uso. En esta rama, el DOM
+se necesita al preparar y diagnosticar el HTML para `share.jpg`, durante una
+publicación efectiva desde `createPublicationPayment`, `mercadoPagoWebhook`,
+`retryPaidPublicationWithNewSlug` o `publicarInvitacion`; no para crear la sesión
+de checkout ni para consultar estado/servir metadata pública. Las otras rutas
+de JSDOM (`verInvitacion`, `copiarPlantillaHTML`, validación countdown y procesadores
+de iconos/decoraciones) ya estaban diferidas y no se modificaron. La regresión
+cubre el grafo completo del entrypoint, incluidas esas rutas transitivas.
+
+Después de ese cambio, tres discoveries dieron 1249/1292/1302 ms
+(mínimo/mediana/máximo). El siguiente SDK evitable era OpenAI, 154–187 ms:
+se convirtió su import en `import type` y se movió la carga a la fábrica
+síncrona existente, después de sus validaciones. Conserva clase, key normalizada,
+timeout de 25.000 ms y un reintento. No se modificaron interpretación ni requests.
+Sharp (aprox. 33 ms) y Mercado Pago (aprox. 87 ms) quedaron intactos; no se
+justificó ampliar el cambio. El costo dominante restante es Firebase/Express
+necesario en la declaración/infraestructura actual, no React Email ni JSDOM.
+
+Procesos nuevos secuenciales, Windows, Node 22.13.1 del PATH usado por la CLI;
+sin limpiar caché del sistema operativo y sin instrumentación en estas muestras:
+
+| Medición | Muestras | Mínimo | Mediana | Máximo |
+| --- | ---: | ---: | ---: | ---: |
+| `require('./functions/lib/index.js')`, antes | 7 | 1728 ms | 1743 ms | 2951 ms |
+| Detector CLI, antes | 7 | 2251 ms | 2389 ms | 4163 ms |
+| `require('./functions/lib/index.js')`, después | 9 | 808 ms | 826 ms | 843 ms |
+| Detector CLI, después | 9 | 1153 ms | 1238 ms | 1606 ms |
+
+Los nueve discoveries finales obtuvieron el backend specification: máximo
+1,606 s, margen observado de 8,394 s frente a 10 s. Es evidencia local con
+procesos nuevos, no una garantía temporal bajo cualquier carga. El primer uso
+real de DOM/IA conserva el costo de cargar su biblioteca; no desaparece.
+
+Evidencia local en `.local-isolation/discovery-20260919/` (ignorada por Git):
+`probe.cjs` y `measure.cjs`, muestras/perfiles `before-*`, `jsdom-only-*`,
+`after-*`, manifiestos completos y `comparison.json`. El entorno de los hijos
+excluye credenciales y overrides de timeout; `networkGuard.cjs` bloquea red
+externa. Los scripts sólo ejecutan carga, discovery local y fixtures sintéticas.
+Desde la raíz, `node .local-isolation/discovery-20260919/measure.cjs recheck`
+repite siete muestras de cada mecanismo y dos perfiles; usar una etiqueta nueva
+para preservar la evidencia anterior.
+
+Los 105 exports y el manifiesto completo antes/después son idénticos, tanto en
+SDK como en el modelo obtenido por la CLI: endpoints, opciones, Secrets, params,
+APIs y extensions. Se compararon todos los campos, sin una lista de exclusiones.
+Cuatro entradas HTML y los bytes del JPEG sintético normalizado también fueron
+idénticos; las suites cubren renderer, publicación y recuperación con dobles de
+Storage/browser, sin capturas contra producción.
+
+Verificación: 312/312 tests con el Node 20.19.5 ya disponible, incluidos
+`publication*.test.mjs`, webhook, entrega pública, contratos de render,
+configuración, email, IA y `discoveryInitialization.test.mjs`. Este último
+demuestra ausencia de JSDOM/OpenAI al importar el entrypoint y carga por sus
+funciones reales en runtime; la aserción de JSDOM falló antes del cambio.
+Build, 48 copias compartidas, typecheck y lint de modificados aprobados.
+Lint: cero errores, 23 warnings idénticos a HEAD (21 IA, 2 share image, cero en
+el test nuevo). Evidencia: `tests-node20.tap`, `test-files.json`, `lint.json` y
+`lint-baseline.json`; `git diff --check` aprobado. No se certifica un deploy
+remoto ni se modifica la deuda de permisos/aislamiento descrita en otros documentos.
+
 ## Verificación local del cierre
 
 Runtime de Functions: Node 20, como declara `functions/package.json`.

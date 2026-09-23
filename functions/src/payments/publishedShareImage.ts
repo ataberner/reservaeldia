@@ -1,5 +1,4 @@
 import { createHash } from "crypto";
-import { JSDOM } from "jsdom";
 import sharp from "sharp";
 import {
   captureFirstSectionShareImage,
@@ -7,6 +6,13 @@ import {
   type ShareImageRenderDiagnostics,
   type ShareImageRenderSubstage,
 } from "./publishedShareImageRenderer";
+
+function createShareImageDom(html: string) {
+  // Keep the synchronous HTML contract; Node caches JSDOM after its first use.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires -- DOM parsing is runtime work, not part of declaring Functions during discovery.
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+  return new JSDOM(html);
+}
 
 export const PUBLISHED_SHARE_IMAGE_WIDTH = 1200;
 export const PUBLISHED_SHARE_IMAGE_HEIGHT = 630;
@@ -292,7 +298,7 @@ function extractHost(value: string): string {
 function collectShareImageHtmlDiagnostics(html: string): Record<string, unknown> {
   const htmlBytes = Buffer.byteLength(String(html || ""), "utf8");
   try {
-    const dom = new JSDOM(String(html || ""));
+    const dom = createShareImageDom(String(html || ""));
     const { document } = dom.window;
     const images = Array.from(document.querySelectorAll("img"));
     const firstSection = document.querySelector(".inv > .sec:first-child");
@@ -400,7 +406,7 @@ export function preparePublishedShareImageHtml(html: string): string {
   if (!sourceHtml) return sourceHtml;
 
   try {
-    const dom = new JSDOM(sourceHtml);
+    const dom = createShareImageDom(sourceHtml);
     const { document } = dom.window;
 
     document

@@ -93,10 +93,25 @@ son parámetros de plataforma/aislamiento local (B/D), no secretos de aplicació
 `GOOGLE_APPLICATION_CREDENTIALS` apunta a credenciales: el path no es el secreto,
 su contenido sí. El backend local rechaza ADC explícitas. No copiarlo a dotenv.
 
+**Nota de Etapa 2 (2026-09-22):** los comandos históricos de despliegue/rotación
+de este documento no deben ejecutarse durante el traslado. El procedimiento
+vigente es [Payments: secuencia y rollback](PAYMENTS_CODEBASE_PREPARATION.md);
+usar selectores completos y mantener congelados los deploys de default hasta
+completar la migración.
+
 ## Cambios locales y límite de aislamiento
 
-**Las Functions continúan compartiendo una única codebase/source; la separación
-completa de configuración normal por subsistema queda pendiente.** Esta deuda es
+**Etapa 2 local de Payments, 2026-09-22:** `firebase.json` registra el source
+independiente Payments con tres endpoints; default conserva los otros 102.
+La Public Key nueva y webhook URL se trasladaron sin alterar sus declaraciones;
+Maps permanece en ambos sources por sus consumidores de render. Client ID no
+tiene consumidores y se retiró. Se verificó únicamente metadata remota segura:
+Access Token v2 en las tres Functions y webhook Secret v1. No hubo deploy,
+lectura de valores de Secrets ni cambio remoto. Ver
+[build, verificaciones y activación por etapas](PAYMENTS_CODEBASE_PREPARATION.md).
+
+**La partición 102 + 3 está activa solo localmente; producción no se migró.
+Email sigue compartiendo default y requiere una separación posterior.** Esta deuda es
 independiente del cierre funcional de SES. La preparación local de la migración
 de `MERCADO_PAGO_ACCESS_TOKEN` y `MP_WEBHOOK_SECRET` quedó completada el
 2026-09-19: bindings preparados y dotenv saneados. El operador confirmó la carga
@@ -109,7 +124,7 @@ Implementado localmente:
    y firma webhook. Sus lecturas existentes de `process.env` siguen siendo lazy;
    Firebase también inyecta los secretos vinculados con esos mismos nombres.
    No cambian SDK, caché, timeouts, errores al cliente, firmas ni reglas de pagos.
-2. Bindings mínimos en `index.ts`: Access Token en checkout, creación de pago y
+2. Bindings mínimos en `payments/entrypoint.ts`: Access Token en checkout, creación de pago y
    webhook; firma solo en webhook. No se agregan secretos globales.
 3. Exclusión de archivos de configuración del paquete fuente.
 4. Logs de error de webhook, entrega/subida de Storage en index y normalización

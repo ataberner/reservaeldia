@@ -94,3 +94,11 @@ trace
 
 # Disposable isolated development sessions (no personal configuration copied)
 /.local-isolation/
+
+# Generated, independently deployable Payments source (not activated yet)
+/functions-payments/lib/
+/functions-payments/shared/
+/functions-payments/node_modules/
+/functions-payments/.secret*
+/functions-payments/.runtimeconfig.json
+/functions-payments/*debug*.log

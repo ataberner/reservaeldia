@@ -22,7 +22,9 @@ const config = requireBuiltModule("lib/payments/mercadoPagoClient.js");
 const readSecret = mock.method(Object.getPrototypeOf(config.mercadoPagoAccessToken), "value", () => {
   throw new Error("Secret reads forbidden during discovery");
 });
-const endpoints = requireBuiltModule("lib/index.js");
+const coreEndpoints = requireBuiltModule("lib/index.js");
+const paymentEndpoints = requireBuiltModule("lib/payments/entrypoint.js");
+const endpoints = { ...coreEndpoints, ...paymentEndpoints };
 const { summarizeErrorForLog } = requireBuiltModule("lib/utils/safeErrorLog.js");
 
 test("deployment source excludes environment files independently of runtime injection", () => {
@@ -35,20 +37,29 @@ test("deployment source excludes environment files independently of runtime inje
 });
 
 test("Functions dotenv files never declare Mercado Pago secrets", () => {
-  const directory = new URL("./", import.meta.url);
   const forbidden = new Set([
     "MERCADO_PAGO_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "MERCADO_PAGO_CLIENT_SECRET",
   ]);
-  for (const file of readdirSync(directory).filter((name) => /^\.env(?:\.|$)/.test(name))) {
-    const source = readFileSync(new URL(file, directory), "utf8");
-    // Report names only, never dotenv contents, even when this guard fails.
-    const declarations = source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*(?:=|:\s)/gm);
-    const leakedNames = [...declarations].map((match) => match[1]).filter((name) => forbidden.has(name));
-    assert.deepEqual(leakedNames, [], `Mercado Pago secrets forbidden in ${file}`);
+  for (const directory of [new URL("./", import.meta.url), new URL("../functions-payments/", import.meta.url)]) {
+    for (const file of readdirSync(directory).filter((name) => /^\.env(?:\.|$)/.test(name))) {
+      const source = readFileSync(new URL(file, directory), "utf8");
+      // Report names only, never dotenv contents, even when this guard fails.
+      const declarations = source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*(?:=|:\s)/gm);
+      const leakedNames = [...declarations].map((match) => match[1]).filter((name) => forbidden.has(name));
+      assert.deepEqual(leakedNames, [], `Mercado Pago secrets forbidden in ${file}`);
+      if (directory.pathname.includes("functions-payments")) {
+        const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*=/gm)].map(match => match[1]);
+        const allowed = ["MERCADO_PAGO_PUBLIC_KEY", "MERCADO_PAGO_WEBHOOK_URL", "GOOGLE_MAPS_EMBED_API_KEY"];
+        assert.deepEqual(names.filter(name => !allowed.includes(name)), [], "Unexpected Payments dotenv names (values never logged)");
+      }
+    }
   }
 });
 
 test("payment secrets bind only their actual consumers; email keeps its own bindings", () => {
+  assert.equal(Object.keys(coreEndpoints).length, 102);
+  assert.equal(Object.keys(paymentEndpoints).length, 3);
+  for (const name of Object.keys(paymentEndpoints)) assert.equal(Object.hasOwn(coreEndpoints, name), false);
   const consumers = (secret) => Object.entries(endpoints)
     .filter(([, fn]) => fn?.__endpoint?.secretEnvironmentVariables?.some(({ key }) => key === secret))
     .map(([name]) => name).sort();

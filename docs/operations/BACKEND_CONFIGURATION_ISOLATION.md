@@ -1,6 +1,7 @@
 # Configuración backend: aislamiento y rotación manual
 
-Status: Operational Diagnostic Evidence. Revisión local: 2026-09-19.
+Status: Operational Diagnostic Evidence. Diagnóstico inicial: 2026-09-19;
+cierre de migración Payments: 2026-09-24.
 
 Alcance: configuración de Functions v2, secretos y logging. No se consultaron
 valores de Secret Manager ni recursos remotos. No hubo deploy, envío de email,
@@ -16,9 +17,18 @@ no cierra la migración/rotación de Mercado Pago ni el aislamiento del entorno.
 Se conservan los cambios locales ya aprobados; no se rotaron credenciales ni se
 desplegaron Functions de pagos durante el cierre.
 
+**Cierre productivo de Payments, 2026-09-24:** el operador confirmó las tres
+Functions en `payments`, default con 102 y total 105. El nuevo par Public Key +
+Access Token v2 quedó validado con un pago real desde otra cuenta, dinero recibido,
+webhook procesado y publicación automática. **Sigue pendiente rotar
+`MP_WEBHOOK_SECRET` v1 por su exposición durante el diagnóstico anterior.**
+Esta revisión de cierre no consulta servicios remotos, no despliega ni rota.
+Ver [aceptación y rollback conservado](PAYMENTS_CODEBASE_PREPARATION.md).
+
 ## Hechos y causa
 
-- `firebase.json` tiene una sola codebase `default`, con source `functions`.
+- El diagnóstico inicial tenía una sola codebase. Ahora `firebase.json` registra
+  `default` / `functions` (102) y `payments` / `functions-payments` (3).
 - La CLI instalada, Firebase CLI 14.4.0, lee `.env` y `.env.<project/alias>` del
   source y copia su mapa a **cada endpoint**. Ver `lib/functions/env.js:213` y
   `lib/deploy/functions/prepare.js:77-100` de la instalación de firebase-tools.
@@ -53,12 +63,12 @@ específico y se combina con A/B/C, no reemplaza la clasificación de sensibilid
 | Nombre | Clase | D: ámbito / consumidor | Fuente observada y destino recomendado |
 | --- | --- | --- | --- |
 | `SUPERADMINS_UIDS` | B, restringida administrativamente | Autorización, `auth/adminAuth.ts` | `.env.reservaeldia-7a440`; conservada sin cambios. No publicar ni loguear la lista. |
-| `MERCADO_PAGO_PUBLIC_KEY` | A | Checkout, se devuelve al browser | `.env.reservaeldia-7a440`; configuración normal conservada sin cambios. |
-| `MERCADO_PAGO_ACCESS_TOKEN` | C | Tres Functions de pagos | Retirada de dotenv. Secret Manager según confirmación del operador; `defineSecret` y bindings locales verificados. Deploy pendiente. |
-| `MERCADO_PAGO_CLIENT_ID` | A | Sin consumidor en código mantenido | `.env.reservaeldia-7a440`; conservada sin cambios por alcance del pedido. |
+| `MERCADO_PAGO_PUBLIC_KEY` | A | Checkout, se devuelve al browser | `functions-payments/.env.reservaeldia-7a440`; nueva Public Key validada en producción con Access Token v2. |
+| `MERCADO_PAGO_ACCESS_TOKEN` | C | Tres Functions de pagos | Secret Manager v2; bindings y pago productivo confirmados por el operador. No está en dotenv. |
+| `MERCADO_PAGO_CLIENT_ID` | A | Sin consumidor en código mantenido | Retirada durante Etapa 2; no se copia a Payments. |
 | `MERCADO_PAGO_CLIENT_SECRET` | C | Sin consumidor en el repositorio | Retirada de dotenv. Sin declaración ni binding; no crear un Secret para estas Functions. Rotación posterior pendiente, fuera de esta migración local. |
-| `MERCADO_PAGO_WEBHOOK_URL` | B | Creación de preferencia/pago | `.env.reservaeldia-7a440`; configuración normal conservada sin cambios. |
-| `MP_WEBHOOK_SECRET` | C | `mercadoPagoWebhook` | Retirada de dotenv. Secret Manager según confirmación del operador; `defineSecret` y binding local verificados. Deploy pendiente. |
+| `MERCADO_PAGO_WEBHOOK_URL` | B | Creación de preferencia/pago | `functions-payments/.env.reservaeldia-7a440`; URL conservada sin cambios. |
+| `MP_WEBHOOK_SECRET` | C | `mercadoPagoWebhook` | Secret Manager v1; binding y webhook productivo confirmados. **Rotación pendiente por exposición previa.** No está en dotenv. |
 | `GOOGLE_MAPS_EMBED_API_KEY` | A, identificador de API restringido | Render HTML y validación | `.env.reservaeldia-7a440`, `.env.production`; conservada sin cambios. Termina en iframe público; mantener restricciones de API/referrers. |
 | `EMAIL_MODE` | B | Email | `.env.reservaeldia-7a440`; conservada sin cambios. `defineString`, default bloqueado; sandbox en la revisión inicial. |
 | `AWS_SES_ACCESS_KEY_ID` | C, parte del par de credenciales | Solo email | `emails/config.ts`, Secret Manager según el operador; conservar binding específico. |
@@ -93,11 +103,11 @@ son parámetros de plataforma/aislamiento local (B/D), no secretos de aplicació
 `GOOGLE_APPLICATION_CREDENTIALS` apunta a credenciales: el path no es el secreto,
 su contenido sí. El backend local rechaza ADC explícitas. No copiarlo a dotenv.
 
-**Nota de Etapa 2 (2026-09-22):** los comandos históricos de despliegue/rotación
-de este documento no deben ejecutarse durante el traslado. El procedimiento
-vigente es [Payments: secuencia y rollback](PAYMENTS_CODEBASE_PREPARATION.md);
-usar selectores completos y mantener congelados los deploys de default hasta
-completar la migración.
+**Estado operativo al cierre (2026-09-24):** el traslado terminó y ya no aplica
+el congelamiento específico de migración parcial. Conservar selectores completos
+de Payments. Los procedimientos de rotación/rollback requieren una tarea separada;
+no repetir los pasos históricos para cerrar este hito. Ver
+[Payments: aceptación y rollback](PAYMENTS_CODEBASE_PREPARATION.md).
 
 ## Cambios locales y límite de aislamiento
 
@@ -110,13 +120,14 @@ Access Token v2 en las tres Functions y webhook Secret v1. No hubo deploy,
 lectura de valores de Secrets ni cambio remoto. Ver
 [build, verificaciones y activación por etapas](PAYMENTS_CODEBASE_PREPARATION.md).
 
-**La partición 102 + 3 está activa solo localmente; producción no se migró.
+**La partición 102 + 3 está validada en producción por el operador.
 Email sigue compartiendo default y requiere una separación posterior.** Esta deuda es
 independiente del cierre funcional de SES. La preparación local de la migración
 de `MERCADO_PAGO_ACCESS_TOKEN` y `MP_WEBHOOK_SECRET` quedó completada el
 2026-09-19: bindings preparados y dotenv saneados. El operador confirmó la carga
 manual de los Secrets; no se consultaron sus valores ni se verificó estado remoto.
-El despliegue y la posterior rotación siguen pendientes y fuera de este cambio.
+El despliegue de pagos y la renovación del par Public Key + Access Token ya se
+validaron. La rotación de la firma webhook expuesta sigue pendiente y separada.
 
 Implementado localmente:
 
@@ -142,15 +153,16 @@ superadmins, Maps y modo de email. No se generó un backup con secretos.
 El dotenv está ignorado por Git: esta limpieza local no viaja en el diff versionado.
 La nueva prueba de `runtimeConfiguration.test.mjs` detecta la reintroducción de cualquiera
 de los tres nombres en `.env` o `.env.*` de Functions; sus errores muestran solo
-nombres. El despliegue sigue pendiente: no se afirma un cambio en producción.
+nombres. Ese estado local del 2026-09-19 fue seguido por el despliegue y la
+validación productiva confirmados al cierre; no describe un deploy pendiente hoy.
 
-**Recomendación:** primero sacar todos los secretos de dotenv usando los bindings
-nativos. Para el requisito adicional de que email tampoco reciba configuración
+**Separación pendiente de email:** los secretos MP ya salieron de dotenv y usan
+bindings nativos. Para que email tampoco reciba configuración
 normal de Maps/pagos/admin, separar por subsistema las codebases **y sus directorios
 source**, cada uno con dotenv propio y permisos de runtime mínimos. Reutilizar el
 mismo servicio `emails`; no duplicar el sender. Poner dos codebases sobre el mismo
-source o mover exports entre archivos no aísla el entorno. Es una segunda fase
-de empaquetado/deployment aún no implementada, que necesita verificar el traslado
+source o mover exports entre archivos no aísla el entorno. La separación de email
+aún no está implementada y necesita verificar el traslado
 de la función existente sin borrarla ni duplicarla. Las variables gestionadas por
 la plataforma seguirán presentes incluso con aislamiento correcto.
 
@@ -177,7 +189,7 @@ no tenga `secretAccessor` global/heredado. No se consultó ni cambió IAM remoto
 | `GOOGLE_MAPS_EMBED_API_KEY` | `validateDraftForPublication`, `prepareDraftPreviewRender`, `preparePublicTemplatePreview`, `adminGetTemplateEditorDocumentV1`, `createPublicationCheckoutSession`, `createPublicationPayment`, `mercadoPagoWebhook`, `retryPaidPublicationWithNewSlug`, `publicarInvitacion` |
 
 Trazas: `mercadoPagoClient.ts` → `publicationPayments.ts` (preferencia, creación
-de pago, consulta por ID y validación HMAC) → exports de `index.ts`. Los demás
+de pago, consulta por ID y validación HMAC) → exports de `payments/entrypoint.ts`. Los demás
 reintentos/publicación usan sesiones persistidas; no requieren credenciales MP.
 Maps: `prepareRenderPayload.ts`, `generarHTMLDesdeObjetos.ts`,
 `publicationPublishExecution.ts`, `templateEditorPreview.ts`, más preview público
@@ -202,9 +214,9 @@ contestar **No**: se desplegará explícitamente después; no usar `--force`.
 
 ### Migrar almacenamiento antes de rotar
 
-Estado al 2026-09-19: paso 2 informado como realizado manualmente por el operador;
-paso 3 ejecutado y verificado localmente. No repetir la carga ni rotar como parte
-de esta preparación. Los pasos remotos siguientes no se ejecutaron.
+Procedimiento histórico completado para Payments según la aceptación del
+2026-09-24. No repetir la carga, el traslado ni la renovación del Access Token
+como parte del cierre. Se conserva como referencia operativa, sin valores.
 
 1. Tener listo este código y sus checks. Identificar en el panel MP la misma
    aplicación/cuenta que usa el checkout. No cambiar Public Key ni webhook URL.
@@ -223,7 +235,7 @@ de esta preparación. Los pasos remotos siguientes no se ejecutaron.
    dos Secrets a la identidad de pagos, sin otorgarlo a la identidad de email):
 
    ```powershell
-   firebase deploy --only "functions:createPublicationCheckoutSession,functions:createPublicationPayment,functions:mercadoPagoWebhook" --project reservaeldia-7a440
+   firebase deploy --only "functions:payments:createPublicationCheckoutSession,functions:payments:createPublicationPayment,functions:payments:mercadoPagoWebhook" --project reservaeldia-7a440
    ```
 
 5. Verificar bindings/versiones e identidad con una proyección que no muestre envs:
@@ -236,6 +248,11 @@ de esta preparación. Los pasos remotos siguientes no se ejecutaron.
    notificaciones legítimas. Esta auditoría no realizó un cobro ni replay.
 
 ### Access Token y Client Secret expuestos
+
+El operador ya renovó Public Key + Access Token y validó v2 en producción.
+Los pasos 6-8 quedan como referencia para futuras rotaciones autorizadas, no
+como trabajo pendiente de este hito. No se afirmó una renovación de Client Secret
+sin consumidor; su revisión externa permanece fuera del cierre de Payments.
 
 6. En MP: Tus integraciones → aplicación correcta → Credenciales de producción →
    Más opciones → Renovar Access Token. La documentación publica una convivencia
@@ -257,6 +274,10 @@ de esta preparación. Los pasos remotos siguientes no se ejecutaron.
 
 ### Firma webhook: límite de continuidad
 
+**Pendiente al 2026-09-24:** `MP_WEBHOOK_SECRET` v1 continúa en uso y debe
+rotarse por exposición en el diagnóstico anterior. El pago real exitoso no
+remedia esa exposición. No se rota en esta tarea de cierre.
+
 10. Rotarla por separado. `mercadoPagoWebhookEdge.ts` valida contra una sola clave.
     La documentación de Webhooks permite Restablecer pero no especifica una
     convivencia equivalente a las 12 horas. **No existe un procedimiento probado
@@ -269,7 +290,7 @@ de esta preparación. Los pasos remotos siguientes no se ejecutaron.
 
     ```powershell
     firebase functions:secrets:set MP_WEBHOOK_SECRET --project reservaeldia-7a440
-    firebase deploy --only functions:mercadoPagoWebhook --project reservaeldia-7a440
+    firebase deploy --only "functions:payments:mercadoPagoWebhook" --project reservaeldia-7a440
     ```
 
     Contestar No al redeploy automático. Durante el cambio puede haber 401 y
@@ -313,7 +334,7 @@ Comando dirigido para un cambio de valor de Embed, **después** de completar la
 migración de secretos y preparar la transición de los HTML existentes:
 
 ```powershell
-firebase deploy --only "functions:validateDraftForPublication,functions:prepareDraftPreviewRender,functions:preparePublicTemplatePreview,functions:adminGetTemplateEditorDocumentV1,functions:createPublicationCheckoutSession,functions:createPublicationPayment,functions:mercadoPagoWebhook,functions:retryPaidPublicationWithNewSlug,functions:publicarInvitacion" --project reservaeldia-7a440
+firebase deploy --only "functions:validateDraftForPublication,functions:prepareDraftPreviewRender,functions:preparePublicTemplatePreview,functions:adminGetTemplateEditorDocumentV1,functions:payments:createPublicationCheckoutSession,functions:payments:createPublicationPayment,functions:payments:mercadoPagoWebhook,functions:retryPaidPublicationWithNewSlug,functions:publicarInvitacion" --project reservaeldia-7a440
 ```
 
 Después de sanear dotenv, actualizar solo la revisión de email (sin invocarla)

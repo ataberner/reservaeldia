@@ -337,16 +337,18 @@ Manager ni se inspeccionó el historial Git o recursos remotos en este cierre.
 ## Deudas separadas del cierre funcional
 
 - Salida de SES sandbox y habilitación de `production`.
-- Migración de `MERCADO_PAGO_ACCESS_TOKEN` y `MP_WEBHOOK_SECRET` a Secret Manager,
-  y posterior rotación de credenciales expuestas. Se preservan los bindings y
-  correcciones locales aprobadas; **no se desplegó ni rotó Mercado Pago** en este
-  cierre. Procedimiento y consumidores en
+- Actualización posterior al cierre de emails, 2026-09-24: el operador confirmó
+  la migración productiva de Payments, Secret Manager y el nuevo par Public Key +
+  Access Token v2 mediante pago real, webhook y publicación automática.
+  **Permanece pendiente rotar `MP_WEBHOOK_SECRET` v1 por exposición previa.**
+  No se desplegó ni rotó Mercado Pago durante el cierre de emails.
+  [Aceptación de Payments](PAYMENTS_CODEBASE_PREPARATION.md); procedimiento y consumidores en
   [BACKEND_CONFIGURATION_ISOLATION.md](BACKEND_CONFIGURATION_ISOLATION.md).
-- **Las Functions continúan compartiendo una única codebase/source; la separación
-  completa de configuración normal por subsistema queda pendiente.** Se conservan
+- **Payments ya tiene source/codebase independiente (3); default conserva 102,
+  incluido email. La separación de email sigue pendiente.** Se conservan
   exclusiones `.env*`, `.secret*`, `.runtimeconfig.json` del paquete, bindings
   específicos y logging seguro. Excluir archivos no impide la inyección de dotenv
-  a todas las Functions. El cierre de SES no certifica aislamiento completo.
+  a todas las Functions de un mismo source. El cierre de SES no certifica aislamiento completo.
 - Node 22: runtime actual Node 20; el AWS SDK advierte/requerirá Node >=22 en
   versiones futuras. OpenAI 7.5.0 ya declara Node >=22 y genera una advertencia
   preexistente. No se actualizó Node ni OpenAI en esta fase.

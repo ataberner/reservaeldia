@@ -1,8 +1,104 @@
-# Payments codebase preparation
+# Payments codebase: completed production migration
 
-Status: Stage 2 activated locally; **no deployment performed**.
-Date: 2026-09-22. Remote access was restricted to three safe metadata reads.
-Default/general deploys must stay frozen until the three transfers are verified.
+Status: **Production migration completed and accepted, 2026-09-24.**
+Production acceptance below was confirmed by the operator; the closing review
+performs local checks only. No deployment, Function invocation, Secret-value
+access, credential rotation or commit is part of this closure.
+
+## Production acceptance and remaining security work
+
+The operator confirmed that all three existing Functions were successfully moved
+to `payments`: `createPublicationCheckoutSession`, `createPublicationPayment`
+and `mercadoPagoWebhook`. The completed partition is **default: 102 Functions;
+payments: 3 Functions; total: 105**, without duplicate deployment authorities.
+
+The real production acceptance test passed: Mercado Pago initialized using the
+new Public Key; a buyer account different from the seller paid successfully;
+the seller received the money; the webhook processed the notification; and the
+invitation was published automatically. **The new Public Key + Access Token v2
+pair is validated in production.** No credential values, buyer identities,
+transaction payloads or payment amounts are recorded here.
+
+| Function | Production Secret bindings confirmed by the operator |
+| --- | --- |
+| `createPublicationCheckoutSession` | `MERCADO_PAGO_ACCESS_TOKEN` v2 |
+| `createPublicationPayment` | `MERCADO_PAGO_ACCESS_TOKEN` v2 |
+| `mercadoPagoWebhook` | `MERCADO_PAGO_ACCESS_TOKEN` v2; `MP_WEBHOOK_SECRET` v1 |
+
+**Pending security remediation: rotate `MP_WEBHOOK_SECRET` v1 because it was
+exposed during the earlier diagnostic.** The successful payment closes the
+migration milestone, not this exposure. Rotation is a separate authorized task;
+do not rotate it, disable HMAC or restore older credentials as part of this closure.
+The single-key validation/continuity constraints remain in the
+[manual rotation procedure](BACKEND_CONFIGURATION_ISOLATION.md#firma-webhook-límite-de-continuidad).
+
+The freeze required only for partial migration is lifted: all three transfers and
+the real payment/publication acceptance are complete. Normal deployment controls
+still apply; this closure authorizes no deploy. Keep qualified Payments selectors.
+
+## Migration artifact review at closure
+
+Keep the canonical entrypoint/build, lockfile, regression fixtures, sanitized
+pre-migration baseline, metadata comparison tools and isolated rollback config.
+They remain useful operational controls, not disposable migration implementations.
+The source package contains only its maintained package files, ignored normal
+dotenv, dependencies and generated runtime/contracts; no temporary deployment
+entrypoint or duplicate payment implementation was left in it.
+
+The owned standalone package `reserva-payments-RzAWVH` in the OS temporary
+directory and the migration-only `payments-preparation/npm-cache` were removed
+after verifying their exact paths, package identity/lock and absence of links.
+The disposable RSVP HEAD probe is removed after verification; its result reports
+remain. Local check evidence stays ignored under `.local-isolation`; prior
+measurements and sanitized baselines are retained. Older tracked `tmp_*` files
+and `functions_pkg_test_*` snapshots predate this migration and were not deleted
+as part of its cleanup; the credential scan includes those versionable files.
+
+## Closing local verification -- 2026-09-24
+
+- `firebase.json` already registers the correct two sources; no deployment config,
+  application code, package/lockfile, dotenv, Secret binding or baseline was changed.
+  Default exports exactly 102 endpoints and none of the three Mercado Pago names.
+  Payments exports exactly those three. The 105 endpoint names/options match the
+  original baseline, with zero missing or duplicate names.
+- Both builds and both TypeScript checks pass. The final Node 20.19.5 offline suite
+  covers 38 files and reports **354/355 passing**, with no skips/cancellations:
+  Payments/package, payments, HMAC, publication, render, configuration and email.
+  The only final failure is the existing `generarModalRSVP` fallback assertion.
+  Source and test match HEAD; a fresh HEAD implementation probe reproduces the
+  same failure (2/3 RSVP tests pass). No expectation was weakened.
+- The first suite run also hit the existing 30-second child-process deadline in
+  the JSDOM initialization/HTML test (353/355 passing). Three fresh isolated runs
+  then passed both initialization tests, as did the final full suite. This was a
+  local test-process timeout, not the CLI's 10-second discovery timeout. Its cause
+  was not established; the initial report is retained. No timeout/code was changed.
+- CLI 14.4.0 / SDK 6.4.0 / host Node 22.13.1 discovery through the real local
+  wrapper, in fresh processes with outbound network blocked:
+
+| Source | Samples | Minimum | Median | Maximum | Failures / timeouts |
+| --- | --- | --- | --- | --- | --- |
+| Payments (3 endpoints) | 10 | 1.008 s | 1.105 s | 3.504 s | 0 / 0 |
+| Default (102 endpoints) | 10 | 1.240 s | 1.393 s | 1.632 s | 0 / 0 |
+
+  Timings measure the detector, excluding shutdown. The smallest observed Payments
+  margin to 10 seconds was 6.496 s; local measurements do not guarantee future
+  deploy latency. Offline selector and forward/partial-rollback simulations still
+  pass with zero creates/deletes/recreates; they are not a new remote-state read.
+- Only Markdown files changed. Their local links/anchors and whitespace were
+  checked. Focused ESLint on nine related source/test/tool files: zero errors,
+  18 existing warnings in unchanged `index.ts`. `git diff --check` passes.
+- A names-only credential review scanned 10,996 versionable text files, including
+  older tracked snapshots/logs, and found no real-secret patterns. All three
+  tracked legacy runtime-config JSON files parsed successfully after BOM handling;
+  their only field is `superadmins.uids`, whose values were not emitted. There
+  are no versionable dotenv files or MP Secret declarations in source dotenv.
+  No Secret Manager values, remote metadata or Git history were queried here.
+
+Evidence: `.local-isolation/payments-closure-2026-09-24/` retains `tests.tap`
+(initial run), `tests-final.tap`, `tests-summary.json`, `discovery-initialization*.tap`,
+`discovery-{payments,default}.json`, `manifests/`, `cli-manifests/`, `plan.json`,
+`rsvp-head.{json,tap}`, `lint.json`, `security.json` and `docs-check.json`.
+Historical measurements remain separate from this closing review.
 
 ## Implemented boundary
 
@@ -15,7 +111,7 @@ Default/general deploys must stay frozen until the three transfers are verified.
 `functions/src/index.ts` no longer reexports these objects. `firebase.json` now
 registers default/source `functions` (102 endpoints) and payments/source
 `functions-payments` (3 endpoints). Their union preserves the original 105 names
-and every endpoint option. Production ownership has not been changed by this work.
+and every endpoint option. The operator confirmed the same partition in production.
 
 The checkout declaration explicitly retains the inherited `cpu: gcf_gen1`.
 The new entrypoint does not set global options. All other options and wrappers
@@ -131,7 +227,7 @@ failure. A fresh registry `npm ci` and Linux Chromium execution were not perform
 local dependency materialization and the existing render regressions do not
 certify those deployment-environment checks.
 
-## Executed stage 2 evidence -- 2026-09-22
+## Historical stage 2 evidence -- 2026-09-22
 
 - Default 102 / Payments 3 / union 105; no duplicates or missing names. All 105
   endpoint hashes match the original baseline. Payment declarations and compiled
@@ -171,7 +267,7 @@ certify those deployment-environment checks.
   these checks. No deploy, Function invocation, commit, GCP resource modification,
   Secret-value access, Secret version change or credential rotation occurred.
 
-## Stage 2 normal configuration
+## Current normal configuration
 
 The ignored `functions-payments/.env.reservaeldia-7a440` now contains only:
 
@@ -194,7 +290,7 @@ archives. The CLI still reads the selected source's normal dotenv locally and
 injects its variables at deployment. Git ignores the real dotenv files; no build
 copies their values. No actual configuration is put in versionable fixtures.
 
-| Secret | Consumers | Observed deployed version |
+| Secret | Consumers | Production version confirmed at closure |
 | --- | --- | --- |
 | `MERCADO_PAGO_ACCESS_TOKEN` | checkout, payment, webhook | 2 on all three |
 | `MP_WEBHOOK_SECRET` | webhook only | 1 |
@@ -202,8 +298,10 @@ copies their values. No actual configuration is put in versionable fixtures.
 Bindings remain `defineSecret`/`secrets`, with no SES/OpenAI bindings in Payments.
 There is no `MERCADO_PAGO_CLIENT_SECRET` consumer. Local manifests declare Secret
 names, not pinned versions: the CLI resolves versions when the operator deploys.
-Do not rotate/create versions during the transfer; stop if references differ
-from the baseline. This task neither read values nor changed Secret versions.
+The required webhook rotation remains a separate pending task. The historical
+baseline and comparison tests record v1; after an authorized rotation, capture
+new sanitized metadata and update the operational comparison expectations in
+that task. Never restore exposed v1 merely to match the old baseline or tests.
 
 Moving the dotenv locally does not remove old normal variables from the 102
 already deployed Functions. Those require future core updates after the transfer.
@@ -230,11 +328,16 @@ under `.local-isolation/payments-activation/manifests/`; real CLI discovery save
 its parsed manifests under `cli-manifests/`. The 105 endpoint hashes must match
 `functions/testFixtures/payments/manifest-baseline.json`; do not regenerate it.
 
-The inventory is not an IAM-policy audit, a read of all 105 remote Functions,
-or evidence that production already uses the new Public Key. That remains
-unverified until the operator successfully deploys and exercises checkout.
+This is the immutable **pre-migration** inventory, not current ownership metadata,
+an IAM-policy audit or a read of all 105 remote Functions. Production use of the
+new Public Key and successful migration are supported separately by the operator's
+2026-09-24 acceptance above; this closure does not repeat remote verification.
 
-## Operator sequence -- commands prepared, not executed
+## Historical migration sequence -- completed by the operator
+
+A-H below are retained for traceability and coordinated recovery. All migration
+and acceptance gates are now complete according to the operator. Do not repeat
+these deploys or the real purchase to close this milestone.
 
 Use Firebase CLI **14.4.0**, from the repository root. Keep default/general deploys
 frozen during any partial transfer. Never use the ambiguous `functions:payments`
@@ -306,7 +409,15 @@ processing and published invitation. These are operator actions with real effect
 not checks executed by this PR. Resume default deploys only after all three
 ownership transfers and the purchase/publication checks pass.
 
-## Exact rollback by transfer stage
+## Retained operational rollback
+
+Keep `firebase.payments-rollback.json` and the metadata/plan verification tools:
+they provide isolated discovery for ownership recovery without deleting the webhook.
+The current starting state has all three Functions in Payments; partial-stage
+commands below are contingency references, not outstanding migration steps.
+Recheck current metadata/versions before any separately authorized rollback.
+The v2/v1 references below describe this milestone; after the pending webhook
+rotation, preserve the new version and refresh comparison expectations first.
 
 `firebase.payments-rollback.json` registers only source `functions-payments` under
 codebase `default`, with the same isolated build and exclusions. It discovers

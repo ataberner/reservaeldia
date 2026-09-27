@@ -22,7 +22,147 @@ nombres sensibles MP en su entorno heredado, sin bindings Secret Manager.
 Se documentaron solo nombres; no se copiaron valores ni se modificó el recurso.
 Ese snapshot fue seguido por el [retiro controlado](DEFAULT_DEPLOY_READINESS.md)
 del único trigger obsoleto, sin restaurar su entorno: remoto final 101/3/3 (107).
-Esta evidencia no implica que se haya auditado el dotenv remoto de todo default.
+Esa captura inicial no auditó el dotenv remoto de todo default. La reconciliación
+posterior, abajo, compara los nombres y los valores preservados en memoria sin
+guardar ni imprimir valores del entorno.
+
+<a id="default-environment"></a>
+
+## Entorno de default: consumidores y decisión aceptada, 2026-09-27
+
+**DECISIÓN aceptada:** por el pedido de reconciliación del entorno, las seis
+variables MP remotas se clasifican como heredadas/obsoletas de default. No se
+reincorporan al source. Su eliminación en el próximo deploy autorizado es
+intencional. `EMAIL_MODE`, sin consumidor core, se elimina exclusivamente de
+`functions/.env.reservaeldia-7a440`. No se hace deploy en esta tarea.
+El archivo compartido anterior a la separación de Email aún conservaba el modo,
+y la política inicial toleraba explícitamente ese residuo. Por eso el CLI podía
+inyectarlo; no provenía de un consumidor ni parámetro de default.
+La autoridad y allowlist están en
+[Functions ownership](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md#default-environment)
+y su registro; esta matriz conserva la evidencia de consumidores.
+
+**HECHOS de source:** se siguieron los 101 exports del entrypoint default, sus
+imports transitivos (114 módulos resueltos) y referencias de funciones, y se
+revisaron manualmente los callbacks/flujo de aprobación. No hay lectura directa
+ni camino efectivo desde esos endpoints hacia los siete lectores evaluados.
+El análisis estático no se presenta como ejecución de todos los caminos.
+
+| Variable | Consumidor efectivo en default | Consumidor en payments | Consumidor en email | Necesaria en default |
+| --- | --- | --- | --- | --- |
+| MERCADO_PAGO_ACCESS_TOKEN | Ninguno | Los tres endpoints, mediante getMercadoPagoClient; binding por endpoint | Ninguno | No |
+| MERCADO_PAGO_CLIENT_SECRET | Ninguno | Ninguno | Ninguno | No |
+| MP_WEBHOOK_SECRET | Ninguno | mercadoPagoWebhook, verificación HMAC mediante getMercadoPagoWebhookSecret | Ninguno | No |
+| MERCADO_PAGO_CLIENT_ID | Ninguno | Ninguno | Ninguno | No |
+| MERCADO_PAGO_PUBLIC_KEY | Ninguno | createPublicationCheckoutSession, respuesta para el cliente | Ninguno | No |
+| MERCADO_PAGO_WEBHOOK_URL | Ninguno | createPublicationCheckoutSession y createPublicationPayment, notification_url | Ninguno | No |
+| EMAIL_MODE | Ninguno | Ninguno | testTransactionalEmail, testWelcomeEmail y onUserCreatedWelcomeEmail | No |
+
+Recorridos comprobados:
+
+- `index.ts:17` importa helpers de `publicationPayments.ts`; ese módulo importa
+  los getters de `mercadoPagoClient.ts` desde `publicationPayments.ts:43`. Los lectores
+  reales están en `mercadoPagoClient.ts:11-57`, son lazy y no se ejecutan al importar.
+  Sus únicos callers de proveedor son `createMercadoPagoPreferenceForCheckout`
+  (`publicationPayments.ts:727`), los handlers checkout/pago (`:2047`, `:2191`)
+  y webhook (`:2517`), exportados desde `payments/entrypoint.ts`.
+- `publicarInvitacion` llama a `publishWithApprovedPaymentSession` (`:2450`),
+  y el reintento a `retryPaidPublicationWithNewSlugHandler` (`:2369`): ambos
+  validan la sesión persistida y llegan a `finalizeApprovedSession` (`:1561`).
+  Éste publica/renderiza con `finalizeApprovedSessionFlow`; no cobra, consulta
+  pagos remotos ni llama a los getters del proveedor. El estado checkout y
+  mantenimiento restantes usan Firestore/Storage, no credenciales MP.
+- `mercadoPagoClient.ts:8-9` declara dos `defineSecret` que aparecen en los
+  parámetros de discovery de default por ese import compartido. Ninguno es un
+  binding de sus 101 endpoints ni se resuelve al importar. No se refactoriza
+  ese módulo compartido para cambiar la presentación de parámetros.
+- `emails/config.ts:15` declara `emailMode`; `sendTransactionalEmail.ts:78`
+  lee `.value()` al enviar. Los dos smokes llegan al sender por imports lazy;
+  el procesador Welcome (`welcomeRegistration.ts:153`) y sus guards consultan
+  el mismo modo. No hay módulo `emails/` en el árbol runtime de imports de
+  default ni de payments. Importar un tipo de request no crea ese consumo.
+- No hay lectores de `MERCADO_PAGO_CLIENT_ID` ni `MERCADO_PAGO_CLIENT_SECRET`
+  en el source mantenido ni en los contratos compartidos.
+
+**Entorno que se preserva:** los dos nombres normales de la allowlist actual
+(Maps y autoridad administrativa), con igualdad de valores verificada en memoria,
+y los bindings legítimos de OpenAI/visitas. No se cambian sus valores/versiones.
+La configuración propia de payments/email y sus archivos dotenv permanecen
+independientes y sin modificaciones. El entorno sintético del emulador combinado
+no es el entrypoint productivo y conserva sus protecciones de no envío.
+
+**Guardrail existente extendido:** `assertSourceConfigurationNames` reutiliza
+`assertConfigurationNames` y el registro único. El gate lo llama antes de copiar
+fuentes sin dotenv; el predeploy también comprueba su source. Las pruebas usan
+fixtures sin credenciales, rechazan variables de otro owner/desconocidas y
+comprueban que el error sólo contiene nombres. Los parámetros normales del
+manifest se verifican por la misma allowlist; no se confunden con Secret bindings.
+
+**Preflight remoto, 2026-09-27T17:27:47.741Z:** los 107 endpoints siguen ACTIVE,
+101/3/3, sin endpoints desconocidos. Usando el lector dotenv de Firebase CLI
+14.4.0 para el proyecto explícito y los manifests reales, el deploy de default
+retiraría exactamente las seis variables MP en sus 101 endpoints, agregaría
+cero variables y no cambiaría valores preservados. `EMAIL_MODE` no se agregaría.
+Payments/Email coinciden con sus propios dotenv y bindings. Las seis versiones
+Secret distintas referenciadas entre las tres codebases están ENABLED. Sólo se
+consultó metadata de Secret Manager.
+No se ejecutó `deploy`, `prepare` ni `deploy --dry-run`, ni se invocaron handlers.
+La evidencia sanitizada local está en
+`.local-isolation/default-environment-2026-09-27/remote-environment.json`.
+
+La captura final de metadata (`2026-09-27T17:42:03.401Z`) conserva los 107 ACTIVE,
+sin cambios respecto del inicio ni reaparición de `generatePublishedShareImage`.
+La selección calculada con el CLI es exclusivamente default (101); los 12
+maxInstances explícitos coinciden con producción. No hay drift nuevo de opciones:
+se mantienen los 90 defaults de plataforma ya explicados en el cierre anterior.
+Evidencia: `remote-unchanged.json` y `preflight.json` en el mismo directorio local.
+
+**Verificación local de esta reconciliación:**
+
+- `node scripts/local/verifyFunctionsOwnership.cjs --cli <CLI fijada 14.4.0>`:
+  tres builds y **41/41** pruebas de ownership/packages/configuración/discovery
+  aprobadas. Discovery real: **101/3/3**, unión **107**, cero duplicados,
+  desconocidos o faltantes. Los 107 registros de endpoint/hashes no cambiaron.
+- `tsc --noEmit --project` para `tsconfig.json`, `tsconfig.payments.json` y
+  `tsconfig.email-package.json`: **3/3**. Publicación/share:
+  `publicationPublishExecution.test.mjs` y `publicDeliveryRoutes.test.mjs`,
+  **49/49**. `node functions/scripts/checkDeployReadiness.cjs default`: exit 0,
+  sin blockers registrados y con los nombres del dotenv original permitidos.
+- Los primeros intentos del gate normal `node scripts/local/runLocal.cjs verify`
+  **no quedaron aprobados** (histórico anterior al cierre de estabilidad abajo).
+  El primer intento se bloqueó en tooling y Windows denegó la limpieza dentro
+  del sandbox; se cerró exclusivamente su árbol propio con permisos locales.
+  La repetición pasó tooling (7/7), pero agotó el plazo de 45 s de watch durante
+  dos compilaciones de guardados rápidos. El mismo test de contratos, aislado
+  y sin modificar sus plazos, pasó después **29/29**. En el último de esos intentos
+  previos, el test de inicialización lazy de JSDOM agotó su `spawnSync` de 30 s:
+  **40/41**, salida 1; las etapas posteriores no se ejecutaron. No se atribuyen
+  estas fallas a cambios funcionales ni se ocultan mediante expectativas nuevas.
+- Evidencia de los intentos: bajo
+  `.local-isolation/default-env-validation-eZdkeP/workspace/.local-isolation/reports/`,
+  `run-DzCKcd` y `run-AQG7lP`; intento previo desde el repositorio:
+  `.local-isolation/reports/run-DvLZyh/result.json`. La limpieza de ese
+  intento está aprobada. Logs de los checks independientes y preflight en
+  `.local-isolation/default-environment-2026-09-27/`. Lint: 245 archivos,
+  cero errores y 233 warnings existentes, sin cambios ajenos.
+
+**Cierre del bloqueo de validación, 2026-09-27:** la
+[muestra de estabilidad del gate](../testing/FUNCTIONS_GATE_STABILITY.md)
+completó tres ejecuciones independientes sin cambios de código entre ellas:
+dos **1582/1582** y una detenida por timeout global de watch, sin assertions
+funcionales fallidas. Inicialización JSDOM/OpenAI pasó después **2/2** aislada y
+contratos/watch **29/29**, conservando todos los plazos. **Clasificación B** según
+el criterio solicitado: flakiness documentada separadamente como deuda del
+tooling, sin evidencia de regresión funcional. No se agregaron retries ni se
+excluyeron suites; el intento fallido conserva exit 3.
+
+El preflight de solo lectura del `2026-09-27T18:53:30.835Z` sigue aprobado:
+107 ACTIVE, partición 101/3/3, sin drift nuevo; únicamente las seis eliminaciones
+MP intencionales, ninguna adición ni cambio en valores/bindings preservados.
+Readiness local aprobado. No se modificaron el watcher, JSDOM, los tests, los
+timeouts, handlers o CI. No hubo deploy ni operaciones remotas de escritura.
+
+**DEFAULT ENVIRONMENT READY FOR DEPLOY**
 
 **Cierre de emails, 2026-09-18:** el operador confirmó el envío sandbox exitoso;
 ver [el runbook de Fase 1](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md). Esta validación
@@ -89,7 +229,7 @@ específico y se combina con A/B/C, no reemplaza la clasificación de sensibilid
 | `MERCADO_PAGO_WEBHOOK_URL` | B | Creación de preferencia/pago | `functions-payments/.env.reservaeldia-7a440`; URL conservada sin cambios. |
 | `MP_WEBHOOK_SECRET` | C | `mercadoPagoWebhook` | Secret Manager v1; binding y webhook productivo confirmados. **Rotación pendiente por exposición previa.** No está en dotenv. |
 | `GOOGLE_MAPS_EMBED_API_KEY` | A, identificador de API restringido | Render HTML y validación | `.env.reservaeldia-7a440`, `.env.production`; conservada sin cambios. Termina en iframe público; mantener restricciones de API/referrers. |
-| `EMAIL_MODE` | B | Email | `.env.reservaeldia-7a440`; conservada sin cambios. `defineString`, default bloqueado; sandbox en la revisión inicial. |
+| `EMAIL_MODE` | B | Email | `functions-email/.env.reservaeldia-7a440`; retirada del dotenv default el 27/09, sin modificar Email. `defineString`, default bloqueado; sandbox en la revisión inicial. |
 | `AWS_SES_ACCESS_KEY_ID` | C, parte del par de credenciales | testTransactionalEmail, testWelcomeEmail, onUserCreatedWelcomeEmail en email | `emails/config.ts`; bindings por endpoint, ver cierre sandbox del 26/09. |
 | `AWS_SES_SECRET_ACCESS_KEY` | C | Los mismos tres endpoints de email | Igual que el anterior; nombres/metadatos, nunca valores. |
 | `OPENAI_API_KEY` | C | `designerAiChat` | `defineSecret` y binding existentes; además hay nombre en `.secret.local:1` y `.secret.local.example:1`. No se inspeccionó su valor. |

@@ -284,8 +284,11 @@ The ignored `functions-payments/.env.reservaeldia-7a440` now contains only:
 - `GOOGLE_MAPS_EMBED_API_KEY`: copied unchanged; legitimately shared with core
   render (`prepareRenderPayload` and `generarHTMLDesdeObjetos`).
 
-`functions/.env.reservaeldia-7a440` retains `SUPERADMINS_UIDS`,
-`GOOGLE_MAPS_EMBED_API_KEY`, and `EMAIL_MODE`. The unused
+`functions/.env.reservaeldia-7a440` retains only `SUPERADMINS_UIDS` and
+`GOOGLE_MAPS_EMBED_API_KEY`. On 2026-09-27, unused core `EMAIL_MODE` was removed
+locally; it remains in the independent email source. See the
+[accepted environment reconciliation](BACKEND_CONFIGURATION_ISOLATION.md#default-environment).
+The unused
 `MERCADO_PAGO_CLIENT_ID` was removed, with no copy in Payments: no code consumer
 exists. `functions/.env.production` retains its existing Maps configuration.
 Frontend dotenv and local Secret files were not changed. No previously unset
@@ -310,9 +313,12 @@ baseline and comparison tests record v1; after an authorized rotation, capture
 new sanitized metadata and update the operational comparison expectations in
 that task. Never restore exposed v1 merely to match the old baseline or tests.
 
-Moving the dotenv locally does not remove old normal variables from the 102
-already deployed Functions. Those require future core updates after the transfer.
-Email remains within default and still shares normal core configuration.
+Moving the dotenv locally did not remove old variables from deployed core
+Functions. The 2026-09-27 reconciliation confirms all 101 current default
+endpoints still retain six obsolete MP variables as normal environment entries;
+their removal on the next authorized core deploy is intentional. No such deploy
+was performed during environment reconciliation. Email now has its own source,
+codebase and configuration; neither provider's own configuration is removed.
 
 ## Remote baseline and local parity
 

@@ -1,11 +1,12 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 
 const require = createRequire(import.meta.url);
-const { registry, namesFor, assertConfigurationNames } = require("./testUtils/functionOwnership.cjs");
+const { registry, namesFor, assertSourceConfigurationNames } = require("./testUtils/functionOwnership.cjs");
 // Auth v1 resolves its event resource while inspecting the endpoint, not on import.
 const previousProject = process.env.GCLOUD_PROJECT;
 // Resource name only; network is trapped below. A demo ID would require the full emulator environment.
@@ -54,22 +55,8 @@ test("transactional email addresses are fixed server-side with unchanged sender,
   assert.equal(readSecret.mock.callCount(), 0);
 });
 
-test("Functions dotenv files never declare Mercado Pago secrets", () => {
-  const forbidden = new Set([
-    "MERCADO_PAGO_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "MERCADO_PAGO_CLIENT_SECRET",
-  ]);
-  for (const directory of [new URL("./", import.meta.url), new URL("../functions-payments/", import.meta.url), new URL("../functions-email/", import.meta.url)]) {
-    for (const file of readdirSync(directory).filter((name) => /^\.env(?:\.|$)/.test(name))) {
-      const source = readFileSync(new URL(file, directory), "utf8");
-      // Report names only, never dotenv contents, even when this guard fails.
-      const declarations = source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*(?:=|:\s)/gm);
-      const leakedNames = [...declarations].map((match) => match[1]).filter((name) => forbidden.has(name));
-      assert.deepEqual(leakedNames, [], `Mercado Pago secrets forbidden in ${file}`);
-      const owner = directory.pathname.includes("functions-payments") ? "payments" : directory.pathname.includes("functions-email") ? "email" : "default";
-      const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*=/gm)].map(match => match[1]);
-      assertConfigurationNames(owner, names);
-    }
-  }
+test("Functions dotenv files contain only their owner's normal configuration, never secrets", () => {
+  assertSourceConfigurationNames(fileURLToPath(new URL("../", import.meta.url)));
 });
 
 test("payment secrets bind only their actual consumers; email keeps its own bindings", () => {

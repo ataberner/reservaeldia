@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const registry = require("../functionOwnership.json");
 const { endpointHash } = require("./paymentsManifest.cjs");
 
@@ -74,6 +76,21 @@ function assertConfigurationNames(codebase, names, value = registry) {
   assert.deepEqual(invalid, [], `Configuration outside ${codebase} allowlist (names only)`);
 }
 
+// Inspect names before isolation removes personal dotenv files. Never load their
+// values into process.env, copy them into a test workspace, or report contents.
+function assertSourceConfigurationNames(root, codebases = Object.keys(registry.codebases)) {
+  for (const codebase of codebases) {
+    const owner = registry.codebases[codebase];
+    assert.ok(owner, "Unknown configuration owner");
+    const directory = path.join(root, owner.source);
+    for (const file of fs.readdirSync(directory).filter(name => /^\.env(?:\.|$)/.test(name))) {
+      const source = fs.readFileSync(path.join(directory, file), "utf8");
+      const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*(?:=|:\s)/gm)].map(match => match[1]);
+      assertConfigurationNames(codebase, names);
+    }
+  }
+}
+
 // Observed remote values are evidence, never runtime configuration. Releasing a
 // blocker requires a documented A/B decision and reviewed source/manifest parity.
 function assertDeployReady(codebase, value = registry) {
@@ -85,4 +102,4 @@ function assertDeployReady(codebase, value = registry) {
   ).join("\n"));
 }
 
-module.exports = { registry, namesFor, validateRegistry, assertPartition, assertConfigurationNames, assertDeployReady };
+module.exports = { registry, namesFor, validateRegistry, assertPartition, assertConfigurationNames, assertSourceConfigurationNames, assertDeployReady };

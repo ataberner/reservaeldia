@@ -111,11 +111,42 @@ generación), fronteras, metadata y allowlists. Payments/Email no pueden reapare
 en default. Los tests de packages existentes consumen el mismo validador; los
 negativos prueban exports desconocidos, movimientos, duplicados y deriva.
 
-La configuración normal se comprueba por nombres: allowlists de Payments/Email,
-ausencia de Secrets en dotenv y exclusión de nombres propios de Mercado Pago en
-core. No es una auditoría de todo `process.env` ni de IAM remoto. Se tolera el
-`EMAIL_MODE` residual histórico de default; no autoriza nuevos consumidores de
-email allí. Su retiro y la configuración remota requieren trabajo separado.
+La configuración normal se comprueba por nombres con las allowlists de las tres
+codebases en `functionOwnership.json`; ningún Secret puede declararse en dotenv.
+El gate inspecciona los nombres de los archivos originales **antes** de excluirlos
+de la copia aislada. El predeploy existente verifica también los nombres del
+source seleccionado. No carga valores en `process.env`, ni los copia ni imprime.
+No constituye una auditoría completa de IAM ni de configuración remota.
+
+<a id="default-environment"></a>
+
+### Entorno explícito de default — decisión aceptada, 2026-09-27
+
+El source y el ownership actual determinan qué configuración necesita cada
+codebase. Configuración remota sin consumidor demostrado es drift heredado,
+no una obligación de restaurarla en source.
+
+La allowlist del **dotenv de despliegue actual** de default es
+`SUPERADMINS_UIDS` y `GOOGLE_MAPS_EMBED_API_KEY`. Sus bindings permitidos siguen
+siendo `OPENAI_API_KEY` únicamente en `designerAiChat` y
+`PUBLIC_VISIT_SIGNING_SECRET` únicamente en `verInvitacionPublicada`.
+Las listas ejecutables se mantienen en el registro único.
+
+Las seis variables MP heredadas no tienen consumidores efectivos en default;
+su retiro del entorno de las 101 Functions en el próximo deploy es intencional.
+`EMAIL_MODE` tampoco tiene consumidor allí: se retiró del dotenv de default y
+queda en email. Declarar parámetros Secret por un import compartido no equivale
+a vincularlos o necesitarlos en runtime. Ver el
+[recorrido de consumidores y decisión operativa](../operations/BACKEND_CONFIGURATION_ISOLATION.md#default-environment).
+
+Esta allowlist no inyecta las variables de plataforma/SDK ni los controles del
+lanzador aislado. Los flags opcionales y fallbacks que el código sabe leer siguen
+implementados, sin activarlos ni cambiar sus defaults: no estaban configurados en
+el dotenv ni en el entorno remoto inspeccionado. Para configurarlos explícitamente,
+verificar su consumidor/efecto y actualizar esta decisión y la allowlist. No
+eliminar configuración vigente con consumidor sólo para igualar una lista.
+El `.env.local` sintético del emulador combinado pertenece a su wrapper de pruebas;
+no es configuración del entrypoint productivo de default ni se copia a producción.
 
 Comando reproducible desde el repositorio, con dependencias y CLI fijadas ya
 preparadas por el [flujo local](../operations/DEVELOPMENT_WORKFLOW.md#verification-5a):

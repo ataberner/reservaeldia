@@ -10,10 +10,9 @@
         "OPENAI_API_KEY",
         "PUBLIC_VISIT_SIGNING_SECRET"
       ],
-      "forbiddenEnvironment": [
-        "MERCADO_PAGO_PUBLIC_KEY",
-        "MERCADO_PAGO_WEBHOOK_URL",
-        "MERCADO_PAGO_CLIENT_ID"
+      "allowedEnvironment": [
+        "SUPERADMINS_UIDS",
+        "GOOGLE_MAPS_EMBED_API_KEY"
       ]
     },
     "payments": {

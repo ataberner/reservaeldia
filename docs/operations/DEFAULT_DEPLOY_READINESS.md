@@ -10,6 +10,16 @@ explícitamente en source la capacidad que producción ya tenía.
 
 ## Cierre de límites — decisión actual aceptada
 
+**Reconciliación de entorno posterior al preflight:** el deploy solicitado se
+detuvo sin operaciones remotas al identificar un reemplazo de dotenv que los
+manifests de opciones no cubrían. La
+[decisión de entorno del 27/09](BACKEND_CONFIGURATION_ISOLATION.md#default-environment)
+clasifica como intencional el retiro de las seis variables MP heredadas de los
+101 endpoints y retira localmente `EMAIL_MODE` de default, sin consumidores allí.
+No se eliminan variables propias de payments/email ni se cambian Secret Manager,
+IAM, endpoints o lógica. Su validación de entorno se registra en ese documento;
+el cierre de límites siguiente conserva su alcance original. No hubo deploy.
+
 **DECISIÓN accepted:** por instrucción explícita del operador, conservar los 14
 límites productivos en el source canónico. Se adoptan provisionalmente como
 **A por decisión técnica actual**, sin afirmar que sean óptimos ni que se haya

@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { snapshot } = require("./testUtils/deploymentSnapshot.cjs");
-const { registry, assertPartition, assertConfigurationNames, assertDeployReady, validateRegistry } = require("./testUtils/functionOwnership.cjs");
+const { registry, assertPartition, assertConfigurationNames, assertSourceConfigurationNames, assertDeployReady, validateRegistry } = require("./testUtils/functionOwnership.cjs");
 const { endpointHash } = require("./testUtils/paymentsManifest.cjs");
 const manifests = Object.fromEntries(Object.entries(registry.codebases).map(([codebase, owner]) => [codebase, snapshot(owner.source).manifest]));
 
@@ -24,6 +25,9 @@ test("registry agrees with active Firebase sources and actual package entrypoint
     assert.equal(firebase.functions.find(f => f.codebase === codebase).source, owner.source);
     assert.equal(require(path.join(root, owner.source, "package.json")).main, owner.main);
     assert.ok(existsSync(path.join(root, owner.entrypoint)), `Missing canonical entrypoint: ${codebase}`);
+    // Parameter declarations are not secret bindings. Normal parameters still
+    // belong to their owner, even if they were imported transitively.
+    assertConfigurationNames(codebase, (manifests[codebase].params || []).filter(p => p.type !== "secret").map(p => p.name));
   }
 });
 
@@ -86,11 +90,42 @@ test("secret allowlists constrain both codebase and individual endpoint", () => 
 });
 
 test("configuration checks use names only and need no personal dotenv files", () => {
+  assertConfigurationNames("default", ["SUPERADMINS_UIDS", "GOOGLE_MAPS_EMBED_API_KEY"]);
   assertConfigurationNames("payments", ["MERCADO_PAGO_PUBLIC_KEY", "GOOGLE_MAPS_EMBED_API_KEY"]);
   assertConfigurationNames("email", ["EMAIL_MODE", "WELCOME_EMAIL_ACTIVATION_AT"]);
   for (const [owner, name] of [["default", "MERCADO_PAGO_PUBLIC_KEY"], ["email", "GOOGLE_MAPS_EMBED_API_KEY"],
     ["payments", "EMAIL_MODE"], ["default", "OPENAI_API_KEY"], ["email", "AWS_SES_SECRET_ACCESS_KEY"]]) {
     assert.throws(() => assertConfigurationNames(owner, [name]), /Configuration outside/);
+  }
+  for (const name of ["MERCADO_PAGO_ACCESS_TOKEN", "MERCADO_PAGO_CLIENT_SECRET", "MP_WEBHOOK_SECRET",
+    "MERCADO_PAGO_CLIENT_ID", "MERCADO_PAGO_PUBLIC_KEY", "MERCADO_PAGO_WEBHOOK_URL",
+    "EMAIL_MODE", "WELCOME_EMAIL_ACTIVATION_AT", "UNASSIGNED_CONFIGURATION"]) {
+    assert.throws(() => assertConfigurationNames("default", [name]), /Configuration outside/);
+  }
+});
+
+test("the original dotenv names are checked before isolation, with no value leakage", () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), "functions-env-ownership-"));
+  const secretMarker = "synthetic-sensitive-value-must-not-appear";
+  try {
+    for (const owner of Object.values(registry.codebases)) mkdirSync(path.join(fixture, owner.source));
+    const coreFile = path.join(fixture, "functions/.env.synthetic");
+    writeFileSync(coreFile, "SUPERADMINS_UIDS=synthetic-admin\nGOOGLE_MAPS_EMBED_API_KEY=synthetic-maps\n");
+    writeFileSync(path.join(fixture, "functions-email/.env.synthetic"), "EMAIL_MODE=sandbox\n");
+    assert.doesNotThrow(() => assertSourceConfigurationNames(fixture));
+    for (const assignment of [`EMAIL_MODE=${secretMarker}`, `export MERCADO_PAGO_PUBLIC_KEY=${secretMarker}`, `WELCOME_EMAIL_ACTIVATION_AT: ${secretMarker}`]) {
+      writeFileSync(coreFile, assignment + "\n");
+      assert.throws(() => assertSourceConfigurationNames(fixture), error => {
+        assert.match(error.message, /Configuration outside default/);
+        assert.ok(!error.stack.includes(secretMarker));
+        return true;
+      });
+    }
+    const gate = readFileSync(path.join(root, "scripts/local/verifyFunctionsOwnership.cjs"), "utf8");
+    assert.ok(gate.indexOf("assertSourceConfigurationNames(ROOT)") < gate.indexOf("copyWorkspace(workspace)"));
+    assert.match(readFileSync(path.join(root, "functions/scripts/checkDeployReadiness.cjs"), "utf8"), /assertSourceConfigurationNames/);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
   }
 });
 

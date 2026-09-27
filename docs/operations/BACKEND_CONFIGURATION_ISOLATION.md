@@ -3,6 +3,12 @@
 Status: Operational Diagnostic Evidence. Diagnóstico inicial: 2026-09-19;
 cierre Payments: 2026-09-24; cierre WelcomeEmail hasta sandbox: 2026-09-26.
 
+**Preparación productiva local de email, 27/09/2026:** SES production access
+confirmado por el operador. El código admite production y agrega un aviso
+interno independiente; el dotenv continúa sandbox con activación vacía. No se
+modifican Secrets, identidades, IAM ni configuración remota. Ver [corte, Rules
+previas y rollback](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails).
+
 Alcance: configuración de Functions, secretos y logging. La revisión inicial
 no consultó recursos remotos. El cierre de email del 26/09 agrega lecturas
 sanitizadas de metadata, logs y un delivery; nunca valores de Secret Manager
@@ -531,7 +537,8 @@ Los smoke tests conservan dos bindings AWS, IAM privado y su identidad dedicada.
 El trigger Auth conserva otra identidad dedicada y los mismos bindings. La entrada
 local de email declara solo estos tres endpoints, sin importar el entrypoint default.
 `EMAIL_MODE` sigue parametrizado, disabled por defecto, sandbox permitido y
-production bloqueado. La separación de ownership y los bindings remotos están
+production implementado localmente, pendiente de activación y deploy explícitos.
+La separación de ownership y los bindings remotos están
 comprobados; no se certifican todos los valores del entorno ni IAM heredado,
 porque deliberadamente no se consultaron entornos completos ni políticas de
 proyecto/organización. La evidencia de evento comprueba el gate sandbox.

@@ -2,7 +2,9 @@ import type { ComponentType } from "react";
 import { welcomeContent } from "./content/welcome";
 import { TestEmail } from "./templates/TestEmail";
 import { WelcomeEmail } from "./templates/WelcomeEmail";
-import { isEmailDataRecord, isEmptyEmailData, isWelcomeEmailData } from "./templateData";
+import { NewUserNotificationEmail } from "./templates/NewUserNotificationEmail";
+import { newUserNotificationContent } from "./content/newUserNotification";
+import { isEmailDataRecord, isEmptyEmailData, isWelcomeEmailData, isNewUserNotificationEmailData } from "./templateData";
 import type { EmailTemplateData, EmailTemplateRequest } from "./types";
 
 export type EmailTemplateDefinition<Data extends object> = {
@@ -25,6 +27,12 @@ export const emailTemplates = {
     isData: isWelcomeEmailData,
     previewData: WelcomeEmail.PreviewProps,
   },
+  newUserNotification: {
+    subject: newUserNotificationContent.subject,
+    component: NewUserNotificationEmail,
+    isData: isNewUserNotificationEmailData,
+    previewData: NewUserNotificationEmail.PreviewProps,
+  },
 } satisfies { [Key in keyof EmailTemplateData]: EmailTemplateDefinition<EmailTemplateData[Key]> };
 
 export function isEmailTemplateRequest(value: unknown): value is EmailTemplateRequest {
@@ -32,6 +40,7 @@ export function isEmailTemplateRequest(value: unknown): value is EmailTemplateRe
   switch (value.template) {
     case "test": return emailTemplates.test.isData(value.data);
     case "welcome": return emailTemplates.welcome.isData(value.data);
+    case "newUserNotification": return emailTemplates.newUserNotification.isData(value.data);
     default: return false;
   }
 }

@@ -16,6 +16,7 @@ mock.method(globalThis, "fetch", rejectNetwork);
 const { createSesClient, createSesTransport } = requireBuiltModule("lib/emails/sesClient.js");
 const { sanitizeAwsError } = requireBuiltModule("lib/emails/awsDiagnostics.js");
 const config = requireBuiltModule("lib/emails/config.js");
+process.env.EMAIL_MODE = "sandbox"; // Fake transports only; external network is trapped above.
 const principalArn = "arn:aws:iam::123456789012:user/synthetic-email-sender";
 const requestId = "12345678-1234-4234-8234-123456789abc";
 const resourceArn = "arn:aws:ses:us-east-1:123456789012:identity/reservaeldia.com.ar";
@@ -109,6 +110,26 @@ test("a failing diagnostic logger never changes the SES result or sends again", 
   assert.equal(result.errorCode, "SES_ACCESS_DENIED");
   assert.equal(result.retryable, false);
   assert.equal(calls, 1);
+});
+
+test("production runtime emits only safe service metadata, never an AWS resource ARN containing email", async () => {
+  const { createTransactionalEmailService } = requireBuiltModule("lib/emails/sendTransactionalEmail.js");
+  const sdkLogs = [], serviceLogs = [];
+  const logger = mock.method(require("firebase-functions/logger"), "warn", (...args) => sdkLogs.push(args));
+  try {
+    const transport = createSesTransport(() => ({ send: async () => {
+      throw Object.assign(new Error(`User: ${principalArn} is not authorized to perform: ses:SendEmail on resource: arn:aws:ses:us-east-1:123456789012:identity/private@example.invalid`), { name: "AccessDeniedException" });
+    } }), 100, undefined, () => "production");
+    const send = createTransactionalEmailService({ getMode: () => "production", transport,
+      render: async () => ({ subject: "synthetic", html: "synthetic", text: "synthetic" }), log: entry => serviceLogs.push(entry) });
+    const result = await send({ template: "welcome", to: "private@example.invalid",
+      data: { dashboardUrl: "https://reservaeldia.com.ar/dashboard" },
+      metadata: { correlationId: "welcome-12345678-1234-4123-8123-123456789012" } });
+    assert.equal(result.errorCode, "SES_ACCESS_DENIED");
+    assert.deepEqual(sdkLogs, []);
+    assert.equal(serviceLogs.length, 1);
+    assert.doesNotMatch(JSON.stringify(serviceLogs), /private|@|arn:|principal|resourceArn/);
+  } finally { logger.mock.restore(); }
 });
 
 test.after(() => {

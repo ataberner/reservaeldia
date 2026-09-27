@@ -6,8 +6,8 @@ import type { WelcomeRegistration } from "./welcomeRegistration";
 
 async function processRegistration(registration: WelcomeRegistration): Promise<unknown> {
   // Discovery declares only the trigger and bindings. No renderer, store or SES runtime.
-  const { processWelcomeRegistration } = await import("./welcomeRegistration");
-  return processWelcomeRegistration(registration);
+  const { processRegistrationEmails } = await import("./registrationEmails");
+  return processRegistrationEmails(registration);
 }
 
 export function createWelcomeRegistrationHandler(process = processRegistration) {
@@ -15,14 +15,16 @@ export function createWelcomeRegistrationHandler(process = processRegistration) 
     try {
       await process({
         user: { uid: user.uid, email: user.email, displayName: user.displayName,
-          disabled: user.disabled, customClaims: user.customClaims, creationTime: user.metadata.creationTime },
+          disabled: user.disabled, customClaims: user.customClaims, creationTime: user.metadata.creationTime,
+          providerData: user.providerData?.map(provider => ({ providerId: provider.providerId })) },
         sourceEventId: context.eventId,
+        eventTimestamp: context.timestamp,
       });
     } catch {
       // The processor owns correlation/reservation logs. A load/adapter failure may
       // occur before that context exists: never invent a zero-attempt guarantee here.
       try {
-        logError("welcome_registration_adapter", { template: "welcome", userId: user?.uid ?? null,
+        logError("welcome_registration_adapter", { template: null, userId: user?.uid ?? null,
           sourceEventId: context?.eventId ?? null, correlationId: null,
           mode: resolveEmailMode(emailMode.value()), state: "processor_failed",
           attempts: null, messageId: null, errorCode: "WELCOME_REGISTRATION_FAILED" });

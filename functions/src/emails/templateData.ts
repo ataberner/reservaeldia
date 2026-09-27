@@ -1,5 +1,5 @@
 import { emailBrand } from "./theme";
-import type { WelcomeEmailData } from "./types";
+import type { WelcomeEmailData, NewUserNotificationEmailData } from "./types";
 
 export function isEmailDataRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" &&
@@ -21,4 +21,16 @@ export function isWelcomeEmailData(value: unknown): value is WelcomeEmailData {
   } catch {
     return false;
   }
+}
+
+export function isNewUserNotificationEmailData(value: unknown): value is NewUserNotificationEmailData {
+  if (!isEmailDataRecord(value) || Object.keys(value).some(key =>
+    !["name", "email", "registrationMethod", "createdAt"].includes(key))) return false;
+  if ((value.name !== undefined && typeof value.name !== "string") ||
+    (value.email !== undefined && typeof value.email !== "string") ||
+    typeof value.registrationMethod !== "string" ||
+    !["password", "google.com", "unavailable"].includes(value.registrationMethod)) return false;
+  if (value.createdAt === undefined) return true;
+  return typeof value.createdAt === "string" && Number.isFinite(Date.parse(value.createdAt)) &&
+    new Date(value.createdAt).toISOString() === value.createdAt;
 }

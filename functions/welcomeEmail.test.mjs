@@ -170,8 +170,8 @@ test("reusable footer supports supplied or omitted social links and retains its 
   assert.doesNotMatch(hidden, /Instagram|LinkedIn| · /);
 });
 
-test("registry includes both templates, validates synthetic fixtures and preserves TestEmail", async () => {
-  assert.deepEqual(Object.keys(emailTemplates).sort(), ["test", "welcome"]);
+test("registry includes all templates, validates synthetic fixtures and preserves TestEmail", async () => {
+  assert.deepEqual(Object.keys(emailTemplates).sort(), ["newUserNotification", "test", "welcome"]);
   for (const [template, definition] of Object.entries(emailTemplates)) {
     const input = { template, data: definition.previewData };
     assert.ok(isEmailTemplateRequest(input));
@@ -216,14 +216,17 @@ test("welcome uses the same service with a fake transport and existing sandbox s
   assert.equal(sent[0].content.subject, welcomeContent.subject);
   assert.equal(logs[0].template, "welcome");
   assert.doesNotMatch(JSON.stringify(logs), /María|dashboard|@|<html/);
-  for (const [currentMode, code] of [["disabled", "EMAIL_DISABLED"], ["production", "EMAIL_PRODUCTION_NOT_ENABLED"]]) {
+  for (const [currentMode, code] of [["disabled", "EMAIL_DISABLED"]]) {
     mode = currentMode;
     assert.equal((await send(input)).errorCode, code);
   }
+  mode = "production";
+  assert.equal((await send({ ...input, to: "synthetic@example.invalid" })).ok, true);
+  assert.equal(sent[1].to, "synthetic@example.invalid");
   mode = "sandbox";
   assert.equal((await send({ ...input, to: "synthetic@example.invalid" })).errorCode, "EMAIL_RECIPIENT_NOT_ALLOWED");
   assert.equal((await send({ ...input, data: {} })).errorCode, "EMAIL_INVALID_REQUEST");
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 2);
 });
 
 test("rendering and its previews never load Firebase, SES, configuration or the sender", () => {

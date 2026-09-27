@@ -1,5 +1,4 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { warn } from "firebase-functions/logger";
 import { assertExternalEffectAllowed } from "../firebaseAdmin";
 import { resolveEmailAwsCredentials } from "./awsCredentials";
 import { sanitizeAwsError, type SafeAwsError } from "./awsDiagnostics";
@@ -11,6 +10,7 @@ import {
   EMAIL_REGION,
   EMAIL_TIMEOUT_MS,
   SANDBOX_RECIPIENT,
+  emailMode, resolveEmailMode, isEmailRecipient,
 } from "./config";
 import { emailFailure } from "./types";
 import type { EmailResult, EmailTransportRequest } from "./types";
@@ -73,12 +73,19 @@ function normalizeSesError(error: unknown): EmailResult {
 export function createSesTransport(
   clientFactory: () => SesClient = createSesClient,
   timeoutMs = EMAIL_TIMEOUT_MS,
-  logAccessDenied: (details: SafeAwsError) => void = (details) => warn("transactional_email_aws_error", details)
+  // Detailed diagnostics are opt-in for offline tests; production logs the safe
+  // errorCode at the service boundary (a resource ARN can contain an email).
+  logAccessDenied: (details: SafeAwsError) => void = () => {},
+  getMode: () => unknown = () => emailMode.value()
 ) {
   let client: SesClient | undefined;
   return async (request: EmailTransportRequest): Promise<EmailResult> => {
-    // Defense in depth: this adapter is sandbox-only during phase 1.
-    if (request.to !== SANDBOX_RECIPIENT) {
+    const mode = resolveEmailMode(getMode());
+    if (mode === "disabled") return emailFailure("blocked", "EMAIL_DISABLED");
+    if (mode === "invalid") return emailFailure("blocked", "EMAIL_INVALID_MODE");
+    if (!isEmailRecipient(request.to)) return emailFailure("blocked", "EMAIL_INVALID_REQUEST");
+    // Defense in depth uses server configuration, never a caller-supplied mode.
+    if (mode === "sandbox" && request.to !== SANDBOX_RECIPIENT) {
       return emailFailure("blocked", "EMAIL_RECIPIENT_NOT_ALLOWED");
     }
     try {

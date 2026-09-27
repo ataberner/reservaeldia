@@ -13,6 +13,16 @@ export function verifyEmailTypes(template: "test" | "welcome") {
   valid.forEach(input => { void renderEmail(input); });
   const sendable: TransactionalEmailRequest = { ...envelope, template: "welcome", data: { dashboardUrl: url } };
   void renderEmail(sendable);
+  const internal: TransactionalEmailRequest = { template: "newUserNotification",
+    data: { registrationMethod: "unavailable" }, metadata: envelope.metadata };
+  void renderEmail(internal);
+  // @ts-expect-error Internal recipients are exclusively server-side, even if the address matches.
+  const overriddenInternal: TransactionalEmailRequest = { ...internal, to: "synthetic@example.invalid" };
+  void overriddenInternal;
+  // @ts-expect-error Internal template does not accept WelcomeEmail data.
+  void renderEmail({ template: "newUserNotification", data: { dashboardUrl: url } });
+  // @ts-expect-error Registration method must be a backend-normalized enum.
+  void renderEmail({ template: "newUserNotification", data: { registrationMethod: "facebook.com" } });
   // @ts-expect-error Welcome requires dashboardUrl.
   void renderEmail({ template: "welcome", data: {} });
   // @ts-expect-error Test does not accept welcome data.

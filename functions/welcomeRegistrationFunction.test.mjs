@@ -18,6 +18,7 @@ mock.method(require("firebase-functions/logger"), "error", (...args) => logs.pus
 const { auth } = require("firebase-functions/v1");
 const config = requireBuiltModule("lib/emails/config.js");
 const runtime = requireBuiltModule("lib/emails/welcomeRegistration.js");
+const registrationRuntime = requireBuiltModule("lib/emails/registrationEmails.js");
 const { createWelcomeRegistrationHandler, onUserCreatedWelcomeEmail } = requireBuiltModule("lib/emails/welcomeRegistrationFunction.js");
 const { renderEmail } = requireBuiltModule("lib/emails/renderEmail.js");
 const activation = "2026-09-01T00:00:00.000Z"; // Synthetic only, never production configuration.
@@ -61,12 +62,14 @@ test("stable Auth v1 onCreate declaration, private event, retries, dedicated ide
 
 test("exported trigger.run maps only UserRecord fields and the real context eventId", async () => {
   const inputs = [];
-  const spy = mock.method(runtime, "processWelcomeRegistration", async input => { inputs.push(input); });
+  const spy = mock.method(registrationRuntime, "processRegistrationEmails", async input => { inputs.push(input); });
   try {
     const user = userRecord({ customClaims: { admin: false }, passwordHash: "never-forward", token: "never-forward" });
     await onUserCreatedWelcomeEmail.run(user, { ...context, data: { email: "injected@example.invalid" } });
     assert.deepEqual(inputs, [{ user: { uid: user.uid, email: user.email, displayName: user.displayName,
-      disabled: user.disabled, customClaims: user.customClaims, creationTime: user.metadata.creationTime }, sourceEventId: context.eventId }]);
+      disabled: user.disabled, customClaims: user.customClaims, creationTime: user.metadata.creationTime,
+      providerData: user.providerData?.map(provider => ({ providerId: provider.providerId })) },
+      sourceEventId: context.eventId, eventTimestamp: context.timestamp }]);
     assert.doesNotMatch(JSON.stringify(inputs), /never-forward|injected/);
   } finally { spy.mock.restore(); }
 });
@@ -193,12 +196,12 @@ for (const [value, creationTime, expected] of [
   });
 }
 
-test("configured synthetic activation never enables the real production sender", async () => {
+test("configured synthetic activation still cannot enable real SDK sending during tests", async () => {
   const mode = mock.method(config.emailMode, "value", () => "production");
   try {
     const f = fixture({ send: undefined });
     await f.handler(userRecord(), context);
-    assert.equal(f.records.get("synthetic-auth-user").skipReason, "EMAIL_PRODUCTION_NOT_ENABLED");
+    assert.equal(f.records.get("synthetic-auth-user").skipReason, "EMAIL_EXTERNAL_EFFECT_BLOCKED");
   } finally { mode.mock.restore(); }
 });
 
@@ -212,6 +215,7 @@ test("Auth trigger discovery reads no parameters/Secrets and loads no email runt
     require('./lib/emails/welcomeRegistrationFunction.js');
     const loaded = Object.keys(require.cache).map(p=>p.replaceAll('\\\\','/'));
     for (const part of ['/lib/emails/welcomeRegistration.js','/lib/emails/welcomeDeliveryStore.js',
+      '/lib/emails/registrationEmails.js','/lib/emails/newUserNotification.js','/lib/emails/registrationEmail.js',
       '/lib/emails/sendTransactionalEmail.js','/node_modules/react-email/','/node_modules/@react-email/','/node_modules/@aws-sdk/']) {
       assert.equal(loaded.some(p=>p.includes(part)),false,part);
     }

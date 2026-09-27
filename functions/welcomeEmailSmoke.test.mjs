@@ -21,6 +21,7 @@ const { testTransactionalEmail } = requireBuiltModule("lib/emails/testEmailFunct
 const { renderEmail } = requireBuiltModule("lib/emails/renderEmail.js");
 const { createTransactionalEmailService } = requireBuiltModule("lib/emails/sendTransactionalEmail.js");
 const { createSesTransport } = requireBuiltModule("lib/emails/sesClient.js");
+process.env.EMAIL_MODE = "sandbox"; // Offline fake SES path; never loads deployment dotenv.
 const accepted = { ok: true, state: "accepted", messageId: "synthetic-welcome-id", errorCode: null, retryable: false };
 const request = () => ({ method: "POST", body: {}, query: {} });
 const sandboxMode = () => "sandbox";

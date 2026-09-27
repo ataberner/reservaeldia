@@ -124,13 +124,13 @@ test("business processor also blocks the fixed smoke recipient in sandbox", asyn
   assert.equal(f.delivery().attempts, 0);
 });
 
-test("production is still blocked by the real central sender, with no transport/network", async () => {
+test("production reaches the central sender but tests still prohibit the real SDK", async () => {
   const mode = mock.method(config.emailMode, "value", () => "production");
   try {
     const f = fixture({ send: undefined });
     await f.process(registration());
     assert.equal(f.delivery().status, "skipped");
-    assert.equal(f.delivery().skipReason, "EMAIL_PRODUCTION_NOT_ENABLED");
+    assert.equal(f.delivery().skipReason, "EMAIL_EXTERNAL_EFFECT_BLOCKED");
     assert.equal(f.delivery().attempts, 1, "one reserved processor attempt, zero SES requests");
   } finally { mode.mock.restore(); }
 });
@@ -329,7 +329,9 @@ test("correlation allowlist accepts only welcome/test UUID v4 through the centra
 test("processor is backend-only and separate from the event adapter", () => {
   const source = readFileSync(new URL("./src/emails/welcomeRegistration.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /SESv2Client|SendEmailCommand|onCall|onRequest|onCreate|onUserCreated/);
-  assert.match(source, /sendTransactionalEmail/);
+  const shared = readFileSync(new URL("./src/emails/registrationEmail.ts", import.meta.url), "utf8");
+  assert.match(shared, /sendTransactionalEmail/);
+  assert.doesNotMatch(shared, /SESv2Client|SendEmailCommand|onCall|onRequest|onCreate/);
   assert.equal(existsSync(new URL("./src/emails/welcomeRegistrationFunction.ts", import.meta.url)), true);
   assert.doesNotMatch(readFileSync(new URL("./src/index.ts", import.meta.url), "utf8"), /from ["']\.\/emails\/welcomeRegistration["']/);
 });

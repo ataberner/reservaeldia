@@ -172,6 +172,9 @@ service cloud.firestore {
     match /welcomeEmailDeliveries/{document=**} {
       allow read, write: if false; // Backend-only automatic welcome reservations.
     }
+    match /newUserNotificationDeliveries/{document=**} {
+      allow read, write: if false; // Independent backend-only internal notification reservations.
+    }
 
     // A1/A2 scope and unresolved operations: SECURITY_CONTRACT.md, phase-4b2a.
     match /usuarios/{uid} {
@@ -373,6 +376,7 @@ service cloud.firestore {
     match /{collection}/{document=**} {
       allow read, write: if isSignedIn() &&
         collection != "welcomeEmailDeliveries" &&
+        collection != "newUserNotificationDeliveries" &&
         collection != "usuarios" &&
         collection != "publicadas" &&
         collection != "publicadas_historial" &&

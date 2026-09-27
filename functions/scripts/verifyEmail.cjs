@@ -116,24 +116,32 @@ function autonomy() {
     for (const name of Object.keys(require('./package.json').dependencies)) require.resolve(name);
     const { renderEmail } = require('./lib/emails/renderEmail.js');
     const { createWelcomeRegistrationProcessor } = require('./lib/emails/welcomeRegistration.js');
+    const { createNewUserNotificationProcessor } = require('./lib/emails/newUserNotification.js');
+    const { createRegistrationEmailsProcessor } = require('./lib/emails/registrationEmails.js');
     const { createWelcomeRegistrationHandler } = require('./lib/emails/welcomeRegistrationFunction.js');
     (async () => {
-      for (const request of [{template:'test',data:{}}, {template:'welcome',data:{dashboardUrl:'https://reservaeldia.com.ar/dashboard'}}]) {
+      for (const request of [{template:'test',data:{}}, {template:'welcome',data:{dashboardUrl:'https://reservaeldia.com.ar/dashboard'}},
+        {template:'newUserNotification',data:{registrationMethod:'unavailable'}}]) {
         const rendered = await renderEmail(request);
         assert.ok(rendered.html && rendered.text && rendered.subject);
       }
       const records = new Map();
-      const processor = createWelcomeRegistrationProcessor({getMode:()=> 'sandbox', isSuperAdmin:()=>false,
+      const dependencies = template => ({getMode:()=> 'sandbox', isSuperAdmin:()=>false,
         send:async()=>{sends++; throw Error('Sender forbidden');},
-        store:{reserve:async(uid,record)=>{if(records.has(uid)) return false; records.set(uid,record); return true;}, complete:async()=>{throw Error('Unexpected write');}}});
+        store:{reserve:async(uid,record)=>{const key=template+'/'+uid; if(records.has(key)) return false; records.set(key,record); return true;}, complete:async()=>{throw Error('Unexpected write');}}});
+      const processor = createRegistrationEmailsProcessor({
+        welcome:createWelcomeRegistrationProcessor(dependencies('welcome')),
+        internal:createNewUserNotificationProcessor(dependencies('newUserNotification'))});
       const handler = createWelcomeRegistrationHandler(processor);
       const user = {uid:'synthetic-package-check',email:'synthetic@example.invalid',disabled:false,metadata:{creationTime:new Date().toUTCString()}};
       await Promise.all([handler(user,{eventId:'fixture-event'}),handler(user,{eventId:'fixture-event'})]);
-      const delivery = records.get(user.uid);
-      assert.equal(records.size,1); assert.equal(delivery.status,'skipped'); assert.equal(delivery.attempts,0);
-      assert.equal(delivery.skipReason,'EMAIL_SANDBOX_BUSINESS_BLOCKED');
+      assert.equal(records.size,2);
+      for (const delivery of records.values()) {
+        assert.equal(delivery.status,'skipped'); assert.equal(delivery.attempts,0);
+        assert.equal(delivery.skipReason,'EMAIL_SANDBOX_BUSINESS_BLOCKED');
+      }
       assert.equal(networkAttempts,0); assert.equal(sends,0);
-      console.log(JSON.stringify({ok:true,node:process.version,resolvedOutsidePackage:0,networkAttempts,sends,templates:2}));
+      console.log(JSON.stringify({ok:true,node:process.version,resolvedOutsidePackage:0,networkAttempts,sends,templates:3}));
     })().catch(error=>{console.error(error.message);process.exitCode=1;});
   `], { cwd: directory, env: cleanEnv(), windowsHide: true, encoding: "utf8", timeout: 60000 });
   assert.equal(probe.error, undefined);

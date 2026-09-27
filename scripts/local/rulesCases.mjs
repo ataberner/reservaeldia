@@ -6,6 +6,7 @@ export const authorities = {
   A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (non-admin writes forbidden)",
   A4: "docs/architecture/DATA_MODEL.md#countdownpresets (administrative draft; immutable published versions)",
   W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
+  W2: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails (backend-only internal notification reservations)",
   C1: "firestore.rules / storage.rules (observed, not policy acceptance)",
   C2: "functions/src/auth/adminAuth.ts (observed, not policy acceptance)",
   Q1: "docs/contracts/SECURITY_CONTRACT.md#q1-proposal (proposed; Q1 unresolved)",
@@ -38,16 +39,17 @@ const observed = (id, identity, store, resource, op, expected, extra = {}) =>
   add(id, "characterization", identity, store, resource, op, expected, "C1", extra);
 
 // No client identity can read or mutate the ledger, even its own UID or a child.
-for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "serverSuper"]) {
-  for (const op of ["get", "create", "update", "delete"]) {
-    add(`welcome-${identity}-${op}`, "acceptance", identity, "firestore",
-      "welcomeEmailDeliveries/{A}", op, "deny", "W1");
+for (const [prefix, collection, authority] of [["welcome", "welcomeEmailDeliveries", "W1"],
+  ["new-user-notification", "newUserNotificationDeliveries", "W2"]]) {
+  for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "serverSuper"]) {
+    for (const op of ["get", "create", "update", "delete"]) {
+      add(`${prefix}-${identity}-${op}`, "acceptance", identity, "firestore", `${collection}/{A}`, op, "deny", authority);
+    }
+    add(`${prefix}-${identity}-list`, "acceptance", identity, "firestore", collection, "list", "deny", authority, {
+      fixtures: [{ path: `${collection}/{A}`, data: { status: "dispatching" } }],
+    });
+    add(`${prefix}-${identity}-nested-write`, "acceptance", identity, "firestore", `${collection}/{A}/unmodeled/{ID}`, "create", "deny", authority);
   }
-  add(`welcome-${identity}-list`, "acceptance", identity, "firestore", "welcomeEmailDeliveries", "list", "deny", "W1", {
-    fixtures: [{ path: "welcomeEmailDeliveries/{A}", data: { status: "dispatching" } }],
-  });
-  add(`welcome-${identity}-nested-write`, "acceptance", identity, "firestore",
-    "welcomeEmailDeliveries/{A}/unmodeled/{ID}", "create", "deny", "W1");
 }
 
 // Per-case fixtures include BOTH owners for collection-query cases.

@@ -29,17 +29,17 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
   connectAuthEmulator(auth, "http://127.0.0.1:19099", { disableWarnings: true });
   const created = new Set();
   // Bounded polling only for emulator event completion; no sender retry or name wait.
-  async function delivery(uid) {
+  async function delivery(uid, collection = "welcomeEmailDeliveries") {
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
-      const snapshot = await db.doc(`welcomeEmailDeliveries/${uid}`).get();
+      const snapshot = await db.doc(`${collection}/${uid}`).get();
       if (snapshot.exists) {
         const data = snapshot.data();
         assert.equal(data.status, "skipped");
         assert.equal(data.skipReason, "EMAIL_DISABLED");
         assert.equal(data.attempts, 0);
         assert.ok(data.sourceEventId);
-        assert.match(data.correlationId, /^welcome-/);
+        assert.match(data.correlationId, collection === "welcomeEmailDeliveries" ? /^welcome-/ : /^new-user-notification-/);
         assert.equal(data.messageId, undefined);
         assert.equal(data.email, undefined);
         return data;
@@ -60,6 +60,7 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
     created.add(uid);
     assert.equal(passwordAccount.user.displayName, null);
     const first = await delivery(uid);
+    const internalFirst = await delivery(uid, "newUserNotificationDeliveries");
     const countBefore = eventLogCount(uid);
     assert.ok(countBefore > 0, "must observe the real event in processor logs");
     await signOut(auth);
@@ -81,6 +82,7 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
       assert.equal(getAdditionalUserInfo(google).isNewUser, true, modal);
       assert.equal(google.user.displayName, "Agustín Prueba");
       const googleFirst = await delivery(google.user.uid);
+      const googleInternalFirst = await delivery(google.user.uid, "newUserNotificationDeliveries");
       const googleCount = eventLogCount(google.user.uid);
       assert.ok(googleCount > 0);
       await signOut(auth);
@@ -89,9 +91,11 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
       assert.equal(existing.user.uid, google.user.uid);
       await pause(750);
       assert.deepEqual(await delivery(google.user.uid), googleFirst);
+      assert.deepEqual(await delivery(google.user.uid, "newUserNotificationDeliveries"), googleInternalFirst);
       assert.equal(eventLogCount(google.user.uid), googleCount, "existing Google login emitted no creation event");
     }
     assert.deepEqual(await delivery(uid), first);
+    assert.deepEqual(await delivery(uid, "newUserNotificationDeliveries"), internalFirst);
     assert.equal(eventLogCount(uid), countBefore, "existing password login emitted no creation event");
     assert.equal((await db.doc(`usuarios/${uid}`).get()).exists, false, "welcome does not depend on or create a profile");
   } finally {
@@ -99,6 +103,7 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
     for (const uid of created) {
       await admin.auth().deleteUser(uid);
       await db.doc(`welcomeEmailDeliveries/${uid}`).delete(); // Exact demo fixtures only.
+      await db.doc(`newUserNotificationDeliveries/${uid}`).delete();
     }
     await deleteApp(app);
     await admin.delete();

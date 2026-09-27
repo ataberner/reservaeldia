@@ -52,6 +52,7 @@ test("transactional email addresses are fixed server-side with unchanged sender,
   assert.equal(email.EMAIL_REPLY_TO_ADDRESS, "hola@reservaeldia.com.ar");
   assert.equal(email.EMAIL_REGION, "us-east-1");
   assert.equal(email.SANDBOX_RECIPIENT, "reservaeldia.invitaciones@gmail.com");
+  assert.equal(email.NEW_USER_NOTIFICATION_RECIPIENT, "reservaeldia.invitaciones@gmail.com");
   assert.equal(readSecret.mock.callCount(), 0);
 });
 

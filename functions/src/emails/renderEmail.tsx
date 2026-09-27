@@ -24,6 +24,7 @@ export async function renderEmail(
   switch (input.template) {
     case "test": return renderTemplate(emailTemplates.test, input.data);
     case "welcome": return renderTemplate(emailTemplates.welcome, input.data);
+    case "newUserNotification": return renderTemplate(emailTemplates.newUserNotification, input.data);
     default: return unsupportedTemplate(input);
   }
 }

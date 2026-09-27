@@ -100,14 +100,21 @@ test("package lock uses only existing locked versions, without outside-package l
   assert.equal(pkg.engines.node, "20"); assert.equal(pkg.main, "lib/emails/entrypoint.js");
 });
 
-test("email normal configuration is sandbox, activation unset and only canonical superadmin data is shared", () => {
+test("email configuration permits explicit modes, production requires a valid cutoff and superadmin authority is preserved", () => {
   const directory = path.join(root, "functions-email");
   for (const file of readdirSync(directory).filter(n => /^\.env(?:\.|$)/.test(n))) {
     const source = readFileSync(path.join(directory, file), "utf8");
     const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*=/gm)].map(m => m[1]);
     assertConfigurationNames("email", names);
-    assert.ok(/^EMAIL_MODE=sandbox\s*$/m.test(source), "Sandbox configuration required");
-    assert.ok(/^WELCOME_EMAIL_ACTIVATION_AT=[ \t]*$/m.test(source), "Activation must remain unset");
+    const mode = source.match(/^EMAIL_MODE=([^\r\n]*)/m)?.[1].trim();
+    const activation = source.match(/^WELCOME_EMAIL_ACTIVATION_AT=([^\r\n]*)/m)?.[1].trim();
+    assert.ok(["disabled", "sandbox", "production"].includes(mode), "Explicit email mode required");
+    assert.notEqual(activation, undefined, "Activation parameter required");
+    if (mode === "production" || activation) {
+      assert.ok(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(activation) &&
+        Number.isFinite(Date.parse(activation)) && new Date(activation).toISOString() === activation,
+      "Configured activation must be canonical UTC; values omitted");
+    }
     const before = readFileSync(path.join(root, "functions/.env.reservaeldia-7a440"), "utf8").split(/\r?\n/).find(line => /^SUPERADMINS_UIDS=/.test(line));
     assert.ok(source.split(/\r?\n/).includes(before), "Canonical superadmin authority must be preserved; values omitted");
     const ignored = spawnSync("git", ["check-ignore", "functions-email/" + file], { cwd: root, encoding: "utf8", windowsHide: true });

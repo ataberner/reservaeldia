@@ -170,15 +170,18 @@ async function fixture(c) {
   } catch (error) { await cleanup(); throw error; }
 }
 
-test("welcome ledger: Admin SDK bypass and real atomic reservation across concurrent processors", async () => {
-  const { createWelcomeDeliveryStore } = require("../../functions/lib/emails/welcomeDeliveryStore.js");
+for (const collection of ["welcomeEmailDeliveries", "newUserNotificationDeliveries"]) {
+test(`${collection}: Admin SDK bypass and real atomic reservation across concurrent processors`, async () => {
+  const { createRegistrationDeliveryStore } = require("../../functions/lib/emails/registrationDeliveryStore.js");
   const { createWelcomeRegistrationProcessor } = require("../../functions/lib/emails/welcomeRegistration.js");
+  const { createNewUserNotificationProcessor } = require("../../functions/lib/emails/newUserNotification.js");
+  const createProcessor = collection === "welcomeEmailDeliveries" ? createWelcomeRegistrationProcessor : createNewUserNotificationProcessor;
   const uid = `${runId}-welcome-backend`;
-  const reference = adminDb.doc(`welcomeEmailDeliveries/${uid}`);
+  const reference = adminDb.doc(`${collection}/${uid}`);
   let sends = 0;
   try {
-    const makeProcessor = () => createWelcomeRegistrationProcessor({
-      store: createWelcomeDeliveryStore(() => adminDb), getMode: () => "production", isSuperAdmin: () => false,
+    const makeProcessor = () => createProcessor({
+      store: createRegistrationDeliveryStore(collection, () => adminDb), getMode: () => "production", isSuperAdmin: () => false,
       getActivationTime: () => "2026-01-01T00:00:00.000Z",
       send: async () => { sends++; return { ok: true, state: "accepted", messageId: "synthetic-welcome-id", errorCode: null, retryable: false }; },
     });
@@ -200,6 +203,7 @@ test("welcome ledger: Admin SDK bypass and real atomic reservation across concur
   }
   assert.equal((await reference.get()).exists, false);
 });
+}
 
 for (const entry of cases) test(`${entry.group}: ${entry.id}`, { timeout: 25000 }, async () => {
   const c = expand(entry, entry.id);

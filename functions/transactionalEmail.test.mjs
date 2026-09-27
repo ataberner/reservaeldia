@@ -25,6 +25,7 @@ const { createTransactionalEmailService, sendTransactionalEmail } = requireBuilt
 const { createSesTransport, createSesClient } = requireBuiltModule("lib/emails/sesClient.js");
 const { createTestEmailHandler, testTransactionalEmail } = requireBuiltModule("lib/emails/testEmailFunction.js");
 const config = requireBuiltModule("lib/emails/config.js");
+process.env.EMAIL_MODE = "sandbox"; // Offline test process only; never loads dotenv.
 const { SANDBOX_RECIPIENT, resolveEmailMode } = config;
 const request = () => ({
   to: SANDBOX_RECIPIENT,
@@ -84,7 +85,7 @@ test("renderer rejects unknown templates, missing data and variable injection", 
 });
 
 for (const [mode, code] of [[undefined, "EMAIL_DISABLED"], ["", "EMAIL_DISABLED"],
-  ["disabled", "EMAIL_DISABLED"], ["production", "EMAIL_PRODUCTION_NOT_ENABLED"],
+  ["disabled", "EMAIL_DISABLED"],
   ["SANDBOX", "EMAIL_INVALID_MODE"], [" sandbox ", "EMAIL_INVALID_MODE"]]) {
   test(`mode ${String(mode)} fails closed before render/SES`, async () => {
     const service = serviceFor(mode, { getMode: () => mode });
@@ -110,8 +111,9 @@ test("sandbox permits only its exact recipient and does not silently redirect", 
   assert.equal(service.sends.length, 1);
 });
 
-test("rejects multiple recipients, CR/LF, display names, client content and arbitrary headers", async () => {
-  const service = serviceFor();
+for (const mode of ["sandbox", "production"]) {
+test(`${mode} rejects multiple recipients, CR/LF, display names, client content and arbitrary headers`, async () => {
+  const service = serviceFor(mode);
   const invalid = [null, {}, ...[
     [SANDBOX_RECIPIENT], `${SANDBOX_RECIPIENT},other@example.invalid`,
     `${SANDBOX_RECIPIENT};other@example.invalid`, `${SANDBOX_RECIPIENT}\r\nBcc: x@example.invalid`,
@@ -125,6 +127,13 @@ test("rejects multiple recipients, CR/LF, display names, client content and arbi
   assert.equal(service.sends.length, 0);
   assert.equal(service.renders.length, 0);
 });
+}
+
+test("a logging exception cannot turn SES acceptance into an ambiguous result", async () => {
+  const service = serviceFor("production", { log: () => { throw new Error("private logger error"); } });
+  assert.deepEqual(await service.send({ ...request(), to: "real@example.invalid" }), accepted);
+  assert.equal(service.sends.length, 1);
+});
 
 test("render failure is normalized and cannot reach SES", async () => {
   const service = serviceFor("sandbox", { render: async () => { throw new Error("private body"); } });
@@ -137,7 +146,7 @@ test("logs contain only safe fields, correlation and accepted SES MessageId", as
   const service = serviceFor();
   assert.deepEqual(await service.send(request()), accepted);
   assert.deepEqual(Object.keys(service.logs[0]).sort(), [
-    "correlationId", "durationMs", "errorCode", "messageId", "mode", "state", "template",
+    "correlationId", "errorCode", "messageId", "mode", "state", "template",
   ]);
   assert.equal(service.logs[0].messageId, accepted.messageId);
   assert.equal(service.logs[0].correlationId, request().metadata.correlationId);

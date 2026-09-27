@@ -2,12 +2,22 @@
 
 Status: Operational Diagnostic Evidence. Fases 2A + 2B cerradas hasta sandbox: 2026-09-26.
 
+**Estado local vigente, 27/09/2026:** preparada la habilitación productiva y la
+notificación interna; ver [activación y rollback](#produccion-registration-emails).
+El código acepta production, pero el dotenv sigue en sandbox y el corte vacío.
+No se desplegó ni se enviaron correos en esta preparación. Las referencias
+históricas a production bloqueado describen las versiones anteriores.
+
+**Declaración posterior del operador:** SES aprobado fuera de sandbox en
+us-east-1, cuota diaria 50.000, tasa máxima 14/s y account health Healthy.
+No se consultó AWS ni se modificaron sus credenciales o IAM para este cambio.
+
 **Revalidación del 27/09/2026:** la
 [Etapa 2 de arquitectura](FUNCTIONS_STAGE2_RECONCILIATION.md) confirma los tres
 endpoints ACTIVE en email, opciones/bindings/IAM esperados, EMAIL_MODE=sandbox,
 activación vacía y autoridad superadmin coincidente. No faltaba repetir ningún
-deploy/migración de infraestructura. El operador confirmó que SES sigue en
-sandbox; no se habilitaron envíos ni se repitieron smokes. El remoto adicional
+deploy/migración de infraestructura. En esa revisión previa SES seguía en
+sandbox; la declaración posterior de aprobación está arriba. El remoto adicional
 generatePublishedShareImage quedó clasificado B (reemplazado/obsoleto), retenido
 hasta validar su recuperación segura antes del retiro. El cierre del 26/09 que
 sigue se conserva como snapshot histórico, no como una nueva lista de operaciones.
@@ -16,6 +26,290 @@ La elección de codebase para nuevas Functions se rige por
 [Functions ownership](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md). Este runbook
 conserva estado operativo y snapshots fechados; el cierre siguiente reemplaza la
 preparación histórica y no autoriza repetir migraciones ni activar production.
+
+<a id="produccion-registration-emails"></a>
+## Producción preparada: bienvenida y aviso interno independientes
+
+Autoridad: Auth v1 user.create → `onUserCreatedWelcomeEmail` → coordinador
+`registrationEmails.ts` → dos procesadores. El adaptador sigue lazy: discovery no
+carga renderer, AWS SDK, store ni valores de Secrets. Nombre, generación, región,
+límites, service account y bindings del endpoint no cambian. No se agregan
+endpoints ni se modifica default/Payments o el frontend.
+
+| Efecto | Template | Destinatario | Registro atómico |
+| --- | --- | --- | --- |
+| Bienvenida | welcome | UserRecord.email válido | welcomeEmailDeliveries/{uid} |
+| Aviso operativo | newUserNotification | reservaeldia.invitaciones@gmail.com fijo en config.ts | newUserNotificationDeliveries/{uid} |
+
+`NewUserNotificationEmail` usa subject **Nuevo usuario registrado — Reserva el
+Día**, preheader **Se creó una nueva cuenta en Reserva el Día.**, nombre/email
+cuando existen, método y fecha. Usa los componentes email actuales. CTA fijo:
+`https://reservaeldia.com.ar/admin/usuarios`, ruta comprobada en
+`src/pages/admin/usuarios.jsx`, con acceso superadmin; no concede permisos.
+HTML/plain-text se renderizan con React Email. No unsubscribe, scripts ni tracking.
+Preview: `npm.cmd run email:dev` → `http://127.0.0.1:3001/newUserNotification.html`
+(o `.txt`); guardar cambios y recargar. `email:build` genera los tres templates.
+
+Datos exclusivamente del evento/backend:
+
+- Welcome: displayName normalizado, email Auth y dashboardUrl fijo
+  `https://reservaeldia.com.ar/dashboard`. Sin nombre mantiene «¡Hola!».
+- Aviso: displayName/email Auth, metadata.creationTime normalizada a ISO UTC;
+  el mapper admite timestamp del evento como respaldo de presentación. La fecha
+  se muestra en Buenos Aires. **El gate de activación siempre exige creationTime
+  Auth válida**: no usa la fecha de entrega de un evento antiguo para habilitarlo.
+- providerData solo aporta providerId. Un único proveedor identificable da
+  password → Email o google.com → Google; vacío, desconocido o múltiples
+  proveedores distintos → No disponible. No se consultan perfiles Firestore.
+- Disabled, customClaims.admin === true y la autoridad canónica isSuperAdmin(uid)
+  excluyen ambos efectos. Si esa autoridad falla, no se adquiere reserva ni se
+  envía. Sin email válido se omite Welcome; el aviso interno sigue siendo útil
+  y muestra los datos disponibles. No se inventan exclusiones por dominio/nombre.
+
+### Fronteras, estados e independencia
+
+`sendTransactionalEmail()` sigue siendo la única frontera. Su unión tipada
+admite test/welcome con un solo `to`, y newUserNotification **sin `to`**; cualquier
+destinatario suministrado al aviso, incluso el correcto, se rechaza en runtime.
+From/Reply-To permanecen centralizados y no se permiten CC/BCC, contenido ni
+headers arbitrarios. El transporte revalida modo/destinatario server-side.
+
+Se retiró EMAIL_PRODUCTION_NOT_ENABLED y se limitó la allowlist al modo sandbox.
+Sandbox conserva ambos smokes privados con su destinatario fijo; los eventos de
+usuarios registran **dos skipped, attempts=0, EMAIL_SANDBOX_BUSINESS_BLOCKED**,
+sin sender ni redirección. Disabled hace lo mismo con EMAIL_DISABLED. Modo
+inválido falla cerrado. Production permite los dos efectos solo al pasar el gate.
+
+La garantía sigue siendo **como máximo un intento automático por UID y por
+efecto**, con reserva Firestore create/exists=false. La mecánica se comparte en
+`registrationEmail.ts` y `registrationDeliveryStore.ts`; colecciones, estados y
+correlaciones son independientes. Cualquier registro existente, incluido skipped,
+failed, unknown o dispatching antiguo, impide un intento adicional de ese efecto.
+
+Cada documento conserva status, sourceEventId, correlationId, attempts (0/1),
+startedAt y updatedAt. Solo agrega acceptedAt/messageId al aceptar, errorCode al
+fallar y skipReason al omitir. No guarda email, nombre ni bodies.
+
+- accepted: SES devolvió MessageId; **no significa delivered**.
+- failed: rechazo explícito conocido; no hay retry automático.
+- unknown: timeout/conexión ambigua; no hay retry automático.
+- dispatching: reserva adquirida sin resultado persistido; no hay lease ni rescate.
+- skipped: bloqueo o inelegibilidad. Los gates previos reservan attempts=0; un
+  bloqueo de render/transporte posterior conserva el intento ya reservado.
+
+El coordinador espera ambos resultados mediante allSettled. Un fallo antes de
+reservar permite retry del evento, después de esperar al otro procesador. SES
+jamás se ejecuta en una transacción. Un fallo al persistir el resultado repite
+**solo ese write una vez**, nunca SES; si sigue fallando, se conserva dispatching
+y se registra el MessageId conocido. No se borra un ledger para reintentar.
+Un fallo de cualquiera de los efectos no transforma el estado del otro.
+No hay cola, worker ni backfill.
+
+Logging solo con template, userId, sourceEventId, correlationId, mode, state,
+attempts, messageId y errorCode según contexto. Sin email/nombre/body/tokens.
+El adaptador usa template=null cuando no puede atribuir un fallo a un efecto.
+Se retira durationMs del log central y el diagnóstico AWS detallado por defecto:
+un resource ARN puede contener una dirección. La utilidad de sanitización y sus
+tests permanecen offline; producción expone el errorCode seguro.
+
+### Prerrequisitos de activación manual
+
+1. Suite local aprobada y revisión del diff. No repetir migraciones de ownership.
+2. **Aplicar primero las Rules nuevas:** ambas colecciones tienen deny recursivo
+   y exclusión del fallback authenticated. Sin eso un cliente podría fabricar o
+   borrar reservas del aviso. El Admin SDK omite Rules; sus permisos IAM siguen
+   siendo create/update en Firestore, sin nuevas colecciones de negocio.
+3. La misma identidad `welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com`
+   necesita el acceso create/update existente y secretAccessor por cada uno de
+   AWS_SES_ACCESS_KEY_ID / AWS_SES_SECRET_ACCESS_KEY. Sin nuevas credenciales,
+   bindings ni grants remotos. El operador necesita actAs y permisos de deploy.
+4. Corroborar aprobación SES/región y ausencia de restricciones IAM al destinatario
+   que contradigan la policy validada. No se modificó ni auditó IAM remoto aquí.
+5. Conservar SUPERADMINS_UIDS existente en el dotenv de email. No copiar variables
+   de default/Payments, ni valores de Secrets. Mantener los smoke endpoints; en
+   esta transición testWelcomeEmail aporta una prueba aislada de template/sandbox
+   para rollback. Su retiro será un cambio separado, sin comando de borrado ahora.
+
+### Comandos pendientes: los ejecuta el operador, no esta preparación
+
+Desde `C:\Reservaeldia`, primero desplegar exclusivamente las Rules revisadas:
+
+```powershell
+firebase.cmd deploy --only "firestore:rules" --project reservaeldia-7a440
+if ($LASTEXITCODE -ne 0) { throw 'Rules no aplicadas; no activar el trigger' }
+```
+
+Preparar un corte **futuro** con margen para el deploy (30 minutos; si se vence
+antes de ACTIVE, elegir un nuevo corte futuro y volver a desplegar antes de la
+prueba). El formato exacto es UTC ISO 8601 con milisegundos:
+`yyyy-MM-ddTHH:mm:ss.fffZ`. No reutilizar una fecha histórica de este documento.
+Solo el operador ejecutará este cambio; el archivo actual sigue en sandbox.
+
+```powershell
+$emailEnvPath = Join-Path (Get-Location) 'functions-email/.env.reservaeldia-7a440'
+$emailEnvText = [IO.File]::ReadAllText($emailEnvPath)
+if ([regex]::Matches($emailEnvText, '(?m)^EMAIL_MODE=').Count -ne 1 -or
+    [regex]::Matches($emailEnvText, '(?m)^WELCOME_EMAIL_ACTIVATION_AT=').Count -ne 1) {
+  throw 'Revisar configuración: se espera exactamente una entrada por parámetro'
+}
+$activationUtc = [DateTime]::UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+$emailEnvText = [regex]::Replace($emailEnvText, '(?m)^WELCOME_EMAIL_ACTIVATION_AT=[^\r\n]*', "WELCOME_EMAIL_ACTIVATION_AT=$activationUtc")
+$emailEnvText = [regex]::Replace($emailEnvText, '(?m)^EMAIL_MODE=[^\r\n]*', 'EMAIL_MODE=production')
+[IO.File]::WriteAllText($emailEnvPath, $emailEnvText, [Text.UTF8Encoding]::new($false))
+Remove-Variable emailEnvText
+Write-Output "EMAIL_MODE=production; WELCOME_EMAIL_ACTIVATION_AT=$activationUtc"
+firebase.cmd deploy --only "functions:email:onUserCreatedWelcomeEmail" --project reservaeldia-7a440
+if ($LASTEXITCODE -ne 0) { throw 'Deploy fallido: no crear la cuenta de prueba' }
+gcloud.cmd functions describe onUserCreatedWelcomeEmail --no-gen2 --region=us-central1 --project=reservaeldia-7a440 --format="yaml(name,status,runtime,entryPoint,eventTrigger,serviceAccountEmail,secretEnvironmentVariables.key,secretEnvironmentVariables.version,labels.firebase-functions-codebase,environmentVariables.EMAIL_MODE,environmentVariables.WELCOME_EMAIL_ACTIVATION_AT)"
+```
+
+Esperar ACTIVE, gen1/Node20/us-central1, owner email, identidad y dos Secrets
+sin cambios, EMAIL_MODE production y el corte exacto. Solo se consultan esos dos
+parámetros normales, nunca el entorno completo. El cambio de dotenv se aplicará
+únicamente al endpoint desplegado; no actualiza automáticamente los smokes.
+No desplegar default, Payments ni toda la codebase email.
+
+### Una prueba controlada después del corte (sí enviará dos emails)
+
+Crear una única cuenta Auth con un alias real de un buzón propio, nunca un
+destinatario de terceros ni example.invalid. El operador debe poder crear/borrar
+usuarios Auth y leer los dos deliveries. Los siguientes comandos usan su sesión
+gcloud existente; no crean credenciales persistentes ni muestran tokens:
+
+```powershell
+if ([DateTime]::UtcNow -lt [DateTime]::Parse($activationUtc).ToUniversalTime()) {
+  throw 'Esperar al corte de activación antes de crear la cuenta'
+}
+$env:REGISTRATION_PROBE_EMAIL = Read-Host 'Alias real único de un buzón propio para la prueba'
+$probeToken = (gcloud.cmd auth print-access-token).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $probeToken) { throw 'Sesión gcloud no disponible' }
+New-Item -ItemType Directory -Force '.local-isolation/email-production-probe' | Out-Null
+$probeScriptPath = Join-Path (Get-Location) '.local-isolation/email-production-probe/create.cjs'
+$probeScript = @'
+const fs = require("node:fs"), crypto = require("node:crypto");
+const admin = require(process.cwd() + "/functions/node_modules/firebase-admin");
+if (process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.RESERVA_LOCAL_SESSION) throw Error("No ejecutar dentro del harness/emulador");
+const token = fs.readFileSync(0, "utf8").trim();
+const email = process.env.REGISTRATION_PROBE_EMAIL;
+if (!email || /@(example\.(invalid|test|com)|localhost)$/i.test(email)) throw Error("Usar buzón propio real");
+const app = admin.initializeApp({projectId:"reservaeldia-7a440", credential:{getAccessToken:async()=>({access_token:token,expires_in:300})}});
+(async()=>{
+  try {
+    const user = await app.auth().createUser({email, displayName:"Prueba controlada de emails", password:crypto.randomBytes(32).toString("base64url")});
+    console.log(JSON.stringify({uid:user.uid,creationTime:user.metadata.creationTime}));
+  } catch { console.error("PROBE_AUTH_CREATE_FAILED"); process.exitCode=1; }
+  finally { await app.delete(); }
+})();
+'@
+[IO.File]::WriteAllText($probeScriptPath, $probeScript, [Text.UTF8Encoding]::new($false))
+$probeOutput = $probeToken | node $probeScriptPath
+$probeExit = $LASTEXITCODE
+Remove-Item Env:REGISTRATION_PROBE_EMAIL
+if ($probeExit -ne 0) { throw 'No repetir automáticamente la creación; comprobar Auth' }
+$probeUser = $probeOutput | ConvertFrom-Json
+$probeUid = $probeUser.uid
+if (-not $probeUid) { throw 'No se obtuvo UID; comprobar Auth antes de repetir' }
+$probeUser
+```
+
+Tras la ejecución asíncrona consultar **solo** los dos documentos de ese UID:
+
+```powershell
+$deliveryBase = 'https://firestore.googleapis.com/v1/projects/reservaeldia-7a440/databases/(default)/documents'
+$deliveryMask = 'mask.fieldPaths=status&mask.fieldPaths=attempts&mask.fieldPaths=sourceEventId&mask.fieldPaths=correlationId&mask.fieldPaths=messageId&mask.fieldPaths=errorCode&mask.fieldPaths=skipReason'
+foreach ($deliveryCollection in @('welcomeEmailDeliveries','newUserNotificationDeliveries')) {
+  $delivery = Invoke-RestMethod -Method Get -Uri "$deliveryBase/$deliveryCollection/${probeUid}?$deliveryMask" -Headers @{ Authorization="Bearer $probeToken" }
+  [pscustomobject]@{ collection=$deliveryCollection; fields=$delivery.fields } | ConvertTo-Json -Depth 6
+}
+gcloud.cmd logging read "resource.type=cloud_function AND resource.labels.function_name=onUserCreatedWelcomeEmail AND jsonPayload.userId=$probeUid" --project=reservaeldia-7a440 --freshness=30m --limit=30 --format="json(timestamp,jsonPayload.template,jsonPayload.userId,jsonPayload.sourceEventId,jsonPayload.correlationId,jsonPayload.mode,jsonPayload.state,jsonPayload.attempts,jsonPayload.messageId,jsonPayload.errorCode)"
+```
+
+Esperar dos accepted/attempts=1, correlaciones distintas y dos MessageId. Revisar
+recepción en el alias propio y en el Gmail interno, contenido, From y Reply-To.
+Accepted no prueba entrega: esa comprobación manual es adicional. No repetir la
+creación ante unknown/dispatching/failed ni borrar reservas para forzar envío.
+Un 404 inicial puede ser evento aún pendiente: repetir solo la lectura, nunca el
+alta. Registrar evidencia sanitizada por correlación, sin bodies ni destinatarios.
+
+Para limpiar únicamente la cuenta sintética, conservando **ambos deliveries**:
+
+```powershell
+$env:REGISTRATION_PROBE_UID = $probeUid
+$probeScriptPath = Join-Path (Get-Location) '.local-isolation/email-production-probe/delete.cjs'
+$probeScript = @'
+const fs = require("node:fs"), admin = require(process.cwd() + "/functions/node_modules/firebase-admin");
+if (process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.RESERVA_LOCAL_SESSION) throw Error("No ejecutar dentro del harness/emulador");
+const token = fs.readFileSync(0,"utf8").trim(), uid = process.env.REGISTRATION_PROBE_UID;
+if (!uid) throw Error("UID requerido");
+const app = admin.initializeApp({projectId:"reservaeldia-7a440",credential:{getAccessToken:async()=>({access_token:token,expires_in:300})}});
+(async()=>{try {
+  const user = await app.auth().getUser(uid);
+  if (user.displayName !== "Prueba controlada de emails") throw Error("No es la cuenta de prueba");
+  await app.auth().deleteUser(uid);
+  console.log("Cuenta sintética eliminada; deliveries conservados");
+} catch { console.error("PROBE_AUTH_DELETE_FAILED"); process.exitCode=1; }
+finally { await app.delete(); }})();
+'@
+[IO.File]::WriteAllText($probeScriptPath, $probeScript, [Text.UTF8Encoding]::new($false))
+$probeToken | node $probeScriptPath
+Remove-Item Env:REGISTRATION_PROBE_UID
+Remove-Variable probeToken
+```
+
+### Rollback operativo, sin reenvíos
+
+Cambiar únicamente el modo a disabled y actualizar **el mismo trigger**:
+
+```powershell
+$emailEnvPath = Join-Path (Get-Location) 'functions-email/.env.reservaeldia-7a440'
+$emailEnvText = [IO.File]::ReadAllText($emailEnvPath)
+if ([regex]::Matches($emailEnvText, '(?m)^EMAIL_MODE=').Count -ne 1) { throw 'Revisar EMAIL_MODE' }
+$emailEnvText = [regex]::Replace($emailEnvText, '(?m)^EMAIL_MODE=[^\r\n]*', 'EMAIL_MODE=disabled')
+[IO.File]::WriteAllText($emailEnvPath, $emailEnvText, [Text.UTF8Encoding]::new($false))
+Remove-Variable emailEnvText
+firebase.cmd deploy --only "functions:email:onUserCreatedWelcomeEmail" --project reservaeldia-7a440
+```
+
+Verificar ACTIVE/mode disabled con el describe acotado anterior. No revierte
+emails aceptados ni cancela invocaciones en curso. Los nuevos eventos quedan
+skipped/0 en cada colección; conservar corte, Rules, ledgers y Secrets. Si el
+update no puede completarse y se requiere detener nuevos eventos inmediatamente,
+el operador puede retirar **solo** el trigger, sin tocar los smokes:
+
+```powershell
+firebase.cmd functions:delete onUserCreatedWelcomeEmail --region us-central1 --project reservaeldia-7a440 --force
+```
+
+Eso tampoco cancela invocaciones en curso. Antes de recrearlo: volver a sandbox
+o disabled, verificar inventario/configuración y preparar un corte futuro en una
+activación posterior. No recuperar huecos mediante backfill ni eliminar registros.
+El rollback de ownership histórico de los smokes no corresponde a esta activación.
+
+### Validación local de la preparación productiva — 27/09/2026
+
+| Check ejecutado | Resultado |
+| --- | --- |
+| npm run test:emails | 203/203: Welcome, aviso interno, destinatarios, cutoff, concurrencia, fallos independientes, privacidad, SES falso, tipos y discovery lazy |
+| Rules + Auth/Functions/Firestore demo + countdown | 1445/1445; reservas reales concurrentes en ambas colecciones; clientes propios/ajenos/admin sin acceso; login existente sin evento nuevo; cleanup completo |
+| verify:ownership | 41/41; builds de default/payments/email, registro único y metadata intacta; 101/3/3, sin duplicados |
+| CLI real en procesos aislados | default: detector 2,937 s / total 7,203 s; payments: 1,152 / 5,272 s; email: 0,777 / 4,852 s; sin timeouts |
+| Paquete email + configuración | 9/9 y 8/8; prueba del paquete repetida después de refrescar el build local de Payments |
+| Typechecks y preview | default/payments/email aprobados; email:build renderiza test, welcome, newUserNotification |
+| Paquete autónomo fuera del repositorio | 365 dependencias copiadas desde versiones instaladas/lock; 25 opcionales ausentes; 3 templates; 0 resoluciones externas, 0 red, 0 envíos; sin lectura de Secrets |
+| Lint de modificados | 31 archivos; 0 warnings, un no-unsafe-finally preexistente en rules.test.mjs, reproducido contra HEAD; sin errores nuevos |
+| Configuración y alcance | dotenv email sigue sandbox/corte vacío; nombres EMAIL_MODE, WELCOME_EMAIL_ACTIVATION_AT, SUPERADMINS_UIDS; default/Payments/frontend/locks/metadata sin cambios |
+| Revisión final | git diff --check; sin patrones de credenciales en los archivos modificados; 7 bloques PowerShell parseados y 2 scripts de prueba compilados sintácticamente, nunca ejecutados |
+
+Límites/evidencia: el lint no se declara aprobado globalmente. Una corrida
+conjunta tuvo 218/219 por el artefacto local de Payments anterior a sus límites
+actuales: recompilar su source intacto y repetir paquete resolvió 9/9; no se
+cambió el registro para aceptar la diferencia. El gate aislado, que compila sus
+tres sources desde cero, ya había pasado. La copia autónoma requirió permiso
+local para acceder al directorio temporal de Windows; no amplió efectos remotos.
+
+Evidencia ignorada por Git: `.local-isolation/email-production-2026-09-27/` y
+`.local-isolation/reports/run-ON3bIs/`. No se consultaron cuentas AWS/GCP, valores
+de Secrets ni datos reales en esta preparación; no hubo deploy, email ni commit.
 
 <a id="cierre-welcome-sandbox"></a>
 ## Cierre formal de WelcomeEmail hasta sandbox — 26/09/2026
@@ -172,7 +466,7 @@ Reserva el Día
 | Principal AWS comprobado con STS | `arn:aws:iam::993173880072:user/reservaeldia-ses-sender` |
 | Secrets vinculados | `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` |
 
-**SES continúa en sandbox.** La Fase 1 valida infraestructura; no conecta emails
+**En aquella prueba SES estaba en sandbox.** La Fase 1 valida infraestructura; no conecta emails
 de negocio ni reemplaza emails de Firebase Authentication.
 
 ## Componentes y límites vigentes
@@ -183,11 +477,11 @@ adaptador que importa `SESv2Client` y `SendEmailCommand`.
 
 - `config.ts`: región, remitente, Reply-To, allowlist y parámetros nativos de Firebase.
   `EMAIL_MODE=disabled | sandbox | production`; ausente o vacío → `disabled`.
-  `production` devuelve `EMAIL_PRODUCTION_NOT_ENABLED`: todavía no está habilitado.
+  `production` acepta destinatarios reales; los eventos exigen además un corte válido.
 - `awsCredentials.ts`: resuelve los dos Secrets de forma lazy y explícita, sin
   cadena implícita de credenciales AWS. Puede sustituirse en una fase futura sin
   cambiar el contrato del servicio. No resuelve Secrets durante discovery.
-- `renderEmail.tsx` + `templateRegistry.tsx`: registro tipado `test | welcome`,
+- `renderEmail.tsx` + `templateRegistry.tsx`: registro tipado `test | welcome | newUserNotification`,
   validación de datos y generación HTML/plain-text con React Email. El renderer
   no importa configuración Firebase, transporte ni Secrets.
 - `sesClient.ts`: remitente y Reply-To fijos con nombres Unicode codificados RFC 2047, un solo
@@ -246,10 +540,10 @@ tras el smoke manual autorizado.
 El template define presentación, datos, asunto y preheader. El transporte define
 remitente, Reply-To, destinatario permitido, credenciales y entrega a SES. Registrar una
 plantilla no crea un evento ni una Function: `sendTransactionalEmail()` sigue
-siendo la única frontera de envío. Ahora valida ambos templates con el mismo
+siendo la única frontera de envío. Ahora valida los tres templates con el mismo
 registro, conserva los modos/allowlist y registra el nombre del template sin
 nombre personal, URL ni contenido. El correlationId permite exclusivamente UUID v4
-con prefijos `email-test-` (smoke) o `welcome-` (procesador backend).
+con prefijos `email-test-` (smoke), `welcome-` o `new-user-notification-` (procesadores backend).
 `testTransactionalEmail` sigue construyendo exclusivamente `test` con `{}`.
 
 ```text
@@ -341,7 +635,7 @@ npm run email:dev
 ```
 
 En PowerShell con scripts `.ps1` restringidos usar `npm.cmd run email:dev`.
-URL: **http://127.0.0.1:3001**. La lista muestra `test` y `welcome` con asunto,
+URL: **http://127.0.0.1:3001**. La lista muestra `test`, `welcome` y `newUserNotification` con asunto,
 enlaces HTML y texto plano; bienvenida directa: **http://127.0.0.1:3001/welcome.html**.
 Los datos sintéticos están en `WelcomeEmail.PreviewProps` y el registro. Editar
 `src/emails/templates/`, `components/` o `content/`, guardar, esperar
@@ -678,7 +972,8 @@ firebase deploy --only functions:email:testTransactionalEmail --project reservae
 
 El cambio de archivo local solo no cambia la revisión desplegada. Tras publicar
 la revisión, nuevas invocaciones quedan bloqueadas; no revierte un envío en curso
-o un mensaje ya aceptado. No establecer `production`: permanece bloqueado.
+o un mensaje ya aceptado. La activación production requiere el procedimiento
+actual de [dos efectos y corte server-side](#produccion-registration-emails).
 
 ## Diagnóstico cerrado y limpieza
 
@@ -867,11 +1162,10 @@ logs; no modifica el contador ni la correlación del documento existente.
   al sender, incluso para la dirección del smoke. No se redirige al Gmail.
 - Modo inválido → `skipped / EMAIL_INVALID_MODE`, sin sender. Estos gates tienen
   prioridad sobre la clasificación de elegibilidad del usuario.
-- `production` continúa bloqueado en `sendTransactionalEmail`. Desde 2B.2 hay
-  además un gate previo de activación: sin fecha termina skipped con attempts=0.
-  Incluso con una fecha sintética válida, el sender real devuelve
-  `EMAIL_PRODUCTION_NOT_ENABLED` sin render/SES. Los tests inyectan un sender
-  falso para comprobar estados posteriores sin abrir el bloqueo central.
+- `production`: desde la preparación del 27/09 supera el bloqueo central previo;
+  permanece el gate de activación, sin fecha termina skipped con attempts=0.
+  Tests usan sender/SES falsos y mantienen prohibida la construcción del cliente
+  real en tests/emuladores. No se activó el dotenv ni se desplegó este cambio.
 
 ### Fallos y observabilidad
 
@@ -1427,7 +1721,9 @@ Manager ni se inspeccionó el historial Git o recursos remotos en este cierre.
 
 ## Deudas separadas del cierre funcional
 
-- Salida de SES sandbox y habilitación de `production`.
+- SES production access ya fue confirmado por el operador. Pendiente: aplicar
+  Rules, configurar el corte/mode, desplegar solo el trigger y validar un alta
+  controlada, conforme al [procedimiento actual](#produccion-registration-emails).
 - Actualización posterior al cierre de emails, 2026-09-24: el operador confirmó
   la migración productiva de Payments, Secret Manager y el nuevo par Public Key +
   Access Token v2 mediante pago real, webhook y publicación automática.
@@ -1436,8 +1732,8 @@ Manager ni se inspeccionó el historial Git o recursos remotos en este cierre.
   [Aceptación de Payments](PAYMENTS_CODEBASE_PREPARATION.md); procedimiento y consumidores en
   [BACKEND_CONFIGURATION_ISOLATION.md](BACKEND_CONFIGURATION_ISOLATION.md).
 - Email está migrado y validado hasta sandbox. El inventario local es 101/3/3;
-  el remoto 102/3/3 por generatePublishedShareImage adicional en default.
-  Su revisión corresponde a una tarea separada; ver [evidencia de cierre](#cierre-welcome-sandbox).
+  el desvío remoto histórico del 26/09 tiene su seguimiento y retiro posterior
+  en [Default readiness](DEFAULT_DEPLOY_READINESS.md). Este cambio no opera default.
 - Node 22: runtime actual Node 20; el AWS SDK advierte/requerirá Node >=22 en
   versiones futuras. OpenAI 7.5.0 ya declara Node >=22 y genera una advertencia
   preexistente. No se actualizó Node ni OpenAI en esta fase.
@@ -1445,7 +1741,7 @@ Manager ni se inspeccionó el historial Git o recursos remotos en este cierre.
 - Templates y emails reales de negocio, colas/idempotencia cuando corresponda.
 
 El cierre inicial no conectó eventos de negocio al sender. Fase 2B.2 agrega el
-adaptador Auth, ahora desplegado y validado en sandbox por el operador; los envíos
-productivos siguen bloqueados. No se agregaron campañas ni otros eventos de negocio.
-Las preparaciones anteriores no ejecutaron commits desde el agente; este cierre
-sí incluye el commit autorizado por el operador, conservando el historial previo.
+adaptador Auth, desplegado y validado en sandbox por el operador. La preparación
+productiva del 27/09 agrega el aviso interno al mismo evento, sin activarlo ni
+desplegarlo. No se agregaron campañas. El cierre del 26/09 incluyó un commit
+autorizado; la preparación productiva actual no ejecuta commit.

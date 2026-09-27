@@ -6,7 +6,7 @@
     "contracts:check": "node scripts/syncTemplateContract.cjs --check --input",
     "contracts:check:built": "node scripts/syncTemplateContract.cjs --check",
     "test:contracts": "node --test --test-reporter=tap scripts/contracts.test.cjs",
-    "test:emails": "node --test transactionalEmail.test.mjs sesDiagnostics.test.mjs welcomeEmail.test.mjs welcomeEmailSmoke.test.mjs welcomeRegistration.test.mjs welcomeRegistrationFunction.test.mjs",
+    "test:emails": "node --test --test-concurrency=1 transactionalEmail.test.mjs sesDiagnostics.test.mjs welcomeEmail.test.mjs welcomeEmailSmoke.test.mjs welcomeRegistration.test.mjs welcomeRegistrationFunction.test.mjs newUserNotification.test.mjs registrationEmails.test.mjs",
     "email:dev": "node scripts/emailPreview.cjs",
     "email:build": "node scripts/emailPreview.cjs --build",
     "typecheck": "tsc --noEmit --project tsconfig.json",

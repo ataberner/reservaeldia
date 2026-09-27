@@ -2,39 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { paymentNames, canonical, endpointHash, assertFuturePartition } = require("./testUtils/paymentsManifest.cjs");
+const { paymentNames, canonical, endpointHash } = require("./testUtils/paymentsManifest.cjs");
+const { registry, assertPartition, namesFor } = require("./testUtils/functionOwnership.cjs");
+const { snapshot } = require("./testUtils/deploymentSnapshot.cjs");
 const baseline = require("./testFixtures/payments/manifest-baseline.json");
-
-function snapshot(source) {
-  const child = spawnSync(process.execPath, ["--require", path.join(root, "scripts/local/networkGuard.cjs"), "-e", `
-    const assert = require('node:assert/strict');
-    const path = require('node:path');
-    const source = process.cwd();
-    const { SecretParam } = require(path.join(source, 'node_modules/firebase-functions/lib/params/types.js'));
-    let secretReads = 0;
-    SecretParam.prototype.value = () => { secretReads++; throw new Error('Secret reads forbidden during discovery'); };
-    const api = require(source);
-    const { loadStack } = require(path.join(source, 'node_modules/firebase-functions/lib/runtime/loader.js'));
-    const { stackToWire } = require(path.join(source, 'node_modules/firebase-functions/lib/runtime/manifest.js'));
-    (async () => {
-      const manifest = stackToWire(await loadStack(source));
-      assert.equal(secretReads, 0);
-      const forbidden = Object.keys(require.cache).filter(file => /[/\\\\](emails|designerAi)[/\\\\]|[/\\\\]lib[/\\\\]index.js$/.test(file) && !file.includes('node_modules'));
-      console.log(JSON.stringify({ manifest, names: Object.keys(api).sort(), forbidden }));
-    })().catch(() => process.exit(1));
-  `], { cwd: path.join(root, source), encoding: "utf8", timeout: 30_000, windowsHide: true,
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|COMSPEC)$/i.test(key))),
-      GCLOUD_PROJECT: "reservaeldia-7a440" } });
-  assert.equal(child.error, undefined);
-  assert.equal(child.status, 0, "Offline entrypoint snapshot failed");
-  return JSON.parse(child.stdout);
-}
 
 const defaults = snapshot("functions");
 const payments = snapshot("functions-payments");
@@ -47,34 +23,30 @@ for (const [name, snapshot] of Object.entries({ default: defaults, payments, ema
   writeFileSync(path.join(evidence, `${name}.json`), JSON.stringify(canonical(snapshot.manifest), null, 2));
 }
 
-test("default preserves exactly the 101 non-payment/non-email endpoints", () => {
-  assert.equal(Object.keys(defaults.manifest.endpoints).length, 101);
-  const expected = Object.fromEntries(Object.entries(baseline.endpointHashes).filter(([name]) => !paymentNames.includes(name) && !emailNames.includes(name)));
-  assert.deepEqual(defaults.names, Object.keys(expected).sort());
-  assert.deepEqual(Object.fromEntries(Object.entries(defaults.manifest.endpoints)
-    .filter(([name]) => !["testWelcomeEmail", "onUserCreatedWelcomeEmail"].includes(name))
-    .map(([name, endpoint]) => [name, endpointHash(endpoint)])), expected);
-  for (const name of paymentNames) assert.equal(defaults.names.includes(name), false);
+test("default exports exactly its registered endpoints, excluding Payments and Email", () => {
+  assert.deepEqual(defaults.names, namesFor("default"));
+  for (const name of [...paymentNames, ...emailNames]) assert.equal(defaults.names.includes(name), false);
 });
 
-test("standalone Payments exports exactly three endpoints with complete original options", () => {
+test("standalone Payments preserves original options apart from adopted instance limits", () => {
   assert.deepEqual(payments.names, paymentNames);
-  assert.deepEqual(canonical(payments.manifest.endpoints), baseline.payments);
-  assert.deepEqual(payments.forbidden, []);
+  // The current registry protects the adopted maxInstances. Keep the historical
+  // fixture intact and compare every other original deployment attribute.
+  for (const [name, endpoint] of Object.entries(baseline.payments)) {
+    assert.deepEqual(canonical({ ...payments.manifest.endpoints[name], maxInstances: endpoint.maxInstances }), endpoint);
+  }
+  assert.deepEqual(payments.loaded.filter(file => /^(?:lib\/(?:emails|designerAi)\/|lib\/index\.js$)/.test(file)), []);
   assert.equal(existsSync(path.join(root, "functions-payments/lib/index.js")), false);
 });
 
-test("local 101 + 3 + 3 partition preserves original options and rejects missing/duplicate endpoints", () => {
-  const core = defaults.manifest.endpoints;
-  const expected = [...Object.keys(baseline.endpointHashes), "testWelcomeEmail", "onUserCreatedWelcomeEmail"];
-  assert.equal(Object.keys(core).length, 101);
-  assertFuturePartition(core, { ...payments.manifest.endpoints, ...email.manifest.endpoints }, expected);
-  const union = { ...core, ...payments.manifest.endpoints, ...email.manifest.endpoints };
-  assert.deepEqual(Object.fromEntries(Object.entries(union)
-    .filter(([name]) => !["testWelcomeEmail", "onUserCreatedWelcomeEmail"].includes(name))
-    .map(([name, endpoint]) => [name, endpointHash(endpoint)])), baseline.endpointHashes);
-  assert.throws(() => assertFuturePartition(union, payments.manifest.endpoints, expected), /Duplicate/);
-  assert.throws(() => assertFuturePartition(core, {}, expected), /Missing/);
+test("registered partition preserves the dated migration baseline as a subset", () => {
+  assertPartition({ default: defaults.manifest, payments: payments.manifest, email: email.manifest });
+  const union = { ...defaults.manifest.endpoints, ...payments.manifest.endpoints, ...email.manifest.endpoints };
+  // Historical parity excludes only the now-explicit instance limits accepted
+  // on 2026-09-27. Full current metadata is enforced by assertPartition above.
+  for (const [name, hash] of Object.entries(baseline.endpointHashes)) {
+    assert.ok(endpointHash(union[name]) === hash || endpointHash({ ...union[name], maxInstances: null }) === hash, `Changed original options beyond maxInstances: ${name}`);
+  }
 });
 
 test("active sources and isolated rollback share the canonical Payments build and exclusions", () => {
@@ -82,21 +54,20 @@ test("active sources and isolated rollback share the canonical Payments build an
   assert.deepEqual(firebase.functions.map(({ source, codebase }) => ({ source, codebase })), [{ source: "functions", codebase: "default" }, { source: "functions-payments", codebase: "payments" }, { source: "functions-email", codebase: "email" }]);
   const rollback = JSON.parse(readFileSync(path.join(root, "firebase.payments-rollback.json"), "utf8"));
   assert.deepEqual(rollback.functions, [{ ...firebase.functions[1], codebase: "default" }]);
-  assert.deepEqual(firebase.functions[1].predeploy, ["npm --prefix functions run build:payments"]);
+  assert.deepEqual(firebase.functions[1].predeploy, ["node functions/scripts/checkDeployReadiness.cjs payments", "npm --prefix functions run build:payments"]);
   const files = readdirSync(path.join(root, "functions-payments"));
   assert.deepEqual(files.filter(name => /^\.secret|^\.runtimeconfig/.test(name)), []);
   const secretConsumers = secret => Object.entries(payments.manifest.endpoints).filter(([, endpoint]) => endpoint.secretEnvironmentVariables?.some(({ key }) => key === secret)).map(([name]) => name).sort();
-  assert.deepEqual(secretConsumers("MERCADO_PAGO_ACCESS_TOKEN"), paymentNames);
-  assert.deepEqual(secretConsumers("MP_WEBHOOK_SECRET"), ["mercadoPagoWebhook"]);
+  for (const secret of registry.codebases.payments.allowedSecrets) assert.deepEqual(secretConsumers(secret), registry.endpoints.filter(e => e.codebase === "payments" && e.secrets.includes(secret)).map(e => e.name).sort());
   assert.deepEqual(secretConsumers("MERCADO_PAGO_CLIENT_SECRET"), []);
   for (const endpoint of Object.values(payments.manifest.endpoints)) {
-    assert.ok(endpoint.secretEnvironmentVariables.every(({ key }) => ["MERCADO_PAGO_ACCESS_TOKEN", "MP_WEBHOOK_SECRET"].includes(key)));
+    assert.ok((endpoint.secretEnvironmentVariables || []).every(({ key }) => registry.codebases.payments.allowedSecrets.includes(key)));
   }
 });
 
 test("Payments options match the sanitized deployed baseline after resolving platform defaults", () => {
   const remote = require("../docs/operations/baselines/payments-remote-2026-09-22.json");
-  assert.deepEqual(remote.functions.map(fn => fn.buildConfig.entryPoint).sort(), paymentNames);
+  assert.deepEqual(remote.functions.map(fn => fn.buildConfig.entryPoint).sort(), Object.keys(baseline.payments).sort());
   for (const fn of remote.functions) {
     const id = fn.buildConfig.entryPoint, endpoint = payments.manifest.endpoints[id], service = fn.serviceConfig;
     assert.equal(fn.name, `projects/${remote.project}/locations/${endpoint.region[0]}/functions/${id}`);
@@ -134,8 +105,9 @@ test("post-deploy comparison rejects URL, Secret-version and ownership changes",
   const { compareMetadata } = require("./scripts/comparePaymentsMetadata.cjs");
   const remote = require("../docs/operations/baselines/payments-remote-2026-09-22.json");
   assert.equal(compareMetadata(remote, remote, []).metadataUnchanged, true);
-  for (let count = 1; count <= 3; count++) {
-    const moved = paymentNames.slice(0, count), current = structuredClone(remote);
+  const historicalNames = remote.functions.map(fn => fn.buildConfig.entryPoint).sort();
+  for (let count = 1; count <= historicalNames.length; count++) {
+    const moved = historicalNames.slice(0, count), current = structuredClone(remote);
     for (const fn of current.functions) if (moved.includes(fn.buildConfig.entryPoint)) fn.labels["firebase-functions-codebase"] = "payments";
     assert.equal(compareMetadata(remote, current, moved).expectedOwnership, true);
     assert.throws(() => compareMetadata(remote, current, []), /ownership/);

@@ -1,0 +1,5350 @@
+{
+  "capturedBeforeAt": "2026-09-27T15:19:54.822Z",
+  "capturedAfterAt": "2026-09-27T15:47:39.746Z",
+  "project": "reservaeldia-7a440",
+  "method": "Read-only paginated Cloud Functions v2 list across all regions; Auth verified with v1. Server-side fields allowlist; no environment values. Missing codebase label interpreted as default by Firebase CLI 14.4.0.",
+  "metadataIdenticalBeforeAfter": true,
+  "rawMetadataSha256": "abb8d8cbde0aaa916489c67a273d0c2273ad1ed68be54ffee475b9211957ec4d",
+  "counts": {
+    "local": {
+      "default": 101,
+      "payments": 3,
+      "email": 3,
+      "total": 107
+    },
+    "remoteBefore": {
+      "default": 102,
+      "payments": 3,
+      "email": 3,
+      "total": 108
+    },
+    "remoteAfter": {
+      "default": 102,
+      "payments": 3,
+      "email": 3,
+      "total": 108
+    }
+  },
+  "localOnly": [],
+  "remoteOnly": [
+    "generatePublishedShareImage"
+  ],
+  "duplicates": 0,
+  "functions": [
+    {
+      "name": "adminCommitTemplateWorkspaceV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminCommitTemplateWorkspaceV1",
+      "createTime": "2026-03-12T21:47:40.787369903Z",
+      "updateTime": "2026-09-13T03:12:16.174913610Z",
+      "revision": "admincommittemplateworkspacev1-00187-yen",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118663323",
+        "object": "adminCommitTemplateWorkspaceV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminConvertDraftToTemplateV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminConvertDraftToTemplateV1",
+      "createTime": "2026-03-12T22:55:02.612882133Z",
+      "updateTime": "2026-09-13T03:12:17.302785659Z",
+      "revision": "adminconvertdrafttotemplatev1-00185-gir",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118576446",
+        "object": "adminConvertDraftToTemplateV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminCreateTemplateFromDraftV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminCreateTemplateFromDraftV1",
+      "createTime": "2026-03-12T21:47:40.839443591Z",
+      "updateTime": "2026-09-13T03:12:16.061018826Z",
+      "revision": "admincreatetemplatefromdraftv1-00187-xax",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118598080",
+        "object": "adminCreateTemplateFromDraftV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminDeleteTextPresetV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminDeleteTextPresetV1",
+      "createTime": "2026-03-02T13:27:17.080318952Z",
+      "updateTime": "2026-09-13T03:12:20.141124063Z",
+      "revision": "admindeletetextpresetv1-00202-geh",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118629432",
+        "object": "adminDeleteTextPresetV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminDuplicateTextPresetV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminDuplicateTextPresetV1",
+      "createTime": "2026-03-02T13:27:17.087037026Z",
+      "updateTime": "2026-09-13T03:12:17.169060543Z",
+      "revision": "adminduplicatetextpresetv1-00202-kis",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118647911",
+        "object": "adminDuplicateTextPresetV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminGetDecorUsageStatsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminGetDecorUsageStatsV1",
+      "createTime": "2026-03-02T00:10:40.925640505Z",
+      "updateTime": "2026-09-13T03:12:18.940189813Z",
+      "revision": "admingetdecorusagestatsv1-00204-lug",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118597799",
+        "object": "adminGetDecorUsageStatsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminGetIconUsageStatsV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminGetIconUsageStatsV2",
+      "createTime": "2026-03-01T13:41:06.362838584Z",
+      "updateTime": "2026-09-13T03:12:19.829238197Z",
+      "revision": "admingeticonusagestatsv2-00210-wuf",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269029444582",
+        "object": "adminGetIconUsageStatsV2/function-source.zip"
+      }
+    },
+    {
+      "name": "adminGetPricingConfigV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminGetPricingConfigV1",
+      "createTime": "2026-03-15T02:16:57.819836325Z",
+      "updateTime": "2026-09-13T03:12:19.540319444Z",
+      "revision": "admingetpricingconfigv1-00171-wec",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118584384",
+        "object": "adminGetPricingConfigV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminGetTemplateEditorDocumentV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 80,
+      "minInstances": 1,
+      "maxInstances": 20,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminGetTemplateEditorDocumentV1",
+      "createTime": "2026-03-12T22:53:57.499729804Z",
+      "updateTime": "2026-09-13T03:12:16.765367654Z",
+      "revision": "admingettemplateeditordocumentv1-00196-qag",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118627865",
+        "object": "adminGetTemplateEditorDocumentV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminHardDeleteTemplateFromTrashV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminHardDeleteTemplateFromTrashV1",
+      "createTime": "2026-03-13T01:30:19.086537703Z",
+      "updateTime": "2026-09-13T03:12:14.820592654Z",
+      "revision": "adminharddeletetemplatefromtrashv1-00183-saw",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269118134173",
+        "object": "adminHardDeleteTemplateFromTrashV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListDecorCatalogV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListDecorCatalogV1",
+      "createTime": "2026-03-02T00:09:22.483361488Z",
+      "updateTime": "2026-09-13T03:14:38.958916841Z",
+      "revision": "adminlistdecorcatalogv1-00196-mok",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269266936432",
+        "object": "adminListDecorCatalogV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListIconCatalogV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListIconCatalogV2",
+      "createTime": "2026-03-01T13:40:20.985800161Z",
+      "updateTime": "2026-09-13T03:14:30.390208696Z",
+      "revision": "adminlisticoncatalogv2-00199-tak",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269212083739",
+        "object": "adminListIconCatalogV2/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListPricingHistoryV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListPricingHistoryV1",
+      "createTime": "2026-03-15T02:17:53.752380443Z",
+      "updateTime": "2026-09-13T03:14:37.570460449Z",
+      "revision": "adminlistpricinghistoryv1-00163-gew",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269266370944",
+        "object": "adminListPricingHistoryV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListTemplatesV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListTemplatesV1",
+      "createTime": "2026-03-12T21:46:46.739186693Z",
+      "updateTime": "2026-09-13T03:14:39.347242112Z",
+      "revision": "adminlisttemplatesv1-00178-yij",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269266989892",
+        "object": "adminListTemplatesV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListTemplateTagsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListTemplateTagsV1",
+      "createTime": "2026-03-12T21:47:40.092519445Z",
+      "updateTime": "2026-09-13T03:14:40.884106334Z",
+      "revision": "adminlisttemplatetagsv1-00178-bat",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269267026370",
+        "object": "adminListTemplateTagsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListTemplateTrashV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListTemplateTrashV1",
+      "createTime": "2026-03-13T01:29:35.092695719Z",
+      "updateTime": "2026-09-13T03:14:35.323231393Z",
+      "revision": "adminlisttemplatetrashv1-00175-jom",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269266477717",
+        "object": "adminListTemplateTrashV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminListTextPresetsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminListTextPresetsV1",
+      "createTime": "2026-03-02T13:26:11.424236151Z",
+      "updateTime": "2026-09-13T03:14:40.634629270Z",
+      "revision": "adminlisttextpresetsv1-00194-hax",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269266992294",
+        "object": "adminListTextPresetsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminMoveTemplateToTrashV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminMoveTemplateToTrashV1",
+      "createTime": "2026-03-13T01:30:19.588213443Z",
+      "updateTime": "2026-09-13T03:14:37.899060269Z",
+      "revision": "adminmovetemplatetotrashv1-00175-joc",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269267008792",
+        "object": "adminMoveTemplateToTrashV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminOpenTemplateWorkspaceV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminOpenTemplateWorkspaceV1",
+      "createTime": "2026-03-12T21:47:40.829736405Z",
+      "updateTime": "2026-09-13T03:15:20.361335162Z",
+      "revision": "adminopentemplateworkspacev1-00179-jan",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269267119249",
+        "object": "adminOpenTemplateWorkspaceV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminPatchDecorMetadataV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminPatchDecorMetadataV1",
+      "createTime": "2026-03-02T00:10:40.894463057Z",
+      "updateTime": "2026-09-13T03:14:39.186893450Z",
+      "revision": "adminpatchdecormetadatav1-00195-luv",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269266988275",
+        "object": "adminPatchDecorMetadataV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminPatchIconMetadataV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminPatchIconMetadataV2",
+      "createTime": "2026-03-01T13:41:05.582782104Z",
+      "updateTime": "2026-09-13T03:17:58.606802742Z",
+      "revision": "adminpatchiconmetadatav2-00198-sef",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269385017910",
+        "object": "adminPatchIconMetadataV2/function-source.zip"
+      }
+    },
+    {
+      "name": "adminRebuildBusinessAnalyticsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 512,
+      "cpu": 0.3333,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 60,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminRebuildBusinessAnalyticsV1",
+      "createTime": "2026-03-13T04:33:09.404113626Z",
+      "updateTime": "2026-09-13T03:17:59.238670593Z",
+      "revision": "adminrebuildbusinessanalyticsv1-00159-puw",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269385008822",
+        "object": "adminRebuildBusinessAnalyticsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminRestoreTemplateFromTrashV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminRestoreTemplateFromTrashV1",
+      "createTime": "2026-03-13T01:30:19.682674537Z",
+      "updateTime": "2026-09-13T03:17:58.090454731Z",
+      "revision": "adminrestoretemplatefromtrashv1-00174-gow",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440908585",
+        "object": "adminRestoreTemplateFromTrashV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminRevalidateDecorV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminRevalidateDecorV1",
+      "createTime": "2026-03-02T00:10:40.944060713Z",
+      "updateTime": "2026-09-13T03:17:35.121121224Z",
+      "revision": "adminrevalidatedecorv1-00194-hay",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440891994",
+        "object": "adminRevalidateDecorV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminRevalidateIconV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminRevalidateIconV2",
+      "createTime": "2026-03-01T13:41:06.354101616Z",
+      "updateTime": "2026-09-13T03:17:59.894472051Z",
+      "revision": "adminrevalidateiconv2-00205-sax",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440909796",
+        "object": "adminRevalidateIconV2/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSaveTemplateEditorDocumentV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSaveTemplateEditorDocumentV1",
+      "createTime": "2026-03-12T22:55:02.527990322Z",
+      "updateTime": "2026-09-13T03:17:58.600346723Z",
+      "revision": "adminsavetemplateeditordocumentv1-00176-voh",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440105030",
+        "object": "adminSaveTemplateEditorDocumentV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSetDecorActivationV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSetDecorActivationV1",
+      "createTime": "2026-03-02T00:10:40.997289510Z",
+      "updateTime": "2026-09-13T03:17:58.856759454Z",
+      "revision": "adminsetdecoractivationv1-00194-neq",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440956633",
+        "object": "adminSetDecorActivationV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSetDecorPriorityV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSetDecorPriorityV1",
+      "createTime": "2026-03-02T00:10:40.988862091Z",
+      "updateTime": "2026-09-13T03:17:58.799297992Z",
+      "revision": "adminsetdecorpriorityv1-00194-gul",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440884713",
+        "object": "adminSetDecorPriorityV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSetIconActivationV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSetIconActivationV2",
+      "createTime": "2026-03-01T13:41:06.366138944Z",
+      "updateTime": "2026-09-13T03:17:59.089330322Z",
+      "revision": "adminseticonactivationv2-00205-rup",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440859145",
+        "object": "adminSetIconActivationV2/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSetIconPriorityV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSetIconPriorityV2",
+      "createTime": "2026-03-01T13:41:06.392186894Z",
+      "updateTime": "2026-09-13T03:17:59.166343223Z",
+      "revision": "adminseticonpriorityv2-00198-rur",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269440896970",
+        "object": "adminSetIconPriorityV2/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSetTextPresetActivationV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSetTextPresetActivationV1",
+      "createTime": "2026-03-02T13:27:17.085435901Z",
+      "updateTime": "2026-09-13T03:20:31.155920152Z",
+      "revision": "adminsettextpresetactivationv1-00190-roz",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619761027",
+        "object": "adminSetTextPresetActivationV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSetTextPresetVisibilityV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSetTextPresetVisibilityV1",
+      "createTime": "2026-03-02T13:27:17.082468194Z",
+      "updateTime": "2026-09-13T03:20:31.300325201Z",
+      "revision": "adminsettextpresetvisibilityv1-00190-sef",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619768164",
+        "object": "adminSetTextPresetVisibilityV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminSyncLegacyTextPresetsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminSyncLegacyTextPresetsV1",
+      "createTime": "2026-03-02T13:27:16.694049602Z",
+      "updateTime": "2026-09-13T03:20:30.843876684Z",
+      "revision": "adminsynclegacytextpresetsv1-00190-liw",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619759188",
+        "object": "adminSyncLegacyTextPresetsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminUpdatePricingConfigV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminUpdatePricingConfigV1",
+      "createTime": "2026-03-15T02:17:53.759694147Z",
+      "updateTime": "2026-09-13T03:20:35.864444075Z",
+      "revision": "adminupdatepricingconfigv1-00159-bav",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619781658",
+        "object": "adminUpdatePricingConfigV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminUpsertDashboardHomeConfigV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminUpsertDashboardHomeConfigV1",
+      "createTime": "2026-03-14T01:27:27.442609412Z",
+      "updateTime": "2026-09-13T03:20:30.836893158Z",
+      "revision": "adminupsertdashboardhomeconfigv1-00160-pop",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619746920",
+        "object": "adminUpsertDashboardHomeConfigV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminUpsertTemplateEditorialV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminUpsertTemplateEditorialV1",
+      "createTime": "2026-03-12T21:47:40.842210871Z",
+      "updateTime": "2026-09-13T03:20:32.039502749Z",
+      "revision": "adminupserttemplateeditorialv1-00174-qiz",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619760634",
+        "object": "adminUpsertTemplateEditorialV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminUpsertTemplateTagV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminUpsertTemplateTagV1",
+      "createTime": "2026-03-12T21:47:40.895897103Z",
+      "updateTime": "2026-09-13T03:20:32.059503046Z",
+      "revision": "adminupserttemplatetagv1-00174-hox",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619762891",
+        "object": "adminUpsertTemplateTagV1/function-source.zip"
+      }
+    },
+    {
+      "name": "adminUpsertTextPresetV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "adminUpsertTextPresetV1",
+      "createTime": "2026-03-02T13:27:17.067996569Z",
+      "updateTime": "2026-09-13T03:20:30.534602231Z",
+      "revision": "adminupserttextpresetv1-00190-haf",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619816272",
+        "object": "adminUpsertTextPresetV1/function-source.zip"
+      }
+    },
+    {
+      "name": "archiveCountdownPreset",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "archiveCountdownPreset",
+      "createTime": "2026-02-27T02:18:04.334151480Z",
+      "updateTime": "2026-09-13T03:20:26.518971918Z",
+      "revision": "archivecountdownpreset-00203-cen",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269564591723",
+        "object": "archiveCountdownPreset/function-source.zip"
+      }
+    },
+    {
+      "name": "borrarBorrador",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "borrarBorrador",
+      "createTime": "2025-05-19T19:47:49.568835159Z",
+      "updateTime": "2026-09-13T03:20:32.586685287Z",
+      "revision": "borrarborrador-00529-xut",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269619882065",
+        "object": "borrarBorrador/function-source.zip"
+      }
+    },
+    {
+      "name": "borrarPlantilla",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "borrarPlantilla",
+      "createTime": "2026-01-22T23:48:20.203206632Z",
+      "updateTime": "2026-09-13T03:23:20.796377170Z",
+      "revision": "borrarplantilla-00304-lub",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269788880113",
+        "object": "borrarPlantilla/function-source.zip"
+      }
+    },
+    {
+      "name": "borrarTodosLosBorradores",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "borrarTodosLosBorradores",
+      "createTime": "2025-05-23T15:09:41.062963294Z",
+      "updateTime": "2026-09-13T03:23:20.922127883Z",
+      "revision": "borrartodoslosborradores-00499-sep",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269789676092",
+        "object": "borrarTodosLosBorradores/function-source.zip"
+      }
+    },
+    {
+      "name": "checkPublicSlugAvailability",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "checkPublicSlugAvailability",
+      "createTime": "2026-02-20T09:34:13.101050638Z",
+      "updateTime": "2026-09-13T03:22:58.733899573Z",
+      "revision": "checkpublicslugavailability-00247-qet",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269701937396",
+        "object": "checkPublicSlugAvailability/function-source.zip"
+      }
+    },
+    {
+      "name": "copiarPlantilla",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "copiarPlantilla",
+      "createTime": "2025-05-16T11:17:55.451724466Z",
+      "updateTime": "2026-09-13T03:23:20.269266410Z",
+      "revision": "copiarplantilla-00541-rog",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269789603129",
+        "object": "copiarPlantilla/function-source.zip"
+      }
+    },
+    {
+      "name": "copiarPlantillaHTML",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "copiarPlantillaHTML",
+      "createTime": "2025-05-25T19:25:36.456258747Z",
+      "updateTime": "2026-09-13T03:23:20.853153868Z",
+      "revision": "copiarplantillahtml-00493-reg",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269789592644",
+        "object": "copiarPlantillaHTML/function-source.zip"
+      }
+    },
+    {
+      "name": "crearPlantilla",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "crearPlantilla",
+      "createTime": "2025-05-25T19:26:31.527102320Z",
+      "updateTime": "2026-09-13T03:23:20.483094386Z",
+      "revision": "crearplantilla-00496-xuw",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269789708495",
+        "object": "crearPlantilla/function-source.zip"
+      }
+    },
+    {
+      "name": "createPublicationCheckoutSession",
+      "region": "us-central1",
+      "codebase": "payments",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "MERCADO_PAGO_ACCESS_TOKEN",
+          "projectId": "reservaeldia-7a440",
+          "secret": "MERCADO_PAGO_ACCESS_TOKEN",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "createPublicationCheckoutSession",
+      "createTime": "2026-02-20T09:35:09.283377536Z",
+      "updateTime": "2026-09-23T01:23:26.552557655Z",
+      "revision": "createpublicationcheckoutsession-00261-zej",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-codebase": "payments",
+        "firebase-functions-hash": "3e50a1a0ab91b6b8292f12c511927fb6eb577268"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1790126492565538",
+        "object": "createPublicationCheckoutSession/function-source.zip"
+      }
+    },
+    {
+      "name": "createPublicationPayment",
+      "region": "us-central1",
+      "codebase": "payments",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 1024,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 20,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "MERCADO_PAGO_ACCESS_TOKEN",
+          "projectId": "reservaeldia-7a440",
+          "secret": "MERCADO_PAGO_ACCESS_TOKEN",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "createPublicationPayment",
+      "createTime": "2026-02-20T09:34:13.142544920Z",
+      "updateTime": "2026-09-23T01:39:12.668634471Z",
+      "revision": "createpublicationpayment-00278-zij",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-codebase": "payments",
+        "firebase-functions-hash": "3e50a1a0ab91b6b8292f12c511927fb6eb577268"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1790127488851968",
+        "object": "createPublicationPayment/function-source.zip"
+      }
+    },
+    {
+      "name": "dailyIconCatalogReconcileV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 180,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "dailyIconCatalogReconcileV2",
+      "createTime": "2026-03-01T13:41:06.414248931Z",
+      "updateTime": "2026-09-13T03:23:11.424636426Z",
+      "revision": "dailyiconcatalogreconcilev2-00201-kos",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269701934830",
+        "object": "dailyIconCatalogReconcileV2/function-source.zip"
+      }
+    },
+    {
+      "name": "dailyIconUsageScanV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "dailyIconUsageScanV2",
+      "createTime": "2026-03-01T13:41:06.360394274Z",
+      "updateTime": "2026-09-13T03:23:21.164693791Z",
+      "revision": "dailyiconusagescanv2-00192-bac",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269789464542",
+        "object": "dailyIconUsageScanV2/function-source.zip"
+      }
+    },
+    {
+      "name": "deleteCountdownPreset",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "deleteCountdownPreset",
+      "createTime": "2026-02-27T13:57:49.365533477Z",
+      "updateTime": "2026-09-13T03:26:27.113932510Z",
+      "revision": "deletecountdownpreset-00194-col",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269881142414",
+        "object": "deleteCountdownPreset/function-source.zip"
+      }
+    },
+    {
+      "name": "designerAiChat",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 45,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [
+        "OPENAI_API_KEY"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "OPENAI_API_KEY",
+          "projectId": "reservaeldia-7a440",
+          "secret": "OPENAI_API_KEY",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "designerAiChat",
+      "createTime": "2026-08-26T01:30:36.226853752Z",
+      "updateTime": "2026-09-13T03:26:27.684522638Z",
+      "revision": "designeraichat-00023-jut",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "f25e4ac67995a81b418ba904639710ff82165496"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269947477908",
+        "object": "designerAiChat/function-source.zip"
+      }
+    },
+    {
+      "name": "duplicateCountdownPreset",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "duplicateCountdownPreset",
+      "createTime": "2026-07-24T03:05:28.229852258Z",
+      "updateTime": "2026-09-13T03:26:27.987579589Z",
+      "revision": "duplicatecountdownpreset-00022-cas",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269947398516",
+        "object": "duplicateCountdownPreset/function-source.zip"
+      }
+    },
+    {
+      "name": "finalizeExpiredPublications",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "finalizeExpiredPublications",
+      "createTime": "2026-02-26T04:56:23.391208400Z",
+      "updateTime": "2026-09-13T03:26:26.682204377Z",
+      "revision": "finalizeexpiredpublications-00185-bet",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269880601697",
+        "object": "finalizeExpiredPublications/function-source.zip"
+      }
+    },
+    {
+      "name": "generatePublishedShareImage",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "google.cloud.firestore.document.v1.written",
+      "memory": 1024,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": null,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": {
+        "eventType": "google.cloud.firestore.document.v1.written",
+        "retry": false,
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "publicadas/{slug}"
+        }
+      },
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "generatePublishedShareImage",
+      "createTime": "2026-05-02T23:50:49.967300317Z",
+      "updateTime": "2026-05-02T23:52:21.100664245Z",
+      "revision": "generatepublishedshareimage-00001-wof",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "9db51c0634257f634d203dc3aa123b10f46d2275"
+      },
+      "triggerMetadata": {
+        "eventFilters": [
+          {
+            "attribute": "database",
+            "value": "(default)"
+          },
+          {
+            "attribute": "document",
+            "operator": "match-path-pattern",
+            "value": "publicadas/{slug}"
+          },
+          {
+            "attribute": "namespace",
+            "value": "(default)"
+          }
+        ],
+        "eventType": "google.cloud.firestore.document.v1.written",
+        "pubsubTopic": "projects/reservaeldia-7a440/topics/eventarc-southamerica-east1-generatepublishedshareimage-431061-458",
+        "retryPolicy": "RETRY_POLICY_DO_NOT_RETRY",
+        "serviceAccountEmail": "860495975406-compute@developer.gserviceaccount.com",
+        "trigger": "projects/reservaeldia-7a440/locations/southamerica-east1/triggers/generatepublishedshareimage-431061",
+        "triggerRegion": "southamerica-east1"
+      },
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1777765849550671",
+        "object": "generatePublishedShareImage/function-source.zip"
+      }
+    },
+    {
+      "name": "getAdminAccess",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getAdminAccess",
+      "createTime": "2026-02-17T19:24:38.539001589Z",
+      "updateTime": "2026-09-13T03:26:26.442094255Z",
+      "revision": "getadminaccess-00268-faj",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269947453234",
+        "object": "getAdminAccess/function-source.zip"
+      }
+    },
+    {
+      "name": "getAdminDraftSnapshot",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getAdminDraftSnapshot",
+      "createTime": "2026-03-12T02:32:17.474664317Z",
+      "updateTime": "2026-09-13T03:26:27.668536218Z",
+      "revision": "getadmindraftsnapshot-00169-qiw",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269947407366",
+        "object": "getAdminDraftSnapshot/function-source.zip"
+      }
+    },
+    {
+      "name": "getAdminUserByEmail",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getAdminUserByEmail",
+      "createTime": "2026-02-17T19:25:32.135821478Z",
+      "updateTime": "2026-09-13T03:26:27.299175940Z",
+      "revision": "getadminuserbyemail-00267-vud",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269947402556",
+        "object": "getAdminUserByEmail/function-source.zip"
+      }
+    },
+    {
+      "name": "getBusinessAnalyticsOverviewV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 512,
+      "cpu": 0.3333,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 60,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getBusinessAnalyticsOverviewV1",
+      "createTime": "2026-03-13T04:33:09.423978319Z",
+      "updateTime": "2026-09-13T03:26:32.379806270Z",
+      "revision": "getbusinessanalyticsoverviewv1-00153-qiq",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269881267225",
+        "object": "getBusinessAnalyticsOverviewV1/function-source.zip"
+      }
+    },
+    {
+      "name": "getBusinessAnalyticsRawExportStatusV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 512,
+      "cpu": 0.3333,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 60,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getBusinessAnalyticsRawExportStatusV1",
+      "createTime": "2026-03-13T15:36:35.042762738Z",
+      "updateTime": "2026-09-13T03:26:33.422859260Z",
+      "revision": "getbusinessanalyticsrawexportstatusv1-00143-cig",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269958125536",
+        "object": "getBusinessAnalyticsRawExportStatusV1/function-source.zip"
+      }
+    },
+    {
+      "name": "getDashboardHomeConfigV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getDashboardHomeConfigV1",
+      "createTime": "2026-03-14T01:26:20.094705468Z",
+      "updateTime": "2026-09-13T03:26:28.023329592Z",
+      "revision": "getdashboardhomeconfigv1-00153-soq",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789269947370475",
+        "object": "getDashboardHomeConfigV1/function-source.zip"
+      }
+    },
+    {
+      "name": "getMyProfileStatus",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getMyProfileStatus",
+      "createTime": "2026-02-17T21:25:28.079415305Z",
+      "updateTime": "2026-09-13T03:28:46.586489674Z",
+      "revision": "getmyprofilestatus-00260-yeq",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270115444580",
+        "object": "getMyProfileStatus/function-source.zip"
+      }
+    },
+    {
+      "name": "getMyPublicationVisitMetrics",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getMyPublicationVisitMetrics",
+      "createTime": "2026-08-18T13:43:22.150712234Z",
+      "updateTime": "2026-09-13T03:28:56.665550635Z",
+      "revision": "getmypublicationvisitmetrics-00013-vuj",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270060096469",
+        "object": "getMyPublicationVisitMetrics/function-source.zip"
+      }
+    },
+    {
+      "name": "getMyUiPreferences",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getMyUiPreferences",
+      "createTime": "2026-07-17T20:33:19.964100884Z",
+      "updateTime": "2026-09-13T03:28:47.089122016Z",
+      "revision": "getmyuipreferences-00025-yob",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270115376633",
+        "object": "getMyUiPreferences/function-source.zip"
+      }
+    },
+    {
+      "name": "getPricingConfigV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getPricingConfigV1",
+      "createTime": "2026-05-29T17:59:27.869130963Z",
+      "updateTime": "2026-09-13T03:28:45.419347254Z",
+      "revision": "getpricingconfigv1-00031-juy",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270115336102",
+        "object": "getPricingConfigV1/function-source.zip"
+      }
+    },
+    {
+      "name": "getPublicationCheckoutStatus",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getPublicationCheckoutStatus",
+      "createTime": "2026-02-20T09:35:09.343326634Z",
+      "updateTime": "2026-09-13T03:29:08.973305714Z",
+      "revision": "getpublicationcheckoutstatus-00239-tuv",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270136441356",
+        "object": "getPublicationCheckoutStatus/function-source.zip"
+      }
+    },
+    {
+      "name": "getUserDirectoryDetail",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getUserDirectoryDetail",
+      "createTime": "2026-03-12T02:31:10.848211790Z",
+      "updateTime": "2026-09-13T03:28:45.669746851Z",
+      "revision": "getuserdirectorydetail-00165-loz",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270115453550",
+        "object": "getUserDirectoryDetail/function-source.zip"
+      }
+    },
+    {
+      "name": "getUsersStats",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "getUsersStats",
+      "createTime": "2026-02-17T20:24:07.363378600Z",
+      "updateTime": "2026-09-13T03:28:47.022670991Z",
+      "revision": "getusersstats-00258-siz",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270115362575",
+        "object": "getUsersStats/function-source.zip"
+      }
+    },
+    {
+      "name": "hardDeleteLegacyPublication",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "hardDeleteLegacyPublication",
+      "createTime": "2026-02-26T12:07:20.630402847Z",
+      "updateTime": "2026-09-13T03:29:07.690684755Z",
+      "revision": "harddeletelegacypublication-00177-qav",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270136664507",
+        "object": "hardDeleteLegacyPublication/function-source.zip"
+      }
+    },
+    {
+      "name": "listAdminUsers",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listAdminUsers",
+      "createTime": "2026-02-17T19:25:32.649217328Z",
+      "updateTime": "2026-09-13T03:28:45.394159010Z",
+      "revision": "listadminusers-00263-quy",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270115278565",
+        "object": "listAdminUsers/function-source.zip"
+      }
+    },
+    {
+      "name": "listCountdownPresetsAdmin",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listCountdownPresetsAdmin",
+      "createTime": "2026-02-27T02:19:52.423473463Z",
+      "updateTime": "2026-09-13T03:28:44.473307868Z",
+      "revision": "listcountdownpresetsadmin-00193-qik",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270060843325",
+        "object": "listCountdownPresetsAdmin/function-source.zip"
+      }
+    },
+    {
+      "name": "listCountdownPresetsPublic",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listCountdownPresetsPublic",
+      "createTime": "2026-02-27T02:21:45.502370146Z",
+      "updateTime": "2026-09-13T03:31:42.749637279Z",
+      "revision": "listcountdownpresetspublic-00193-ley",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270292627877",
+        "object": "listCountdownPresetsPublic/function-source.zip"
+      }
+    },
+    {
+      "name": "listCountdownPresetVersionsAdmin",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listCountdownPresetVersionsAdmin",
+      "createTime": "2026-07-24T03:06:24.451610555Z",
+      "updateTime": "2026-09-13T03:31:31.365976548Z",
+      "revision": "listcountdownpresetversionsadmin-00022-xop",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270214989460",
+        "object": "listCountdownPresetVersionsAdmin/function-source.zip"
+      }
+    },
+    {
+      "name": "listPublicationDiscountCodes",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listPublicationDiscountCodes",
+      "createTime": "2026-02-20T14:28:35.588322066Z",
+      "updateTime": "2026-09-13T03:31:20.352059235Z",
+      "revision": "listpublicationdiscountcodes-00228-won",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270270255215",
+        "object": "listPublicationDiscountCodes/function-source.zip"
+      }
+    },
+    {
+      "name": "listPublicationDiscountCodeUsage",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listPublicationDiscountCodeUsage",
+      "createTime": "2026-02-20T14:30:31.495685749Z",
+      "updateTime": "2026-09-13T03:31:21.247541421Z",
+      "revision": "listpublicationdiscountcodeusage-00229-jid",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270270812388",
+        "object": "listPublicationDiscountCodeUsage/function-source.zip"
+      }
+    },
+    {
+      "name": "listTextPresetsPublicV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listTextPresetsPublicV1",
+      "createTime": "2026-03-02T13:27:17.088683328Z",
+      "updateTime": "2026-09-13T03:31:42.094090010Z",
+      "revision": "listtextpresetspublicv1-00179-fid",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270292717439",
+        "object": "listTextPresetsPublicV1/function-source.zip"
+      }
+    },
+    {
+      "name": "listUsersDirectory",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "listUsersDirectory",
+      "createTime": "2026-02-17T20:25:12.113237671Z",
+      "updateTime": "2026-09-13T03:31:40.913387539Z",
+      "revision": "listusersdirectory-00258-coy",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270292115673",
+        "object": "listUsersDirectory/function-source.zip"
+      }
+    },
+    {
+      "name": "mercadoPagoWebhook",
+      "region": "us-central1",
+      "codebase": "payments",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "https",
+      "memory": 1024,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 20,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN",
+        "MP_WEBHOOK_SECRET"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "MERCADO_PAGO_ACCESS_TOKEN",
+          "projectId": "reservaeldia-7a440",
+          "secret": "MERCADO_PAGO_ACCESS_TOKEN",
+          "version": "2"
+        },
+        {
+          "key": "MP_WEBHOOK_SECRET",
+          "projectId": "reservaeldia-7a440",
+          "secret": "MP_WEBHOOK_SECRET",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "mercadoPagoWebhook",
+      "createTime": "2026-02-20T09:34:13.136163600Z",
+      "updateTime": "2026-09-24T17:34:48.947907750Z",
+      "revision": "mercadopagowebhook-00288-puh",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-codebase": "payments",
+        "firebase-functions-hash": "1c21cc4b07adc1a214cd3352e5e362c4be6cb9b2"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1790271207017523",
+        "object": "mercadoPagoWebhook/function-source.zip"
+      }
+    },
+    {
+      "name": "moveDraftToTrash",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "moveDraftToTrash",
+      "createTime": "2026-02-26T17:59:44.735807328Z",
+      "updateTime": "2026-09-13T03:31:20.426432730Z",
+      "revision": "movedrafttotrash-00175-fov",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270214987209",
+        "object": "moveDraftToTrash/function-source.zip"
+      }
+    },
+    {
+      "name": "onDecorCatalogDocWriteV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "google.cloud.firestore.document.v1.written",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": {
+        "eventType": "google.cloud.firestore.document.v1.written",
+        "retry": false,
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "decoraciones/{decorId}"
+        }
+      },
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "onDecorCatalogDocWriteV1",
+      "createTime": "2026-03-02T00:10:41.113782771Z",
+      "updateTime": "2026-09-13T03:31:43.332515058Z",
+      "revision": "ondecorcatalogdocwritev1-00180-saj",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": {
+        "eventFilters": [
+          {
+            "attribute": "database",
+            "value": "(default)"
+          },
+          {
+            "attribute": "document",
+            "operator": "match-path-pattern",
+            "value": "decoraciones/{decorId}"
+          },
+          {
+            "attribute": "namespace",
+            "value": "(default)"
+          }
+        ],
+        "eventType": "google.cloud.firestore.document.v1.written",
+        "pubsubTopic": "projects/reservaeldia-7a440/topics/eventarc-southamerica-east1-ondecorcatalogdocwritev1-350570-762",
+        "retryPolicy": "RETRY_POLICY_DO_NOT_RETRY",
+        "serviceAccountEmail": "860495975406-compute@developer.gserviceaccount.com",
+        "trigger": "projects/reservaeldia-7a440/locations/southamerica-east1/triggers/ondecorcatalogdocwritev1-350570",
+        "triggerRegion": "southamerica-east1"
+      },
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270292966135",
+        "object": "onDecorCatalogDocWriteV1/function-source.zip"
+      }
+    },
+    {
+      "name": "onIconCatalogDocWriteV2",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "google.cloud.firestore.document.v1.written",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": {
+        "eventType": "google.cloud.firestore.document.v1.written",
+        "retry": false,
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "iconos/{iconId}"
+        }
+      },
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "onIconCatalogDocWriteV2",
+      "createTime": "2026-03-01T13:45:57.907254867Z",
+      "updateTime": "2026-09-13T03:31:43.337015415Z",
+      "revision": "oniconcatalogdocwritev2-00194-zev",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": {
+        "eventFilters": [
+          {
+            "attribute": "database",
+            "value": "(default)"
+          },
+          {
+            "attribute": "document",
+            "operator": "match-path-pattern",
+            "value": "iconos/{iconId}"
+          },
+          {
+            "attribute": "namespace",
+            "value": "(default)"
+          }
+        ],
+        "eventType": "google.cloud.firestore.document.v1.written",
+        "pubsubTopic": "projects/reservaeldia-7a440/topics/eventarc-southamerica-east1-oniconcatalogdocwritev2-900687-141",
+        "retryPolicy": "RETRY_POLICY_DO_NOT_RETRY",
+        "serviceAccountEmail": "860495975406-compute@developer.gserviceaccount.com",
+        "trigger": "projects/reservaeldia-7a440/locations/southamerica-east1/triggers/oniconcatalogdocwritev2-900687",
+        "triggerRegion": "southamerica-east1"
+      },
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270292449383",
+        "object": "onIconCatalogDocWriteV2/function-source.zip"
+      }
+    },
+    {
+      "name": "onUserCreatedWelcomeEmail",
+      "region": "us-central1",
+      "codebase": "email",
+      "platform": "gcfv1",
+      "runtime": "nodejs20",
+      "trigger": "providers/firebase.auth/eventTypes/user.create",
+      "memory": 256,
+      "cpu": null,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 2,
+      "serviceAccount": "welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+      "secrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "event": {
+        "eventType": "providers/firebase.auth/eventTypes/user.create",
+        "retry": true,
+        "eventFilters": {
+          "resource": "projects/reservaeldia-7a440"
+        }
+      },
+      "secretBindings": [
+        {
+          "key": "AWS_SES_ACCESS_KEY_ID",
+          "projectId": "860495975406",
+          "secret": "AWS_SES_ACCESS_KEY_ID",
+          "version": "3"
+        },
+        {
+          "key": "AWS_SES_SECRET_ACCESS_KEY",
+          "projectId": "860495975406",
+          "secret": "AWS_SES_SECRET_ACCESS_KEY",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "onUserCreatedWelcomeEmail",
+      "createTime": null,
+      "updateTime": "2026-09-27T02:02:28.037375233Z",
+      "revision": "1",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-codebase": "email",
+        "firebase-functions-hash": "98b06f38660ecefcc7f204d603d751e8dee8707f"
+      },
+      "triggerMetadata": {
+        "eventFilters": [
+          {
+            "attribute": "resource",
+            "value": "projects/reservaeldia-7a440"
+          }
+        ],
+        "eventType": "providers/firebase.auth/eventTypes/user.create",
+        "retryPolicy": "RETRY_POLICY_RETRY",
+        "service": "firebaseauth.googleapis.com"
+      },
+      "source": null
+    },
+    {
+      "name": "prepareDraftPreviewRender",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 512,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 80,
+      "minInstances": 1,
+      "maxInstances": 20,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "prepareDraftPreviewRender",
+      "createTime": "2026-04-24T19:12:45.410577254Z",
+      "updateTime": "2026-09-13T03:34:35.731203835Z",
+      "revision": "preparedraftpreviewrender-00115-pok",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270464756680",
+        "object": "prepareDraftPreviewRender/function-source.zip"
+      }
+    },
+    {
+      "name": "preparePublicTemplatePreview",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 512,
+      "cpu": 0.3333,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 60,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "preparePublicTemplatePreview",
+      "createTime": "2026-05-17T15:16:02.627832246Z",
+      "updateTime": "2026-09-13T03:34:35.621437927Z",
+      "revision": "preparepublictemplatepreview-00077-bup",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270464720475",
+        "object": "preparePublicTemplatePreview/function-source.zip"
+      }
+    },
+    {
+      "name": "processPendingAnalyticsEventsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 512,
+      "cpu": 0.3333,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 60,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "processPendingAnalyticsEventsV1",
+      "createTime": "2026-03-13T04:34:14.728859262Z",
+      "updateTime": "2026-09-13T03:34:35.490383365Z",
+      "revision": "processpendinganalyticseventsv1-00144-til",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270464690426",
+        "object": "processPendingAnalyticsEventsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "publicarInvitacion",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 1024,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 20,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "publicarInvitacion",
+      "createTime": "2025-05-20T13:04:51.738606335Z",
+      "updateTime": "2026-09-13T03:34:23.183152568Z",
+      "revision": "publicarinvitacion-00529-rik",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270387110207",
+        "object": "publicarInvitacion/function-source.zip"
+      }
+    },
+    {
+      "name": "publicRsvpSubmit",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "https",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "publicRsvpSubmit",
+      "createTime": "2026-02-25T23:53:22.483876727Z",
+      "updateTime": "2026-09-13T03:34:13.652838634Z",
+      "revision": "publicrsvpsubmit-00179-gug",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270441672410",
+        "object": "publicRsvpSubmit/function-source.zip"
+      }
+    },
+    {
+      "name": "publishCountdownPresetDraft",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "publishCountdownPresetDraft",
+      "createTime": "2026-02-27T02:14:28.560886117Z",
+      "updateTime": "2026-09-13T03:35:11.866283948Z",
+      "revision": "publishcountdownpresetdraft-00189-luv",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270386977379",
+        "object": "publishCountdownPresetDraft/function-source.zip"
+      }
+    },
+    {
+      "name": "purgeTrashedDrafts",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "purgeTrashedDrafts",
+      "createTime": "2026-02-26T18:00:50.964722798Z",
+      "updateTime": "2026-09-13T03:34:12.401001374Z",
+      "revision": "purgetrasheddrafts-00171-daf",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270441703379",
+        "object": "purgeTrashedDrafts/function-source.zip"
+      }
+    },
+    {
+      "name": "purgeTrashedPublications",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "purgeTrashedPublications",
+      "createTime": "2026-02-26T14:15:54.873924068Z",
+      "updateTime": "2026-09-13T03:34:05.657450561Z",
+      "revision": "purgetrashedpublications-00172-haw",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270386995004",
+        "object": "purgeTrashedPublications/function-source.zip"
+      }
+    },
+    {
+      "name": "reportClientIssue",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "reportClientIssue",
+      "createTime": "2026-02-18T12:07:36.941562617Z",
+      "updateTime": "2026-09-13T03:35:21.981330420Z",
+      "revision": "reportclientissue-00255-lux",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270476345662",
+        "object": "reportClientIssue/function-source.zip"
+      }
+    },
+    {
+      "name": "requestBusinessAnalyticsRawExportV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 512,
+      "cpu": 0.3333,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 60,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "requestBusinessAnalyticsRawExportV1",
+      "createTime": "2026-03-13T15:35:39.906073452Z",
+      "updateTime": "2026-09-13T03:34:28.486862235Z",
+      "revision": "requestbusinessanalyticsrawexportv1-00136-had",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270387033841",
+        "object": "requestBusinessAnalyticsRawExportV1/function-source.zip"
+      }
+    },
+    {
+      "name": "restoreDraftFromTrash",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "restoreDraftFromTrash",
+      "createTime": "2026-02-26T18:00:50.947515019Z",
+      "updateTime": "2026-09-13T03:38:12.884861512Z",
+      "revision": "restoredraftfromtrash-00171-mum",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270600722276",
+        "object": "restoreDraftFromTrash/function-source.zip"
+      }
+    },
+    {
+      "name": "retryPaidPublicationWithNewSlug",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 1024,
+      "cpu": 1,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 20,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "retryPaidPublicationWithNewSlug",
+      "createTime": "2026-02-20T09:35:09.381116274Z",
+      "updateTime": "2026-09-13T03:38:20.788383366Z",
+      "revision": "retrypaidpublicationwithnewslug-00260-qaq",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270689651524",
+        "object": "retryPaidPublicationWithNewSlug/function-source.zip"
+      }
+    },
+    {
+      "name": "runBusinessAnalyticsExportJobsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 1024,
+      "cpu": 0.5833,
+      "timeout": 540,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 34,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "runBusinessAnalyticsExportJobsV1",
+      "createTime": "2026-03-13T15:35:39.913708276Z",
+      "updateTime": "2026-09-13T03:38:16.759377830Z",
+      "revision": "runbusinessanalyticsexportjobsv1-00134-yiy",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270600664351",
+        "object": "runBusinessAnalyticsExportJobsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "runBusinessAnalyticsRebuildJobsV1",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "scheduled",
+      "memory": 1024,
+      "cpu": 0.5833,
+      "timeout": 540,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 34,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "runBusinessAnalyticsRebuildJobsV1",
+      "createTime": "2026-03-13T05:04:05.886782781Z",
+      "updateTime": "2026-09-13T03:38:21.595390729Z",
+      "revision": "runbusinessanalyticsrebuildjobsv1-00139-wow",
+      "labels": {
+        "deployment-scheduled": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270689620295",
+        "object": "runBusinessAnalyticsRebuildJobsV1/function-source.zip"
+      }
+    },
+    {
+      "name": "saveCountdownPresetDraft",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "saveCountdownPresetDraft",
+      "createTime": "2026-02-27T02:12:14.159985861Z",
+      "updateTime": "2026-09-13T03:38:27.539211084Z",
+      "revision": "savecountdownpresetdraft-00189-dam",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270600692809",
+        "object": "saveCountdownPresetDraft/function-source.zip"
+      }
+    },
+    {
+      "name": "setAdminClaim",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "setAdminClaim",
+      "createTime": "2026-01-22T21:22:26.977752792Z",
+      "updateTime": "2026-09-13T03:38:30.840635380Z",
+      "revision": "setadminclaim-00295-cid",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270700412394",
+        "object": "setAdminClaim/function-source.zip"
+      }
+    },
+    {
+      "name": "syncLegacyCountdownPresets",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "syncLegacyCountdownPresets",
+      "createTime": "2026-02-27T03:14:00.930717759Z",
+      "updateTime": "2026-09-13T03:38:32.194964771Z",
+      "revision": "synclegacycountdownpresets-00187-xev",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270700395859",
+        "object": "syncLegacyCountdownPresets/function-source.zip"
+      }
+    },
+    {
+      "name": "testTransactionalEmail",
+      "region": "us-central1",
+      "codebase": "email",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "https",
+      "memory": 256,
+      "cpu": 1,
+      "timeout": 20,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 1,
+      "serviceAccount": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+      "secrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "AWS_SES_ACCESS_KEY_ID",
+          "projectId": "reservaeldia-7a440",
+          "secret": "AWS_SES_ACCESS_KEY_ID",
+          "version": "3"
+        },
+        {
+          "key": "AWS_SES_SECRET_ACCESS_KEY",
+          "projectId": "reservaeldia-7a440",
+          "secret": "AWS_SES_SECRET_ACCESS_KEY",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "testTransactionalEmail",
+      "createTime": "2026-09-18T23:28:47.165139747Z",
+      "updateTime": "2026-09-26T13:08:50.285066809Z",
+      "revision": "testtransactionalemail-00003-leg",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-codebase": "email",
+        "firebase-functions-hash": "821d16e166c8badfe229fadd0ffa0c8ddcc8f862"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1790427932609344",
+        "object": "testTransactionalEmail/function-source.zip"
+      }
+    },
+    {
+      "name": "testWelcomeEmail",
+      "region": "us-central1",
+      "codebase": "email",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "https",
+      "memory": 256,
+      "cpu": 1,
+      "timeout": 20,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 1,
+      "serviceAccount": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+      "secrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "AWS_SES_ACCESS_KEY_ID",
+          "projectId": "reservaeldia-7a440",
+          "secret": "AWS_SES_ACCESS_KEY_ID",
+          "version": "3"
+        },
+        {
+          "key": "AWS_SES_SECRET_ACCESS_KEY",
+          "projectId": "reservaeldia-7a440",
+          "secret": "AWS_SES_SECRET_ACCESS_KEY",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "testWelcomeEmail",
+      "createTime": "2026-09-25T18:28:42.196485979Z",
+      "updateTime": "2026-09-26T13:21:22.970611027Z",
+      "revision": "testwelcomeemail-00003-riw",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-codebase": "email",
+        "firebase-functions-hash": "821d16e166c8badfe229fadd0ffa0c8ddcc8f862"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1790428815827736",
+        "object": "testWelcomeEmail/function-source.zip"
+      }
+    },
+    {
+      "name": "transitionPublishedInvitationState",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "transitionPublishedInvitationState",
+      "createTime": "2026-02-26T14:14:59.599665528Z",
+      "updateTime": "2026-09-13T03:38:20.390263224Z",
+      "revision": "transitionpublishedinvitationstate-00174-riz",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270689586997",
+        "object": "transitionPublishedInvitationState/function-source.zip"
+      }
+    },
+    {
+      "name": "updateMyUiPreferences",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "updateMyUiPreferences",
+      "createTime": "2026-07-17T20:44:20.265458944Z",
+      "updateTime": "2026-09-13T03:38:29.381946569Z",
+      "revision": "updatemyuipreferences-00022-dih",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270700389791",
+        "object": "updateMyUiPreferences/function-source.zip"
+      }
+    },
+    {
+      "name": "upsertPublicationDiscountCode",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "upsertPublicationDiscountCode",
+      "createTime": "2026-02-20T14:26:45.406431012Z",
+      "updateTime": "2026-09-13T03:38:21.388052657Z",
+      "revision": "upsertpublicationdiscountcode-00225-ruq",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270689441762",
+        "object": "upsertPublicationDiscountCode/function-source.zip"
+      }
+    },
+    {
+      "name": "upsertUserProfile",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "upsertUserProfile",
+      "createTime": "2026-02-17T21:24:22.098380757Z",
+      "updateTime": "2026-09-13T03:40:41.569956468Z",
+      "revision": "upsertuserprofile-00253-lin",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270830982431",
+        "object": "upsertUserProfile/function-source.zip"
+      }
+    },
+    {
+      "name": "validateDraftForPublication",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "callable",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "validateDraftForPublication",
+      "createTime": "2026-03-24T11:11:10.094478481Z",
+      "updateTime": "2026-09-13T03:40:46.456612925Z",
+      "revision": "validatedraftforpublication-00118-sij",
+      "labels": {
+        "deployment-callable": "true",
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270774927399",
+        "object": "validateDraftForPublication/function-source.zip"
+      }
+    },
+    {
+      "name": "verInvitacion",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "https",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [],
+      "event": null,
+      "secretBindings": [],
+      "state": "ACTIVE",
+      "entryPoint": "verInvitacion",
+      "createTime": "2025-05-18T10:49:42.969823242Z",
+      "updateTime": "2026-09-13T03:40:42.718685776Z",
+      "revision": "verinvitacion-00526-san",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "ac1c60b0113ab8be8154749bf34fb3940a366e82"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270830815408",
+        "object": "verInvitacion/function-source.zip"
+      }
+    },
+    {
+      "name": "verInvitacionPublicada",
+      "region": "us-central1",
+      "codebase": "default",
+      "platform": "gcfv2",
+      "runtime": "nodejs20",
+      "trigger": "https",
+      "memory": 256,
+      "cpu": 0.1666,
+      "timeout": 60,
+      "concurrency": 1,
+      "minInstances": 0,
+      "maxInstances": 100,
+      "serviceAccount": "860495975406-compute@developer.gserviceaccount.com",
+      "secrets": [
+        "PUBLIC_VISIT_SIGNING_SECRET"
+      ],
+      "event": null,
+      "secretBindings": [
+        {
+          "key": "PUBLIC_VISIT_SIGNING_SECRET",
+          "projectId": "reservaeldia-7a440",
+          "secret": "PUBLIC_VISIT_SIGNING_SECRET",
+          "version": "2"
+        }
+      ],
+      "state": "ACTIVE",
+      "entryPoint": "verInvitacionPublicada",
+      "createTime": "2025-05-26T11:55:09.762122799Z",
+      "updateTime": "2026-09-13T03:40:35.836253415Z",
+      "revision": "verinvitacionpublicada-00483-gom",
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "5a7eb82b26db4a350909a319ab9dd250ccecdd6f"
+      },
+      "triggerMetadata": null,
+      "source": {
+        "bucket": "gcf-v2-sources-860495975406-us-central1",
+        "generation": "1789270774978604",
+        "object": "verInvitacionPublicada/function-source.zip"
+      }
+    }
+  ],
+  "comparison": {
+    "normalization": "Firebase CLI 14.4.0 manifest converter, backend and resolveCpuAndConcurrency. Null local options resolve documented defaults; unspecified maxInstances deliberately retained as null. v1 CPU is not exposed. No claim of all deployed code matching HEAD.",
+    "attributesCompared": [
+      "name",
+      "region",
+      "codebase",
+      "platform",
+      "runtime",
+      "trigger",
+      "memory",
+      "cpu",
+      "timeout",
+      "concurrency",
+      "minInstances",
+      "maxInstances",
+      "serviceAccount",
+      "secrets",
+      "eventType",
+      "retry",
+      "eventFilters",
+      "eventFilterPathPatterns"
+    ],
+    "differences": [
+      {
+        "name": "adminCommitTemplateWorkspaceV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminConvertDraftToTemplateV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminCreateTemplateFromDraftV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminDeleteTextPresetV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminDuplicateTextPresetV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminGetDecorUsageStatsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminGetIconUsageStatsV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminGetPricingConfigV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminGetTemplateEditorDocumentV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 20
+          }
+        }
+      },
+      {
+        "name": "adminHardDeleteTemplateFromTrashV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListDecorCatalogV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListIconCatalogV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListPricingHistoryV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListTemplateTagsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListTemplateTrashV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListTemplatesV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminListTextPresetsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminMoveTemplateToTrashV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminOpenTemplateWorkspaceV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminPatchDecorMetadataV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminPatchIconMetadataV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminRebuildBusinessAnalyticsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 60
+          }
+        }
+      },
+      {
+        "name": "adminRestoreTemplateFromTrashV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminRevalidateDecorV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminRevalidateIconV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSaveTemplateEditorDocumentV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSetDecorActivationV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSetDecorPriorityV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSetIconActivationV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSetIconPriorityV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSetTextPresetActivationV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSetTextPresetVisibilityV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminSyncLegacyTextPresetsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminUpdatePricingConfigV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminUpsertDashboardHomeConfigV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminUpsertTemplateEditorialV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminUpsertTemplateTagV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "adminUpsertTextPresetV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "archiveCountdownPreset",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "borrarBorrador",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "borrarPlantilla",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "borrarTodosLosBorradores",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "checkPublicSlugAvailability",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "copiarPlantilla",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "copiarPlantillaHTML",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "crearPlantilla",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "dailyIconCatalogReconcileV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "dailyIconUsageScanV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "deleteCountdownPreset",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "designerAiChat",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "duplicateCountdownPreset",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "finalizeExpiredPublications",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getAdminAccess",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getAdminDraftSnapshot",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getAdminUserByEmail",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getBusinessAnalyticsOverviewV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 60
+          }
+        }
+      },
+      {
+        "name": "getBusinessAnalyticsRawExportStatusV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 60
+          }
+        }
+      },
+      {
+        "name": "getDashboardHomeConfigV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getMyProfileStatus",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getMyPublicationVisitMetrics",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getMyUiPreferences",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getPricingConfigV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getPublicationCheckoutStatus",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getUserDirectoryDetail",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "getUsersStats",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "hardDeleteLegacyPublication",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listAdminUsers",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listCountdownPresetVersionsAdmin",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listCountdownPresetsAdmin",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listCountdownPresetsPublic",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listPublicationDiscountCodeUsage",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listPublicationDiscountCodes",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listTextPresetsPublicV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "listUsersDirectory",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "moveDraftToTrash",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "onDecorCatalogDocWriteV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "onIconCatalogDocWriteV2",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "prepareDraftPreviewRender",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 20
+          }
+        }
+      },
+      {
+        "name": "preparePublicTemplatePreview",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 60
+          }
+        }
+      },
+      {
+        "name": "processPendingAnalyticsEventsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 60
+          }
+        }
+      },
+      {
+        "name": "publicRsvpSubmit",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "publicarInvitacion",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 20
+          }
+        }
+      },
+      {
+        "name": "publishCountdownPresetDraft",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "purgeTrashedDrafts",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "purgeTrashedPublications",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "reportClientIssue",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "requestBusinessAnalyticsRawExportV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 60
+          }
+        }
+      },
+      {
+        "name": "restoreDraftFromTrash",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "retryPaidPublicationWithNewSlug",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 20
+          }
+        }
+      },
+      {
+        "name": "runBusinessAnalyticsExportJobsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 34
+          }
+        }
+      },
+      {
+        "name": "runBusinessAnalyticsRebuildJobsV1",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 34
+          }
+        }
+      },
+      {
+        "name": "saveCountdownPresetDraft",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "setAdminClaim",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "syncLegacyCountdownPresets",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "transitionPublishedInvitationState",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "updateMyUiPreferences",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "upsertPublicationDiscountCode",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "upsertUserProfile",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "validateDraftForPublication",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "verInvitacion",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "verInvitacionPublicada",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "createPublicationCheckoutSession",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 100
+          }
+        }
+      },
+      {
+        "name": "createPublicationPayment",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 20
+          }
+        }
+      },
+      {
+        "name": "mercadoPagoWebhook",
+        "fields": {
+          "maxInstances": {
+            "local": null,
+            "remote": 20
+          }
+        }
+      }
+    ]
+  },
+  "schedulers": [
+    {
+      "name": "dailyIconCatalogReconcileV2",
+      "local": {
+        "retryConfig": {},
+        "schedule": "45 3 * * *",
+        "timeZone": "UTC"
+      },
+      "remote": {
+        "schedule": "45 3 * * *",
+        "timeZone": "UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "dailyIconUsageScanV2",
+      "local": {
+        "retryConfig": {},
+        "schedule": "15 3 * * *",
+        "timeZone": "UTC"
+      },
+      "remote": {
+        "schedule": "15 3 * * *",
+        "timeZone": "UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "finalizeExpiredPublications",
+      "local": {
+        "retryConfig": {},
+        "schedule": "every 15 minutes",
+        "timeZone": "Etc/UTC"
+      },
+      "remote": {
+        "schedule": "every 15 minutes",
+        "timeZone": "Etc/UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "processPendingAnalyticsEventsV1",
+      "local": {
+        "retryConfig": {},
+        "schedule": "every 15 minutes"
+      },
+      "remote": {
+        "schedule": "every 15 minutes",
+        "timeZone": "UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "purgeTrashedDrafts",
+      "local": {
+        "retryConfig": {},
+        "schedule": "every 24 hours",
+        "timeZone": "Etc/UTC"
+      },
+      "remote": {
+        "schedule": "every 24 hours",
+        "timeZone": "Etc/UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "purgeTrashedPublications",
+      "local": {
+        "retryConfig": {},
+        "schedule": "every 24 hours",
+        "timeZone": "Etc/UTC"
+      },
+      "remote": {
+        "schedule": "every 24 hours",
+        "timeZone": "Etc/UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "runBusinessAnalyticsExportJobsV1",
+      "local": {
+        "retryConfig": {},
+        "schedule": "every 1 minutes"
+      },
+      "remote": {
+        "schedule": "every 1 minutes",
+        "timeZone": "UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    },
+    {
+      "name": "runBusinessAnalyticsRebuildJobsV1",
+      "local": {
+        "retryConfig": {},
+        "schedule": "every 1 minutes"
+      },
+      "remote": {
+        "schedule": "every 1 minutes",
+        "timeZone": "UTC",
+        "retryConfig": null,
+        "state": "ENABLED"
+      }
+    }
+  ],
+  "share": {
+    "classification": "B - replaced/obsolete",
+    "retirement": "Deferred: safe recovery of legacy deployment/configuration not validated; no deletion",
+    "capturedAt": "2026-09-27T15:24:39.357Z",
+    "publicationStates": {
+      "pending": [
+        {
+          "result": {
+            "aggregateFields": {
+              "count": {
+                "integerValue": "0"
+              }
+            }
+          },
+          "readTime": "2026-09-27T15:24:40.768772Z"
+        }
+      ],
+      "rendering": [
+        {
+          "result": {
+            "aggregateFields": {
+              "count": {
+                "integerValue": "0"
+              }
+            }
+          },
+          "readTime": "2026-09-27T15:24:40.914806Z"
+        }
+      ]
+    },
+    "logs": {
+      "started": {
+        "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"generatepublishedshareimage\" AND timestamp>=\"2026-08-28T00:00:00Z\" AND jsonPayload.message=\"Generacion async de imagen share iniciada\""
+      },
+      "completed": {
+        "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"generatepublishedshareimage\" AND timestamp>=\"2026-08-28T00:00:00Z\" AND jsonPayload.message=\"Generacion async de imagen share finalizada\""
+      },
+      "failed": {
+        "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"generatepublishedshareimage\" AND timestamp>=\"2026-08-28T00:00:00Z\" AND jsonPayload.message=\"Generacion async de imagen share fallo\""
+      }
+    },
+    "sources": [
+      {
+        "name": "publicarInvitacion",
+        "source": {
+          "bucket": "gcf-v2-sources-860495975406-us-central1",
+          "object": "publicarInvitacion/function-source.zip",
+          "generation": "1789270387110207"
+        },
+        "bytes": 1376800,
+        "updateTime": "2026-09-13T03:34:23.183152568Z"
+      },
+      {
+        "name": "retryPaidPublicationWithNewSlug",
+        "source": {
+          "bucket": "gcf-v2-sources-860495975406-us-central1",
+          "object": "retryPaidPublicationWithNewSlug/function-source.zip",
+          "generation": "1789270689651524"
+        },
+        "bytes": 1376800,
+        "updateTime": "2026-09-13T03:38:20.788383366Z"
+      },
+      {
+        "name": "createPublicationPayment",
+        "source": {
+          "bucket": "gcf-v2-sources-860495975406-us-central1",
+          "object": "createPublicationPayment/function-source.zip",
+          "generation": "1790127488851968"
+        },
+        "bytes": 491420,
+        "updateTime": "2026-09-23T01:39:12.668634471Z"
+      },
+      {
+        "name": "mercadoPagoWebhook",
+        "source": {
+          "bucket": "gcf-v2-sources-860495975406-us-central1",
+          "object": "mercadoPagoWebhook/function-source.zip",
+          "generation": "1790271207017523"
+        },
+        "bytes": 491563,
+        "updateTime": "2026-09-24T17:34:48.947907750Z"
+      }
+    ],
+    "publisherSourceChecks": [
+      {
+        "endpoint": "publicarInvitacion",
+        "module": "lib/payments/publicationPublishExecution.js",
+        "sha256": "2a37854cae008f29b2f1e4461b2ff33150759bea41803fd940c240c06a0f9ee7",
+        "requiredGeneratedBeforeHtml": true,
+        "hasPendingBuilder": false,
+        "hasOldHandler": false
+      },
+      {
+        "endpoint": "retryPaidPublicationWithNewSlug",
+        "module": "lib/payments/publicationPublishExecution.js",
+        "sha256": "2a37854cae008f29b2f1e4461b2ff33150759bea41803fd940c240c06a0f9ee7",
+        "requiredGeneratedBeforeHtml": true,
+        "hasPendingBuilder": false,
+        "hasOldHandler": false
+      },
+      {
+        "endpoint": "createPublicationPayment",
+        "module": "lib/payments/publicationPublishExecution.js",
+        "sha256": "2a37854cae008f29b2f1e4461b2ff33150759bea41803fd940c240c06a0f9ee7",
+        "requiredGeneratedBeforeHtml": true,
+        "hasPendingBuilder": false,
+        "hasOldHandler": false
+      },
+      {
+        "endpoint": "mercadoPagoWebhook",
+        "module": "lib/payments/publicationPublishExecution.js",
+        "sha256": "2a37854cae008f29b2f1e4461b2ff33150759bea41803fd940c240c06a0f9ee7",
+        "requiredGeneratedBeforeHtml": true,
+        "hasPendingBuilder": false,
+        "hasOldHandler": false
+      }
+    ],
+    "rollbackInspection": {
+      "capturedAt": "2026-09-27T15:29:56.669Z",
+      "configurationNames": [
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID",
+        "MERCADO_PAGO_ACCESS_TOKEN",
+        "MERCADO_PAGO_CLIENT_ID",
+        "MERCADO_PAGO_CLIENT_SECRET",
+        "MERCADO_PAGO_PUBLIC_KEY",
+        "MERCADO_PAGO_WEBHOOK_URL",
+        "MP_WEBHOOK_SECRET",
+        "SUPERADMINS_UIDS"
+      ],
+      "configurationDefaultChecks": {
+        "shareEnabledDefault": true,
+        "defaultShareImageDefault": true,
+        "browserPathDefault": true
+      },
+      "buildConfig": {
+        "runtime": "nodejs20",
+        "entryPoint": "generatePublishedShareImage",
+        "source": {
+          "storageSource": {
+            "bucket": "gcf-v2-sources-860495975406-us-central1",
+            "object": "generatePublishedShareImage/function-source.zip",
+            "generation": "1777765849550671"
+          }
+        },
+        "dockerRepository": "projects/reservaeldia-7a440/locations/us-central1/repositories/gcf-artifacts",
+        "dockerRegistry": "ARTIFACT_REGISTRY",
+        "serviceAccount": "projects/reservaeldia-7a440/serviceAccounts/860495975406-compute@developer.gserviceaccount.com"
+      },
+      "vpcConfigured": false,
+      "kmsConfigured": false,
+      "personalPrincipals": 0,
+      "invokerPolicy": {
+        "bindings": []
+      }
+    }
+  },
+  "email": {
+    "capturedAt": "2026-09-27T15:34:38.274Z",
+    "endpoints": [
+      {
+        "name": "testTransactionalEmail",
+        "configurationNames": [
+          "EMAIL_MODE",
+          "EVENTARC_CLOUD_EVENT_SOURCE",
+          "FIREBASE_CONFIG",
+          "FUNCTION_TARGET",
+          "GCLOUD_PROJECT",
+          "LOG_EXECUTION_ID",
+          "SUPERADMINS_UIDS",
+          "WELCOME_EMAIL_ACTIVATION_AT"
+        ],
+        "mode": "sandbox",
+        "activationEmpty": true,
+        "superadminsPresent": true,
+        "superadminsMatchCore": true,
+        "superadminsMatchEmail": true,
+        "unexpectedNames": []
+      },
+      {
+        "name": "testWelcomeEmail",
+        "configurationNames": [
+          "EMAIL_MODE",
+          "EVENTARC_CLOUD_EVENT_SOURCE",
+          "FIREBASE_CONFIG",
+          "FUNCTION_TARGET",
+          "GCLOUD_PROJECT",
+          "LOG_EXECUTION_ID",
+          "SUPERADMINS_UIDS",
+          "WELCOME_EMAIL_ACTIVATION_AT"
+        ],
+        "mode": "sandbox",
+        "activationEmpty": true,
+        "superadminsPresent": true,
+        "superadminsMatchCore": true,
+        "superadminsMatchEmail": true,
+        "unexpectedNames": []
+      },
+      {
+        "name": "onUserCreatedWelcomeEmail",
+        "configurationNames": [
+          "EMAIL_MODE",
+          "EVENTARC_CLOUD_EVENT_SOURCE",
+          "FIREBASE_CONFIG",
+          "GCLOUD_PROJECT",
+          "SUPERADMINS_UIDS",
+          "WELCOME_EMAIL_ACTIVATION_AT"
+        ],
+        "mode": "sandbox",
+        "activationEmpty": true,
+        "superadminsPresent": true,
+        "superadminsMatchCore": true,
+        "superadminsMatchEmail": true,
+        "unexpectedNames": []
+      }
+    ],
+    "identities": [
+      {
+        "name": "projects/reservaeldia-7a440/serviceAccounts/email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+        "email": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+        "projectBindings": []
+      },
+      {
+        "name": "projects/reservaeldia-7a440/serviceAccounts/welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+        "email": "welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+        "projectBindings": [
+          {
+            "role": "projects/reservaeldia-7a440/roles/welcomeEmailDeliveryWriter",
+            "condition": {
+              "expression": "resource.name == 'projects/reservaeldia-7a440/databases/(default)'",
+              "title": "welcome_default_database"
+            },
+            "roleDefinition": {
+              "name": "projects/reservaeldia-7a440/roles/welcomeEmailDeliveryWriter",
+              "includedPermissions": [
+                "datastore.entities.create",
+                "datastore.entities.update"
+              ],
+              "stage": "GA"
+            }
+          }
+        ]
+      }
+    ],
+    "secretMetadata": [
+      {
+        "secret": "AWS_SES_ACCESS_KEY_ID",
+        "version": "3",
+        "metadata": {
+          "name": "projects/860495975406/secrets/AWS_SES_ACCESS_KEY_ID/versions/3",
+          "createTime": "2026-09-18T22:05:52.473687Z",
+          "state": "ENABLED"
+        },
+        "bindings": [
+          {
+            "serviceAccount": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+            "role": "roles/secretmanager.secretAccessor"
+          },
+          {
+            "serviceAccount": "welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+            "role": "roles/secretmanager.secretAccessor"
+          }
+        ]
+      },
+      {
+        "secret": "AWS_SES_SECRET_ACCESS_KEY",
+        "version": "2",
+        "metadata": {
+          "name": "projects/860495975406/secrets/AWS_SES_SECRET_ACCESS_KEY/versions/2",
+          "createTime": "2026-09-18T22:06:29.170920Z",
+          "state": "ENABLED"
+        },
+        "bindings": [
+          {
+            "serviceAccount": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+            "role": "roles/secretmanager.secretAccessor"
+          },
+          {
+            "serviceAccount": "welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+            "role": "roles/secretmanager.secretAccessor"
+          }
+        ]
+      }
+    ],
+    "welcomeLogs": {
+      "filter": "resource.type=\"cloud_function\" AND resource.labels.function_name=\"onUserCreatedWelcomeEmail\" AND resource.labels.region=\"us-central1\" AND jsonPayload.correlationId=\"welcome-2228fd59-b966-4e17-bae1-a07206926cae\" AND timestamp>=\"2026-09-27T02:00:00Z\" AND timestamp<\"2026-09-27T02:30:00Z\"",
+      "entries": [
+        {
+          "timestamp": "2026-09-27T02:11:09.862396Z",
+          "template": "welcome",
+          "mode": "sandbox",
+          "state": "skipped",
+          "attempts": 0,
+          "messageId": null,
+          "errorCode": "EMAIL_SANDBOX_BUSINESS_BLOCKED",
+          "correlationId": "welcome-2228fd59-b966-4e17-bae1-a07206926cae",
+          "sourceEventId": "1dab33d8-b7b5-4074-8246-d4199ab85ac7"
+        }
+      ],
+      "truncated": false
+    },
+    "local": {
+      "mode": "sandbox",
+      "activationEmpty": true,
+      "superadminsMatchCore": true
+    }
+  },
+  "emailSmokeParity": {
+    "baseline": "email-remote-2026-09-25.json",
+    "comparison": "compareEmailMetadata.cjs",
+    "result": "2/2 metadata, URLs, private invoker policy hashes, ownership and Secret versions match after migration to email"
+  },
+  "remoteOperations": {
+    "deploys": [],
+    "deletes": [],
+    "configurationChanges": [],
+    "iamChanges": [],
+    "businessActivations": [],
+    "emailsSent": 0,
+    "authAccountsCreated": 0
+  },
+  "capturedIntermediateAt": "2026-09-27T15:37:58.776Z",
+  "validation": {
+    "integral": {
+      "passed": 1578,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "emailAndPublication": {
+      "passed": 201,
+      "failed": 0
+    },
+    "builds": [
+      "default",
+      "payments",
+      "email"
+    ],
+    "typechecks": [
+      "default",
+      "payments",
+      "email"
+    ],
+    "discovery": [
+      {
+        "codebase": "default",
+        "endpoints": 101,
+        "detectorMs": 2792.3337
+      },
+      {
+        "codebase": "payments",
+        "endpoints": 3,
+        "detectorMs": 1016.0489
+      },
+      {
+        "codebase": "email",
+        "endpoints": 3,
+        "detectorMs": 972.6583
+      }
+    ],
+    "hostNode": "22.13.1",
+    "firebaseCli": "14.4.0",
+    "sdk": "6.4.0"
+  }
+}

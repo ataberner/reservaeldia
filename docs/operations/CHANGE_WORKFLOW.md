@@ -21,6 +21,14 @@ documento no exige planes, informes intermedios ni archivos adicionales.
 Antes de ejecutar verificaciones, revisá sus [efectos reales](../DOCUMENTATION_INDEX.md#verification-entry-points)
 y las [limitaciones operativas](../architecture/SYSTEM_FRAGILITY_MAP.md#operational-readiness).
 
+Para cualquier creación o modificación de Firebase Functions, aplicar primero
+[ownership de Functions/codebases](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md)
+antes de elegir el entrypoint: dominio, estado y efecto principal, asignación
+explícita y verificación del registro/manifests. El gate `verify:ownership`, también
+exigido por `verify:local`, complementa los tests funcionales. No actualizar una
+asignación o firma de opciones sólo para silenciar un fallo ni tratar un snapshot
+histórico como inventario vigente.
+
 <a id="investigar"></a>
 
 ## A. Investigar o explicar

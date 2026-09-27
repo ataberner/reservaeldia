@@ -14,6 +14,7 @@
         ".runtimeconfig.json"
       ],
       "predeploy": [
+        "node functions/scripts/checkDeployReadiness.cjs payments",
         "npm --prefix functions run build:payments"
       ]
     }

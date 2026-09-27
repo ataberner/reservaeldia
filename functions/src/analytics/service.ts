@@ -3167,6 +3167,7 @@ export const getBusinessAnalyticsOverviewV1 = onCall(
     region: SCHEDULE_REGION,
     cpu: "gcf_gen1",
     memory: "512MiB",
+    maxInstances: 60,
   },
   async (request: CallableRequest<AnalyticsDateRangeInput>) => {
     requireSuperAdmin(request);
@@ -3266,6 +3267,7 @@ export const requestBusinessAnalyticsRawExportV1 = onCall(
     region: SCHEDULE_REGION,
     cpu: "gcf_gen1",
     memory: "512MiB",
+    maxInstances: 60,
   },
   async (
     request: CallableRequest<{ fromDate?: string | null; toDate?: string | null; format?: string | null }>
@@ -3292,6 +3294,7 @@ export const getBusinessAnalyticsRawExportStatusV1 = onCall(
     region: SCHEDULE_REGION,
     cpu: "gcf_gen1",
     memory: "512MiB",
+    maxInstances: 60,
   },
   async (request: CallableRequest<{ exportId?: string | null }>) => {
     try {
@@ -3318,6 +3321,7 @@ export const runBusinessAnalyticsExportJobsV1 = onSchedule(
     schedule: "every 1 minutes",
     memory: "1GiB",
     timeoutSeconds: 540,
+    maxInstances: 34,
   },
   async () => {
     const processedJobs = await runPendingRawExports();
@@ -3357,6 +3361,7 @@ export const processPendingAnalyticsEventsV1 = onSchedule(
     cpu: "gcf_gen1",
     schedule: "every 15 minutes",
     memory: "512MiB",
+    maxInstances: 60,
   },
   async () => {
     if (await isRebuildJobActive()) {
@@ -3817,6 +3822,7 @@ export const runBusinessAnalyticsRebuildJobsV1 = onSchedule(
     schedule: "every 1 minutes",
     memory: "1GiB",
     timeoutSeconds: 540,
+    maxInstances: 34,
   },
   async () => {
     const jobRef = getRebuildJobRef();
@@ -3866,6 +3872,7 @@ export const adminRebuildBusinessAnalyticsV1 = onCall(
     region: SCHEDULE_REGION,
     cpu: "gcf_gen1",
     memory: "512MiB",
+    maxInstances: 60,
   },
   async (request: CallableRequest<Record<string, never>>) => {
     const superAdminUid = requireSuperAdmin(request);

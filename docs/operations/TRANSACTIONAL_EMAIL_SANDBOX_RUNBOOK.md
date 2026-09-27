@@ -2,6 +2,21 @@
 
 Status: Operational Diagnostic Evidence. Fases 2A + 2B cerradas hasta sandbox: 2026-09-26.
 
+**Revalidación del 27/09/2026:** la
+[Etapa 2 de arquitectura](FUNCTIONS_STAGE2_RECONCILIATION.md) confirma los tres
+endpoints ACTIVE en email, opciones/bindings/IAM esperados, EMAIL_MODE=sandbox,
+activación vacía y autoridad superadmin coincidente. No faltaba repetir ningún
+deploy/migración de infraestructura. El operador confirmó que SES sigue en
+sandbox; no se habilitaron envíos ni se repitieron smokes. El remoto adicional
+generatePublishedShareImage quedó clasificado B (reemplazado/obsoleto), retenido
+hasta validar su recuperación segura antes del retiro. El cierre del 26/09 que
+sigue se conserva como snapshot histórico, no como una nueva lista de operaciones.
+
+La elección de codebase para nuevas Functions se rige por
+[Functions ownership](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md). Este runbook
+conserva estado operativo y snapshots fechados; el cierre siguiente reemplaza la
+preparación histórica y no autoriza repetir migraciones ni activar production.
+
 <a id="cierre-welcome-sandbox"></a>
 ## Cierre formal de WelcomeEmail hasta sandbox — 26/09/2026
 

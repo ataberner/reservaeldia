@@ -6,6 +6,14 @@ Autoridad operativa para el recorrido aislado de FASE 4A y su verificación
 integrada de FASE 5A. No define permisos,
 roles ni garantías de Rules; F10/F11 y Q1 conservan sus responsables.
 
+Desde la Etapa 1 de ownership, `verify:local` exige además el gate de
+[Functions/codebases](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md#registro-y-guardrails)
+antes de crear la sesión de emuladores. `npm --prefix functions run verify:ownership`
+ejecuta ese mismo stage aisladamente: tres builds, tests de packages/registro/
+configuración y discovery CLI real, sólo en una copia sin credenciales ni dotenv
+personales. La evidencia del stage queda en `functions-ownership.log` en el reporte
+normal; los snapshots anteriores a esta etapa conservan su alcance fechado.
+
 ## Línea base revalidada — 2026-09-11
 
 Inspección del árbol de trabajo antes de iniciar procesos. Había cambios sin
@@ -52,7 +60,11 @@ importar la aplicación. No se leen secretos remotos para los endpoints locales.
 
 Los seis callables permitidos delegan a sus handlers existentes. La entrada local
 no se usa en producción: default usa `lib/index.js`, Payments y Email sus
-entrypoints independientes. El harness combina default y email solo en demo. Los demás
+entrypoints independientes. El harness combina default y email solo en demo. Los
+exports de Payments no se montan en ese wrapper: su ausencia se verifica contra el
+registro de ownership; el bloqueo de checkout de core se prueba con
+`getPublicationCheckoutStatus`. Esto reemplaza la antigua expectativa de encontrar
+`createPublicationPayment` en el wrapper, sin cambiar los handlers. Los restantes
 endpoints HTTP/callable existentes responden `LOCAL_FLOW_DISABLED` antes del
 handler. La única excepción de eventos es `onUserCreatedWelcomeEmail`: desde
 Fase 2B.2 se registra con el mismo handler, exclusivamente EMAIL_MODE=disabled,
@@ -409,6 +421,7 @@ CLI), Chrome existente, paquetes, destinos y puertos antes de iniciar servicios.
 | Etapa | Cobertura y naturaleza |
 | --- | --- |
 | prerequisites / copy | Requisitos/destinos de `local:check`, puertos libres; copia vigente, SHA-256 de fuentes, lockfiles y Rules |
+| functions-ownership (entre prerequisites y copy) | Gate obligatorio de ownership contra los entrypoints productivos en otra copia sin credenciales: tres builds, registro/partición/paridad/bindings, tests de packages y discovery CLI. Un export no registrado detiene el recorrido. Ver la [autoridad canónica](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md). |
 | contracts-input | Check sin escrituras de fuentes y copias de entrada, antes de que lint/sync puedan ocultar una divergencia; no exige `functions/lib` |
 | lint | Script `lint` de Functions, antes de tests/compilación/emuladores: análisis estático completo del alcance [5B](#functions-lint-5b), errores obligatorios y advertencias visibles |
 | tooling | Comportamiento del coordinador (falla, timeout, evidencia, limpieza propia, TAP/lint incompletos), cobertura dinámica de lint y verificación **estática** de YAML/grafo/permisos de CI |

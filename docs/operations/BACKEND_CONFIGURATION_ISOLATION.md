@@ -14,6 +14,16 @@ El estado remoto de email del 26/09 se verifica en el
 [cierre sandbox](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#cierre-welcome-sandbox).
 La lógica de pagos y validación HMAC permanece igual.
 
+**Revalidación del 27/09/2026:** ver
+[reconciliación de Functions y Email](FUNCTIONS_STAGE2_RECONCILIATION.md).
+Email conserva el aislamiento esperado y no requiere repetir la migración.
+El trigger histórico generatePublishedShareImage, clasificado obsoleto, conserva
+nombres sensibles MP en su entorno heredado, sin bindings Secret Manager.
+Se documentaron solo nombres; no se copiaron valores ni se modificó el recurso.
+Ese snapshot fue seguido por el [retiro controlado](DEFAULT_DEPLOY_READINESS.md)
+del único trigger obsoleto, sin restaurar su entorno: remoto final 101/3/3 (107).
+Esta evidencia no implica que se haya auditado el dotenv remoto de todo default.
+
 **Cierre de emails, 2026-09-18:** el operador confirmó el envío sandbox exitoso;
 ver [el runbook de Fase 1](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md). Esta validación
 no cierra la migración/rotación de Mercado Pago ni el aislamiento del entorno.
@@ -33,8 +43,11 @@ Ver [aceptación y rollback conservado](PAYMENTS_CODEBASE_PREPARATION.md).
 - El diagnóstico inicial tenía una sola codebase. Ahora `firebase.json` registra
   `default` / `functions` (101 exports), `payments` / `functions-payments` (3) y
   `email` / `functions-email` (3). El inventario remoto del 26/09 es 102/3/3:
-  default contiene además `generatePublishedShareImage`, sin export local,
-  pendiente de revisión separada. Payments y Email coinciden exactamente.
+  default contenía además `generatePublishedShareImage`, sin export local. El
+  saneamiento del 27/09 lo retiró; los nombres remotos ya coinciden con el registro.
+  El cierre posterior adoptó en source los límites actuales de 12 endpoints
+  default y 2 Payments, retirando sus blockers sin cambiar producción; ver la
+  decisión y validación en el informe de saneamiento enlazado arriba.
 - La CLI instalada, Firebase CLI 14.4.0, lee `.env` y `.env.<project/alias>` del
   source y copia su mapa a **cada endpoint**. Ver `lib/functions/env.js:213` y
   `lib/deploy/functions/prepare.js:77-100` de la instalación de firebase-tools.
@@ -77,8 +90,8 @@ específico y se combina con A/B/C, no reemplaza la clasificación de sensibilid
 | `MP_WEBHOOK_SECRET` | C | `mercadoPagoWebhook` | Secret Manager v1; binding y webhook productivo confirmados. **Rotación pendiente por exposición previa.** No está en dotenv. |
 | `GOOGLE_MAPS_EMBED_API_KEY` | A, identificador de API restringido | Render HTML y validación | `.env.reservaeldia-7a440`, `.env.production`; conservada sin cambios. Termina en iframe público; mantener restricciones de API/referrers. |
 | `EMAIL_MODE` | B | Email | `.env.reservaeldia-7a440`; conservada sin cambios. `defineString`, default bloqueado; sandbox en la revisión inicial. |
-| `AWS_SES_ACCESS_KEY_ID` | C, parte del par de credenciales | Solo email | `emails/config.ts`, Secret Manager según el operador; conservar binding específico. |
-| `AWS_SES_SECRET_ACCESS_KEY` | C | Solo email | Igual que el anterior. |
+| `AWS_SES_ACCESS_KEY_ID` | C, parte del par de credenciales | testTransactionalEmail, testWelcomeEmail, onUserCreatedWelcomeEmail en email | `emails/config.ts`; bindings por endpoint, ver cierre sandbox del 26/09. |
+| `AWS_SES_SECRET_ACCESS_KEY` | C | Los mismos tres endpoints de email | Igual que el anterior; nombres/metadatos, nunca valores. |
 | `OPENAI_API_KEY` | C | `designerAiChat` | `defineSecret` y binding existentes; además hay nombre en `.secret.local:1` y `.secret.local.example:1`. No se inspeccionó su valor. |
 | `PUBLIC_VISIT_SIGNING_SECRET` | C | `verInvitacionPublicada` | `defineSecret` y binding existentes. |
 | `CLOUD_RUNTIME_CONFIG` → `superadmins.uids` | B para ese campo; contenedor potencialmente sensible | Fallback administrativo | También existe `.runtimeconfig.json`; no se debe imprimir el contenedor. No migrar ni alterar la política administrativa aquí. |
@@ -126,9 +139,11 @@ Access Token v2 en las tres Functions y webhook Secret v1. No hubo deploy,
 lectura de valores de Secrets ni cambio remoto. Ver
 [build, verificaciones y activación por etapas](PAYMENTS_CODEBASE_PREPARATION.md).
 
-**La partición 102 + 3 está validada en producción por el operador.
-Email sigue compartiendo default y requiere una separación posterior.** Esta deuda es
-independiente del cierre funcional de SES. La preparación local de la migración
+**Snapshot histórico del 24/09: la partición 102 + 3 fue validada por el operador;
+Email todavía compartía default.** Ese límite fue reemplazado por la separación
+validada hasta sandbox el 26/09, descrita abajo. La asignación vigente se gobierna
+por [Functions ownership](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md), no por
+este snapshot. La preparación local de la migración
 de `MERCADO_PAGO_ACCESS_TOKEN` y `MP_WEBHOOK_SECRET` quedó completada el
 2026-09-19: bindings preparados y dotenv saneados. El operador confirmó la carga
 manual de los Secrets; no se consultaron sus valores ni se verificó estado remoto.

@@ -5,6 +5,13 @@ Production acceptance below was confirmed by the operator; the closing review
 performs local checks only. No deployment, Function invocation, Secret-value
 access, credential rotation or commit is part of this closure.
 
+The counts and two-codebase partition below are the dated 2026-09-24 snapshot,
+before Email separation. Current routing and the exact registry belong to
+[Functions ownership](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md); see the
+[Email sandbox closure](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#cierre-welcome-sandbox)
+for the later local/remote inventory. Do not use this historical partition to
+choose an entrypoint for a new Function.
+
 ## Production acceptance and remaining security work
 
 The operator confirmed that all three existing Functions were successfully moved
@@ -108,8 +115,8 @@ Historical measurements remain separate from this closing review.
 - `createPublicationPayment`
 - `mercadoPagoWebhook`
 
-`functions/src/index.ts` no longer reexports these objects. `firebase.json` now
-registers default/source `functions` (102 endpoints) and payments/source
+`functions/src/index.ts` no longer reexports these objects. At the 2026-09-24 closure,
+`firebase.json` registered default/source `functions` (102 endpoints) and payments/source
 `functions-payments` (3 endpoints). Their union preserves the original 105 names
 and every endpoint option. The operator confirmed the same partition in production.
 

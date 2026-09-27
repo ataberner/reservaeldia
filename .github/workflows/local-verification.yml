@@ -47,6 +47,7 @@ jobs:
             .local-isolation/reports/run-*/storage-download.log
             .local-isolation/reports/run-*/chrome-download.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/result.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/functions-ownership.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/session.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/source-manifest.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/lint-evidence.json

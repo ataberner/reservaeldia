@@ -1,0 +1,1154 @@
+{
+  "schemaVersion": 1,
+  "policy": "docs/architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md",
+  "codebases": {
+    "default": {
+      "source": "functions",
+      "entrypoint": "functions/src/index.ts",
+      "main": "lib/index.js",
+      "allowedSecrets": [
+        "OPENAI_API_KEY",
+        "PUBLIC_VISIT_SIGNING_SECRET"
+      ],
+      "forbiddenEnvironment": [
+        "MERCADO_PAGO_PUBLIC_KEY",
+        "MERCADO_PAGO_WEBHOOK_URL",
+        "MERCADO_PAGO_CLIENT_ID"
+      ]
+    },
+    "payments": {
+      "source": "functions-payments",
+      "entrypoint": "functions/src/payments/entrypoint.ts",
+      "main": "lib/payments/entrypoint.js",
+      "allowedSecrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN",
+        "MP_WEBHOOK_SECRET"
+      ],
+      "allowedEnvironment": [
+        "MERCADO_PAGO_PUBLIC_KEY",
+        "MERCADO_PAGO_WEBHOOK_URL",
+        "GOOGLE_MAPS_EMBED_API_KEY"
+      ]
+    },
+    "email": {
+      "source": "functions-email",
+      "entrypoint": "functions/src/emails/entrypoint.ts",
+      "main": "lib/emails/entrypoint.js",
+      "allowedSecrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "allowedEnvironment": [
+        "EMAIL_MODE",
+        "WELCOME_EMAIL_ACTIVATION_AT",
+        "SUPERADMINS_UIDS"
+      ]
+    }
+  },
+  "domains": {
+    "identity-support": "default",
+    "drafts": "default",
+    "templates": "default",
+    "publication-delivery": "default",
+    "pricing-discounts": "default",
+    "catalogs-presets": "default",
+    "business-analytics": "default",
+    "dashboard-home": "default",
+    "designer-ai": "default",
+    "mercado-pago": "payments",
+    "transactional-email": "email",
+    "editor": "default"
+  },
+  "endpoints": [
+    {
+      "name": "adminCommitTemplateWorkspaceV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "37c10703feee4f02f00d5b767176bd3092f38d32649bd7720cbc61a5c366570a"
+    },
+    {
+      "name": "adminConvertDraftToTemplateV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0b2ce0e0fb86c3fba56bf58da0769b0da7bfe00a8a0a4c90f3b852524272a561"
+    },
+    {
+      "name": "adminCreateTemplateFromDraftV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "209a4fd8e34e875655b342dc7be1871ae843d569a8e3196a55acb0a2328bf7c0"
+    },
+    {
+      "name": "adminDeleteTextPresetV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "293495b6d1bf340ee5baff510a2ffe03ebefd460115232dc2a6f6dd01f0d2702"
+    },
+    {
+      "name": "adminDuplicateTextPresetV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "d885966dbd5555a908c104196155e5242326069d7de2d5ef8d0e661bac184253"
+    },
+    {
+      "name": "adminGetDecorUsageStatsV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "32c6f94fbb2c85110facc890cbde5f58e45e65d38d17e9f6b89b9147f77e8ebe"
+    },
+    {
+      "name": "adminGetIconUsageStatsV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "ab936884c8a8a35bc05a2ddd3f4b5500348e221493a9c7e310d88843d8f443d9"
+    },
+    {
+      "name": "adminGetPricingConfigV1",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8e91860eaea5f009de6b9ac8fc467bc0b574e8459d4ca157b1bd5a654a0cc432"
+    },
+    {
+      "name": "adminGetTemplateEditorDocumentV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8c3577e1ffaea3a37df2dfa9e6ad7dfecc8526c8fc98001a0ea9f8ad71320f82"
+    },
+    {
+      "name": "adminHardDeleteTemplateFromTrashV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "b5fcb713848bf871a4d8ed9af0a807ebb5fbd97e2d9996f2f30be0c38de8e210"
+    },
+    {
+      "name": "adminListDecorCatalogV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0822b45e57fc51bcaaeaca6f6b421ef4aef22cba4bd0345ca9bf322e578271e1"
+    },
+    {
+      "name": "adminListIconCatalogV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "a004ea41f24ec235ba883dc23db92a0e8f93c50a063e7d1151e26a6ff81e6e19"
+    },
+    {
+      "name": "adminListPricingHistoryV1",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e220e4b142e30ec8d691ebcfa90e348b552271d854698441e111e1d8ee11fcb6"
+    },
+    {
+      "name": "adminListTemplatesV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e8fcf727d2d509982a1528e0b4da212c462c9417ca37910b95392078b23f0049"
+    },
+    {
+      "name": "adminListTemplateTagsV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "a3d312d2c52068d28a13241dc86af540adac0f8ac70df1791693d9f67a08076c"
+    },
+    {
+      "name": "adminListTemplateTrashV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "b2708f77122e24313028814ebcec84671706abb9f038637cfa8bdaf1e43c77fb"
+    },
+    {
+      "name": "adminListTextPresetsV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "65df39e947662fcf68dd7510676c8e63d450d37d2509c7b0c82976176381d85a"
+    },
+    {
+      "name": "adminMoveTemplateToTrashV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "f12ac44fb93595198c1618afd74ef912a11f09d7479844833fb0bf69c67b81fa"
+    },
+    {
+      "name": "adminOpenTemplateWorkspaceV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e9c7e8e5a88e59a83e47bd5b1f1a8b5ad18648fb5a7e484e6ee720cc473f1f71"
+    },
+    {
+      "name": "adminPatchDecorMetadataV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "099c062939f2c51db6481fb966781eea5ce5226595c99c49d58096e56bdea397"
+    },
+    {
+      "name": "adminPatchIconMetadataV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8f758beab7d8acb84a701ce9ae8a1630b94dfec365cda42cc7bac0e458c5c17b"
+    },
+    {
+      "name": "adminRebuildBusinessAnalyticsV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "d115a96cce25a1776b3392df7d179afba65837f884a3e3f69b5bdc0368be740e"
+    },
+    {
+      "name": "adminRestoreTemplateFromTrashV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8b9547b5415b22aede971e65eb72f530a487f6aae1b1eb9bd96c82aa91c1237b"
+    },
+    {
+      "name": "adminRevalidateDecorV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "4fd9d0030b32c547f4d715b625b822a849ebbec1a59d88b42bf800e406df24e9"
+    },
+    {
+      "name": "adminRevalidateIconV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "10056be7ee5f99f79d835eb60e5173e4589791d27c37286d29048a744427af78"
+    },
+    {
+      "name": "adminSaveTemplateEditorDocumentV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "58eeb8a3036eaacb09e2f60003c6d5f72cf652c5cb11462f8b318214e7d3b25b"
+    },
+    {
+      "name": "adminSetDecorActivationV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8c7b8bb884bc93e93ed7309e391a19018c4f10727e954b2b3d3a61a89b6c831e"
+    },
+    {
+      "name": "adminSetDecorPriorityV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "585efa22edf64297f5b9f9057b187a8d4ea5e0922217d849f77195ce48113d43"
+    },
+    {
+      "name": "adminSetIconActivationV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "611ed9df2546e8118b49a6ab7c37a1b1ce40b25748d8a29989884d724d9a191b"
+    },
+    {
+      "name": "adminSetIconPriorityV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "a18db7e011b0690b6db72a8da5558579b944399c4b2b266f272a3bcbb0014727"
+    },
+    {
+      "name": "adminSetTextPresetActivationV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "9605c8db4f6be261fa715bc8f754c3c09d05febf11b44196ec948cfb7f8218ef"
+    },
+    {
+      "name": "adminSetTextPresetVisibilityV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0e8628009645fb2521cff464af9b35cfb82bed1e8fcbceee9583d6f988f76ba9"
+    },
+    {
+      "name": "adminSyncLegacyTextPresetsV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0dbd60d514c21c2d7fe18cdcd845b7bedcd19f93aa5c2bef4de266158d7b6ef0"
+    },
+    {
+      "name": "adminUpdatePricingConfigV1",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e054d01a83ebd725e26e110a275e6970bd390924cce581bc20f7d4cc2caa128b"
+    },
+    {
+      "name": "adminUpsertDashboardHomeConfigV1",
+      "domain": "dashboard-home",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "812237c97c3920c541526046d24e0aa96e5e52e782add0cfb5002d5a39c2d52c"
+    },
+    {
+      "name": "adminUpsertTemplateEditorialV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0de4d523c8f2cf2b98dba3e9f32289a042d11b6389bb46af605d4ca369434029"
+    },
+    {
+      "name": "adminUpsertTemplateTagV1",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "6c92184241d4f1fae4d0447ed34bb13b77879163cde9705d6117ede24568f702"
+    },
+    {
+      "name": "adminUpsertTextPresetV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "b9f92b8601303561cdd60d30df174017bca224fea10e32a8e6af316b0af676a8"
+    },
+    {
+      "name": "archiveCountdownPreset",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "18ef14080c2b8ff1f356c88a5a0b0446a9f3ed14593fb4c464e27a8f99e76597"
+    },
+    {
+      "name": "borrarBorrador",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "784dcd3c9bfe341f1745f7bef4b1c141d587d2af6ca3a2c4e745ace19a6f1483"
+    },
+    {
+      "name": "borrarPlantilla",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "cde294ded3e8dc4efa743eee05fdc314cd35f4b9064195536151a9509e87c4d2"
+    },
+    {
+      "name": "borrarTodosLosBorradores",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "01268d1887f265cbb040ffb9764872277f3609b339c9d61f4c3185a2ba9bd6e9"
+    },
+    {
+      "name": "checkPublicSlugAvailability",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "fd52058ba87d0156ae7ef21f47417ddb97f4e035fdd4ee9db80705c45d149936"
+    },
+    {
+      "name": "copiarPlantilla",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "2c6f915ff0f9fe7536915ed643a58259340193e800b47678547212a3ffb5592d"
+    },
+    {
+      "name": "copiarPlantillaHTML",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "9b62407dfe3988392ee9ed91503ffaaceca6305c41762d7276a9292102e38739"
+    },
+    {
+      "name": "crearPlantilla",
+      "domain": "templates",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e29fa17d529f273359fc47982180c093ca338d6d538e22a4e204c9b379b940dc"
+    },
+    {
+      "name": "createPublicationCheckoutSession",
+      "domain": "mercado-pago",
+      "codebase": "payments",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN"
+      ],
+      "manifestHash": "a03ba367c2b7b87eb16a9b74346259b41337ec9009069a17a08a049c8f5b85e1"
+    },
+    {
+      "name": "createPublicationPayment",
+      "domain": "mercado-pago",
+      "codebase": "payments",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN"
+      ],
+      "manifestHash": "a674c265e4511039a9127a49f279eed5a5f175f95ce035b45453da07693adfce"
+    },
+    {
+      "name": "dailyIconCatalogReconcileV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "29dd5f26ba6ce658c5418a8e484541dbd91301de9a014feb59fbb43b5afbe3fa"
+    },
+    {
+      "name": "dailyIconUsageScanV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "dedc69739ab99af4b4f152ddeace8faa1effd85494b424b0d7ba382e929ac995"
+    },
+    {
+      "name": "deleteCountdownPreset",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "6fc2bb41ab4c701c7add9c2f6cb34400b936f6d836e57ed4b032176ebc4a528c"
+    },
+    {
+      "name": "designerAiChat",
+      "domain": "designer-ai",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "OPENAI_API_KEY"
+      ],
+      "manifestHash": "64331e52e279ffd514fea34f6398c217d08142339823b842a484a409ed45f256"
+    },
+    {
+      "name": "duplicateCountdownPreset",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "3473efcfae63a43590e1ed9760bc207ac13fb06a46d701c434c1fce516e03d3d"
+    },
+    {
+      "name": "finalizeExpiredPublications",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "c3e15cb1f5a340a7d45f49a051cb76e6ba286bc11d1dc71ae26212e5d0012f85"
+    },
+    {
+      "name": "getAdminAccess",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "a566e502e6b0d87542108512ad208c4293b58d21afd68a5ed41f392262c957e6"
+    },
+    {
+      "name": "getAdminDraftSnapshot",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "b1b8f738328a64c8059a7f2ba881a2c04e61fd2792383343da412cb932649485"
+    },
+    {
+      "name": "getAdminUserByEmail",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "592db646c3d2a25c3dbd7300e14b34129cc372c7dbc26a498a776d1cf0f8931b"
+    },
+    {
+      "name": "getBusinessAnalyticsOverviewV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "2f866c0774825cf2481ddcac008565996ff215983bd65ba653dff9fc12441a26"
+    },
+    {
+      "name": "getBusinessAnalyticsRawExportStatusV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e6987b22cf54e026d50cd3841006efcaf8c513e5122683dfe0282c7ba5ea6956"
+    },
+    {
+      "name": "getDashboardHomeConfigV1",
+      "domain": "dashboard-home",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "78fb3d87512af391620054010e9c32bcd68ffbaa7d73b0bf63cef44a9f000ded"
+    },
+    {
+      "name": "getMyProfileStatus",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "eda64253134efa0b24fa3ebb2d19d35eb8df350aca095fc678b51013668c96cd"
+    },
+    {
+      "name": "getMyPublicationVisitMetrics",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "06bfee3531c0562faa6a60e5aedaeb3b416dc0d4c86c61c85fed5c8693e528fb"
+    },
+    {
+      "name": "getMyUiPreferences",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "39f7c05376115980c863097455f6b1aa3b5a79982faefc2132face5834d37210"
+    },
+    {
+      "name": "getPricingConfigV1",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "981bb2569d36a5f392cdbe333f90eb75ec25a7563456bb17144e399312b1779d"
+    },
+    {
+      "name": "getPublicationCheckoutStatus",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "f36ca31dfb6f2f68367e48d31ef87006d26f8ff19cd4fcfcc8afe2829bb3c278"
+    },
+    {
+      "name": "getUserDirectoryDetail",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "882401219d533773e111ad1dbe4ae2a6ffb53974f7e24444467af95c747fbef0"
+    },
+    {
+      "name": "getUsersStats",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "89f8f372e5cdde153540beb527d1601c5aca2544729affec77b54a900db2abf2"
+    },
+    {
+      "name": "hardDeleteLegacyPublication",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "4308f0c4695b0b36f60117e9294fbbd3a97ba51262a85c07e0960239f7d36f04"
+    },
+    {
+      "name": "listAdminUsers",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "9ad2ab63dbe8639da91a426a618959b8a58e1389e410e9386b2d70fbf5338ce5"
+    },
+    {
+      "name": "listCountdownPresetsAdmin",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "fdb6c05d7719b4ec49f992d591179325dfb50789fbe4464f5697a79bc64a2f5d"
+    },
+    {
+      "name": "listCountdownPresetsPublic",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "897d5b60e2d8982f9e74d5e3c278579492e3cfd84af6125ad3de6ce2906df91a"
+    },
+    {
+      "name": "listCountdownPresetVersionsAdmin",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "de3572eab2acee34a2ff3b55ffd8bc40874484ace2566866fbd30ec78b51706c"
+    },
+    {
+      "name": "listPublicationDiscountCodes",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "189b8943ce6e6d6346dcdb38078c1640cb9575a09a209d1c4ef4fc979ac81ed8"
+    },
+    {
+      "name": "listPublicationDiscountCodeUsage",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "168a1c0b6edd986d66c31c4004ca88a86d3e875c0ffb7c763921b39adece3338"
+    },
+    {
+      "name": "listTextPresetsPublicV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8398fd7d3878449d0c6482416c2d283c1a2f8f3e2d60f3f12ac90b42d495cc7e"
+    },
+    {
+      "name": "listUsersDirectory",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "1080798cd3665931cb7d74f7633b8ae49ce7f22b3aa8ee7dc3a90a6b0c0ef589"
+    },
+    {
+      "name": "mercadoPagoWebhook",
+      "domain": "mercado-pago",
+      "codebase": "payments",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "MERCADO_PAGO_ACCESS_TOKEN",
+        "MP_WEBHOOK_SECRET"
+      ],
+      "manifestHash": "0d9ea9a23ebf402aa8684ef77ead1e3d67239cc6187316282d9bed6ce1e9088e"
+    },
+    {
+      "name": "moveDraftToTrash",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "d8bda52f24b553e78be9bd7eac09a37e6262726025ee931c94af1f89a1f570d2"
+    },
+    {
+      "name": "onDecorCatalogDocWriteV1",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "96575a6b639fafd53c91843eb5924b4e26dab5ce0e93423c894f77678486d222"
+    },
+    {
+      "name": "onIconCatalogDocWriteV2",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "f94f92ad808d319a9b78c55b4785da20366a9d168d9d0b03c98c4081966d4e62"
+    },
+    {
+      "name": "onUserCreatedWelcomeEmail",
+      "domain": "transactional-email",
+      "codebase": "email",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "manifestHash": "ffce444489fb05488753c95b7c97fead0eace54a65c8944b78fd68cdab82dcc9"
+    },
+    {
+      "name": "prepareDraftPreviewRender",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "bf1a1c8aa243d9546ed1345cc3f8473903ca7f19fbab95cf0c56677f8579f5a7"
+    },
+    {
+      "name": "preparePublicTemplatePreview",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "5232d30d16e84d13a55bd89b4e9141c5fddc6388dff3fa3e3884814f216fbb95"
+    },
+    {
+      "name": "processPendingAnalyticsEventsV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "4c49ae66468ddbbe6412aaa89cb4aa605819592b8ad0ea0e857913fa465a1207"
+    },
+    {
+      "name": "publicarInvitacion",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "008a0c8822700d0155fdf89371b45b81f59052086d57bad6fcf42ef30b681947"
+    },
+    {
+      "name": "publicRsvpSubmit",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "5999d61b5b00bf49821cf90a2da56bb92c8e9bca4c2d66c2c838e42e8c336070"
+    },
+    {
+      "name": "publishCountdownPresetDraft",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "2febaa9b2de21bcc90d98790c658cab6f2d31189c76d26f43b8b29d3ecb4952b"
+    },
+    {
+      "name": "purgeTrashedDrafts",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "8ed24706b1605ea94fb689e21f3e16afbecded0118366c083d95be0b42d91cf2"
+    },
+    {
+      "name": "purgeTrashedPublications",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "e5420d50646591d40f7c0122bb52dee807e9ccf3da9491477a103bb8e99479de"
+    },
+    {
+      "name": "reportClientIssue",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "ff8c92ba74f1bbec24c5e4247d559c77d60f8f6f75a8cb644691f93db4ac3ccf"
+    },
+    {
+      "name": "requestBusinessAnalyticsRawExportV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "ab1135eb603a9c2e0fdc03369ec63e55539ecfc6d05250d50f969527bbd8b23e"
+    },
+    {
+      "name": "restoreDraftFromTrash",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0873750708f949513451273749d13cf9da66e94e7c9fea189f71e059723447cc"
+    },
+    {
+      "name": "retryPaidPublicationWithNewSlug",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "3cd42da04f459ed078252c7c437896a6626ef6ac6d476426c12a895d40b27736"
+    },
+    {
+      "name": "runBusinessAnalyticsExportJobsV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "c49d3774b8bd24a27a65b0d77c6374de00222d83d419aa29be1a804515d532ca"
+    },
+    {
+      "name": "runBusinessAnalyticsRebuildJobsV1",
+      "domain": "business-analytics",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "dc2d5d0d5c0c0af0cb0e141818a983085a2f1d1fae57df82a8aa3c9989666bb4"
+    },
+    {
+      "name": "saveCountdownPresetDraft",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "692bf2f47d603b7d490c638764a289ab3071577477359c6ca07e83735172d98e"
+    },
+    {
+      "name": "setAdminClaim",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "83114401278dd6b7bcbf79afdcabec2a20d36761ac8f266db356132e9ea76749"
+    },
+    {
+      "name": "syncLegacyCountdownPresets",
+      "domain": "catalogs-presets",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "2c865a896d124ebd11dec22a50638df8f9293587c9c5afc13ffc49e247e770a7"
+    },
+    {
+      "name": "testTransactionalEmail",
+      "domain": "transactional-email",
+      "codebase": "email",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "manifestHash": "daa7efb6c22190e2ae157170e9dae086261796b2cb119a66a808066032eb69ff"
+    },
+    {
+      "name": "testWelcomeEmail",
+      "domain": "transactional-email",
+      "codebase": "email",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "manifestHash": "527459cfa7fdbffeac464d049ec21aca168fe247870b03cc1e05c6def5efa4f6"
+    },
+    {
+      "name": "transitionPublishedInvitationState",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "fd0472477b8dc152cb8c73448a611b624a1221b760f22da403c5c978684ec951"
+    },
+    {
+      "name": "updateMyUiPreferences",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "ad44a8d0bb2a0f18a8d9c59c313033eba9f673e14331cf771c98475e9550e791"
+    },
+    {
+      "name": "upsertPublicationDiscountCode",
+      "domain": "pricing-discounts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "ccb1a51a281462d412e3acc2d4cf9a9f0eeadba2d4541d6a9d403cee7ae7420a"
+    },
+    {
+      "name": "upsertUserProfile",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "2f31a5ff239d13f430300b006bbce8a76591e11d722cccedada18d644849293c"
+    },
+    {
+      "name": "validateDraftForPublication",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "b5bdfbfe7572d8811de2b6b9dd21c0a6ad89a3f69d2976ac4c821fd23927bde0"
+    },
+    {
+      "name": "verInvitacion",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "c1f1d644eaf6f4005634548c21840328d4a99da694369e7f1054135e29b828d1"
+    },
+    {
+      "name": "verInvitacionPublicada",
+      "domain": "publication-delivery",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [
+        "PUBLIC_VISIT_SIGNING_SECRET"
+      ],
+      "manifestHash": "397f0378648e00a6531c13f7b7b73bff9899b61aa565bda99c5a1e16265f8533"
+    }
+  ]
+}

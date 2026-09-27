@@ -1594,12 +1594,13 @@ export const prepareDraftPreviewRender = onCall(
     memory: "512MiB",
     cpu: 1,
     minInstances: 1,
+    maxInstances: 20,
   },
   async (request) => prepareDraftPreviewRenderHandler(request)
 );
 
 export const preparePublicTemplatePreview = onCall(
-  { region: "us-central1", memory: "512MiB" },
+  { region: "us-central1", memory: "512MiB", maxInstances: 60 },
   async (
     request: CallableRequest<{ templateId?: string }>
   ): Promise<{ templateId: string; previewHtml: string }> => {
@@ -1723,6 +1724,7 @@ export const retryPaidPublicationWithNewSlug = onCall(
     timeoutSeconds: 60,
     cpu: 1,
     concurrency: 1,
+    maxInstances: 20,
   },
   async (request) => retryPaidPublicationWithNewSlugHandler(request)
 );
@@ -1927,6 +1929,7 @@ export const publicarInvitacion = onCall(
     timeoutSeconds: 60,
     cpu: 1,
     concurrency: 1,
+    maxInstances: 20,
   },
   async (request) => {
     const uid = requireAuth(request);

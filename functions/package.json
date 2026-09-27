@@ -16,6 +16,7 @@
     "typecheck:email": "tsc --noEmit --project tsconfig.email-package.json",
     "test:email-package": "node --test emailPackage.test.mjs",
     "test:payments-package": "node --test paymentsPackage.test.mjs",
+    "verify:ownership": "node ../scripts/local/verifyFunctionsOwnership.cjs",
     "build:watch": "node scripts/buildContracts.cjs --watch",
     "serve": "node ../scripts/local/runLocal.cjs emulators",
     "shell": "node ../scripts/local/runLocal.cjs emulators",

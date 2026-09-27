@@ -87,6 +87,13 @@ The goal is to build a scalable, premium, and simple creative SaaS platform.
 
 # 4. Data & Backend Principles
 
+For every new or modified Firebase Function, choose and verify its codebase through
+[FUNCTIONS_CODEBASE_OWNERSHIP.md](FUNCTIONS_CODEBASE_OWNERSHIP.md) before selecting
+an entrypoint. It is the normative owner of this decision and the exact registry;
+the normal verification gate rejects unregistered exports and ownership drift.
+Core retains the technical codebase name `default`. These deployment boundaries
+do not replace data ownership, IAM or domain contracts.
+
 ## 4.1 Firestore Structure Discipline
 - Collections must be predictable and normalized.
 - Avoid deeply nested unpredictable structures.

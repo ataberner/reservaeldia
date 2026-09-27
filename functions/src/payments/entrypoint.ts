@@ -25,6 +25,7 @@ export const createPublicationPayment = onCall(
     timeoutSeconds: 60,
     cpu: 1,
     concurrency: 1,
+    maxInstances: 20,
     secrets: [mercadoPagoAccessToken],
   },
   async (request) => createPublicationPaymentHandler(request)
@@ -37,6 +38,7 @@ export const mercadoPagoWebhook = onRequest(
     timeoutSeconds: 60,
     cpu: 1,
     concurrency: 1,
+    maxInstances: 20,
     secrets: [mercadoPagoAccessToken, mercadoPagoWebhookSecret],
   },
   async (req, res) => processMercadoPagoWebhookRequest(req, res)

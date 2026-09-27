@@ -43,6 +43,7 @@ function checkWorkflows(workflows) {
   assert.equal(artifacts.with["if-no-files-found"], "error");
   for (const name of ["lint-evidence.json", "lint.log"]) assert.ok(artifacts.with.path.includes(`/reports/run-*/${name}`), `Preservar diagnóstico de lint: ${name}`);
   for (const name of ["contracts-input.log", "contracts-built.log", "contracts-tests.log", "contracts-evidence.json"]) assert.ok(artifacts.with.path.includes(`/reports/run-*/${name}`), `Preservar diagnóstico de contratos: ${name}`);
+  assert.ok(artifacts.with.path.includes("/reports/run-*/functions-ownership.log"), "Preservar diagnóstico de ownership");
   for (const file of artifacts.with.path.trim().split(/\s+/)) assert.match(file, /^\.local-isolation\/(?:prepared-\*\/workspace\/\.local-isolation\/)?reports\/run-\*\/[a-z-]+\.(json|log)$/, "Sólo archivos explícitos de evidencia");
   for (const [file, deploy] of [["firebase-hosting-merge.yml", "build_and_deploy"], ["firebase-hosting-pull-request.yml", "build_and_preview"]]) {
     const workflow = workflows[file], gate = workflow.jobs.verification;

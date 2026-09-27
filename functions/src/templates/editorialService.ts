@@ -33,6 +33,7 @@ const PRIVATE_TEMPLATE_PREVIEW_OPTIONS = {
   ...OPTIONS,
   cpu: 1 as const,
   minInstances: 1,
+  maxInstances: 20,
 };
 
 const TEMPLATE_COLLECTION = "plantillas";

@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
-const { paymentNames, canonical } = require('../testUtils/paymentsManifest.cjs');
+const { canonical } = require('../testUtils/paymentsManifest.cjs');
 const { emailNames, smokeNames } = require('../testUtils/emailManifest.cjs');
 const root = path.resolve(__dirname, '../..');
 const source = path.join(root, 'functions-email');
@@ -41,7 +41,7 @@ function materializeLocalDependencies(destination) {
 
 async function discoveryChild(cliRoot, codebase) {
   const discoverySource = path.join(root, codebase === "default" ? "functions" : "functions-" + codebase);
-  const expectedNames = codebase === "email" ? emailNames : codebase === "payments" ? paymentNames : Object.keys(require("../testFixtures/payments/manifest-baseline.json").endpointHashes).filter(name => !paymentNames.includes(name) && !emailNames.includes(name)).sort();
+  const expectedNames = require("../testUtils/functionOwnership.cjs").namesFor(codebase);
   const guardPath = path.join(root, "scripts/local/networkGuard.cjs");
   const guard = require(guardPath);
   const spawnPath = require.resolve("cross-spawn", { paths: [cliRoot] });

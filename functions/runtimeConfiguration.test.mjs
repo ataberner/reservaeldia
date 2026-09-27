@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 
 const require = createRequire(import.meta.url);
+const { registry, namesFor, assertConfigurationNames } = require("./testUtils/functionOwnership.cjs");
 // Auth v1 resolves its event resource while inspecting the endpoint, not on import.
 const previousProject = process.env.GCLOUD_PROJECT;
 // Resource name only; network is trapped below. A demo ID would require the full emulator environment.
@@ -64,36 +65,25 @@ test("Functions dotenv files never declare Mercado Pago secrets", () => {
       const declarations = source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*(?:=|:\s)/gm);
       const leakedNames = [...declarations].map((match) => match[1]).filter((name) => forbidden.has(name));
       assert.deepEqual(leakedNames, [], `Mercado Pago secrets forbidden in ${file}`);
-      if (directory.pathname.includes("functions-payments")) {
-        const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*=/gm)].map(match => match[1]);
-        const allowed = ["MERCADO_PAGO_PUBLIC_KEY", "MERCADO_PAGO_WEBHOOK_URL", "GOOGLE_MAPS_EMBED_API_KEY"];
-        assert.deepEqual(names.filter(name => !allowed.includes(name)), [], "Unexpected Payments dotenv names (values never logged)");
-      }
+      const owner = directory.pathname.includes("functions-payments") ? "payments" : directory.pathname.includes("functions-email") ? "email" : "default";
+      const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*=/gm)].map(match => match[1]);
+      assertConfigurationNames(owner, names);
     }
   }
 });
 
 test("payment secrets bind only their actual consumers; email keeps its own bindings", () => {
-  assert.equal(Object.keys(coreEndpoints).length, 101);
-  assert.equal(Object.keys(paymentEndpoints).length, 3);
-  assert.equal(Object.keys(emailEndpoints).length, 3);
-  assert.equal(Object.keys(endpoints).length, 107);
+  for (const [owner, actual] of Object.entries({ default: coreEndpoints, payments: paymentEndpoints, email: emailEndpoints })) assert.deepEqual(Object.keys(actual).sort(), namesFor(owner));
+  assert.equal(Object.keys(endpoints).length, [coreEndpoints, paymentEndpoints, emailEndpoints].reduce((total, entry) => total + Object.keys(entry).length, 0));
   for (const name of Object.keys(paymentEndpoints)) assert.equal(Object.hasOwn(coreEndpoints, name), false);
   const consumers = (secret) => Object.entries(endpoints)
     .filter(([, fn]) => fn?.__endpoint?.secretEnvironmentVariables?.some(({ key }) => key === secret))
     .map(([name]) => name).sort();
-  assert.deepEqual(consumers("MERCADO_PAGO_ACCESS_TOKEN"), [
-    "createPublicationCheckoutSession", "createPublicationPayment", "mercadoPagoWebhook",
-  ]);
-  assert.deepEqual(consumers("MP_WEBHOOK_SECRET"), ["mercadoPagoWebhook"]);
-  assert.deepEqual(consumers("MERCADO_PAGO_CLIENT_SECRET"), []);
-  assert.deepEqual(endpoints.testTransactionalEmail.__endpoint.secretEnvironmentVariables.map(({ key }) => key).sort(), [
-    "AWS_SES_ACCESS_KEY_ID", "AWS_SES_SECRET_ACCESS_KEY",
-  ]);
-  assert.equal(Object.hasOwn(endpoints, "diagnoseEmailAwsIdentity"), false);
-  for (const secret of ["AWS_SES_ACCESS_KEY_ID", "AWS_SES_SECRET_ACCESS_KEY"]) {
-    assert.deepEqual(consumers(secret), ["onUserCreatedWelcomeEmail", "testTransactionalEmail", "testWelcomeEmail"]);
+  for (const secret of Object.values(registry.codebases).flatMap(owner => owner.allowedSecrets)) {
+    assert.deepEqual(consumers(secret), registry.endpoints.filter(e => e.secrets.includes(secret)).map(e => e.name).sort());
   }
+  assert.deepEqual(consumers("MERCADO_PAGO_CLIENT_SECRET"), []);
+  assert.equal(Object.hasOwn(endpoints, "diagnoseEmailAwsIdentity"), false);
   assert.equal(readSecret.mock.callCount(), 0);
 });
 

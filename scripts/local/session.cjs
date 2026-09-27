@@ -139,6 +139,18 @@ function copyWorkspace(workspace) {
   for (const name of ["package.json", "package-lock.json", "next.config.mjs", "jsconfig.json", "postcss.config.cjs", "postcss.config.js", "postcss.config.mjs", "tailwind.config.js", "tailwind.config.mjs", "firestore.rules", "firestore.indexes.json", "storage.rules", "functions/package.json", "functions/package-lock.json", "functions/tsconfig.json", "scripts/runNextDev.cjs"]) {
     if (fs.existsSync(path.join(ROOT, name))) { fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true }); fs.copyFileSync(path.join(ROOT, name), path.join(workspace, name)); }
   }
+  // Ownership tests inspect production metadata separately from firebase.local.json
+  // and its blocked-handler wrapper. Copy no personal dotenv or generated output.
+  for (const name of ["firebase.json", "firebase.payments-rollback.json", "firebase.email-rollback.json",
+    "functions/functionOwnership.json", "functions/tsconfig.payments.json", "functions/tsconfig.email-package.json",
+    "functions/testFixtures/payments/manifest-baseline.json",
+    "functions-payments/package.json", "functions-payments/package-lock.json",
+    "functions-email/package.json", "functions-email/package-lock.json",
+    "docs/operations/baselines/payments-remote-2026-09-22.json", "docs/operations/baselines/email-remote-2026-09-25.json"]) {
+    const destination = path.join(workspace, name);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, name), destination);
+  }
 }
 
 function createSession(requirements) {

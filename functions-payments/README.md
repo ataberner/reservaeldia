@@ -1,13 +1,21 @@
 # Payments source — production migration completed
 
 This source is registered as `payments` in `firebase.json`.
-Default exports 102 endpoints and this source exports only the three Mercado Pago
-Functions. On 2026-09-24 the operator confirmed successful production migration
+The current domain/source assignments and exact endpoint registry are governed by
+[Functions ownership](../docs/architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md).
+The 102 default + 3 payments partition was the historical snapshot when,
+on 2026-09-24, the operator confirmed successful production migration
 and a real purchase through payment, webhook processing and automatic publication.
 The new Public Key + Access Token v2 pair is validated. **Rotation of the exposed
 `MP_WEBHOOK_SECRET` v1 remains pending** and is not part of the migration closure.
 See the acceptance record, qualified selectors and retained operational rollback in
 [the runbook](../docs/operations/PAYMENTS_CODEBASE_PREPARATION.md).
+
+Instance-limit decision (2026-09-27): the two current production limits are now
+explicit in the canonical entrypoint; their deployment blockers were removed.
+See the accepted decision and verification in
+[deploy readiness](../docs/operations/DEFAULT_DEPLOY_READINESS.md). No deployment
+was performed by this closure.
 
 Canonical code remains in `functions/src` and `shared`. Build from the repository:
 

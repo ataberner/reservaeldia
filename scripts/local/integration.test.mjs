@@ -70,7 +70,12 @@ test("synthetic identity, document, file and existing backend operation share th
   assert.equal(status.data.email, email);
   assert.equal((await admin.auth().getUser(uid)).email, email);
 
-  for (const name of ["createPublicationPayment", "designerAiChat", "prepareDraftPreviewRender"]) {
+  // This wrapper includes core + email only; the production Payments entrypoint
+  // is verified separately by the ownership/package gate, not mounted in demo.
+  for (const { name } of require("../../functions/functionOwnership.json").endpoints.filter(e => e.codebase === "payments")) {
+    await assert.rejects(() => httpsCallable(functions, name)({}), error => error.code === "functions/not-found");
+  }
+  for (const name of ["getPublicationCheckoutStatus", "designerAiChat", "prepareDraftPreviewRender"]) {
     await assert.rejects(() => httpsCallable(functions, name)({}), (error) => error.code === "functions/failed-precondition" && /LOCAL_FLOW_DISABLED/.test(error.message));
   }
   const rsvp = await fetch(`${firebaseEnvironment.functionsBaseUrl}/publicRsvpSubmit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: `local-${id}` }) });
@@ -80,7 +85,7 @@ test("synthetic identity, document, file and existing backend operation share th
   const evidence = { project: contract.LOCAL_PROJECT, bucket: contract.LOCAL_BUCKET, endpoints: {
     auth: `http://${auth.emulatorConfig.host}:${auth.emulatorConfig.port}`,
     firestore: db._settings.host, storage: new URL(url).origin, functions: firebaseEnvironment.functionsBaseUrl,
-  }, observations: ["client Auth identity confirmed by local Admin", "client document confirmed by local Admin", "client Storage bytes confirmed by local Admin and deleted", "existing backend wrote preferences read by client", "payment, AI, preview and RSVP disabled before handler effects"], fixture: "random synthetic identity @example.test; removed by test cleanup", rulesAuthorizationClaim: false };
+  }, observations: ["client Auth identity confirmed by local Admin", "client document confirmed by local Admin", "client Storage bytes confirmed by local Admin and deleted", "existing backend wrote preferences read by client", "Payments endpoints absent from demo; core checkout, AI, preview and RSVP disabled before handler effects"], fixture: "random synthetic identity @example.test; removed by test cleanup", rulesAuthorizationClaim: false };
   await writeFile(path.join(process.env.RESERVA_LOCAL_SESSION, "integration-evidence.json"), JSON.stringify(evidence, null, 2));
   console.log(JSON.stringify(evidence));
 });

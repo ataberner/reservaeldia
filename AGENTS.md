@@ -13,9 +13,9 @@ previa y publicación de HTML.
 | Superficie | Dónde empezar a inspeccionar |
 | --- | --- |
 | Frontend | `src/pages/`, `src/components/`, `src/domain/`, `src/hooks/`; entrada Firebase: `src/firebase.js`. |
-| Backend y render | `functions/src/index.ts`, `functions/src/render/`, `functions/src/payments/`, `functions/src/utils/`. |
+| Backend y render | Antes de elegir un entrypoint, leer [ownership de Functions/codebases](docs/architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md). Luego inspeccionar el dominio en `functions/src/`, render y consumidores. |
 | Contratos compartidos | `shared/`; revisar consumidores y `functions/scripts/syncTemplateContract.cjs` antes de tocar copias en Functions. |
-| Operación y configuración | `scripts/`, ambos `package.json`, `firebase.json`, `firestore.rules`, `storage.rules`, `.github/workflows/`. Leer efectos antes de ejecutar. |
+| Operación y configuración | `scripts/`, `package.json` de raíz y de cada source de Functions, `firebase.json`, `firestore.rules`, `storage.rules`, `.github/workflows/`. Leer efectos antes de ejecutar. |
 | Documentación y tests | `docs/DOCUMENTATION_INDEX.md`; contratos y mapas enlazan tests próximos al dominio, en `src/`, `shared/`, `functions/` y `scripts/`. |
 
 Usá la ruta del subsistema en el índice para seleccionar contexto mínimo pero
@@ -39,6 +39,9 @@ esta orientación cuando el flujo cruza subsistemas.
 2. Revisá Git y los cambios preexistentes; identificá qué pertenece a esta tarea.
 3. Consultá el índice documental.
 4. Seleccioná contratos, mapas, decisiones y baselines del flujo alcanzado.
+   Para crear o modificar una Firebase Function, consultá la política canónica de
+   ownership y su registro antes de decidir codebase/entrypoint; verificá el gate
+   de ownership además de los contratos funcionales alcanzados.
 5. Inspeccioná implementación, callers, consumidores y tests relevantes.
 6. Identificá responsables de estado, mutación, persistencia y render, y las
    fuentes de verdad de cada tramo. Distinguí adapters de autoridades duplicadas.

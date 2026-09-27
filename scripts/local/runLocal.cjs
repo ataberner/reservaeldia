@@ -51,7 +51,7 @@ async function waitForEmulators(child, env) {
 
 async function main(mode) {
   const integration = ["test", "verify"].includes(mode), rules = ["rules", "verify"].includes(mode);
-  const names = ["prerequisites", "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration ? ["configuration"] : []), "sync", "compile", "contracts-built",
+  const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration ? ["configuration"] : []), "sync", "compile", "contracts-built",
     ...(integration ? ["backend", "compatibility"] : []), "emulators", ...(rules ? ["rules-countdown"] : []),
     ...(integration ? ["integration", "seed", "browser", "stop-services", "offline"] : [])];
   evidence = new Evidence(ROOT, mode, mode === "check" ? ["prerequisites"] : names);
@@ -71,6 +71,15 @@ async function main(mode) {
     evidence.data.credentials = "none; allowlisted environment and empty personal configuration";
   }, "prerequisite");
   if (mode === "check") return;
+  if (mode === "verify") await stage("functions-ownership", async log => {
+    // The gate owns its own credential-free copy. Run before createSession changes
+    // package.main to the emulator allowlist wrapper, so new real exports count.
+    await processes.run(["scripts/local/verifyFunctionsOwnership.cjs"], {
+      cwd: ROOT, env: Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|COMSPEC)$/i.test(key))),
+      name: "functions-ownership", log, timeoutMs: 600000, kind: "tests",
+    });
+    evidence.data.stages.find(s => s.name === "functions-ownership").tap = assertTap(log);
+  }, "tests");
   await stage("copy", async () => {
     currentSession = createSession(requirements);
     evidence.data.session = path.relative(ROOT, currentSession.session);

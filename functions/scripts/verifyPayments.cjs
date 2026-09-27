@@ -114,7 +114,7 @@ function assertPlan(cliRoot) {
 
 async function discoveryChild(cliRoot, codebase) {
   const discoverySource = codebase === "default" ? path.join(root, "functions") : source;
-  const expectedNames = Object.keys(require("../testFixtures/payments/manifest-baseline.json").endpointHashes).filter(name => codebase === "default" ? !paymentNames.includes(name) : paymentNames.includes(name)).sort();
+  const expectedNames = require("../testUtils/functionOwnership.cjs").namesFor(codebase);
   const guardPath = path.join(root, "scripts/local/networkGuard.cjs");
   const guard = require(guardPath);
   const spawnPath = require.resolve("cross-spawn", { paths: [cliRoot] });

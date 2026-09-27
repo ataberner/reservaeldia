@@ -44,8 +44,11 @@ test("local entry preserves existing safe handlers, removes triggers and blocks 
   const local = require("./functionsEntry.cjs");
   assert.equal(local.finalizeExpiredPublications, undefined);
   assert.equal(local.onIconCatalogDocWriteV2, undefined);
+  // The demo wrapper composes core + email. Payments is a separate production
+  // entrypoint and must not silently reappear in the demo/core export set.
+  for (const { name } of require("../../functions/functionOwnership.json").endpoints.filter(e => e.codebase === "payments")) assert.equal(local[name], undefined);
   await assert.rejects(() => local.getMyUiPreferences.run({ data: {} }), (error) => error.code === "unauthenticated");
-  await assert.rejects(async () => local.createPublicationPayment.run({ data: {} }), /LOCAL_FLOW_DISABLED/);
+  await assert.rejects(async () => local.getPublicationCheckoutStatus.run({ data: {} }), /LOCAL_FLOW_DISABLED/);
   await assert.rejects(async () => local.designerAiChat.run({ data: {} }), /LOCAL_FLOW_DISABLED/);
 });
 

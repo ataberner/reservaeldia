@@ -10,6 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { snapshot } = require("./testUtils/deploymentSnapshot.cjs");
 const { emailNames, smokeNames } = require("./testUtils/emailManifest.cjs");
 const { paymentNames, canonical, endpointHash } = require("./testUtils/paymentsManifest.cjs");
+const { assertPartition, assertConfigurationNames } = require("./testUtils/functionOwnership.cjs");
 const snapshots = Object.fromEntries(["default", "payments", "email"].map(codebase =>
   [codebase, snapshot(codebase === "default" ? "functions" : "functions-" + codebase)]));
 const evidence = path.join(root, ".local-isolation/email-codebase/manifests");
@@ -18,16 +19,17 @@ for (const [name, value] of Object.entries(snapshots)) writeFileSync(path.join(e
 const remote = require("../docs/operations/baselines/email-remote-2026-09-25.json");
 const endpoints = snapshots.email.manifest.endpoints;
 
-test("partition is exactly default 101 / payments 3 / email 3, without losses or duplicates", () => {
+test("partition matches registered ownership, without losses or duplicates", () => {
   assert.deepEqual(snapshots.email.names, emailNames);
   assert.deepEqual(snapshots.payments.names, paymentNames);
-  assert.equal(snapshots.default.names.length, 101);
-  const names = Object.values(snapshots).flatMap(s => s.names);
-  assert.equal(new Set(names).size, 107);
+  assertPartition(Object.fromEntries(Object.entries(snapshots).map(([name, value]) => [name, value.manifest])));
   const baseline = require("./testFixtures/payments/manifest-baseline.json");
-  assert.deepEqual(names.sort(), [...Object.keys(baseline.endpointHashes), "testWelcomeEmail", "onUserCreatedWelcomeEmail"].sort());
   const all = Object.assign({}, ...Object.values(snapshots).map(s => s.manifest.endpoints));
-  for (const [name, hash] of Object.entries(baseline.endpointHashes)) assert.equal(endpointHash(all[name]), hash, `Changed original options: ${name}`);
+  // Default/Payments adopted explicit instance limits on 2026-09-27; the
+  // registry above protects current full metadata. Preserve the dated fixture.
+  for (const [name, hash] of Object.entries(baseline.endpointHashes)) {
+    assert.ok(endpointHash(all[name]) === hash || endpointHash({ ...all[name], maxInstances: null }) === hash, `Changed original options beyond maxInstances: ${name}`);
+  }
 });
 
 test("email discovery does not load AWS SDK, React Email or application stores/default/payments runtime", () => {
@@ -39,7 +41,7 @@ test("email discovery does not load AWS SDK, React Email or application stores/d
   assert.equal(existsSync(path.join(root, "functions-email/lib/index.js")), false);
 });
 
-test("both existing private smoke endpoints preserve sanitized remote contracts", () => {
+test("both existing private smoke endpoints preserve the dated pre-migration remote contracts", () => {
   assert.equal(remote.authTriggerExists, false);
   for (const fn of remote.functions) {
     const name = fn.buildConfig.entryPoint, endpoint = endpoints[name], service = fn.serviceConfig;
@@ -99,12 +101,11 @@ test("package lock uses only existing locked versions, without outside-package l
 });
 
 test("email normal configuration is sandbox, activation unset and only canonical superadmin data is shared", () => {
-  const allowed = ["EMAIL_MODE", "WELCOME_EMAIL_ACTIVATION_AT", "SUPERADMINS_UIDS"];
   const directory = path.join(root, "functions-email");
   for (const file of readdirSync(directory).filter(n => /^\.env(?:\.|$)/.test(n))) {
     const source = readFileSync(path.join(directory, file), "utf8");
     const names = [...source.matchAll(/^\s*(?:export\s+)?([\w.-]+)\s*=/gm)].map(m => m[1]);
-    assert.deepEqual(names.filter(n => !allowed.includes(n)), [], "Unexpected dotenv names; values omitted");
+    assertConfigurationNames("email", names);
     assert.ok(/^EMAIL_MODE=sandbox\s*$/m.test(source), "Sandbox configuration required");
     assert.ok(/^WELCOME_EMAIL_ACTIVATION_AT=[ \t]*$/m.test(source), "Activation must remain unset");
     const before = readFileSync(path.join(root, "functions/.env.reservaeldia-7a440"), "utf8").split(/\r?\n/).find(line => /^SUPERADMINS_UIDS=/.test(line));

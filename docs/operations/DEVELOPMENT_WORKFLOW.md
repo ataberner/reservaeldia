@@ -51,7 +51,8 @@ exclusivamente `sessionEnvironment.json`, generado sin credenciales, antes de
 importar la aplicación. No se leen secretos remotos para los endpoints locales.
 
 Los seis callables permitidos delegan a sus handlers existentes. La entrada local
-no se usa en producción: el paquete productivo conserva `lib/index.js`. Los demás
+no se usa en producción: default usa `lib/index.js`, Payments y Email sus
+entrypoints independientes. El harness combina default y email solo en demo. Los demás
 endpoints HTTP/callable existentes responden `LOCAL_FLOW_DISABLED` antes del
 handler. La única excepción de eventos es `onUserCreatedWelcomeEmail`: desde
 Fase 2B.2 se registra con el mismo handler, exclusivamente EMAIL_MODE=disabled,

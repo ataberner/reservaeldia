@@ -818,5 +818,20 @@
     ],
     "truncated": false,
     "userIdentifiersOmitted": true
+  },
+  "deliveryEvidence": {
+    "verifiedAt": "2026-09-27T02:23:26.375Z",
+    "exists": true,
+    "documentIdOmitted": true,
+    "collection": "welcomeEmailDeliveries",
+    "fields": {
+      "updatedAt": "2026-09-27T02:11:06.553Z",
+      "status": "skipped",
+      "correlationId": "welcome-2228fd59-b966-4e17-bae1-a07206926cae",
+      "sourceEventId": "1dab33d8-b7b5-4074-8246-d4199ab85ac7",
+      "attempts": 0,
+      "skipReason": "EMAIL_SANDBOX_BUSINESS_BLOCKED",
+      "startedAt": "2026-09-27T02:11:06.553Z"
+    }
   }
 }

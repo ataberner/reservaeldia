@@ -1,15 +1,18 @@
 # Configuración backend: aislamiento y rotación manual
 
 Status: Operational Diagnostic Evidence. Diagnóstico inicial: 2026-09-19;
-cierre de migración Payments: 2026-09-24.
+cierre Payments: 2026-09-24; cierre WelcomeEmail hasta sandbox: 2026-09-26.
 
-Alcance: configuración de Functions v2, secretos y logging. No se consultaron
-valores de Secret Manager ni recursos remotos. No hubo deploy, envío de email,
-rotación ni cambios IAM. El 2026-09-19 se retiraron exclusivamente las tres
+Alcance: configuración de Functions, secretos y logging. La revisión inicial
+no consultó recursos remotos. El cierre de email del 26/09 agrega lecturas
+sanitizadas de metadata, logs y un delivery; nunca valores de Secret Manager
+ni entornos completos. No hubo deploy, envío de email, rotación ni cambios IAM
+por parte del agente. El 2026-09-19 se retiraron exclusivamente las tres
 variables sensibles de Mercado Pago del dotenv local de Functions, sin cambiar
 sus credenciales ni la configuración normal restante.
-El estado remoto de email es el informado por el operador, no una verificación
-remota de esta revisión. La lógica de pagos y validación HMAC permanece igual.
+El estado remoto de email del 26/09 se verifica en el
+[cierre sandbox](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#cierre-welcome-sandbox).
+La lógica de pagos y validación HMAC permanece igual.
 
 **Cierre de emails, 2026-09-18:** el operador confirmó el envío sandbox exitoso;
 ver [el runbook de Fase 1](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md). Esta validación
@@ -28,7 +31,10 @@ Ver [aceptación y rollback conservado](PAYMENTS_CODEBASE_PREPARATION.md).
 ## Hechos y causa
 
 - El diagnóstico inicial tenía una sola codebase. Ahora `firebase.json` registra
-  `default` / `functions` (102) y `payments` / `functions-payments` (3).
+  `default` / `functions` (101 exports), `payments` / `functions-payments` (3) y
+  `email` / `functions-email` (3). El inventario remoto del 26/09 es 102/3/3:
+  default contiene además `generatePublishedShareImage`, sin export local,
+  pendiente de revisión separada. Payments y Email coinciden exactamente.
 - La CLI instalada, Firebase CLI 14.4.0, lee `.env` y `.env.<project/alias>` del
   source y copia su mapa a **cada endpoint**. Ver `lib/functions/env.js:213` y
   `lib/deploy/functions/prepare.js:77-100` de la instalación de firebase-tools.
@@ -156,14 +162,16 @@ de los tres nombres en `.env` o `.env.*` de Functions; sus errores muestran solo
 nombres. Ese estado local del 2026-09-19 fue seguido por el despliegue y la
 validación productiva confirmados al cierre; no describe un deploy pendiente hoy.
 
-**Separación local de email implementada (2026-09-25), sin desplegar:**
+**Separación de email implementada el 25/09 y validada remotamente el 26/09:**
 `functions-email` / codebase `email` usa `lib/emails/entrypoint.js`, compilado desde
 la lógica canónica `functions/src/emails`. El paquete autónomo contiene email y
 sus dependencias compartidas necesarias. Dotenv local permite EMAIL_MODE=sandbox,
 WELCOME_EMAIL_ACTIVATION_AT vacío y SUPERADMINS_UIDS de la autoridad canónica;
 no contiene Maps, Payments, OpenAI ni valores de Secrets. Mantiene bindings AWS
-por endpoint. Los smoke tests remotos todavía pertenecen a default y el trigger
-Auth no existe: seguir la [migración y rollback aislado](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#migracion-email-codebase).
+por endpoint. Los dos smoke tests y el trigger Auth pertenecen remotamente a
+email; Auth está ACTIVE y su prueba real produjo skipped/attempts=0 en sandbox.
+La [migración y rollback aislado](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#migracion-email-codebase)
+se conservan como referencia, sin repetir la migración.
 Las variables gestionadas por la plataforma seguirán presentes.
 
 No usar `delete process.env`, ni variar dotenv según `--only`, ni parches manuales
@@ -368,8 +376,10 @@ Los smoke tests conservan dos bindings AWS, IAM privado y su identidad dedicada.
 El trigger Auth conserva otra identidad dedicada y los mismos bindings. La entrada
 local de email declara solo estos tres endpoints, sin importar el entrypoint default.
 `EMAIL_MODE` sigue parametrizado, disabled por defecto, sandbox permitido y
-production bloqueado. **No afirmar que su entorno desplegado ya está aislado**:
-la separación local y sus exclusiones no modifican las revisiones existentes.
+production bloqueado. La separación de ownership y los bindings remotos están
+comprobados; no se certifican todos los valores del entorno ni IAM heredado,
+porque deliberadamente no se consultaron entornos completos ni políticas de
+proyecto/organización. La evidencia de evento comprueba el gate sandbox.
 
 Checks de la revisión previa (2026-09-18) con Node 20, desde `functions/`,
 sin correo ni consultas remotas:

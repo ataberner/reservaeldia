@@ -1,23 +1,126 @@
 # Emails transaccionales — SES sandbox y templates React Email
 
-Status: Operational Diagnostic Evidence. Cierre local: 2026-09-18.
+Status: Operational Diagnostic Evidence. Fases 2A + 2B cerradas hasta sandbox: 2026-09-26.
 
-Fase 2A: sistema visual y WelcomeEmail, implementación local del 2026-09-25.
-Esta sección describe código local; la validación remota de Fase 1 sigue siendo
-la registrada abajo. Fase 2B.1 agregó el procesador backend y reserva por UID.
-Fase 2B.2 implementa/exporta el adaptador Auth v1 `onUserCreatedWelcomeEmail`,
-**todavía sin desplegar**. Los usuarios reales no reciben una bienvenida automática
-por este trabajo; production continúa bloqueado.
-El operador informó además la validación manual de WelcomeEmail y de respuestas
-a `hola@` mediante Cloudflare Email Routing; no se repitieron envíos en esta fase.
+<a id="cierre-welcome-sandbox"></a>
+## Cierre formal de WelcomeEmail hasta sandbox — 26/09/2026
+
+**Resultado: EXITOSO en sandbox. Production continúa bloqueado.** La Fase 2A
+conserva el sistema visual React Email, WelcomeEmail, HTML/plain-text, preview,
+From y Reply-To centralizados. La Fase 2B conserva la reserva atómica por UID y
+el adaptador Auth v1 `onUserCreatedWelcomeEmail`, ahora desplegado en `email`.
+No se modificó comportamiento para efectuar este cierre.
+
+**Declaración del operador:** prueba real exitosa del trigger el 26/09/2026.
+También había confirmado el envío manual de WelcomeEmail y las respuestas a
+`hola@` mediante Cloudflare Email Routing. Esas pruebas previas no se repitieron.
+
+**Hechos comprobados en este cierre**, mediante lecturas de control plane, logs
+sanitizados y un único documento de delivery asociado a la correlación de prueba:
+
+| Evidencia | Resultado |
+| --- | --- |
+| Trigger remoto | ACTIVE; Auth user.create, gen1 / Node 20 / us-central1; codebase email |
+| Identidad | welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com |
+| Bindings | AWS_SES_ACCESS_KEY_ID versión 3; AWS_SES_SECRET_ACCESS_KEY versión 2; sin consultar valores |
+| Inicio del delivery | 26/09/2026 23:11:06.553, America/Buenos_Aires; 27/09/2026 02:11:06.553Z |
+| Log del procesador | 26/09/2026 23:11:09.862, America/Buenos_Aires; 27/09/2026 02:11:09.862396Z |
+| sourceEventId | 1dab33d8-b7b5-4074-8246-d4199ab85ac7 |
+| correlationId | welcome-2228fd59-b966-4e17-bae1-a07206926cae |
+| Documento welcomeEmailDeliveries asociado | status=skipped; attempts=0; skipReason=EMAIL_SANDBOX_BUSINESS_BLOCKED |
+| Log asociado | template=welcome; mode=sandbox; state=skipped; attempts=0; MessageId=null; errorCode=EMAIL_SANDBOX_BUSINESS_BLOCKED |
+
+El log y el documento coinciden en sourceEventId/correlationId. El gate sandbox
+del procesador retorna antes del sender; sus tests comprueban cero llamadas al
+sender en ese recorrido. **Esta prueba valida Auth → procesador → Firestore y
+el bloqueo de negocio en sandbox; no es un envío SES ni una prueba de entrega.**
+La mera ausencia de logs SES no se usa como prueba. `accepted` sigue significando
+aceptado por SES, nunca entregado al destinatario. Se mantiene **como máximo un
+intento automático por UID**: cualquier estado existente impide otro intento;
+no hay backfill, leases, colas ni reenvío automático al activar otro modo.
+
+Baselines conservados:
+
+- [Antes de la migración](baselines/email-remote-2026-09-25.json).
+- [Smoke tests después de la migración](baselines/email-remote-2026-09-26.json):
+  ambos pertenecen a email y conservan todas las opciones comparadas, URLs,
+  privacidad, service account y versiones de Secrets.
+- [Inventario completo, trigger, logs y delivery](baselines/welcome-sandbox-closure-2026-09-26.json):
+  omite UID/email/nombre, cuerpos, tokens y valores secretos. No se consultaron
+  variables de entorno completas. El modo sandbox está probado para el evento;
+  la activación local permanece vacía. No se auditó eliminación de la cuenta Auth
+  sintética ni se borró su delivery durante este cierre.
+
+**Ownership comprobado, con una diferencia explícita fuera del alcance de email:**
+
+| Codebase | Local | Remoto | Observación |
+| --- | --- | --- | --- |
+| default | 101 | 102 | Los 101 esperados están presentes; existe además generatePublishedShareImage sin export local |
+| payments | 3 | 3 | Coincidencia exacta de nombres y ownership |
+| email | 3 | 3 | testTransactionalEmail, testWelcomeEmail, onUserCreatedWelcomeEmail; todos en email |
+
+No hay endpoints de email duplicados ni remanentes de email en default. El
+inventario remoto contiene 108 recursos frente a 107 exports locales. Queda
+**pendiente, en una tarea separada**, determinar consumidores y destino de
+`generatePublishedShareImage` antes de un despliegue general de default. No se
+añade un export ni se elimina ese recurso para forzar igualdad de inventarios.
+La sonda histórica `diagnoseEmailAwsIdentity` no aparece en el inventario remoto.
+
+Se conservan los tres endpoints de email, tests, preview, runbooks, baselines,
+herramientas de comparación y rollback aislado. `testWelcomeEmail` sigue siendo
+un smoke privado; su retiro debe ser un cambio explícito posterior. La limpieza
+de este cierre se limita a helpers locales descartables, sin tocar recursos
+remotos ni evidencia histórica útil. No se ejecutaron deploys, envíos, cambios
+IAM/Secrets ni activación productiva durante este trabajo. El operador autorizó
+un commit de cierre al finalizar; no se reescribe el historial anterior.
+
+### Verificación del cierre y limpieza acotada
+
+| Check del 26/09 | Resultado |
+| --- | --- |
+| Email / Welcome / procesador / adaptador | 152/152 |
+| Paquete email / Payments / configuración | 9/9, 10/10, 8/8 |
+| Inicialización/discovery unitario | 2/2 al repetir sin carga concurrente; el primer intento de JSDOM/default excedió 30 s |
+| Entorno local | 12/12 |
+| Rules + Auth/Functions/Firestore emulados + countdown | 1408/1408; launcher exit 0, cleanup y puertos libres |
+| Build y typecheck | default, payments y email aprobados; preview build aprobado; Node 20.19.5 |
+| Lint de 50 archivos relevantes | Sin diagnósticos nuevos; 18 warnings de index y no-unsafe-finally en rules.test.mjs:241, reproducido contra HEAD |
+| Integridad | 151 archivos de runtime, configuración, Rules y locks sin cambios respecto del inicio |
+| Credenciales | 11.035 archivos de texto presentes y versionables revisados; sin coincidencias de credenciales en la revisión final; sin valores secretos en los nuevos baselines |
+| Diff | git diff --check aprobado |
+
+El lint global no se declara aprobado mientras exista la deuda indicada. La
+primera ejecución conjunta tuvo 180/181 tests aprobados; se conservan ese log y
+la repetición 2/2 de discovery, sin ocultar el timeout ni ampliar sus límites.
+La búsqueda de credenciales cubre el estado actual de archivos, no una auditoría
+completa del historial Git. Los runtimeconfig ya versionados contienen únicamente
+la autoridad superadmin; el ejemplo de Secret no contiene una clave OpenAI válida.
+No se imprimieron esos valores ni se consultó Secret Manager.
+
+Se retiraron cuatro helpers descartables: `compare.cjs` y `lint.cjs` de
+`.local-isolation/welcome-2b2/`, sustituidos por verificadores mantenidos, y los
+dos scripts de consulta puntual de este cierre. Permanecen sus resultados,
+baselines, pruebas, preview y rollback. No se borraron otros tmp ajenos.
+
+Durante la sesión apareció el commit del operador `af645d50` (`sistema de mails`),
+que incorporó la instalación temporal de `scripts/local/tools/node_modules`.
+El cierre excluye esa carpeta generada del seguimiento mediante `.gitignore`;
+conserva `scripts/local/tools/package.json`, su lockfile y la caché de herramientas.
+No se reescribe ese commit ni se actualizan dependencias. La instalación se
+reproduce con el procedimiento local existente. Esta carpeta explica el volumen
+de eliminaciones del commit de cierre; no es código de la aplicación eliminado.
+
+Evidencia completa: `.local-isolation/welcome-close-2026-09-26/` y
+`.local-isolation/reports/run-A4hSMT/`. Los baselines remotos sanitizados enlazados
+arriba se conservan en Git. Sigue pendiente, fuera de este cierre, revisar el
+endpoint adicional de default y autorizar cualquier habilitación productiva.
 
 ## Validación real exitosa
 
-La autoridad local de despliegue ahora es el source/codebase `email`. Para cualquier
-nuevo despliegue seguir primero [la migración secuencial](#migracion-email-codebase),
-que reemplaza los selectores históricos de este documento. Los dos smoke tests
-siguen remotamente en default hasta ejecutar ese procedimiento. No se desplegó
-la separación ni el trigger Auth en esta tarea.
+La autoridad local y remota de email es el source/codebase `email`. La
+[migración secuencial](#migracion-email-codebase) queda como referencia histórica;
+no repetirla como prerrequisito. Para futuros cambios usar selectores completos
+por endpoint y verificar metadata. La evidencia que sigue corresponde a Fase 1.
 
 **Resultado: EXITOSO.** El operador confirmó la recepción en Gmail del correo
 “Prueba sandbox — Reserva el Día” y SPF, DKIM y DMARC en PASS.
@@ -80,9 +183,9 @@ adaptador que importa `SESv2Client` y `SendEmailCommand`.
 - `testEmailFunction.ts`: declara la Function y carga el servicio al invocarlo;
   no carga React Email/SES ni lee Secrets durante su declaración.
 - `welcomeEmailTestFunction.ts`: smoke privado temporal `testWelcomeEmail`,
-  preparado localmente para validar WelcomeEmail con datos fijos. Tiene un gate
-  explícito `sandbox` y usa el mismo servicio mediante import lazy. No está
-  conectado al alta de usuarios; no se desplegó ni invocó en esta preparación.
+  validado y migrado a email con datos fijos. Tiene un gate explícito `sandbox`
+  y usa el mismo servicio mediante import lazy. El alta de usuarios utiliza
+  otro adaptador: `welcomeRegistrationFunction.ts`.
 
 **`testTransactionalEmail` es una herramienta de smoke test de infraestructura,
 no una API de negocio.** Mantiene `invoker: private`, service account dedicada,
@@ -352,7 +455,7 @@ a introducirla**. La condición definitiva restringe el From al dominio y el
 backend lo fija además a `notificaciones@reservaeldia.com.ar`, con la allowlist
 exacta indicada arriba. No se añade `aws:RequestedRegion` a esta policy.
 
-## Smoke temporal de WelcomeEmail — validado; migración de codebase pendiente
+## Smoke temporal de WelcomeEmail — validado y migrado a email
 
 Implementación local del 2026-09-25: `testWelcomeEmail`, exportada por
 `functions/src/emails/entrypoint.ts`, en el source/codebase local `email`. Reutiliza
@@ -472,8 +575,9 @@ confirmar que el smoke técnico, SES y el dotenv existente permanecieron intacto
 sin imprimir contenido sensible. El selector exacto de deploy se verificó con
 el parser instalado sin ejecutar Firebase CLI ni consultar servicios remotos.
 
-**Retiro pendiente tras la validación del operador:** quitar únicamente el
-export/handler de `testWelcomeEmail` y sus pruebas específicas; actualizar el
+**Retiro futuro, requiere autorización separada:** este cierre conserva
+`testWelcomeEmail` y todas sus pruebas para no cambiar comportamiento. Al
+autorizar su retiro, quitar únicamente su export/handler y sus pruebas específicas; actualizar el
 inventario y registrar el resultado aquí. El retiro de cualquier despliegue
 remoto requiere una operación dirigida y autorizada por separado. Conservar
 `testTransactionalEmail`, WelcomeEmail, el sender, service account y Secrets.
@@ -486,7 +590,7 @@ Tests, build y deploy no envían correos automáticamente.
 
 1. Confirmar `EMAIL_MODE=sandbox` en la configuración seleccionada para
    `reservaeldia-7a440`. En esta codebase se usa
-   `functions/.env.reservaeldia-7a440`, ignorado por Git. No imprimir ni copiar el
+   `functions-email/.env.reservaeldia-7a440`, ignorado por Git. No imprimir ni copiar el
    archivo completo. No cambiar credenciales ni secretos para repetir el smoke.
 2. Confirmar que la Function conserva sus dos bindings y el acceso IAM privado.
    Usar una cuenta Google ya autorizada con `roles/run.invoker` sobre el servicio.
@@ -570,9 +674,9 @@ dependencia directa `@aws-sdk/client-sts`. No forma parte de la operación norma
 Se conserva `awsCredentials.ts` por ser el proveedor lazy del sender, y la
 sanitización de errores SES con sus pruebas permanentes.
 
-**Retiro remoto pendiente:** eliminar fuentes no borra una Function desplegada.
-Este cierre no consulta ni modifica GCP. Si la sonda sigue desplegada, el operador
-puede retirarla específicamente después de verificar su nombre y región:
+**Actualización del 26/09/2026:** la sonda no aparece en el inventario remoto
+consultado para el cierre. No hay retiro pendiente comprobado. Se conserva este
+comando histórico solo para referencia; no ejecutarlo como parte del cierre:
 
 ```powershell
 firebase functions:delete diagnoseEmailAwsIdentity --region us-central1 --project reservaeldia-7a440
@@ -674,7 +778,8 @@ remoto ni se modifica la deuda de permisos/aislamiento descrita en otros documen
 `welcomeRegistration.ts` recibe una representación confiable de Firebase Auth
 desde backend: `user: { uid, email?, displayName?, disabled?, customClaims?,
 creationTime? }` y `sourceEventId`. No es un endpoint ni acepta datos de un
-formulario del navegador. Fase 2B.2 agrega el adaptador descrito abajo, sin deploy.
+formulario del navegador. Fase 2B.2 agrega el adaptador descrito abajo; la
+preparación local del 25/09 no hizo deploy y la validación remota consta en el cierre del 26/09.
 **No se afirma que usuarios reales reciban WelcomeEmail automáticamente.**
 
 ```text
@@ -806,7 +911,11 @@ Evidencia ignorada por Git: `.local-isolation/welcome-2b1/` y
 
 <a id="welcome-registration-2b2"></a>
 
-## Adaptador Auth — Fase 2B.2 implementada, no desplegada
+## Adaptador Auth — Fase 2B.2 desplegada y validada en sandbox
+
+Estado vigente: [cierre del 26/09/2026](#cierre-welcome-sandbox). La preparación,
+prerrequisitos y resultados locales del 25/09 que siguen son históricos; sus
+menciones de ausencia de deploy describen ese trabajo previo.
 
 Autoridad del alta: Firebase Authentication `auth.user().onCreate()` desde
 `firebase-functions/v1`, con la versión instalada 6.4.0. No se actualizó el SDK
@@ -978,9 +1087,11 @@ no cambiaron respecto del inicio de 2B.2. No se hizo deploy, envío ni commit.
 Lint global no se declara aprobado por la deuda preexistente indicada.
 
 <a id="migracion-email-codebase"></a>
-## Source email independiente: preparación local y migración pendiente
+## Source email independiente: migración validada y procedimiento conservado
 
-**Estado: implementado localmente; sin deploy, envíos, cambios IAM/Secrets ni commit.**
+**Estado vigente:** migrado por el operador y verificado en el
+[cierre sandbox del 26/09](#cierre-welcome-sandbox). El rollback sigue disponible.
+**Histórico del 25/09:** preparación local sin deploy, envíos, cambios IAM/Secrets ni commit.
 El operador informó que el deploy del Auth trigger volvió a fallar después del
 build con `Cannot determine backend specification / Timeout after 10000`.
 Firebase CLI descubre el source completo antes de filtrar endpoints: seleccionar
@@ -1150,7 +1261,10 @@ series email, planner, autonomía, logs y cleanup.json) y
 sanitizada sí se versiona. El worktree incluye cambios de fases anteriores;
 no atribuir todo `git diff` a esta separación.
 
-### Secuencia manual de migración: no ejecutada
+### Secuencia manual de migración: referencia de la operación completada
+
+Se conserva para trazabilidad y recuperación. No ejecutar nuevamente como parte
+del cierre: los dos smoke tests ya pertenecen a email y el Auth trigger está ACTIVE.
 
 No desplegar default primero: allí se retiraron exports que aún existen remotamente.
 No aceptar ninguna propuesta de borrar/recrear smoke endpoints ni ningún recurso
@@ -1306,18 +1420,17 @@ Manager ni se inspeccionó el historial Git o recursos remotos en este cierre.
   No se desplegó ni rotó Mercado Pago durante el cierre de emails.
   [Aceptación de Payments](PAYMENTS_CODEBASE_PREPARATION.md); procedimiento y consumidores en
   [BACKEND_CONFIGURATION_ISOLATION.md](BACKEND_CONFIGURATION_ISOLATION.md).
-- La separación local está implementada: default 101, Payments 3, email 3.
-  Falta migrar remotamente los dos smoke tests y crear el trigger Auth con el
-  [procedimiento secuencial](#migracion-email-codebase). Los metadatos capturados
-  prueban únicamente esos dos endpoints y la ausencia del Auth trigger; no un
-  inventario remoto completo. Las revisiones existentes no cambian por editar fuentes.
+- Email está migrado y validado hasta sandbox. El inventario local es 101/3/3;
+  el remoto 102/3/3 por generatePublishedShareImage adicional en default.
+  Su revisión corresponde a una tarea separada; ver [evidencia de cierre](#cierre-welcome-sandbox).
 - Node 22: runtime actual Node 20; el AWS SDK advierte/requerirá Node >=22 en
   versiones futuras. OpenAI 7.5.0 ya declara Node >=22 y genera una advertencia
   preexistente. No se actualizó Node ni OpenAI en esta fase.
 - Eventos SES, delivery, bounce, complaint y suppression lists.
 - Templates y emails reales de negocio, colas/idempotencia cuando corresponda.
 
-El cierre inicial no conectó eventos de negocio al sender. Fase 2B.2 agrega
-solamente el adaptador Auth descrito arriba, sin desplegarlo ni habilitar envíos
-productivos. No se agregaron campañas de marketing ni otros eventos de negocio.
-No se hizo commit durante estas fases.
+El cierre inicial no conectó eventos de negocio al sender. Fase 2B.2 agrega el
+adaptador Auth, ahora desplegado y validado en sandbox por el operador; los envíos
+productivos siguen bloqueados. No se agregaron campañas ni otros eventos de negocio.
+Las preparaciones anteriores no ejecutaron commits desde el agente; este cierre
+sí incluye el commit autorizado por el operador, conservando el historial previo.

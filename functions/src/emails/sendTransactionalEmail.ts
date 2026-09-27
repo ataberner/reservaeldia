@@ -1,12 +1,13 @@
 import { info } from "firebase-functions/logger";
-import { emailMode, isEmptyEmailData, resolveEmailMode, SANDBOX_RECIPIENT } from "./config";
+import { emailMode, isEmailCorrelationId, isEmailRecipient, resolveEmailMode, SANDBOX_RECIPIENT } from "./config";
 import { renderEmail } from "./renderEmail";
+import { isEmailTemplateRequest } from "./templateRegistry";
 import { sendViaSes } from "./sesClient";
 import { emailFailure } from "./types";
 import type { EmailResult, EmailTransportRequest, TransactionalEmailRequest } from "./types";
 
 type EmailLog = {
-  template: "test" | "invalid";
+  template: TransactionalEmailRequest["template"] | "invalid";
   mode: ReturnType<typeof resolveEmailMode>;
   state: EmailResult["state"];
   durationMs: number;
@@ -24,17 +25,9 @@ function validRequest(value: unknown): value is TransactionalEmailRequest {
   if (!isRecord(value) || Object.keys(value).sort().join(",") !== "data,metadata,template,to") {
     return false;
   }
-  return typeof value.to === "string" &&
-    !/[\r\n]/.test(value.to) &&
-    /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(value.to) &&
-    value.to.length <= 254 &&
-    value.template === "test" && isEmptyEmailData(value.data) &&
+  return isEmailRecipient(value.to) &&
     isRecord(value.metadata) && Object.keys(value.metadata).join(",") === "correlationId" &&
-    typeof value.metadata.correlationId === "string" &&
-    !/[\r\n]/.test(value.metadata.correlationId) &&
-    /^email-test-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-      value.metadata.correlationId
-    );
+    isEmailCorrelationId(value.metadata.correlationId) && isEmailTemplateRequest(value);
 }
 
 // Dependencies make tests offline; production uses the single default service.
@@ -50,7 +43,7 @@ export function createTransactionalEmailService(dependencies: {
     const valid = validRequest(request);
     const finish = (result: EmailResult) => {
       dependencies.log({
-        template: valid ? "test" : "invalid",
+        template: valid ? request.template : "invalid",
         mode,
         state: result.state,
         durationMs: Math.max(0, Date.now() - startedAt),
@@ -73,7 +66,7 @@ export function createTransactionalEmailService(dependencies: {
 
     let content;
     try {
-      content = await dependencies.render({ template: request.template, data: request.data });
+      content = await dependencies.render(request);
     } catch {
       return finish(emailFailure("failed", "EMAIL_RENDER_FAILED"));
     }

@@ -5,6 +5,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 
 const require = createRequire(import.meta.url);
+// Auth v1 resolves its event resource while inspecting the endpoint, not on import.
+const previousProject = process.env.GCLOUD_PROJECT;
+// Resource name only; network is trapped below. A demo ID would require the full emulator environment.
+process.env.GCLOUD_PROJECT = "reservaeldia-7a440";
+test.after(() => { if (previousProject === undefined) delete process.env.GCLOUD_PROJECT; else process.env.GCLOUD_PROJECT = previousProject; });
 let networkAttempts = 0;
 const rejectNetwork = () => {
   networkAttempts += 1;
@@ -24,7 +29,8 @@ const readSecret = mock.method(Object.getPrototypeOf(config.mercadoPagoAccessTok
 });
 const coreEndpoints = requireBuiltModule("lib/index.js");
 const paymentEndpoints = requireBuiltModule("lib/payments/entrypoint.js");
-const endpoints = { ...coreEndpoints, ...paymentEndpoints };
+const emailEndpoints = requireBuiltModule("lib/emails/entrypoint.js");
+const endpoints = { ...coreEndpoints, ...paymentEndpoints, ...emailEndpoints };
 const { summarizeErrorForLog } = requireBuiltModule("lib/utils/safeErrorLog.js");
 
 test("deployment source excludes environment files independently of runtime injection", () => {
@@ -36,11 +42,22 @@ test("deployment source excludes environment files independently of runtime inje
   }
 });
 
+test("transactional email addresses are fixed server-side with unchanged sender, region and sandbox recipient", () => {
+  const email = requireBuiltModule("lib/emails/config.js");
+  assert.equal(email.EMAIL_FROM_NAME, "Reserva el Día");
+  assert.equal(email.EMAIL_FROM_ADDRESS, "notificaciones@reservaeldia.com.ar");
+  assert.equal(email.EMAIL_REPLY_TO_NAME, "Agus de Reserva el Día");
+  assert.equal(email.EMAIL_REPLY_TO_ADDRESS, "hola@reservaeldia.com.ar");
+  assert.equal(email.EMAIL_REGION, "us-east-1");
+  assert.equal(email.SANDBOX_RECIPIENT, "reservaeldia.invitaciones@gmail.com");
+  assert.equal(readSecret.mock.callCount(), 0);
+});
+
 test("Functions dotenv files never declare Mercado Pago secrets", () => {
   const forbidden = new Set([
     "MERCADO_PAGO_ACCESS_TOKEN", "MP_WEBHOOK_SECRET", "MERCADO_PAGO_CLIENT_SECRET",
   ]);
-  for (const directory of [new URL("./", import.meta.url), new URL("../functions-payments/", import.meta.url)]) {
+  for (const directory of [new URL("./", import.meta.url), new URL("../functions-payments/", import.meta.url), new URL("../functions-email/", import.meta.url)]) {
     for (const file of readdirSync(directory).filter((name) => /^\.env(?:\.|$)/.test(name))) {
       const source = readFileSync(new URL(file, directory), "utf8");
       // Report names only, never dotenv contents, even when this guard fails.
@@ -57,8 +74,10 @@ test("Functions dotenv files never declare Mercado Pago secrets", () => {
 });
 
 test("payment secrets bind only their actual consumers; email keeps its own bindings", () => {
-  assert.equal(Object.keys(coreEndpoints).length, 102);
+  assert.equal(Object.keys(coreEndpoints).length, 101);
   assert.equal(Object.keys(paymentEndpoints).length, 3);
+  assert.equal(Object.keys(emailEndpoints).length, 3);
+  assert.equal(Object.keys(endpoints).length, 107);
   for (const name of Object.keys(paymentEndpoints)) assert.equal(Object.hasOwn(coreEndpoints, name), false);
   const consumers = (secret) => Object.entries(endpoints)
     .filter(([, fn]) => fn?.__endpoint?.secretEnvironmentVariables?.some(({ key }) => key === secret))
@@ -73,7 +92,7 @@ test("payment secrets bind only their actual consumers; email keeps its own bind
   ]);
   assert.equal(Object.hasOwn(endpoints, "diagnoseEmailAwsIdentity"), false);
   for (const secret of ["AWS_SES_ACCESS_KEY_ID", "AWS_SES_SECRET_ACCESS_KEY"]) {
-    assert.deepEqual(consumers(secret), ["testTransactionalEmail"]);
+    assert.deepEqual(consumers(secret), ["onUserCreatedWelcomeEmail", "testTransactionalEmail", "testWelcomeEmail"]);
   }
   assert.equal(readSecret.mock.callCount(), 0);
 });

@@ -1,0 +1,15 @@
+{
+  "name": "reservaeldia-functions-email",
+  "private": true,
+  "main": "lib/emails/entrypoint.js",
+  "engines": { "node": "20" },
+  "scripts": { "gcp-build": "" },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "3.1120.0",
+    "firebase-admin": "13.4.0",
+    "firebase-functions": "6.4.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-email": "6.9.3"
+  }
+}

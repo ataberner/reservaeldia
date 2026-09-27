@@ -53,7 +53,11 @@ importar la aplicación. No se leen secretos remotos para los endpoints locales.
 Los seis callables permitidos delegan a sus handlers existentes. La entrada local
 no se usa en producción: el paquete productivo conserva `lib/index.js`. Los demás
 endpoints HTTP/callable existentes responden `LOCAL_FLOW_DISABLED` antes del
-handler. No se registran triggers ni schedulers. No se crean endpoints de prueba.
+handler. La única excepción de eventos es `onUserCreatedWelcomeEmail`: desde
+Fase 2B.2 se registra con el mismo handler, exclusivamente EMAIL_MODE=disabled,
+sin bindings Secrets ni service account remotos. Los demás triggers y schedulers
+siguen ausentes. No se crean endpoints de prueba. El launcher genera en la copia
+los parámetros de email (disabled y activación vacía), sin copiar dotenv reales.
 
 ## Requisitos y preparación
 
@@ -140,7 +144,8 @@ configuración ausente en una sesión vacía. No se asignan roles administrativo
 
 Bloqueados: pagos/checkout/publicación, IA, correo SES, RSVP/Sheets, previews de
 backend, administración y los restantes endpoints no incluidos explícitamente.
-Triggers y schedulers no se registran. El guard de proveedores también impide
+Salvo el onCreate de bienvenida con email disabled, triggers y schedulers no se
+registran. El guard de proveedores también impide
 construir clientes SES, Mercado Pago y OpenAI en modo local.
 
 Node limita sockets a loopback antes de DNS/conexión; fetch además valida identidad
@@ -285,8 +290,11 @@ que carga la CLI y los hashes antes y después. Comprueba proyecto/bucket,
 destinos de SDK y disponibilidad del hub; los wrappers `getAdminAccess`,
 `setAdminClaim` y `publicRsvpSubmit` deben seguir bloqueados. Los dos primeros
 responden HTTP 400 con `FAILED_PRECONDITION`; el wrapper HTTP de RSVP responde
-412. Todos deben incluir `LOCAL_FLOW_DISABLED`. No se invocan handlers de negocio
-ni se registran triggers/schedulers nuevos. Desde 4B2B también se comprueba el
+412. Todos deben incluir `LOCAL_FLOW_DISABLED`. Esos handlers de negocio siguen
+bloqueados. La excepción incorporada en 2B.2 es Auth onCreate para bienvenida:
+`welcomeAuth.test.mjs` crea cuentas sintéticas en Auth emulator y comprueba el
+delivery skipped, con EMAIL_MODE=disabled y sin sender. Los demás eventos y
+schedulers permanecen ausentes. Desde 4B2B también se comprueba el
 wrapper bloqueado de `listCountdownPresetsPublic`, `saveCountdownPresetDraft`,
 `publishCountdownPresetDraft` y `listCountdownPresetVersionsAdmin`, con el mismo
 400/FAILED_PRECONDITION. Esto confirma el bloqueo, no la conducta del handler.

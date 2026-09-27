@@ -1,9 +1,25 @@
 export type EmailMode = "disabled" | "sandbox" | "production";
 
-export type TransactionalEmailRequest = {
+export type WelcomeEmailData = {
+  name?: string;
+  dashboardUrl: string;
+};
+
+export type EmailTemplateData = {
+  test: Record<string, never>;
+  welcome: WelcomeEmailData;
+};
+
+// Map first, then index: Pick over a union would lose template/data correlation.
+export type EmailTemplateRequest = {
+  [Template in keyof EmailTemplateData]: {
+    template: Template;
+    data: EmailTemplateData[Template];
+  };
+}[keyof EmailTemplateData];
+
+export type TransactionalEmailRequest = EmailTemplateRequest & {
   to: string;
-  template: "test";
-  data: Record<string, never>;
   metadata: { correlationId: string };
 };
 

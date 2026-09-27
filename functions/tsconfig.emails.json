@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": ".email-preview/lib",
+    "noEmitOnError": true
+  },
+  "include": ["src/emails/renderEmail.tsx"]
+}

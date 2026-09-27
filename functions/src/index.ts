@@ -1,5 +1,4 @@
 import { FieldValue } from "firebase-admin/firestore";
-export { testTransactionalEmail } from "./emails/testEmailFunction";
 import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";

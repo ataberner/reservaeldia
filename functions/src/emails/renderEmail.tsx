@@ -1,18 +1,29 @@
 import { render, toPlainText } from "react-email";
-import { isEmptyEmailData } from "./config";
-import { TestEmail } from "./templates/TestEmail";
-import type { RenderedEmail, TransactionalEmailRequest } from "./types";
+import { createElement } from "react";
+import { emailTemplates, isEmailTemplateRequest } from "./templateRegistry";
+import type { EmailTemplateDefinition } from "./templateRegistry";
+import type { EmailTemplateRequest, RenderedEmail } from "./types";
+
+async function renderTemplate<Data extends object>(
+  definition: EmailTemplateDefinition<Data>, data: Data
+): Promise<RenderedEmail> {
+  const html = await render(createElement(definition.component, data));
+  return { subject: definition.subject, html, text: toPlainText(html) };
+}
+
+function unsupportedTemplate(input: never): never {
+  throw new Error(`Unsupported email template: ${input}`);
+}
 
 export async function renderEmail(
-  input: Pick<TransactionalEmailRequest, "template" | "data">
+  input: EmailTemplateRequest
 ): Promise<RenderedEmail> {
-  if (input.template !== "test" || !isEmptyEmailData(input.data)) {
+  if (!isEmailTemplateRequest(input)) {
     throw new Error("Invalid email template data");
   }
-  const html = await render(<TestEmail />);
-  return {
-    subject: "Prueba sandbox — Reserva el Día",
-    html,
-    text: toPlainText(html),
-  };
+  switch (input.template) {
+    case "test": return renderTemplate(emailTemplates.test, input.data);
+    case "welcome": return renderTemplate(emailTemplates.welcome, input.data);
+    default: return unsupportedTemplate(input);
+  }
 }

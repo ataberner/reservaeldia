@@ -148,7 +148,7 @@ async function main(mode) {
   if (rules) await stage("rules-countdown", async log => {
     let testError;
     try {
-      await processes.run(["--test", "--test-reporter=tap", "scripts/local/rules.test.mjs", ...Object.values(countdownChecks).flat()],
+      await processes.run(["--test", "--test-reporter=tap", "scripts/local/rules.test.mjs", "scripts/local/welcomeAuth.test.mjs", ...Object.values(countdownChecks).flat()],
         { cwd: workspace, env, log, name: "Rules y countdown", kind: "tests", timeoutMs: 600000 });
     } catch (error) { testError = error; }
     // Infrastructure/missing evidence takes precedence over an assertion exit.

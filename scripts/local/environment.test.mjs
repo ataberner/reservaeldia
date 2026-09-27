@@ -75,7 +75,9 @@ test("production SDK initialization does not connect emulators (fake SDK only)",
 });
 
 test("sensitive environment and personal configuration are not inherited", () => {
-  const clean = cleanEnvironment("C:/synthetic-session", { PATH: "synthetic-path", GOOGLE_APPLICATION_CREDENTIALS: "do-not-inherit", FIREBASE_TOKEN: "do-not-inherit", OPENAI_API_KEY: "do-not-inherit", AWS_PROFILE: "do-not-inherit", NODE_OPTIONS: "--danger", HTTPS_PROXY: "do-not-inherit", ARBITRARY_NEW_PROVIDER_SECRET: "do-not-inherit", HOME: "personal" });
+  const clean = cleanEnvironment("C:/synthetic-session", { PATH: "synthetic-path", GOOGLE_APPLICATION_CREDENTIALS: "do-not-inherit", FIREBASE_TOKEN: "do-not-inherit", OPENAI_API_KEY: "do-not-inherit", AWS_PROFILE: "do-not-inherit", NODE_OPTIONS: "--danger", HTTPS_PROXY: "do-not-inherit", ARBITRARY_NEW_PROVIDER_SECRET: "do-not-inherit", HOME: "personal", EMAIL_MODE: "production", WELCOME_EMAIL_ACTIVATION_AT: "2020-01-01T00:00:00.000Z" });
+  assert.equal(clean.EMAIL_MODE, "disabled");
+  assert.equal(clean.WELCOME_EMAIL_ACTIVATION_AT, "");
   for (const key of ["GOOGLE_APPLICATION_CREDENTIALS", "FIREBASE_TOKEN", "OPENAI_API_KEY", "AWS_PROFILE", "HTTPS_PROXY", "ARBITRARY_NEW_PROVIDER_SECRET"]) assert.equal(clean[key], undefined);
   assert.notEqual(clean.HOME, "personal");
   assert.match(clean.NODE_OPTIONS, /networkGuard/);

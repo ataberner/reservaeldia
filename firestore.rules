@@ -168,6 +168,11 @@ service cloud.firestore {
         request.resource.data.orden is int;
     }
 
+    // W1: TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md, welcome-registration-2b1.
+    match /welcomeEmailDeliveries/{document=**} {
+      allow read, write: if false; // Backend-only automatic welcome reservations.
+    }
+
     // A1/A2 scope and unresolved operations: SECURITY_CONTRACT.md, phase-4b2a.
     match /usuarios/{uid} {
       allow read: if isOwner(uid);
@@ -367,6 +372,7 @@ service cloud.firestore {
     // Compatibility fallback for the rest of current app documents.
     match /{collection}/{document=**} {
       allow read, write: if isSignedIn() &&
+        collection != "welcomeEmailDeliveries" &&
         collection != "usuarios" &&
         collection != "publicadas" &&
         collection != "publicadas_historial" &&

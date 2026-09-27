@@ -6,6 +6,8 @@ import { sanitizeAwsError, type SafeAwsError } from "./awsDiagnostics";
 import {
   EMAIL_FROM_NAME,
   EMAIL_FROM_ADDRESS,
+  EMAIL_REPLY_TO_NAME,
+  EMAIL_REPLY_TO_ADDRESS,
   EMAIL_REGION,
   EMAIL_TIMEOUT_MS,
   SANDBOX_RECIPIENT,
@@ -92,6 +94,8 @@ export function createSesTransport(
       const command = new SendEmailCommand({
         // RFC 2047 preserves "Día" while keeping the address header ASCII.
         FromEmailAddress: `=?UTF-8?B?${Buffer.from(EMAIL_FROM_NAME, "utf8").toString("base64")}?= <${EMAIL_FROM_ADDRESS}>`,
+        // Reply routing is transport-owned, independent of callers and templates.
+        ReplyToAddresses: [`=?UTF-8?B?${Buffer.from(EMAIL_REPLY_TO_NAME, "utf8").toString("base64")}?= <${EMAIL_REPLY_TO_ADDRESS}>`],
         Destination: { ToAddresses: [request.to] },
         Content: {
           Simple: {

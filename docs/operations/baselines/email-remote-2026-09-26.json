@@ -1,0 +1,101 @@
+{
+  "capturedAt": "2026-09-27T02:16:54.497Z",
+  "project": "reservaeldia-7a440",
+  "method": "Cloud Functions v2 functions.get with server-side fields selection",
+  "fields": "name,environment,url,eventTrigger,labels,buildConfig(runtime,entryPoint),serviceConfig(service,minInstanceCount,maxInstanceCount,availableMemory,availableCpu,timeoutSeconds,maxInstanceRequestConcurrency,serviceAccountEmail,uri,ingressSettings,allTrafficOnLatestRevision,secretEnvironmentVariables(key,projectId,secret,version))",
+  "authTriggerExists": true,
+  "functions": [
+    {
+      "name": "projects/reservaeldia-7a440/locations/us-central1/functions/testTransactionalEmail",
+      "environment": "GEN_2",
+      "url": "https://us-central1-reservaeldia-7a440.cloudfunctions.net/testTransactionalEmail",
+      "trigger": "https",
+      "labels": {
+        "firebase-functions-codebase": "email",
+        "deployment-tool": "cli-firebase"
+      },
+      "buildConfig": {
+        "runtime": "nodejs20",
+        "entryPoint": "testTransactionalEmail"
+      },
+      "serviceConfig": {
+        "service": "projects/reservaeldia-7a440/locations/us-central1/services/testtransactionalemail",
+        "maxInstanceCount": 1,
+        "availableMemory": "256Mi",
+        "availableCpu": "1",
+        "timeoutSeconds": 20,
+        "maxInstanceRequestConcurrency": 1,
+        "serviceAccountEmail": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+        "uri": "https://testtransactionalemail-vntxuytzsa-uc.a.run.app",
+        "ingressSettings": "ALLOW_ALL",
+        "allTrafficOnLatestRevision": true,
+        "secretEnvironmentVariables": [
+          {
+            "key": "AWS_SES_ACCESS_KEY_ID",
+            "projectId": "reservaeldia-7a440",
+            "secret": "AWS_SES_ACCESS_KEY_ID",
+            "version": "3"
+          },
+          {
+            "key": "AWS_SES_SECRET_ACCESS_KEY",
+            "projectId": "reservaeldia-7a440",
+            "secret": "AWS_SES_SECRET_ACCESS_KEY",
+            "version": "2"
+          }
+        ]
+      },
+      "invoker": {
+        "iamCheckEnabled": true,
+        "uri": "https://testtransactionalemail-vntxuytzsa-uc.a.run.app",
+        "publicPrincipals": [],
+        "bindings": []
+      }
+    },
+    {
+      "name": "projects/reservaeldia-7a440/locations/us-central1/functions/testWelcomeEmail",
+      "environment": "GEN_2",
+      "url": "https://us-central1-reservaeldia-7a440.cloudfunctions.net/testWelcomeEmail",
+      "trigger": "https",
+      "labels": {
+        "firebase-functions-codebase": "email",
+        "deployment-tool": "cli-firebase"
+      },
+      "buildConfig": {
+        "runtime": "nodejs20",
+        "entryPoint": "testWelcomeEmail"
+      },
+      "serviceConfig": {
+        "service": "projects/reservaeldia-7a440/locations/us-central1/services/testwelcomeemail",
+        "maxInstanceCount": 1,
+        "availableMemory": "256Mi",
+        "availableCpu": "1",
+        "timeoutSeconds": 20,
+        "maxInstanceRequestConcurrency": 1,
+        "serviceAccountEmail": "email-sandbox-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+        "uri": "https://testwelcomeemail-vntxuytzsa-uc.a.run.app",
+        "ingressSettings": "ALLOW_ALL",
+        "allTrafficOnLatestRevision": true,
+        "secretEnvironmentVariables": [
+          {
+            "key": "AWS_SES_ACCESS_KEY_ID",
+            "projectId": "reservaeldia-7a440",
+            "secret": "AWS_SES_ACCESS_KEY_ID",
+            "version": "3"
+          },
+          {
+            "key": "AWS_SES_SECRET_ACCESS_KEY",
+            "projectId": "reservaeldia-7a440",
+            "secret": "AWS_SES_SECRET_ACCESS_KEY",
+            "version": "2"
+          }
+        ]
+      },
+      "invoker": {
+        "iamCheckEnabled": true,
+        "uri": "https://testwelcomeemail-vntxuytzsa-uc.a.run.app",
+        "publicPrincipals": [],
+        "bindings": []
+      }
+    }
+  ]
+}

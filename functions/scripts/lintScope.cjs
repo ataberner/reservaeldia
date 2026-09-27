@@ -10,7 +10,7 @@ function functionsSources(root) {
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       if (["node_modules", ".git", ".local-isolation"].includes(entry.name) ||
-        (directory === path.join(root, "functions") && entry.name === "lib")) continue;
+        (directory === path.join(root, "functions") && ["lib", ".email-preview"].includes(entry.name))) continue;
       const file = path.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw new Error(`Source symlink is not allowed: ${file}`);
       if (entry.isDirectory()) visit(file);

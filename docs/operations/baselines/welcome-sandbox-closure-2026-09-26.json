@@ -1,0 +1,822 @@
+{
+  "capturedAt": "2026-09-27T02:20:53.281Z",
+  "project": "reservaeldia-7a440",
+  "method": "Read-only Cloud Functions v1/v2 REST with server-side fields masks; no Secret values or full environments",
+  "counts": {
+    "default": 102,
+    "payments": 3,
+    "email": 3
+  },
+  "functions": [
+    {
+      "name": "adminCommitTemplateWorkspaceV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminCommitTemplateWorkspaceV1"
+    },
+    {
+      "name": "adminConvertDraftToTemplateV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminConvertDraftToTemplateV1"
+    },
+    {
+      "name": "adminCreateTemplateFromDraftV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminCreateTemplateFromDraftV1"
+    },
+    {
+      "name": "adminDeleteTextPresetV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminDeleteTextPresetV1"
+    },
+    {
+      "name": "adminDuplicateTextPresetV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminDuplicateTextPresetV1"
+    },
+    {
+      "name": "adminGetDecorUsageStatsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminGetDecorUsageStatsV1"
+    },
+    {
+      "name": "adminGetIconUsageStatsV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminGetIconUsageStatsV2"
+    },
+    {
+      "name": "adminGetPricingConfigV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminGetPricingConfigV1"
+    },
+    {
+      "name": "adminGetTemplateEditorDocumentV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminGetTemplateEditorDocumentV1"
+    },
+    {
+      "name": "adminHardDeleteTemplateFromTrashV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminHardDeleteTemplateFromTrashV1"
+    },
+    {
+      "name": "adminListDecorCatalogV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListDecorCatalogV1"
+    },
+    {
+      "name": "adminListIconCatalogV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListIconCatalogV2"
+    },
+    {
+      "name": "adminListPricingHistoryV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListPricingHistoryV1"
+    },
+    {
+      "name": "adminListTemplatesV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListTemplatesV1"
+    },
+    {
+      "name": "adminListTemplateTagsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListTemplateTagsV1"
+    },
+    {
+      "name": "adminListTemplateTrashV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListTemplateTrashV1"
+    },
+    {
+      "name": "adminListTextPresetsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminListTextPresetsV1"
+    },
+    {
+      "name": "adminMoveTemplateToTrashV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminMoveTemplateToTrashV1"
+    },
+    {
+      "name": "adminOpenTemplateWorkspaceV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminOpenTemplateWorkspaceV1"
+    },
+    {
+      "name": "adminPatchDecorMetadataV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminPatchDecorMetadataV1"
+    },
+    {
+      "name": "adminPatchIconMetadataV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminPatchIconMetadataV2"
+    },
+    {
+      "name": "adminRebuildBusinessAnalyticsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminRebuildBusinessAnalyticsV1"
+    },
+    {
+      "name": "adminRestoreTemplateFromTrashV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminRestoreTemplateFromTrashV1"
+    },
+    {
+      "name": "adminRevalidateDecorV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminRevalidateDecorV1"
+    },
+    {
+      "name": "adminRevalidateIconV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminRevalidateIconV2"
+    },
+    {
+      "name": "adminSaveTemplateEditorDocumentV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSaveTemplateEditorDocumentV1"
+    },
+    {
+      "name": "adminSetDecorActivationV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSetDecorActivationV1"
+    },
+    {
+      "name": "adminSetDecorPriorityV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSetDecorPriorityV1"
+    },
+    {
+      "name": "adminSetIconActivationV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSetIconActivationV2"
+    },
+    {
+      "name": "adminSetIconPriorityV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSetIconPriorityV2"
+    },
+    {
+      "name": "adminSetTextPresetActivationV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSetTextPresetActivationV1"
+    },
+    {
+      "name": "adminSetTextPresetVisibilityV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSetTextPresetVisibilityV1"
+    },
+    {
+      "name": "adminSyncLegacyTextPresetsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminSyncLegacyTextPresetsV1"
+    },
+    {
+      "name": "adminUpdatePricingConfigV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminUpdatePricingConfigV1"
+    },
+    {
+      "name": "adminUpsertDashboardHomeConfigV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminUpsertDashboardHomeConfigV1"
+    },
+    {
+      "name": "adminUpsertTemplateEditorialV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminUpsertTemplateEditorialV1"
+    },
+    {
+      "name": "adminUpsertTemplateTagV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminUpsertTemplateTagV1"
+    },
+    {
+      "name": "adminUpsertTextPresetV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "adminUpsertTextPresetV1"
+    },
+    {
+      "name": "archiveCountdownPreset",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "archiveCountdownPreset"
+    },
+    {
+      "name": "borrarBorrador",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "borrarBorrador"
+    },
+    {
+      "name": "borrarPlantilla",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "borrarPlantilla"
+    },
+    {
+      "name": "borrarTodosLosBorradores",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "borrarTodosLosBorradores"
+    },
+    {
+      "name": "checkPublicSlugAvailability",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "checkPublicSlugAvailability"
+    },
+    {
+      "name": "copiarPlantilla",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "copiarPlantilla"
+    },
+    {
+      "name": "copiarPlantillaHTML",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "copiarPlantillaHTML"
+    },
+    {
+      "name": "crearPlantilla",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "crearPlantilla"
+    },
+    {
+      "name": "createPublicationCheckoutSession",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "payments",
+      "entryPoint": "createPublicationCheckoutSession"
+    },
+    {
+      "name": "createPublicationPayment",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "payments",
+      "entryPoint": "createPublicationPayment"
+    },
+    {
+      "name": "dailyIconCatalogReconcileV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "dailyIconCatalogReconcileV2"
+    },
+    {
+      "name": "dailyIconUsageScanV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "dailyIconUsageScanV2"
+    },
+    {
+      "name": "deleteCountdownPreset",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "deleteCountdownPreset"
+    },
+    {
+      "name": "designerAiChat",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "designerAiChat"
+    },
+    {
+      "name": "duplicateCountdownPreset",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "duplicateCountdownPreset"
+    },
+    {
+      "name": "finalizeExpiredPublications",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "finalizeExpiredPublications"
+    },
+    {
+      "name": "generatePublishedShareImage",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "generatePublishedShareImage"
+    },
+    {
+      "name": "getAdminAccess",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getAdminAccess"
+    },
+    {
+      "name": "getAdminDraftSnapshot",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getAdminDraftSnapshot"
+    },
+    {
+      "name": "getAdminUserByEmail",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getAdminUserByEmail"
+    },
+    {
+      "name": "getBusinessAnalyticsOverviewV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getBusinessAnalyticsOverviewV1"
+    },
+    {
+      "name": "getBusinessAnalyticsRawExportStatusV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getBusinessAnalyticsRawExportStatusV1"
+    },
+    {
+      "name": "getDashboardHomeConfigV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getDashboardHomeConfigV1"
+    },
+    {
+      "name": "getMyProfileStatus",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getMyProfileStatus"
+    },
+    {
+      "name": "getMyPublicationVisitMetrics",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getMyPublicationVisitMetrics"
+    },
+    {
+      "name": "getMyUiPreferences",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getMyUiPreferences"
+    },
+    {
+      "name": "getPricingConfigV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getPricingConfigV1"
+    },
+    {
+      "name": "getPublicationCheckoutStatus",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getPublicationCheckoutStatus"
+    },
+    {
+      "name": "getUserDirectoryDetail",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getUserDirectoryDetail"
+    },
+    {
+      "name": "getUsersStats",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "getUsersStats"
+    },
+    {
+      "name": "hardDeleteLegacyPublication",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "hardDeleteLegacyPublication"
+    },
+    {
+      "name": "listAdminUsers",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listAdminUsers"
+    },
+    {
+      "name": "listCountdownPresetsAdmin",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listCountdownPresetsAdmin"
+    },
+    {
+      "name": "listCountdownPresetsPublic",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listCountdownPresetsPublic"
+    },
+    {
+      "name": "listCountdownPresetVersionsAdmin",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listCountdownPresetVersionsAdmin"
+    },
+    {
+      "name": "listPublicationDiscountCodes",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listPublicationDiscountCodes"
+    },
+    {
+      "name": "listPublicationDiscountCodeUsage",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listPublicationDiscountCodeUsage"
+    },
+    {
+      "name": "listTextPresetsPublicV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listTextPresetsPublicV1"
+    },
+    {
+      "name": "listUsersDirectory",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "listUsersDirectory"
+    },
+    {
+      "name": "mercadoPagoWebhook",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "payments",
+      "entryPoint": "mercadoPagoWebhook"
+    },
+    {
+      "name": "moveDraftToTrash",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "moveDraftToTrash"
+    },
+    {
+      "name": "onDecorCatalogDocWriteV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "onDecorCatalogDocWriteV1"
+    },
+    {
+      "name": "onIconCatalogDocWriteV2",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "onIconCatalogDocWriteV2"
+    },
+    {
+      "name": "onUserCreatedWelcomeEmail",
+      "region": "us-central1",
+      "platform": "gcfv1",
+      "codebase": "email",
+      "entryPoint": "onUserCreatedWelcomeEmail"
+    },
+    {
+      "name": "prepareDraftPreviewRender",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "prepareDraftPreviewRender"
+    },
+    {
+      "name": "preparePublicTemplatePreview",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "preparePublicTemplatePreview"
+    },
+    {
+      "name": "processPendingAnalyticsEventsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "processPendingAnalyticsEventsV1"
+    },
+    {
+      "name": "publicarInvitacion",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "publicarInvitacion"
+    },
+    {
+      "name": "publicRsvpSubmit",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "publicRsvpSubmit"
+    },
+    {
+      "name": "publishCountdownPresetDraft",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "publishCountdownPresetDraft"
+    },
+    {
+      "name": "purgeTrashedDrafts",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "purgeTrashedDrafts"
+    },
+    {
+      "name": "purgeTrashedPublications",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "purgeTrashedPublications"
+    },
+    {
+      "name": "reportClientIssue",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "reportClientIssue"
+    },
+    {
+      "name": "requestBusinessAnalyticsRawExportV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "requestBusinessAnalyticsRawExportV1"
+    },
+    {
+      "name": "restoreDraftFromTrash",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "restoreDraftFromTrash"
+    },
+    {
+      "name": "retryPaidPublicationWithNewSlug",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "retryPaidPublicationWithNewSlug"
+    },
+    {
+      "name": "runBusinessAnalyticsExportJobsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "runBusinessAnalyticsExportJobsV1"
+    },
+    {
+      "name": "runBusinessAnalyticsRebuildJobsV1",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "runBusinessAnalyticsRebuildJobsV1"
+    },
+    {
+      "name": "saveCountdownPresetDraft",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "saveCountdownPresetDraft"
+    },
+    {
+      "name": "setAdminClaim",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "setAdminClaim"
+    },
+    {
+      "name": "syncLegacyCountdownPresets",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "syncLegacyCountdownPresets"
+    },
+    {
+      "name": "testTransactionalEmail",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "email",
+      "entryPoint": "testTransactionalEmail"
+    },
+    {
+      "name": "testWelcomeEmail",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "email",
+      "entryPoint": "testWelcomeEmail"
+    },
+    {
+      "name": "transitionPublishedInvitationState",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "transitionPublishedInvitationState"
+    },
+    {
+      "name": "updateMyUiPreferences",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "updateMyUiPreferences"
+    },
+    {
+      "name": "upsertPublicationDiscountCode",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "upsertPublicationDiscountCode"
+    },
+    {
+      "name": "upsertUserProfile",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "upsertUserProfile"
+    },
+    {
+      "name": "validateDraftForPublication",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "validateDraftForPublication"
+    },
+    {
+      "name": "verInvitacion",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "verInvitacion"
+    },
+    {
+      "name": "verInvitacionPublicada",
+      "region": "us-central1",
+      "platform": "gcfv2",
+      "codebase": "default",
+      "entryPoint": "verInvitacionPublicada"
+    }
+  ],
+  "trigger": {
+    "name": "projects/reservaeldia-7a440/locations/us-central1/functions/onUserCreatedWelcomeEmail",
+    "eventTrigger": {
+      "eventType": "providers/firebase.auth/eventTypes/user.create",
+      "resource": "projects/reservaeldia-7a440",
+      "service": "firebaseauth.googleapis.com",
+      "failurePolicy": {
+        "retry": {}
+      }
+    },
+    "status": "ACTIVE",
+    "entryPoint": "onUserCreatedWelcomeEmail",
+    "timeout": "60s",
+    "availableMemoryMb": 256,
+    "serviceAccountEmail": "welcome-email-sender@reservaeldia-7a440.iam.gserviceaccount.com",
+    "updateTime": "2026-09-27T02:02:28.037375233Z",
+    "labels": {
+      "codebase": "email"
+    },
+    "runtime": "nodejs20",
+    "maxInstances": 2,
+    "secretEnvironmentVariables": [
+      {
+        "key": "AWS_SES_ACCESS_KEY_ID",
+        "projectId": "860495975406",
+        "secret": "AWS_SES_ACCESS_KEY_ID",
+        "version": "3"
+      },
+      {
+        "key": "AWS_SES_SECRET_ACCESS_KEY",
+        "projectId": "860495975406",
+        "secret": "AWS_SES_SECRET_ACCESS_KEY",
+        "version": "2"
+      }
+    ]
+  },
+  "sandboxLogEvidence": {
+    "filter": "resource.type=\"cloud_function\" AND resource.labels.function_name=\"onUserCreatedWelcomeEmail\" AND resource.labels.region=\"us-central1\" AND timestamp>=\"2026-09-26T03:00:00Z\" AND timestamp<\"2026-09-27T03:00:00Z\" AND jsonPayload.message=\"welcome_registration\" AND jsonPayload.template=\"welcome\" AND jsonPayload.mode=\"sandbox\" AND jsonPayload.state=\"skipped\"",
+    "entries": [
+      {
+        "timestamp": "2026-09-27T02:11:09.862396Z",
+        "template": "welcome",
+        "sourceEventId": "1dab33d8-b7b5-4074-8246-d4199ab85ac7",
+        "correlationId": "welcome-2228fd59-b966-4e17-bae1-a07206926cae",
+        "mode": "sandbox",
+        "state": "skipped",
+        "attempts": 0,
+        "messageId": null,
+        "errorCode": "EMAIL_SANDBOX_BUSINESS_BLOCKED"
+      }
+    ],
+    "truncated": false,
+    "userIdentifiersOmitted": true
+  }
+}

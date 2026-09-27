@@ -5,6 +5,7 @@ export const authorities = {
   A2: "docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md (backend publication / visit authority)",
   A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (non-admin writes forbidden)",
   A4: "docs/architecture/DATA_MODEL.md#countdownpresets (administrative draft; immutable published versions)",
+  W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
   C1: "firestore.rules / storage.rules (observed, not policy acceptance)",
   C2: "functions/src/auth/adminAuth.ts (observed, not policy acceptance)",
   Q1: "docs/contracts/SECURITY_CONTRACT.md#q1-proposal (proposed; Q1 unresolved)",
@@ -35,6 +36,19 @@ const accept = (id, identity, resource, op, expected, extra = {}) =>
   add(id, "acceptance", identity, "firestore", resource, op, expected, "A1", extra);
 const observed = (id, identity, store, resource, op, expected, extra = {}) =>
   add(id, "characterization", identity, store, resource, op, expected, "C1", extra);
+
+// No client identity can read or mutate the ledger, even its own UID or a child.
+for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "serverSuper"]) {
+  for (const op of ["get", "create", "update", "delete"]) {
+    add(`welcome-${identity}-${op}`, "acceptance", identity, "firestore",
+      "welcomeEmailDeliveries/{A}", op, "deny", "W1");
+  }
+  add(`welcome-${identity}-list`, "acceptance", identity, "firestore", "welcomeEmailDeliveries", "list", "deny", "W1", {
+    fixtures: [{ path: "welcomeEmailDeliveries/{A}", data: { status: "dispatching" } }],
+  });
+  add(`welcome-${identity}-nested-write`, "acceptance", identity, "firestore",
+    "welcomeEmailDeliveries/{A}/unmodeled/{ID}", "create", "deny", "W1");
+}
 
 // Per-case fixtures include BOTH owners for collection-query cases.
 for (const [name, resource, queryResource] of [

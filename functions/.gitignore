@@ -8,3 +8,6 @@ typings/
 # Node.js dependency directory
 node_modules/
 *.local
+
+# Synthetic email previews; never part of Functions source/deploy.
+.email-preview/

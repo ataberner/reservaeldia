@@ -29,7 +29,8 @@ function snapshot(source) {
       console.log(JSON.stringify({ manifest, names: Object.keys(api).sort(), forbidden }));
     })().catch(() => process.exit(1));
   `], { cwd: path.join(root, source), encoding: "utf8", timeout: 30_000, windowsHide: true,
-    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|COMSPEC)$/i.test(key))) });
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|COMSPEC)$/i.test(key))),
+      GCLOUD_PROJECT: "reservaeldia-7a440" } });
   assert.equal(child.error, undefined);
   assert.equal(child.status, 0, "Offline entrypoint snapshot failed");
   return JSON.parse(child.stdout);
@@ -37,17 +38,22 @@ function snapshot(source) {
 
 const defaults = snapshot("functions");
 const payments = snapshot("functions-payments");
+const email = snapshot("functions-email");
+const { emailNames } = require("./testUtils/emailManifest.cjs");
 // Safe local discovery artifacts: names/options only, from credential-free children.
 const evidence = path.join(root, ".local-isolation/payments-activation/manifests");
 mkdirSync(evidence, { recursive: true });
-for (const [name, snapshot] of Object.entries({ default: defaults, payments })) {
+for (const [name, snapshot] of Object.entries({ default: defaults, payments, email })) {
   writeFileSync(path.join(evidence, `${name}.json`), JSON.stringify(canonical(snapshot.manifest), null, 2));
 }
 
-test("default keeps exactly the other 102 original endpoints and their complete options", () => {
-  assert.equal(Object.keys(defaults.manifest.endpoints).length, 102);
-  const expected = Object.fromEntries(Object.entries(baseline.endpointHashes).filter(([name]) => !paymentNames.includes(name)));
-  assert.deepEqual(Object.fromEntries(Object.entries(defaults.manifest.endpoints).map(([name, endpoint]) => [name, endpointHash(endpoint)])), expected);
+test("default preserves exactly the 101 non-payment/non-email endpoints", () => {
+  assert.equal(Object.keys(defaults.manifest.endpoints).length, 101);
+  const expected = Object.fromEntries(Object.entries(baseline.endpointHashes).filter(([name]) => !paymentNames.includes(name) && !emailNames.includes(name)));
+  assert.deepEqual(defaults.names, Object.keys(expected).sort());
+  assert.deepEqual(Object.fromEntries(Object.entries(defaults.manifest.endpoints)
+    .filter(([name]) => !["testWelcomeEmail", "onUserCreatedWelcomeEmail"].includes(name))
+    .map(([name, endpoint]) => [name, endpointHash(endpoint)])), expected);
   for (const name of paymentNames) assert.equal(defaults.names.includes(name), false);
 });
 
@@ -58,20 +64,22 @@ test("standalone Payments exports exactly three endpoints with complete original
   assert.equal(existsSync(path.join(root, "functions-payments/lib/index.js")), false);
 });
 
-test("active 102 + 3 partition preserves every name/option and rejects missing/duplicate endpoints", () => {
+test("local 101 + 3 + 3 partition preserves original options and rejects missing/duplicate endpoints", () => {
   const core = defaults.manifest.endpoints;
-  const expected = Object.keys(baseline.endpointHashes);
-  assert.equal(Object.keys(core).length, 102);
-  assertFuturePartition(core, payments.manifest.endpoints, expected);
-  const union = { ...core, ...payments.manifest.endpoints };
-  assert.deepEqual(Object.fromEntries(Object.entries(union).map(([name, endpoint]) => [name, endpointHash(endpoint)])), baseline.endpointHashes);
+  const expected = [...Object.keys(baseline.endpointHashes), "testWelcomeEmail", "onUserCreatedWelcomeEmail"];
+  assert.equal(Object.keys(core).length, 101);
+  assertFuturePartition(core, { ...payments.manifest.endpoints, ...email.manifest.endpoints }, expected);
+  const union = { ...core, ...payments.manifest.endpoints, ...email.manifest.endpoints };
+  assert.deepEqual(Object.fromEntries(Object.entries(union)
+    .filter(([name]) => !["testWelcomeEmail", "onUserCreatedWelcomeEmail"].includes(name))
+    .map(([name, endpoint]) => [name, endpointHash(endpoint)])), baseline.endpointHashes);
   assert.throws(() => assertFuturePartition(union, payments.manifest.endpoints, expected), /Duplicate/);
   assert.throws(() => assertFuturePartition(core, {}, expected), /Missing/);
 });
 
 test("active sources and isolated rollback share the canonical Payments build and exclusions", () => {
   const firebase = JSON.parse(readFileSync(path.join(root, "firebase.json"), "utf8"));
-  assert.deepEqual(firebase.functions.map(({ source, codebase }) => ({ source, codebase })), [{ source: "functions", codebase: "default" }, { source: "functions-payments", codebase: "payments" }]);
+  assert.deepEqual(firebase.functions.map(({ source, codebase }) => ({ source, codebase })), [{ source: "functions", codebase: "default" }, { source: "functions-payments", codebase: "payments" }, { source: "functions-email", codebase: "email" }]);
   const rollback = JSON.parse(readFileSync(path.join(root, "firebase.payments-rollback.json"), "utf8"));
   assert.deepEqual(rollback.functions, [{ ...firebase.functions[1], codebase: "default" }]);
   assert.deepEqual(firebase.functions[1].predeploy, ["npm --prefix functions run build:payments"]);

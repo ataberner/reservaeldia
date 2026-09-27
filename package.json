@@ -3,6 +3,8 @@
    "name": "reservaeldia",
    "version": "1.0.0",
    "scripts": {
+      "email:dev": "npm --prefix functions run email:dev",
+      "email:build": "npm --prefix functions run email:build",
       "dev": "node scripts/local/runLocal.cjs dev",
       "dev:functions": "node scripts/local/runLocal.cjs dev",
       "emulators": "node scripts/local/runLocal.cjs emulators",

@@ -37,5 +37,5 @@ module.exports = {
     // use syntax-aware lint, without expanding the production tsconfig.
     { files: ["src/**/*.ts", "src/**/*.tsx"], parserOptions: { project: ["./tsconfig.json"] } },
   ],
-  ignorePatterns: ["lib/", "node_modules/"],
+  ignorePatterns: ["lib/", "node_modules/", ".email-preview/"],
 };

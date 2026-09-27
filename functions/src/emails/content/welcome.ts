@@ -1,0 +1,17 @@
+export const welcomeContent = {
+  subject: "Bienvenido a Reserva el Día",
+  preheader: "Tu invitación empieza acá. Elegí una plantilla y hacela tuya.",
+  greeting: (name?: string) => name?.trim() ? `¡Hola, ${name.trim()}!` : "¡Hola!",
+  welcome: "Qué alegría tenerte en Reserva el Día.",
+  introduction: "Soy Agus, el fundador. Creé Reserva el Día con una idea bastante simple: que organizar un casamiento tenga menos complicaciones y deje más tiempo para disfrutar de lo que realmente importa.",
+  purpose: "Porque, al final, no se trata de invitaciones, listas o confirmaciones. Se trata de reunir a las personas que queremos, compartir una mesa, bailar con amigos y crear recuerdos juntos.",
+  gettingStarted: "Para empezar, elegí la plantilla que más te guste y hacela tuya.",
+  personalization: "Podés cambiar textos, colores, fotos, tipografías y cada detalle de la invitación. Podés hacerlo directamente desde el editor o pedirle ayuda al asistente. La idea es que no necesites saber de diseño para crear algo que realmente los represente.",
+  action: "Crear mi invitación",
+  replyInvitation: "Y si en algún momento tenés una duda, algo no funciona como esperabas o simplemente querés contarnos qué te gustaría que mejoráramos, respondé directamente a este mail. Lo voy a leer.",
+  thanks: "Gracias por elegir Reserva el Día para ser una pequeña parte de un momento tan importante.",
+  closing: "Ahora sí:",
+  closingEmphasis: "reservemos el día.",
+  signatureName: "Agus",
+  signatureRole: "Fundador de Reserva el Día",
+} as const;

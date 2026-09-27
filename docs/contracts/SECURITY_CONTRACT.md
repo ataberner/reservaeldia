@@ -28,10 +28,11 @@ las decisiones faltantes, sin reemplazar los contratos de dominio.
 | A2 | Publicación, artefactos, estado de checkout y contabilidad de visitas mantienen la autoridad del backend; un cliente, aunque sea dueño, no puede sustituir ese proceso. | [Lifecycle Contract](CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md), Authoritative Entities, Approved Session Publication Execution, Public Delivery; [share](PUBLISHED_SHARE_IMAGE_CONTRACT.md); [visitas](../architecture/DATA_MODEL.md). La invitación pública se entrega por HTTP bajo lifecycle, no por permiso general al documento/bucket. |
 | A3 | Clientes no administrativos no escriben proveedores, categorías ni imágenes de proveedores. | [Provider Data Model, §7](../architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision). Publicar el documento completo o crear una proyección sigue siendo decisión de ese contrato; no se resuelve en Q1. |
 | A4 | El draft de countdown es administrativo; versiones publicadas son inmutables, con publicación controlada por versión y operación. | [DATA_MODEL, countdownPresets](../architecture/DATA_MODEL.md#countdownpresets). No habilita acceso directo general al root porque un catálogo se llame público. |
+| W1 | `welcomeEmailDeliveries` y sus descendientes son exclusivamente backend. Ningún cliente puede leer, crear, actualizar ni borrar, incluido el propio UID y los administradores. | Pedido explícito de Fase 2B.1; [contrato del procesador](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1). Adaptador Auth de 2B.2 implementado sin deploy; sandbox/disabled omiten envíos. |
 
 **Observado** significa comprobado en código o en la línea base; no significa
 aprobado por producto. **Propuesto / pendiente** necesita aceptación antes de
-convertirse en permiso. Los casos `acceptance` evalúan A1–A4; `characterization`
+convertirse en permiso. Los casos `acceptance` evalúan A1–A4 y W1; `characterization`
 evalúa implementación actual; `proposal` mide diferencias con Q1 sin aprobarla.
 La [línea base por caso](../testing/SECURITY_RULES_BASELINE_4B1.md) registra los
 resultados y los límites del experimento.
@@ -68,7 +69,7 @@ Reglas actuales, abreviadas:
   `plantillas_catalog`, `plantillas_tags`, `site_settings`, `app_config`,
   `publication_checkout_sessions`, `public_slug_reservations`,
   `publication_discount_codes`, `publication_discount_code_usage`,
-  `proveedores`, `categorias_proveedores`. Ninguna nueva colección queda
+  `proveedores`, `categorias_proveedores`, `welcomeEmailDeliveries`. Ninguna nueva colección queda
   protegida por defecto. Los matches específicos no se heredan a subcolecciones.
   Compatibilidad explícita conserva los descendientes no modelados indicados
   en la matriz; no vuelve a conceder los subárboles corregidos por OR.
@@ -77,6 +78,7 @@ Reglas actuales, abreviadas:
 
 | Recurso / responsable | Actores y operaciones por canal; consumidor real | Rules actual | Obligación y destino propuesto; estado |
 | --- | --- | --- | --- |
+| `welcomeEmailDeliveries/{uid}` y descendientes; reserva backend de bienvenida | B c mediante create atómico, u del resultado; adaptador Auth 2B.2 sin deploy, sin consumidor cliente. [Store](../../functions/src/emails/welcomeDeliveryStore.ts). | SDK glcud denegado a todos, recursivo; excluido de F. Admin SDK omite Rules. | W1 aceptado. Preservar registros para impedir nuevos intentos automáticos por UID; no TTL ni limpieza para reenvío. |
 | `usuarios/{uid}`; titular UID, perfil/preferencias backend | O: SDK g; CALL g/u mediante `upsertUserProfile`, `getMyProfileStatus`, `getMyUiPreferences`, `updateMyUiPreferences`. S: CALL gl de directorio. B: c/u. [index.ts](../../functions/src/index.ts), [useAdminAccess](../../src/hooks/useAdminAccess.js). | 4B2A: glcud sólo UID del path; query global denegada. CRUD propio permanece observado/pendiente de política de campos y cuenta; `admin` del perfil no autoriza. | A1 aceptado: negar X/N glcud y l global. Propuesto: SDK O g; c/u sólo campos propios explícitos si se conserva canal directo; d sólo flujo de cuenta autorizado. M/S sin acceso SDK global. No dar por aprobado CRUD del perfil por observar F. |
 | `usuarios/{uid}/imagenes/{imageId}`; titular del path | O: SDK glcud para biblioteca; [useMisImagenes](../../src/hooks/useMisImagenes.js), [corregirImagenes](../../src/utils/corregirImagenes.js). | 4B2A: glcud sólo UID del path, recursivo; sin validar `storagePath`/URLs. | A1 aceptado: O glcud, X/N —. Ownership por UID del path, no por metadata modificable. Propuesto: validar que paths privados referidos pertenecen al mismo UID; URLs compartidas requieren su política. |
 | `usuarios/{uid}/otros/**`; titular del path, sin consumidor encontrado | No se encontró escritor/lector actual de otras subcolecciones. | F glcud. | Propuesto: denegar por defecto; no heredar todas las operaciones de `imagenes`. La ausencia de consumidor no prueba inexistencia remota. |
@@ -461,8 +463,11 @@ exacto; no se comparte sesión ni se vacía una base/bucket global.
 
 No se verificaron despliegue, IAM, claims reales, URLs firmadas/tokens/GCS público,
 política de retención, entrega HTTP bloqueada, pagos, proveedores operativos,
-IA/correo, schedulers/triggers, SDK móvil ni todos los
+IA/correo, schedulers/triggers remotos, SDK móvil ni todos los
 legados remotos. Tampoco autenticación de tokens firmados reales: mockUserToken
 modela `request.auth` exclusivamente en emuladores. Los helpers de backend se
 caracterizan sin ejecutar negocio; no son pruebas de Rules ni de HTTP/callables.
+La prueba separada de [Auth onCreate de 2B.2](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b2)
+sí verifica Auth/Functions/Firestore emulados con cuentas sintéticas y email
+disabled; no certifica permisos IAM ni entrega de correo.
 Las decisiones de Q1 y las excepciones compartidas continúan propuestas.

@@ -32,7 +32,7 @@ Ver [aceptación y rollback conservado](PAYMENTS_CODEBASE_PREPARATION.md).
 - La CLI instalada, Firebase CLI 14.4.0, lee `.env` y `.env.<project/alias>` del
   source y copia su mapa a **cada endpoint**. Ver `lib/functions/env.js:213` y
   `lib/deploy/functions/prepare.js:77-100` de la instalación de firebase-tools.
-  El filtro `--only functions:testTransactionalEmail` limita endpoints a desplegar,
+  El filtro `--only functions:email:testTransactionalEmail` limita endpoints a desplegar,
   no variables del entorno. No hace análisis de consumidores de cada variable.
 - `defineString` valida/parametriza configuración; no crea aislamiento por función.
   `secrets: [...]` vincula secretos por función; no elimina variables dotenv.
@@ -156,15 +156,15 @@ de los tres nombres en `.env` o `.env.*` de Functions; sus errores muestran solo
 nombres. Ese estado local del 2026-09-19 fue seguido por el despliegue y la
 validación productiva confirmados al cierre; no describe un deploy pendiente hoy.
 
-**Separación pendiente de email:** los secretos MP ya salieron de dotenv y usan
-bindings nativos. Para que email tampoco reciba configuración
-normal de Maps/pagos/admin, separar por subsistema las codebases **y sus directorios
-source**, cada uno con dotenv propio y permisos de runtime mínimos. Reutilizar el
-mismo servicio `emails`; no duplicar el sender. Poner dos codebases sobre el mismo
-source o mover exports entre archivos no aísla el entorno. La separación de email
-aún no está implementada y necesita verificar el traslado
-de la función existente sin borrarla ni duplicarla. Las variables gestionadas por
-la plataforma seguirán presentes incluso con aislamiento correcto.
+**Separación local de email implementada (2026-09-25), sin desplegar:**
+`functions-email` / codebase `email` usa `lib/emails/entrypoint.js`, compilado desde
+la lógica canónica `functions/src/emails`. El paquete autónomo contiene email y
+sus dependencias compartidas necesarias. Dotenv local permite EMAIL_MODE=sandbox,
+WELCOME_EMAIL_ACTIVATION_AT vacío y SUPERADMINS_UIDS de la autoridad canónica;
+no contiene Maps, Payments, OpenAI ni valores de Secrets. Mantiene bindings AWS
+por endpoint. Los smoke tests remotos todavía pertenecen a default y el trigger
+Auth no existe: seguir la [migración y rollback aislado](TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#migracion-email-codebase).
+Las variables gestionadas por la plataforma seguirán presentes.
 
 No usar `delete process.env`, ni variar dotenv según `--only`, ni parches manuales
 a revisiones Cloud Run como fuente permanente de configuración. Los redeploys
@@ -342,7 +342,7 @@ requiere el comando siguiente. Seguirá recibiendo variables **no secretas** aje
 hasta la separación de source indicada arriba:
 
 ```powershell
-firebase deploy --only functions:testTransactionalEmail --project reservaeldia-7a440
+firebase deploy --only functions:email:testTransactionalEmail --project reservaeldia-7a440
 ```
 
 [Guía oficial de seguridad Maps](https://developers.google.com/maps/api-security-best-practices#websites-with-the-maps-embed-api).
@@ -364,16 +364,12 @@ payloads completos de solicitudes, URLs firmadas o URLs con `token`, ni la lista
 de superadmins. Usar nombres, versiones, status, IDs de correlación y métricas;
 las API keys públicas tampoco necesitan aparecer en logs de diagnóstico.
 
-Email conserva dos bindings AWS exclusivamente, IAM privado y su service account
-dedicada, destinatario/template/datos fijos. Su módulo no lee credenciales MP/Maps.
-El entrypoint compartido sí importa otros subsistemas, incluidos módulos que leen
-feature flags en module scope (`iconCatalog/config.ts`, `decorCatalog/config.ts`).
-No equivale a un proceso que solo cargue configuración de email; separar su source
-y entrypoint también deberá aislar ese grafo de imports.
+Los smoke tests conservan dos bindings AWS, IAM privado y su identidad dedicada.
+El trigger Auth conserva otra identidad dedicada y los mismos bindings. La entrada
+local de email declara solo estos tres endpoints, sin importar el entrypoint default.
 `EMAIL_MODE` sigue parametrizado, disabled por defecto, sandbox permitido y
 production bloqueado. **No afirmar que su entorno desplegado ya está aislado**:
-el dotenv local ya está saneado, pero no se desplegó y aún falta separar source
-para configuración normal. La limpieza local no modifica revisiones existentes.
+la separación local y sus exclusiones no modifican las revisiones existentes.
 
 Checks de la revisión previa (2026-09-18) con Node 20, desde `functions/`,
 sin correo ni consultas remotas:

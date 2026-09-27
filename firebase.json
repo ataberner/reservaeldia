@@ -5,6 +5,7 @@
       "codebase": "default",
       "ignore": [
         "node_modules",
+        ".email-preview",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
@@ -32,6 +33,23 @@
       ],
       "predeploy": [
         "npm --prefix functions run build:payments"
+      ]
+    },
+    {
+      "source": "functions-email",
+      "codebase": "email",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        ".env*",
+        ".secret*",
+        ".runtimeconfig.json"
+      ],
+      "predeploy": [
+        "npm --prefix functions run build:email"
       ]
     }
   ],

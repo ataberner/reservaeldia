@@ -57,6 +57,7 @@ before(async () => {
     session = process.env.RESERVA_LOCAL_SESSION;
     assert.ok(session, "Run through npm run test:local:rules; no standalone/remote mode");
     assert.equal(path.resolve(process.cwd()), path.resolve(session, "workspace"));
+    assert.equal(fs.readFileSync("functions/.env.local", "utf8"), "EMAIL_MODE=disabled\nWELCOME_EMAIL_ACTIVATION_AT=\n");
     const marker = JSON.parse(fs.readFileSync(path.join(session, "session.json")));
     assert.equal(marker.owner, "reservaeldia-local");
     assert.equal(marker.stopped, undefined);
@@ -169,6 +170,37 @@ async function fixture(c) {
   } catch (error) { await cleanup(); throw error; }
 }
 
+test("welcome ledger: Admin SDK bypass and real atomic reservation across concurrent processors", async () => {
+  const { createWelcomeDeliveryStore } = require("../../functions/lib/emails/welcomeDeliveryStore.js");
+  const { createWelcomeRegistrationProcessor } = require("../../functions/lib/emails/welcomeRegistration.js");
+  const uid = `${runId}-welcome-backend`;
+  const reference = adminDb.doc(`welcomeEmailDeliveries/${uid}`);
+  let sends = 0;
+  try {
+    const makeProcessor = () => createWelcomeRegistrationProcessor({
+      store: createWelcomeDeliveryStore(() => adminDb), getMode: () => "production", isSuperAdmin: () => false,
+      getActivationTime: () => "2026-01-01T00:00:00.000Z",
+      send: async () => { sends++; return { ok: true, state: "accepted", messageId: "synthetic-welcome-id", errorCode: null, retryable: false }; },
+    });
+    const input = { user: { uid, email: "welcome@example.test", creationTime: "2026-09-25T00:00:00.000Z" }, sourceEventId: "synthetic-auth-created" };
+    const outcomes = await Promise.all([makeProcessor()(input), makeProcessor()(input)]);
+    assert.equal(outcomes.filter(result => result.outcome === "recorded").length, 1);
+    assert.equal(outcomes.filter(result => result.outcome === "already_exists").length, 1);
+    assert.equal(sends, 1);
+    const data = (await reference.get()).data();
+    assert.equal(data.status, "accepted");
+    assert.equal(data.attempts, 1);
+    assert.equal(data.messageId, "synthetic-welcome-id");
+    assert.ok(data.startedAt.toDate() instanceof Date);
+    assert.ok(data.acceptedAt.toDate() instanceof Date);
+    assert.equal((await makeProcessor()(input)).outcome, "already_exists");
+    assert.equal(sends, 1);
+  } finally {
+    await reference.delete(); // Exact synthetic fixture in the isolated emulator only.
+  }
+  assert.equal((await reference.get()).exists, false);
+});
+
 for (const entry of cases) test(`${entry.group}: ${entry.id}`, { timeout: 25000 }, async () => {
   const c = expand(entry, entry.id);
   const row = { ...entry, resource: c.resource, authority: authorities[entry.authority],
@@ -222,7 +254,7 @@ after(async () => {
   } finally {
     if (session) {
       const report = { schemaVersion: 1, runId, checkedAt: new Date().toISOString(), source: manifest,
-        method: "Firebase client SDK mockUserToken; Admin used only for exact synthetic fixture setup/cleanup",
+        method: "Firebase client SDK mockUserToken; Admin uses exact synthetic fixtures and offline welcome atomic-reservation test",
         planned: cases.length, executed: results.length, infrastructure,
         summary: Object.fromEntries(["acceptance", "characterization", "proposal"].map(group => {
           const rows = results.filter(r => r.group === group);

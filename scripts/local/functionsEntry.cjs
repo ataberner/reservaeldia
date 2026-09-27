@@ -9,10 +9,19 @@ require("./networkGuard.cjs");
 const { localBackendEnvironment } = require("../../functions/lib/firebaseAdmin.js");
 if (!localBackendEnvironment()) throw new Error("La entrada local requiere el entorno demo.");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
-const handlers = require("../../functions/lib/index.js");
+const handlers = {
+  ...require("../../functions/lib/index.js"),
+  ...require("../../functions/lib/emails/entrypoint.js"),
+};
 
 // Only handlers whose effects have been inspected are enabled. New exports fail
-// closed until explicitly reviewed. No schedulers or event triggers are registered.
+// closed until explicitly reviewed. Only the welcome Auth event is enabled;
+// schedulers and other event triggers remain absent.
+const { region } = require("firebase-functions/v1");
+if (process.env.EMAIL_MODE !== "disabled") throw new Error("Local Auth welcome requires EMAIL_MODE=disabled");
+exports.onUserCreatedWelcomeEmail = region("us-central1").auth.user()
+  .onCreate(handlers.onUserCreatedWelcomeEmail.run);
+// Same handler, demo resources, no remote service account or Secret bindings.
 const enabled = new Set([
   "upsertUserProfile", "getMyProfileStatus", "getMyUiPreferences", "updateMyUiPreferences",
   "getPricingConfigV1", "getDashboardHomeConfigV1",

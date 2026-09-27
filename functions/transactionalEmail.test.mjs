@@ -34,6 +34,19 @@ const request = () => ({
 });
 const accepted = { ok: true, state: "accepted", messageId: "synthetic-message-id", errorCode: null, retryable: false };
 const syntheticContent = { subject: "Prueba sintética", html: "<p>Hola</p>", text: "Hola" };
+const expectedFrom = "=?UTF-8?B?UmVzZXJ2YSBlbCBEw61h?= <notificaciones@reservaeldia.com.ar>";
+const expectedReplyTo = "=?UTF-8?B?QWd1cyBkZSBSZXNlcnZhIGVsIETDrWE=?= <hola@reservaeldia.com.ar>";
+
+function assertCentralAddresses(command) {
+  assert.equal(command.FromEmailAddress, expectedFrom);
+  assert.deepEqual(command.ReplyToAddresses, [expectedReplyTo]);
+  const decodeMailbox = value => value.replace(/=\?UTF-8\?B\?([^?]+)\?=/g,
+    (_match, encoded) => Buffer.from(encoded, "base64").toString("utf8"));
+  assert.equal(decodeMailbox(command.FromEmailAddress), "Reserva el Día <notificaciones@reservaeldia.com.ar>");
+  assert.equal(decodeMailbox(command.ReplyToAddresses[0]), "Agus de Reserva el Día <hola@reservaeldia.com.ar>");
+  assert.equal(command.Content.Raw, undefined);
+  assert.equal(command.Content.Simple.Headers, undefined);
+}
 
 function serviceFor(mode = "sandbox", overrides = {}) {
   const sends = [], logs = [], renders = [];
@@ -135,7 +148,7 @@ test("logs contain only safe fields, correlation and accepted SES MessageId", as
   }
 });
 
-test("SES v2 command uses UTF-8, fixed sender, single To and both React Email bodies", async () => {
+test("SES v2 command uses UTF-8, fixed From and Reply-To, single To and both React Email bodies", async () => {
   let captured;
   const transport = createSesTransport(() => ({ send: async (command) => {
     captured = command;
@@ -143,14 +156,78 @@ test("SES v2 command uses UTF-8, fixed sender, single To and both React Email bo
   } }));
   assert.deepEqual(await transport({ to: SANDBOX_RECIPIENT, content: syntheticContent }), accepted);
   assert.equal(captured.constructor.name, "SendEmailCommand");
+  assertCentralAddresses(captured.input);
   assert.deepEqual(captured.input, {
-    FromEmailAddress: "=?UTF-8?B?UmVzZXJ2YSBlbCBEw61h?= <notificaciones@reservaeldia.com.ar>",
+    FromEmailAddress: expectedFrom,
+    ReplyToAddresses: [expectedReplyTo],
     Destination: { ToAddresses: [SANDBOX_RECIPIENT] },
     Content: { Simple: {
       Subject: { Data: syntheticContent.subject, Charset: "UTF-8" },
       Body: { Html: { Data: syntheticContent.html, Charset: "UTF-8" }, Text: { Data: syntheticContent.text, Charset: "UTF-8" } },
     } },
   });
+});
+
+for (const templateInput of [
+  { template: "test", data: {} },
+  { template: "welcome", data: { name: "Agustín", dashboardUrl: "https://reservaeldia.com.ar/dashboard" } },
+]) {
+  test(`${templateInput.template}: callers cannot supply From, Reply-To or arbitrary headers`, async () => {
+    const service = serviceFor();
+    const input = { ...request(), ...templateInput };
+    for (const [key, value] of Object.entries({
+      from: "attacker@example.invalid", From: "attacker@example.invalid",
+      FromEmailAddress: "attacker@example.invalid", replyTo: "attacker@example.invalid",
+      replyToAddresses: ["attacker@example.invalid"], ReplyToAddresses: ["attacker@example.invalid"],
+      "Reply-To": "attacker@example.invalid", headers: { "X-Injected": "value" },
+      Headers: [{ Name: "Reply-To", Value: "attacker@example.invalid" }],
+    })) {
+      for (const injected of [
+        { ...input, [key]: value },
+        { ...input, data: { ...input.data, [key]: value } },
+        { ...input, metadata: { ...input.metadata, [key]: value } },
+      ]) assert.equal((await service.send(injected)).errorCode, "EMAIL_INVALID_REQUEST");
+    }
+    assert.equal(service.renders.length, 0);
+    assert.equal(service.sends.length, 0);
+  });
+
+  test(`${templateInput.template}: shared transport adds Reply-To without changing rendered bodies`, async () => {
+    const rendered = await renderEmail(templateInput);
+    assert.deepEqual(Object.keys(rendered).sort(), ["html", "subject", "text"]);
+    for (const body of [rendered.html, rendered.text]) {
+      assert.doesNotMatch(body, /Reply-To|hola@reservaeldia\.com\.ar/i);
+    }
+    const commands = [];
+    const transport = createSesTransport(() => ({ send: async command => {
+      commands.push(command.input); return { MessageId: accepted.messageId };
+    } }));
+    const service = serviceFor("sandbox", { render: renderEmail, transport });
+    assert.deepEqual(await service.send({ ...request(), ...templateInput }), accepted);
+    assert.equal(commands.length, 1);
+    assertCentralAddresses(commands[0]);
+    assert.equal(commands[0].Content.Simple.Subject.Data, rendered.subject);
+    assert.equal(commands[0].Content.Simple.Body.Html.Data, rendered.html);
+    assert.equal(commands[0].Content.Simple.Body.Text.Data, rendered.text);
+  });
+}
+
+test("SES adapter never forwards injected address or header fields from a request or renderer", async () => {
+  let captured;
+  const transport = createSesTransport(() => ({ send: async command => {
+    captured = command.input; return { MessageId: accepted.messageId };
+  } }));
+  const injected = {
+    from: "attacker@example.invalid", FromEmailAddress: "attacker@example.invalid",
+    replyTo: "attacker@example.invalid", ReplyToAddresses: ["attacker@example.invalid"],
+    headers: { "X-Injected": "value" }, Headers: [{ Name: "Reply-To", Value: "attacker@example.invalid" }],
+  };
+  assert.deepEqual(await transport({ ...injected, to: SANDBOX_RECIPIENT,
+    content: { ...syntheticContent, ...injected } }), accepted);
+  assertCentralAddresses(captured);
+  assert.deepEqual(Object.keys(captured).sort(), ["Content", "Destination", "FromEmailAddress", "ReplyToAddresses"]);
+  assert.deepEqual(Object.keys(captured.Content.Simple).sort(), ["Body", "Subject"]);
+  assert.doesNotMatch(JSON.stringify(captured), /attacker|X-Injected/);
 });
 
 for (const [name, code, state] of [
@@ -340,6 +417,7 @@ test("vertical path: private handler -> service -> React Email -> fake SES v2 ->
   assert.equal(res.body.state, "accepted");
   assert.equal(res.body.messageId, accepted.messageId);
   assert.equal(commands.length, 1);
+  assertCentralAddresses(commands[0]);
   assert.deepEqual(commands[0].Destination, { ToAddresses: [SANDBOX_RECIPIENT] });
   assert.match(commands[0].Content.Simple.Body.Html.Data, /María de Prueba/);
   assert.match(commands[0].Content.Simple.Body.Text.Data, /sintéticos/);
@@ -364,10 +442,12 @@ test("handler maps blocked, failed and ambiguous outcomes without retries", asyn
 
 test("local launcher blocks the new exported HTTP function without executing it", async () => {
   const sandbox = { exports: {}, process: { env: {} }, require(name) {
-    if (name === "./sessionEnvironment.json") return {};
+    if (name === "./sessionEnvironment.json") return { EMAIL_MODE: "disabled" };
     if (name === "./networkGuard.cjs") return {};
     if (name.endsWith("/firebaseAdmin.js")) return { localBackendEnvironment: () => ({}) };
-    if (name.endsWith("/index.js")) return { testTransactionalEmail };
+    if (name.endsWith("/index.js")) return {};
+    if (name.endsWith("/emails/entrypoint.js")) return { testTransactionalEmail, onUserCreatedWelcomeEmail: { run() {} } };
+    if (name === "firebase-functions/v1") return { region: () => ({ auth: { user: () => ({ onCreate: handler => handler }) } }) };
     if (name === "firebase-functions/v2/https") return { onRequest: (_options, handler) => handler };
     throw new Error(`Unexpected import: ${name}`);
   } };

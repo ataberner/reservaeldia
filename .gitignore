@@ -102,3 +102,11 @@ trace
 /functions-payments/.secret*
 /functions-payments/.runtimeconfig.json
 /functions-payments/*debug*.log
+
+# Generated independently deployable email source; local configuration stays local.
+/functions-email/lib/
+/functions-email/shared/
+/functions-email/node_modules/
+/functions-email/.secret*
+/functions-email/.runtimeconfig.json
+/functions-email/*debug*.log

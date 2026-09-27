@@ -26,6 +26,7 @@ function cleanEnvironment(session, inherited = process.env) {
     // Bounded local wait only; readiness probes and the handler allowlist remain.
     FUNCTIONS_DISCOVERY_TIMEOUT: "60",
     FIREBASE_CLI_DISABLE_USAGE_REPORTING: "true", NEXT_TELEMETRY_DISABLED: "1",
+    EMAIL_MODE: "disabled", WELCOME_EMAIL_ACTIVATION_AT: "",
     FIREBASE_EMULATORS_PATH: path.join(session, "emulator-cache"),
     RESERVA_LOCAL_SESSION: session, RESERVA_FIREBASE_MODE: "emulators",
     NEXT_PUBLIC_FIREBASE_MODE: "emulators", NEXT_PUBLIC_FIREBASE_PROJECT_ID: contract.LOCAL_PROJECT,
@@ -162,6 +163,9 @@ function createSession(requirements) {
   const env = cleanEnvironment(session);
   if (fs.existsSync(requirements.chrome)) env.RESERVA_TEST_CHROME = requirements.chrome;
   fs.writeFileSync(path.join(workspace, "scripts/local/sessionEnvironment.json"), JSON.stringify(env, null, 2));
+  // Synthetic emulator-only parameter, never copied from the real project.
+  // Firebase CLI prompts for defineString even with a default; no email effects.
+  fs.writeFileSync(path.join(workspace, "functions/.env.local"), "EMAIL_MODE=disabled\nWELCOME_EMAIL_ACTIVATION_AT=\n", { flag: "wx" });
   for (const directory of [env.HOME, env.APPDATA, env.LOCALAPPDATA, env.XDG_CONFIG_HOME, env.CLOUDSDK_CONFIG, env.TEMP, env.FIREBASE_EMULATORS_PATH]) fs.mkdirSync(directory, { recursive: true });
   for (const name of requirements.jars) fs.copyFileSync(path.join(requirements.cache, name), path.join(env.FIREBASE_EMULATORS_PATH, name));
   const config = {

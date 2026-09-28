@@ -278,6 +278,7 @@ export function buildDesignerAiCapabilitySnapshot({
     values,
     ledger,
     conversation: {
+      mode: normalizedConversationState.usage.guidedFlowCompleted ? "editing" : "guided",
       usage: normalizedConversationState.usage,
       namePolicy: normalizedConversationState.namePolicy,
     },

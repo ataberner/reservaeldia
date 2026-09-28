@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import { randomUUID } from "crypto";
+import { createDesignerAiDeadline, DesignerAiDeadlineError, designerAiRetryDelay, waitDesignerAiRetry, DESIGNER_AI_ATTEMPT_TIMEOUT_MS, DESIGNER_AI_MIN_ATTEMPT_MS } from "./deadline";
 
 type DesignerAiLeaf = { id: string; block: string; status: string; provenance: string; rule: string | null; fingerprint: string };
 type DesignerAiCapabilitySnapshot = {
@@ -13,6 +14,7 @@ type DesignerAiCapabilitySnapshot = {
     guidedFlow: { leafIds: string[]; completion: { availableCount: number; terminalCount: number; unresolvedLeafIds: string[]; complete: boolean } };
   };
   conversation: {
+    mode: "guided" | "editing";
     usage: { hasStarted: boolean };
     namePolicy: { mode: "automatic" | "explicit" | "unknown"; lastAutomaticName: string };
   };
@@ -50,7 +52,6 @@ const MODEL = "gpt-5.6-luna";
 const MAX_MESSAGE_LENGTH = 1200;
 const MAX_TURN_LENGTH = 700;
 const MAX_SNAPSHOT_BYTES = 160_000;
-const OPENAI_TIMEOUT_MS = 25_000;
 
 const SYSTEM_INSTRUCTIONS = `
 Sos la voz conversacional de Diseñador AI de Reserva el Día. Ayudá a preparar la invitación con la menor cantidad razonable de intercambios. El borrador y su ledger hoja por hoja son la única autoridad. Respondé siempre mediante una única llamada a submit_designer_ai_result.
@@ -68,7 +69,7 @@ Planificación obligatoria:
 2. Emití en un único lote todas las acciones compatibles. No cambies valores que el usuario no mencionó.
 3. Usá resolutions para decisiones sin mutación, reglas documentadas, controles pendientes o ambigüedades. Una hoja no queda resuelta por haber sido mencionada. No apliques una regla por analogía ni en bloque: cada rule debe ser compatible con el leafId exacto. Si no existe una regla compatible, dejá la hoja pendiente o usá needs_clarification con rule null.
 4. Para la siguiente pregunta proactiva seguí nextBlock de la prioridad derivada. Si el usuario acaba de postergar explícitamente una hoja de ese bloque, mantenela pendiente y avanzá transitoriamente a otro dato aplicable sin marcarla como resuelta ni reconstruir un orden paralelo.
-5. Cerrá el recorrido únicamente cuando guidedFlow.completion.complete sea true. La completitud global es diagnóstica y no gobierna el cierre.
+5. La interfaz comunica una sola vez la transición del recorrido a completo. No redactes ese cierre ni reemplaces por él la respuesta al pedido actual. La completitud global es diagnóstica y no gobierna el cierre.
 6. Usá intent apply si devolvés al menos una action o controlRequest, aunque también necesites preguntar por otro dato faltante. Reservá clarify para respuestas sin acciones ni controles.
 
 Reglas seguras:
@@ -106,7 +107,7 @@ Conversación:
 - Confirmá solo lo relevante y seguí con lo pendiente real. No repitas todo.
 - Ante ambigüedad, preguntá solo eso y marcá la hoja needs_clarification.
 - Si el pedido es parcialmente válido y parcialmente ajeno, aplicá la parte válida, explicá naturalmente que el otro cambio se hace desde el editor y continuá. Usá out_of_scope solo si no hay nada válido.
-- Si guidedFlow.completion.complete es true, comunicá que terminó el recorrido principal, que la invitación se puede seguir editando manualmente y que el resultado se consulta con Vista previa, arriba a la derecha. No afirmes que toda la invitación está terminada.
+- Si conversation.mode es editing, atendé el pedido actual normalmente, incluso RSVP, Historia y correcciones de fecha/hora. No reinicies el interrogatorio aunque una corrección genere un pendiente: señalalo solo si es relevante al pedido. Al reingresar saludá brevemente y ofrecé seguir ajustando. El asistente sigue disponible; no repitas el cierre del recorrido ni afirmes que toda la invitación está terminada.
 
 Tono: siempre en español, con voseo argentino cuidado; cálido, cercano, amable, natural y orientado al acompañamiento, como una wedding planner dentro del alcance de Reserva el Día. Sin lenguaje técnico, tono robótico, burocrático, excesivamente formal ni entusiasmo artificial.
 `.trim();
@@ -302,11 +303,11 @@ export function buildDesignerAiModelValues(snapshot: DesignerAiCapabilitySnapsho
   return values;
 }
 
-function ensureExactKeys(record: Record<string, unknown>, keys: string[], label: string): void {
+function ensureExactKeys(record: Record<string, unknown>, keys: string[], label: string, kind: DesignerAiServiceError["kind"] = "invalid-payload"): void {
   const actual = Object.keys(record).sort();
   const expected = [...keys].sort();
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
-    throw new DesignerAiServiceError("invalid-payload", `${label} contiene propiedades no permitidas.`);
+    throw new DesignerAiServiceError(kind, `${label} contiene propiedades no permitidas.`);
   }
 }
 
@@ -376,7 +377,7 @@ function buildOpenAiInput(
   userContext: DesignerAiUserContext = {}
 ): Array<Record<string, unknown>> {
   const turns = capabilityContract.minimizeDesignerAiRecentTurns(
-    payload.recentTurns.filter((turn, index, all) => !(index === all.length - 1 && turn.role === "user" && turn.content === payload.message)),
+    payload.recentTurns,
     payload.capabilitySnapshot.values.gifts
   );
   const modelValues = buildDesignerAiModelValues(payload.capabilitySnapshot);
@@ -494,7 +495,7 @@ export function discardModelResolutionsForControlVerifiedLeaves(
 export function validateDesignerAiModelResult(value: unknown, snapshot: DesignerAiCapabilitySnapshot): Omit<DesignerAiPublicResult, "contractVersion" | "batchId"> {
   const result = asRecord(value);
   if (!result) throw new DesignerAiServiceError("malformed-output", "La salida estructurada es inválida.");
-  ensureExactKeys(result, ["intent", "assistantMessage", "actions", "controlRequest", "resolutions"], "La salida del modelo");
+  ensureExactKeys(result, ["intent", "assistantMessage", "actions", "controlRequest", "resolutions"], "La salida del modelo", "malformed-output");
   const intent = String(result.intent);
   const assistantMessage = normalizeText(result.assistantMessage);
   if (!(["apply", "clarify", "out_of_scope"].includes(intent)) || !assistantMessage || assistantMessage.length > 700 || !Array.isArray(result.actions) || !Array.isArray(result.resolutions)) throw new DesignerAiServiceError("malformed-output", "La salida estructurada está incompleta.");
@@ -534,6 +535,7 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
 
 function mapOpenAiError(error: any): DesignerAiServiceError {
   if (error instanceof DesignerAiServiceError) return error;
+  if (error instanceof DesignerAiDeadlineError) return new DesignerAiServiceError("timeout", error.message);
   const status = Number(error?.status || 0);
   const code = normalizeText(error?.code).toLowerCase();
   const name = normalizeText(error?.name).toLowerCase();
@@ -551,7 +553,7 @@ export function createDesignerAiOpenAiClient(apiKey: string): OpenAI {
   if (!normalizedKey) throw new DesignerAiServiceError("missing-secret", "OPENAI_API_KEY no está configurada.");
   // eslint-disable-next-line @typescript-eslint/no-var-requires -- The synchronous client factory loads its SDK only at runtime, never during Functions discovery.
   const { default: OpenAIClient } = require("openai") as typeof import("openai");
-  return new OpenAIClient({ apiKey: normalizedKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 1 });
+  return new OpenAIClient({ apiKey: normalizedKey, timeout: DESIGNER_AI_ATTEMPT_TIMEOUT_MS, maxRetries: 0 });
 }
 
 export async function interpretDesignerAiChat({
@@ -560,29 +562,45 @@ export async function interpretDesignerAiChat({
   userContext = {},
   now = () => Date.now(),
   createId = () => randomUUID(),
+  deadline = createDesignerAiDeadline({ now }),
+  waitForRetry = waitDesignerAiRetry,
 }: {
   payload: unknown;
   client: Pick<OpenAI, "responses">;
   userContext?: DesignerAiUserContext;
   now?: () => number;
   createId?: () => string;
+  deadline?: ReturnType<typeof createDesignerAiDeadline>;
+  waitForRetry?: typeof waitDesignerAiRetry;
 }): Promise<DesignerAiServiceResult> {
   const validatedPayload = validateDesignerAiChatPayload(payload);
   const startedAt = now();
   const traceId = createId();
   try {
     const baseInput = buildOpenAiInput(validatedPayload, userContext) as any[];
-    const createResponse = (input: any[]) => client.responses.create({
-      model: MODEL,
-      reasoning: { effort: "none" },
-      text: { verbosity: "low" },
-      store: false,
-      input: input as any,
-      tools: [capabilityContract.DESIGNER_AI_TOOL] as any,
-      tool_choice: { type: "function", name: "submit_designer_ai_result" } as any,
-      parallel_tool_calls: false,
-      max_output_tokens: 4000,
-    });
+    let transportRetries = 0;
+    const createResponse = async (input: any[]) => {
+      const attempt = () => deadline.run((signal, timeout) => client.responses.create({
+        model: MODEL,
+        reasoning: { effort: "none" },
+        text: { verbosity: "low" },
+        store: false,
+        input: input as any,
+        tools: [capabilityContract.DESIGNER_AI_TOOL] as any,
+        tool_choice: { type: "function", name: "submit_designer_ai_result" } as any,
+        parallel_tool_calls: false,
+        max_output_tokens: 4000,
+      }, { signal, timeout, maxRetries: 0 }));
+      try { return await attempt(); }
+      catch (error) {
+        const delay = designerAiRetryDelay(error, now());
+        if (delay === null || transportRetries >= 1) throw error;
+        if (deadline.remainingMs() < delay + DESIGNER_AI_MIN_ATTEMPT_MS) throw new DesignerAiDeadlineError();
+        transportRetries++;
+        await deadline.run((signal) => waitForRetry(delay, signal), { maxMs: deadline.remainingMs(), minimumMs: delay + DESIGNER_AI_MIN_ATTEMPT_MS });
+        return attempt();
+      }
+    };
     const validateResponse = (response: any) => {
       try {
         return validateDesignerAiModelResult(

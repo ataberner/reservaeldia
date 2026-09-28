@@ -15,6 +15,43 @@ function runtime() {
   return { target, select };
 }
 
+for (const targetKind of ["cover", "gallery"]) {
+  test(`L1 cancelling the real ${targetKind} picker settles both operations and removes listeners`, () => {
+    const { target } = runtime();
+    let listeners = 0;
+    const add = target.addEventListener.bind(target), remove = target.removeEventListener.bind(target);
+    const registered = new Set();
+    target.addEventListener = (type, handler, options) => { registered.add(handler); listeners = registered.size; add(type, handler, options); };
+    target.removeEventListener = (type, handler) => { registered.delete(handler); listeners = registered.size; remove(type, handler); };
+    const sidebar = readFileSync(new URL("../components/DashboardSidebar.jsx", import.meta.url), "utf8");
+    const images = readFileSync(new URL("../components/MiniToolbarTabImagen.jsx", import.meta.url), "utf8");
+    const start = sidebar.indexOf("const cancelPendingImageSelection = useCallback(") + "const cancelPendingImageSelection = useCallback(".length;
+    const callback = sidebar.slice(start, sidebar.indexOf(", []);", start));
+    const settledHandlers = [...images.matchAll(/onUploadSettled: (\(\{ cancelled \} = \{\}\) => \{[\s\S]*?\n      \}),/g)];
+    assert.equal(settledHandlers.length, 2);
+    const operation = createEditorDocumentOperation(target);
+    const sidebarOperation = createEditorDocumentOperation(target);
+    let notices = [], clears = 0;
+    const settled = new Function("operation", "clearReplacementUpload", "setPanelNoticeSafe", `const uploadKey='synthetic'; return (${settledHandlers[targetKind === "gallery" ? 0 : 1][1]});`)(operation, () => clears++, (value) => notices.push(value));
+    const ref = { current: { operation: sidebarOperation, onUploadSettled: settled } };
+    const cancel = new Function("pendingUploadedImageHandlerRef", `return (${callback});`)(ref);
+    assert.equal(listeners, 2);
+    cancel();
+    assert.equal(ref.current, null);
+    assert.equal(operation.isCurrent(), false);
+    assert.equal(sidebarOperation.isCurrent(), false);
+    assert.equal(listeners, 0);
+    assert.equal(clears, 1);
+    assert.deepEqual(notices, [""]);
+    cancel();
+    assert.equal(clears, 1);
+    assert.match(sidebar, /onCancel: cancelPendingImageSelection/);
+    assert.match(sidebar, /if \(!selectedFile\) \{ cancelPendingImageSelection\(\); return; \}/);
+    assert.match(sidebar, /const abrirSelectorImagen = useCallback\([\s\S]{0,100}cancelPendingImageSelection\(\)/);
+    assert.match(sidebar, /useEffect\(\(\) => cancelPendingImageSelection/);
+  });
+}
+
 for (const kind of ["Places", "cover upload", "Gallery upload"]) {
   for (const scenario of ["same document", "other document", "returned to A", "cancelled/unmounted"]) {
     test(`${kind}: deferred completion, ${scenario}`, async () => {

@@ -11,6 +11,7 @@ const {
   buildDesignerAiLedger,
   captureDesignerAiActionEvidence,
   mapDesignerAiActionToLeafIds,
+  normalizeDesignerAiConversationState,
   prepareDesignerAiConversationEntry,
   reconcileDesignerAiConversationState,
 } = ledgerRuntime;
@@ -272,6 +273,20 @@ test("legacy drafts enter once as first_entry and persist an unambiguous reentry
   assert.equal(reopened.entryMode, "reentry");
   assert.equal(reopened.requestState.usage.hasStarted, true);
   assert.equal(reopened.persistedState.usage.hasStarted, true);
+});
+
+test("guided completion marker is strict, preserved by entry and reconciliation, and cannot resolve leaves", () => {
+  for (const value of [undefined, false, "true", 1]) {
+    assert.equal(normalizeDesignerAiConversationState({ usage: { guidedFlowCompleted: value } }).usage.guidedFlowCompleted, false);
+  }
+  const state = normalizeDesignerAiConversationState({ usage: { guidedFlowCompleted: true } });
+  const entry = prepareDesignerAiConversationEntry(state);
+  assert.equal(entry.persistedState.usage.guidedFlowCompleted, true);
+  const pending = build({ conversationState: state });
+  assert.deepEqual(pending, build());
+  assert.equal(pending.guidedFlow.completion.complete, false);
+  const next = reconcileDesignerAiConversationState({ snapshot: snapshotFor(pending), previousState: entry.persistedState });
+  assert.equal(next.usage.guidedFlowCompleted, true);
 });
 
 function terminalResolution(leaf, status = DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) {

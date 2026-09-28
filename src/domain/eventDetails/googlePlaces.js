@@ -1,7 +1,9 @@
 import { normalizeGooglePlaceInput } from "./location.js";
 
 const GOOGLE_MAPS_SCRIPT_ID = "reservaeldia-google-maps-js";
-let googleMapsPlacesLoaderPromise = null;
+const googleMapsPlacesLoads = new WeakMap();
+const failedGoogleMapsScripts = new WeakSet();
+const GOOGLE_MAPS_LOAD_TIMEOUT_MS = 12_000;
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -21,47 +23,61 @@ export function loadGoogleMapsPlacesLibrary({
   if (!apiKey) {
     return Promise.reject(new Error("La búsqueda de Google Maps no está configurada."));
   }
-  if (targetWindow.google?.maps?.importLibrary) {
-    return targetWindow.google.maps.importLibrary("places");
-  }
-  if (googleMapsPlacesLoaderPromise) return googleMapsPlacesLoaderPromise;
-
-  googleMapsPlacesLoaderPromise = new Promise((resolve, reject) => {
-    const documentRef = targetWindow.document;
-    const existingScript = documentRef.getElementById(GOOGLE_MAPS_SCRIPT_ID);
-    const resolveLibrary = () => {
-      if (targetWindow.google?.maps?.importLibrary) {
-        resolve(targetWindow.google.maps.importLibrary("places"));
+  const pending = googleMapsPlacesLoads.get(targetWindow);
+  if (pending) return pending;
+  const documentRef = targetWindow.document;
+  let script = documentRef.getElementById(GOOGLE_MAPS_SCRIPT_ID);
+  const promise = new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error, library) => {
+      if (settled) return;
+      settled = true;
+      targetWindow.clearTimeout(timer);
+      script?.removeEventListener("load", resolveLibrary);
+      script?.removeEventListener("error", rejectLoad);
+      if (error) {
+        // Never leave an already-failed script for the next caller to wait on.
+        if (script) failedGoogleMapsScripts.add(targetWindow);
+        script?.remove();
+        reject(error);
       } else {
-        reject(new Error("Google Maps no expuso la biblioteca de Places."));
+        failedGoogleMapsScripts.delete(targetWindow);
+        resolve(library);
       }
     };
-    if (existingScript) {
-      existingScript.addEventListener("load", resolveLibrary, { once: true });
-      existingScript.addEventListener(
-        "error",
-        () => reject(new Error("No se pudo cargar Google Maps.")),
-        { once: true }
-      );
+    const rejectLoad = () => finish(new Error("No pudimos cargar Google Maps."));
+    const resolveLibrary = () => {
+      Promise.resolve().then(() => {
+        if (settled) return undefined;
+        if (!targetWindow.google?.maps?.importLibrary) throw new Error("Places unavailable");
+        return targetWindow.google.maps.importLibrary("places");
+      }).then((library) => finish(null, library), rejectLoad);
+    };
+    // Includes both the script and importLibrary; late callbacks cannot revive it.
+    const timer = targetWindow.setTimeout(rejectLoad, GOOGLE_MAPS_LOAD_TIMEOUT_MS);
+    if (targetWindow.google?.maps?.importLibrary && !failedGoogleMapsScripts.has(targetWindow)) {
+      resolveLibrary();
       return;
     }
-
-    const script = documentRef.createElement("script");
-    script.id = GOOGLE_MAPS_SCRIPT_ID;
-    script.async = true;
-    script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      apiKey
-    )}&libraries=places&v=weekly&language=es-419&region=AR&loading=async`;
-    script.onload = resolveLibrary;
-    script.onerror = () => reject(new Error("No se pudo cargar Google Maps."));
-    documentRef.head.appendChild(script);
-  }).catch((error) => {
-    googleMapsPlacesLoaderPromise = null;
-    throw error;
+    const isNew = !script;
+    if (isNew) {
+      script = documentRef.createElement("script");
+      script.id = GOOGLE_MAPS_SCRIPT_ID;
+      script.async = true;
+      script.defer = true;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+        apiKey
+      )}&libraries=places&v=weekly&language=es-419&region=AR&loading=async`;
+    }
+    script.addEventListener("load", resolveLibrary);
+    script.addEventListener("error", rejectLoad);
+    if (isNew) documentRef.head.appendChild(script);
   });
-
-  return googleMapsPlacesLoaderPromise;
+  const shared = promise.finally(() => {
+    if (googleMapsPlacesLoads.get(targetWindow) === shared) googleMapsPlacesLoads.delete(targetWindow);
+  });
+  googleMapsPlacesLoads.set(targetWindow, shared);
+  return shared;
 }
 
 export function placePredictionToLabel(prediction) {

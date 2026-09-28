@@ -122,10 +122,20 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
   resolverlo ni volverlo no aplicable.
 - Debe aprovechar datos válidos adelantados por el usuario y no obligarlo a
   repetirlos en el orden de las preguntas.
-- Cuando no queden pendientes del recorrido principal, debe comunicar de manera
-  breve que esa información principal quedó completada, recordar que toda la
-  invitación puede seguir editándose manualmente e indicar que el resultado se
-  consulta con el botón `Vista previa`, en la esquina superior derecha.
+- En la primera transición verificada de incompleto a completo, la UI comunica
+  una sola vez que la información principal quedó completa. Ofrece `Ver vista
+  previa` mediante el preview existente, explica la edición manual desde el
+  sidebar y deja explícita la posibilidad de seguir pidiendo cambios por chat.
+  `Seguir ajustando` enfoca el composer; no cambia el recorrido.
+- Después de ese cierre, el asistente permanece en modo edición. Responde al
+  pedido actual (también RSVP, Historia y fecha/hora) sin sustituirlo por el
+  cierre ni reiniciar el interrogatorio cuando una edición reabra un pendiente.
+  El ledger conserva ese pendiente y puede señalarse cuando sea relevante.
+- Reabrir el sidebar o recargar conserva el modo edición mediante la marca
+  monotónica `designerAiConversation.usage.guidedFlowCompleted`, incluso si hay
+  nuevos pendientes. Resolverlos no vuelve a mostrar el cierre inicial. La
+  completitud actual y esa experiencia son conceptos distintos; ver la decisión
+  aceptada en `AI_ASSISTANT_SYSTEM.md`, sección 8.1.
 - No debe afirmar que “la invitación está terminada”, porque el cierre corresponde
   al recorrido guiado y no al final de la personalización.
 
@@ -145,6 +155,11 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   de un control local no prueban ejecución.
 - Si una ejecución fue parcial, la respuesta debe diferenciar lo reflejado de lo
   que falló. Nunca debe presentar el lote completo como exitoso.
+- Los resúmenes de guardado cuentan únicamente receipts efectivos, persistidos
+  y sin error. `executed` solo no habilita una confirmación. El reintento parcial
+  usa el lote P0 y no vuelve a ejecutar acciones confirmadas. Antes de aplicar,
+  un error recuperable ofrece `Reintentar` con el pedido original; una nueva
+  intención invalida el reintento anterior.
 - Si el borrador cambió mientras se esperaba una respuesta, el asistente no debe
   aplicar ni atribuirse el resultado obsoleto.
 - La respuesta no debe exponer action types, leaf IDs, fingerprints, snapshots,

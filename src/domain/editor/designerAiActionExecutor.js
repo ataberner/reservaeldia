@@ -290,6 +290,7 @@ export async function executeDesignerAiActionBatch(
     waitFrame,
     evidenceAttempts = 120,
     recovery = null,
+    onProgress = () => {},
   } = {}
 ) {
   if (!targetWindow) throw new Error("El runtime del editor no está disponible.");
@@ -338,6 +339,7 @@ export async function executeDesignerAiActionBatch(
       receipt.beforeStateFingerprint = recoveryStateFingerprint(readDesignerAiActionEvidence(targetWindow).snapshot);
       receipt.executed = true;
       receipt.error = null;
+      onProgress(persistOnly ? "saving" : "applying");
       if (action.type === "document.set_name") {
         try { await persistDashboardDocumentUpdate({
           name: action.arguments.name,
@@ -363,6 +365,7 @@ export async function executeDesignerAiActionBatch(
       receipt.evidence = captureDesignerAiActionEvidence(receipt.action, readDesignerAiActionEvidence(targetWindow).snapshot);
       if (persistenceError) throw persistenceError;
       if (action.type !== "document.set_name") {
+        onProgress("saving");
         const persisted = await confirmDesignerAiPersistence(targetWindow, isSessionCurrent);
         if (!isDesignerAiActionEffective(action, persisted.snapshot, persisted.render, expectedRender)) {
           throw Object.assign(new Error("El guardado no contiene el efecto solicitado."), { code: "designer-ai/persistence-failed" });

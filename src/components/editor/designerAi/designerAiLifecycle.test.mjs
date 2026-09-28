@@ -13,6 +13,7 @@ import * as ledger from "../../../../shared/designerAiConversationLedger.js";
 import * as capabilities from "../../../domain/editor/designerAiCapabilities.js";
 import * as history from "../../../domain/editor/designerAiMessageHistory.js";
 import * as executor from "../../../domain/editor/designerAiActionExecutor.js";
+import * as feedback from "../../../domain/editor/designerAiExecutionFeedback.js";
 import * as evidence from "../../../domain/editor/designerAiActionEvidence.js";
 import * as location from "../../../domain/editor/designerAiLocationInteraction.js";
 import * as features from "../../../domain/eventDetails/features.js";
@@ -68,6 +69,7 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     "@/domain/editor/designerAiMessageHistory": history,
     "@/domain/editor/designerAiActionExecutor": executor,
     "@/domain/editor/designerAiActionEvidence": evidence,
+    "@/domain/editor/designerAiExecutionFeedback": feedback,
     "@/hooks/useEditorDocumentOperation": useEditorDocumentOperation,
     "@/domain/editor/designerAiLocationInteraction": location,
     "@/domain/eventDetails/features": features,
@@ -105,11 +107,12 @@ test("H3 integrated panel retry resumes the saved batch without another model re
   try {
     await act(async () => { root.render(React.createElement(Host)); });
     await until(() => messages.some((m) => m.recoveryBatchId));
-    assert.equal(messages.some((m) => m.content === "Cambios confirmados"), false);
+    assert.equal(messages.some((m) => m.content.startsWith("Listo, guardé")), false);
+    assert.match(messages.at(-1).content, /Se guardaron 1 de 3 cambios/);
     const button = [...document.querySelectorAll("button")].find((el) => el.textContent === "Reintentar pendientes");
     assert.ok(button);
     await act(async () => { button.click(); });
-    await until(() => messages.some((m) => m.content === "Cambios confirmados"));
+    await until(() => messages.some((m) => m.content.startsWith("Listo, guardé 3 cambios")));
     assert.equal(providerCalls, 1);
     assert.equal(writes, 4);
     const current = capabilities.readDesignerAiCapabilitySnapshot(window);

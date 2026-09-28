@@ -982,9 +982,10 @@ export default function MiniToolbarTabImagen({
       onUploadError: () => {
         setPanelNoticeSafe("No se pudo actualizar esa foto. Conservamos la imagen anterior.");
       },
-      onUploadSettled: () => {
+      onUploadSettled: ({ cancelled } = {}) => {
         operation.cancel();
         clearReplacementUpload(uploadKey);
+        if (cancelled) setPanelNoticeSafe("");
       },
     });
   }, [
@@ -1416,9 +1417,10 @@ export default function MiniToolbarTabImagen({
       onUploadError: () => {
         setPanelNoticeSafe("No se pudo actualizar la portada. Conservamos la imagen anterior.");
       },
-      onUploadSettled: () => {
+      onUploadSettled: ({ cancelled } = {}) => {
         operation.cancel();
         clearReplacementUpload(uploadKey);
+        if (cancelled) setPanelNoticeSafe("");
       },
     });
   }, [

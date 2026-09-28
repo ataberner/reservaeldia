@@ -9,6 +9,21 @@ import ledgerRuntime from "../../../shared/designerAiConversationLedger.js";
 
 const { buildDesignerAiConversationBrief } = ledgerRuntime;
 
+test("durable guided completion selects editing without changing ledger, revision or model usage context", () => {
+  const build = (guidedFlowCompleted) => buildDesignerAiCapabilitySnapshot({
+    documentNameState: { name: "Evento", documentKind: "draft", editable: true },
+    conversationState: { usage: { guidedFlowCompleted } },
+  });
+  const guided = build(undefined);
+  const editing = build(true);
+  assert.equal(guided.conversation.mode, "guided");
+  assert.equal(editing.conversation.mode, "editing");
+  assert.deepEqual(editing.ledger, guided.ledger);
+  assert.equal(editing.revision, guided.revision);
+  assert.deepEqual(editing.conversation.usage, { hasStarted: false });
+  assert.equal(buildDesignerAiConversationBrief(editing).nextBlock, null);
+});
+
 test("hidden banking data is omitted from callable context without changing local revision or fingerprints", () => {
   const build = (alias, giftListUrl = "https://example.test/a") => buildDesignerAiCapabilitySnapshot({
     renderSnapshot: { objetos: [], gifts: { enabled: true, bank: { alias, cbu: "hidden-cbu-123" }, visibility: { alias: false, cbu: false }, giftListUrl } },

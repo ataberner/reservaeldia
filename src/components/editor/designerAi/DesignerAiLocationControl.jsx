@@ -32,6 +32,7 @@ export default function DesignerAiLocationControl({
   const [loading, setLoading] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState("");
+  const [retrySequence, setRetrySequence] = useState(0);
   const inputRef = useRef(null);
   const beginOperation = useEditorDocumentOperation();
   const requestSequenceRef = useRef(0);
@@ -66,22 +67,22 @@ export default function DesignerAiLocationControl({
           );
           if (requestSequenceRef.current !== requestSequence) return;
           setSuggestions(nextSuggestions);
-        } catch (suggestionError) {
+        } catch {
           if (requestSequenceRef.current !== requestSequence) return;
           setSuggestions([]);
-          setError(
-            suggestionError instanceof Error
-              ? suggestionError.message
-              : "No se pudieron cargar sugerencias de Google Maps."
-          );
+          sessionTokenRef.current = null;
+          setError("No pudimos cargar Google Maps. Podés reintentar o volver al chat para ingresar la ubicación manualmente.");
         } finally {
           if (requestSequenceRef.current === requestSequence) setLoading(false);
         }
       })();
     }, 250);
 
-    return () => window.clearTimeout(timerId);
-  }, [hasGoogleMapsApiKey, query]);
+    return () => {
+      window.clearTimeout(timerId);
+      requestSequenceRef.current += 1;
+    };
+  }, [hasGoogleMapsApiKey, query, retrySequence]);
 
   const handleSelect = async (suggestion) => {
     if (!suggestion?.prediction || selecting) return;
@@ -199,9 +200,14 @@ export default function DesignerAiLocationControl({
         </p>
       ) : null}
       {error ? (
-        <p className="mt-2 rounded-xl bg-[#FFDADA] px-2.5 py-2 text-xs text-[#8f1d18]" role="alert">
-          {error}
-        </p>
+        <div className="mt-2 rounded-xl bg-[#FFDADA] px-2.5 py-2 text-xs text-[#8f1d18]" role="alert">
+          <p>{error}</p>
+          <button type="button" disabled={loading || selecting}
+            onClick={() => { sessionTokenRef.current = null; setRetrySequence((value) => value + 1); }}
+            className="mt-2 min-h-11 rounded-xl border border-[#d9c0ec] bg-white px-3 py-2 text-[#692B9A] disabled:opacity-60">
+            Reintentar
+          </button>
+        </div>
       ) : null}
     </section>
   );

@@ -41,7 +41,7 @@ test("full entrypoint defers OpenAI until its real client factory, preserving cl
     assert.equal(client.constructor, require('openai').default);
     assert.equal(client.apiKey, 'synthetic-discovery-test-key');
     assert.equal(client.timeout, 25000);
-    assert.equal(client.maxRetries, 1);
+    assert.equal(client.maxRetries, 0, 'Retries share the operation deadline in the service');
     assert.equal(typeof client.responses.create, 'function');
   `);
 });

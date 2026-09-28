@@ -587,6 +587,7 @@ function sanitizeCapabilitySnapshot(input) {
     },
     ledger: sanitizeLedger(source.ledger),
     conversation: {
+      mode: source.conversation?.mode === "editing" ? "editing" : "guided",
       usage: {
         hasStarted: source.conversation?.usage?.hasStarted === true,
       },

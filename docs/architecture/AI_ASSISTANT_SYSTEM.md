@@ -7,6 +7,8 @@ Revalidado contra implementación y tests el 2026-08-28.
 Hardening P0 revalidado localmente el 2026-09-27. Evidencia y límites:
 [DESIGNER_AI_P0_HARDENING.md](../testing/DESIGNER_AI_P0_HARDENING.md).
 
+Etapa V1 local, 2026-09-28: [verificación y límites del cierre](../testing/DESIGNER_AI_V1_CLOSURE.md).
+
 ## 1. Propósito y autoridad
 
 Este documento es el mapa técnico canónico del tab `Diseñador AI`. Define
@@ -123,8 +125,9 @@ Las decisiones estructurales de esta revisión están reflejadas así:
 - los textos de ubicación se aplican como datos manuales y la decisión de abrir
   Places se representa aparte; el prompt no selecciona resultados ni recibe su
   metadata;
-- `COMPLETE_MESSAGE` comunica fin del recorrido, edición manual y acceso a
-  `Vista previa`.
+- `COMPLETE_MESSAGE` se agrega una sola vez ante la transición verificada a
+  completo. Conserva la respuesta del turno y ofrece preview, edición manual y
+  continuidad por AI. El modelo no redacta un cierre recurrente.
 
 El prompt pide español permanente, voseo y la personalidad aprobada. Todavía no
 existe una evaluación durable que mida consistencia o calidad de esas respuestas;
@@ -158,7 +161,8 @@ prompt nunca crea capacidad por sí solo.
 El payload contiene:
 
 - `contractVersion`, `clientMessageId`, `entryMode` y mensaje actual;
-- hasta seis turnos recientes, de hasta 700 caracteres cada uno;
+- hasta seis turnos anteriores, de hasta 700 caracteres cada uno; el actual se
+  envía solo como `message` (máximo 1200), también al reintentar;
 - snapshot saneado con availability, valores funcionales acotados, ledger
   global/guiado, `usage.hasStarted` y política de nombre;
 - contexto server-side con un único campo `registeredFirstName`, obtenido de
@@ -305,9 +309,9 @@ Las allowlists y shapes exactos viven en
 | Tema | Estado actual |
 | --- | --- |
 | Streaming de respuesta | No implementado. `responses.create` retorna completo y el callable responde al final. |
-| Progreso | Solo loader local (`Pensando…`/live region). No hay eventos, tokens parciales ni job durable. |
+| Progreso | Estados locales `Preparando cambios…`, `Aplicando cambios…` y `Guardando…`, publicados también en live region. No hay tokens parciales ni job durable. |
 | Concurrencia por panel | `sendingRef` impide un segundo envío mientras hay uno pendiente. |
-| Cancelación de red | No implementada. No se conserva `AbortController` ni handle de cancelación del callable. |
+| Cancelación de red | El cliente no conserva un handle de cancelación del callable. El backend aborta intentos OpenAI al vencer su timeout/deadline compartido. |
 | Cambio de sesión | Invalida irreversiblemente operaciones ligadas a documentId/kind y su ciclo de montaje, también A → B → A. Places, uploads y callbacks del header comprueban identidad antes de mutar/publicar. El request backend puede seguir consumiendo recursos. |
 | Cambio de contenido | Antes de aplicar se compara `snapshot.revision`; un cambio produce fallback stale y cero mutación de ese lote. |
 | Espera de reflejo | El panel relee hasta 120 frames y cancela esa espera local al cambiar sesión. |
@@ -333,13 +337,38 @@ upstream.
 - No se usa `previous_response_id`; cada request reconstruye contexto con un
   máximo de los seis turnos visibles más recientes, aunque la UI retenga treinta.
 
+El sidebar conserva `designerAiJourneyRef` por documento y sesión. Tras el primer
+cierre pasa a edición; el panel proyecta `conversation.mode` en el snapshot
+efímero. El brief deja de impulsar `nextBlock` pero conserva `needsAttention` y
+las hojas pendientes. Preview reutiliza el callback `generarVistaPrevia` que ya
+consume el sidebar (controller/pipeline y flush existentes); no muta el ledger.
+
+**Decisión aceptada — recuerdo del cierre tras recarga con nuevos pendientes.**
+Autorización explícita del usuario, 2026-09-28: agregar únicamente el booleano
+`designerAiConversation.usage.guidedFlowCompleted`. Implementado y verificado
+por las regresiones E8 de `designerAiV1.test.mjs`: completo → pendiente → reload
+conserva edición; volver a completar no repite el cierre.
+
+Es monotónico (`false → true`). El panel lo establece solo si el ledger releído
+con las resoluciones y receipts reconciliados tiene
+`guidedFlow.completion.complete === true`; lo escribe en el patch de metadata
+existente y espera su confirmación. Preserva un `true` anterior al persistir.
+La preparación de reingreso también conserva la marca. No modifica el ledger,
+sus pendientes, fingerprints ni evidencias; no se envía la marca al modelo,
+solo el modo derivado. No se guardan mensajes, prompts ni otra memoria.
+
+Compatibilidad: ausencia normaliza a `false`. Un borrador legacy actualmente
+completo entra en edición y adquiere la marca en el guardado de metadata de
+ingreso, sin repetir cierre; si está incompleto y no tiene marca, sigue guiado.
+No se infiere una finalización histórica que el borrador legacy no documenta.
+
 ### 8.2 Persistencia
 
 El chat no se persiste. Sí se persiste `designerAiConversation` dentro de
 `borradores/{slug}` a través de `DashboardHeader` y
 `editorSessionPersistence`. Ese campo contiene ledger versionado, baseline,
 fingerprints/procedencia, resoluciones y política automática/explícita del
-nombre, además de `usage.hasStarted`. No debe contener mensajes ni duplicar
+nombre, además de `usage.hasStarted` y `usage.guidedFlowCompleted`. No debe contener mensajes ni duplicar
 valores funcionales. En ledger v3, la finalización explícita de cada Gallery se
 guarda como una resolución de `media.gallery.{galleryId}.guided_completion`; no
 se agrega un flag al objeto Gallery ni al draft fuera de
@@ -354,10 +383,9 @@ completitud. El cierre del control lo descarta sin alterar la resolución durabl
 
 La marca inicial usa callbacks del bridge y el panel espera confirmación del patch
 antes de enviar el auto-start; un error impide iniciar y muestra fallback seguro.
-Las reconciliaciones generales posteriores continúan fire-and-forget: sus
-errores se registran en consola y el borrador releído sigue siendo autoridad. La
-finalización de una Gallery es la excepción: el panel espera el callback durable
-del bridge antes de cerrar el control y continuar. Si falla, restaura el ledger
+Desde P0 las reconciliaciones generales esperan confirmación durable del bridge,
+igual que la finalización de una Gallery, antes de mostrar éxito. Si falla, el
+panel conserva el lote recuperable y sus receipts. En Gallery restaura el ledger
 local previo, mantiene la Gallery pendiente y permite reintentar; las mutaciones
 de fotos ya guardadas no se revierten.
 
@@ -416,8 +444,15 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
 
 ### 10.1 Implementado
 
-- El cliente OpenAI usa timeout de 25 segundos y `maxRetries:1`.
-- Una salida estructurada que falla validación dispone de un único intento de
+- `deadline.ts` comparte un deadline de 40 segundos desde el inicio del callable:
+  lectura mínima del perfil (máximo 3 s, fallback vacío), request, un retry de
+  transporte total y una reparación. El callable conserva 45 s, con margen de
+  5 s. Cada intento recibe `min(25 s, tiempo restante)`, señal de abort y
+  `maxRetries:0`; no hay retries ocultos del SDK. No inicia otro intento con
+  menos de 1 s. Respeta Retry-After si cabe y usa demora acotada si falta.
+- Una salida estructurada que falla validación, incluidas claves faltantes o
+  adicionales, se clasifica como `malformed-output`, nunca `invalid-payload`.
+  Dispone de un único intento de
   reparación semántica con el motivo acotado del validador. La segunda salida
   vuelve a atravesar todas las validaciones; no se aplican resultados parciales.
 - El callable tiene timeout de 45 segundos.
@@ -429,6 +464,16 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   validador, sin registrar payloads, prompts, secretos ni respuestas crudas del
   proveedor.
 - El panel traduce códigos conocidos a mensajes sin detalle interno sensible.
+- Antes de ejecutar ofrece `Reintentar` y relee el snapshot para interpretar el
+  mismo pedido. Un fallo de metadata inicial también tiene retry explícito.
+  Una nueva intención descarta la recuperación previa. Los errores parciales
+  usan exclusivamente el lote/receipts P0, con conteo de guardados y pendientes.
+- El loader Places comparte un intento por ventana, limita script/import a 12 s,
+  quita script y listeners ante error/timeout y permite una carga nueva. El
+  control conserva la búsqueda y ofrece retry y retorno a la alternativa manual.
+- Cancelar un selector de archivos liquida la solicitud pendiente y ambas
+  operaciones de sidebar/toolbar; también al reemplazarla o desmontar. Una
+  selección válida transfiere esa solicitud al upload existente.
 - Si falla la generación de copy posterior a una decisión o control ya
   verificados, el panel conserva el cambio, lo diferencia del fallo
   conversacional y ofrece `Continuar recorrido` desde un snapshot nuevo.
@@ -438,10 +483,10 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
 ### 10.2 No implementado
 
 - No hay fallback de modelo/proveedor.
-- No hay retry automático de proveedor fuera del retry del SDK y de la única
-  reparación semántica; la recuperación adicional requiere la acción explícita
-  `Continuar recorrido`.
-- No hay backoff, circuit breaker ni cola durable.
+- Fuera del retry de transporte acotado y la reparación no hay retry automático
+  adicional; el resto requiere una acción explícita del usuario.
+- No hay circuit breaker ni cola durable. La espera del único retry de
+  transporte está limitada por el deadline compartido.
 - No hay rate limit propio por UID, draft, IP o ventana temporal; solo se mapea el
   429 del proveedor.
 - No hay presupuesto/cuota del producto ni telemetría de tokens/costo visible en
@@ -510,7 +555,7 @@ Clasificación usada aquí:
 | Regalos con valor/visibilidad independientes y lista externa | Implementado en dominio/capability | Root normalizada, flags por método, URL externa, actions y validación de readiness existentes. |
 | Recorrido guiado interno de Regalos | Hardening P0 implementado y testeado | Usa métodos visibles confirmados, oculta defaults no elegidos conservando datos y excluye intro/botón de la completitud. Alias solo, lista externa y combinación se prueban contra las actions existentes, sin estado de modalidad adicional. |
 | Portada y múltiples Galleries por disponibilidad real | Implementado en orquestación/control | Portada conserva evidencia por fingerprint. Cada Gallery con slots aporta una hoja durable, respeta el orden del snapshot y avanza solo por finalización explícita; cambios y cierre del control no completan. |
-| Cierre del recorrido + edición manual + `Vista previa` | Implementado | Depende de `guidedFlow.completion.complete` y usa cierre acotado en el panel. |
+| Cierre único + edición + `Ver vista previa` | Implementado y verificado localmente, incluida recarga | Transición verificada, `usage.guidedFlowCompleted` monotónico por documento y callback de preview existente. Reabrir o resolver pendientes después del cierre conserva edición y no repite el cierre. |
 | Retención de `designerAiConversation` | Inferido | Sigue al draft por ubicación del campo, sin política aprobada propia. |
 | Política de retención | Gap documental/producto | No hay plazo, borrado selectivo ni obligación aprobada. |
 | Streaming/cancelación real | No implementado | Respuesta completa y descarte local. |

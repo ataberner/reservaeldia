@@ -23,7 +23,7 @@ test("keeps up to 30 messages in the draft-scoped sidebar while preserving the s
   assert.match(historySource, /DESIGNER_AI_CALLABLE_RECENT_TURN_LIMIT = 6/);
   assert.match(panelSource, /messageHistory = \[\]/);
   assert.match(panelSource, /normalizeDesignerAiMessageHistory\(messageHistory\)/);
-  assert.match(panelSource, /selectDesignerAiRecentTurns\(conversationWithUser\)/);
+  assert.match(panelSource, /selectDesignerAiRecentTurns\(messagesRef\.current\)/);
   assert.match(sidebarSource, /const \[designerAiMessageHistory, setDesignerAiMessageHistory\] = useState\(\[\]\)/);
   assert.match(sidebarSource, /messageHistory=\{designerAiMessageHistory\}/);
   assert.match(sidebarSource, /onMessageHistoryChange=\{setDesignerAiMessageHistory\}/);
@@ -150,9 +150,9 @@ test("verifies the exact selected Google place through the canonical authoring o
 
 test("waits for hydrated draft data and closes only from guided-flow completeness", () => {
   assert.match(panelSource, /documentState\.hydrated !== true/);
-  assert.match(panelSource, /finalSnapshot\.ledger\.guidedFlow\.completion\.complete/);
-  assert.match(panelSource, /Terminamos el recorrido principal/);
-  assert.match(panelSource, /Vista previa, en la esquina superior derecha/);
+  assert.match(panelSource, /snapshot\.ledger\.guidedFlow\.completion\.complete/);
+  assert.match(panelSource, /La información principal de tu invitación ya está completa/);
+  assert.match(panelSource, /Ver vista previa/);
   assert.doesNotMatch(panelSource, /Listo, ya tenemos todo/);
 });
 

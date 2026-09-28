@@ -256,6 +256,10 @@ versioned case matrix, reproducible graders, model/config identity, thresholds,
 and result-recording workflow exist. Until then, durable examples belong to the
 conversation contract and executable/manual checks remain with their owners.
 
+Evidencia local del cierre V1 y continuidad verificada tras recarga:
+[DESIGNER_AI_V1_CLOSURE.md](testing/DESIGNER_AI_V1_CLOSURE.md). No es una
+evaluación de calidad del modelo real ni certifica servicios desplegados.
+
 ### Preview And Publish Pipeline
 
 1. [PREVIEW_SYSTEM_ANALYSIS.md](architecture/PREVIEW_SYSTEM_ANALYSIS.md)

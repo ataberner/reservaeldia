@@ -283,6 +283,7 @@ function normalizeDesignerAiConversationState(value) {
     version: LEDGER_VERSION,
     usage: {
       hasStarted: usageSource.hasStarted === true,
+      guidedFlowCompleted: usageSource.guidedFlowCompleted === true,
     },
     namePolicy: {
       mode,
@@ -303,7 +304,7 @@ function prepareDesignerAiConversationEntry(value) {
     requestState,
     persistedState: normalizeDesignerAiConversationState({
       ...requestState,
-      usage: { hasStarted: true },
+      usage: { ...requestState.usage, hasStarted: true },
     }),
   };
 }
@@ -684,7 +685,7 @@ function buildDesignerAiConversationBrief(snapshot) {
     leafIds: unresolved.filter((leaf) => leaf.block === block.id).map((leaf) => leaf.id),
   })).filter((block) => block.leafIds.length > 0);
   return {
-    nextBlock: blocks[0] || null,
+    nextBlock: snapshot?.conversation?.mode === "editing" ? null : blocks[0] || null,
     needsAttention: blocks,
     unresolvedLeafIds: unresolved.map((leaf) => leaf.id),
     complete: snapshot?.ledger?.guidedFlow?.completion?.complete === true,

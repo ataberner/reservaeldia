@@ -457,7 +457,16 @@ export default function DashboardSidebar({
     }, []);
     const pendingUploadedImageHandlerRef = useRef(null);
     const beginUploadOperation = useEditorDocumentOperation();
+    const designerAiJourneyRef = useRef({ initialized: false, editing: false });
+    const cancelPendingImageSelection = useCallback(() => {
+        const request = pendingUploadedImageHandlerRef.current;
+        pendingUploadedImageHandlerRef.current = null;
+        request?.operation.cancel();
+        request?.onUploadSettled?.({ cancelled: true });
+    }, []);
+    useEffect(() => cancelPendingImageSelection, [cancelPendingImageSelection]);
     const abrirSelectorImagen = useCallback((onUploadedImage, options = {}) => {
+        cancelPendingImageSelection();
         const request =
             onUploadedImage && typeof onUploadedImage === "object" && !Array.isArray(onUploadedImage)
                 ? onUploadedImage
@@ -467,8 +476,9 @@ export default function DashboardSidebar({
                         typeof onUploadedImage === "function" ? onUploadedImage : null,
                 };
         pendingUploadedImageHandlerRef.current = { ...request, operation: beginUploadOperation() };
-        abrirSelector();
-    }, [abrirSelector, beginUploadOperation]);
+        try { abrirSelector(); }
+        catch (error) { cancelPendingImageSelection(); throw error; }
+    }, [abrirSelector, beginUploadOperation, cancelPendingImageSelection]);
     const sidebarAbierta =
         isLeftPanelActive && (fijadoSidebar || hoverSidebar);
     const canUseGalleryBuilder = canAccessGalleryBuilder({
@@ -1753,6 +1763,7 @@ export default function DashboardSidebar({
         <>
             {componenteInput &&
                 React.cloneElement(componenteInput, {
+                    onCancel: cancelPendingImageSelection,
                     onChange: async (e) => {
                         const uploadRequest = pendingUploadedImageHandlerRef.current;
                         const uploadedImageHandler =
@@ -1762,7 +1773,10 @@ export default function DashboardSidebar({
                                     ? uploadRequest
                                     : null;
                         const selectedFile = e.target.files?.[0] || null;
-                        if (!selectedFile) return;
+                        if (!selectedFile) { cancelPendingImageSelection(); return; }
+                        // Selection has ended. The captured request now belongs to
+                        // the upload, so a later picker cannot cancel/settle it.
+                        pendingUploadedImageHandlerRef.current = null;
                         const operation = uploadRequest?.operation || beginUploadOperation();
 
                         try {
@@ -2135,6 +2149,8 @@ export default function DashboardSidebar({
                                 contentVersion={assistantContentVersion}
                                 messageHistory={designerAiMessageHistory}
                                 onMessageHistoryChange={setDesignerAiMessageHistory}
+                                onPreview={generarVistaPrevia}
+                                journeyRef={designerAiJourneyRef}
                                 abrirSelector={abrirSelectorImagen}
                                 imagenes={imagenes}
                                 imagenesEnProceso={imagenesEnProceso}

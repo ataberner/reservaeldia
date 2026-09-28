@@ -5,6 +5,7 @@ import {
   sanitizeCapabilitySnapshot,
 } from "../shared/designerAiCapabilityContract.js";
 import serviceModule from "./lib/designerAi/service.js";
+import deadlineModule from "./lib/designerAi/deadline.js";
 import { buildDesignerAiCallablePayload, buildDesignerAiCapabilitySnapshot } from "../src/domain/editor/designerAiCapabilities.js";
 
 const {
@@ -149,6 +150,97 @@ function functionResponse(result, requestId = "req_test") {
     }],
   };
 }
+
+for (const scenario of ["fast", "slow-first", "retry-budget", "retry-exhausted", "repair-budget", "repair-exhausted", "upstream-timeout", "retry-then-repair", "long-retry-after"]) {
+  test(`E10 shared deadline: ${scenario}`, async () => {
+    let clock = 0, attempts = 0;
+    const options = [];
+    const good = { intent: "clarify", assistantMessage: "Seguimos.", actions: [], resolutions: [], controlRequest: null };
+    const deadline = deadlineModule.createDesignerAiDeadline({ now: () => clock });
+    const run = interpretDesignerAiChat({ payload: payload(), now: () => clock, deadline,
+      waitForRetry: async (ms) => { clock += ms; },
+      client: { responses: { create: async (_, config) => {
+        options.push(config); attempts++;
+        assert.equal(config.maxRetries, 0);
+        assert.ok(config.signal instanceof AbortSignal);
+        assert.ok(config.timeout <= Math.min(25_000, 40_000 - clock));
+        if (scenario === "slow-first") clock += 24_500;
+        else if (scenario === "upstream-timeout") throw { name: "APIConnectionTimeoutError" };
+        else if (scenario === "long-retry-after") throw { status: 429, headers: { "retry-after": "60" } };
+        else if (attempts === 1 && scenario.startsWith("retry")) {
+          clock += scenario === "retry-exhausted" ? 39_500 : 25_000;
+          throw { status: 503 };
+        } else if (scenario.startsWith("repair") && attempts === 1) {
+          clock += scenario === "repair-exhausted" ? 39_500 : 24_000;
+          return functionResponse({ ...good, extra: true });
+        } else if (scenario === "retry-then-repair" && attempts === 2) {
+          clock += 5_000;
+          return functionResponse({ ...good, extra: true });
+        } else clock += 100;
+        return functionResponse(good);
+      } } },
+    });
+    const fails = ["retry-exhausted", "repair-exhausted", "upstream-timeout", "long-retry-after"].includes(scenario);
+    if (fails) await assert.rejects(run, (error) => error.kind === "timeout");
+    else assert.equal((await run).repairCount, scenario === "repair-budget" || scenario === "retry-then-repair" ? 1 : 0);
+    const expected = scenario === "retry-then-repair" ? 3 : ["retry-budget", "repair-budget", "upstream-timeout"].includes(scenario) ? 2 : 1;
+    assert.equal(attempts, expected);
+    assert.ok(clock <= 40_000);
+    if (options.length > 1) assert.ok(options.at(-1).timeout <= 40_000 - 500);
+  });
+}
+
+test("E10 a provider that never settles is aborted and cannot hold the operation", async () => {
+  let signal;
+  const deadline = deadlineModule.createDesignerAiDeadline();
+  await assert.rejects(deadline.run(async (value) => { signal = value; return new Promise(() => {}); }, { maxMs: 10, minimumMs: 1 }), deadlineModule.DesignerAiDeadlineError);
+  assert.equal(signal.aborted, true);
+});
+
+test("E10 quota and explicit nonretryable errors are not retried", () => {
+  assert.equal(deadlineModule.designerAiRetryDelay({ status: 429, code: "insufficient_quota" }, 0), null);
+  assert.equal(deadlineModule.designerAiRetryDelay({ status: 503, headers: { "x-should-retry": "false" } }, 0), null);
+});
+
+test("E12 invalid user payload is rejected before requesting AI", async () => {
+  let calls = 0;
+  await assert.rejects(interpretDesignerAiChat({
+    payload: payload({ extra: true }),
+    client: { responses: { create: async () => { calls++; } } },
+  }), (e) => e.kind === "invalid-payload");
+  assert.equal(calls, 0);
+});
+
+for (const repaired of [true, false]) {
+  test(`E12 invalid AI keys enter the existing repair path (success=${repaired})`, async () => {
+    let calls = 0;
+    const valid = { intent: "clarify", assistantMessage: "Seguimos.", actions: [], controlRequest: null, resolutions: [] };
+    assert.throws(() => validateDesignerAiModelResult({ ...valid, extra: true }, snapshot()), (e) => e.kind === "malformed-output");
+    const request = interpretDesignerAiChat({ payload: payload(), client: { responses: { create: async () => {
+      calls++;
+      return functionResponse(calls === 2 && repaired ? valid : { ...valid, extra: true });
+    } } } });
+    if (repaired) assert.equal((await request).repairCount, 1);
+    else await assert.rejects(request, (e) => e.kind === "malformed-output" && buildDesignerAiErrorDetails(e, "ref").category === "invalid_model_output");
+    assert.equal(calls, 2);
+  });
+}
+
+test("E12 provider receives a long current turn once and keeps the bounded earlier history", async () => {
+  const message = "Texto actual: " + "a".repeat(900);
+  let captured;
+  await interpretDesignerAiChat({ payload: buildDesignerAiCallablePayload({
+    clientMessageId: "long", message, snapshot: snapshot(),
+    recentTurns: Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `Anterior ${i}: ` + "b".repeat(750) })),
+  }), client: { responses: { create: async (body) => {
+    captured = body;
+    return functionResponse({ intent: "clarify", assistantMessage: "Seguimos.", actions: [], controlRequest: null, resolutions: [] });
+  } } } });
+  assert.equal(captured.input.filter((t) => t.content.startsWith("Texto actual:")).length, 1);
+  assert.equal(captured.input.at(-1).content, message);
+  assert.equal(captured.input.slice(2, -1).length, 6);
+  assert.ok(captured.input.slice(2, -1).every((t) => t.content.length <= 700));
+});
 
 for (const enabled of [true, false]) {
   test(`provider input minimizes hidden banking values server-side (enabled=${enabled})`, async () => {
@@ -319,7 +411,8 @@ test("interprets one strict call, extracts several data points and sends no priv
   assert.match(instructions, /no avances a Regalos/);
   assert.match(instructions, /no preguntes a la vez por la dirección y por Google Maps/);
   assert.match(instructions, /Las hojas con estado resolved_by_control ya tienen evidencia local terminal/);
-  assert.match(instructions, /guidedFlow\.completion\.complete/);
+  assert.match(instructions, /conversation\.mode es editing/);
+  assert.match(instructions, /No redactes ese cierre ni reemplaces por él la respuesta al pedido actual/);
   assert.match(instructions, /RSVP queda disponible solo ante un pedido explícito/);
   assert.match(instructions, /cambiar, agregar, eliminar o reordenar fotos no completa la etapa/);
   assert.match(instructions, /media\.gallery\.\{galleryId\}\.guided_completion/);

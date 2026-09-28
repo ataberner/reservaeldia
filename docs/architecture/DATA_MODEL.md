@@ -85,7 +85,7 @@ These fields coexist with the render state in `borradores/{slug}`, but they are 
 | `templateWorkspace` | template editor sessions | Auxiliary metadata. Template workspace state, not invitation render state. |
 | `templateAuthoringDraft` | template authoring | Auxiliary metadata. Field-authoring payload, not invitation render state. |
 | `templateInput` | template personalization flow | Auxiliary metadata. Stores applied input values and apply report. |
-| `designerAiConversation` | Designer AI conversation planning | Auxiliary metadata. Stores ledger version, durable `usage.hasStarted`, value fingerprints/provenance, documented resolution rules (including explicit per-Gallery guided completion), and automatic/explicit document-name policy. It does not mirror invitation values or chat history. |
+| `designerAiConversation` | Designer AI conversation planning | Auxiliary metadata. Stores ledger version, durable `usage.hasStarted` and monotonic `usage.guidedFlowCompleted`, value fingerprints/provenance, documented resolution rules (including explicit per-Gallery guided completion), and automatic/explicit document-name policy. It does not mirror invitation values or chat history. |
 | `draftContentMeta` | source-of-truth tracking | Auxiliary metadata. Writes `policyVersion`, `canonicalSource`, `lastWriter`, optional `lastReason`, and `updatedAt`. |
 | `ultimaEdicion` | UI ordering, persistence | Auxiliary metadata. Current editor updates it on save. |
 | `creado` / `createdAt` / `updatedAt` | draft creation and maintenance | Auxiliary metadata. Observed in different creation and lifecycle flows. |
@@ -938,7 +938,7 @@ These fields are real Firestore data, but they are not part of the canonical inv
 | `templateWorkspace` | Template editor session metadata. Observed fields include `templateId`, `mode`, `readOnly`, `openedByUid`, `openedAt`, `lastCommittedAt`, `estadoEditorial`, `tags`, `templateName`, `permissions`. |
 | `templateAuthoringDraft` | Template-authoring payload. Version `2` writes `sourceTemplateId`, `fieldsSchema`, `defaults`, inert `detachedVisuals`, `status`, `updatedAt`, and `updatedByUid`. In template editing, `defaults` is the value authority. |
 | `templateInput` | Draft-personalization snapshot. Policy version `2` writes `initialValues`, authoritative `values`, baseline `defaults`, schema-scoped `changedKeys`, `applyReport`, `appliedAt`, and `updatedAt`. |
-| `designerAiConversation` | Designer AI planning metadata. Shape: `{ version, usage: { hasStarted: boolean }, namePolicy: { mode: "automatic" | "explicit" | "unknown", lastAutomaticName }, baseline[], resolutions[] }`. Records contain leaf IDs, opaque value fingerprints, provenance/status, and an optional documented rule; they contain no canvas objects, media URLs, Places metadata or chat transcript. |
+| `designerAiConversation` | Designer AI planning metadata. Shape: `{ version, usage: { hasStarted: boolean, guidedFlowCompleted: boolean }, namePolicy: { mode: "automatic" | "explicit" | "unknown", lastAutomaticName }, baseline[], resolutions[] }`. Records contain leaf IDs, opaque value fingerprints, provenance/status, and an optional documented rule; they contain no canvas objects, media URLs, Places metadata or chat transcript. |
 | `eventDetails` | Render-state configuration for the Detalles del evento flow. Normalized shape is `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`; `mode` and `dressCode.enabled` remain functional authorities, while `dressCode.value` is a one-way compatibility projection of the field with `eventDetailsRole: "dress_code"`. |
 
 Ledger v3 represents an explicit Designer AI Gallery finalization as a resolution
@@ -954,6 +954,13 @@ ingreso y persiste `true` antes de enviar el turno automático. Baseline,
 resolutions, valores completados y cantidad de mensajes no son evidencia de uso.
 No se persisten fecha de ingreso, historial visible ni una segunda identidad de
 conversación.
+
+`usage.guidedFlowCompleted` indica que el recorrido principal ya se completó
+al menos una vez. Ausencia normaliza a `false`; solo pasa a `true` al verificar
+`ledger.guidedFlow.completion.complete === true` y nunca vuelve a `false` por
+pendientes posteriores. Se guarda junto a la metadata reconciliada por el writer
+existente. Permite reconstruir el modo edición al recargar, sin completar hojas,
+persistir chat ni cambiar el significado de `usage.hasStarted`.
 
 Dynamic values and their canvas representations are separate contracts:
 

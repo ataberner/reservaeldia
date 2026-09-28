@@ -164,6 +164,7 @@ import {
   createDesignerAiOpenAiClient,
   interpretDesignerAiChat,
 } from "./designerAi/service";
+import { createDesignerAiDeadline } from "./designerAi/deadline";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
 const { prepareGroupAwareRenderState } = require("../shared/groupRenderContract.cjs");
 const {
@@ -3027,6 +3028,7 @@ export const designerAiChat = onCall(
     const uid = requireSuperAdmin(request);
     const fallbackTraceId = randomUUID();
     const startedAt = Date.now();
+    const deadline = createDesignerAiDeadline({ startedAt });
 
     try {
       const compatibilityResponse = buildDesignerAiClientCompatibilityResponse(
@@ -3050,11 +3052,15 @@ export const designerAiChat = onCall(
         );
       }
       const client = createDesignerAiOpenAiClient(secretValue);
-      const registeredFirstName = await readDesignerAiRegisteredFirstName(uid);
+      const registeredFirstName = await deadline.run(
+        () => readDesignerAiRegisteredFirstName(uid),
+        { maxMs: 3_000 }
+      ).catch(() => null);
       const result = await interpretDesignerAiChat({
         payload: request.data,
         client,
         userContext: { registeredFirstName },
+        deadline,
       });
       const {
         traceId,

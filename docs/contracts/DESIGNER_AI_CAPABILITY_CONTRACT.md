@@ -278,11 +278,20 @@ no de haber recorrido todas las capabilities existentes. El texto de cierre debe
 comunicar fin del recorrido, no completitud absoluta de la invitación, según el
 contrato conversacional.
 
+La transición a completo se anuncia una sola vez; no bloquea ni reemplaza
+ediciones posteriores. `conversation.mode` es contexto efímero (`guided` o
+`editing`), derivado de la marca durable `usage.guidedFlowCompleted` y separado
+de `guidedFlow.completion.complete`. La marca solo registra haber completado el
+recorrido alguna vez; no aporta evidencia ni resuelve hojas. En edición el brief
+conserva los pendientes pero no propone automáticamente `nextBlock`. La UI
+reutiliza `generarVistaPrevia`: no se agrega una action ni se autoriza al modelo
+a generar preview. Compatibilidad y persistencia: sección 8.1 del mapa AI.
+
 Estado de implementación al 2026-08-28: el **orden entre bloques** está
 implementado en el owner ejecutable.
 `shared/designerAiConversationLedger.cjs` expone `GUIDED_FLOW_BLOCKS` en el orden
 de 5.1 y construye `ledger.guidedFlow` con las hojas aplicables. Su
-`guidedFlow.completion.complete` gobierna el cierre del recorrido; la
+`guidedFlow.completion.complete` permite detectar la transición de cierre; la
 `completion` global se conserva para diagnóstico y estado operacional sin poder
 bloquear ese cierre. Cada Gallery aplicable aporta exactamente una hoja
 `media.gallery.{galleryId}.guided_completion`, ordenada según el snapshot. Los
@@ -291,14 +300,10 @@ slots, sus fingerprints y `media.gallery.{galleryId}.order` quedan fuera de
 no puede avanzar el recorrido. RSVP e historia también permanecen fuera. El
 prompt consume el `nextBlock` derivado y no mantiene otra lista ejecutable.
 
-Existe un gap acotado dentro de Regalos: cuando `gifts.enabled` queda terminal y
-activo, el ledger vigente incorpora todas las hojas `gifts.method.*`,
-`gifts.intro_text` y `gifts.button_text` al recorrido. Debe evolucionar para que
-la completitud se derive de la modalidad elegida y de las condiciones del owner
-Gifts, sin convertir campos bancarios no aportados ni copies opcionales en
-pendientes. Las actions existentes ya alcanzan para expresar los cambios; esta
-corrección no autoriza un segundo estado de modalidad ni otra prioridad en el
-prompt.
+El gap histórico de completitud de Regalos quedó corregido en P0: se consideran
+los métodos elegidos y visibles, sin exigir campos no aportados ni copies
+opcionales. V1 reutiliza esa lógica, sin otro estado de modalidad ni prioridad.
+Evidencia: `docs/testing/DESIGNER_AI_P0_HARDENING.md`, P0.5 y H4.
 
 ## 6. Actions originadas por el modelo
 

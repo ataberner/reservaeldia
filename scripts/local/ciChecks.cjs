@@ -40,7 +40,8 @@ function checkWorkflows(workflows) {
   assert.ok(steps.some(s => s.uses?.startsWith("actions/checkout@") && s.with["persist-credentials"] === false));
   const artifacts = steps.find(s => s.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(artifacts.if, "${{ always() }}");
-  assert.equal(artifacts.with["if-no-files-found"], "error");
+  // Missing evidence must fail a successful run, without masking an earlier setup failure.
+  assert.equal(artifacts.with["if-no-files-found"], "${{ job.status == 'success' && 'error' || 'warn' }}");
   for (const name of ["lint-evidence.json", "lint.log"]) assert.ok(artifacts.with.path.includes(`/reports/run-*/${name}`), `Preservar diagnóstico de lint: ${name}`);
   for (const name of ["contracts-input.log", "contracts-built.log", "contracts-tests.log", "contracts-evidence.json"]) assert.ok(artifacts.with.path.includes(`/reports/run-*/${name}`), `Preservar diagnóstico de contratos: ${name}`);
   assert.ok(artifacts.with.path.includes("/reports/run-*/functions-ownership.log"), "Preservar diagnóstico de ownership");

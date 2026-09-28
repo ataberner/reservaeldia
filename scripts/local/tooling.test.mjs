@@ -20,6 +20,17 @@ test("CI syntax, minimal permissions and Hosting dependency graph", () => {
   }
 });
 
+test("CI requires missing-evidence errors after success without masking earlier failures", () => {
+  const workflows = readWorkflows(ROOT);
+  assert.doesNotThrow(() => checkWorkflows(workflows));
+  for (const policy of ["warn", "ignore", "error", "${{ job.status == 'success' && 'warn' || 'error' }}"]) {
+    const copy = structuredClone(workflows);
+    const artifacts = copy["local-verification.yml"].jobs.verify.steps.find(s => s.uses?.startsWith("actions/upload-artifact@"));
+    artifacts.with["if-no-files-found"] = policy;
+    assert.throws(() => checkWorkflows(copy), { code: "ERR_ASSERTION" }, policy);
+  }
+});
+
 test("failed mandatory stage propagates and leaves dependent stage unexecuted", async () => {
   const evidence = new Evidence(ROOT, "synthetic-tooling-test", ["acceptance", "dependent"]);
   let reached = false;

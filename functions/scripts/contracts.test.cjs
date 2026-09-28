@@ -162,7 +162,7 @@ test("shared contracts: read-only checks, build, watch and real consumer", { tim
       const artifact = artifacts[0], original = fs.readFileSync(artifact.sourcePath);
       fs.unlinkSync(artifact.sourcePath);
       const before = snapshot();
-      assert.equal(inspect().sources.find(s => s.path.endsWith("firebaseEnvironment.cjs")).status, "missing");
+      assert.equal(inspect().sources.find(s => path.resolve(workspace, s.path) === artifact.sourcePath).status, "missing");
       assert.throws(sync, /ENOENT/);
       assert.deepEqual(snapshot(), before);
       fs.writeFileSync(artifact.sourcePath, original);

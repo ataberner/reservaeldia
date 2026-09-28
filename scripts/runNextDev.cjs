@@ -59,11 +59,9 @@ function isHostPortAvailable(port, host) {
 }
 
 async function isPortAvailable(port) {
-  const checks = await Promise.all([
-    isHostPortAvailable(port, "0.0.0.0"),
-    isHostPortAvailable(port, "::"),
-  ]);
-  return checks.every(Boolean);
+  // Probe the same address Next binds. Concurrent wildcard IPv4/IPv6 probes
+  // collide with each other on Linux's dual-stack socket implementation.
+  return isHostPortAvailable(port, "127.0.0.1");
 }
 
 async function main() {
@@ -105,7 +103,15 @@ async function main() {
     stdio: "inherit",
   });
 
+  // Nested supervisors may signal only this PID. Let Next's CLI shut down its
+  // server/watchers before the wrapper exits; the outer owner still bounds stop.
+  const onInterrupt = () => child.kill("SIGINT");
+  const onTerminate = () => child.kill("SIGTERM");
+  process.once("SIGINT", onInterrupt);
+  process.once("SIGTERM", onTerminate);
   child.on("exit", (code, signal) => {
+    process.removeListener("SIGINT", onInterrupt);
+    process.removeListener("SIGTERM", onTerminate);
     if (signal) {
       process.kill(process.pid, signal);
       return;
@@ -114,7 +120,8 @@ async function main() {
   });
 }
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+module.exports = { isPortAvailable };

@@ -29,6 +29,7 @@ test("desktop/mobile browser runs local Next and CSP blocks remote effects and a
     await new Promise((resolve) => setTimeout(resolve, 700));
   }
   assert.equal(response?.status(), 200);
+  assert.equal(new URL(response.url()).origin, "http://localhost:3100");
   assert.match(response.headers()["content-security-policy"], /connect-src 'self' http:\/\/127.0.0.1/);
   await page.waitForFunction(() => document.querySelector("#__next")?.children.length > 0);
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844, isMobile: true }]) {

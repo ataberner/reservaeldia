@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { Processes } = require("./processes.cjs");
 const { Evidence, assertRulesEvidence, assertTap, assertLintEvidence } = require("./evidence.cjs");
-const { ROOT, cleanEnvironment, createEmulatorEnvironment } = require("./session.cjs");
+const { ROOT, cleanEnvironment, createSocketEnvironment } = require("./session.cjs");
 const { readWorkflows, checkWorkflows } = require("./ciChecks.cjs");
 const { welcomeProcessorEntries, matchesWelcomeDelivery } = require("./welcomeProcessorEvidence.cjs");
 
@@ -91,10 +91,10 @@ test("lint evidence must contain analyzed sources and agree with the process exi
   }
 });
 
-test("nested CI paths keep emulator worker sockets distinct and clean only their owned temp", async () => {
+test("nested CI paths keep emulator/browser sockets distinct and clean only their owned temp", async () => {
   const env = cleanEnvironment(path.join(ROOT, ".local-isolation", "prepared-synthetic", "workspace", ".local-isolation", "session-synthetic"));
   const original = { ...env };
-  const first = createEmulatorEnvironment(env), second = createEmulatorEnvironment(env);
+  const first = createSocketEnvironment(env), second = createSocketEnvironment(env);
   const servers = [];
   try {
     assert.deepEqual(env, original);
@@ -104,6 +104,7 @@ test("nested CI paths keep emulator worker sockets distinct and clean only their
     }
     assert.notEqual(first.env.TMPDIR, second.env.TMPDIR);
     assert.equal(fs.statSync(first.env.TMPDIR).mode & 0o777, 0o700);
+    assert.ok(Buffer.byteLength(path.join(second.env.TMPDIR, ".org.chromium.Chromium.XXXXXX", "SingletonSocket")) < 104);
     assert.deepEqual(first.env, { ...env, TEMP: first.env.TMPDIR, TMP: first.env.TMPDIR, TMPDIR: first.env.TMPDIR });
     for (const id of ["561534061ac4158f", "cf01ef9803a6f5c1"]) {
       const socket = path.join(first.env.TMPDIR, `fire_emu_${id}.sock`);

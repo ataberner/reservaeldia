@@ -3,19 +3,20 @@ const path = require("node:path");
 const { createHash } = require("node:crypto");
 const contract = require("../../shared/firebaseEnvironment.cjs");
 const countdownChecks = require("./countdownChecks.cjs");
-const { ROOT, checkRequirements, createSession, createEmulatorEnvironment, assertPortsFree, removeSession, validateInheritedDestinations } = require("./session.cjs");
+const { ROOT, checkRequirements, createSession, createSocketEnvironment, assertPortsFree, removeSession, validateInheritedDestinations } = require("./session.cjs");
 const { Processes, failure } = require("./processes.cjs");
 const { Evidence, assertRulesEvidence, assertTap, assertLintEvidence } = require("./evidence.cjs");
 
 const processes = new Processes();
 const allPorts = [...Object.values(contract.EMULATORS), 14400, 14500, 19150, 3100];
-let currentSession, emulatorEnvironment, evidence, stopping, interruption;
+let currentSession, emulatorEnvironment, browserEnvironment, evidence, stopping, interruption;
 
 async function stop() {
   if (stopping) return stopping;
   stopping = (async () => {
     const stopped = await processes.stop();
     emulatorEnvironment?.cleanup();
+    browserEnvironment?.cleanup();
     if (currentSession) {
       await assertPortsFree(allPorts);
       const file = path.join(currentSession.session, "session.json");
@@ -87,11 +88,11 @@ async function main(mode) {
     console.log(`Copia del estado actual: ${currentSession.workspace}`);
   });
   const { workspace, env, session } = currentSession;
-  const run = (name, args, { kind = "tests", timeoutMs = 180000, cwd = workspace } = {}) =>
+  const run = (name, args, { kind = "tests", timeoutMs = 180000, cwd = workspace, env: childEnv = env } = {}) =>
     stage(name, async log => {
       const stderrLog = ["contracts-input", "contracts-built"].includes(name) ? `${log}.stderr` : undefined;
       try {
-        const result = await processes.run(args, { cwd, env, log, stderrLog, name, kind, timeoutMs });
+        const result = await processes.run(args, { cwd, env: childEnv, log, stderrLog, name, kind, timeoutMs });
         evidence.data.stages.find(s => s.name === name).exitCode = result.code;
       }
       catch (error) {
@@ -126,7 +127,7 @@ async function main(mode) {
       });
       if (error) throw error;
     }, "tests");
-    await run("tooling", ["--test", "--test-reporter=tap", "scripts/local/tooling.test.mjs", "functions/scripts/lint.test.cjs"]);
+    await run("tooling", ["--test", "--test-reporter=tap", "scripts/local/tooling.test.mjs", "scripts/local/nextLifecycle.test.mjs", "functions/scripts/lint.test.cjs"]);
     try {
       await run("contracts-tests", ["--test", "--test-reporter=tap", "functions/scripts/contracts.test.cjs"], { timeoutMs: 300000 });
     } finally {
@@ -144,7 +145,7 @@ async function main(mode) {
   }
   await stage("emulators", async log => {
     env.RESERVA_LOCAL_EMULATOR_LOG = log;
-    emulatorEnvironment = createEmulatorEnvironment(env);
+    emulatorEnvironment = createSocketEnvironment(env);
     const emulators = processes.start([requirements.cli, "emulators:start", "--config", "firebase.local.json", "--project", contract.LOCAL_PROJECT,
       "--only", "auth,firestore,functions,storage", "--non-interactive"], { cwd: workspace, env: emulatorEnvironment.env, log, name: "emulators" });
     await waitForEmulators(emulators, env);
@@ -176,7 +177,8 @@ async function main(mode) {
     const next = processes.start(["scripts/runNextDev.cjs"], { cwd: workspace, env: { ...env, NODE_ENV: "development" },
       log: path.join(evidence.directory, "next.log"), name: "next" });
     if (integration) {
-      await run("browser", ["--test", "--test-reporter=tap", "scripts/local/browser.test.mjs"], { timeoutMs: 360000 });
+      browserEnvironment = createSocketEnvironment(env);
+      await run("browser", ["--test", "--test-reporter=tap", "scripts/local/browser.test.mjs"], { timeoutMs: 360000, env: browserEnvironment.env });
       if (next.done) throw failure("Next se detuvo durante la prueba.");
       await stage("stop-services", stop);
       await run("offline", ["--test", "--test-reporter=tap", "scripts/local/offline.test.mjs"]);

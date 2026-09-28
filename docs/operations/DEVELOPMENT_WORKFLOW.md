@@ -204,10 +204,21 @@ Chrome. Las pruebas escriben `integration-evidence.json`, `browser-evidence.json
 No se exporta la base de emuladores. La integración elimina únicamente sus
 documentos, archivos y usuario; los datos restantes desaparecen al detener la sesión.
 
-En Unix, sólo los procesos de emuladores usan un directorio privado corto
-`/tmp/reserva-emulators-*`: evita truncar los nombres de sockets de Functions en
-workspaces anidados de CI. El lanzador lo elimina después de detener sus procesos;
-HOME, credenciales, destinos demo y bloqueo de red conservan la misma configuración.
+En Unix, emuladores y browser reciben directorios privados cortos y distintos
+`/tmp/reserva-sockets-*`: evita superar el límite de los sockets de Functions y
+del `SingletonSocket` de Chromium en workspaces anidados de CI. El lanzador los
+elimina después de detener sus procesos, también ante fallo del browser. HOME,
+perfil del browser, credenciales, destinos demo y bloqueo de red se conservan;
+no se desactiva el sandbox de Chromium ni se cambian sus flags/versiones.
+
+Next comprueba disponibilidad en `127.0.0.1:3100`, la dirección donde escucha.
+Los probes simultáneos sobre `0.0.0.0` y `::` colisionaban entre sí en Linux:
+el socket pertenecía al propio launcher, no a un servidor anterior. Se mantiene
+3100 por los orígenes/CORS del harness. `nextLifecycle.test.mjs` verifica rechazo
+de un listener real, arranque único, URL y cierre del árbol/puerto tanto tras
+éxito como fallo del browser; el stage browser comprueba Next y Chromium reales.
+El wrapper reenvía SIGINT/SIGTERM al CLI de Next y espera su salida, también
+cuando un supervisor anidado señala sólo su PID dentro de un grupo compartido.
 
 La prueba Auth de bienvenida correlaciona el log estructurado del processor,
 capturado por el lanzador en `emulators.log`, con el UID, `sourceEventId` y

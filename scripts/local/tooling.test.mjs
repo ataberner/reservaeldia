@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import net from "node:net";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { Processes } = require("./processes.cjs");
 const { Evidence, assertRulesEvidence, assertTap, assertLintEvidence } = require("./evidence.cjs");
-const { ROOT, cleanEnvironment } = require("./session.cjs");
+const { ROOT, cleanEnvironment, createEmulatorEnvironment } = require("./session.cjs");
 const { readWorkflows, checkWorkflows } = require("./ciChecks.cjs");
+const { welcomeProcessorEntries, matchesWelcomeDelivery } = require("./welcomeProcessorEvidence.cjs");
 
 test("CI syntax, minimal permissions and Hosting dependency graph", () => {
   const workflows = readWorkflows(ROOT);
@@ -87,4 +89,54 @@ test("lint evidence must contain analyzed sources and agree with the process exi
     fs.writeFileSync(path.join(dir, "lint-evidence.json"), JSON.stringify(report));
     assert.throws(() => assertLintEvidence(dir, 0), /incompleto|inconsistente/);
   }
+});
+
+test("nested CI paths keep emulator worker sockets distinct and clean only their owned temp", async () => {
+  const env = cleanEnvironment(path.join(ROOT, ".local-isolation", "prepared-synthetic", "workspace", ".local-isolation", "session-synthetic"));
+  const original = { ...env };
+  const first = createEmulatorEnvironment(env), second = createEmulatorEnvironment(env);
+  const servers = [];
+  try {
+    assert.deepEqual(env, original);
+    if (process.platform === "win32") {
+      assert.strictEqual(first.env, env);
+      return;
+    }
+    assert.notEqual(first.env.TMPDIR, second.env.TMPDIR);
+    assert.equal(fs.statSync(first.env.TMPDIR).mode & 0o777, 0o700);
+    assert.deepEqual(first.env, { ...env, TEMP: first.env.TMPDIR, TMP: first.env.TMPDIR, TMPDIR: first.env.TMPDIR });
+    for (const id of ["561534061ac4158f", "cf01ef9803a6f5c1"]) {
+      const socket = path.join(first.env.TMPDIR, `fire_emu_${id}.sock`);
+      assert.ok(Buffer.byteLength(socket) < 104, "worker name must fit a Unix socket path");
+      const server = net.createServer();
+      servers.push(server);
+      await new Promise((resolve, reject) => { server.once("error", reject); server.listen(socket, resolve); });
+    }
+  } finally {
+    await Promise.all(servers.map(server => new Promise(resolve => server.close(resolve))));
+    first.cleanup();
+    if (process.platform !== "win32") {
+      assert.equal(fs.existsSync(first.env.TMPDIR), false);
+      assert.equal(fs.existsSync(second.env.TMPDIR), true);
+    }
+    second.cleanup();
+    first.cleanup(); // Repeated stop remains safe.
+  }
+});
+
+test("welcome evidence requires the processor record correlated with its persisted delivery", () => {
+  const delivery = { sourceEventId: "synthetic-auth-event", correlationId: "welcome-synthetic" };
+  const entry = { ...delivery, message: "welcome_registration", template: "welcome", userId: "synthetic-user",
+    mode: "disabled", state: "skipped", errorCode: "EMAIL_DISABLED", attempts: 0, messageId: null };
+  const line = value => `>  ${JSON.stringify(value)}\n`;
+  assert.deepEqual(welcomeProcessorEntries(`Auth emitted welcome_registration\n${line({ ...entry, message: "auth.user.create" })}${line({ ...entry, userId: "other-user" })}> {incomplete\n`, entry.userId), []);
+  const records = welcomeProcessorEntries(`\u001b[90m> \u001b[39m ${JSON.stringify(entry)}\r\n`, entry.userId);
+  assert.equal(records.length, 1);
+  assert.equal(matchesWelcomeDelivery(records[0], delivery), true);
+  for (const change of [{ sourceEventId: "other-event" }, { correlationId: "welcome-other" },
+    { state: "already_exists" }, { attempts: 1 }, { mode: "production" }, { errorCode: null }, { messageId: "sent" }])
+    assert.equal(matchesWelcomeDelivery({ ...entry, ...change }, delivery), false);
+  assert.equal(matchesWelcomeDelivery({}, {}), false);
+  // A repeated trigger is observable even though it cannot rewrite the ledger.
+  assert.equal(welcomeProcessorEntries(line(entry) + line({ ...entry, state: "already_exists" }), entry.userId).length, 2);
 });

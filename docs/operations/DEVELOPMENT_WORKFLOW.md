@@ -204,6 +204,17 @@ Chrome. Las pruebas escriben `integration-evidence.json`, `browser-evidence.json
 No se exporta la base de emuladores. La integración elimina únicamente sus
 documentos, archivos y usuario; los datos restantes desaparecen al detener la sesión.
 
+En Unix, sólo los procesos de emuladores usan un directorio privado corto
+`/tmp/reserva-emulators-*`: evita truncar los nombres de sockets de Functions en
+workspaces anidados de CI. El lanzador lo elimina después de detener sus procesos;
+HOME, credenciales, destinos demo y bloqueo de red conservan la misma configuración.
+
+La prueba Auth de bienvenida correlaciona el log estructurado del processor,
+capturado por el lanzador en `emulators.log`, con el UID, `sourceEventId` y
+`correlationId` del delivery persistido. Usa la espera acotada de procesamiento:
+la escritura del delivery puede preceder la llegada del log. No depende de una
+lectura inmediata de `firebase-debug.log`, cuyo transporte de archivo es asíncrono.
+
 Para borrar una sesión propia ya detenida:
 
 ```powershell

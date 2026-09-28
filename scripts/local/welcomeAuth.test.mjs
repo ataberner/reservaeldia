@@ -10,6 +10,7 @@ import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWit
 
 const require = createRequire(import.meta.url);
 const contract = require("../../shared/firebaseEnvironment.cjs");
+const { welcomeProcessorEntries, matchesWelcomeDelivery } = require("./welcomeProcessorEvidence.cjs");
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 test("real Auth emulator emits welcome creation events for password/Google, never for an existing login", { timeout: 120000 }, async () => {
@@ -21,6 +22,9 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
   assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, "127.0.0.1:19099");
   assert.equal(process.env.FIRESTORE_EMULATOR_HOST, "127.0.0.1:18080");
   assert.equal(JSON.parse(readFileSync(path.join(session, "session.json"))).stopped, undefined);
+  const processorLog = process.env.RESERVA_LOCAL_EMULATOR_LOG;
+  assert.ok(processorLog, "The launcher must provide its captured emulator output");
+  const processorEntries = uid => welcomeProcessorEntries(readFileSync(processorLog, "utf8"), uid);
   const { ensureAdminApp } = require("../../functions/lib/firebaseAdmin.js");
   const admin = ensureAdminApp();
   const db = admin.firestore();
@@ -42,17 +46,23 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
         assert.match(data.correlationId, collection === "welcomeEmailDeliveries" ? /^welcome-/ : /^new-user-notification-/);
         assert.equal(data.messageId, undefined);
         assert.equal(data.email, undefined);
+        // Persistence precedes logging. Wait for this processor's exact event
+        // and correlation in the existing bounded completion loop, not a debug
+        // file flush. A notice that Auth emitted an event cannot satisfy this.
+        if (collection === "welcomeEmailDeliveries" &&
+          !processorEntries(uid).some(entry => matchesWelcomeDelivery(entry, data))) {
+          await pause(100);
+          continue;
+        }
         return data;
       }
       await pause(100);
     }
-    assert.fail("Auth creation event did not reach the welcome processor");
+    assert.fail("Auth creation event did not produce a correlated delivery and processor log");
   }
-  const eventLogCount = uid => {
-    // Observe existing sanitized processor logs; no additional collection/instrumentation.
-    const source = readFileSync("firebase-debug.log", "utf8");
-    return source.split("\n").filter(line => line.includes('"message":"welcome_registration"') && line.includes(`"userId":"${uid}"`)).length;
-  };
+  // Include already_exists logs: an unexpected repeated trigger must fail even
+  // when the processor's idempotency keeps the persisted delivery unchanged.
+  const eventLogCount = uid => processorEntries(uid).length;
   try {
     const id = randomUUID(), email = `welcome-${id}@example.test`, password = `Synthetic-${id}!`;
     const passwordAccount = await createUserWithEmailAndPassword(auth, email, password);
@@ -61,6 +71,7 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
     assert.equal(passwordAccount.user.displayName, null);
     const first = await delivery(uid);
     const internalFirst = await delivery(uid, "newUserNotificationDeliveries");
+    assert.equal(internalFirst.sourceEventId, first.sourceEventId);
     const countBefore = eventLogCount(uid);
     assert.ok(countBefore > 0, "must observe the real event in processor logs");
     await signOut(auth);
@@ -83,6 +94,7 @@ test("real Auth emulator emits welcome creation events for password/Google, neve
       assert.equal(google.user.displayName, "Agustín Prueba");
       const googleFirst = await delivery(google.user.uid);
       const googleInternalFirst = await delivery(google.user.uid, "newUserNotificationDeliveries");
+      assert.equal(googleInternalFirst.sourceEventId, googleFirst.sourceEventId);
       const googleCount = eventLogCount(google.user.uid);
       assert.ok(googleCount > 0);
       await signOut(auth);

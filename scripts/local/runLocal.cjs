@@ -3,18 +3,19 @@ const path = require("node:path");
 const { createHash } = require("node:crypto");
 const contract = require("../../shared/firebaseEnvironment.cjs");
 const countdownChecks = require("./countdownChecks.cjs");
-const { ROOT, checkRequirements, createSession, assertPortsFree, removeSession, validateInheritedDestinations } = require("./session.cjs");
+const { ROOT, checkRequirements, createSession, createEmulatorEnvironment, assertPortsFree, removeSession, validateInheritedDestinations } = require("./session.cjs");
 const { Processes, failure } = require("./processes.cjs");
 const { Evidence, assertRulesEvidence, assertTap, assertLintEvidence } = require("./evidence.cjs");
 
 const processes = new Processes();
 const allPorts = [...Object.values(contract.EMULATORS), 14400, 14500, 19150, 3100];
-let currentSession, evidence, stopping, interruption;
+let currentSession, emulatorEnvironment, evidence, stopping, interruption;
 
 async function stop() {
   if (stopping) return stopping;
   stopping = (async () => {
     const stopped = await processes.stop();
+    emulatorEnvironment?.cleanup();
     if (currentSession) {
       await assertPortsFree(allPorts);
       const file = path.join(currentSession.session, "session.json");
@@ -142,8 +143,10 @@ async function main(mode) {
     await run("compatibility", ["scripts/local/productionCompatibility.cjs"]);
   }
   await stage("emulators", async log => {
+    env.RESERVA_LOCAL_EMULATOR_LOG = log;
+    emulatorEnvironment = createEmulatorEnvironment(env);
     const emulators = processes.start([requirements.cli, "emulators:start", "--config", "firebase.local.json", "--project", contract.LOCAL_PROJECT,
-      "--only", "auth,firestore,functions,storage", "--non-interactive"], { cwd: workspace, env, log, name: "emulators" });
+      "--only", "auth,firestore,functions,storage", "--non-interactive"], { cwd: workspace, env: emulatorEnvironment.env, log, name: "emulators" });
     await waitForEmulators(emulators, env);
     const manifestFile = path.join(session, "rules-source.json");
     const manifest = JSON.parse(fs.readFileSync(manifestFile));

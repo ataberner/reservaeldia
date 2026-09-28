@@ -53,6 +53,18 @@ function findFirebaseCli() {
   return result;
 }
 
+function createEmulatorEnvironment(env) {
+  // CLI 14 uses Unix sockets under TMPDIR. Nested CI workspaces exceed the
+  // socket path limit and truncate different worker names to the same address.
+  // Keep this private directory owned by the launcher; Windows uses named pipes.
+  if (process.platform === "win32") return { env, cleanup() {} };
+  const temp = fs.mkdtempSync("/tmp/reserva-emulators-");
+  return {
+    env: { ...env, TEMP: temp, TMP: temp, TMPDIR: temp },
+    cleanup() { fs.rmSync(temp, { recursive: true, force: true }); },
+  };
+}
+
 async function assertPortsFree(ports) {
   for (const port of ports) {
     await new Promise((resolve, reject) => {
@@ -224,4 +236,4 @@ function removeSession(target) {
   fs.rmdirSync(absolute);
 }
 
-module.exports = { ROOT, cleanEnvironment, findFirebaseCli, assertPortsFree, checkRequirements, validateInheritedDestinations, copyWorkspace, createSession, removeSession };
+module.exports = { ROOT, cleanEnvironment, createEmulatorEnvironment, findFirebaseCli, assertPortsFree, checkRequirements, validateInheritedDestinations, copyWorkspace, createSession, removeSession };

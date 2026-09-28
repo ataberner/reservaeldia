@@ -59,6 +59,10 @@ test("keeps Gallery changes non-terminal until the user explicitly finishes the 
   assert.match(panelSource, /controlLeafIds: \[completionLeafId\]/);
   assert.match(panelSource, /onPersisted: \(\) =>/);
   assert.match(panelSource, /verifiedLeaf\?\.status !== DESIGNER_AI_LEDGER_STATUSES\.RESOLVED_BY_CONTROL/);
+  assert.match(panelSource, /await confirmDesignerAiPersistence\(window, operation\.isCurrent\)/);
+  assert.match(panelSource, /JSON\.stringify\(expectedGallery\) !== JSON\.stringify\(savedGallery\)/);
+  assert.match(panelSource, /key=\{`\$\{request\.type\}:\$\{request\.galleryId \|\| "cover"\}:\$\{controlState\.finishing === true\}`\}/);
+  assert.doesNotMatch(panelSource, /Los cambios realizados quedaron guardados/);
 });
 
 test("Gallery cancellation returns to chat without recording completion and keeps unrelated controls out", () => {

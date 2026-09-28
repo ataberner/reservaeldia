@@ -9,6 +9,7 @@ const {
   buildDesignerAiGalleryCompletionLeafId,
   buildDesignerAiConversationBrief,
   buildDesignerAiLedger,
+  captureDesignerAiActionEvidence,
   mapDesignerAiActionToLeafIds,
   prepareDesignerAiConversationEntry,
   reconcileDesignerAiConversationState,
@@ -102,19 +103,14 @@ test("ledger expands RSVP, Gifts and media into structural leaves", () => {
 });
 
 test("completeness is true only when every available leaf is terminal", () => {
-  const initial = build();
+  const values = { ...fixture().values, documentName: "Nuestra fiesta", story: "Nos conocimos en la universidad" };
+  const initial = build({ values });
   const resolutions = initial.leaves
     .filter((leaf) => leaf.status !== DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE)
-    .map((leaf) => ({
-      leafId: leaf.id,
-      status: DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER,
-      provenance: "user_current_session",
-      rule: null,
-      fingerprint: leaf.fingerprint,
-    }));
-  const complete = build({ conversationState: { resolutions } });
+    .map((leaf) => terminalResolution(leaf));
+  const complete = build({ values, conversationState: { resolutions } });
   assert.equal(complete.completion.complete, true);
-  const incomplete = build({ conversationState: { resolutions: resolutions.slice(1) } });
+  const incomplete = build({ values, conversationState: { resolutions: resolutions.slice(1) } });
   assert.equal(incomplete.completion.complete, false);
   assert.ok(incomplete.completion.unresolvedLeafIds.length > 0);
 });
@@ -148,14 +144,19 @@ test("automatic event name is safe, normalized and rejects samples", () => {
 });
 
 test("automatic name policy follows corrections while explicit names remain explicit", () => {
-  const initial = build();
-  const snapshot = snapshotFor(initial);
+  // Receipts now require the actual post-action state, not boolean success mocks.
+  const makeSnapshot = (name, secondaryName = "Luz") => {
+    const values = { ...fixture().values, documentName: name, people: { primaryName: "Ana", secondaryName } };
+    return snapshotFor(build({ values }), values);
+  };
+  const receipt = (action, current) => ({ action, executed: true, effective: true, persisted: true, evidence: captureDesignerAiActionEvidence(action, current) });
+  const snapshot = makeSnapshot("Casamiento Ana y Luz");
   const automatic = reconcileDesignerAiConversationState({
     snapshot,
-    actions: [
+    actionResults: [
       { type: "event.set_people", arguments: { primaryName: "Ana", secondaryName: "Luz" } },
       { type: "document.set_name", arguments: { name: "Casamiento Ana y Luz" } },
-    ],
+    ].map((action) => receipt(action, snapshot)),
     resolutions: [{
       leafId: "document.name",
       status: "resolved_by_rule",
@@ -164,16 +165,16 @@ test("automatic name policy follows corrections while explicit names remain expl
   });
   assert.deepEqual(automatic.namePolicy, { mode: "automatic", lastAutomaticName: "Casamiento Ana y Luz" });
   const corrected = reconcileDesignerAiConversationState({
-    snapshot,
+    snapshot: makeSnapshot("Casamiento Ana y Lucía", "Lucía"),
     previousState: automatic,
-    actions: [{ type: "document.set_name", arguments: { name: "Casamiento Ana y Lucía" } }],
+    actionResults: [receipt({ type: "document.set_name", arguments: { name: "Casamiento Ana y Lucía" } }, makeSnapshot("Casamiento Ana y Lucía", "Lucía"))],
     resolutions: [{ leafId: "document.name", status: "resolved_by_rule", rule: DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME }],
   });
   assert.equal(corrected.namePolicy.lastAutomaticName, "Casamiento Ana y Lucía");
   const explicit = reconcileDesignerAiConversationState({
-    snapshot,
+    snapshot: makeSnapshot("Nuestra fiesta"),
     previousState: corrected,
-    actions: [{ type: "document.set_name", arguments: { name: "Nuestra fiesta" } }],
+    actionResults: [receipt({ type: "document.set_name", arguments: { name: "Nuestra fiesta" } }, makeSnapshot("Nuestra fiesta"))],
   });
   assert.equal(explicit.namePolicy.mode, "explicit");
 });
@@ -274,11 +275,21 @@ test("legacy drafts enter once as first_entry and persist an unambiguous reentry
 });
 
 function terminalResolution(leaf, status = DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) {
+  // These fixtures deliberately omit end times, use manual addresses and leave
+  // slot b empty. Such choices require their semantic rule, not a fictitious
+  // user value. Gallery completion requires the explicit human control.
+  let rule = null;
+  if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) {
+    if (leaf.id.endsWith(".end_time")) rule = "optional_end_time_omitted";
+    if (leaf.id.endsWith(".place_selection") || leaf.id === "media.gallery.gallery-1.slot.b") rule = "leave_empty";
+    if (rule) status = DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE;
+    if (leaf.id.endsWith(".guided_completion")) status = DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_CONTROL;
+  }
   return {
     leafId: leaf.id,
     status,
     provenance: "user_current_session",
-    rule: null,
+    rule,
     fingerprint: leaf.fingerprint,
   };
 }

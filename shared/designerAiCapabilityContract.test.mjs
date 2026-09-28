@@ -33,6 +33,32 @@ test("the versioned allowlist keeps model and trusted-control actions disjoint",
     DESIGNER_AI_MODEL_ACTION_TYPES.length + DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES.length);
 });
 
+test("calendar validation rejects impossible dates, including non-leap February", () => {
+  for (const [date, valid] of [["2027-99-99", false], ["2027-02-29", false], ["2028-02-29", true], ["2100-02-29", false], ["2027-04-31", false], ["2027-05-10", true]]) {
+    assert.equal(validateDesignerAiActionBatch([{ type: "event.set_datetime", arguments: { phase: "ceremony", date, startTime: null, endTime: null } }], { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot }).ok, valid, date);
+  }
+});
+
+test("Gallery control rejects nonexistent indices and inconsistent cell-id/index pairs", () => {
+  for (const [cellId, cellIndex, valid] of [[null, 999, false], ["cell-a", 1, false], ["cell-a", -1, false], ["missing", 0, false], ["cell-b", 1, true], [null, 0, true]]) {
+    assert.equal(validateDesignerAiControlRequest({ type: "gallery_cell_upload", galleryId: "gallery-1", cellId, cellIndex }, snapshot).ok, valid);
+  }
+  assert.equal(validateDesignerAiActionBatch([{ type: "gallery.move_photo", arguments: { galleryId: "gallery-1", sourceCellId: "cell-a", sourceIndex: 1, targetCellId: "cell-b", targetIndex: 0 } }], { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot }).ok, false);
+});
+
+test("Party respects the effective sequential mode for actions and controls", () => {
+  const mode = (mode) => ({ type: "event.set_mode", arguments: { mode } });
+  const party = { type: "event.set_datetime", arguments: { phase: "party", date: "2027-05-10", startTime: null, endTime: null } };
+  const validate = (actions) => validateDesignerAiActionBatch(actions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot }).ok;
+  assert.equal(validate([party, mode("ceremony_party")]), false);
+  assert.equal(validate([mode("ceremony_party"), party]), true);
+  assert.equal(validate([mode("ceremony_party"), mode("single"), party]), false);
+  const control = { type: "google_place_picker", phase: "party" };
+  assert.equal(validateDesignerAiControlRequest(control, snapshot).ok, false);
+  assert.equal(validateDesignerAiControlRequest(control, snapshot, { actions: [mode("ceremony_party")] }).ok, true);
+  assert.equal(validateDesignerAiControlRequest(control, snapshot, { actions: [mode("ceremony_party"), mode("single")] }).ok, false);
+});
+
 test("accepts a valid multi-action model batch against the current snapshot", () => {
   const result = validateDesignerAiActionBatch([
     { type: "document.set_name", arguments: { name: "Boda de Ana y Luz" } },

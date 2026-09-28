@@ -9,6 +9,32 @@ import ledgerRuntime from "../../../shared/designerAiConversationLedger.js";
 
 const { buildDesignerAiConversationBrief } = ledgerRuntime;
 
+test("hidden banking data is omitted from callable context without changing local revision or fingerprints", () => {
+  const build = (alias, giftListUrl = "https://example.test/a") => buildDesignerAiCapabilitySnapshot({
+    renderSnapshot: { objetos: [], gifts: { enabled: true, bank: { alias, cbu: "hidden-cbu-123" }, visibility: { alias: false, cbu: false }, giftListUrl } },
+  });
+  const original = build("hidden-alias-123");
+  const changed = build("hidden-alias-456");
+  const linkChanged = build("hidden-alias-123", "https://example.test/b");
+  assert.notEqual(original.revision, changed.revision);
+  assert.notEqual(original.revision, linkChanged.revision);
+  assert.notEqual(original.ledger.leaves.find((l) => l.id === "gifts.method.giftListLink.value").fingerprint, linkChanged.ledger.leaves.find((l) => l.id === "gifts.method.giftListLink.value").fingerprint);
+  const before = JSON.stringify(original);
+  const payload = buildDesignerAiCallablePayload({ message: "Continuemos", clientMessageId: "privacy", snapshot: original, recentTurns: [{ role: "user", content: "Antes usábamos hidden-alias-123 y hidden-cbu-123" }] });
+  assert.equal(JSON.stringify(original), before);
+  assert.equal(payload.capabilitySnapshot.revision, original.revision);
+  assert.equal(JSON.stringify(payload).includes("hidden-alias-123"), false);
+  assert.equal(JSON.stringify(payload).includes("hidden-cbu-123"), false);
+  assert.equal(JSON.stringify(payload).includes("contentRevision"), false);
+  assert.equal(payload.capabilitySnapshot.values.gifts.methods.alias.configured, true);
+});
+
+test("disabled Gifts minimizes even methods whose individual visible flag remains true", () => {
+  const snapshot = buildDesignerAiCapabilitySnapshot({ renderSnapshot: { objetos: [], gifts: { enabled: false, bank: { alias: "disabled-alias" }, visibility: { alias: true } } } });
+  const payload = buildDesignerAiCallablePayload({ message: "Continuemos", clientMessageId: "privacy-disabled", snapshot });
+  assert.equal(JSON.stringify(payload).includes("disabled-alias"), false);
+});
+
 const fieldsSchema = [
   { key: "event_primary_person_name", eventDetailsRole: "primary_person_name", type: "text", applyTargets: [] },
   { key: "event_secondary_person_name", eventDetailsRole: "secondary_person_name", type: "text", applyTargets: [] },

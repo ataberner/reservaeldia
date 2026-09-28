@@ -1,6 +1,7 @@
 // components/MiniToolbarTabImagen.jsx
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
 import { Grid3X3, GripVertical, Loader2, Plus, Upload } from "lucide-react";
 import GaleriaDeImagenes from "@/components/GaleriaDeImagenes";
 import {
@@ -344,6 +345,7 @@ export default function MiniToolbarTabImagen({
   const [localReplacementUploadState, setLocalReplacementUploadState] = useState({});
   const isMountedRef = useRef(true);
   const galleryCreationSelectorRef = useRef(null);
+  const beginImageOperation = useEditorDocumentOperation();
   const galleryResizeSelectorRef = useRef(null);
   const galleryPhotoListRef = useRef(null);
   const galleryPhotoRowNodesRef = useRef(new Map());
@@ -959,6 +961,7 @@ export default function MiniToolbarTabImagen({
 
     const isEmptyTarget = options.empty === true || target?.isEmpty === true;
     const safePositionLabel = positionLabel || (isEmptyTarget ? "esta celda" : "la foto seleccionada");
+    const operation = beginImageOperation();
     setPanelNoticeSafe(
       isEmptyTarget
         ? `Selecciona una imagen del sistema para agregar en ${safePositionLabel}.`
@@ -975,11 +978,12 @@ export default function MiniToolbarTabImagen({
         setPanelNoticeSafe(`Subiendo imagen para ${safePositionLabel}...`);
       },
       onUploadedImage: (uploadedUrl) =>
-        replaceGalleryPhotoTargetWithUpload(galleryId, target, uploadedUrl),
+        operation.run(() => replaceGalleryPhotoTargetWithUpload(galleryId, target, uploadedUrl)),
       onUploadError: () => {
         setPanelNoticeSafe("No se pudo actualizar esa foto. Conservamos la imagen anterior.");
       },
       onUploadSettled: () => {
+        operation.cancel();
         clearReplacementUpload(uploadKey);
       },
     });
@@ -989,6 +993,7 @@ export default function MiniToolbarTabImagen({
     clearReplacementUpload,
     isReplacementUploadActive,
     replaceGalleryPhotoTargetWithUpload,
+    beginImageOperation,
     setPanelNoticeSafe,
   ]);
 
@@ -1397,6 +1402,7 @@ export default function MiniToolbarTabImagen({
       return;
     }
 
+    const operation = beginImageOperation();
     abrirSelector({
       onUploadStart: () => {
         beginReplacementUpload({
@@ -1406,11 +1412,12 @@ export default function MiniToolbarTabImagen({
         setPanelNoticeSafe("Subiendo imagen de portada...");
       },
       onUploadedImage: (uploadedUrl) =>
-        updateCoverImage(uploadedUrl, { syncLinkedVisuals: true }),
+        operation.run(() => updateCoverImage(uploadedUrl, { syncLinkedVisuals: true })),
       onUploadError: () => {
         setPanelNoticeSafe("No se pudo actualizar la portada. Conservamos la imagen anterior.");
       },
       onUploadSettled: () => {
+        operation.cancel();
         clearReplacementUpload(uploadKey);
       },
     });
@@ -1421,6 +1428,7 @@ export default function MiniToolbarTabImagen({
     coverState.hasImage,
     isReplacementUploadActive,
     updateCoverImage,
+    beginImageOperation,
     setPanelNoticeSafe,
   ]);
 

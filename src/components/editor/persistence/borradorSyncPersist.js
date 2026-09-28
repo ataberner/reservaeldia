@@ -110,15 +110,7 @@ export async function persistBorradorSyncState({
         })
       : null;
 
-  await persistEditorSessionSnapshot({
-    state: {
-      ...safeState,
-      editorSession: session,
-      slug: safeSlug,
-    },
-    reason,
-    readOnly,
-    patch: {
+  const persistedState = {
       ...(normalizeText(safeState.nombre)
         ? { nombre: normalizeText(safeState.nombre) }
         : {}),
@@ -131,12 +123,19 @@ export async function persistBorradorSyncState({
         ? { templateAuthoringDraft: normalizedAuthoring }
         : {}),
       ...(normalizedTemplateInput ? { templateInput: normalizedTemplateInput } : {}),
-    },
+  };
+  await persistEditorSessionSnapshot({
+    state: { ...safeState, editorSession: session, slug: safeSlug },
+    reason,
+    readOnly,
+    patch: persistedState,
   });
 
   if (session.kind === "template") {
     return {
       ok: true,
+      documentId: safeSlug,
+      persistedState,
     };
   }
 
@@ -175,5 +174,7 @@ export async function persistBorradorSyncState({
 
   return {
     ok: true,
+    documentId: safeSlug,
+    persistedState,
   };
 }

@@ -5,6 +5,7 @@ import {
   sanitizeCapabilitySnapshot,
 } from "../shared/designerAiCapabilityContract.js";
 import serviceModule from "./lib/designerAi/service.js";
+import { buildDesignerAiCallablePayload, buildDesignerAiCapabilitySnapshot } from "../src/domain/editor/designerAiCapabilities.js";
 
 const {
   buildDesignerAiClientCompatibilityResponse,
@@ -17,6 +18,42 @@ const {
   validateDesignerAiChatPayload,
   validateDesignerAiModelResult,
 } = serviceModule;
+
+for (const position of ["before", "ends at limit", "starts at limit", "crosses", "after", "multiple", "normal"]) {
+  test(`M1 complete client -> provider -> repair redacts before truncating: ${position}`, async () => {
+    const secret = "SECRET_ALIAS_TEST_93841";
+    const text = position === "before" ? `Antes ${secret} fin` :
+      position === "ends at limit" ? "x".repeat(700 - secret.length) + secret :
+      position === "starts at limit" ? "x".repeat(700) + secret :
+      position === "crosses" ? "x".repeat(690) + secret + " fin" :
+      position === "after" ? "x".repeat(710) + secret :
+      position === "multiple" ? `${secret} ${secret} ` + "x".repeat(640) + secret : "Una conversación sin datos bancarios.";
+    const local = buildDesignerAiCapabilitySnapshot({ renderSnapshot: { objetos: [], gifts: { enabled: true, bank: { alias: secret }, visibility: { alias: false } } } });
+    const input = buildDesignerAiCallablePayload({ clientMessageId: "redact-boundary", message: "Continuemos", snapshot: local, recentTurns: [{ role: "assistant", content: text }] });
+    assert.equal(input.recentTurns[0].content, text.replaceAll(secret, "[dato bancario oculto]").slice(0, 700));
+    const requests = [];
+    await interpretDesignerAiChat({ payload: input, client: { responses: { create: async (body) => {
+      requests.push(body);
+      return functionResponse({ intent: "clarify", assistantMessage: "Sigamos", actions: [], resolutions: requests.length === 1 ? [{ leafId: "unknown.leaf", status: "resolved_by_rule", rule: "keep_existing" }] : [], controlRequest: null });
+    } } } });
+    assert.equal(requests.length, 2);
+    for (const request of requests) {
+      const serialized = JSON.stringify(request.input);
+      assert.equal(serialized.includes(secret), false);
+      assert.equal(serialized.includes(secret.slice(0, 10)), false); // the old crossing-limit leak
+      assert.equal(request.store, false);
+    }
+  });
+}
+
+for (const [primaryName, provenance, valid] of [["Ana", "existing_user_data", true], ["Ana", "user_current_session", true], ["", "user_current_session", false], ["Ana", "template_value", false], ["Nombre de la novia", "user_current_session", false], ["Ana", "unknown", false]]) {
+  test(`backend enforces keep_existing: ${primaryName || "empty"}/${provenance}`, () => {
+    const input = snapshot({ values: { people: { primaryName, secondaryName: "" } }, leaves: [leaf("event.people.primary_name", "names", "pending", provenance)] });
+    const result = { intent: "apply", assistantMessage: "Conservamos el nombre.", actions: [], controlRequest: null, resolutions: [{ leafId: "event.people.primary_name", status: "resolved_by_rule", rule: "keep_existing" }] };
+    if (valid) assert.doesNotThrow(() => validateDesignerAiModelResult(result, input));
+    else assert.throws(() => validateDesignerAiModelResult(result, input));
+  });
+}
 
 function guidedBlockForLeaf(id, fallback) {
   if (id.startsWith("event.people.")) return "names";
@@ -111,6 +148,29 @@ function functionResponse(result, requestId = "req_test") {
       arguments: JSON.stringify(result),
     }],
   };
+}
+
+for (const enabled of [true, false]) {
+  test(`provider input minimizes hidden banking values server-side (enabled=${enabled})`, async () => {
+    let requestBody;
+    const secrets = { holder: "hidden-holder-synthetic", bank: "hidden-bank-synthetic", cbu: "hidden-cbu-synthetic", cuit: "hidden-cuit-synthetic" };
+    const methods = Object.fromEntries(Object.entries(secrets).map(([key, value]) => [key, { value, visible: false }]));
+    methods.alias = { value: "VISIBLE.ALIAS", visible: true };
+    methods.giftListLink = { value: "https://private.example/list", configured: true, visible: false, contentRevision: "local-fingerprint-only" };
+    await interpretDesignerAiChat({
+      payload: payload({ message: "Continuemos", recentTurns: [{ role: "user", content: `Antes: ${Object.values(secrets).join(", ")}` }], capabilitySnapshot: snapshot({ values: { gifts: { enabled, methods } } }) }),
+      client: { responses: { create: async (body) => {
+        requestBody = body;
+        return functionResponse({ intent: "clarify", assistantMessage: "Sigamos con la invitación.", actions: [], controlRequest: null, resolutions: [] });
+      } } },
+    });
+    const input = JSON.stringify(requestBody.input);
+    for (const secret of Object.values(secrets)) assert.equal(input.includes(secret), false);
+    assert.equal(input.includes("private.example"), false);
+    assert.equal(input.includes("local-fingerprint-only"), false);
+    assert.equal(input.includes("VISIBLE.ALIAS"), enabled);
+    assert.equal(requestBody.store, false);
+  });
 }
 
 test("validates exact payload and rejects canvas or URL exfiltration", () => {

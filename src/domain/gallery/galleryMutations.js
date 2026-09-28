@@ -312,12 +312,8 @@ function resolveDynamicDisplayIndex(gallery, target) {
   return -1;
 }
 
-function moveArrayItem(items, from, to) {
-  const next = [...items];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
-}
+import slotOrder from "../../../shared/gallerySlotOrder.cjs";
+const { moveArrayItem } = slotOrder;
 
 export function getGalleryPhotos(gallery) {
   if (!isGalleryObject(gallery)) return [];

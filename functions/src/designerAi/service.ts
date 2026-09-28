@@ -31,9 +31,11 @@ const capabilityContract = require("../../shared/designerAiCapabilityContract.cj
   containsForbiddenSnapshotData(value: unknown): boolean;
   discardIncompatibleDesignerAiResolutionRules(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot): unknown;
   sanitizeCapabilitySnapshot(value: unknown): DesignerAiCapabilitySnapshot;
+  minimizeDesignerAiGiftValues(value: unknown): Record<string, unknown>;
+  minimizeDesignerAiRecentTurns(turns: unknown, gifts: unknown): Array<{ role: string; content: string }>;
   validateDesignerAiActionBatch(actions: unknown, options: { origin: "model"; snapshot: DesignerAiCapabilitySnapshot }): { ok: boolean; errors: string[] };
-  validateDesignerAiControlRequest(request: unknown, snapshot: DesignerAiCapabilitySnapshot): { ok: boolean; errors: string[] };
-  validateDesignerAiResolutionUpdates(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot): { ok: boolean; errors: string[] };
+  validateDesignerAiControlRequest(request: unknown, snapshot: DesignerAiCapabilitySnapshot, context?: { actions: DesignerAiAction[] }): { ok: boolean; errors: string[] };
+  validateDesignerAiResolutionUpdates(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context?: { actions: DesignerAiAction[] }): { ok: boolean; errors: string[] };
 };
 const conversationLedger = require("../../shared/designerAiConversationLedger.cjs") as {
   DESIGNER_AI_LEDGER_STATUSES: Record<string, string>;
@@ -85,6 +87,7 @@ Reglas seguras:
 - Cuando el usuario pide un conjunto RSVP recomendado, resolvé activación/inactivación exhaustiva, orden, label, tipo, required, opciones y modal; usá catalog_defaults o system_default.
 - Si se mantiene RSVP o Regalos apagado sin configurarlos, registrá cada hoja interna con preserve_while_inactive. No las ocultes.
 - Si Regalos está activo, debe quedar al menos un método visible y completo.
+- Al llegar a Regalos, preguntá primero lista externa o datos bancarios (o respetá la elección ya explícita). Un alias válido por sí solo alcanza; no exijas titular, banco, CBU, CUIT ni lista externa. Para lista externa pedí solo su enlace. En combinación, pedí únicamente los medios elegidos. Configurá cada medio aportado con gifts.set_method: el owner oculta los no confirmados conservando sus valores. Un medio oculto no es un pendiente. Intro y texto del botón son opcionales/default, fuera de la completitud guiada; cambialos solo ante un pedido explícito.
 - Abrir un control no completa una hoja. En portada, el frontend exige un cambio real de fingerprint. En Gallery, cambiar, agregar, eliminar o reordenar fotos no completa la etapa: la hoja media.gallery.{galleryId}.guided_completion se resuelve únicamente cuando el usuario activa la finalización explícita del control local.
 - Cuando nextBlock sea Galleries, su primera hoja pendiente media.gallery.{galleryId}.guided_completion identifica la única Gallery que corresponde editar. Solicitá gallery_cell_upload para ese galleryId y uno de sus slots visibles vigentes; el slot solo define el foco inicial del control y nunca la completitud. No abras varias Galleries a la vez ni saltees a otra mientras esa hoja siga pendiente.
 - Después de la finalización explícita, releé nextBlock. Si identifica otra Gallery, continuá naturalmente con esa única Gallery; si no queda ninguna, continuá con el siguiente pendiente real o con el cierre derivado.
@@ -295,6 +298,7 @@ export function buildDesignerAiModelValues(snapshot: DesignerAiCapabilitySnapsho
   for (const leaf of snapshot.ledger?.leaves || []) {
     if (untrustedProvenance.has(leaf.provenance)) redactUntrustedLeafValue(values, leaf.id);
   }
+  values.gifts = capabilityContract.minimizeDesignerAiGiftValues(values.gifts);
   return values;
 }
 
@@ -371,7 +375,10 @@ function buildOpenAiInput(
   payload: DesignerAiChatPayload,
   userContext: DesignerAiUserContext = {}
 ): Array<Record<string, unknown>> {
-  const turns = payload.recentTurns.filter((turn, index, all) => !(index === all.length - 1 && turn.role === "user" && turn.content === payload.message));
+  const turns = capabilityContract.minimizeDesignerAiRecentTurns(
+    payload.recentTurns.filter((turn, index, all) => !(index === all.length - 1 && turn.role === "user" && turn.content === payload.message)),
+    payload.capabilitySnapshot.values.gifts
+  );
   const modelValues = buildDesignerAiModelValues(payload.capabilitySnapshot);
   const modelSnapshot = {
     ...payload.capabilitySnapshot,
@@ -451,51 +458,16 @@ function augmentAutomaticEventName(result: Omit<DesignerAiPublicResult, "contrac
 }
 
 function validateResolutionSemantics(
-  result: Omit<DesignerAiPublicResult, "contractVersion" | "batchId">,
-  snapshot: DesignerAiCapabilitySnapshot
+  result: Omit<DesignerAiPublicResult, "contractVersion" | "batchId">
 ): string[] {
   const errors: string[] = [];
-  const rules = conversationLedger.DESIGNER_AI_RESOLUTION_RULES;
+  // Rule predicates (including projected values) have one shared authority.
+  // This additional check only ties resolved_from_user to an executable action.
   const statuses = conversationLedger.DESIGNER_AI_LEDGER_STATUSES;
-  const leafById = new Map(snapshot.ledger.leaves.map((leaf) => [leaf.id, leaf]));
-  const actionLeafIds = new Set(
-    result.actions.flatMap((action) => conversationLedger.mapDesignerAiActionToLeafIds(action))
-  );
-  const effectiveEnabled = (owner: "rsvp" | "gifts") => {
-    const action = [...result.actions].reverse().find((item) => item.type === `${owner}.set_enabled`);
-    return action ? action.arguments.enabled === true : snapshot.values[owner]?.enabled === true;
-  };
+  const actionLeafIds = new Set(result.actions.flatMap((action) => conversationLedger.mapDesignerAiActionToLeafIds(action)));
   for (const resolution of result.resolutions) {
-    if (
-      resolution.status === statuses.RESOLVED_FROM_USER &&
-      !actionLeafIds.has(resolution.leafId)
-    ) {
+    if (resolution.status === statuses.RESOLVED_FROM_USER && !actionLeafIds.has(resolution.leafId)) {
       errors.push(`${resolution.leafId} no tiene una action ejecutable que aporte evidencia de usuario.`);
-    }
-    if (resolution.rule === rules.PRESERVE_WHILE_INACTIVE) {
-      const owner = resolution.leafId.startsWith("rsvp.") ? "rsvp" : "gifts";
-      if (effectiveEnabled(owner)) errors.push(`${resolution.leafId} no puede preservarse mientras ${owner} esta activo.`);
-    }
-    if (resolution.rule === rules.SYSTEM_DEFAULT) {
-      if (leafById.get(resolution.leafId)?.provenance !== conversationLedger.DESIGNER_AI_PROVENANCE.SYSTEM_DEFAULT) {
-        errors.push(`${resolution.leafId} no tiene procedencia de default de sistema.`);
-      }
-    }
-    if (resolution.rule === rules.AUTOMATIC_EVENT_NAME) {
-      const peopleAction = [...result.actions].reverse().find((item) => item.type === "event.set_people");
-      const names = peopleAction?.arguments || snapshot.values.people || {};
-      const expected = conversationLedger.buildAutomaticEventName(names.primaryName, names.secondaryName);
-      const nameAction = [...result.actions].reverse().find((item) => item.type === "document.set_name");
-      if (!expected || nameAction?.arguments?.name !== expected) {
-        errors.push("El nombre automatico no coincide con los nombres efectivos.");
-      }
-    }
-    if (resolution.rule === rules.SAME_DAY_PARTY) {
-      const ceremonyAction = [...result.actions].reverse().find((item) => item.type === "event.set_datetime" && item.arguments.phase === "ceremony" && item.arguments.date !== null);
-      const partyAction = [...result.actions].reverse().find((item) => item.type === "event.set_datetime" && item.arguments.phase === "party" && item.arguments.date !== null);
-      const ceremonyDate = ceremonyAction?.arguments?.date || snapshot.values.ceremony?.date;
-      const partyDate = partyAction?.arguments?.date || snapshot.values.party?.date;
-      if (!ceremonyDate || ceremonyDate !== partyDate) errors.push("La regla same_day_party requiere fechas efectivas iguales.");
     }
   }
   return errors;
@@ -532,8 +504,8 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
     snapshot
   ) as unknown[];
   const actionValidation = capabilityContract.validateDesignerAiActionBatch(result.actions, { origin: capabilityContract.DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot });
-  const controlValidation = capabilityContract.validateDesignerAiControlRequest(result.controlRequest, snapshot);
-  const resolutionValidation = capabilityContract.validateDesignerAiResolutionUpdates(safeResolutions, snapshot);
+  const controlValidation = capabilityContract.validateDesignerAiControlRequest(result.controlRequest, snapshot, { actions: result.actions });
+  const resolutionValidation = capabilityContract.validateDesignerAiResolutionUpdates(safeResolutions, snapshot, { actions: result.actions });
   if (!actionValidation.ok || !controlValidation.ok || !resolutionValidation.ok) throw new DesignerAiServiceError("malformed-output", [...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" "));
   const normalizedIntent = intent === "clarify" && (
     result.actions.length > 0 || result.controlRequest !== null
@@ -547,9 +519,10 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   });
   const augmentedResolutions = capabilityContract.validateDesignerAiResolutionUpdates(
     augmented.resolutions,
-    snapshot
+    snapshot,
+    { actions: augmented.actions }
   );
-  const semanticErrors = validateResolutionSemantics(augmented, snapshot);
+  const semanticErrors = validateResolutionSemantics(augmented);
   if (!augmentedActions.ok || !augmentedResolutions.ok || semanticErrors.length > 0) {
     throw new DesignerAiServiceError(
       "malformed-output",

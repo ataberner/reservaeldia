@@ -10,9 +10,8 @@ import {
   resolveEventLocationFromAuthoring,
 } from "./location.js";
 
-function normalizeText(value) {
-  return String(value || "").trim();
-}
+import valueNormalization from "../../../shared/authoringValueNormalization.cjs";
+const { normalizeAuthoringText: normalizeText } = valueNormalization;
 
 function requireEditorMethod(targetWindow, name) {
   const method = readCanvasEditorMethod(name, targetWindow);

@@ -12,10 +12,8 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
-function normalizeStoryTextValue(value) {
-  if (value == null) return "";
-  return String(value).replace(/\r\n/g, "\n");
-}
+import valueNormalization from "../../../shared/authoringValueNormalization.cjs";
+const { normalizeStoryTextValue } = valueNormalization;
 
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};

@@ -1,3 +1,4 @@
+const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 const LEDGER_VERSION = 3;
 
 const DESIGNER_AI_LEDGER_STATUSES = Object.freeze({
@@ -133,6 +134,122 @@ function buildAutomaticEventName(primaryName, secondaryName) {
     return "";
   }
   return `Casamiento ${primary} y ${secondary}`;
+}
+
+function resolutionLeafValue(values, id) {
+  const direct = {
+    "document.name": values.documentName,
+    "event.people.primary_name": values.people?.primaryName,
+    "event.people.secondary_name": values.people?.secondaryName,
+    "event.mode": values.eventMode,
+    "event.dress_code.enabled": values.dressCode?.enabled,
+    "event.dress_code.value": values.dressCode?.value,
+    "story.text": values.story,
+    "media.cover": values.media?.hasCover,
+    "rsvp.enabled": values.rsvp?.enabled,
+    "gifts.enabled": values.gifts?.enabled,
+    "gifts.intro_text": values.gifts?.introText,
+    "gifts.button_text": values.gifts?.buttonText,
+    "rsvp.questions.order": values.rsvp?.questions?.map((q) => q.id),
+  };
+  if (Object.hasOwn(direct, id)) return direct[id];
+  for (const phase of ["ceremony", "party"]) {
+    const key = { date: "date", start_time: "startTime", end_time: "endTime", venue_name: "venueName", address: "address", place_selection: "placeSelected" }[id.replace(`event.${phase}.`, "")];
+    if (id.startsWith(`event.${phase}.`) && key) return values[phase]?.[key];
+  }
+  if (id.startsWith("rsvp.modal.")) return values.rsvp?.modal?.[{ submit_label: "submitLabel", primary_color: "primaryColor" }[id.slice(11)] || id.slice(11)];
+  for (const q of values.rsvp?.questions || []) {
+    if (id.startsWith(`rsvp.question.${q.id}.`)) return q[id.slice(`rsvp.question.${q.id}.`.length)];
+  }
+  for (const [method, data] of Object.entries(values.gifts?.methods || {})) {
+    if (id === `gifts.method.${method}.visible`) return data.visible;
+    if (id === `gifts.method.${method}.value`) return method === "giftListLink" ? data.configured === true : data.value;
+  }
+  for (const gallery of values.galleries || []) {
+    if (id === `media.gallery.${gallery.id}.order`) return gallery.slots;
+    for (const slot of gallery.slots || []) {
+      if (id === `media.gallery.${gallery.id}.slot.${slot.cellId || slot.index}`) return slot.occupied === true;
+    }
+  }
+  return undefined;
+}
+
+function validResolutionValue(id, value) {
+  if (id.endsWith(".date")) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
+    const date = new Date(`${value}T12:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value && !value.startsWith("0000");
+  }
+  if (id.endsWith("_time")) return /^([01]\d|2[0-3]):[0-5]\d$/.test(value || "");
+  if (id === "event.mode") return ["single", "ceremony_party"].includes(value);
+  if (id === "media.cover" || id.endsWith(".place_selection") || id.includes(".slot.") || id === "gifts.method.giftListLink.value") return value === true;
+  if (typeof value === "boolean") return true; // Explicit false is a valid decision.
+  return hasMeaningfulValue(value) && !isLikelyPlaceholder(value);
+}
+
+// Every terminal rule fails closed. Value and provenance have distinct roles:
+// templates/examples/unknown never prove existing user data; omission rules only
+// accept absence; defaults require their own provenance; dependencies require an
+// inactive owner. The same predicates validate proposals on the server and replay.
+function designerAiResolutionRuleError(resolution, snapshot, { actions = [], projectActions = true } = {}) {
+  const id = resolution.leafId;
+  const rule = resolution.rule;
+  const leaf = snapshot?.ledger?.leaves?.find((entry) => entry.id === id);
+  if (!leaf || leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) return "Hoja no disponible.";
+  const values = projectActions ? projectDesignerAiValues(snapshot, actions) : snapshot.values;
+  const value = resolutionLeafValue(values, id);
+  const suppliedByAction = actions.some((action) => mapActionToLeafIds(action).includes(id));
+  const trusted = suppliedByAction || [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(leaf.provenance);
+  const empty = value === "" || value === false || (Array.isArray(value) && !value.length);
+  const lastAction = (type, predicate = () => true) => [...actions].reverse().find((a) => a.type === type && predicate(a));
+  const mode = lastAction("event.set_mode")?.arguments.mode || values.eventMode;
+  if (id.startsWith("event.party.") && mode !== "ceremony_party") return "Party no está activo.";
+  let valid = false;
+  switch (rule) {
+    case DESIGNER_AI_RESOLUTION_RULES.KEEP_EXISTING:
+      valid = !id.endsWith(".guided_completion") && trusted && validResolutionValue(id, value); break;
+    case DESIGNER_AI_RESOLUTION_RULES.OPTIONAL_END_TIME_OMITTED:
+      valid = /^event\.(ceremony|party)\.end_time$/.test(id) && value === ""; break;
+    case DESIGNER_AI_RESOLUTION_RULES.OPTIONAL_VENUE_NAME_OMITTED:
+      valid = /^event\.(ceremony|party)\.venue_name$/.test(id) && value === ""; break;
+    case DESIGNER_AI_RESOLUTION_RULES.LEAVE_EMPTY:
+      valid = empty && (id === "story.text" || /^event\.(ceremony|party)\.(end_time|venue_name)$/.test(id) || /^media\.gallery\..+\.slot\./.test(id));
+      if (/^event\.(ceremony|party)\.place_selection$/.test(id)) {
+        const phase = id.split(".")[1];
+        valid = value === false && validResolutionValue(`event.${phase}.address`, values[phase]?.address);
+      }
+      break;
+    case DESIGNER_AI_RESOLUTION_RULES.PRESERVE_WHILE_INACTIVE: {
+      const owner = id.startsWith("rsvp.") ? "rsvp" : id.startsWith("gifts.") ? "gifts" : null;
+      const enabled = owner && (lastAction(`${owner}.set_enabled`)?.arguments.enabled ?? values[owner]?.enabled);
+      valid = Boolean(owner && id !== `${owner}.enabled` && enabled === false); break;
+    }
+    case DESIGNER_AI_RESOLUTION_RULES.SYSTEM_DEFAULT: {
+      const defaults = { "rsvp.modal.title": RSVP_SYSTEM_DEFAULTS.modalTitle, "rsvp.modal.subtitle": RSVP_SYSTEM_DEFAULTS.modalSubtitle, "rsvp.modal.submit_label": RSVP_SYSTEM_DEFAULTS.submitLabel, "rsvp.modal.primary_color": RSVP_SYSTEM_DEFAULTS.primaryColor, "gifts.intro_text": GIFTS_SYSTEM_DEFAULTS.introText, "gifts.button_text": GIFTS_SYSTEM_DEFAULTS.buttonText };
+      valid = Object.hasOwn(defaults, id) && value === defaults[id] && (suppliedByAction || leaf.provenance === DESIGNER_AI_PROVENANCE.SYSTEM_DEFAULT); break;
+    }
+    case DESIGNER_AI_RESOLUTION_RULES.CATALOG_DEFAULTS:
+      // No catalog evidence is currently carried by question leaves. Unknown or
+      // template provenance is deliberately insufficient; don't invent defaults.
+      valid = (id.startsWith("rsvp.question.") || id === "rsvp.questions.order") && leaf.provenance === DESIGNER_AI_PROVENANCE.SYSTEM_DEFAULT && validResolutionValue(id, value); break;
+    case DESIGNER_AI_RESOLUTION_RULES.RECOMMENDED_ORDER:
+      valid = (id === "rsvp.questions.order" || /^media\.gallery\..+\.order$/.test(id)) && trusted && Array.isArray(value) && value.length >= 2; break;
+    case DESIGNER_AI_RESOLUTION_RULES.SAME_DAY_PARTY: {
+      const date = (phase) => lastAction("event.set_datetime", (a) => a.arguments.phase === phase && a.arguments.date !== null)?.arguments.date || values[phase]?.date;
+      const ceremonyLeaf = snapshot.ledger.leaves.find((entry) => entry.id === "event.ceremony.date");
+      const knownDate = Boolean(lastAction("event.set_datetime", (a) => a.arguments.phase === "ceremony" && a.arguments.date !== null)) || ["user_current_session", "existing_user_data"].includes(ceremonyLeaf?.provenance);
+      valid = id === "event.party.date" && mode === "ceremony_party" && knownDate && validResolutionValue(id, date("ceremony")) && date("ceremony") === date("party"); break;
+    }
+    case DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME: {
+      const names = values.people || {};
+      const name = values.documentName;
+      const expected = buildAutomaticEventName(names.primaryName, names.secondaryName);
+      valid = id === "document.name" && Boolean(expected) && expected === name &&
+        (Boolean(lastAction("document.set_name")) || snapshot.conversation?.namePolicy?.mode === "automatic"); break;
+    }
+    default: valid = false;
+  }
+  return valid ? null : `La regla ${rule} no cumple las precondiciones de ${id}.`;
 }
 
 function normalizeDesignerAiConversationState(value) {
@@ -315,14 +432,15 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
   }
 
   include("gifts.enabled");
-  const giftsEnabledLeaf = byId.get("gifts.enabled");
-  if (
-    values.gifts?.enabled === true &&
-    isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf?.status)
-  ) {
-    includePrefix("gifts.method.");
-    include("gifts.intro_text");
-    include("gifts.button_text");
+  if (values.gifts?.enabled === true) {
+    for (const [method, data] of Object.entries(values.gifts.methods || {})) {
+      const visibility = byId.get(`gifts.method.${method}.visible`);
+      if (data.visible === true && isTerminalDesignerAiLedgerStatus(visibility?.status) &&
+          ["user_current_session", "existing_user_data"].includes(visibility?.provenance)) {
+        include(`gifts.method.${method}.visible`);
+        include(`gifts.method.${method}.value`);
+      }
+    }
   }
 
   include("event.dress_code.enabled");
@@ -434,13 +552,27 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   add({ id: "gifts.enabled", block: "gifts", value: gifts.enabled === true, available: availability.gifts, existingCanResolve: false });
   for (const [method, data] of Object.entries(asRecord(gifts.methods))) {
     add({ id: `gifts.method.${method}.visible`, block: "gifts", value: data?.visible === true, available: availability.gifts, existingCanResolve: false });
-    add({ id: `gifts.method.${method}.value`, block: "gifts", value: method === "giftListLink" ? data?.configured === true : data?.value, available: availability.gifts });
+    add({ id: `gifts.method.${method}.value`, block: "gifts", value: method === "giftListLink" ? { present: data?.configured === true, revision: data?.contentRevision || "" } : data?.value, available: availability.gifts });
   }
   add({ id: "gifts.intro_text", block: "gifts", value: gifts.introText, available: availability.gifts, systemDefault: normalizeText(gifts.introText) === GIFTS_SYSTEM_DEFAULTS.introText });
   add({ id: "gifts.button_text", block: "gifts", value: gifts.buttonText, available: availability.gifts, systemDefault: normalizeText(gifts.buttonText) === GIFTS_SYSTEM_DEFAULTS.buttonText });
 
   const byId = new Map(leaves.map((leaf) => [leaf.id, leaf]));
   const modeLeaf = byId.get("event.mode");
+  for (const leaf of leaves) {
+    const invalidStoredValue = [DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER,
+      DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_EXISTING_USER_DATA,
+      DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_CONTROL].includes(leaf.status) &&
+      !(leaf.id.endsWith(".guided_completion") && leaf.status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_CONTROL) &&
+      !validResolutionValue(leaf.id, resolutionLeafValue(values, leaf.id));
+    if (invalidStoredValue || (leaf.status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE &&
+        designerAiResolutionRuleError({ leafId: leaf.id, rule: leaf.rule }, {
+          values, ledger: { leaves }, conversation: { namePolicy: state.namePolicy },
+        }))) {
+      Object.assign(leaf, { status: DESIGNER_AI_LEDGER_STATUSES.PENDING, rule: null,
+        provenance: provenanceForInitialValue({ leafId: leaf.id, value: resolutionLeafValue(values, leaf.id), sourceContext: source, conversationState: state }) });
+    }
+  }
   const modeResolved = modeLeaf && isTerminalDesignerAiLedgerStatus(modeLeaf.status);
   for (const leaf of leaves.filter((item) => item.id.startsWith("event.party."))) {
     Object.assign(leaf, applyDependency(leaf, modeResolved, values.eventMode === "ceremony_party"));
@@ -485,6 +617,14 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
     }
   }
   const giftsEnabledLeaf = byId.get("gifts.enabled");
+  for (const [method, data] of Object.entries(asRecord(gifts.methods))) {
+    if (data.visible !== true || (gifts.enabled === false && isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf?.status))) {
+      for (const suffix of ["visible", "value"]) {
+        const leaf = byId.get(`gifts.method.${method}.${suffix}`);
+        if (leaf) Object.assign(leaf, applyDependency(leaf, true, false));
+      }
+    }
+  }
   if (gifts.enabled === true && isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf?.status)) {
     for (const leaf of leaves.filter((item) => item.id.startsWith("gifts.") && item.id !== "gifts.enabled")) {
       if (leaf.rule === DESIGNER_AI_RESOLUTION_RULES.PRESERVE_WHILE_INACTIVE) {
@@ -493,8 +633,12 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
     }
   }
   if (gifts.enabled === true && isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf?.status)) {
-    const hasCompleteVisibleMethod = Object.values(asRecord(gifts.methods)).some((method) => (
-      method?.visible === true && (
+    const hasCompleteVisibleMethod = Object.entries(asRecord(gifts.methods)).some(([key, method]) => (
+      method?.visible === true &&
+      ["visible", "value"].every((suffix) => {
+        const leaf = byId.get(`gifts.method.${key}.${suffix}`);
+        return isTerminalDesignerAiLedgerStatus(leaf?.status) && ["user_current_session", "existing_user_data"].includes(leaf?.provenance);
+      }) && (
         method?.configured === true || normalizeText(method?.value).length > 0
       )
     ));
@@ -586,14 +730,45 @@ function mapActionToLeafIds(action) {
   }
 }
 
-function reconcileDesignerAiConversationState({ snapshot, previousState, actions = [], resolutions = [], controlLeafIds = [] } = {}) {
+// Session receipts carry hashes only. They are never part of conversation state
+// or provider input. A receipt cannot transfer credit to a later value.
+function captureDesignerAiActionEvidence(action, snapshot) {
+  const ids = new Set(mapActionToLeafIds(action));
+  return {
+    documentIdentity: snapshot?.documentIdentity || null,
+    actionFingerprint: fingerprint(action),
+    leaves: (snapshot?.ledger?.leaves || []).filter((leaf) => ids.has(leaf.id))
+      .map((leaf) => ({ leafId: leaf.id, fingerprint: leaf.fingerprint })),
+  };
+}
+
+function matchesDesignerAiActionEvidence(action, evidence, snapshot, leafId) {
+  if (!evidence || evidence.actionFingerprint !== fingerprint(action) ||
+      evidence.documentIdentity !== (snapshot?.documentIdentity || null)) return false;
+  const ids = mapActionToLeafIds(action);
+  const current = new Map((snapshot?.ledger?.leaves || []).map((leaf) => [leaf.id, leaf.fingerprint]));
+  const confirmed = new Map((evidence.leaves || []).map((leaf) => [leaf.leafId, leaf.fingerprint]));
+  return (leafId ? [leafId] : ids).every((id) => ids.includes(id) &&
+    Boolean(confirmed.get(id)) && current.get(id) === confirmed.get(id));
+}
+
+function reconcileDesignerAiConversationState({ snapshot, previousState, actionResults = [], resolutions = [], controlLeafIds = [] } = {}) {
+  // A proposal or dispatch cannot resolve a leaf. Receipts come from the executor
+  // only after the relevant local effect and its durable write were confirmed.
+  const confirmed = actionResults.filter((result) => result.effective === true && result.persisted === true && !result.error);
+  const actions = confirmed.filter((result) => matchesDesignerAiActionEvidence(result.action, result.evidence, snapshot)).map((result) => result.action);
   const state = normalizeDesignerAiConversationState(previousState);
   const nextSnapshot = snapshot || {};
   const leaves = Array.isArray(nextSnapshot?.ledger?.leaves) ? nextSnapshot.ledger.leaves : [];
   const leafById = new Map(leaves.map((leaf) => [leaf.id, leaf]));
   const updates = new Map();
-  for (const action of Array.isArray(actions) ? actions : []) {
-    for (const leafId of mapActionToLeafIds(action)) {
+  for (const result of actionResults.filter((entry) => entry.executed)) {
+    for (const leafId of mapActionToLeafIds(result.action)) {
+      if (!confirmed.includes(result) || !matchesDesignerAiActionEvidence(result.action, result.evidence, snapshot, leafId)) {
+        updates.set(leafId, { leafId, status: DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, provenance: DESIGNER_AI_PROVENANCE.UNKNOWN, rule: null });
+        continue;
+      }
+      if (!validResolutionValue(leafId, resolutionLeafValue(nextSnapshot.values || {}, leafId))) continue;
       updates.set(leafId, { leafId, status: DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER, provenance: DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, rule: null });
     }
   }
@@ -601,15 +776,27 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actions
     const leafId = normalizeText(resolution?.leafId);
     if (!leafById.has(leafId)) continue;
     const status = resolution?.status;
+    if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER && updates.get(leafId)?.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
+    if (updates.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION) continue;
     const rule = normalizeText(resolution?.rule) || null;
+    // This snapshot already contains the executed effects. Never replay an
+    // additive action while validating its resolution.
+    if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE && designerAiResolutionRuleError(resolution, nextSnapshot, { actions, projectActions: false })) continue;
     const provenance = status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE
-      ? (rule === DESIGNER_AI_RESOLUTION_RULES.SYSTEM_DEFAULT || rule === DESIGNER_AI_RESOLUTION_RULES.CATALOG_DEFAULTS ? DESIGNER_AI_PROVENANCE.SYSTEM_DEFAULT : DESIGNER_AI_PROVENANCE.AUTOMATIC_RULE)
+      ? (rule === DESIGNER_AI_RESOLUTION_RULES.KEEP_EXISTING || rule === DESIGNER_AI_RESOLUTION_RULES.RECOMMENDED_ORDER ? updates.get(leafId)?.provenance || leafById.get(leafId).provenance : rule === DESIGNER_AI_RESOLUTION_RULES.SYSTEM_DEFAULT || rule === DESIGNER_AI_RESOLUTION_RULES.CATALOG_DEFAULTS ? DESIGNER_AI_PROVENANCE.SYSTEM_DEFAULT : DESIGNER_AI_PROVENANCE.AUTOMATIC_RULE)
       : DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION;
     updates.set(leafId, { leafId, status, provenance, rule });
   }
   for (const leafId of Array.isArray(controlLeafIds) ? controlLeafIds : []) {
     if (!leafById.has(leafId)) continue;
     updates.set(leafId, { leafId, status: DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_CONTROL, provenance: DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, rule: null });
+  }
+  for (const result of actionResults.filter((entry) => entry.executed && !entry.persisted)) {
+    for (const leafId of mapActionToLeafIds(result.action)) {
+      // Optimistic local values are not established user data. They stay pending
+      // until an owner confirms a subsequent write; keep_existing cannot bypass it.
+      updates.set(leafId, { leafId, status: DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, provenance: DESIGNER_AI_PROVENANCE.UNKNOWN, rule: null });
+    }
   }
   const existing = new Map(state.resolutions.map((item) => [item.leafId, item]));
   for (const [leafId, update] of updates) {
@@ -618,8 +805,8 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actions
     existing.set(leafId, { ...update, fingerprint: leaf.fingerprint });
   }
   const baseline = state.baseline.length > 0 ? state.baseline : leaves.map((leaf) => ({ leafId: leaf.id, fingerprint: leaf.fingerprint, provenance: leaf.provenance || DESIGNER_AI_PROVENANCE.UNKNOWN }));
-  const nameAction = (Array.isArray(actions) ? actions : []).find((action) => action?.type === "document.set_name");
-  const automaticResolution = (Array.isArray(resolutions) ? resolutions : []).find((item) => item?.leafId === "document.name" && item?.rule === DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME);
+  const nameAction = [...actions].reverse().find((action) => action?.type === "document.set_name");
+  const automaticResolution = updates.get("document.name")?.rule === DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME;
   const namePolicy = nameAction
     ? automaticResolution
       ? { mode: "automatic", lastAutomaticName: normalizeText(nameAction.arguments?.name) }
@@ -639,6 +826,9 @@ module.exports = {
   buildDesignerAiGalleryCompletionLeafId,
   buildDesignerAiConversationBrief,
   buildDesignerAiLedger,
+  captureDesignerAiActionEvidence,
+  matchesDesignerAiActionEvidence,
+  designerAiResolutionRuleError,
   fingerprintDesignerAiValue: fingerprint,
   isLikelyDesignerAiPlaceholder: isLikelyPlaceholder,
   isTerminalDesignerAiLedgerStatus,

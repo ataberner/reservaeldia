@@ -39,9 +39,8 @@ const EVENT_PERSON_NAME_FIELD_LABELS = Object.freeze({
     "Nombres de los casados en dos lineas",
 });
 
-function normalizeText(value) {
-  return String(value || "").trim();
-}
+import valueNormalization from "../../../shared/authoringValueNormalization.cjs";
+const { normalizeAuthoringText: normalizeText } = valueNormalization;
 
 function asObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};

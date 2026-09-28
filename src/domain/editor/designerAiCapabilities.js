@@ -1,6 +1,8 @@
 import {
   DESIGNER_AI_CONTRACT_VERSION,
   sanitizeCapabilitySnapshot,
+  minimizeDesignerAiGiftValues,
+  minimizeDesignerAiRecentTurns,
 } from "../../../shared/designerAiCapabilityContract.js";
 import {
   buildDesignerAiLedger,
@@ -165,6 +167,7 @@ function buildGiftSnapshot(rawConfig, objects) {
       value: config.giftListUrl,
       visible: config.visibility.giftListLink,
       configured: Boolean(normalizeText(config.giftListUrl)),
+      contentRevision: fingerprint(config.giftListUrl),
     },
   };
   return {
@@ -285,6 +288,9 @@ export function buildDesignerAiCapabilitySnapshot({
     ledger: safe.ledger,
     conversation: { namePolicy: safe.conversation.namePolicy },
   });
+  // Local correlation only; sanitizeCapabilitySnapshot excludes this from requests.
+  safe.documentIdentity = documentNameState.documentId
+    ? `${documentNameState.documentKind || "draft"}:${documentNameState.documentId}` : null;
   return safe;
 }
 
@@ -319,6 +325,7 @@ export function buildDesignerAiCallablePayload({
     ...safeSnapshot,
     values: {
       ...safeSnapshot.values,
+      gifts: minimizeDesignerAiGiftValues(safeSnapshot.values.gifts),
       media: { hasCover: safeSnapshot.values.media.hasCover },
       galleries: safeSnapshot.values.galleries.map((gallery) => ({
         id: gallery.id,
@@ -344,12 +351,12 @@ export function buildDesignerAiCallablePayload({
       ? entryMode
       : "continuation",
     message: String(message || "").trim(),
-    recentTurns: (Array.isArray(recentTurns) ? recentTurns : [])
+    recentTurns: minimizeDesignerAiRecentTurns((Array.isArray(recentTurns) ? recentTurns : [])
       .slice(-6)
       .map((turn) => ({
         role: turn?.role === "assistant" ? "assistant" : "user",
-        content: String(turn?.content || "").slice(0, 700),
-      })),
+        content: String(turn?.content || ""),
+      })), safeSnapshot.values.gifts),
     capabilitySnapshot,
   };
 }

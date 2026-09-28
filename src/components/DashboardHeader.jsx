@@ -1,5 +1,6 @@
 // src/components/DashboardHeader.jsx
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
 import { useRouter } from "next/router";
 import {
     ChevronDown,
@@ -198,6 +199,7 @@ export default function DashboardHeader(props) {
         normalizeTemplateWorkspaceMeta(null)
     );
     const router = useRouter();
+    const beginDocumentOperation = useEditorDocumentOperation();
     const emailNormalizado = String(usuario?.email || "").trim();
     const nombreNormalizado = String(usuario?.displayName || "").trim();
     const nombreDesdeEmail = emailNormalizado
@@ -786,6 +788,7 @@ export default function DashboardHeader(props) {
             const currentId = normalizeText(slugInvitacion);
             if (!currentId) return;
             const nextName = String(nombreDocumento ?? "");
+            const operation = beginDocumentOperation();
             const nextConversation = isTemplateSession
                 ? null
                 : options.designerAiConversation
@@ -798,7 +801,7 @@ export default function DashboardHeader(props) {
                         },
                     });
 
-            await persistEditorSessionPatch({
+            try { await persistEditorSessionPatch({
                 session: normalizedEditorSession,
                 slug: currentId,
                 patch: {
@@ -808,7 +811,10 @@ export default function DashboardHeader(props) {
                         : {}),
                 },
                 reason: "document-name",
-            });
+            }); } catch (error) { operation.cancel(); throw error; }
+            const stillCurrent = operation.isCurrent();
+            operation.cancel();
+            if (!stillCurrent) return;
 
             if (isTemplateSession) {
                 setTemplateWorkspaceMeta((previous) => ({
@@ -822,7 +828,7 @@ export default function DashboardHeader(props) {
             setNombreBorrador(nextName);
             if (nextConversation) setDesignerAiConversation(nextConversation);
         },
-        [designerAiConversation, isTemplateSession, normalizedEditorSession, nombreBorrador, slugInvitacion]
+        [beginDocumentOperation, designerAiConversation, isTemplateSession, normalizedEditorSession, nombreBorrador, slugInvitacion]
     );
 
     useEffect(() => {
@@ -832,10 +838,12 @@ export default function DashboardHeader(props) {
             const onPersistenceError = typeof event?.detail?.onPersistenceError === "function"
                 ? event.detail.onPersistenceError
                 : null;
-            if (editorReadOnly || !slugInvitacion) {
+            if (editorReadOnly || !slugInvitacion ||
+                (event?.detail?.expectedDocumentId && event.detail.expectedDocumentId !== slugInvitacion)) {
                 onPersistenceError?.(new Error("El borrador no está disponible para persistencia."));
                 return;
             }
+            event?.detail?.onAccepted?.();
 
             const hasName = event?.detail?.hasName === true;
             const nextName = String(event?.detail?.name ?? "");
@@ -857,7 +865,7 @@ export default function DashboardHeader(props) {
                 persist: event?.detail?.persist !== false,
             }));
             if (hasName) setNombreBorrador(nextName);
-            if (requestedConversation) {
+            if (requestedConversation && event?.detail?.persist === false) {
                 setDesignerAiConversation(requestedConversation);
             }
 
@@ -870,7 +878,7 @@ export default function DashboardHeader(props) {
                 void guardarNombreDocumento(nextName, {
                     designerAiConversation: requestedConversation,
                 })
-                    .then(() => onPersisted?.())
+                    .then(() => onPersisted?.({ documentId: slugInvitacion, name: nextName }))
                     .catch((error) => {
                         console.error("Error guardando nombre del borrador:", error);
                         onPersistenceError?.(error);
@@ -878,17 +886,21 @@ export default function DashboardHeader(props) {
                 return;
             }
             if (requestedConversation) {
+                const operation = beginDocumentOperation();
                 void persistEditorSessionPatch({
                     session: normalizedEditorSession,
                     slug: slugInvitacion,
                     patch: { designerAiConversation: requestedConversation },
                     reason: "designer-ai-conversation",
                 })
-                    .then(() => onPersisted?.())
+                    .then(() => {
+                        if (operation.isCurrent()) setDesignerAiConversation(requestedConversation);
+                        onPersisted?.({ documentId: slugInvitacion, designerAiConversation: requestedConversation });
+                    })
                     .catch((error) => {
                         console.error("Error guardando estado conversacional:", error);
                         onPersistenceError?.(error);
-                    });
+                    }).finally(operation.cancel);
                 return;
             }
             onPersisted?.();
@@ -905,7 +917,7 @@ export default function DashboardHeader(props) {
                 handleDocumentNameUpdateRequest
             );
         };
-    }, [editorReadOnly, guardarNombreDocumento, normalizedEditorSession, slugInvitacion]);
+    }, [beginDocumentOperation, editorReadOnly, guardarNombreDocumento, normalizedEditorSession, slugInvitacion]);
 
     const abrirModalCrearSeccion = () => {
         if (typeof window === "undefined") return;

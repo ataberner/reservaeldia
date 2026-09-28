@@ -4,6 +4,9 @@ Status: Canonical Architecture Reference.
 
 Revalidado contra implementación y tests el 2026-08-28.
 
+Hardening P0 revalidado localmente el 2026-09-27. Evidencia y límites:
+[DESIGNER_AI_P0_HARDENING.md](../testing/DESIGNER_AI_P0_HARDENING.md).
+
 ## 1. Propósito y autoridad
 
 Este documento es el mapa técnico canónico del tab `Diseñador AI`. Define
@@ -165,6 +168,13 @@ Antes del callable el frontend elimina revisiones de media y fingerprints. El
 backend vuelve a sanear, limita el snapshot a 160 KB y elimina del contexto del
 modelo valores con procedencia `template_value` o `placeholder_or_sample`.
 La lista externa de regalos expone presencia/configuración, no su URL.
+Los valores bancarios ocultos o de Regalos desactivado se eliminan tanto del
+payload del cliente como del input del proveedor en el backend. Se conserva
+`configured`; los fingerprints y la revisión se calculan localmente antes de
+esa proyección. Cambiar una URL de lista también cambia su fingerprint local.
+Los valores bancarios ocultos conocidos también se redactan en turnos históricos
+antes de enviar el contexto; el mensaje actual conserva los datos que el usuario
+aporta expresamente. Esto no implementa detección general de datos sensibles.
 
 El contexto no incluye `objetos`, `secciones`, geometría, URLs/media privadas,
 paths de Storage, `placeId`, coordenadas, metadata de Firestore/Google ni el
@@ -257,10 +267,18 @@ Las allowlists y shapes exactos viven en
   porque no recibe/relee esa identidad.
 - La atomicidad solo cubre prevalidación. Si un owner falla después de que otro se
   aplicó, no hay rollback transaccional; el error expone `appliedActions` al panel.
-- `waitForAppliedSnapshot` abandona la espera después de 120 frames. Verifica
-  nombre y ubicaciones manuales contra sus valores esperados, incluido que no
-  quede selección Google; otras familias de actions todavía no se verifican
-  individualmente y conservan el gap general de evidencia por efecto.
+- `designerAiActionEvidence` comprueba el efecto concreto de cada action, con
+  espera acotada. El executor retorna `actionResults` con requested, executed,
+  effective, persisted y error. El nombre espera el callback del header; las
+  otras acciones esperan el flush existente y comparan el contenido de su
+  escritura confirmada. Una revisión global distinta no acredita una acción.
+- Al primer fallo se detiene el lote: las acciones siguientes quedan sin
+  ejecutar. El ledger incorpora solo efectos confirmados y guardados; los
+  intentos fallidos quedan `needs_clarification`. No existe rollback general.
+- Las reglas terminales tienen precondiciones compartidas de valor, procedencia
+  y dependencia, validadas por backend y frontend y al reconstruir el ledger.
+  Una resolución antigua inválida se reabre; `keep_existing` no acepta vacíos,
+  ejemplos, templates ni procedencia desconocida.
 - `batchId` se deduplica en memoria dentro del panel. No existe idempotencia
   durable backend ni persistida entre remounts.
 - El callable no habilita `enforceAppCheck` de forma explícita.
@@ -290,7 +308,7 @@ Las allowlists y shapes exactos viven en
 | Progreso | Solo loader local (`Pensando…`/live region). No hay eventos, tokens parciales ni job durable. |
 | Concurrencia por panel | `sendingRef` impide un segundo envío mientras hay uno pendiente. |
 | Cancelación de red | No implementada. No se conserva `AbortController` ni handle de cancelación del callable. |
-| Cambio de sesión | Incrementa secuencia, limpia estado y descarta respuestas tardías. El request backend puede seguir consumiendo recursos. |
+| Cambio de sesión | Invalida irreversiblemente operaciones ligadas a documentId/kind y su ciclo de montaje, también A → B → A. Places, uploads y callbacks del header comprueban identidad antes de mutar/publicar. El request backend puede seguir consumiendo recursos. |
 | Cambio de contenido | Antes de aplicar se compara `snapshot.revision`; un cambio produce fallback stale y cero mutación de ese lote. |
 | Espera de reflejo | El panel relee hasta 120 frames y cancela esa espera local al cambiar sesión. |
 | Duplicados | `appliedBatchIdsRef` evita repetir un batch durante el montaje actual. |
@@ -476,10 +494,10 @@ Clasificación usada aquí:
 | Validación contra draft server-side | No implementado | Snapshot proviene del cliente; no hay reread backend. |
 | Contexto mínimo sin media/geometría | Implementado y testeado | Sanitizer + payload builder + service tests. |
 | Minimización por necesidad del turno | Parcial | El shape es acotado, pero se envían todos los valores allowlisted del snapshot. |
-| Redacción de texto libre antes de OpenAI | No implementado | Mensaje y turnos recientes se envían después de límites de longitud, sin DLP. |
+| Redacción de texto libre antes de OpenAI | Parcial | Los valores bancarios conocidos ocultos/desactivados se redactan en el historial original antes del límite de longitud. El mensaje actual explícito queda fuera de esa minimización; no hay DLP general. |
 | Separación de contenido no confiable | Parcial | Roles y validación existen; estado de cliente se usa como developer context después de sanear. |
-| Evidencia antes de confirmar | Parcial | Ubicación manual y selección Places se verifican contra valores esperados; portada usa fingerprint; Gallery usa finalización explícita persistida y no el fingerprint de sus cambios. Otras actions aún no tienen verificación individual por efecto. |
-| Nunca afirmar ejecución sin evidencia completa | Solo documentado | Regla normativa en el contrato conversacional; el reread actual no verifica individualmente todos los efectos. |
+| Evidencia antes de confirmar | Implementado para actions | Cada action verifica su efecto canónico y el payload confirmado por el writer existente. Receipts locales ligan acción/documento/fingerprints; el ledger rechaza acreditar un valor posterior diferente. Places y media conservan sus controles humanos y owners. |
+| Nunca afirmar ejecución sin evidencia completa | Implementado en el flujo de aplicación | Un fallo corta el lote y bloquea su mensaje de éxito. No equivale a bloquear ediciones posteriores ni otras pestañas. |
 | Chat persistido | No implementado deliberadamente | Hasta treinta mensajes en memoria React por borrador; solo los seis turnos más recientes forman el contexto de cada request. |
 | Metadata de ledger persistida | Implementado | `designerAiConversation` en draft. |
 | Primer ingreso vs reingreso | Implementado | `designerAiConversation.usage.hasStarted`, `prepareDesignerAiConversationEntry` y persistencia confirmada antes del auto-start. |
@@ -490,7 +508,7 @@ Clasificación usada aquí:
 | Aprovechar varios datos adelantados | Parcial | El schema acepta lotes de hasta 19 actions y el prompt pide agrupar, pero no hay evaluación real de cumplimiento conversacional. |
 | Ubicación chat-first manual/Places | Implementado y testeado | Datos manuales se aplican por el owner, la decisión Maps es explícita, el control especializado reutiliza Places y la selección se verifica localmente antes de continuar. |
 | Regalos con valor/visibilidad independientes y lista externa | Implementado en dominio/capability | Root normalizada, flags por método, URL externa, actions y validación de readiness existentes. |
-| Recorrido guiado interno de Regalos | Gap de runtime documentado | El owner funcional exige elegir lista externa o datos bancarios, ocultar defaults no confirmados y excluir intro/botón de la completitud. El ledger vigente todavía agrega todos los métodos, `gifts.intro_text` y `gifts.button_text` al `guidedFlow`; la corrección futura debe reutilizar las actions existentes y `GIFTS_SYSTEM_CONTRACT.md`, sin crear otro estado de modalidad. |
+| Recorrido guiado interno de Regalos | Hardening P0 implementado y testeado | Usa métodos visibles confirmados, oculta defaults no elegidos conservando datos y excluye intro/botón de la completitud. Alias solo, lista externa y combinación se prueban contra las actions existentes, sin estado de modalidad adicional. |
 | Portada y múltiples Galleries por disponibilidad real | Implementado en orquestación/control | Portada conserva evidencia por fingerprint. Cada Gallery con slots aporta una hoja durable, respeta el orden del snapshot y avanza solo por finalización explícita; cambios y cierre del control no completan. |
 | Cierre del recorrido + edición manual + `Vista previa` | Implementado | Depende de `guidedFlow.completion.complete` y usa cierre acotado en el panel. |
 | Retención de `designerAiConversation` | Inferido | Sigue al draft por ubicación del campo, sin política aprobada propia. |
@@ -498,7 +516,7 @@ Clasificación usada aquí:
 | Streaming/cancelación real | No implementado | Respuesta completa y descarte local. |
 | Prevención de respuesta obsoleta | Implementado en cliente | Session sequence + revision check. |
 | Idempotencia durable | No implementado | Sets en memoria por montaje. |
-| Reintentos | Parcial | Un retry del SDK, una reparación semántica de salida y recuperación explícita de la continuación verificada; sin fallback de modelo ni backoff propio. |
+| Reintentos | Parcial | Un retry del SDK, una reparación semántica y continuación verificada. Un lote parcial puede reanudarse en la sesión actual: valida identidad y estado, salta efectos confirmados y reintenta su writer cuando corresponde. No es idempotencia durable; nueva intención y desmontaje invalidan esa recuperación. |
 | Rate limit propio | No implementado | Solo traducción de 429 upstream. |
 | Redacción de logs | Implementada por allowlist actual | Sin helper/policy automatizada para cambios futuros. |
 | Evaluación conversacional real | No implementada | Tests usan fixtures/mock y assertions de source. |
@@ -521,6 +539,18 @@ Un cambio del subsistema debe:
 
 ## 14. Anclas de tests actuales
 
+La proyección previa a validar reglas vive en
+`shared/designerAiActionProjection.cjs`. Configuración y ejecución comparten
+`designerAiConfigReducers.cjs`, `rsvpCatalog.cjs`, `rsvpConfig.cjs`,
+`rsvpEditorOps.cjs` y `giftsConfig.cjs`; los módulos públicos bajo `src/domain/`
+conservan sus exports. `authoringValueNormalization.cjs` y `gallerySlotOrder.cjs`
+extraen las funciones puras existentes que usa también esa proyección. Todos se
+empaquetan mediante `functions/scripts/syncTemplateContract.cjs`.
+
+El ledger valida las reglas contra el estado ya observado, sin reducir otra vez
+las acciones. La evidencia, recuperación, límites M2/L1 y verificaciones del P0
+están en [DESIGNER_AI_P0_HARDENING.md](../testing/DESIGNER_AI_P0_HARDENING.md).
+
 - `shared/designerAiCapabilityContract.test.mjs`
 - `shared/designerAiConversationLedger.test.mjs`
 - `src/domain/editor/designerAiAccess.test.mjs`
@@ -532,6 +562,7 @@ Un cambio del subsistema debe:
 - `src/domain/eventDetails/locationAuthoring.test.mjs`
 - `src/lib/dashboardDocumentNameBridge.test.mjs`
 - `src/components/editor/designerAi/DesignerAiPanel.test.mjs`
+- `src/components/editor/designerAi/designerAiLifecycle.test.mjs`
 - `src/components/editor/designerAi/DesignerAiLocationControl.test.mjs`
 - `src/components/MiniToolbarTabImagen.mobileDrag.test.mjs`
 - `functions/designerAiService.test.mjs`

@@ -23,6 +23,7 @@ import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
 import useUploaderDeImagen from "@/hooks/useUploaderDeImagen";
+import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
 import { resolveStorageAssetUrl } from "@/domain/assets/storageAssetDescriptor";
 import { functions } from "@/firebase";
 import {
@@ -455,6 +456,7 @@ export default function DashboardSidebar({
         });
     }, []);
     const pendingUploadedImageHandlerRef = useRef(null);
+    const beginUploadOperation = useEditorDocumentOperation();
     const abrirSelectorImagen = useCallback((onUploadedImage, options = {}) => {
         const request =
             onUploadedImage && typeof onUploadedImage === "object" && !Array.isArray(onUploadedImage)
@@ -464,9 +466,9 @@ export default function DashboardSidebar({
                     onUploadedImage:
                         typeof onUploadedImage === "function" ? onUploadedImage : null,
                 };
-        pendingUploadedImageHandlerRef.current = request;
+        pendingUploadedImageHandlerRef.current = { ...request, operation: beginUploadOperation() };
         abrirSelector();
-    }, [abrirSelector]);
+    }, [abrirSelector, beginUploadOperation]);
     const sidebarAbierta =
         isLeftPanelActive && (fijadoSidebar || hoverSidebar);
     const canUseGalleryBuilder = canAccessGalleryBuilder({
@@ -1761,19 +1763,21 @@ export default function DashboardSidebar({
                                     : null;
                         const selectedFile = e.target.files?.[0] || null;
                         if (!selectedFile) return;
+                        const operation = uploadRequest?.operation || beginUploadOperation();
 
                         try {
                             uploadRequest?.onUploadStart?.({ file: selectedFile });
                             const uploadedImage = await handleSeleccion(e);
+                            if (!operation.isCurrent()) return;
                             const uploadedUrl = resolveStorageAssetUrl(uploadedImage);
                             if (!uploadedUrl) {
                                 throw new Error("No se pudo obtener la URL de la imagen subida.");
                             }
 
                             if (typeof uploadedImageHandler === "function") {
-                                const result = await uploadedImageHandler(uploadedImage, {
+                                const result = await operation.run(() => uploadedImageHandler(uploadedImage, {
                                     file: selectedFile,
-                                });
+                                }));
                                 if (result === false) {
                                     uploadRequest?.onUploadError?.(
                                         new Error("No se pudo aplicar el reemplazo de imagen."),
@@ -1821,6 +1825,7 @@ export default function DashboardSidebar({
                             console.error("Error al subir imagen desde el sidebar:", error);
                             uploadRequest?.onUploadError?.(error, { file: selectedFile });
                         } finally {
+                            operation.cancel();
                             uploadRequest?.onUploadSettled?.({ file: selectedFile });
                             if (pendingUploadedImageHandlerRef.current === uploadRequest) {
                                 pendingUploadedImageHandlerRef.current = null;

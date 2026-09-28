@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
 import { LoaderCircle, MapPin, Search, X } from "lucide-react";
 import { EVENT_DETAIL_FEATURES } from "@/domain/eventDetails/features";
 import {
@@ -32,6 +33,7 @@ export default function DesignerAiLocationControl({
   const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef(null);
+  const beginOperation = useEditorDocumentOperation();
   const requestSequenceRef = useRef(0);
   const sessionTokenRef = useRef(null);
   const hasGoogleMapsApiKey = Boolean(getGoogleMapsApiKey());
@@ -83,29 +85,34 @@ export default function DesignerAiLocationControl({
 
   const handleSelect = async (suggestion) => {
     if (!suggestion?.prediction || selecting) return;
+    const operation = beginOperation();
     setSelecting(true);
     setError("");
     try {
       const googlePlace = await fetchGooglePlaceDetailsFromPrediction(
         suggestion.prediction
       );
-      const appliedLocation = await applyEventGooglePlaceSelection({
+      const appliedLocation = await operation.run(() => applyEventGooglePlaceSelection({
         targetWindow: window,
         feature,
         googlePlace,
-      });
+      }));
+      if (!operation.isCurrent()) return;
       sessionTokenRef.current = null;
       const verified = await onSelectionApplied?.(appliedLocation);
       if (verified === false) {
         throw new Error("El lugar se seleccionó, pero todavía no pude verificarlo en el borrador.");
       }
     } catch (selectionError) {
+      if (!operation.isCurrent()) return;
       setError(
         selectionError instanceof Error
           ? selectionError.message
           : "No se pudo seleccionar la ubicación de Google Maps."
       );
       setSelecting(false);
+    } finally {
+      operation.cancel();
     }
   };
 

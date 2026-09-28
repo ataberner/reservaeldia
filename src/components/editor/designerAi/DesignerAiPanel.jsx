@@ -30,6 +30,8 @@ import {
   selectDesignerAiRecentTurns,
 } from "@/domain/editor/designerAiMessageHistory";
 import { executeDesignerAiActionBatch } from "@/domain/editor/designerAiActionExecutor";
+import { confirmDesignerAiPersistence } from "@/domain/editor/designerAiActionEvidence";
+import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
 import {
   buildDesignerAiGooglePlaceControlState,
   buildDesignerAiLocationSearchQuery,
@@ -43,7 +45,7 @@ import { EVENT_DETAIL_FEATURES } from "@/domain/eventDetails/features";
 import { readEventLocationAuthoringState } from "@/domain/eventDetails/locationAuthoring";
 import {
   readDashboardDocumentNameState,
-  requestDashboardDocumentNameUpdate,
+  persistDashboardDocumentUpdate,
 } from "@/lib/dashboardDocumentNameBridge";
 
 const AUTO_START_MESSAGE = "Iniciá la conversación con una bienvenida breve y guiame desde el primer bloque que todavía tenga información pendiente.";
@@ -68,6 +70,9 @@ function createMessage(role, content, extra = {}) {
 
 function normalizeCallableError(error) {
   const code = String(error?.code || "");
+  if (code.includes("recovery-conflict") || code.includes("evidence-conflict")) {
+    return "El estado cambió y no puedo reanudar ese lote con seguridad. Enviá una nueva solicitud para interpretar los datos actuales.";
+  }
   const baseMessage = code.includes("permission-denied")
     ? "Tu sesión ya no tiene permiso para usar esta experiencia."
     : code.includes("resource-exhausted")
@@ -199,35 +204,6 @@ function cancelPendingEditorFrames(registry) {
   registry.clear();
 }
 
-async function waitForAppliedSnapshot({ initialSnapshot, actions, readSnapshot, isSessionCurrent, frameRegistry }) {
-  const expectedName = [...actions]
-    .reverse()
-    .find((action) => action.type === "document.set_name")?.arguments?.name;
-  let latest = readSnapshot();
-  for (let frame = 0; frame < 120; frame += 1) {
-    if (!isSessionCurrent()) return latest;
-    const revisionChanged = latest.revision !== initialSnapshot.revision;
-    const nameReflected = expectedName === undefined || latest.values.documentName === expectedName;
-    const locationsReflected = actions
-      .filter((action) => action.type === "event.set_location_text")
-      .every((action) => {
-        const phase = action.arguments.phase === "party" ? "party" : "ceremony";
-        return latest.values?.[phase]?.venueName === action.arguments.venueName &&
-          latest.values?.[phase]?.address === action.arguments.address &&
-          latest.values?.[phase]?.placeSelected === false;
-      });
-    if (revisionChanged && nameReflected && locationsReflected) return latest;
-    await waitOneEditorFrame(frameRegistry);
-    latest = readSnapshot();
-  }
-  if (actions.some((action) => action.type === "event.set_location_text")) {
-    throw Object.assign(new Error("La ubicación no quedó reflejada en el snapshot vigente."), {
-      code: "designer-ai/evidence-missing",
-    });
-  }
-  return latest;
-}
-
 function DesignerAiLocationDecision({ decision, onSearch, onUseManual }) {
   return (
     <section className="w-full min-w-0 rounded-2xl border border-[#EFDBFF] bg-white p-3 text-left transition-none" aria-label={`Decidir ubicación de ${decision.label}`}>
@@ -297,8 +273,9 @@ function DesignerAiTrustedControl({
           Volver al chat
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[#eee9ec] bg-white p-2">
+      <div inert={controlState.finishing === true ? true : undefined} aria-busy={controlState.finishing === true} className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[#eee9ec] bg-white p-2">
         <MiniToolbarTabImagen
+            key={`${request.type}:${request.galleryId || "cover"}:${controlState.finishing === true}`}
             {...imageProps}
             simplifiedForAssistant
             assistantSubstep={
@@ -319,7 +296,7 @@ function DesignerAiTrustedControl({
         <div className="mt-2 flex shrink-0 flex-col gap-2 border-t border-[#eee9ec] pt-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-[#625d60]" aria-live="polite">
             {controlState.galleryHasChanges
-              ? "Los cambios realizados quedaron guardados."
+              ? "Los cambios están visibles. Confirmaremos el guardado al terminar."
               : "Podés conservar las fotos actuales o hacer los cambios que quieras."}
           </p>
           <button
@@ -369,6 +346,7 @@ export default function DesignerAiPanel({
   const messageComposerRef = useRef(null);
   const restoreChatFocusRef = useRef(false);
   const appliedBatchIdsRef = useRef(new Set());
+  const recoveryRef = useRef(null);
   const requestSequenceRef = useRef(0);
   const conversationStateRef = useRef(normalizeDesignerAiConversationState(null));
   const activeControlRef = useRef(null);
@@ -395,22 +373,28 @@ export default function DesignerAiPanel({
   const readSnapshot = useCallback(() => readDesignerAiCapabilitySnapshot(window, {
     conversationState: conversationStateRef.current,
   }), []);
+  const beginOperation = useEditorDocumentOperation();
 
   const persistConversationState = useCallback((state, {
     onPersisted = null,
     onPersistenceError = null,
   } = {}) => {
     const normalized = normalizeDesignerAiConversationState(state);
-    conversationStateRef.current = normalized;
-    requestDashboardDocumentNameUpdate({
-      persist: true,
+    const operation = beginOperation();
+    return persistDashboardDocumentUpdate({
       source: "designer-ai-ledger",
       designerAiConversation: normalized,
-      onPersisted,
-      onPersistenceError,
-    });
-    return normalized;
-  }, []);
+    }).then(() => {
+      if (!operation.isCurrent()) return null;
+      conversationStateRef.current = normalized;
+      onPersisted?.();
+      return normalized;
+    }).catch((error) => {
+      if (!operation.isCurrent()) return null;
+      if (onPersistenceError) { onPersistenceError(error); return null; }
+      throw error;
+    }).finally(operation.cancel);
+  }, [beginOperation]);
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -431,11 +415,19 @@ export default function DesignerAiPanel({
     entryMode = "continuation",
     snapshotOverride = null,
     verifiedContinuation = false,
+    resumePartial = false,
   } = {}) => {
     const message = String(rawMessage || "").trim();
     if (!message || sendingRef.current) return;
     const requestSessionKey = sessionKeyRef.current;
     const requestSequence = ++requestSequenceRef.current;
+    const resume = resumePartial ? recoveryRef.current : null;
+    if (resumePartial && !resume) return;
+    if (!resumePartial) {
+      recoveryRef.current?.operation.cancel();
+      recoveryRef.current = null;
+    }
+    const operation = resume?.operation || beginOperation();
     const initialSnapshot = snapshotOverride || readSnapshot();
     const userMessage = createMessage("user", message);
     const conversationWithUser = showUserMessage
@@ -455,61 +447,57 @@ export default function DesignerAiPanel({
     setSending(true);
     setLiveMessage("Preparando la invitación.");
 
+    let result = resume?.result || null;
+    let execution = null;
     try {
-      const response = await callable(buildDesignerAiCallablePayload({
+      if (resume && !operation.isCurrent()) throw Object.assign(new Error("La sesión cambió."), { code: "designer-ai/recovery-conflict" });
+      const response = resume ? { data: resume.result } : await callable(buildDesignerAiCallablePayload({
         clientMessageId: userMessage.id,
         message,
         recentTurns,
         snapshot: initialSnapshot,
         entryMode,
       }));
-      if (sessionKeyRef.current !== requestSessionKey || requestSequenceRef.current !== requestSequence) return;
-      const result = response?.data;
+      if (!operation.isCurrent() || sessionKeyRef.current !== requestSessionKey || requestSequenceRef.current !== requestSequence) return;
+      result = response?.data;
       if (!isValidCallableResponse(result)) throw Object.assign(new Error("Respuesta inválida."), { code: "designer-ai/malformed-response" });
-      if (appliedBatchIdsRef.current.has(result.batchId)) return;
+      if (!resume && appliedBatchIdsRef.current.has(result.batchId)) return;
 
       const currentSnapshot = readSnapshot();
       if (currentSnapshot.revision !== initialSnapshot.revision) throw Object.assign(new Error("El borrador cambió."), { code: "designer-ai/stale-snapshot" });
-      const actionValidation = validateDesignerAiActionBatch(result.actions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot: currentSnapshot });
-      const controlValidation = validateDesignerAiControlRequest(result.controlRequest, currentSnapshot);
-      const resolutionValidation = validateDesignerAiResolutionUpdates(result.resolutions, currentSnapshot);
+      const remainingActions = resume ? resume.recovery.actionResults.filter((r) => !r.effective).map((r) => r.action) : result.actions;
+      const actionValidation = validateDesignerAiActionBatch(remainingActions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot: currentSnapshot });
+      const controlValidation = validateDesignerAiControlRequest(result.controlRequest, currentSnapshot, { actions: remainingActions });
+      // A resume retains the original validated intent. Rules are checked against
+      // observed state during reconciliation; confirmed actions aren't projected twice.
+      const resolutionValidation = resume ? { ok: true, errors: [] } : validateDesignerAiResolutionUpdates(result.resolutions, currentSnapshot, { actions: result.actions });
       if (!actionValidation.ok || !controlValidation.ok || !resolutionValidation.ok) {
         throw Object.assign(new Error([...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" ")), { code: "designer-ai/prevalidation-failed" });
       }
 
       appliedBatchIdsRef.current.add(result.batchId);
-      const preliminaryState = reconcileDesignerAiConversationState({
-        snapshot: currentSnapshot,
-        previousState: conversationStateRef.current,
-        actions: result.actions,
-        resolutions: result.resolutions,
-      });
+      let actionResults = [];
       if (result.actions.length > 0) {
-        await executeDesignerAiActionBatch(result.actions, {
+        execution = await executeDesignerAiActionBatch(result.actions, {
           snapshot: currentSnapshot,
           targetWindow: window,
-          isSessionCurrent: () => sessionKeyRef.current === requestSessionKey,
-          designerAiConversation: preliminaryState,
+          isSessionCurrent: () => operation.isCurrent() && sessionKeyRef.current === requestSessionKey,
+          waitFrame: () => waitOneEditorFrame(pendingFramesRef.current),
+          recovery: resume?.recovery || null,
         });
+        actionResults = execution.actionResults;
       }
-      if (sessionKeyRef.current !== requestSessionKey) return;
-      const reflectedSnapshot = result.actions.length > 0
-        ? await waitForAppliedSnapshot({
-            initialSnapshot: currentSnapshot,
-            actions: result.actions,
-            readSnapshot: () => readDesignerAiCapabilitySnapshot(window, { conversationState: preliminaryState }),
-            isSessionCurrent: () => sessionKeyRef.current === requestSessionKey,
-            frameRegistry: pendingFramesRef.current,
-          })
-        : currentSnapshot;
-      if (sessionKeyRef.current !== requestSessionKey) return;
+      if (!operation.isCurrent()) return;
+      const reflectedSnapshot = readSnapshot();
       const nextConversationState = reconcileDesignerAiConversationState({
         snapshot: reflectedSnapshot,
-        previousState: preliminaryState,
-        actions: result.actions,
+        previousState: conversationStateRef.current,
+        actionResults,
         resolutions: result.resolutions,
       });
-      persistConversationState(nextConversationState);
+      await persistConversationState(nextConversationState);
+      if (!operation.isCurrent()) return;
+      recoveryRef.current = null;
       const finalSnapshot = readDesignerAiCapabilitySnapshot(window, { conversationState: nextConversationState });
       const controlRequest = result.controlRequest || null;
       const controlState = controlRequest
@@ -530,10 +518,26 @@ export default function DesignerAiPanel({
       });
       setLiveMessage(assistantMessage);
     } catch (error) {
-      if (sessionKeyRef.current !== requestSessionKey) return;
+      if (!operation.isCurrent() || sessionKeyRef.current !== requestSessionKey) return;
+      if (!error.actionResults && execution) {
+        error.actionResults = execution.actionResults;
+        error.recovery = execution.recovery;
+      }
+      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation } : null;
+      if (error.actionResults?.length) {
+        const partialState = reconcileDesignerAiConversationState({
+          snapshot: readSnapshot(), previousState: conversationStateRef.current,
+          actionResults: error.actionResults,
+        });
+        conversationStateRef.current = partialState;
+        await persistConversationState(partialState, { onPersistenceError: () => {} });
+        if (!operation.isCurrent()) return;
+      }
       const reflected = Array.isArray(error?.appliedActions) && error.appliedActions.length
         ? " Algunos cambios llegaron a reflejarse antes del error."
-        : "";
+        : error.actionResults?.some((item) => item.effective && !item.persisted)
+          ? " Hay cambios visibles cuyo guardado no se confirmó."
+          : "";
       const safeMessage = verifiedContinuation
         ? VERIFIED_CONTINUATION_FALLBACK
         : `${normalizeCallableError(error)}${reflected}`;
@@ -541,18 +545,21 @@ export default function DesignerAiPanel({
         const next = appendDesignerAiMessageHistory(current, createMessage("assistant", safeMessage, {
           intent: "error",
           canRetryContinuation: verifiedContinuation,
+          actionResults: error.actionResults || [],
+          recoveryBatchId: error.recovery ? result.batchId : null,
         }));
         messagesRef.current = next;
         return next;
       });
       setLiveMessage(safeMessage);
     } finally {
+      if (recoveryRef.current?.operation !== operation) operation.cancel();
       if (sessionKeyRef.current === requestSessionKey && requestSequenceRef.current === requestSequence) {
         sendingRef.current = false;
         setSending(false);
       }
     }
-  }, [callable, persistConversationState, readSnapshot, setMessages]);
+  }, [beginOperation, callable, persistConversationState, readSnapshot, setMessages]);
 
   submitMessageRef.current = submitMessage;
 
@@ -612,6 +619,8 @@ export default function DesignerAiPanel({
     sessionKeyRef.current = sessionKey;
     requestSequenceRef.current += 1;
     appliedBatchIdsRef.current.clear();
+    recoveryRef.current?.operation.cancel();
+    recoveryRef.current = null;
     sendingRef.current = false;
     activeControlRef.current = null;
     controlVerificationRef.current = false;
@@ -668,11 +677,14 @@ export default function DesignerAiPanel({
     const controlState = activeControlRef.current;
     if (!controlState || sendingRef.current) return;
     if (controlState.request?.type === "gallery_cell_upload") return false;
+    if (controlState.request?.type === "google_place_picker" && !expectedLocation?.googlePlaceId) return false;
+    const operation = beginOperation();
     controlVerificationRef.current = true;
     let snapshot = readSnapshot();
     let completedLeafIds = [];
     const attempts = wait ? 120 : 1;
     for (let frame = 0; frame < attempts; frame += 1) {
+      if (!operation.isCurrent() || activeControlRef.current !== controlState) break;
       snapshot = readSnapshot();
       const request = controlState.request;
       if (request?.type === "google_place_picker" && expectedLocation?.googlePlaceId) {
@@ -696,8 +708,9 @@ export default function DesignerAiPanel({
       if (!wait || sessionKeyRef.current !== sessionKey) break;
       await waitOneEditorFrame(pendingFramesRef.current);
     }
-    if (completedLeafIds.length === 0) {
+    if (completedLeafIds.length === 0 || !operation.isCurrent() || activeControlRef.current !== controlState) {
       controlVerificationRef.current = false;
+      operation.cancel();
       return false;
     }
     const nextState = reconcileDesignerAiConversationState({
@@ -705,7 +718,16 @@ export default function DesignerAiPanel({
       previousState: conversationStateRef.current,
       controlLeafIds: completedLeafIds,
     });
-    persistConversationState(nextState);
+    try {
+      // Places awaits its authoring write; cover is published by its owner only
+      // after its durable write. Gallery requires a separate flush below.
+      await persistConversationState(nextState);
+      if (!operation.isCurrent() || activeControlRef.current !== controlState) return false;
+    } catch {
+      controlVerificationRef.current = false;
+      setLiveMessage("El cambio está visible, pero no pude confirmar el guardado del recorrido. Probá nuevamente.");
+      return false;
+    } finally { operation.cancel(); }
     const verifiedSnapshot = readDesignerAiCapabilitySnapshot(window, {
       conversationState: nextState,
     });
@@ -722,14 +744,14 @@ export default function DesignerAiPanel({
       }
     );
     return true;
-  }, [persistConversationState, readSnapshot, sessionKey]);
+  }, [beginOperation, persistConversationState, readSnapshot, sessionKey]);
 
   useEffect(() => {
     refreshActiveGalleryChangeState();
     void completeActiveControlIfReflected();
   }, [completeActiveControlIfReflected, contentVersion, refreshActiveGalleryChangeState]);
 
-  const finishActiveGallery = useCallback(() => {
+  const finishActiveGallery = useCallback(async () => {
     const controlState = activeControlRef.current;
     if (
       controlVerificationRef.current ||
@@ -765,6 +787,27 @@ export default function DesignerAiPanel({
     activeControlRef.current = finishingControlState;
     setActiveControl(finishingControlState);
     const requestSessionKey = sessionKeyRef.current;
+    const operation = beginOperation();
+    try {
+      const persisted = await confirmDesignerAiPersistence(window, operation.isCurrent);
+      const galleryId = controlState.request.galleryId;
+      const expectedGallery = snapshot.values.galleries.find((item) => item.id === galleryId);
+      const savedGallery = persisted.snapshot.values.galleries.find((item) => item.id === galleryId);
+      if (!operation.isCurrent() || JSON.stringify(expectedGallery) !== JSON.stringify(savedGallery)) {
+        throw new Error("La galería guardada no coincide con la visible.");
+      }
+    } catch {
+      if (operation.isCurrent()) {
+        controlVerificationRef.current = false;
+        activeControlRef.current = controlState;
+        setActiveControl(controlState);
+        const message = "No pude confirmar el guardado de las fotos. La galería sigue pendiente; probá nuevamente.";
+        setMessages((current) => appendDesignerAiMessageHistory(current, createMessage("assistant", message, { intent: "error" })));
+        setLiveMessage(message);
+      }
+      operation.cancel();
+      return false;
+    }
 
     persistConversationState(nextState, {
       onPersisted: () => {
@@ -819,9 +862,9 @@ export default function DesignerAiPanel({
         });
         setLiveMessage(safeMessage);
       },
-    });
+    }).finally(operation.cancel);
     return true;
-  }, [persistConversationState, readSnapshot]);
+  }, [beginOperation, persistConversationState, readSnapshot, setMessages]);
 
   const openLocationControl = useCallback((decision) => {
     const snapshot = readSnapshot();
@@ -1007,7 +1050,16 @@ export default function DesignerAiPanel({
             }`}
           >
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
-            {message.canRetryContinuation ? (
+            {message.recoveryBatchId && message === messages.at(-1) && recoveryRef.current?.result.batchId === message.recoveryBatchId ? (
+              <div className="mt-2">
+                <button type="button" disabled={sending}
+                  onClick={() => void submitMessage("Reintentar pendientes", { showUserMessage: false, resumePartial: true })}
+                  className="min-h-11 rounded-xl border border-[#d9c0ec] bg-white px-3 py-2 text-xs font-medium text-[#692B9A] disabled:opacity-60">
+                  Reintentar pendientes
+                </button>
+                <p className="mt-1 text-xs">Este reintento conserva los cambios confirmados. Enviar otro mensaje inicia una nueva solicitud.</p>
+              </div>
+            ) : message.canRetryContinuation ? (
               <button
                 type="button"
                 onClick={() => retryVerifiedContinuation(message.id)}

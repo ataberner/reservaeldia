@@ -5,6 +5,7 @@ import {
   buildDashboardDocumentNameState,
   publishDashboardDocumentNameState,
   requestDashboardDocumentNameUpdate,
+  persistDashboardDocumentUpdate,
 } from "./dashboardDocumentNameBridge.js";
 
 class TestCustomEvent extends Event {
@@ -20,6 +21,32 @@ function target() {
   value.Event = Event;
   return value;
 }
+
+test("durable document acknowledgement requires a consumer and exact value", async () => {
+  const windowLike = target();
+  publishDashboardDocumentNameState({ documentId: "A", editable: true, hydrated: true }, windowLike);
+  await assert.rejects(persistDashboardDocumentUpdate({ name: "Ana" }, windowLike), /recepción/);
+  windowLike.addEventListener(DASHBOARD_DOCUMENT_NAME_EVENTS.UPDATE_REQUEST, ({ detail }) => {
+    detail.onAccepted();
+    detail.onPersisted({ documentId: "A", name: "Otro" });
+  }, { once: true });
+  await assert.rejects(persistDashboardDocumentUpdate({ name: "Ana" }, windowLike), /valor solicitado/);
+  windowLike.addEventListener(DASHBOARD_DOCUMENT_NAME_EVENTS.UPDATE_REQUEST, ({ detail }) => {
+    detail.onAccepted();
+    detail.onPersisted({ documentId: "A", name: "Ana" });
+  }, { once: true });
+  assert.equal((await persistDashboardDocumentUpdate({ name: "Ana" }, windowLike)).name, "Ana");
+});
+
+test("rejected writes and missing durable acknowledgement reject instead of succeeding", async () => {
+  const windowLike = target();
+  windowLike.addEventListener(DASHBOARD_DOCUMENT_NAME_EVENTS.UPDATE_REQUEST, ({ detail }) => {
+    detail.onAccepted(); detail.onPersistenceError(new Error("write rejected"));
+  }, { once: true });
+  await assert.rejects(persistDashboardDocumentUpdate({ name: "Ana" }, windowLike), /write rejected/);
+  windowLike.addEventListener(DASHBOARD_DOCUMENT_NAME_EVENTS.UPDATE_REQUEST, ({ detail }) => detail.onAccepted(), { once: true });
+  await assert.rejects(persistDashboardDocumentUpdate({ name: "Ana" }, windowLike, 1), /guardado/);
+});
 
 test("document state carries only normalized Designer AI planning metadata", () => {
   const state = buildDashboardDocumentNameState({

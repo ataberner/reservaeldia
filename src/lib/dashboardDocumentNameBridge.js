@@ -107,6 +107,8 @@ export function requestDashboardDocumentNameUpdate(detail, targetWindow) {
     name: normalizeDocumentName(safeDetail.name),
     persist: safeDetail.persist !== false,
     source: normalizeText(safeDetail.source) || "editor",
+    ...(safeDetail.expectedDocumentId ? { expectedDocumentId: safeDetail.expectedDocumentId } : {}),
+    ...(typeof safeDetail.onAccepted === "function" ? { onAccepted: safeDetail.onAccepted } : {}),
     designerAiConversation: Object.prototype.hasOwnProperty.call(safeDetail, "designerAiConversation")
       ? normalizeDesignerAiConversationState(safeDetail.designerAiConversation)
       : null,
@@ -127,4 +129,30 @@ export function requestDashboardDocumentNameUpdate(detail, targetWindow) {
   );
 
   return updateDetail;
+}
+
+// An event dispatch is not an acknowledgement. Only the document owner confirms
+// acceptance and completion of its existing persistence path.
+export function persistDashboardDocumentUpdate(detail, targetWindow, timeoutMs = 15000) {
+  const resolvedWindow = resolveTargetWindow(targetWindow);
+  const documentId = readDashboardDocumentNameState(resolvedWindow).documentId;
+  return new Promise((resolve, reject) => {
+    let accepted = false;
+    const timer = setTimeout(() => reject(new Error("No se confirmó el guardado del documento.")), timeoutMs);
+    const fail = (error) => { clearTimeout(timer); reject(error); };
+    requestDashboardDocumentNameUpdate({
+      ...detail, persist: true, expectedDocumentId: documentId,
+      onAccepted: () => { accepted = true; },
+      onPersisted: (receipt) => {
+        clearTimeout(timer);
+        if (receipt?.documentId !== documentId ||
+            (Object.hasOwn(detail, "name") && receipt.name !== detail.name) ||
+            (detail.designerAiConversation && JSON.stringify(receipt.designerAiConversation) !== JSON.stringify(normalizeDesignerAiConversationState(detail.designerAiConversation)))) {
+          reject(new Error("El guardado no confirmó el valor solicitado."));
+        } else resolve(receipt);
+      },
+      onPersistenceError: fail,
+    }, resolvedWindow);
+    if (!accepted) fail(new Error("El editor no confirmó recepción de la actualización."));
+  });
 }

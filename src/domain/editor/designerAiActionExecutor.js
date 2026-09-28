@@ -6,7 +6,8 @@ import { normalizeEventDetailsConfig } from "../../../shared/eventDetailsConfig.
 import {
   buildCountdownTargetIsoFromLocalParts,
 } from "../../../shared/countdownEventDetails.js";
-import { requestDashboardDocumentNameUpdate } from "../../lib/dashboardDocumentNameBridge.js";
+import { persistDashboardDocumentUpdate } from "../../lib/dashboardDocumentNameBridge.js";
+import { confirmDesignerAiPersistence, isDesignerAiActionEffective, readDesignerAiActionEvidence, waitForDesignerAiEffect } from "./designerAiActionEvidence.js";
 import { EDITOR_BRIDGE_EVENTS } from "../../lib/editorBridgeContracts.js";
 import {
   readCanvasEditorMethod,
@@ -18,36 +19,19 @@ import { resolveEventDateSidebarBinding } from "../eventDetails/date.js";
 import { applyManualEventLocationText } from "../eventDetails/locationAuthoring.js";
 import { resolveDressCodeSidebarBinding, resolveStoryTextSidebarBinding } from "../templates/storyText.js";
 import { moveGalleryPhotoToSlot } from "../gallery/galleryMutations.js";
-import {
-  getOrderedQuestions,
-  normalizeRsvpConfig,
-} from "../rsvp/config.js";
-import {
-  addQuestionOption,
-  moveQuestion,
-  removeQuestionOption,
-  setModalSettings,
-  setQuestionLabel,
-  setQuestionOptionLabel,
-  setQuestionRequired,
-  setQuestionType,
-  toggleQuestionActive,
-} from "../rsvp/editorOps.js";
+import { normalizeRsvpConfig } from "../rsvp/config.js";
+import configReducers from "../../../shared/designerAiConfigReducers.cjs";
+import actionProjection from "../../../shared/designerAiActionProjection.cjs";
+const { applyRsvpAction, applySelectedGiftAction, confirmedGiftMethods: readConfirmedGiftMethods } = configReducers;
+const { orderDesignerAiActions } = actionProjection;
 import { normalizeGiftConfig } from "../gifts/config.js";
+import { captureDesignerAiActionEvidence, matchesDesignerAiActionEvidence, fingerprintDesignerAiValue } from "../../../shared/designerAiConversationLedger.js";
 import {
   buildFunctionalCtaButtonPayload,
   buildFunctionalCtaVisibilityPatch,
   findFunctionalCtaButtonByType,
 } from "../functionalCtaButtons.js";
 
-const ACTION_OWNER_ORDER = Object.freeze({
-  document: 10,
-  event: 20,
-  story: 30,
-  gallery: 40,
-  rsvp: 50,
-  gifts: 60,
-});
 
 function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -117,7 +101,7 @@ async function executeEventAction(action, targetWindow) {
       feature,
     });
     const currentPhase = asRecord(
-      action.__currentValues?.[feature === EVENT_DETAIL_FEATURES.PARTY ? "party" : "ceremony"]
+      readDesignerAiActionEvidence(targetWindow).snapshot.values[feature === EVENT_DETAIL_FEATURES.PARTY ? "party" : "ceremony"]
     );
     const date = args.date ?? currentPhase.date ?? "";
     const startTime = args.startTime ?? currentPhase.startTime ?? "";
@@ -132,14 +116,16 @@ async function executeEventAction(action, targetWindow) {
     const valuesPatch = {};
     if (baseBinding.fieldKey) {
       const fieldType = String(baseBinding.field?.type || "date").trim().toLowerCase();
-      valuesPatch[baseBinding.fieldKey] = fieldType === "datetime"
-        ? buildCountdownTargetIsoFromLocalParts({ date, time: startTime }) || ""
-        : date;
+      if (args.date !== null || (fieldType === "datetime" && args.startTime !== null)) {
+        valuesPatch[baseBinding.fieldKey] = fieldType === "datetime"
+          ? buildCountdownTargetIsoFromLocalParts({ date, time: startTime }) || ""
+          : date;
+      }
     }
     const startField = fieldKeyByRole.get(`${rolePrefix}_start_time`);
     const endField = fieldKeyByRole.get(`${rolePrefix}_end_time`);
-    if (startField?.key) valuesPatch[startField.key] = startTime;
-    if (endField?.key) valuesPatch[endField.key] = endTime;
+    if (startField?.key && args.startTime !== null) valuesPatch[startField.key] = startTime;
+    if (endField?.key && args.endTime !== null) valuesPatch[endField.key] = endTime;
     if (Object.keys(valuesPatch).length > 0) {
       await requireBridgeMethod("updateTemplateFieldValues", targetWindow)(valuesPatch, {
         applyTargets: true,
@@ -232,93 +218,9 @@ function executeGalleryAction(action, targetWindow) {
     id: gallery.id,
     cambios: result.gallery,
   });
+  return { gallery: result.gallery };
 }
 
-function moveRsvpQuestionToPlacement(config, questionId, targetQuestionId, placement) {
-  let next = config;
-  const maxSteps = getOrderedQuestions(next).length + 1;
-  for (let step = 0; step < maxSteps; step += 1) {
-    const rows = getOrderedQuestions(next);
-    const sourceIndex = rows.findIndex((question) => question.id === questionId);
-    const targetIndex = rows.findIndex((question) => question.id === targetQuestionId);
-    const desired = placement === "after" ? targetIndex + 1 : targetIndex;
-    const adjustedDesired = sourceIndex < desired ? desired - 1 : desired;
-    if (sourceIndex === adjustedDesired) return next;
-    next = moveQuestion(next, questionId, sourceIndex < adjustedDesired ? "down" : "up");
-  }
-  return next;
-}
-
-function applyRsvpAction(config, action) {
-  const args = action.arguments;
-  switch (action.type) {
-    case "rsvp.set_enabled":
-      return normalizeRsvpConfig({ ...config, enabled: args.enabled }, { forceEnabled: false });
-    case "rsvp.set_question_active":
-      return toggleQuestionActive(config, args.questionId, args.active);
-    case "rsvp.update_question": {
-      let next = config;
-      if (args.label !== null) next = setQuestionLabel(next, args.questionId, args.label);
-      if (args.questionType !== null) next = setQuestionType(next, args.questionId, args.questionType);
-      if (args.required !== null) next = setQuestionRequired(next, args.questionId, args.required);
-      return next;
-    }
-    case "rsvp.move_question":
-      return moveRsvpQuestionToPlacement(config, args.questionId, args.targetQuestionId, args.placement);
-    case "rsvp.add_option": {
-      const before = new Set(
-        getOrderedQuestions(config).find((question) => question.id === args.questionId)?.options?.map((option) => option.id) || []
-      );
-      let next = addQuestionOption(config, args.questionId);
-      const added = getOrderedQuestions(next)
-        .find((question) => question.id === args.questionId)?.options
-        ?.find((option) => !before.has(option.id));
-      if (added) next = setQuestionOptionLabel(next, args.questionId, added.id, args.label);
-      return next;
-    }
-    case "rsvp.rename_option":
-      return setQuestionOptionLabel(config, args.questionId, args.optionId, args.label);
-    case "rsvp.remove_option":
-      return removeQuestionOption(config, args.questionId, args.optionId);
-    case "rsvp.update_modal":
-      return setModalSettings(config, Object.fromEntries(
-        Object.entries({
-          title: args.title,
-          subtitle: args.subtitle,
-          submitLabel: args.submitLabel,
-          primaryColor: args.primaryColor,
-        }).filter(([, value]) => value !== null)
-      ));
-    default:
-      return config;
-  }
-}
-
-function applyGiftAction(config, action) {
-  const args = action.arguments;
-  if (action.type === "gifts.set_enabled") {
-    return normalizeGiftConfig({ ...config, enabled: args.enabled }, { forceEnabled: false });
-  }
-  if (action.type === "gifts.set_method") {
-    const isLink = args.method === "giftListLink";
-    const nextValue = args.value === null
-      ? isLink
-        ? config.giftListUrl
-        : config.bank[args.method]
-      : args.value;
-    return normalizeGiftConfig({
-      ...config,
-      ...(isLink
-        ? { giftListUrl: nextValue }
-        : { bank: { ...config.bank, [args.method]: nextValue } }),
-      visibility: { ...config.visibility, [args.method]: args.visible },
-    }, { forceEnabled: false });
-  }
-  if (action.type === "gifts.set_intro_text") {
-    return normalizeGiftConfig({ ...config, introText: args.text }, { forceEnabled: false });
-  }
-  return config;
-}
 
 function synchronizeFunctionalCta(targetWindow, type, enabled, text = "") {
   const button = findFunctionalCtaButtonByType(readEditorObjects(targetWindow), type);
@@ -342,7 +244,8 @@ function synchronizeFunctionalCta(targetWindow, type, enabled, text = "") {
   }
 }
 
-async function executeConfigOwners(actions, targetWindow, onOwnerApplied = () => {}) {
+async function executeConfigOwners(actions, targetWindow, confirmedGiftMethods) {
+  const expected = {};
   const render = readEditorRenderSnapshot(targetWindow) || {};
   const rsvpActions = actions.filter((action) => getActionOwner(action.type) === "rsvp");
   if (rsvpActions.length) {
@@ -350,7 +253,7 @@ async function executeConfigOwners(actions, targetWindow, onOwnerApplied = () =>
     for (const action of rsvpActions) config = applyRsvpAction(config, action);
     dispatchRuntimeEvent(targetWindow, EDITOR_BRIDGE_EVENTS.RSVP_CONFIG_UPDATE, { config });
     synchronizeFunctionalCta(targetWindow, "rsvp-boton", config.enabled);
-    onOwnerApplied(rsvpActions);
+    expected.rsvp = config;
   }
 
   const giftActions = actions.filter((action) => getActionOwner(action.type) === "gifts");
@@ -358,15 +261,24 @@ async function executeConfigOwners(actions, targetWindow, onOwnerApplied = () =>
     let config = normalizeGiftConfig(render.gifts, { forceEnabled: false });
     let requestedButtonText = "";
     for (const action of giftActions) {
-      config = applyGiftAction(config, action);
+      config = applySelectedGiftAction(config, action, confirmedGiftMethods);
       if (action.type === "gifts.set_button_text") {
         requestedButtonText = action.arguments.text;
       }
     }
     dispatchRuntimeEvent(targetWindow, EDITOR_BRIDGE_EVENTS.GIFT_CONFIG_UPDATE, { config });
     synchronizeFunctionalCta(targetWindow, "regalo-boton", config.enabled, requestedButtonText);
-    onOwnerApplied(giftActions);
+    expected.gifts = config;
   }
+  return expected;
+}
+
+function recoveryStateFingerprint(snapshot) {
+  return fingerprintDesignerAiValue({ document: snapshot.documentIdentity, availability: snapshot.availability, values: snapshot.values });
+}
+
+function recoveryConflict() {
+  return Object.assign(new Error("El estado cambió o no permite reanudar con seguridad. Enviá una nueva solicitud para interpretar el estado actual."), { code: "designer-ai/recovery-conflict" });
 }
 
 export async function executeDesignerAiActionBatch(
@@ -375,11 +287,25 @@ export async function executeDesignerAiActionBatch(
     snapshot,
     targetWindow = typeof window !== "undefined" ? window : null,
     isSessionCurrent = () => true,
-    designerAiConversation = null,
+    waitFrame,
+    evidenceAttempts = 120,
+    recovery = null,
   } = {}
 ) {
   if (!targetWindow) throw new Error("El runtime del editor no está disponible.");
-  const validation = validateDesignerAiActionBatch(actions, {
+  const ordered = orderDesignerAiActions(actions);
+  const actualSnapshot = readDesignerAiActionEvidence(targetWindow).snapshot;
+  if (recovery && (!isSessionCurrent() || !recovery.isSessionCurrent() ||
+      recovery.stateFingerprint !== recoveryStateFingerprint(actualSnapshot) ||
+      JSON.stringify(recovery.actions) !== JSON.stringify(ordered))) throw recoveryConflict();
+  if (recovery) {
+    for (const receipt of recovery.actionResults) {
+      if (receipt.effective && !matchesDesignerAiActionEvidence(receipt.action, receipt.evidence, actualSnapshot)) throw recoveryConflict();
+      if (receipt.executed && !receipt.effective && receipt.beforeStateFingerprint !== recovery.stateFingerprint) throw recoveryConflict();
+    }
+  }
+  const pendingActions = recovery ? recovery.actionResults.filter((r) => !r.effective).map((r) => r.action) : actions;
+  const validation = validateDesignerAiActionBatch(pendingActions, {
     origin: DESIGNER_AI_ACTION_ORIGINS.MODEL,
     snapshot,
   });
@@ -389,60 +315,75 @@ export async function executeDesignerAiActionBatch(
     throw error;
   }
 
-  const ordered = actions
-    .map((action, index) => ({ ...action, __index: index, __currentValues: snapshot.values }))
-    .sort((left, right) => {
-      const ownerDelta = ACTION_OWNER_ORDER[getActionOwner(left.type)] - ACTION_OWNER_ORDER[getActionOwner(right.type)];
-      return ownerDelta || left.__index - right.__index;
-    });
-  const nonConfigActions = ordered.filter((action) => !["rsvp", "gifts"].includes(getActionOwner(action.type)));
-  const applied = [];
+  const applied = recovery ? recovery.actionResults.filter((r) => r.persisted && !r.error).map((r) => r.action.type) : [];
+  const confirmedGiftMethods = recovery ? new Set(recovery.confirmedGiftMethods) : readConfirmedGiftMethods(snapshot);
+  const actionResults = recovery ? structuredClone(recovery.actionResults) : ordered.map((action) => ({
+    action, requested: true, executed: false, effective: false, persisted: false, error: null,
+  }));
+  const captureRecovery = (expectedRender = {}) => ({
+    actions: ordered, actionResults: structuredClone(actionResults), expectedRender,
+    confirmedGiftMethods: [...confirmedGiftMethods], isSessionCurrent,
+    stateFingerprint: recoveryStateFingerprint(readDesignerAiActionEvidence(targetWindow).snapshot),
+  });
 
-  for (const action of nonConfigActions) {
-    if (!isSessionCurrent()) {
-      const error = new Error("La sesión del borrador cambió antes de aplicar el lote.");
-      error.code = "designer-ai/stale-session";
-      error.appliedActions = applied;
-      throw error;
-    }
+  for (let index = 0; index < ordered.length; index += 1) {
+    const action = ordered[index];
+    const receipt = actionResults[index];
+    if (receipt.persisted && !receipt.error) continue;
+    let persistenceError = null;
+    let expectedRender = receipt.effective ? recovery.expectedRender : {};
     try {
+      if (!isSessionCurrent()) throw Object.assign(new Error("La sesión del borrador cambió antes de aplicar el lote."), { code: "designer-ai/stale-session" });
+      const persistOnly = receipt.effective;
+      receipt.beforeStateFingerprint = recoveryStateFingerprint(readDesignerAiActionEvidence(targetWindow).snapshot);
+      receipt.executed = true;
+      receipt.error = null;
       if (action.type === "document.set_name") {
-        requestDashboardDocumentNameUpdate({
+        try { await persistDashboardDocumentUpdate({
           name: action.arguments.name,
-          persist: true,
           source: "designer-ai",
-          ...(designerAiConversation ? { designerAiConversation } : {}),
-        }, targetWindow);
+        }, targetWindow); } catch (error) { persistenceError = error; }
+      } else if (persistOnly) {
+        // The effect is still exact; retry its existing writer, never the additive mutation.
       } else if (getActionOwner(action.type) === "event") {
-        await executeEventAction(action, targetWindow);
+        try { await executeEventAction(action, targetWindow); } catch (error) { persistenceError = error; }
       } else if (getActionOwner(action.type) === "story") {
-        await executeStoryAction(action, targetWindow);
+        try { await executeStoryAction(action, targetWindow); } catch (error) { persistenceError = error; }
       } else if (getActionOwner(action.type) === "gallery") {
-        executeGalleryAction(action, targetWindow);
+        expectedRender = executeGalleryAction(action, targetWindow);
+      } else {
+        expectedRender = await executeConfigOwners([action], targetWindow, confirmedGiftMethods);
+      }
+      const reflected = () => {
+        const { snapshot: current, render } = readDesignerAiActionEvidence(targetWindow);
+        return isDesignerAiActionEffective(action, current, render, expectedRender);
+      };
+      await waitForDesignerAiEffect(reflected, { isSessionCurrent, waitFrame, attempts: evidenceAttempts });
+      receipt.effective = true;
+      receipt.evidence = captureDesignerAiActionEvidence(receipt.action, readDesignerAiActionEvidence(targetWindow).snapshot);
+      if (persistenceError) throw persistenceError;
+      if (action.type !== "document.set_name") {
+        const persisted = await confirmDesignerAiPersistence(targetWindow, isSessionCurrent);
+        if (!isDesignerAiActionEffective(action, persisted.snapshot, persisted.render, expectedRender)) {
+          throw Object.assign(new Error("El guardado no contiene el efecto solicitado."), { code: "designer-ai/persistence-failed" });
+        }
+        if (!matchesDesignerAiActionEvidence(receipt.action, receipt.evidence, persisted.snapshot)) {
+          throw Object.assign(new Error("El guardado no acredita el mismo valor observado."), { code: "designer-ai/persistence-conflict" });
+        }
+      }
+      if (!isSessionCurrent()) throw new Error("La sesión del borrador cambió.");
+      receipt.persisted = true;
+      if (!matchesDesignerAiActionEvidence(receipt.action, receipt.evidence, readDesignerAiActionEvidence(targetWindow).snapshot)) {
+        throw Object.assign(new Error("El valor cambió durante el guardado. Volvé a indicar el cambio que necesitás."), { code: "designer-ai/evidence-conflict" });
       }
       applied.push(action.type);
     } catch (error) {
+      receipt.error = error.code || "designer-ai/action-failed";
       error.appliedActions = applied;
+      error.actionResults = actionResults;
+      error.recovery = captureRecovery(expectedRender);
       throw error;
     }
   }
-
-  if (ordered.some((action) => ["rsvp", "gifts"].includes(getActionOwner(action.type)))) {
-    if (!isSessionCurrent()) {
-      const error = new Error("La sesión del borrador cambió antes de aplicar configuraciones.");
-      error.code = "designer-ai/stale-session";
-      error.appliedActions = applied;
-      throw error;
-    }
-    try {
-      await executeConfigOwners(ordered, targetWindow, (ownerActions) => {
-        ownerActions.forEach((action) => applied.push(action.type));
-      });
-    } catch (error) {
-      error.appliedActions = applied;
-      throw error;
-    }
-  }
-
-  return { appliedActions: applied };
+  return { appliedActions: applied, actionResults, recovery: captureRecovery() };
 }

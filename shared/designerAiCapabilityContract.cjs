@@ -122,6 +122,14 @@ function isInteger(value) {
   return Number.isInteger(value);
 }
 
+function isCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+}
+
 function validateActionShape(action) {
   const record = asRecord(action);
   if (!record || !isNonEmptyString(record.type, 80)) {
@@ -347,14 +355,16 @@ function validateActionAgainstSnapshot(action, snapshot) {
     const slots = Array.isArray(gallery?.slots) ? gallery.slots : [];
     if (action.type === "gallery.move_photo") {
       const source = slots.find((slot) =>
-        (args.sourceCellId && slot?.cellId === args.sourceCellId) || slot?.index === args.sourceIndex
+        (!args.sourceCellId || slot?.cellId === args.sourceCellId) && slot?.index === args.sourceIndex
       );
       const target = slots.find((slot) =>
-        (args.targetCellId && slot?.cellId === args.targetCellId) || slot?.index === args.targetIndex
+        (!args.targetCellId || slot?.cellId === args.targetCellId) && slot?.index === args.targetIndex
       );
       if (!source?.occupied || !target || source === target) {
         return "El movimiento requiere un origen ocupado y un slot de destino distinto.";
       }
+    } else if (!slots.some((slot) => slot.index === args.cellIndex && (!args.cellId || slot.cellId === args.cellId))) {
+      return "El índice y el ID deben corresponder a la misma celda existente.";
     }
   }
 
@@ -369,8 +379,8 @@ function validateActionAgainstSnapshot(action, snapshot) {
   }
 
   if (action.type === "event.set_datetime") {
-    if (args.date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
-      return "La fecha debe usar YYYY-MM-DD.";
+    if (args.date !== null && !isCalendarDate(args.date)) {
+      return "La fecha debe ser una fecha calendario válida en YYYY-MM-DD.";
     }
     for (const value of [args.startTime, args.endTime]) {
       if (value !== null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
@@ -395,6 +405,7 @@ function validateDesignerAiActionBatch(actions, { origin, snapshot } = {}) {
   }
 
   const errors = [];
+  let effectiveEventMode = snapshot?.values?.eventMode;
   actions.forEach((action, index) => {
     const type = action?.type;
     const allowedForOrigin = origin === DESIGNER_AI_ACTION_ORIGINS.MODEL
@@ -411,24 +422,18 @@ function validateDesignerAiActionBatch(actions, { origin, snapshot } = {}) {
     }
     const snapshotError = validateActionAgainstSnapshot(action, snapshot);
     if (snapshotError) errors.push(`Acción ${index}: ${snapshotError}`);
+    if (type === "event.set_mode") effectiveEventMode = action.arguments.mode;
+    if (["event.set_datetime", "event.set_location_text", "event.select_google_place"].includes(type) &&
+        action.arguments.phase === "party" && effectiveEventMode !== "ceremony_party") {
+      errors.push(`Acción ${index}: Party no está activo en ese punto del lote.`);
+    }
   });
 
   if (origin === DESIGNER_AI_ACTION_ORIGINS.MODEL) {
-    const eventModeActions = actions.filter((action) => action?.type === "event.set_mode");
-    const effectiveEventMode = eventModeActions.length
-      ? eventModeActions[eventModeActions.length - 1]?.arguments?.mode
-      : snapshot?.values?.eventMode;
-    const partyEnabled = effectiveEventMode === "ceremony_party";
-    actions.forEach((action, index) => {
-      if (
-        ["event.set_datetime", "event.set_location_text"].includes(action?.type) &&
-        action?.arguments?.phase === "party" &&
-        !partyEnabled
-      ) {
-        errors.push(`Acción ${index}: Party debe activarse mediante event.set_mode en el mismo lote o previamente.`);
-      }
-    });
-
+    if (effectiveEventMode !== "ceremony_party" && actions.some((action) =>
+      ["event.set_datetime", "event.set_location_text"].includes(action?.type) && action?.arguments?.phase === "party")) {
+      errors.push("Party debe permanecer activo en el estado efectivo del lote.");
+    }
     const giftEnabledActions = actions.filter((action) => action?.type === "gifts.set_enabled");
     const giftsWillBeEnabled = giftEnabledActions.length
       ? giftEnabledActions[giftEnabledActions.length - 1]?.arguments?.enabled === true
@@ -537,6 +542,7 @@ function sanitizeCapabilitySnapshot(input) {
       value: method === "giftListLink" ? "" : rawValue,
       visible: methodSource.visible === true,
       configured: methodSource.configured === true || rawValue.length > 0,
+      ...(methodSource.contentRevision ? { contentRevision: sanitizeString(methodSource.contentRevision, 120) } : {}),
     }];
   }));
 
@@ -665,13 +671,38 @@ function sanitizeEventPhase(value) {
   };
 }
 
+// Context projection only: never use this to write gifts or compute local
+// revision/fingerprints. Existence is enough to offer retaining a hidden method.
+function minimizeDesignerAiGiftValues(gifts) {
+  return {
+    ...gifts,
+    methods: Object.fromEntries(Object.entries(gifts?.methods || {}).map(([method, data]) => [method, {
+      visible: data.visible === true,
+      configured: data.configured === true || Boolean(data.value),
+      value: gifts.enabled === true && data.visible === true && method !== "giftListLink" ? data.value : "",
+    }])),
+  };
+}
+
+function minimizeDesignerAiRecentTurns(turns, gifts) {
+  const hiddenValues = Object.entries(gifts?.methods || {})
+    .filter(([method, data]) => method !== "giftListLink" && (gifts.enabled !== true || data.visible !== true))
+    .map(([, data]) => data.value)
+    .filter((value) => typeof value === "string" && value.length > 0)
+    .sort((a, b) => b.length - a.length);
+  return (Array.isArray(turns) ? turns : []).map((turn) => ({
+    role: turn.role,
+    content: hiddenValues.reduce((text, value) => text.split(value).join("[dato bancario oculto]"), String(turn.content || "")).slice(0, 700),
+  }));
+}
+
 function sanitizeCapabilityIdList(value) {
   return (Array.isArray(value) ? value : [])
     .filter((item) => isNonEmptyString(item, 120))
     .slice(0, 40);
 }
 
-function validateDesignerAiResolutionUpdates(resolutions, snapshot) {
+function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = [] } = {}) {
   if (!Array.isArray(resolutions) || resolutions.length > 120) {
     return { ok: false, errors: ["Las resoluciones deben contener entre 0 y 120 elementos."] };
   }
@@ -705,6 +736,9 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot) {
         errors.push(`Resolucion ${index}: regla no permitida.`);
       } else if (!isResolutionRuleCompatible(record.leafId, record.rule)) {
         errors.push(`Resolucion ${index}: la regla no corresponde a esa hoja.`);
+      } else {
+        const semanticError = conversationLedger.designerAiResolutionRuleError(record, snapshot, { actions });
+        if (semanticError) errors.push(`Resolucion ${index}: ${semanticError}`);
       }
     } else if (record.rule !== null) {
       errors.push(`Resolucion ${index}: rule solo aplica a resolved_by_rule.`);
@@ -768,7 +802,9 @@ function containsForbiddenSnapshotData(value, seen = new Set()) {
   );
 }
 
-function validateDesignerAiControlRequest(controlRequest, snapshot) {
+function validateDesignerAiControlRequest(controlRequest, snapshot, { actions = [] } = {}) {
+  const modeAction = [...actions].reverse().find((action) => action?.type === "event.set_mode");
+  if (modeAction) snapshot = { ...snapshot, values: { ...snapshot.values, eventMode: modeAction.arguments.mode } };
   if (controlRequest == null) return { ok: true, errors: [] };
   const request = asRecord(controlRequest);
   if (!request || !CONTROL_SET.has(request.type)) {
@@ -908,4 +944,6 @@ module.exports = {
   validateDesignerAiActionBatch,
   validateDesignerAiControlRequest,
   validateDesignerAiResolutionUpdates,
+  minimizeDesignerAiGiftValues,
+  minimizeDesignerAiRecentTurns,
 };

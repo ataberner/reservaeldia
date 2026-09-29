@@ -5,6 +5,54 @@ import service from "../../../../functions/lib/designerAi/service.js";
 
 const action = (type, args) => ({ type, arguments: args });
 
+test("production single event reaches the panel, persists mode and makes Party inapplicable without repair", async () => {
+  const attempts = [];
+  const reply = "Perfecto. Entonces vamos a configurar un único evento. ¿Qué día es?";
+  const run = await mountPanel({ fullFields: true, respond: async (payload) => {
+    let count = 0;
+    const result = await service.interpretDesignerAiChat({ payload,
+      client: { responses: { create: async () => {
+        count++;
+        const selectingSingle = payload.message === "voy a hacer un solo evento";
+        return { output: [{ type: "function_call", name: "submit_designer_ai_result", arguments: JSON.stringify({
+          intent: selectingSingle ? "apply" : "clarify",
+          assistantMessage: selectingSingle ? reply : "¿La invitación es para un solo evento o distingue ceremonia y fiesta?",
+          actions: selectingSingle ? [action("event.set_mode", { mode: "single" })] : [],
+          resolutions: selectingSingle ? [
+            { leafId: "event.mode", status: "resolved_from_user", rule: null },
+            { leafId: "event.ceremony.date", status: "needs_clarification", rule: null },
+            { leafId: "event.ceremony.end_time", status: "resolved_by_rule", rule: "optional_end_time_omitted" },
+            { leafId: "event.party.end_time", status: "resolved_by_rule", rule: "optional_end_time_omitted" },
+            { leafId: "event.party.venue_name", status: "resolved_by_rule", rule: "optional_venue_name_omitted" },
+          ] : [],
+          controlRequest: null,
+        }) }] };
+      } } },
+    });
+    attempts.push(count);
+    return result;
+  } });
+  try {
+    await run.until(() => run.messages().length === 1);
+    const before = run.snapshot();
+    assert.equal(before.ledger.leaves.find((leaf) => leaf.id === "event.mode").status, "pending");
+    assert.equal(before.availability.ceremonyDatetime, true);
+    assert.equal(before.availability.partyDatetime, true);
+    await run.send("voy a hacer un solo evento");
+    const after = run.snapshot();
+    assert.equal(after.values.eventMode, "single");
+    assert.equal(after.ledger.leaves.find((leaf) => leaf.id === "event.mode").status, "resolved_from_user");
+    const party = after.ledger.leaves.filter((leaf) => leaf.id.startsWith("event.party."));
+    assert.ok(party.length > 0);
+    assert.ok(party.every((leaf) => leaf.status === "not_applicable_by_dependency"));
+    assert.equal(after.ledger.guidedFlow.leafIds.some((id) => id.startsWith("event.party.")), false);
+    assert.equal(run.exportPersistedDraft().render.eventDetails.mode, "single");
+    assert.equal(run.messages().at(-1).content, reply);
+    assert.equal(run.messages().some((message) => message.intent === "error"), false);
+    assert.deepEqual(attempts, [1, 1]);
+  } finally { await run.close(); }
+});
+
 async function acceptanceRun() {
   let planned = [];
   const run = await mountPanel({ fullFields: true, respond: async (payload) => service.interpretDesignerAiChat({

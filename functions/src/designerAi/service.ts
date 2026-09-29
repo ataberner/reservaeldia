@@ -31,7 +31,7 @@ const capabilityContract = require("../../shared/designerAiCapabilityContract.cj
   DESIGNER_AI_CONTRACT_VERSION: string;
   DESIGNER_AI_TOOL: Record<string, unknown>;
   containsForbiddenSnapshotData(value: unknown): boolean;
-  discardIncompatibleDesignerAiResolutionRules(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot): unknown;
+  discardInactiveDesignerAiPhaseResolutions(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { actions: DesignerAiAction[] }): unknown;
   sanitizeCapabilitySnapshot(value: unknown): DesignerAiCapabilitySnapshot;
   minimizeDesignerAiGiftValues(value: unknown): Record<string, unknown>;
   minimizeDesignerAiRecentTurns(turns: unknown, gifts: unknown): Array<{ role: string; content: string }>;
@@ -77,6 +77,7 @@ Reglas seguras:
 - Los valores con procedencia template_value o placeholder_or_sample son ejemplos de diseño, no datos de la pareja. Tratálos como vacíos: no los cites, no preguntes si se conservan y no los uses para inferir ninguna respuesta.
 - Nunca preguntes por el nombre visible del borrador cuando faltan los nombres de la pareja. Al recibir ambos nombres reales, el backend reemplaza el título heredado por Casamiento {Nombre 1} y {Nombre 2} sin pedir confirmación.
 - Inferí ceremony_party si el relato distingue ceremonia y fiesta. Inferí single solo ante un único evento inequívoco.
+- Cuando el modo efectivo sea single, no generes resolutions para Party: el sistema marca automáticamente esas hojas como no aplicables.
 - Party usa la fecha de Ceremony únicamente si “después”, “ese mismo día” o equivalente lo hace inequívoco.
 - La hora de fin opcional vacía usa optional_end_time_omitted. El nombre opcional del lugar vacío usa optional_venue_name_omitted cuando hay dirección suficiente.
 - Cuando el usuario aporta lugar o dirección, aplicá inmediatamente los textos válidos con event.set_location_text. Si todavía no decidió sobre Google Maps, no abras el selector en ese mismo turno: preguntá si quiere buscar/verificar allí y marcá event.{phase}.place_selection como needs_clarification con rule null.
@@ -499,19 +500,21 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   const intent = String(result.intent);
   const assistantMessage = normalizeText(result.assistantMessage);
   if (!(["apply", "clarify", "out_of_scope"].includes(intent)) || !assistantMessage || assistantMessage.length > 700 || !Array.isArray(result.actions) || !Array.isArray(result.resolutions)) throw new DesignerAiServiceError("malformed-output", "La salida estructurada está incompleta.");
-  const compatibleResolutions = capabilityContract.discardIncompatibleDesignerAiResolutionRules(result.resolutions, snapshot);
+  if (intent === "out_of_scope" && (result.actions.length > 0 || result.controlRequest !== null || result.resolutions.length > 0)) throw new DesignerAiServiceError("malformed-output", "out_of_scope no puede mutar ni resolver hojas.");
+  const applicableResolutions = capabilityContract.discardInactiveDesignerAiPhaseResolutions(result.resolutions, snapshot, { actions: result.actions });
   const safeResolutions = discardModelResolutionsForControlVerifiedLeaves(
-    compatibleResolutions,
+    applicableResolutions,
     snapshot
   ) as unknown[];
   const actionValidation = capabilityContract.validateDesignerAiActionBatch(result.actions, { origin: capabilityContract.DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot });
   const controlValidation = capabilityContract.validateDesignerAiControlRequest(result.controlRequest, snapshot, { actions: result.actions });
   const resolutionValidation = capabilityContract.validateDesignerAiResolutionUpdates(safeResolutions, snapshot, { actions: result.actions });
   if (!actionValidation.ok || !controlValidation.ok || !resolutionValidation.ok) throw new DesignerAiServiceError("malformed-output", [...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" "));
-  const normalizedIntent = intent === "clarify" && (
+  const redundantOnly = intent === "apply" && result.actions.length === 0 && result.controlRequest === null &&
+    result.resolutions.length > 0 && Array.isArray(applicableResolutions) && applicableResolutions.length === 0;
+  const normalizedIntent = redundantOnly ? "clarify" : intent === "clarify" && (
     result.actions.length > 0 || result.controlRequest !== null
   ) ? "apply" : intent;
-  if (intent === "out_of_scope" && (result.actions.length > 0 || result.controlRequest !== null || safeResolutions.length > 0)) throw new DesignerAiServiceError("malformed-output", "out_of_scope no puede mutar ni resolver hojas.");
   if (normalizedIntent === "apply" && result.actions.length === 0 && result.controlRequest === null && safeResolutions.length === 0) throw new DesignerAiServiceError("malformed-output", "apply requiere acciones, una decisión o un control local.");
   const augmented = augmentAutomaticEventName({ intent: normalizedIntent as DesignerAiPublicResult["intent"], assistantMessage, actions: result.actions as DesignerAiAction[], controlRequest: result.controlRequest as Record<string, unknown> | null, resolutions: safeResolutions as DesignerAiResolution[] }, snapshot);
   const augmentedActions = capabilityContract.validateDesignerAiActionBatch(augmented.actions, {

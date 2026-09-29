@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import contractRuntime from "./designerAiCapabilityContract.cjs";
 import {
   DESIGNER_AI_ACTION_ORIGINS,
   DESIGNER_AI_CONTRACT_VERSION,
@@ -25,6 +26,37 @@ const snapshot = sanitizeCapabilitySnapshot({
       questions: [{ id: "attendance", type: "single_select", options: [{ id: "yes", label: "Sí" }] }],
     },
   },
+});
+
+test("inactive phase normalization leaves the raw semantic validator strict", () => {
+  const initial = sanitizeCapabilitySnapshot({
+    ...snapshot, values: { eventMode: "ceremony_party" },
+    ledger: { leaves: [
+      { id: "event.mode", status: "pending", provenance: "unknown", fingerprint: "mode" },
+      { id: "event.party.end_time", status: "pending", provenance: "unknown", fingerprint: "end" },
+    ] },
+  });
+  const resolutions = [{ leafId: "event.party.end_time", status: "resolved_by_rule", rule: "optional_end_time_omitted" }];
+  const actions = [{ type: "event.set_mode", arguments: { mode: "single" } }];
+  assert.match(validateDesignerAiResolutionUpdates(resolutions, initial, { actions }).errors.join(" "), /Party no está activo/);
+  const normalized = contractRuntime.discardInactiveDesignerAiPhaseResolutions(resolutions, initial, { actions });
+  assert.deepEqual(normalized, []);
+  assert.equal(validateDesignerAiResolutionUpdates(normalized, initial, { actions }).ok, true);
+  assert.equal(resolutions.length, 1);
+});
+
+test("phase normalization does not generalize to RSVP, Gifts, Dress Code or Gallery dependencies", () => {
+  const ids = ["rsvp.modal.title", "rsvp.question.attendance.options", "gifts.method.alias.value", "event.dress_code.value", "media.gallery.gallery-1.order"];
+  const initial = sanitizeCapabilitySnapshot({
+    ...snapshot, values: { eventMode: "single", rsvp: { enabled: false }, gifts: { enabled: false }, dressCode: { enabled: false } },
+    ledger: { leaves: [
+      { id: "event.mode", status: "resolved_from_user", provenance: "user_current_session", fingerprint: "mode" },
+      ...ids.map((id) => ({ id, status: "not_applicable_by_dependency", provenance: "automatic_rule", rule: "parent_inactive", fingerprint: id })),
+    ] },
+  });
+  const resolutions = ids.map((leafId) => ({ leafId, status: "resolved_by_rule", rule: "keep_existing" }));
+  assert.deepEqual(contractRuntime.discardInactiveDesignerAiPhaseResolutions(resolutions, initial), resolutions);
+  assert.equal(validateDesignerAiResolutionUpdates(resolutions, initial).ok, false);
 });
 
 test("the versioned allowlist keeps model and trusted-control actions disjoint", () => {

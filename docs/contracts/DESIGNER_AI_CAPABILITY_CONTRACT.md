@@ -398,13 +398,26 @@ antes de delegar en owners. La validación no vuelve transaccionales a varios
 owners: si uno falla después de otro ya aplicado, se reporta ejecución parcial y
 no se afirma rollback.
 
-Como recuperación defensiva y *fail closed* por hoja, el backend descarta una
-resolución `resolved_by_rule` cuando tanto la hoja como la regla existen pero esa
-regla no está autorizada para ese `leafId` exacto. La hoja permanece pendiente y
-las actions válidas del mismo turno todavía pueden superar la validación. No se
-reinterpreta la regla, no se marca la hoja como resuelta y no se toleran por esta
-vía shapes inválidos, hojas desconocidas, estados desconocidos ni reglas fuera de
-la allowlist: esos casos continúan invalidando la salida completa.
+Antes de la validación semántica final, el backend descarta exclusivamente
+resoluciones redundantes de hojas conocidas de Party cuando el modo efectivo es
+`single` y está confirmado previamente o por una action válida del lote. Usa la
+proyección completa de actions, incluida la transición `ceremony_party` → `single`;
+la transición inversa conserva las resoluciones de Party. Un default sin confirmar
+no alcanza. La dependencia se deriva en el ledger, sin resoluciones del modelo.
+
+Solo se eliminan decisiones `needs_clarification`/`requires_control` con rule null,
+o `resolved_by_rule` cuya regla es compatible y cumple todas sus otras
+precondiciones de valor y procedencia. No se toleran shapes/estados/reglas inválidos,
+targets desconocidos/no disponibles, `keep_existing` sin evidencia ni claims de
+usuario sin action. Las reglas incompatibles con hojas activas también se rechazan;
+esta decisión acota la recuperación anterior que descartaba esas incompatibilidades.
+La normalización no cambia el validador estricto ni se generaliza a RSVP, Regalos,
+Dress Code u otras dependencias. No altera actions, valores ni procedencias.
+
+Las resoluciones redundantes no consumen repair. Si eran el único contenido de
+un `apply`, el resultado queda conversacional (`clarify`), conservando su mensaje.
+Cualquier otro defecto sigue el repair/rechazo habitual. El frontend recibe el
+lote normalizado y lo revalida antes de ejecutar y persistir sus acciones.
 
 ### 8.2 Cuándo se requiere decisión del usuario
 

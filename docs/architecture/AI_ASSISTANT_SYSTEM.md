@@ -243,11 +243,15 @@ Las allowlists y shapes exactos viven en
   normaliza a `apply`: preserva la parte ejecutable del turno y permite que el
   mensaje solicite el dato restante sin convertir una respuesta parcial válida
   en error de servidor.
-- Una resolución `resolved_by_rule` cuya regla allowlisted no corresponde al
-  `leafId` conocido se descarta antes de validar el resto de la salida. Esta
-  recuperación es *fail closed*: la hoja sigue pendiente y solo preserva actions
-  independientes que sí sean válidas; los demás defectos estructurales continúan
-  rechazando el lote.
+- `discardInactiveDesignerAiPhaseResolutions` proyecta el lote completo y usa
+  la dependencia de fase del ledger. Solo descarta resoluciones conocidas de
+  Party cuyo único problema sea su no aplicabilidad en un `single` confirmado.
+  Conserva errores de valor/procedencia, reglas incompatibles y cualquier otro
+  defecto para repair/rechazo. Un default no confirmado no habilita el descarte.
+  Si únicamente había resoluciones redundantes, convierte `apply` a `clarify` sin
+  inventar actions ni modificar el mensaje. La normalización no consume repair.
+  Ver límites exactos en la sección 8.1 del capability contract; reemplaza la
+  recuperación anterior que descartaba reglas asociadas a una hoja incorrecta.
 - Frontend compara revisión, valida nuevamente y ejecuta únicamente el lote
   aprobado.
 - El executor pre-valida el lote completo antes de la primera mutación.

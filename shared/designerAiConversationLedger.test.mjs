@@ -378,6 +378,19 @@ test("single mode never adds party data to guided flow", () => {
   );
 });
 
+test("phase dependency belongs to the ledger and reopens after single to double", () => {
+  const singleValues = { ...fixture().values, eventMode: "single" };
+  const unconfirmed = build({ values: singleValues });
+  assert.notEqual(unconfirmed.leaves.find((leaf) => leaf.id === "event.party.date").status, "not_applicable_by_dependency");
+  const single = buildWithResolvedIds(singleValues, (leaf) => leaf.id === "event.mode");
+  const party = single.leaves.filter((leaf) => leaf.id.startsWith("event.party."));
+  assert.ok(party.every((leaf) => leaf.status === "not_applicable_by_dependency" && leaf.rule === "parent_inactive"));
+  const doubleValues = { ...singleValues, eventMode: "ceremony_party" };
+  const double = buildWithResolvedIds(doubleValues, (leaf) => leaf.id === "event.mode");
+  assert.ok(double.leaves.filter((leaf) => leaf.id.startsWith("event.party.")).every((leaf) => leaf.status !== "not_applicable_by_dependency"));
+  assert.ok(double.guidedFlow.leafIds.includes("event.party.date"));
+});
+
 test("guided completion ignores RSVP, story, Gallery order and empty slots without falsifying them", () => {
   const values = {
     ...fixture().values,

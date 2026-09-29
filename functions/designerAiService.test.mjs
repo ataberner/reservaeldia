@@ -151,6 +151,176 @@ function functionResponse(result, requestId = "req_test") {
   };
 }
 
+function singleEventResult() {
+  return {
+    intent: "apply",
+    assistantMessage: "Perfecto. Entonces vamos a configurar un único evento. ¿Qué día es?",
+    actions: [{ type: "event.set_mode", arguments: { mode: "single" } }],
+    controlRequest: null,
+    resolutions: [
+      { leafId: "event.mode", status: "resolved_from_user", rule: null },
+      { leafId: "event.ceremony.end_time", status: "resolved_by_rule", rule: "optional_end_time_omitted" },
+      { leafId: "event.ceremony.venue_name", status: "resolved_by_rule", rule: "optional_venue_name_omitted" },
+      { leafId: "event.party.end_time", status: "resolved_by_rule", rule: "optional_end_time_omitted" },
+      { leafId: "event.party.venue_name", status: "resolved_by_rule", rule: "optional_venue_name_omitted" },
+    ],
+  };
+}
+
+function phaseSnapshot(mode = "single", modeStatus = "pending") {
+  return snapshot({
+    values: { eventMode: mode },
+    leaves: [
+      leaf("event.mode", "event_structure", modeStatus, modeStatus === "pending" ? "unknown" : "user_current_session"),
+      ...["ceremony", "party"].flatMap((phase) => ["date", "end_time", "venue_name", "address"].map(
+        (field) => leaf(`event.${phase}.${field}`, "event_data")
+      )),
+    ],
+  });
+}
+
+test("production single-event reply accepts redundant Party resolutions without repair", async () => {
+  let attempts = 0;
+  const result = await interpretDesignerAiChat({
+    payload: payload({ message: "voy a hacer un solo evento", capabilitySnapshot: phaseSnapshot() }),
+    client: { responses: { create: async () => { attempts++; return functionResponse(singleEventResult()); } } },
+  });
+  assert.equal(attempts, 1);
+  assert.equal(result.repairCount, 0);
+  assert.equal(result.actions[0].arguments.mode, "single");
+  assert.deepEqual(result.resolutions, singleEventResult().resolutions.slice(0, 3));
+});
+
+test("double to single uses the projected mode and preserves the caller's output", () => {
+  const proposed = singleEventResult();
+  const original = structuredClone(proposed);
+  const result = validateDesignerAiModelResult(proposed, phaseSnapshot("ceremony_party", "resolved_from_user"));
+  assert.deepEqual(result.resolutions, proposed.resolutions.slice(0, 3));
+  assert.deepEqual(proposed, original);
+});
+
+test("single to double retains valid Party resolutions even when the snapshot marks them inactive", () => {
+  const initial = phaseSnapshot("single", "resolved_from_user");
+  for (const entry of initial.ledger.leaves.filter((item) => item.id.startsWith("event.party."))) {
+    entry.status = "not_applicable_by_dependency";
+    entry.rule = "parent_inactive";
+  }
+  const proposed = singleEventResult();
+  proposed.actions = [{ type: "event.set_mode", arguments: { mode: "ceremony_party" } }];
+  assert.deepEqual(validateDesignerAiModelResult(proposed, initial).resolutions, proposed.resolutions);
+});
+
+test("confirmed single with only redundant Party resolutions becomes a conversational no-op without repair", async () => {
+  let attempts = 0;
+  const proposed = { ...singleEventResult(), actions: [], resolutions: singleEventResult().resolutions.slice(3) };
+  const result = await interpretDesignerAiChat({
+    payload: payload({ capabilitySnapshot: phaseSnapshot("single", "resolved_from_user") }),
+    client: { responses: { create: async () => { attempts++; return functionResponse(proposed); } } },
+  });
+  assert.equal(attempts, 1);
+  assert.equal(result.repairCount, 0);
+  assert.equal(result.intent, "clarify");
+  assert.deepEqual(result.resolutions, []);
+  assert.equal(result.assistantMessage, proposed.assistantMessage);
+});
+
+test("an unconfirmed single default cannot justify discarding Party resolutions without a mode action", () => {
+  assert.throws(() => validateDesignerAiModelResult({
+    ...singleEventResult(), actions: [], resolutions: singleEventResult().resolutions.slice(3),
+  }, phaseSnapshot()), /Party no está activo/);
+});
+
+for (const finalMode of ["single", "ceremony_party"]) {
+  test(`phase normalization uses the final projected mode: ${finalMode}`, () => {
+    const proposed = singleEventResult();
+    proposed.actions = ["ceremony_party", "single", finalMode].map((mode) => ({ type: "event.set_mode", arguments: { mode } }));
+    const result = validateDesignerAiModelResult(proposed, phaseSnapshot());
+    assert.equal(result.resolutions.length, finalMode === "single" ? 3 : 5);
+  });
+}
+
+for (const [label, resolution] of [
+  ["invalid Ceremony value", { leafId: "event.ceremony.address", status: "resolved_by_rule", rule: "keep_existing" }],
+  ["incompatible active rule", { leafId: "event.ceremony.address", status: "resolved_by_rule", rule: "optional_end_time_omitted" }],
+  ["unknown Party target", { leafId: "event.party.unknown", status: "resolved_by_rule", rule: "keep_existing" }],
+  ["inactive keep_existing without a value", { leafId: "event.party.address", status: "resolved_by_rule", rule: "keep_existing" }],
+  ["inactive incompatible rule", { leafId: "event.party.address", status: "resolved_by_rule", rule: "optional_end_time_omitted" }],
+  ["unknown rule", { leafId: "event.party.end_time", status: "resolved_by_rule", rule: "invented_rule" }],
+  ["invented user evidence", { leafId: "event.party.address", status: "resolved_from_user", rule: null }],
+  ["forbidden status", { leafId: "event.party.end_time", status: "not_applicable_by_dependency", rule: null }],
+  ["extra property", { leafId: "event.party.end_time", status: "resolved_by_rule", rule: "optional_end_time_omitted", extra: true }],
+]) {
+  test(`phase normalization preserves rejection: ${label}`, () => {
+    assert.throws(() => validateDesignerAiModelResult({
+      ...singleEventResult(), resolutions: [resolution],
+    }, phaseSnapshot()), (error) => error instanceof DesignerAiServiceError && error.kind === "malformed-output");
+  });
+}
+
+test("phase normalization retains invalid values projected while enabling Party", () => {
+  const proposed = singleEventResult();
+  proposed.actions[0].arguments.mode = "ceremony_party";
+  proposed.actions.push({ type: "event.set_datetime", arguments: { phase: "party", date: null, startTime: null, endTime: "23:00" } });
+  assert.throws(() => validateDesignerAiModelResult(proposed, phaseSnapshot("single", "resolved_from_user")), /optional_end_time_omitted no cumple/);
+});
+
+test("same-day Party resolution is redundant only if its other projected preconditions hold", () => {
+  const initial = phaseSnapshot("ceremony_party", "resolved_from_user");
+  initial.values.ceremony.date = "2027-05-09";
+  initial.values.party.date = "2027-05-10";
+  const proposed = singleEventResult();
+  proposed.actions.unshift(
+    { type: "event.set_datetime", arguments: { phase: "ceremony", date: "2027-05-10", startTime: null, endTime: null } }
+  );
+  proposed.resolutions = [{ leafId: "event.party.date", status: "resolved_by_rule", rule: "same_day_party" }];
+  assert.deepEqual(validateDesignerAiModelResult(proposed, initial).resolutions, []);
+  proposed.actions[0].arguments.date = "2027-05-11";
+  assert.throws(() => validateDesignerAiModelResult(proposed, initial), /Party no está activo/);
+});
+
+test("phase normalization preserves out_of_scope contradictions and cannot excuse an empty apply", () => {
+  const initial = phaseSnapshot("single", "resolved_from_user");
+  assert.throws(() => validateDesignerAiModelResult({
+    ...singleEventResult(), intent: "out_of_scope", actions: [], resolutions: singleEventResult().resolutions.slice(3),
+  }, initial), /out_of_scope no puede/);
+  assert.throws(() => validateDesignerAiModelResult({
+    ...singleEventResult(), actions: [], resolutions: [],
+  }, initial), /apply requiere/);
+});
+
+test("phase normalization never hides invalid actions, unavailable leaves or output limits", () => {
+  const proposed = singleEventResult();
+  proposed.actions.push({ type: "event.set_datetime", arguments: { phase: "party", date: "2027-05-10", startTime: null, endTime: null } });
+  assert.throws(() => validateDesignerAiModelResult(proposed, phaseSnapshot()), /Party no está activo/);
+  const unavailable = phaseSnapshot();
+  unavailable.ledger.leaves.find((entry) => entry.id === "event.party.end_time").status = "unavailable";
+  assert.throws(() => validateDesignerAiModelResult(singleEventResult(), unavailable), /no existe/);
+  assert.throws(() => validateDesignerAiModelResult({
+    ...singleEventResult(), resolutions: Array.from({ length: 121 }, () => singleEventResult().resolutions[3]),
+  }, phaseSnapshot()), /120/);
+});
+
+for (const repaired of [true, false]) {
+  test(`mixed redundant Party and invalid Ceremony output still ${repaired ? "repairs" : "rejects"}`, async () => {
+    const requests = [];
+    const invalid = { leafId: "event.ceremony.address", status: "resolved_by_rule", rule: "keep_existing" };
+    const run = interpretDesignerAiChat({
+      payload: payload({ capabilitySnapshot: phaseSnapshot() }),
+      client: { responses: { create: async (body) => {
+        requests.push(body);
+        const proposed = singleEventResult();
+        if (!repaired || requests.length === 1) proposed.resolutions.push(invalid);
+        return functionResponse(proposed);
+      } } },
+    });
+    if (repaired) assert.equal((await run).repairCount, 1);
+    else await assert.rejects(run, (error) => error.kind === "malformed-output" && /event.ceremony.address/.test(error.message));
+    assert.equal(requests.length, 2);
+    assert.match(requests[1].input.at(-1).content, /event.ceremony.address/);
+    assert.doesNotMatch(requests[1].input.at(-1).content, /Party no está activo/);
+  });
+}
+
 for (const scenario of ["fast", "slow-first", "retry-budget", "retry-exhausted", "repair-budget", "repair-exhausted", "upstream-timeout", "retry-then-repair", "long-retry-after"]) {
   test(`E10 shared deadline: ${scenario}`, async () => {
     let clock = 0, attempts = 0;
@@ -932,8 +1102,8 @@ test("rejects cross-phase location completion without executable evidence", () =
   assert.equal(valid.resolutions.length, 0);
 });
 
-test("keeps a partial date action and fails closed only incompatible per-leaf rules", () => {
-  const result = validateDesignerAiModelResult({
+test("rejects incompatible active per-leaf rules even with a valid partial date action", () => {
+  assert.throws(() => validateDesignerAiModelResult({
     intent: "clarify",
     assistantMessage: "Anoté la fecha. ¿A qué hora comienza y dónde se realiza?",
     actions: [{
@@ -970,15 +1140,7 @@ test("keeps a partial date action and fails closed only incompatible per-leaf ru
       leaf("event.ceremony.end_time", "event_data"),
       leaf("event.ceremony.address", "event_data"),
     ],
-  }));
-
-  assert.equal(result.intent, "apply");
-  assert.equal(result.actions[0].arguments.date, "2027-07-29");
-  assert.deepEqual(result.resolutions, [{
-    leafId: "event.ceremony.end_time",
-    status: "resolved_by_rule",
-    rule: "optional_end_time_omitted",
-  }]);
+  })), /la regla no corresponde a esa hoja/);
 });
 
 test("returns safe error context and a reference without exposing raw payloads", () => {

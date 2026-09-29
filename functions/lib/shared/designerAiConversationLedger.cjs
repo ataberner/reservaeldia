@@ -191,11 +191,11 @@ function validResolutionValue(id, value) {
 // templates/examples/unknown never prove existing user data; omission rules only
 // accept absence; defaults require their own provenance; dependencies require an
 // inactive owner. The same predicates validate proposals on the server and replay.
-function designerAiResolutionRuleError(resolution, snapshot, { actions = [], projectActions = true } = {}) {
+function evaluateDesignerAiResolutionRule(resolution, snapshot, { actions = [], projectActions = true } = {}) {
   const id = resolution.leafId;
   const rule = resolution.rule;
   const leaf = snapshot?.ledger?.leaves?.find((entry) => entry.id === id);
-  if (!leaf || leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) return "Hoja no disponible.";
+  if (!leaf || leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) return { dependencyError: null, valueError: "Hoja no disponible." };
   const values = projectActions ? projectDesignerAiValues(snapshot, actions) : snapshot.values;
   const value = resolutionLeafValue(values, id);
   const suppliedByAction = actions.some((action) => mapActionToLeafIds(action).includes(id));
@@ -203,7 +203,7 @@ function designerAiResolutionRuleError(resolution, snapshot, { actions = [], pro
   const empty = value === "" || value === false || (Array.isArray(value) && !value.length);
   const lastAction = (type, predicate = () => true) => [...actions].reverse().find((a) => a.type === type && predicate(a));
   const mode = lastAction("event.set_mode")?.arguments.mode || values.eventMode;
-  if (id.startsWith("event.party.") && mode !== "ceremony_party") return "Party no está activo.";
+  const dependencyError = id.startsWith("event.party.") && mode !== "ceremony_party" ? "Party no está activo." : null;
   let valid = false;
   switch (rule) {
     case DESIGNER_AI_RESOLUTION_RULES.KEEP_EXISTING:
@@ -238,7 +238,7 @@ function designerAiResolutionRuleError(resolution, snapshot, { actions = [], pro
       const date = (phase) => lastAction("event.set_datetime", (a) => a.arguments.phase === phase && a.arguments.date !== null)?.arguments.date || values[phase]?.date;
       const ceremonyLeaf = snapshot.ledger.leaves.find((entry) => entry.id === "event.ceremony.date");
       const knownDate = Boolean(lastAction("event.set_datetime", (a) => a.arguments.phase === "ceremony" && a.arguments.date !== null)) || ["user_current_session", "existing_user_data"].includes(ceremonyLeaf?.provenance);
-      valid = id === "event.party.date" && mode === "ceremony_party" && knownDate && validResolutionValue(id, date("ceremony")) && date("ceremony") === date("party"); break;
+      valid = id === "event.party.date" && knownDate && validResolutionValue(id, date("ceremony")) && date("ceremony") === date("party"); break;
     }
     case DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME: {
       const names = values.people || {};
@@ -249,7 +249,12 @@ function designerAiResolutionRuleError(resolution, snapshot, { actions = [], pro
     }
     default: valid = false;
   }
-  return valid ? null : `La regla ${rule} no cumple las precondiciones de ${id}.`;
+  return { dependencyError, valueError: valid ? null : `La regla ${rule} no cumple las precondiciones de ${id}.` };
+}
+
+function designerAiResolutionRuleError(resolution, snapshot, context) {
+  const { dependencyError, valueError } = evaluateDesignerAiResolutionRule(resolution, snapshot, context);
+  return dependencyError || valueError;
 }
 
 function normalizeDesignerAiConversationState(value) {
@@ -403,6 +408,14 @@ function applyDependency(leaf, dependencyResolved, applicable) {
       : leaf;
   }
   return { ...leaf, status: DESIGNER_AI_LEDGER_STATUSES.NOT_APPLICABLE_BY_DEPENDENCY, provenance: DESIGNER_AI_PROVENANCE.AUTOMATIC_RULE, rule: "parent_inactive" };
+}
+
+// Shared by ledger reconciliation and model-output normalization. Only the
+// confirmed event mode owns phase applicability; a template default is not a decision.
+function applyDesignerAiEventPhaseDependency(leaf, values, modeResolved) {
+  return leaf.id.startsWith("event.party.")
+    ? applyDependency(leaf, modeResolved, values.eventMode === "ceremony_party")
+    : leaf;
 }
 
 function buildDesignerAiGuidedFlow({ leaves, values }) {
@@ -576,7 +589,7 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   }
   const modeResolved = modeLeaf && isTerminalDesignerAiLedgerStatus(modeLeaf.status);
   for (const leaf of leaves.filter((item) => item.id.startsWith("event.party."))) {
-    Object.assign(leaf, applyDependency(leaf, modeResolved, values.eventMode === "ceremony_party"));
+    Object.assign(leaf, applyDesignerAiEventPhaseDependency(leaf, values, modeResolved));
   }
   const dressEnabledLeaf = byId.get("event.dress_code.enabled");
   const dressValueLeaf = byId.get("event.dress_code.value");
@@ -830,6 +843,8 @@ module.exports = {
   captureDesignerAiActionEvidence,
   matchesDesignerAiActionEvidence,
   designerAiResolutionRuleError,
+  evaluateDesignerAiResolutionRule,
+  applyDesignerAiEventPhaseDependency,
   fingerprintDesignerAiValue: fingerprint,
   isLikelyDesignerAiPlaceholder: isLikelyPlaceholder,
   isTerminalDesignerAiLedgerStatus,

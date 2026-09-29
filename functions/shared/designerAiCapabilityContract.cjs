@@ -1,4 +1,5 @@
 const conversationLedger = require("./designerAiConversationLedger.cjs");
+const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 
 const DESIGNER_AI_CONTRACT_VERSION = "2.2.0";
 
@@ -748,20 +749,33 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = 
   return { ok: errors.length === 0, errors };
 }
 
-function discardIncompatibleDesignerAiResolutionRules(resolutions, snapshot) {
-  if (!Array.isArray(resolutions)) return resolutions;
-  const knownLeafIds = new Set(
-    (Array.isArray(snapshot?.ledger?.leaves) ? snapshot.ledger.leaves : [])
-      .filter((leaf) => leaf?.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE)
-      .map((leaf) => leaf?.id)
-      .filter(Boolean)
-  );
+function discardInactiveDesignerAiPhaseResolutions(resolutions, snapshot, { actions = [] } = {}) {
+  if (!Array.isArray(resolutions) || resolutions.length > 120) return resolutions;
+  // Never project an invalid action or use it to hide a resolution error.
+  if (!validateDesignerAiActionBatch(actions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot }).ok) return resolutions;
+  const values = projectDesignerAiValues(snapshot, actions);
+  if (values.eventMode !== "single") return resolutions;
+  const statuses = conversationLedger.DESIGNER_AI_LEDGER_STATUSES;
+  const leaves = new Map((snapshot?.ledger?.leaves || []).map((leaf) => [leaf.id, leaf]));
+  const modeResolved = actions.some((action) => action.type === "event.set_mode") ||
+    conversationLedger.isTerminalDesignerAiLedgerStatus(leaves.get("event.mode")?.status);
+  if (!modeResolved) return resolutions;
   return resolutions.filter((resolution) => {
     const record = asRecord(resolution);
     if (!record || !hasExactKeys(record, ["leafId", "status", "rule"])) return true;
-    if (record.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE) return true;
-    if (!knownLeafIds.has(record.leafId) || !RESOLUTION_RULE_SET.has(record.rule)) return true;
-    return isResolutionRuleCompatible(record.leafId, record.rule);
+    const leaf = leaves.get(record.leafId);
+    if (!leaf || leaf.status === statuses.UNAVAILABLE || !/^event\.party\.(date|start_time|end_time|venue_name|address|place_selection)$/.test(record.leafId)) return true;
+    const effectiveLeaf = conversationLedger.applyDesignerAiEventPhaseDependency(leaf, values, modeResolved);
+    if (effectiveLeaf.status !== statuses.NOT_APPLICABLE_BY_DEPENDENCY) return true;
+    if (record.status === statuses.RESOLVED_BY_RULE) {
+      if (!RESOLUTION_RULE_SET.has(record.rule) || !isResolutionRuleCompatible(record.leafId, record.rule)) return true;
+      const evaluation = conversationLedger.evaluateDesignerAiResolutionRule(record, { ...snapshot, values }, { actions, projectActions: false });
+      // Inactivity may be redundant; invalid values/provenance/rules never are.
+      return Boolean(evaluation.valueError);
+    }
+    // Claims of user evidence still require an executable action. Invalid
+    // statuses, extra properties and non-null rules also remain for validation.
+    return record.rule !== null || ![statuses.NEEDS_CLARIFICATION, statuses.REQUIRES_CONTROL].includes(record.status);
   });
 }
 
@@ -940,7 +954,7 @@ module.exports = {
   DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES,
   SNAPSHOT_AVAILABILITY_KEYS,
   containsForbiddenSnapshotData,
-  discardIncompatibleDesignerAiResolutionRules,
+  discardInactiveDesignerAiPhaseResolutions,
   sanitizeCapabilitySnapshot,
   validateDesignerAiActionBatch,
   validateDesignerAiControlRequest,

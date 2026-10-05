@@ -1685,6 +1685,14 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
   assert.ok(calls.evaluateSources.some((source) => source.includes("ignoredImageCount")));
   assert.ok(calls.evaluateSources.some((source) => source.includes("window.scrollTo(0, 0)")));
   assert.ok(calls.evaluateSources.some((source) => source.includes("getAnimations")));
+  const entryResolutionIndex = calls.evaluateSources.findIndex((source) =>
+    source.includes("__invitationMusicRuntime") && source.includes("resolveWithoutMusic")
+  );
+  const effectsSettleIndex = calls.evaluateSources.findIndex((source) =>
+    source.includes("waitForFirstSectionVisualSettled")
+  );
+  assert.ok(entryResolutionIndex >= 0, "share capture enters without audio through the invitation lifecycle");
+  assert.ok(entryResolutionIndex < effectsSettleIndex, "entry resolves before settling/capturing entrance effects");
   assert.ok(
     calls.evaluateSources.some((source) =>
       source.includes("waitForFirstSectionVisualSettled")

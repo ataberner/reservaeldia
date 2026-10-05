@@ -25,6 +25,8 @@ exports.onUserCreatedWelcomeEmail = region("us-central1").auth.user()
 const enabled = new Set([
   "upsertUserProfile", "getMyProfileStatus", "getMyUiPreferences", "updateMyUiPreferences",
   "getPricingConfigV1", "getDashboardHomeConfigV1",
+  // Inspected Music V1: owner-checked Firestore transaction, no external provider.
+  "saveDraftWithMusicV1",
 ]);
 for (const [name, handler] of Object.entries(handlers)) {
   const endpoint = handler?.__endpoint;

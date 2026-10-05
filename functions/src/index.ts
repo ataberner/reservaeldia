@@ -1,3 +1,5 @@
+import { normalizeMusicConfig, resolveMusicResource } from "./music/config";
+import { saveDraftWithMusicHandler } from "./music/draftMusicWrite";
 import { FieldValue } from "firebase-admin/firestore";
 import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
@@ -11,6 +13,7 @@ import { randomUUID } from "crypto";
 import express, { Request, Response } from "express";
 import {
   requireAdmin,
+  isAdmin,
   requireAuth,
   requireSuperAdmin,
   isSuperAdmin,
@@ -1694,6 +1697,8 @@ export const preparePublicTemplatePreview = onCall(
         slug: templateId,
         isPreview: true,
         gifts: (gifts ? normalizedFunctionalConfigs.gifts : null) as any,
+        music: normalizeMusicConfig(normalizedTemplate.music),
+        musicResource: resolveMusicResource(normalizedTemplate.music),
         rsvpSource: rsvp as any,
         giftsSource: gifts as any,
       }
@@ -2084,6 +2089,8 @@ export const copiarPlantilla = onCall(
       ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
       ...(rsvp ? { rsvp } : {}),
       ...(gifts ? { gifts } : {}),
+      // Catalog music is an administrative authoring capability in V1.
+      music: normalizeMusicConfig(isAdmin(request) ? plantillaNormalizada.music : null),
       eventDetails,
       ultimaEdicion: FieldValue.serverTimestamp(),
       creado: FieldValue.serverTimestamp(),
@@ -2298,6 +2305,14 @@ export const borrarPlantilla = onCall(
  * Access: admin / superadmin
  * ================================
  */
+export const saveDraftWithMusicV1 = onCall(
+  {
+    region: "us-central1",
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request) => saveDraftWithMusicHandler(request, db)
+);
+
 export const getAdminAccess = onCall(
   {
     region: "us-central1",

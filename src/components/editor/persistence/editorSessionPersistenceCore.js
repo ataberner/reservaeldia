@@ -315,7 +315,7 @@ export function createEditorSessionPersistence({
         includeDraftMetadata,
       });
 
-      await writeDraftPatch({
+      const writeResult = await writeDraftPatch({
         draftId: resolvedSession.id,
         patch: payload,
       });
@@ -323,7 +323,7 @@ export function createEditorSessionPersistence({
       return {
         ok: true,
         session: resolvedSession,
-        transport: "firestore",
+        transport: writeResult?.transport === "callable" ? "callable" : "firestore",
         reason,
         patch: payload,
       };

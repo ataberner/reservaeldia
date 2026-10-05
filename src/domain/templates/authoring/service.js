@@ -555,6 +555,7 @@ export function buildTemplatePayloadFromAuthoring({
     ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
     ...(renderState.rsvp ? { rsvp: renderState.rsvp } : {}),
     ...(renderState.gifts ? { gifts: renderState.gifts } : {}),
+    ...(renderState.music ? { music: renderState.music } : {}),
     eventDetails: renderState.eventDetails || { mode: "single" },
   };
 }

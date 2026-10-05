@@ -76,6 +76,7 @@ export function composeDraftTemplateCreationPayload({
         secciones: liveSnapshot.secciones,
         rsvp: liveSnapshot.rsvp,
         gifts: liveSnapshot.gifts,
+        ...(liveSnapshot.music ? { music: liveSnapshot.music } : {}),
       }
     : sourceDraft;
   const duplicateObjectIds = Array.from(

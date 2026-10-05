@@ -322,7 +322,8 @@ ownership is reached; Assistant, checkout and countdown docs are not default con
 
 1. [MUSIC_SYSTEM_CONTRACT.md](contracts/MUSIC_SYSTEM_CONTRACT.md): estado global, identidad, permisos y lifecycle P0.
 2. [MUSIC_CATALOG.md](operations/MUSIC_CATALOG.md): carga manual, metadata, activación y límites de HTML ya publicado.
-3. Preview y persistencia conservan sus rutas anteriores; Música consume sus autoridades.
+3. [MUSIC_V1_VERIFICATION.md](testing/MUSIC_V1_VERIFICATION.md): evidencia local, comandos reproducibles y limitaciones.
+4. Preview y persistencia conservan sus rutas anteriores; Música consume sus autoridades.
 
 ### Regalos
 

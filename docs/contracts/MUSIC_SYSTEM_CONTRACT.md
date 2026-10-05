@@ -10,7 +10,7 @@ Mantenimiento: actualizar este contrato cuando cambien sus fronteras o invariant
 - `CanvasEditor` posee el estado; `useCanvasEditorMusicBridge` aplica intención autorizada. Música no agrega objetos ni secciones.
 - `shared/musicConfig.cjs` normaliza; los wrappers ESM/TypeScript y las copias del mapa de sincronización son adapters.
 - `shared/musicCatalog.cjs` posee metadata y resolución de identidad a recurso. El draft nunca autoriza una URL.
-- La persistencia sigue en `editorSessionPersistence` y su coordinador FIFO. `saveDraftWithMusicV1` es su transporte atómico para patches que incluyen Música.
+- La persistencia sigue en `editorSessionPersistence` y su coordinador FIFO. `saveDraftWithMusicV1` es su transporte atómico para patches de sesiones draft que incluyen Música; los templates mantienen su callable administrativa existente.
 - `prepareRenderPayload` conserva la preparación común de preview autorizado y publicación. El generador de secciones consume la config y el recurso preparado; su fallback visual usa el mismo resolver.
 - `generarInvitationMusicRuntime` posee gate y una instancia de audio por documento. El controlador del sidebar posee únicamente la escucha del catálogo.
 - `generarMotionEffectsRuntime` sigue siendo autoridad de efectos/readiness; Smart Layout mantiene su autoridad geométrica.
@@ -19,13 +19,13 @@ Mantenimiento: actualizar este contrato cuando cambien sus fronteras o invariant
 
 `MUSIC_FEATURE_AVAILABILITY.editor` es la disponibilidad V1; `canManageSite` del acceso administrativo existente y `requireAdmin` son autorización. No son la misma decisión. La disponibilidad del catálogo y la futura fuente `user` son independientes.
 
-Sólo admin/superadmin pueden cambiar Música, incluso mediante llamadas o eventos fabricados. El transporte server exige autenticación, ownership del draft y autorización administrativa para un cambio de Música. Una configuración conservada no debe impedir que un propietario que perdió el rol edite otros campos. Firestore Rules impiden introducir o modificar Música por SDK y permiten conservarla. La callable valida una whitelist del patch y escribe el conjunto en una transacción, sin editar identidad, publicaciones ni permisos.
+Sólo admin/superadmin pueden cambiar Música, incluso mediante llamadas o eventos fabricados. El transporte server exige autenticación, ownership del draft y autorización administrativa para un cambio de Música. Una configuración conservada no debe impedir que un propietario que perdió el rol edite otros campos. Firestore Rules impiden cambios efectivos de Música por SDK y permiten conservarla; ausencia, null y default OFF vacío son equivalentes permitidos. La callable valida una whitelist del patch y escribe el conjunto en una transacción, sin editar identidad, publicaciones ni permisos.
 
 La callable pertenece a core/default, dominio editor. Esta frontera conserva la identidad administrativa existente, incluyendo superadmins configurados por UID. No adopta ni resuelve la propuesta global Q1: Rules no puede consultar esa configuración del servidor. Templates conservan sus writers administrativos; la creación pública desde una plantilla no habilita Música para un usuario común.
 
 ## Compatibilidad y catálogo
 
-Ausencia de `music` equivale a OFF; los autosaves legacy preservan la ausencia. OFF conserva selección, volumen y loop y no genera gate, reproductor ni petición MP3. Config inválida, canción ausente/inactiva o fuente no soportada no bloquean el acceso ni producen un gate huérfano.
+Ausencia de `music` equivale a OFF; los autosaves de drafts legacy preservan la ausencia. Backend, templates y publicaciones pueden materializar el default OFF sin migración masiva. OFF conserva selección, volumen y loop y no genera gate, reproductor ni petición MP3. Config inválida, canción ausente/inactiva o fuente no soportada no bloquean el acceso ni producen un gate huérfano.
 
 V1 utiliza un catálogo de código de assets públicos de la plataforma. Es una excepción explícita de recursos compartidos, no una biblioteca privada del usuario. El MP3 de prueba preexistente se registra con identidad estable `platform-demo`. Gestión manual y consecuencias de desactivar: [runbook](../operations/MUSIC_CATALOG.md).
 

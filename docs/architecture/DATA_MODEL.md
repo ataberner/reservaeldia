@@ -15,6 +15,7 @@ In the current codebase, the canonical draft invitation render state is a Firest
 - `secciones`
 - `rsvp`
 - `gifts`
+- `music` (optional global config; absence means OFF)
 - `eventDetails`
 
 Everything else on the same draft document is auxiliary metadata. This distinction is critical because `normalizeDraftRenderState` explicitly discards non-render fields and returns only those render keys for editor, preview, and publish flows.
@@ -1487,4 +1488,4 @@ Those rewrites do not mean the logical invitation element changed. The stable id
 
 Root opcional `music` en el render state de drafts/templates. Ausencia equivale a OFF; no requiere migración. Shape normalizado: `{ version: 1, enabled: false, track: null | { source: "catalog" | "user", id: string }, volume: 0.35, loop: true }`. Volumen finito en [0,1]; OFF conserva track. No contiene URL ni ruta MP3. `shared/musicConfig.cjs` es el normalizador; `shared/musicCatalog.cjs` resuelve la identidad durante preparación/render. La fuente user se conserva como extensión, sin upload/resolución en V1.
 
-Música pasa por hidratación, snapshot, autosave FIFO, flush, preparación preview/publish, copias administrativas de templates y persistencia de publicación. Los consumidores conservan la ausencia legacy y la creación desde plantilla sólo habilita Música para autores autorizados. El writer de patches con Música usa una callable atómica que verifica owner y autorización del cambio; no se convierte en dueño de estado. Ver [contrato Música](../contracts/MUSIC_SYSTEM_CONTRACT.md) para autorización, gate, recursos y pruebas.
+Música pasa por hidratación, snapshot, autosave FIFO, flush, preparación preview/publish, copias administrativas de templates y persistencia de publicación. Los autosaves de drafts legacy conservan la ausencia; backend, templates y publicaciones pueden materializar OFF. La creación desde plantilla sólo habilita Música para autores autorizados. El writer de patches con Música usa una callable atómica que verifica owner y autorización del cambio; no se convierte en dueño de estado. Ver [contrato Música](../contracts/MUSIC_SYSTEM_CONTRACT.md) para autorización, gate, recursos y pruebas.

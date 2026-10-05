@@ -1039,7 +1039,7 @@
         "us-central1"
       ],
       "secrets": [],
-      "manifestHash": "a566e502e6b0d87542108512ad208c4293b58d21afd68a5ed41f392262c957e6"
+      "manifestHash": "a70480b1b05702703d686d2a33caf523219f0d7a3197b104d8da15bd2d4f42b0"
     },
     {
       "name": "setAdminClaim",

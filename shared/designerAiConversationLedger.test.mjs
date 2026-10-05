@@ -73,6 +73,18 @@ function fixture(overrides = {}) {
   return { availability, values };
 }
 
+test("legacy terminal name resolutions without user provenance do not confirm template names", () => {
+  const input = fixture();
+  const initial = buildDesignerAiLedger(input);
+  const conversationState = {
+    resolutions: initial.leaves.filter((leaf) => leaf.id.startsWith("event.people.")).map((leaf) => ({
+      leafId: leaf.id, fingerprint: leaf.fingerprint, status: "resolved_from_existing_user_data", provenance: "unknown", rule: null,
+    })),
+  };
+  const ledger = buildDesignerAiLedger({ ...input, conversationState });
+  assert.equal(ledger.leaves.filter((leaf) => leaf.id.startsWith("event.people.")).every((leaf) => leaf.status === "pending"), true);
+});
+
 function build(options = {}) {
   const data = fixture(options);
   return buildDesignerAiLedger({
@@ -168,7 +180,10 @@ test("automatic name policy follows corrections while explicit names remain expl
   const corrected = reconcileDesignerAiConversationState({
     snapshot: makeSnapshot("Casamiento Ana y Lucía", "Lucía"),
     previousState: automatic,
-    actionResults: [receipt({ type: "document.set_name", arguments: { name: "Casamiento Ana y Lucía" } }, makeSnapshot("Casamiento Ana y Lucía", "Lucía"))],
+    actionResults: [
+      { type: "event.set_people", arguments: { primaryName: "Ana", secondaryName: "Lucía" } },
+      { type: "document.set_name", arguments: { name: "Casamiento Ana y Lucía" } },
+    ].map((action) => receipt(action, makeSnapshot("Casamiento Ana y Lucía", "Lucía"))),
     resolutions: [{ leafId: "document.name", status: "resolved_by_rule", rule: DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME }],
   });
   assert.equal(corrected.namePolicy.lastAutomaticName, "Casamiento Ana y Lucía");
@@ -320,7 +335,7 @@ function buildWithResolvedIds(values, predicate, availability = {}) {
   });
 }
 
-test("guided priority is names, structure, data, Gifts, Dress Code, cover and Galleries", () => {
+test("guided priority is names, structure, data, Dress Code, RSVP, Gifts, cover and Galleries", () => {
   const values = { ...fixture().values, eventMode: "single" };
   const initial = build({ values });
   assert.equal(buildDesignerAiConversationBrief({ ledger: initial }).nextBlock.id, "names");
@@ -333,7 +348,7 @@ test("guided priority is names, structure, data, Gifts, Dress Code, cover and Ga
     leaf.id === "event.mode" ||
     leaf.id.startsWith("event.ceremony.")
   ));
-  assert.equal(buildDesignerAiConversationBrief({ ledger: eventDone }).nextBlock.id, "gifts");
+  assert.equal(buildDesignerAiConversationBrief({ ledger: eventDone }).nextBlock.id, "dress_code");
 
   const giftsRejected = buildWithResolvedIds(values, (leaf) => (
     leaf.id.startsWith("event.people.") ||
@@ -350,7 +365,7 @@ test("guided priority is names, structure, data, Gifts, Dress Code, cover and Ga
     leaf.id === "gifts.enabled" ||
     leaf.id === "event.dress_code.enabled"
   ));
-  assert.equal(buildDesignerAiConversationBrief({ ledger: dressRejected }).nextBlock.id, "cover");
+  assert.equal(buildDesignerAiConversationBrief({ ledger: dressRejected }).nextBlock.id, "rsvp");
 
   const coverDone = buildWithResolvedIds(values, (leaf) => (
     leaf.id.startsWith("event.people.") ||
@@ -358,6 +373,7 @@ test("guided priority is names, structure, data, Gifts, Dress Code, cover and Ga
     leaf.id.startsWith("event.ceremony.") ||
     leaf.id === "gifts.enabled" ||
     leaf.id === "event.dress_code.enabled" ||
+    leaf.id === "rsvp.enabled" ||
     leaf.id === "media.cover"
   ));
   const mediaBrief = buildDesignerAiConversationBrief({ ledger: coverDone });
@@ -391,7 +407,7 @@ test("phase dependency belongs to the ledger and reopens after single to double"
   assert.ok(double.guidedFlow.leafIds.includes("event.party.date"));
 });
 
-test("guided completion ignores RSVP, story, Gallery order and empty slots without falsifying them", () => {
+test("guided completion ignores optional RSVP customization, story, Gallery order and empty slots without falsifying them", () => {
   const values = {
     ...fixture().values,
     eventMode: "single",
@@ -413,7 +429,8 @@ test("guided completion ignores RSVP, story, Gallery order and empty slots witho
   });
   assert.equal(ledger.guidedFlow.completion.complete, true);
   assert.equal(ledger.completion.complete, false);
-  assert.ok(ledger.completion.unresolvedLeafIds.includes("rsvp.enabled"));
+  assert.ok(!ledger.completion.unresolvedLeafIds.includes("rsvp.enabled"));
+  assert.ok(ledger.completion.unresolvedLeafIds.includes("rsvp.question.attendance.active"));
   assert.ok(ledger.completion.unresolvedLeafIds.includes("story.text"));
   assert.ok(ledger.completion.unresolvedLeafIds.includes("media.gallery.gallery-1.order"));
   assert.ok(ledger.completion.unresolvedLeafIds.includes("media.gallery.gallery-1.slot.c"));
@@ -638,6 +655,8 @@ function buildCeremonyPartyLocationProgress({
   const byId = new Map(initial.leaves.map((leaf) => [leaf.id, leaf]));
   const resolutions = [
     terminalResolution(byId.get("event.mode")),
+    terminalResolution(byId.get("event.people.primary_name")),
+    terminalResolution(byId.get("event.people.secondary_name")),
     {
       ...terminalResolution(byId.get("event.ceremony.end_time"), DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE),
       rule: DESIGNER_AI_RESOLUTION_RULES.OPTIONAL_END_TIME_OMITTED,
@@ -748,7 +767,7 @@ test("manual location resolves only its phase and a cancelled control resolves n
   assert.notEqual(cancelledBrief.nextBlock.id, "gifts");
 });
 
-test("Gifts becomes next only after both applicable locations are resolved", () => {
+test("Dress Code becomes next only after both applicable locations are resolved or deferred", () => {
   const ledger = buildCeremonyPartyLocationProgress({
     ceremony: {
       venueName: "Registro Civil",
@@ -764,7 +783,7 @@ test("Gifts becomes next only after both applicable locations are resolved", () 
     manualPhase: "party",
   });
   const brief = buildDesignerAiConversationBrief({ ledger });
-  assert.equal(brief.nextBlock.id, "gifts");
+  assert.equal(brief.nextBlock.id, "dress_code");
   assert.equal(ledger.guidedFlow.completion.unresolvedLeafIds.some((leafId) => (
     leafId.startsWith("event.people.") ||
     leafId === "event.mode" ||

@@ -200,6 +200,13 @@ Current behavior:
 
 Editor modules must not call `doc(db, "borradores", slug)` to persist editor-session state. New session kinds must be represented explicitly in `normalizeEditorSession`; unsupported kinds fail closed at the persistence authority instead of falling back to draft.
 
+Initial dynamic-authoring hydration starts after the canvas document has loaded.
+Its v2 migration writes authoring metadata, input values and `eventDetails` through
+the same session queue. Objects are validation input only: this migration never
+replaces `objetos` or `secciones`, since its preload may be partial or older than
+queued canvas edits. Subsequent user field mutations retain the complete reached
+render snapshot behavior described above.
+
 Canvas undo/redo snapshots include `objetos`, `secciones`, and
 `dynamicVisualState`. The latter contains object-scope dynamic targets plus
 `detachedVisuals`, but never structured values. Undoing or redoing a visual

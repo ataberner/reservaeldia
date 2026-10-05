@@ -631,6 +631,7 @@ test("event datetime delegates countdown projection to the authoring value owner
     {
       applyTargets: true,
       reason: "designer-ai-event-datetime",
+      preservePresentation: true,
     },
   ]]);
   assert.deepEqual(updates, []);

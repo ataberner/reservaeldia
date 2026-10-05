@@ -4,6 +4,7 @@ const GOOGLE_MAPS_SCRIPT_ID = "reservaeldia-google-maps-js";
 const googleMapsPlacesLoads = new WeakMap();
 const failedGoogleMapsScripts = new WeakSet();
 const GOOGLE_MAPS_LOAD_TIMEOUT_MS = 12_000;
+let googleMapsCallbackSequence = 0;
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -29,12 +30,14 @@ export function loadGoogleMapsPlacesLibrary({
   let script = documentRef.getElementById(GOOGLE_MAPS_SCRIPT_ID);
   const promise = new Promise((resolve, reject) => {
     let settled = false;
+    let callbackName = null;
     const finish = (error, library) => {
       if (settled) return;
       settled = true;
       targetWindow.clearTimeout(timer);
-      script?.removeEventListener("load", resolveLibrary);
+      script?.removeEventListener("load", handleScriptLoad);
       script?.removeEventListener("error", rejectLoad);
+      if (callbackName && targetWindow[callbackName] === resolveLibrary) delete targetWindow[callbackName];
       if (error) {
         // Never leave an already-failed script for the next caller to wait on.
         if (script) failedGoogleMapsScripts.add(targetWindow);
@@ -53,6 +56,11 @@ export function loadGoogleMapsPlacesLibrary({
         return targetWindow.google.maps.importLibrary("places");
       }).then((library) => finish(null, library), rejectLoad);
     };
+    const handleScriptLoad = () => {
+      // A preexisting script can already have initialized Maps. For our async
+      // script, only Google's callback signals readiness; load fires too early.
+      if (!callbackName && targetWindow.google?.maps?.importLibrary) resolveLibrary();
+    };
     // Includes both the script and importLibrary; late callbacks cannot revive it.
     const timer = targetWindow.setTimeout(rejectLoad, GOOGLE_MAPS_LOAD_TIMEOUT_MS);
     if (targetWindow.google?.maps?.importLibrary && !failedGoogleMapsScripts.has(targetWindow)) {
@@ -61,15 +69,17 @@ export function loadGoogleMapsPlacesLibrary({
     }
     const isNew = !script;
     if (isNew) {
+      callbackName = `__reservaeldiaGoogleMapsReady${++googleMapsCallbackSequence}`;
+      targetWindow[callbackName] = resolveLibrary;
       script = documentRef.createElement("script");
       script.id = GOOGLE_MAPS_SCRIPT_ID;
       script.async = true;
       script.defer = true;
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
         apiKey
-      )}&libraries=places&v=weekly&language=es-419&region=AR&loading=async`;
+      )}&libraries=places&v=weekly&language=es-419&region=AR&loading=async&callback=${callbackName}`;
     }
-    script.addEventListener("load", resolveLibrary);
+    script.addEventListener("load", handleScriptLoad);
     script.addEventListener("error", rejectLoad);
     if (isNew) documentRef.head.appendChild(script);
   });

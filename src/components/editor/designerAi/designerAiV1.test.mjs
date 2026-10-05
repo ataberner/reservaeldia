@@ -11,6 +11,7 @@ const completedInvitation = {
     action("event.set_datetime", { phase: "ceremony", date: "2027-03-15", startTime: "18:30", endTime: null }),
     action("event.set_location_text", { phase: "ceremony", venueName: "Salón de prueba", address: "Calle Ejemplo 123" }),
     action("gifts.set_enabled", { enabled: false }),
+    action("rsvp.set_enabled", { enabled: false }),
     action("event.set_dress_code", { enabled: false, value: "Elegante" }),
   ],
   resolutions: [
@@ -29,7 +30,7 @@ test("E11 retries the same failed provider turn once without adding a duplicate 
     await run.send("Cambiá la hora a las 19.");
     assert.equal(run.writes.length, 0);
     await run.click("Reintentar");
-    await run.until(() => run.calls.length === 3 && run.messages().at(-1).content === "Seguimos.");
+    await run.until(() => run.calls.length === 3 && run.messages().at(-1).content.startsWith("Seguimos."));
     assert.equal(run.calls[2].message, run.calls[1].message);
     assert.equal(run.messages().filter((m) => m.role === "user").length, 1);
     assert.equal(run.writes.length, 0);
@@ -43,7 +44,7 @@ test("E11 auto-start metadata failure recovers in place before calling the provi
     assert.equal(run.calls.length, 0);
     assert.doesNotMatch(run.messages().at(-1).content, /Cerrá/);
     await run.click("Reintentar");
-    await run.until(() => run.messages().at(-1).content === "Hola, seguimos.");
+    await run.until(() => run.messages().at(-1).content.startsWith("Hola, seguimos."));
     assert.equal(run.calls.length, 1);
   } finally { await run.close(); }
 });
@@ -72,7 +73,7 @@ test("E12 current >700 character message occurs once, including safe retry", asy
     await run.until(() => run.messages().length === 1);
     await run.send(long);
     await run.click("Reintentar");
-    await run.until(() => run.calls.length === 3 && run.messages().at(-1).content === "Seguimos.");
+    await run.until(() => run.calls.length === 3 && run.messages().at(-1).content.startsWith("Seguimos."));
     for (const payload of run.calls.slice(1)) {
       assert.equal(payload.message, long);
       assert.ok(payload.recentTurns.length <= 6);
@@ -90,7 +91,7 @@ test("execution feedback shows saving and withholds confirmation until the recei
     assert.match(document.body.textContent, /Guardando/);
     assert.equal(run.messages().length, 0);
     release();
-    await run.until(() => run.messages().some((m) => m.content === "Listo. RSVP activado."));
+    await run.until(() => run.messages().some((m) => m.content.startsWith("Listo. RSVP activado.")));
     assert.equal(run.snapshot().values.rsvp.enabled, true);
   } finally { release(); await run.close(); }
 });

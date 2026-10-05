@@ -32,6 +32,7 @@ import {
 import { executeDesignerAiActionBatch } from "@/domain/editor/designerAiActionExecutor";
 import { confirmDesignerAiPersistence } from "@/domain/editor/designerAiActionEvidence";
 import { buildDesignerAiExecutionFeedback, withDesignerAiExecutionFeedback } from "@/domain/editor/designerAiExecutionFeedback";
+import { buildDesignerAiCompletionMessage, buildDesignerAiLocalContinuation, withDesignerAiGuidedContinuation, resolveDesignerAiGalleryHelp, resolveDesignerAiCoverHelp, DESIGNER_AI_COVER_HELP_QUESTION, DESIGNER_AI_COVER_HELP_LATER, DESIGNER_AI_GALLERY_HELP_QUESTION, DESIGNER_AI_GALLERY_HELP_LATER } from "@/domain/editor/designerAiGuidedConversation";
 import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
 import {
   buildDesignerAiGooglePlaceControlState,
@@ -39,7 +40,7 @@ import {
   buildDesignerAiManualLocationReply,
   buildDesignerAiManualLocationResolution,
   getDesignerAiLocationPhaseLabel,
-  isDesignerAiGooglePlaceControlReflected,
+  getDesignerAiGooglePlaceVerifiedLeafIds,
   resolveDesignerAiLocationDecisions,
 } from "@/domain/editor/designerAiLocationInteraction";
 import { EVENT_DETAIL_FEATURES } from "@/domain/eventDetails/features";
@@ -50,7 +51,6 @@ import {
 } from "@/lib/dashboardDocumentNameBridge";
 
 const AUTO_START_MESSAGE = "Iniciá la conversación con una bienvenida breve y guiame desde el primer bloque que todavía tenga información pendiente.";
-const COMPLETE_MESSAGE = "La información principal de tu invitación ya está completa. Podés ver cómo quedó en la vista previa, ajustar cualquier parte desde el sidebar o seguir pidiéndome cambios por acá, como cambiar la hora, el Dress Code o una pregunta de RSVP.";
 
 function buildControlContinueMessage(completedLeafIds, snapshot) {
   if (snapshot.conversation?.mode === "editing") {
@@ -392,9 +392,10 @@ export default function DesignerAiPanel({
   const publishGuidedCompletion = useCallback((snapshot) => {
     if (journeyRef.current.editing || !snapshot.ledger.guidedFlow.completion.complete) return false;
     journeyRef.current.editing = true;
+    const completionMessage = buildDesignerAiCompletionMessage(snapshot);
     setMessages((current) => appendDesignerAiMessageHistory(current,
-      createMessage("assistant", COMPLETE_MESSAGE, { guidedCompletion: true })));
-    setLiveMessage(COMPLETE_MESSAGE);
+      createMessage("assistant", completionMessage, { guidedCompletion: true })));
+    setLiveMessage(completionMessage);
     return true;
   }, [journeyRef, setMessages]);
 
@@ -448,6 +449,7 @@ export default function DesignerAiPanel({
     verifiedContinuation = false,
     resumePartial = false,
     recentTurnsOverride = null,
+    controlUserReply = showUserMessage,
   } = {}) => {
     const message = String(rawMessage || "").trim();
     if (!message || sendingRef.current) return;
@@ -547,7 +549,13 @@ export default function DesignerAiPanel({
       if (!operation.isCurrent()) return;
       recoveryRef.current = null;
       const finalSnapshot = readDesignerAiCapabilitySnapshot(window, { conversationState: nextConversationState });
-      const controlRequest = result.controlRequest || null;
+      const coverHelp = resolveDesignerAiCoverHelp({ result, snapshot: finalSnapshot,
+        decision: journeyRef.current.coverHelp, userReply: resume?.controlUserReply ?? controlUserReply });
+      journeyRef.current.coverHelp = coverHelp.decision;
+      const galleryHelp = resolveDesignerAiGalleryHelp({ result, snapshot: finalSnapshot,
+        decision: journeyRef.current.galleryHelp, userReply: resume?.controlUserReply ?? controlUserReply });
+      journeyRef.current.galleryHelp = galleryHelp.decision;
+      const controlRequest = coverHelp.offer ? null : galleryHelp.controlRequest || null;
       const controlState = controlRequest
         ? buildTrustedControlState(controlRequest, finalSnapshot)
         : null;
@@ -556,7 +564,16 @@ export default function DesignerAiPanel({
       setLocationDecisions(
         controlState ? [] : resolveDesignerAiLocationDecisions(result, finalSnapshot)
       );
-      const assistantMessage = withDesignerAiExecutionFeedback(result.assistantMessage, actionResults, finalSnapshot);
+      const helpQuestion = coverHelp.offer ? DESIGNER_AI_COVER_HELP_QUESTION : galleryHelp.offer ? DESIGNER_AI_GALLERY_HELP_QUESTION : "";
+      const helpNotice = coverHelp.deferred ? DESIGNER_AI_COVER_HELP_LATER : galleryHelp.deferred ? DESIGNER_AI_GALLERY_HELP_LATER : "";
+      const invitationFeedback = helpQuestion && buildDesignerAiExecutionFeedback(actionResults, { snapshot: finalSnapshot })
+        ? withDesignerAiExecutionFeedback("Listo.", actionResults, finalSnapshot, { userMessage: message }) : "";
+      const assistantMessage = helpQuestion
+        ? [invitationFeedback, helpNotice, helpQuestion].filter(Boolean).join("\n\n")
+        : withDesignerAiGuidedContinuation(
+          withDesignerAiExecutionFeedback(helpNotice || result.assistantMessage, actionResults, finalSnapshot, { userMessage: message }),
+          { previousSnapshot: currentSnapshot, snapshot: finalSnapshot, result, verifiedContinuation }
+        );
       setMessages((current) => {
         const next = appendDesignerAiMessageHistory(current, createMessage("assistant", assistantMessage, { intent: result.intent }));
         messagesRef.current = next;
@@ -570,7 +587,8 @@ export default function DesignerAiPanel({
         error.actionResults = execution.actionResults;
         error.recovery = execution.recovery;
       }
-      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation } : null;
+      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation,
+        controlUserReply: resume?.controlUserReply ?? controlUserReply } : null;
       if (error.actionResults?.length) {
         const partialState = reconcileDesignerAiConversationState({
           snapshot: readSnapshot(), previousState: conversationStateRef.current,
@@ -603,7 +621,7 @@ export default function DesignerAiPanel({
           !/permission-denied|unauthenticated|invalid-argument|failed-precondition/.test(String(error?.code))) {
         requestRetryRef.current = {
           messageId: errorMessage.id,
-          run: () => submitMessageRef.current?.(message, { showUserMessage: false, entryMode, recentTurnsOverride: recentTurns }),
+          run: () => submitMessageRef.current?.(message, { showUserMessage: false, entryMode, recentTurnsOverride: recentTurns, controlUserReply }),
         };
       }
       setMessages((current) => {
@@ -619,7 +637,7 @@ export default function DesignerAiPanel({
         setSending(false);
       }
     }
-  }, [beginOperation, callable, persistConversationState, publishGuidedCompletion, readSnapshot, setMessages]);
+  }, [beginOperation, callable, journeyRef, persistConversationState, publishGuidedCompletion, readSnapshot, setMessages]);
 
   submitMessageRef.current = submitMessage;
 
@@ -630,6 +648,9 @@ export default function DesignerAiPanel({
     ) return false;
     const documentState = readDashboardDocumentNameState(window);
     if (documentState.hydrated !== true) return false;
+    // Header metadata and field authoring hydrate independently. An early empty
+    // schema must not turn the names into unavailable leaves or persist an entry.
+    if (!readDesignerAiCapabilitySnapshot(window).authoringReady) return false;
     if (journeyRef.current.sessionKey !== sessionKeyRef.current) {
       journeyRef.current = { sessionKey: sessionKeyRef.current, initialized: false, editing: false };
     }
@@ -754,6 +775,25 @@ export default function DesignerAiPanel({
     return hasChanges;
   }, [readSnapshot]);
 
+  const continueFromVerifiedSnapshot = useCallback((snapshot, acknowledgement) => {
+    const continuation = buildDesignerAiLocalContinuation(snapshot, {
+      acknowledgement, galleryHelp: journeyRef.current.galleryHelp,
+    });
+    if (!validateDesignerAiControlRequest(continuation.controlRequest, snapshot).ok) return false;
+    journeyRef.current.galleryHelp = continuation.galleryHelp;
+    const control = continuation.controlRequest ? buildTrustedControlState(continuation.controlRequest, snapshot) : null;
+    activeControlRef.current = control;
+    setActiveControl(control);
+    setLocationDecisions([]);
+    setMessages((current) => {
+      const next = appendDesignerAiMessageHistory(current, createMessage("assistant", continuation.assistantMessage, { intent: "clarify" }));
+      messagesRef.current = next;
+      return next;
+    });
+    setLiveMessage(continuation.assistantMessage);
+    return true;
+  }, [journeyRef, setMessages]);
+
   const completeActiveControlIfReflected = useCallback(async ({
     wait = false,
     expectedLocation = null,
@@ -777,13 +817,12 @@ export default function DesignerAiPanel({
           ? EVENT_DETAIL_FEATURES.PARTY
           : EVENT_DETAIL_FEATURES.CEREMONY;
         const persistedLocation = readEventLocationAuthoringState(window, feature);
-        const selectionReflected = isDesignerAiGooglePlaceControlReflected({
+        completedLeafIds = getDesignerAiGooglePlaceVerifiedLeafIds({
           snapshot,
           persistedLocation,
           phase: request.phase,
           expectedLocation,
         });
-        completedLeafIds = selectionReflected ? controlState.leafIds : [];
       } else {
         completedLeafIds = controlState.leafIds.filter(
           (leafId) => leafFingerprint(snapshot, leafId) !== controlState.baselineFingerprints[leafId]
@@ -816,12 +855,21 @@ export default function DesignerAiPanel({
     const verifiedSnapshot = readDesignerAiCapabilitySnapshot(window, {
       conversationState: nextState,
     });
+    if (controlState.request.type === "cover_upload" && verifiedSnapshot.ledger.leaves.find(
+      (leaf) => leaf.id === "media.cover"
+    )?.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_CONTROL) {
+      controlVerificationRef.current = false;
+      return false;
+    }
     activeControlRef.current = null;
     setActiveControl(null);
     setLocationDecisions([]);
     controlVerificationRef.current = false;
     if (publishGuidedCompletion(verifiedSnapshot)) return true;
     verifiedSnapshot.conversation.mode = journeyRef.current.editing ? "editing" : "guided";
+    if (controlState.request.type === "cover_upload") {
+      return continueFromVerifiedSnapshot(verifiedSnapshot, "Listo, cambié la foto de portada.");
+    }
     void submitMessageRef.current?.(
       buildControlContinueMessage(completedLeafIds, verifiedSnapshot),
       {
@@ -831,7 +879,7 @@ export default function DesignerAiPanel({
       }
     );
     return true;
-  }, [beginOperation, journeyRef, persistConversationState, publishGuidedCompletion, readSnapshot, sessionKey]);
+  }, [beginOperation, continueFromVerifiedSnapshot, journeyRef, persistConversationState, publishGuidedCompletion, readSnapshot, sessionKey]);
 
   useEffect(() => {
     refreshActiveGalleryChangeState();
@@ -1076,26 +1124,38 @@ export default function DesignerAiPanel({
     event.preventDefault();
     void submitMessage(draftMessage);
   };
-  const retryVerifiedContinuation = useCallback((messageId) => {
+  const retryVerifiedContinuation = useCallback(async (messageId) => {
     if (sendingRef.current || activeControlRef.current) return false;
-    setMessages((current) => {
-      const next = current.map((message) => message.id === messageId
-        ? { ...message, canRetryContinuation: false }
-        : message);
-      messagesRef.current = next;
-      return next;
-    });
-    const snapshot = readSnapshot();
-    void submitMessage(
-      buildControlContinueMessage([], snapshot),
-      {
-        showUserMessage: false,
-        snapshotOverride: snapshot,
-        verifiedContinuation: true,
+    const operation = beginOperation();
+    sendingRef.current = true;
+    setSending(true);
+    setExecutionPhase("Retomando el recorrido…");
+    try {
+      let snapshot = readSnapshot();
+      if (!journeyRef.current.editing && snapshot.ledger.guidedFlow.completion.complete) {
+        // Manual edits may have completed the journey since the failed call.
+        // Persist the existing monotonic marker before showing its first closure.
+        await persistConversationState(reconcileDesignerAiConversationState({ snapshot, previousState: conversationStateRef.current }));
+        if (!operation.isCurrent()) return false;
+        snapshot = readSnapshot();
       }
-    );
-    return true;
-  }, [readSnapshot, submitMessage]);
+      if (!publishGuidedCompletion(snapshot) && !continueFromVerifiedSnapshot(snapshot)) return false;
+      setMessages((current) => {
+        const next = current.map((message) => message.id === messageId
+          ? { ...message, canRetryContinuation: false }
+          : message);
+        messagesRef.current = next;
+        return next;
+      });
+      return true;
+    } catch {
+      if (operation.isCurrent()) setLiveMessage("No pude guardar el progreso del recorrido. Probá continuar nuevamente.");
+      return false;
+    } finally {
+      if (operation.isCurrent()) { sendingRef.current = false; setSending(false); }
+      operation.cancel();
+    }
+  }, [beginOperation, continueFromVerifiedSnapshot, journeyRef, persistConversationState, publishGuidedCompletion, readSnapshot, setMessages]);
   const imageProps = { abrirSelector, imagenes, imagenesEnProceso, cargarImagenes, borrarImagen, hayMas, cargando, seccionActivaId, setMostrarGaleria, setImagenesSeleccionadas };
 
   return (

@@ -34,3 +34,29 @@ test("feedback preserves a meaningful single-action answer and a multi-action fo
   assert.equal(withDesignerAiExecutionFeedback("Activé RSVP. ¿Qué pregunta querés agregar?", [enable]), "Activé RSVP. ¿Qué pregunta querés agregar?");
   assert.match(withDesignerAiExecutionFeedback("¿Qué horario prefieren?", [enable, receipt("gifts.set_enabled", { enabled: false })]), /¿Qué horario prefieren\?$/);
 });
+
+test("automatic name receipts stay internal and simple feedback is not duplicated", () => {
+  const snapshot = { values: { eventMode: "single" }, conversation: { namePolicy: { mode: "automatic" } } };
+  const results = [receipt("document.set_name", { name: "Casamiento Ana y Luz" }), receipt("event.set_dress_code", { enabled: true, value: "Cocktail" })];
+  const message = "Listo, agregué Dress Code “Cocktail”. ¿Quieren confirmar asistencia?";
+  assert.equal(withDesignerAiExecutionFeedback(message, results, snapshot), message);
+  assert.equal(results.length, 2);
+  assert.ok(results.every((r) => r.persisted && r.effective));
+  assert.doesNotMatch(buildDesignerAiExecutionFeedback(results, { snapshot }), /Nombre de la invitación|2 cambios/);
+  assert.match(buildDesignerAiExecutionFeedback(results, { snapshot, partial: true }), /Nombre de la invitación/);
+  const date = receipt("event.set_datetime", { phase: "ceremony", date: "2026-12-24", startTime: "20:00" });
+  assert.match(buildDesignerAiExecutionFeedback([date], { snapshot }), /Evento · Fecha/);
+  assert.doesNotMatch(buildDesignerAiExecutionFeedback([date], { snapshot }), /Ceremonia/);
+});
+
+test("explicit summaries and complex batches retain evidence without duplicate prose", () => {
+  const results = [enable, receipt("event.set_dress_code", { enabled: true, value: "Cocktail" }), receipt("rsvp.set_question_active", { questionId: "dietary_notes", active: true })];
+  const message = "Perfecto, activé RSVP y Dress Code. ¿Quieren regalos?";
+  const summary = withDesignerAiExecutionFeedback(message, results);
+  assert.match(summary, /guardé 3 cambios/);
+  assert.doesNotMatch(summary, /Perfecto, activé/);
+  assert.match(summary, /¿Quieren regalos\?/);
+  assert.match(withDesignerAiExecutionFeedback("Listo, actualicé los datos. El tamaño de letra se cambia desde el editor. ¿Quieren regalos?", results), /El tamaño de letra se cambia desde el editor/);
+  assert.match(withDesignerAiExecutionFeedback("RSVP activado.", [enable], null, { userMessage: "¿Qué cambiaste?" }), /✓ RSVP activado/);
+  assert.doesNotMatch(withDesignerAiExecutionFeedback("Activé RSVP.", [{ ...enable, persisted: false }]), /^Activé RSVP/);
+});

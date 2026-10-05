@@ -406,8 +406,57 @@ export function resolveFirstTemplateImageUrl(value) {
   return sanitizeImageUrls(value)[0] || "";
 }
 
-export function resolveTemplateTargetValue({ field, target, value } = {}) {
+// Content-only edits keep each existing view's representation. Values remain
+// normalized in authoring; this never writes a format, binding or style.
+function preserveTimeRepresentation(value, currentValue) {
+  const time = /^(\d{2}):(\d{2})$/.exec(String(value));
+  const previous = /^(\s*)(\d{1,2})(?:([:.h])(\d{2}))?(\s*(?:hs?\.?|horas?)?\s*)$/i.exec(String(currentValue));
+  if (!time || !previous) return null;
+  const hour = previous[2].length === 2 ? time[1] : String(Number(time[1]));
+  const minutes = previous[3] ? `${previous[3]}${time[2]}` : time[2] === "00" ? "" : `:${time[2]}`;
+  return `${previous[1]}${hour}${minutes}${previous[5]}`;
+}
+
+export function preserveTemplateDateRepresentation(value, currentValue) {
+  const parsed = parseTemplateDateValue(value);
+  if (!parsed) return null;
+  const previous = String(currentValue ?? "");
+  const day = parsed.date.getDate();
+  const month = parsed.date.getMonth() + 1;
+  const year = String(parsed.date.getFullYear());
+  const numeric = /^(\s*)(\d{1,2})(\s*[|/.-]\s*)(\d{1,2})(\s*[|/.-]\s*)(\d{4}|\d{2})(?=$|\D)/.exec(previous);
+  let dateText;
+  let consumed;
+  if (numeric) {
+    const segment = (number, original) => String(number).padStart(original.length, "0");
+    dateText = `${numeric[1]}${segment(day, numeric[2])}${numeric[3]}${segment(month, numeric[4])}${numeric[5]}${numeric[6].length === 2 ? year.slice(-2) : year}`;
+    consumed = numeric[0].length;
+  } else {
+    const textual = /^(\s*)\d{1,2}(\s+de\s+)(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:(\s+de\s+)(\d{4}))?/i.exec(previous);
+    if (!textual) return null;
+    let monthName = new Intl.DateTimeFormat("es-AR", { month: "long" }).format(parsed.date);
+    if (textual[3] === textual[3].toUpperCase()) monthName = monthName.toUpperCase();
+    else if (/^[A-Z]/.test(textual[3])) monthName = monthName[0].toUpperCase() + monthName.slice(1);
+    dateText = `${textual[1]}${day}${textual[2]}${monthName}${textual[4] ? textual[4] + year : ""}`;
+    consumed = textual[0].length;
+  }
+  const suffix = previous.slice(consumed);
+  // Date-only views never acquire a time just because projection also has one.
+  if (!/T\d{2}:\d{2}/.test(String(value))) return dateText + suffix;
+  const suffixTime = /^(\s*[,·–-]?\s*)(\d{1,2}(?:[:.h]\d{2})?\s*(?:hs?\.?|horas?)?\s*)$/i.exec(suffix);
+  const formattedTime = suffixTime && preserveTimeRepresentation(formatTimeText(parsed.date), suffixTime[2]);
+  return dateText + (formattedTime !== null && suffixTime ? suffixTime[1] + formattedTime : suffix);
+}
+
+export function resolveTemplateTargetValue({ field, target, value, preservePresentation = false, currentValue } = {}) {
   const transform = resolveEffectiveTemplateTargetTransform({ field, target });
+
+  if (preservePresentation && isTextualTemplateTargetPath(target?.path)) {
+    const preserved = isDateLikeTemplateFieldType(field?.type)
+      ? preserveTemplateDateRepresentation(value, currentValue)
+      : field?.type === "time" ? preserveTimeRepresentation(value, currentValue) : null;
+    if (preserved !== null) return preserved;
+  }
 
   if (transform.kind === "date_to_countdown_iso") {
     return normalizeCountdownDateValue(value);

@@ -277,17 +277,13 @@ async function finalizeLoadedAuthoringState({
     const write = () =>
       saveAuthoringDraft({
         slug: session?.id,
-        state: sourceState,
+        // Objects are validation input, not a migration output. A preload can
+        // omit sections, and a queued read can lag behind newer canvas edits.
+        state: { ...sourceState, objetos: draftRenderState?.objetos },
         uid,
         templateId: sourceTemplateId || "",
         editorSession: session,
         renderPatch: {
-          objetos: Array.isArray(draftRenderState?.objetos)
-            ? draftRenderState.objetos
-            : [],
-          secciones: Array.isArray(draftRenderState?.secciones)
-            ? draftRenderState.secciones
-            : [],
           eventDetails:
             migration.eventDetails ||
             draftRenderState?.eventDetails ||

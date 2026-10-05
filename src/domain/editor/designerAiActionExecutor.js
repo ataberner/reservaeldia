@@ -130,6 +130,7 @@ async function executeEventAction(action, targetWindow) {
       await requireBridgeMethod("updateTemplateFieldValues", targetWindow)(valuesPatch, {
         applyTargets: true,
         reason: "designer-ai-event-datetime",
+        preservePresentation: true,
       });
     }
     return;

@@ -6,6 +6,7 @@ import {
 } from "./designerAiCapabilities.js";
 import { containsForbiddenSnapshotData } from "../../../shared/designerAiCapabilityContract.js";
 import ledgerRuntime from "../../../shared/designerAiConversationLedger.js";
+import { setEventLocationProviderMetadata } from "../eventDetails/location.js";
 
 const { buildDesignerAiConversationBrief } = ledgerRuntime;
 
@@ -59,6 +60,17 @@ const fieldsSchema = [
   { key: "event_ceremony_venue_address", eventDetailsRole: "ceremony_venue_address", type: "text", applyTargets: [] },
   { key: "texto_historia", type: "textarea", applyTargets: [{ scope: "objeto", id: "story-1", path: "texto" }] },
 ];
+
+test("Places selection reads canonical provider metadata without requiring a map canvas object", () => {
+  const values = setEventLocationProviderMetadata({
+    event_ceremony_venue_name: "Salón de prueba",
+    event_ceremony_venue_address: "Av. de prueba 123",
+  }, "ceremony", { googlePlaceId: "synthetic-place", googleDisplayName: "Salón de prueba", googleFormattedAddress: "Av. de prueba 123" });
+  const snapshot = buildDesignerAiCapabilitySnapshot({ authoringSnapshot: { fieldsSchema, values }, renderSnapshot: { objetos: [] } });
+  assert.equal(snapshot.values.ceremony.placeSelected, true);
+  assert.equal(snapshot.values.ceremony.address, "Av. de prueba 123");
+  assert.equal(JSON.stringify(buildDesignerAiCallablePayload({ message: "Continuemos", clientMessageId: "places-provenance", snapshot })).includes("synthetic-place"), false);
+});
 
 test("builds only the minimal Assistant capability snapshot", () => {
   const snapshot = buildDesignerAiCapabilitySnapshot({
@@ -256,7 +268,7 @@ test("a Party Google map never supplies Ceremony location in ceremony_party", ()
       rsvp: { enabled: false },
       gifts: { enabled: false },
     },
-    sourceContext: { templateDerived: false, changedKeys: [] },
+    sourceContext: { templateDerived: false, changedKeys: ["event_primary_person_name", "event_secondary_person_name"] },
   };
   const initial = buildDesignerAiCapabilitySnapshot(input);
   const modeLeaf = initial.ledger.leaves.find((leaf) => leaf.id === "event.mode");

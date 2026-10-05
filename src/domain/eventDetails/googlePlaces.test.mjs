@@ -24,7 +24,9 @@ function loaderWindow() {
       head: { appendChild: (script) => scripts.push(script) },
     },
   };
-  return { targetWindow, scripts, timers, load: () => loadGoogleMapsPlacesLibrary({ targetWindow, apiKey: "synthetic" }) };
+  return { targetWindow, scripts, timers,
+    ready: () => targetWindow[new URL(scripts[0].src).searchParams.get("callback")](),
+    load: () => loadGoogleMapsPlacesLibrary({ targetWindow, apiKey: "synthetic" }) };
 }
 
 test("E9 script success shares one pending load between callers and clears its timer", async () => {
@@ -34,10 +36,25 @@ test("E9 script success shares one pending load between callers and clears its t
   assert.equal(run.scripts.length, 1);
   const library = { marker: "places" };
   run.targetWindow.google = { maps: { importLibrary: async () => library } };
-  run.scripts[0].dispatchEvent(new Event("load"));
+  run.ready();
   assert.equal(await first, library);
   assert.equal(await second, library);
   assert.equal(run.timers.size, 0);
+  assert.equal(Object.keys(run.targetWindow).some(key => key.startsWith("__reservaeldiaGoogleMapsReady")), false);
+});
+
+test("production cold load: async script load is not Maps readiness; wait for callback", async () => {
+  const run = loaderWindow();
+  let settled = false;
+  const result = run.load();
+  result.then(() => { settled = true; }, () => { settled = true; });
+  run.scripts[0].dispatchEvent(new Event("load"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(settled, false);
+  assert.equal(run.scripts.length, 1);
+  run.targetWindow.google = { maps: { importLibrary: async () => ({ ready: true }) } };
+  run.ready();
+  assert.deepEqual(await result, { ready: true });
 });
 
 for (const failure of ["error", "timeout", "missing-library", "import-error", "import-timeout"]) {
@@ -46,24 +63,28 @@ for (const failure of ["error", "timeout", "missing-library", "import-error", "i
     const failed = run.load();
     const rejected = assert.rejects(failed, /No pudimos cargar Google Maps/);
     const originalScript = run.scripts[0];
+    const originalCallbackName = new URL(originalScript.src).searchParams.get("callback");
+    const originalCallback = run.targetWindow[originalCallbackName];
     if (failure === "error") originalScript.dispatchEvent(new Event("error"));
     else if (failure === "timeout") [...run.timers.values()][0]();
     else {
       if (failure.startsWith("import")) run.targetWindow.google = { maps: { importLibrary: () => failure === "import-error" ? Promise.reject(new Error("synthetic")) : new Promise(() => {}) } };
-      originalScript.dispatchEvent(new Event("load"));
+      run.ready();
       if (failure === "import-timeout") [...run.timers.values()][0]();
     }
     await rejected;
     assert.equal(run.scripts.length, 0);
     assert.equal(run.timers.size, 0);
+    assert.equal(run.targetWindow[originalCallbackName], undefined);
     // A failed script may have left a bootstrap importLibrary behind. Retry
     // must load a new script even when that old function still exists.
     const retry = run.load(), other = run.load();
     assert.equal(retry, other);
     assert.notEqual(run.scripts[0], originalScript);
     originalScript.dispatchEvent(new Event("error")); // stale listener cannot reject retry
+    originalCallback(); // stale readiness callback cannot revive a settled attempt
     run.targetWindow.google = { maps: { importLibrary: async () => ({ ready: true }) } };
-    run.scripts[0].dispatchEvent(new Event("load"));
+    run.ready();
     assert.deepEqual(await retry, { ready: true });
     assert.equal(run.timers.size, 0);
   });

@@ -15,6 +15,7 @@ function snapshot(id, provenance = "existing_user_data", override = {}) {
   return { values, conversation: { namePolicy: { mode: "automatic" } }, ledger: { leaves: [
     { id, status: "pending", provenance },
     ...(id !== "event.ceremony.date" ? [{ id: "event.ceremony.date", status: "resolved_from_user", provenance: "user_current_session" }] : []),
+    ...(id === "document.name" ? ["event.people.primary_name", "event.people.secondary_name"].map((nameId) => ({ id: nameId, status: "resolved_from_user", provenance: "user_current_session" })) : []),
   ] } };
 }
 const resolution = (leafId, rule) => ({ leafId, status: "resolved_by_rule", rule });

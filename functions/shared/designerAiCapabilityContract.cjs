@@ -1,7 +1,7 @@
 const conversationLedger = require("./designerAiConversationLedger.cjs");
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 
-const DESIGNER_AI_CONTRACT_VERSION = "2.2.0";
+const DESIGNER_AI_CONTRACT_VERSION = "2.3.0";
 
 const DESIGNER_AI_ACTION_ORIGINS = Object.freeze({
   MODEL: "model",
@@ -67,6 +67,7 @@ const GIFT_METHOD_SET = new Set([
 
 const MODEL_RESOLUTION_STATUS_SET = new Set([
   conversationLedger.DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION,
+  conversationLedger.DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER,
   conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL,
   conversationLedger.DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER,
   conversationLedger.DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE,
@@ -138,7 +139,7 @@ function validateActionShape(action) {
   }
 
   const args = asRecord(record.arguments);
-  if (!args) return `La acción ${record.type} requiere arguments.`;
+  if (!args) return "La acción requiere arguments.";
 
   switch (record.type) {
     case "document.set_name":
@@ -274,7 +275,7 @@ function validateActionShape(action) {
         ? null
         : "event.select_google_place requiere phase.";
     default:
-      return `La acción ${record.type} no está permitida.`;
+      return "El type de acción no está permitido.";
   }
 }
 
@@ -413,7 +414,8 @@ function validateDesignerAiActionBatch(actions, { origin, snapshot } = {}) {
       ? MODEL_ACTION_SET.has(type)
       : TRUSTED_ACTION_SET.has(type);
     if (!allowedForOrigin) {
-      errors.push(`Acción ${index}: ${type || "desconocida"} no está permitida para ${origin}.`);
+      const diagnosticType = MODEL_ACTION_SET.has(type) || TRUSTED_ACTION_SET.has(type) ? type : "desconocida";
+      errors.push(`Acción ${index}: ${diagnosticType} no está permitida para ${origin}.`);
       return;
     }
     const shapeError = validateActionShape(action);
@@ -640,6 +642,8 @@ function sanitizeLedger(value) {
     const leaf = leaves.find((entry) => entry.id === leafId);
     return !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf?.status);
   });
+  const deferredLeafIds = guidedUnresolvedLeafIds.filter((id) => leaves.find((leaf) => leaf.id === id)?.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER);
+  const blockingLeafIds = guidedUnresolvedLeafIds.filter((id) => !deferredLeafIds.includes(id));
   return {
     version: Number.isInteger(source.version) ? source.version : conversationLedger.LEDGER_VERSION,
     leaves,
@@ -655,7 +659,9 @@ function sanitizeLedger(value) {
         availableCount: guidedLeafIds.length,
         terminalCount: guidedLeafIds.length - guidedUnresolvedLeafIds.length,
         unresolvedLeafIds: guidedUnresolvedLeafIds,
-        complete: guidedUnresolvedLeafIds.length === 0,
+        deferredLeafIds,
+        blockingLeafIds,
+        complete: blockingLeafIds.length === 0,
       },
     },
   };
@@ -704,6 +710,13 @@ function sanitizeCapabilityIdList(value) {
     .slice(0, 40);
 }
 
+function canDeferDesignerAiLeaf(leafId, snapshot) {
+  const leaf = snapshot?.ledger?.leaves?.find((item) => item.id === leafId);
+  return Boolean(leaf && leaf.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE &&
+    snapshot?.ledger?.guidedFlow?.leafIds?.includes(leafId) &&
+    !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf.status));
+}
+
 function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = [] } = {}) {
   if (!Array.isArray(resolutions) || resolutions.length > 120) {
     return { ok: false, errors: ["Las resoluciones deben contener entre 0 y 120 elementos."] };
@@ -729,15 +742,23 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = 
     }
     if (
       /^media\.gallery\..+\.guided_completion$/.test(String(record.leafId || "")) &&
-      record.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL
+      ![conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL, conversationLedger.DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER].includes(record.status)
     ) {
       errors.push(`Resolucion ${index}: una Gallery solo se finaliza desde su control local explicito.`);
+    }
+    if (record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER) {
+      if (!canDeferDesignerAiLeaf(record.leafId, snapshot) ||
+          actions.some((action) => conversationLedger.mapDesignerAiActionToLeafIds(action).includes(record.leafId))) {
+        const details = knownLeafIds.has(record.leafId) ? ` (${record.leafId})` : "";
+        errors.push(`Resolucion ${index}${details}: solo se puede postergar una hoja guiada pendiente sin mutación en el lote.`);
+      }
     }
     if (record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE) {
       if (!RESOLUTION_RULE_SET.has(record.rule)) {
         errors.push(`Resolucion ${index}: regla no permitida.`);
       } else if (!isResolutionRuleCompatible(record.leafId, record.rule)) {
-        errors.push(`Resolucion ${index}: la regla no corresponde a esa hoja.`);
+        const details = knownLeafIds.has(record.leafId) ? ` (hoja: ${record.leafId}; regla: ${record.rule})` : "";
+        errors.push(`Resolucion ${index}: la regla no corresponde a esa hoja${details}.`);
       } else {
         const semanticError = conversationLedger.designerAiResolutionRuleError(record, snapshot, { actions });
         if (semanticError) errors.push(`Resolucion ${index}: ${semanticError}`);
@@ -862,6 +883,9 @@ const NULLABLE_STRING = (maxLength) => ({ type: ["string", "null"], maxLength })
 const BOOLEAN = { type: "boolean" };
 const NULLABLE_BOOLEAN = { type: ["boolean", "null"] };
 const INTEGER = { type: "integer", minimum: 0 };
+const EVENT_PHASE_SCHEMA = { type: "string", enum: [...EVENT_PHASE_SET],
+  description: "Identificador interno: ceremony es TODO evento único, incluso si se llama fiesta; en modo ceremony_party es la ceremonia. party solo es la segunda fase de ceremony_party. Para solo fiesta usá ceremony en fechas, horarios, lugares y controles.",
+};
 
 function actionSchema(type, properties, required = Object.keys(properties)) {
   return {
@@ -885,8 +909,8 @@ const DESIGNER_AI_MODEL_ACTION_SCHEMA = {
     actionSchema("document.set_name", { name: STRING(120) }),
     actionSchema("event.set_people", { primaryName: STRING(120), secondaryName: STRING(120) }),
     actionSchema("event.set_mode", { mode: { type: "string", enum: [...EVENT_MODE_SET] } }),
-    actionSchema("event.set_datetime", { phase: { type: "string", enum: [...EVENT_PHASE_SET] }, date: NULLABLE_STRING(10), startTime: NULLABLE_STRING(5), endTime: NULLABLE_STRING(5) }),
-    actionSchema("event.set_location_text", { phase: { type: "string", enum: [...EVENT_PHASE_SET] }, venueName: STRING(180), address: STRING(240) }),
+    actionSchema("event.set_datetime", { phase: EVENT_PHASE_SCHEMA, date: { ...NULLABLE_STRING(10), description: "Fecha ISO solo si fue aportada completa; null conserva la existente." }, startTime: { ...NULLABLE_STRING(5), description: "Hora HH:mm aportada; null si no se pidió cambiarla." }, endTime: { ...NULLABLE_STRING(5), description: "Hora final HH:mm aportada; null si no se pidió cambiarla." } }),
+    actionSchema("event.set_location_text", { phase: EVENT_PHASE_SCHEMA, venueName: STRING(180), address: STRING(240) }),
     actionSchema("event.set_dress_code", { enabled: BOOLEAN, value: STRING(240) }),
     actionSchema("story.set_text", { text: STRING(4000) }),
     actionSchema("gallery.move_photo", { galleryId: STRING(160), sourceCellId: NULLABLE_STRING(160), sourceIndex: INTEGER, targetCellId: NULLABLE_STRING(160), targetIndex: INTEGER }),
@@ -910,7 +934,7 @@ const DESIGNER_AI_CONTROL_REQUEST_SCHEMA = {
     { type: "null" },
     { type: "object", additionalProperties: false, properties: { type: { type: "string", const: "cover_upload" } }, required: ["type"] },
     { type: "object", additionalProperties: false, properties: { type: { type: "string", const: "gallery_cell_upload" }, galleryId: STRING(160), cellId: NULLABLE_STRING(160), cellIndex: INTEGER }, required: ["type", "galleryId", "cellId", "cellIndex"] },
-    { type: "object", additionalProperties: false, properties: { type: { type: "string", const: "google_place_picker" }, phase: { type: "string", enum: [...EVENT_PHASE_SET] } }, required: ["type", "phase"] },
+    { type: "object", additionalProperties: false, properties: { type: { type: "string", const: "google_place_picker" }, phase: EVENT_PHASE_SCHEMA }, required: ["type", "phase"] },
   ],
 };
 
@@ -944,6 +968,61 @@ const DESIGNER_AI_TOOL = Object.freeze({
   },
 });
 
+// Narrow the existing tool, using the same compatibility authority as validation.
+// This constrains field/rule/status combinations; projected values, dependencies and
+// execution evidence still require the backend/frontend semantic validators.
+function buildDesignerAiTool(snapshot) {
+  const statuses = conversationLedger.DESIGNER_AI_LEDGER_STATUSES;
+  const groups = new Map();
+  const seen = new Set();
+  for (const leaf of snapshot?.ledger?.leaves || []) {
+    if (leaf.status === statuses.UNAVAILABLE || seen.has(leaf.id)) continue;
+    seen.add(leaf.id);
+    const controlledGallery = /^media\.gallery\..+\.guided_completion$/.test(leaf.id);
+    const rules = controlledGallery ? [] : [...RESOLUTION_RULE_SET].filter((rule) => isResolutionRuleCompatible(leaf.id, rule));
+    const nonRuleStatuses = (controlledGallery ? [statuses.REQUIRES_CONTROL, statuses.DEFERRED_BY_USER] :
+      [...MODEL_RESOLUTION_STATUS_SET].filter((status) => ![
+        statuses.RESOLVED_BY_RULE, statuses.RESOLVED_FROM_USER,
+      ].includes(status))).filter((status) => status !== statuses.DEFERRED_BY_USER || canDeferDesignerAiLeaf(leaf.id, snapshot));
+    const key = JSON.stringify([rules, nonRuleStatuses]);
+    if (!groups.has(key)) groups.set(key, { rules, nonRuleStatuses, ids: [] });
+    groups.get(key).ids.push(leaf.id);
+  }
+  const definitions = {};
+  const alternatives = [];
+  for (const { rules, nonRuleStatuses, ids } of groups.values()) {
+    // IDs occur once via $ref; chunk enums to respect provider string limits.
+    for (let offset = 0; offset < ids.length; offset += 200) {
+      const name = `resolutionLeaves${Object.keys(definitions).length}`;
+      definitions[name] = { type: "string", enum: ids.slice(offset, offset + 200),
+        description: "event.ceremony.* identifica TODO evento único, incluso una fiesta. event.party.* solo corresponde a la segunda fase de ceremony_party; nunca a single. Lugar explícitamente postergado: deferred_by_user para venue_name, address y place_selection de la fase activa.",
+      };
+      const branch = (status, rule) => ({
+        type: "object", additionalProperties: false,
+        properties: { leafId: { $ref: `#/$defs/${name}` }, status, rule },
+        required: ["leafId", "status", "rule"],
+      });
+      alternatives.push(branch({ type: "string", enum: nonRuleStatuses,
+        description: "needs_clarification: ambigüedad relevante del mensaje actual; requires_control: requiere control local; deferred_by_user: el usuario dijo explícitamente que no sabe o quiere postergarlo. Un dato no mencionado conserva su estado sin emitir ninguna resolution.",
+      }, { type: "null" }));
+      if (rules.length) alternatives.push(branch({ type: "string", const: statuses.RESOLVED_BY_RULE }, { type: "string", enum: rules }));
+    }
+  }
+  return {
+    ...DESIGNER_AI_TOOL,
+    parameters: {
+      ...DESIGNER_AI_TOOL.parameters,
+      ...(alternatives.length ? { $defs: definitions } : {}),
+      properties: {
+        ...DESIGNER_AI_TOOL.parameters.properties,
+        resolutions: alternatives.length ?
+          { type: "array", maxItems: 120, description: "Normalmente []. Solo decisiones explícitas relevantes al mensaje actual. No copies el ledger ni enumeres datos faltantes. Las actions se resuelven automáticamente al persistirse; las hojas omitidas conservan su estado. No postergues nada solo porque el usuario no lo mencionó.", items: { anyOf: alternatives } } :
+          { ...DESIGNER_AI_TOOL.parameters.properties.resolutions, maxItems: 0 },
+      },
+    },
+  };
+}
+
 module.exports = {
   DESIGNER_AI_ACTION_ORIGINS,
   DESIGNER_AI_CONTRACT_VERSION,
@@ -952,6 +1031,7 @@ module.exports = {
   DESIGNER_AI_MODEL_ACTION_TYPES,
   DESIGNER_AI_TOOL,
   DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES,
+  buildDesignerAiTool,
   SNAPSHOT_AVAILABILITY_KEYS,
   containsForbiddenSnapshotData,
   discardInactiveDesignerAiPhaseResolutions,

@@ -781,6 +781,7 @@ export default function useTemplateFieldAuthoring({
             templateAuthoringDraft: draftMeta?.templateAuthoringDraft || null,
             templateInput: draftMeta?.templateInput || null,
             objetos: safeObjetos,
+            secciones: safeSecciones,
             eventDetails: eventDetailsConfig,
           },
           persistMigration: writable,
@@ -952,6 +953,7 @@ export default function useTemplateFieldAuthoring({
             }),
             objetos: nextObjects,
             secciones: baseSections,
+            preservePresentation: options.preservePresentation === true,
           });
           nextObjects = applyObjectPatches(nextObjects, patches);
         });

@@ -14,6 +14,7 @@ import * as capabilities from "../../../domain/editor/designerAiCapabilities.js"
 import * as history from "../../../domain/editor/designerAiMessageHistory.js";
 import * as executor from "../../../domain/editor/designerAiActionExecutor.js";
 import * as feedback from "../../../domain/editor/designerAiExecutionFeedback.js";
+import * as guidedConversation from "../../../domain/editor/designerAiGuidedConversation.js";
 import * as evidence from "../../../domain/editor/designerAiActionEvidence.js";
 import * as location from "../../../domain/editor/designerAiLocationInteraction.js";
 import * as features from "../../../domain/eventDetails/features.js";
@@ -70,6 +71,7 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     "@/domain/editor/designerAiActionExecutor": executor,
     "@/domain/editor/designerAiActionEvidence": evidence,
     "@/domain/editor/designerAiExecutionFeedback": feedback,
+    "@/domain/editor/designerAiGuidedConversation": guidedConversation,
     "@/hooks/useEditorDocumentOperation": useEditorDocumentOperation,
     "@/domain/editor/designerAiLocationInteraction": location,
     "@/domain/eventDetails/features": features,

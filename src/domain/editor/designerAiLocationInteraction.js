@@ -122,3 +122,20 @@ export function isDesignerAiGooglePlaceControlReflected({
       normalizeText(snapshotLocation.address) === normalizeText(expected.address)
   );
 }
+
+// Use only after the location owner's durable write. A selected place confirms
+// the supplied text too, even when it happens to equal the template/baseline.
+export function getDesignerAiGooglePlaceVerifiedLeafIds(input = {}) {
+  const { snapshot, phase, expectedLocation } = input;
+  if (!["ceremony", "party"].includes(phase) || !isDesignerAiGooglePlaceControlReflected(input)) return [];
+  const expected = asRecord(expectedLocation);
+  const eligible = new Set((snapshot?.ledger?.leaves || [])
+    .filter(leaf => !["unavailable", "not_applicable_by_dependency"].includes(leaf.status))
+    .map(leaf => leaf.id));
+  const selectionId = `event.${phase}.place_selection`;
+  if (!eligible.has(selectionId)) return [];
+  return [selectionId,
+    ...(normalizeText(expected.googleDisplayName) && normalizeText(expected.venueName) ? [`event.${phase}.venue_name`] : []),
+    ...(normalizeText(expected.googleFormattedAddress) && normalizeText(expected.address) ? [`event.${phase}.address`] : []),
+  ].filter(id => eligible.has(id));
+}

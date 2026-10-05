@@ -7,6 +7,7 @@ import {
   buildDesignerAiManualLocationReply,
   buildDesignerAiManualLocationResolution,
   isDesignerAiGooglePlaceControlReflected,
+  getDesignerAiGooglePlaceVerifiedLeafIds,
   isDesignerAiGooglePlaceSelectionReflected,
   resolveDesignerAiLocationDecisions,
 } from "./designerAiLocationInteraction.js";
@@ -141,6 +142,22 @@ test("Google selection evidence requires the exact persisted provider result", (
     venueName: expected.venueName,
     address: expected.address,
   }, expected), false);
+});
+
+test("verified place completion is scoped to supplied, nonempty, available location leaves", () => {
+  const expected = { googlePlaceId: "synthetic-place", googleDisplayName: "Lugar", googleFormattedAddress: "Calle 123", venueName: "Lugar", address: "Calle 123" };
+  const current = { values: { ceremony: { venueName: "Lugar", address: "Calle 123", placeSelected: true } },
+    ledger: { leaves: ["venue_name", "address", "place_selection"].map(field => ({ id: `event.ceremony.${field}`, status: "pending" })) } };
+  const input = { snapshot: current, phase: "ceremony", expectedLocation: expected, persistedLocation: expected };
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds(input), ["event.ceremony.place_selection", "event.ceremony.venue_name", "event.ceremony.address"]);
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds({ ...input, phase: "party" }), []);
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds({ ...input, persistedLocation: { ...expected, googlePlaceId: "other" } }), []);
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds({ ...input, persistedLocation: { ...expected, address: "Other street" } }), []);
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds({ ...input, expectedLocation: { ...expected, googleDisplayName: "", googleFormattedAddress: "" } }), ["event.ceremony.place_selection"], "fallback text is not supplied by Google");
+  current.ledger.leaves.find(leaf => leaf.id.endsWith("address")).status = "unavailable";
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds(input), ["event.ceremony.place_selection", "event.ceremony.venue_name"]);
+  current.ledger.leaves.forEach(leaf => { leaf.status = "not_applicable_by_dependency"; });
+  assert.deepEqual(getDesignerAiGooglePlaceVerifiedLeafIds(input), []);
 });
 
 test("Google control evidence requires the same phase in the reread capability snapshot", () => {

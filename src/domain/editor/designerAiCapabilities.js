@@ -94,6 +94,7 @@ function resolvePhaseState({ authoringSnapshot, objects, feature }) {
   const location = resolveEventLocationFromAuthoring({
     fieldsSchema,
     defaults,
+    values: defaults,
     objetos: objects,
     feature,
   });
@@ -302,9 +303,9 @@ export function readDesignerAiCapabilitySnapshot(targetWindow, options = {}) {
   );
   const renderSnapshot = readEditorRenderSnapshot(targetWindow) || {};
   const authoringSnapshot = typeof getAuthoringSnapshot === "function"
-    ? getAuthoringSnapshot() || {}
-    : {};
-  return buildDesignerAiCapabilitySnapshot({
+    ? getAuthoringSnapshot()
+    : null;
+  const snapshot = buildDesignerAiCapabilitySnapshot({
     documentNameState: readDashboardDocumentNameState(targetWindow),
     renderSnapshot,
     authoringSnapshot,
@@ -312,6 +313,9 @@ export function readDesignerAiCapabilitySnapshot(targetWindow, options = {}) {
     conversationState: options.conversationState,
     sourceContext: options.sourceContext,
   });
+  // Local readiness only: the callable sanitizer omits this runtime flag.
+  snapshot.authoringReady = Boolean(authoringSnapshot);
+  return snapshot;
 }
 
 export function buildDesignerAiCallablePayload({

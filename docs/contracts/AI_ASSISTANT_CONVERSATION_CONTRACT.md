@@ -49,7 +49,7 @@ pendientes.
 | Emojis | Sin decisión de producto. | Pendiente; las instrucciones runtime no deben convertir una preferencia accidental en regla canónica. |
 | Exclamaciones, clichés y elogios | Sin decisión de producto específica. | Pendiente; solo rige evitar entusiasmo artificial según la personalidad ya aprobada. |
 | Preguntas aclaratorias | La obligación de no adivinar y pedir la aclaración mínima es normativa. | La forma exacta de preguntar sigue pendiente. |
-| Confirmaciones y errores | Deben corresponder a evidencia real y no sobreafirmar. | El copy exacto y el nivel de detalle siguen pendientes. |
+| Confirmaciones y errores | Deben corresponder a evidencia real y no sobreafirmar. Confirmación natural para pocas acciones; resumen para lotes complejos, parciales o pedido explícito. | Política aceptada 2026-09-30 e implementada en el formatter; el copy de errores sigue abierto. |
 | Mobile | El mismo contenido se usa hoy en desktop y mobile. | Las particularidades de contenido mobile siguen pendientes; el reflow visual es técnico. |
 
 Modificar cualquiera de estas decisiones exige actualizar este contrato, la
@@ -120,8 +120,32 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
   la misma alternativa. El dato conserva estado pendiente y la conversación
   continúa por otro dato aplicable; postergarlo no equivale a inventarlo,
   resolverlo ni volverlo no aplicable.
+- Esa postergación se registra como `deferred_by_user` en el ledger existente.
+  No debe impedir recorrer Dress Code, RSVP y Regalos ni obligar a inventar datos
+  para cerrar. El cierre reconoce los pendientes postergados y ofrece preview,
+  sidebar y conversación; no afirma completitud absoluta.
 - Debe aprovechar datos válidos adelantados por el usuario y no obligarlo a
   repetirlos en el orden de las preguntas.
+- Un alias visible confirmado alcanza para continuar Regalos, sin pedir los
+  demás datos bancarios. Una aclaración antigua no debe devolver la conversación
+  desde Galería a Regalos cuando los datos necesarios ya tienen evidencia.
+- Una solicitud como “Pasame el alias” o “Compartime el enlace” ya pide un dato,
+  aunque no lleve signos de interrogación. Dentro del mismo bloque la UI no
+  agrega otra pregunta genérica de modalidad; si hay un medio elegido incompleto,
+  el fallback pide solo ese valor. Un simple “Perfecto” sí necesita continuación.
+- No pregunta proactivamente por la hora de finalización del evento, ceremonia
+  o fiesta, tampoco agrupada con fecha, hora de inicio o lugar. Es opcional y no
+  bloquea el recorrido. La guarda o modifica cuando el usuario la aporta/pide;
+  solo aclara ese dato si el pedido explícito resulta ambiguo. No borra horas
+  existentes ni interpreta el silencio como postergación o confirmación.
+- Las fechas numéricas se interpretan día/mes/año: `24/12/26` significa
+  `2026-12-24`, también con separadores `.` o `|`. Los años de dos dígitos
+  representan 2000–2099, conforme al parser existente del editor; no se exige
+  repetirlos con cuatro dígitos. Una fecha imposible requiere aclaración.
+  Si falta el año y el usuario lo aporta después, se conserva el día/mes
+  inequívoco aportado por él en los turnos recientes existentes. Sin ese contexto
+  se pide el dato faltante; no se usa una fecha de ejemplo como evidencia.
+  La normalización semántica no modifica la presentación del template.
 - En la primera transición verificada de incompleto a completo, la UI comunica
   una sola vez que la información principal quedó completa. Ofrece `Ver vista
   previa` mediante el preview existente, explica la edición manual desde el
@@ -160,6 +184,14 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   usa el lote P0 y no vuelve a ejecutar acciones confirmadas. Antes de aplicar,
   un error recuperable ofrece `Reintentar` con el pedido original; una nueva
   intención invalida el reintento anterior.
+- Para una o pocas acciones, se conserva una confirmación natural única. No se
+  antepone una lista que vuelva a repetirla. Los lotes de tres o más cambios,
+  fallos parciales y pedidos explícitos de resumen usan feedback estructurado;
+  la pregunta posterior se conserva sin repetir las confirmaciones.
+- El nombre automático es un efecto secundario: no se vuelve a escribir si ya
+  coincide ni se repite en el feedback normal. Un nombre explícito sí se informa;
+  un fallo parcial conserva todos los receipts en su explicación, incluso los
+  secundarios. La supresión visual nunca borra evidencia.
 - Si el borrador cambió mientras se esperaba una respuesta, el asistente no debe
   aplicar ni atribuirse el resultado obsoleto.
 - La respuesta no debe exponer action types, leaf IDs, fingerprints, snapshots,
@@ -186,6 +218,22 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   el contexto visible. La explicación debe identificar la fase que se está
   configurando sin trasladar al usuario a un formulario general.
 - Un control cancelado o cerrado sin cambio deja la capacidad pendiente.
+- Al llegar a Portada, debe preguntar si quiere cambiar la foto actual. No pide
+  qué foto usar ni indica subirla antes de abrir el panel. Al aceptar, pedir el
+  cambio o responder “¿la subo acá?”, abre `cover_upload`, el control existente.
+  Si prefiere conservarla o cambiarla después, conserva la imagen, registra
+  `deferred_by_user` y continúa. Puede retomarlo desde el asistente o el tab Fotos.
+- Después de un cambio de portada verificado y persistido, la confirmación y el
+  siguiente paso se presentan desde el ledger sin depender de otra respuesta del
+  modelo. En edición confirma y queda disponible; en guiado sigue por el pendiente
+  real, respetando el consentimiento de Galería. Retomar una continuación fallida
+  no vuelve a subir la foto ni reinterpreta su evidencia.
+- Después de elegir y guardar una dirección en Google Maps, debe reconocer esa
+  selección y continuar con lo que realmente falte. No debe pedir nuevamente la
+  dirección manual de esa fase ni trasladar la evidencia a otra fase. En modo
+  edición confirma el cambio sin reiniciar el recorrido. La pregunta posterior a
+  una decisión local verificada se deriva del ledger aun si continúa dentro de
+  datos del evento; las aclaraciones normales del chat conservan su contexto.
 - Ante una falla, debe comunicar que la acción no quedó confirmada y ofrecer solo
   una recuperación que realmente exista: reintentar el mensaje, corregir datos o
   usar el owner del editor correspondiente.
@@ -585,8 +633,9 @@ la redacción accidental de un ejemplo.
   una portada editable.
 - Estado/evidencia disponible: `availability.cover` es verdadero; aún no cambió
   el fingerprint.
-- Respuesta recomendada: pedir primero la foto de portada, abrir el control local
-  y mantener el cambio pendiente hasta que el borrador refleje otra fuente.
+- Respuesta recomendada: preguntar si quiere cambiar la portada actual; al
+  aceptar, abrir el control local y mantener el cambio pendiente hasta que el
+  borrador refleje otra fuente. Si rechaza, conservarla y continuar el recorrido.
 - Respuesta que debe evitarse: pedir una URL por chat, decir que la portada cambió
   al abrir el uploader o pedir portada cuando no existe una aplicable.
 - Regla protegida: orden de fotos, control local y evidencia.

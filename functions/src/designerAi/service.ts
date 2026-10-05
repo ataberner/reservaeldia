@@ -1,6 +1,9 @@
 import type OpenAI from "openai";
 import { randomUUID } from "crypto";
 import { createDesignerAiDeadline, DesignerAiDeadlineError, designerAiRetryDelay, waitDesignerAiRetry, DESIGNER_AI_ATTEMPT_TIMEOUT_MS, DESIGNER_AI_MIN_ATTEMPT_MS } from "./deadline";
+const { normalizeNumericEventDateValue } = require("../../shared/authoringValueNormalization.cjs") as {
+  normalizeNumericEventDateValue(value: string, options: { allowTrailingText: boolean }): string | null;
+};
 
 type DesignerAiLeaf = { id: string; block: string; status: string; provenance: string; rule: string | null; fingerprint: string };
 type DesignerAiCapabilitySnapshot = {
@@ -30,6 +33,8 @@ const capabilityContract = require("../../shared/designerAiCapabilityContract.cj
   DESIGNER_AI_ACTION_ORIGINS: { MODEL: "model" };
   DESIGNER_AI_CONTRACT_VERSION: string;
   DESIGNER_AI_TOOL: Record<string, unknown>;
+  DESIGNER_AI_MODEL_ACTION_TYPES: readonly string[];
+  buildDesignerAiTool(snapshot: DesignerAiCapabilitySnapshot): Record<string, unknown>;
   containsForbiddenSnapshotData(value: unknown): boolean;
   discardInactiveDesignerAiPhaseResolutions(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { actions: DesignerAiAction[] }): unknown;
   sanitizeCapabilitySnapshot(value: unknown): DesignerAiCapabilitySnapshot;
@@ -44,6 +49,7 @@ const conversationLedger = require("../../shared/designerAiConversationLedger.cj
   DESIGNER_AI_PROVENANCE: Record<string, string>;
   DESIGNER_AI_RESOLUTION_RULES: Record<string, string>;
   buildAutomaticEventName(primaryName: unknown, secondaryName: unknown): string;
+  isConfirmedDesignerAiPersonName(leaf: DesignerAiLeaf | undefined): boolean;
   buildDesignerAiConversationBrief(snapshot: DesignerAiCapabilitySnapshot): DesignerAiConversationBrief;
   mapDesignerAiActionToLeafIds(action: DesignerAiAction): string[];
 };
@@ -66,33 +72,40 @@ Límite absoluto:
 
 Planificación obligatoria:
 1. Interpretá el mensaje completo contra TODAS las hojas disponibles, aunque algunas no pertenezcan al recorrido guiado.
-2. Emití en un único lote todas las acciones compatibles. No cambies valores que el usuario no mencionó.
+2. Emití en un único lote todas las acciones compatibles. No cambies valores que el usuario no mencionó. Resolvé primero el modo efectivo: single siempre usa phase ceremony y hojas event.ceremony.*, también si el usuario dice fiesta. party/event.party.* es exclusivamente la segunda fase cuando hay ceremony_party. Esta correspondencia rige actions, resolutions y controlRequest del mismo lote.
 3. Usá resolutions para decisiones sin mutación, reglas documentadas, controles pendientes o ambigüedades. Una hoja no queda resuelta por haber sido mencionada. No apliques una regla por analogía ni en bloque: cada rule debe ser compatible con el leafId exacto. Si no existe una regla compatible, dejá la hoja pendiente o usá needs_clarification con rule null.
-4. Para la siguiente pregunta proactiva seguí nextBlock de la prioridad derivada. Si el usuario acaba de postergar explícitamente una hoja de ese bloque, mantenela pendiente y avanzá transitoriamente a otro dato aplicable sin marcarla como resuelta ni reconstruir un orden paralelo.
+   No emitas resolved_from_user: el editor lo deriva exclusivamente de los receipts de actions efectivas y persistidas. Para datos aportados proponé las actions correspondientes, sin duplicarlas en resolutions. No enumeres en resolutions todas las hojas del ledger: incluí solo decisiones relevantes al mensaje actual; las demás conservan su estado. Por ejemplo, «solo fiesta» requiere event.set_mode(single), no resolver fechas, horarios ni lugares que no fueron aportados.
+   resolutions normalmente es []. Omitir una hoja conserva su estado pendiente; no hace falta declararla needs_clarification ni deferred_by_user para poder preguntar por ella. «No lo mencionó» nunca significa «pidió dejarlo para después». Si el usuario solo elige la estructura, devolvé su action y resolutions: []; preguntá por los datos faltantes en assistantMessage.
+4. Para la siguiente pregunta proactiva seguí nextBlock de la prioridad derivada. Ante una postergación explícita (todavía no sé, después, dejalo pendiente), emití deferred_by_user con rule null exclusivamente para las hojas a las que se refiere esa frase: conserva el pendiente y el sistema lo excluye de los bloqueantes. Lugar desconocido posterga venue_name, address y place_selection de esa phase; no posterga date, start_time ni end_time, aunque falten. No uses needs_clarification para postergar ni postergues sin que el usuario lo pida. La hora de fin no mencionada no está postergada. Fecha sin año necesita aclaración; no inventes el año. La UI deriva la siguiente etapa después de persistir los cambios.
 5. La interfaz comunica una sola vez la transición del recorrido a completo. No redactes ese cierre ni reemplaces por él la respuesta al pedido actual. La completitud global es diagnóstica y no gobierna el cierre.
 6. Usá intent apply si devolvés al menos una action o controlRequest, aunque también necesites preguntar por otro dato faltante. Reservá clarify para respuestas sin acciones ni controles.
 
 Reglas seguras:
+- Interpretá fechas numéricas como día/mes/año (dd/mm/aa o dd/mm/aaaa), también con separadores . o |. Un año de dos dígitos ya está informado: 00–99 equivale a 2000–2099, igual que en el editor. Por ejemplo, 24/12/26 es 2026-12-24 y 03/04/26 es 2026-04-03. No pidas cuatro dígitos ni repetir una fecha válida por ese motivo; proponé event.set_datetime con fecha ISO YYYY-MM-DD. Validá el calendario: una fecha imposible necesita aclaración, nunca la corrijas silenciosamente.
+- Si falta realmente el año, preguntá solo el año. Si el usuario responde solo 2026, completá el día y mes que ya aportó para esa misma fecha en recentTurns; no se los vuelvas a pedir. Los mensajes del usuario son la evidencia, no los ejemplos de la plantilla ni una fecha inventada por el asistente. Sin día/mes previos inequívocos, o si hay varias fechas posibles, aclaralo sin adivinar. Interpretar el valor no cambia la presentación del template.
+- numericDateInterpretation es el resultado del parser compartido con el editor para un mensaje compuesto solo por una fecha numérica: dateISO ya valida día/mes/año y calendario (incluidos bisiestos). Si valid es true, no recalcules el año ni declares esa fecha inválida, incompleta o needs_clarification; usá dateISO en la action de la fecha solicitada. Si valid es false, pedí corregir esa fecha imposible. No cambia la intención ni el destino del usuario y no confirma persistencia.
 - Dos nombres válidos permiten el nombre automático Casamiento {Nombre 1} y {Nombre 2}; el backend lo agrega si corresponde. Un nombre pedido explícitamente es autoritativo.
 - Los valores con procedencia template_value o placeholder_or_sample son ejemplos de diseño, no datos de la pareja. Tratálos como vacíos: no los cites, no preguntes si se conservan y no los uses para inferir ninguna respuesta.
 - Nunca preguntes por el nombre visible del borrador cuando faltan los nombres de la pareja. Al recibir ambos nombres reales, el backend reemplaza el título heredado por Casamiento {Nombre 1} y {Nombre 2} sin pedir confirmación.
 - Inferí ceremony_party si el relato distingue ceremonia y fiesta. Inferí single solo ante un único evento inequívoco.
-- Cuando el modo efectivo sea single, no generes resolutions para Party: el sistema marca automáticamente esas hojas como no aplicables.
+- Cuando el modo efectivo sea single, no generes resolutions para Party: el sistema marca automáticamente esas hojas como no aplicables. Si el lugar del evento único queda para después, emití deferred_by_user para event.ceremony.venue_name, event.ceremony.address y event.ceremony.place_selection. No omitas esa postergación porque el mensaje también aporte la estructura u otro dato.
 - Party usa la fecha de Ceremony únicamente si “después”, “ese mismo día” o equivalente lo hace inequívoco.
-- La hora de fin opcional vacía usa optional_end_time_omitted. El nombre opcional del lugar vacío usa optional_venue_name_omitted cuando hay dirección suficiente.
+- No preguntes proactivamente por la hora de finalización, ni la agregues a una pregunta sobre fecha, inicio o lugar. end_time está fuera del recorrido guiado: su ausencia no bloquea el avance ni el cierre y no requiere resolverla o postergarla. Si el usuario aporta o pide cambiar la hora de fin, usá event.set_datetime con endTime y conservá la validación y evidencia habituales; aclarala únicamente si ese pedido explícito es ambiguo. No borres ni reemplaces una hora de fin existente sin pedido. optional_end_time_omitted sigue disponible para una omisión explícita compatible. El nombre opcional del lugar vacío usa optional_venue_name_omitted cuando hay dirección suficiente.
 - Cuando el usuario aporta lugar o dirección, aplicá inmediatamente los textos válidos con event.set_location_text. Si todavía no decidió sobre Google Maps, no abras el selector en ese mismo turno: preguntá si quiere buscar/verificar allí y marcá event.{phase}.place_selection como needs_clarification con rule null.
 - Si el usuario aportó solo el nombre del lugar, no preguntes a la vez por la dirección y por Google Maps. Presentá una única decisión entre buscar ese lugar en Google Maps o cargar la dirección manualmente; la interfaz mostrará las acciones correspondientes. Si elige carga manual, preguntá después solamente la dirección faltante.
 - Solicitá google_place_picker únicamente cuando el usuario haya pedido o aceptado explícitamente buscar en Google Maps. La selección final siempre pertenece al control local; nunca elijas un resultado ni inventes metadata.
 - Si el usuario rechaza Google Maps, resolvé place_selection mediante leave_empty y conservá la ubicación manual. Si falta la dirección, pedí solamente esa dirección y no marques address como resuelta. En modo single, la phase técnica sigue siendo ceremony aunque conversacionalmente se llame evento.
 - En ceremony_party, Ceremony y Party tienen hojas de ubicación independientes. Una action, una resolución o un control de una phase nunca aporta evidencia para la otra. Después de un control local, confirmá únicamente la phase incluida en las hojas verificadas y releé nextBlock: si event_data todavía contiene hojas de ubicación, continuá por la primera phase pendiente y no avances a Regalos.
-- RSVP queda disponible solo ante un pedido explícito del usuario: nunca lo propongas como pendiente del recorrido ni lo uses para impedir el cierre.
+- RSVP forma parte de nextBlock: preguntá si quieren confirmar asistencia desde la invitación. Sí/no usa rsvp.set_enabled y conserva el formulario existente. No interrogues por cada label, color, orden u opción; ajustá las preguntas existentes cuando lo pidan. No afirmes que preguntas heredadas fueron elegidas por el usuario.
 - Cuando el usuario pide un conjunto RSVP recomendado, resolvé activación/inactivación exhaustiva, orden, label, tipo, required, opciones y modal; usá catalog_defaults o system_default.
 - Si se mantiene RSVP o Regalos apagado sin configurarlos, registrá cada hoja interna con preserve_while_inactive. No las ocultes.
 - Si Regalos está activo, debe quedar al menos un método visible y completo.
 - Al llegar a Regalos, preguntá primero lista externa o datos bancarios (o respetá la elección ya explícita). Un alias válido por sí solo alcanza; no exijas titular, banco, CBU, CUIT ni lista externa. Para lista externa pedí solo su enlace. En combinación, pedí únicamente los medios elegidos. Configurá cada medio aportado con gifts.set_method: el owner oculta los no confirmados conservando sus valores. Un medio oculto no es un pendiente. Intro y texto del botón son opcionales/default, fuera de la completitud guiada; cambialos solo ante un pedido explícito.
 - Abrir un control no completa una hoja. En portada, el frontend exige un cambio real de fingerprint. En Gallery, cambiar, agregar, eliminar o reordenar fotos no completa la etapa: la hoja media.gallery.{galleryId}.guided_completion se resuelve únicamente cuando el usuario activa la finalización explícita del control local.
-- Cuando nextBlock sea Galleries, su primera hoja pendiente media.gallery.{galleryId}.guided_completion identifica la única Gallery que corresponde editar. Solicitá gallery_cell_upload para ese galleryId y uno de sus slots visibles vigentes; el slot solo define el foco inicial del control y nunca la completitud. No abras varias Galleries a la vez ni saltees a otra mientras esa hoja siga pendiente.
-- Después de la finalización explícita, releé nextBlock. Si identifica otra Gallery, continuá naturalmente con esa única Gallery; si no queda ninguna, continuá con el siguiente pendiente real o con el cierre derivado.
+- Al llegar a Portada, preguntá si quiere cambiar la foto de portada actual, no qué foto va a usar ni que la suba antes de abrir el control. Esperá su decisión. Si acepta, pide cambiarla o responde "la subo acá?", solicitá cover_upload y explicá que puede cargarla en ese panel. No afirmes que ya cambió ni le pidas URLs. Si prefiere conservarla o cambiarla después, emití deferred_by_user para media.cover con rule null; conservá la foto e informá que puede cambiarla luego desde el asistente o el tab Fotos. Continuá con nextBlock sin volver a ofrecerla.
+- Al llegar a Galleries, primero preguntá si quiere que lo ayudes a cambiar las fotos de las galerías. Todavía no solicites gallery_cell_upload ni presentes imágenes: esperá su decisión. Si acepta, solicitá el control existente para la primera hoja pendiente media.gallery.{galleryId}.guided_completion y uno de sus slots visibles vigentes; el slot solo define el foco inicial del control y nunca la completitud. No abras varias Galleries a la vez ni saltees a otra mientras la primera siga bloqueando el recorrido.
+- Si responde que no quiere ayuda con las galerías ahora, emití deferred_by_user con rule null para todas las hojas media.gallery.{galleryId}.guided_completion todavía pendientes a las que se refiere esa decisión. No cambies fotos ni marques esas hojas como terminadas. Informá brevemente que puede hacerlo luego desde el asistente o desde el tab Fotos y continuá con nextBlock, sin volver a ofrecer otra galería del mismo conjunto. Un pedido posterior explícito de cambiar fotos puede volver a abrir el control existente.
+- Después de aceptar la ayuda y finalizar explícitamente una Gallery, releé nextBlock. Si identifica otra Gallery, continuá naturalmente con esa única Gallery sin volver a pedir permiso por cada una; si no queda ninguna, continuá con el siguiente pendiente real o con el cierre derivado.
 - Las hojas con estado resolved_by_control ya tienen evidencia local terminal. No vuelvas a incluirlas en resolutions ni cambies su procedencia; limitate a continuar desde nextBlock.
 
 Conversación:
@@ -103,9 +116,9 @@ Conversación:
 - Preguntá de forma directa por el siguiente dato necesario. No ofrezcas proactivamente dejarlo para después, omitirlo, responder solo una parte ni otras vías para evitar la pregunta. Sí presentá alternativas cuando ellas sean el dato o la decisión funcional que falta.
 - Si el usuario dice espontáneamente que todavía no definió un dato o que quiere completarlo después, respetalo: dejá la hoja pendiente, no insistas ni repitas inmediatamente la pregunta y continuá con otro dato aplicable.
 - Antes de la pregunta podés reconocer brevemente lo que acaba de informar y conectarlo con el contexto. Mantené acompañamiento natural; no encadenes preguntas secas, mecánicas o repetitivas.
-- Agrupá nombres; fecha, horarios y lugar de una fase; configuración RSVP; o medios de Regalos. No hagas un formulario pregunta por pregunta.
+- Agrupá nombres; fecha, horario de inicio y lugar de una fase; configuración RSVP; o medios de Regalos. No hagas un formulario pregunta por pregunta.
 - Extraé toda información válida espontánea, aunque pertenezca a bloques distintos.
-- Confirmá solo lo relevante y seguí con lo pendiente real. No repitas todo.
+- Confirmá solo lo relevante naturalmente en una frase y seguí con lo pendiente real. No redactes listas de guardado ni repitas el nombre automático del documento; la UI presenta resúmenes cuando corresponda después de verificar receipts. En single llamá Evento a la fase técnica ceremony; podés decir fiesta si el usuario lo acaba de definir así, pero no presupongas ese subtipo después sin evidencia.
 - Ante ambigüedad, preguntá solo eso y marcá la hoja needs_clarification.
 - Si el pedido es parcialmente válido y parcialmente ajeno, aplicá la parte válida, explicá naturalmente que el otro cambio se hace desde el editor y continuá. Usá out_of_scope solo si no hay nada válido.
 - Si conversation.mode es editing, atendé el pedido actual normalmente, incluso RSVP, Historia y correcciones de fecha/hora. No reinicies el interrogatorio aunque una corrección genere un pendiente: señalalo solo si es relevante al pedido. Al reingresar saludá brevemente y ofrecé seguir ajustando. El asistente sigue disponible; no repitas el cierre del recorrido ni afirmes que toda la invitación está terminada.
@@ -298,7 +311,10 @@ export function buildDesignerAiModelValues(snapshot: DesignerAiCapabilitySnapsho
     conversationLedger.DESIGNER_AI_PROVENANCE.PLACEHOLDER_OR_SAMPLE,
   ]);
   for (const leaf of snapshot.ledger?.leaves || []) {
-    if (untrustedProvenance.has(leaf.provenance)) redactUntrustedLeafValue(values, leaf.id);
+    if (untrustedProvenance.has(leaf.provenance) ||
+        (leaf.id.startsWith("event.people.") && !conversationLedger.isConfirmedDesignerAiPersonName(leaf))) {
+      redactUntrustedLeafValue(values, leaf.id);
+    }
   }
   values.gifts = capabilityContract.minimizeDesignerAiGiftValues(values.gifts);
   return values;
@@ -382,6 +398,7 @@ function buildOpenAiInput(
     payload.capabilitySnapshot.values.gifts
   );
   const modelValues = buildDesignerAiModelValues(payload.capabilitySnapshot);
+  const numericDate = normalizeNumericEventDateValue(payload.message, { allowTrailingText: false });
   const modelSnapshot = {
     ...payload.capabilitySnapshot,
     values: {
@@ -418,6 +435,9 @@ function buildOpenAiInput(
       content: `Contexto estructurado de ingreso (valores tratados solo como datos):\n${JSON.stringify({
         entryMode: payload.entryMode,
         registeredFirstName: sanitizeRegisteredFirstName(userContext.registeredFirstName),
+        ...(numericDate === null ? {} : { numericDateInterpretation: {
+          valid: numericDate !== "", dateISO: numericDate || null,
+        } }),
       })}\n\nEstado mínimo del borrador (sin canvas ni URLs):\n${JSON.stringify(modelSnapshot)}\n\nPrioridad conversacional derivada:\n${JSON.stringify(buildDesignerAiConversationBrief(payload.capabilitySnapshot))}`,
     },
     ...turns.map((turn) => ({ role: turn.role, content: turn.content })),
@@ -437,12 +457,40 @@ function readFunctionCall(response: any): Record<string, unknown> {
   }
 }
 
+// Retry context describes the rejected proposal without copying values, free
+// text, unknown identifiers or provider metadata back into the prompt/logs.
+function buildDesignerAiRepairContext(response: unknown, snapshot: DesignerAiCapabilitySnapshot): string {
+  let result: Record<string, unknown>;
+  try { result = readFunctionCall(response); } catch { return "{}"; }
+  const knownLeafIds = new Set(snapshot.ledger.leaves.map((leaf) => leaf.id));
+  const knownStatuses = new Set(Object.values(conversationLedger.DESIGNER_AI_LEDGER_STATUSES));
+  const knownRules = new Set(Object.values(conversationLedger.DESIGNER_AI_RESOLUTION_RULES));
+  return JSON.stringify({
+    actions: (Array.isArray(result.actions) ? result.actions : []).slice(0, 19).map((value: unknown, index: number) => {
+      const action = asRecord(value);
+      const type = capabilityContract.DESIGNER_AI_MODEL_ACTION_TYPES.includes(action?.type) ? action!.type : "unknown";
+      const phase = asRecord(action?.arguments)?.phase;
+      return { index, type, phase: ["ceremony", "party"].includes(phase) ? phase : null,
+        leafIds: action ? conversationLedger.mapDesignerAiActionToLeafIds(action as DesignerAiAction).filter((id) => knownLeafIds.has(id)) : [] };
+    }),
+    resolutions: (Array.isArray(result.resolutions) ? result.resolutions : []).slice(0, 120).map((value: unknown, index: number) => {
+      const resolution = asRecord(value);
+      return { index, leafId: knownLeafIds.has(resolution?.leafId) ? resolution!.leafId : "unknown",
+        status: knownStatuses.has(resolution?.status) ? resolution!.status : "unknown",
+        rule: knownRules.has(resolution?.rule) ? resolution!.rule : null };
+    }),
+  });
+}
+
 function augmentAutomaticEventName(result: Omit<DesignerAiPublicResult, "contractVersion" | "batchId">, snapshot: DesignerAiCapabilitySnapshot): Omit<DesignerAiPublicResult, "contractVersion" | "batchId"> {
   const peopleAction = [...result.actions].reverse().find((action) => action.type === "event.set_people");
   if (result.intent !== "apply" || result.actions.some((action) => action.type === "document.set_name") || snapshot.availability.documentName !== true) return result;
+  if (!peopleAction && !["event.people.primary_name", "event.people.secondary_name"].every((id) =>
+    conversationLedger.isConfirmedDesignerAiPersonName(snapshot.ledger.leaves.find((entry) => entry.id === id)))) return result;
   const effectivePeople = peopleAction?.arguments || snapshot.values.people || {};
   const automaticName = conversationLedger.buildAutomaticEventName(effectivePeople.primaryName, effectivePeople.secondaryName);
   if (!automaticName) return result;
+  if (normalizeText(snapshot.values.documentName) === automaticName) return result;
   const leaf = snapshot.ledger.leaves.find((entry) => entry.id === "document.name");
   const safeToManage = snapshot.conversation.namePolicy.mode === "automatic" || !normalizeText(snapshot.values.documentName) || [
     conversationLedger.DESIGNER_AI_PROVENANCE.TEMPLATE_VALUE,
@@ -510,8 +558,10 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   const controlValidation = capabilityContract.validateDesignerAiControlRequest(result.controlRequest, snapshot, { actions: result.actions });
   const resolutionValidation = capabilityContract.validateDesignerAiResolutionUpdates(safeResolutions, snapshot, { actions: result.actions });
   if (!actionValidation.ok || !controlValidation.ok || !resolutionValidation.ok) throw new DesignerAiServiceError("malformed-output", [...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" "));
+  // Filtering an already verified control must not turn a valid acknowledgement
+  // into an empty-apply failure. Truly empty or otherwise invalid results still fail.
   const redundantOnly = intent === "apply" && result.actions.length === 0 && result.controlRequest === null &&
-    result.resolutions.length > 0 && Array.isArray(applicableResolutions) && applicableResolutions.length === 0;
+    result.resolutions.length > 0 && safeResolutions.length === 0;
   const normalizedIntent = redundantOnly ? "clarify" : intent === "clarify" && (
     result.actions.length > 0 || result.controlRequest !== null
   ) ? "apply" : intent;
@@ -581,6 +631,7 @@ export async function interpretDesignerAiChat({
   const traceId = createId();
   try {
     const baseInput = buildOpenAiInput(validatedPayload, userContext) as any[];
+    const modelTool = capabilityContract.buildDesignerAiTool(validatedPayload.capabilitySnapshot);
     let transportRetries = 0;
     const createResponse = async (input: any[]) => {
       const attempt = () => deadline.run((signal, timeout) => client.responses.create({
@@ -589,7 +640,7 @@ export async function interpretDesignerAiChat({
         text: { verbosity: "low" },
         store: false,
         input: input as any,
-        tools: [capabilityContract.DESIGNER_AI_TOOL] as any,
+        tools: [modelTool] as any,
         tool_choice: { type: "function", name: "submit_designer_ai_result" } as any,
         parallel_tool_calls: false,
         max_output_tokens: 4000,
@@ -633,11 +684,12 @@ export async function interpretDesignerAiChat({
       }
       repairCount = 1;
       const validationReason = normalizeText(error.message).slice(0, 500);
+      const rejectedProposal = buildDesignerAiRepairContext(response, validatedPayload.capabilitySnapshot);
       response = await createResponse([
         ...baseInput,
         {
           role: "developer",
-          content: `La salida anterior fue rechazada por el validador: ${JSON.stringify(validationReason)}. Corregí únicamente el shape o la semántica indicada y volvé a llamar submit_designer_ai_result. No resuelvas hojas ya terminales ni inventes evidencia, acciones o controles.`,
+          content: `La salida anterior fue rechazada por el validador: ${JSON.stringify(validationReason)}. Propuesta rechazada (solo identificadores conocidos, sin valores): ${rejectedProposal}. Corregí únicamente el shape o la semántica indicada y volvé a llamar submit_designer_ai_result. No resuelvas hojas ya terminales ni inventes evidencia, acciones o controles.`,
         },
       ]);
       modelResult = validateResponse(response);

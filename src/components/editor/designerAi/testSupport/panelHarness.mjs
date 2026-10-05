@@ -9,10 +9,14 @@ import * as capabilities from "../../../../domain/editor/designerAiCapabilities.
 import * as history from "../../../../domain/editor/designerAiMessageHistory.js";
 import * as executor from "../../../../domain/editor/designerAiActionExecutor.js";
 import * as feedback from "../../../../domain/editor/designerAiExecutionFeedback.js";
+import * as guidedConversation from "../../../../domain/editor/designerAiGuidedConversation.js";
+import { buildTemplateAuthoringTargetPatches } from "../../../../domain/templates/authoring/targetApplication.js";
+import { expandEventDateProjectionFieldKeys, resolveEventDateTargetProjectionValue } from "../../../../domain/eventDetails/date.js";
 import * as evidence from "../../../../domain/editor/designerAiActionEvidence.js";
 import * as location from "../../../../domain/editor/designerAiLocationInteraction.js";
 import * as features from "../../../../domain/eventDetails/features.js";
 import * as locationAuthoring from "../../../../domain/eventDetails/locationAuthoring.js";
+import { setEventLocationProviderMetadata } from "../../../../domain/eventDetails/location.js";
 import * as nameBridge from "../../../../lib/dashboardDocumentNameBridge.js";
 import useEditorDocumentOperation from "../../../../hooks/useEditorDocumentOperation.js";
 import { readEditorRenderSnapshot, syncEditorSnapshotRenderState } from "../../../../lib/editorSnapshotAdapter.js";
@@ -37,13 +41,19 @@ export function loadComponent(path, dependencies) {
 
 // Real panel, validators, ledger, executor and receipts. Only editor I/O and
 // provider transport are synthetic; no Firebase, Maps or OpenAI connection.
-export async function mountPanel({ respond, initialConversation, savedDraft, failWrite = () => false, failMetadata = () => false, beforeWrite = async () => {}, fullFields = false } = {}) {
+export async function mountPanel({ respond, initialConversation, initialMessages = [], savedDraft, failWrite = () => false, failMetadata = () => false, beforeWrite = async () => {}, fullFields = false, authoringReady = true, locationControl } = {}) {
   const dom = new JSDOM("<div id='root'></div>", { url: "https://local.test", pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  // Geometry is not under test in JSDOM; exercise the owner's measurement fallback.
+  dom.window.HTMLCanvasElement.prototype.getContext = () => null;
+  // ReactDOM is imported before this synthetic document exists. Its legacy
+  // input-event probe needs these shims; changes are dispatched via React props.
+  dom.window.HTMLElement.prototype.attachEvent = () => {};
+  dom.window.HTMLElement.prototype.detachEvent = () => {};
   const root = createRoot(document.getElementById("root"));
-  let messages = [], visible = true, renderHost, calls = [], writes = [], metaWrites = 0, previews = 0;
+  let messages = [], visible = true, renderHost, calls = [], writes = [], metaWrites = 0, previews = 0, contentVersion = 0;
   const journeyRef = { current: { initialized: false, editing: false } };
   const authoring = structuredClone(savedDraft?.authoring || { fieldsSchema: [], defaults: {} });
   if (fullFields && !savedDraft) {
@@ -56,17 +66,32 @@ export async function mountPanel({ respond, initialConversation, savedDraft, fai
   const update = (patch) => syncEditorSnapshotRenderState({ ...render(), ...patch }, window);
   const initialRender = savedDraft?.render || { objetos: [], secciones: [], rsvp: { enabled: false }, gifts: { enabled: false }, eventDetails: { mode: "single" } };
   const persistedDraft = structuredClone({ authoring, render: initialRender,
-    conversation: savedDraft?.conversation || initialConversation, name: savedDraft?.name || "" });
+    conversation: savedDraft?.conversation || initialConversation, name: savedDraft?.name || "", sourceContext: savedDraft?.sourceContext, coverImage: savedDraft?.coverImage || "" });
   window.canvasEditor = {
-    getTemplateAuthoringSnapshot: () => authoring,
+    getCoverImage: () => persistedDraft.coverImage || "",
+    getTemplateAuthoringSnapshot: authoringReady ? () => authoring : undefined,
     updateTemplateAuthoringEventPersonNames: async ({ primaryName, secondaryName }) => Object.assign(authoring.defaults, { event_primary_person_name: primaryName, event_secondary_person_name: secondaryName }),
-    updateTemplateFieldValues: async (patch) => Object.assign(authoring.defaults, patch),
+    updateTemplateFieldValues: async (patch, options = {}) => {
+      Object.assign(authoring.defaults, patch);
+      const keys = expandEventDateProjectionFieldKeys({ fieldsSchema: authoring.fieldsSchema, fieldKeys: Object.keys(patch) });
+      for (const field of authoring.fieldsSchema.filter((f) => keys.includes(f.key))) {
+        const patches = buildTemplateAuthoringTargetPatches({ field,
+          value: resolveEventDateTargetProjectionValue({ field, fieldsSchema: authoring.fieldsSchema, defaults: authoring.defaults }),
+          objetos: render().objetos, secciones: render().secciones, preservePresentation: options.preservePresentation });
+        update({ objetos: render().objetos.map((object) => ({ ...object, ...patches.find((p) => p.objectId === object.id)?.patch })) });
+      }
+    },
     updateTemplateAuthoringDefault: async (key, value, options) => {
       authoring.defaults[key] = value;
       if (options?.eventDetailsPatch) update({ eventDetails: { ...render().eventDetails, ...options.eventDetailsPatch } });
     },
     updateEventDetailsConfig: async (config) => update({ eventDetails: config }),
-    updateTemplateAuthoringEventLocation: async (value, { feature }) => Object.assign(authoring.defaults, { [`event_${feature}_venue_name`]: value.venueName, [`event_${feature}_venue_address`]: value.address }),
+    updateTemplateAuthoringEventLocation: async (value, { feature }) => {
+      Object.assign(authoring.defaults, setEventLocationProviderMetadata(authoring.defaults, feature, value),
+        { [`event_${feature}_venue_name`]: value.venueName, [`event_${feature}_venue_address`]: value.address });
+      authoring.values = authoring.defaults;
+      if (value.googlePlaceId) await window.canvasEditor.flushPersistenceNow();
+    },
     flushPersistenceNow: async () => {
       const state = structuredClone({ ...render(), templateAuthoringDraft: authoring, templateInput: { values: authoring.defaults } });
       writes.push(state);
@@ -78,7 +103,7 @@ export async function mountPanel({ respond, initialConversation, savedDraft, fai
     },
   };
   nameBridge.publishDashboardDocumentNameState({ documentId: "A", hydrated: true, editable: true,
-    name: persistedDraft.name, designerAiConversation: persistedDraft.conversation }, window);
+    name: persistedDraft.name, designerAiConversation: persistedDraft.conversation, designerAiSourceContext: persistedDraft.sourceContext }, window);
   update(initialRender);
   window.addEventListener("dashboard-document-name-update-request", ({ detail }) => {
     detail.onAccepted();
@@ -105,7 +130,7 @@ export async function mountPanel({ respond, initialConversation, savedDraft, fai
     } },
     "@/firebase": { functions: {} },
     "@/components/MiniToolbarTabImagen": noop,
-    "@/components/editor/designerAi/DesignerAiLocationControl": noop,
+    "@/components/editor/designerAi/DesignerAiLocationControl": locationControl || noop,
     "../../../../shared/designerAiCapabilityContract.js": contract,
     "../../../../shared/designerAiConversationLedger.js": ledger,
     "@/domain/editor/designerAiCapabilities": capabilities,
@@ -113,6 +138,7 @@ export async function mountPanel({ respond, initialConversation, savedDraft, fai
     "@/domain/editor/designerAiActionExecutor": executor,
     "@/domain/editor/designerAiActionEvidence": evidence,
     "@/domain/editor/designerAiExecutionFeedback": feedback,
+    "@/domain/editor/designerAiGuidedConversation": guidedConversation,
     "@/hooks/useEditorDocumentOperation": useEditorDocumentOperation,
     "@/domain/editor/designerAiLocationInteraction": location,
     "@/domain/eventDetails/features": features,
@@ -120,11 +146,11 @@ export async function mountPanel({ respond, initialConversation, savedDraft, fai
     "@/lib/dashboardDocumentNameBridge": nameBridge,
   });
   function Host() {
-    const [items, setItems] = useState([]);
+    const [items, setItems] = useState(initialMessages);
     const [, refresh] = useState(0);
     renderHost = () => refresh((v) => v + 1);
     messages = items;
-    return visible ? React.createElement(Panel, { sessionKey: "draft:A", messageHistory: items, onMessageHistoryChange: setItems, journeyRef, onPreview: () => { previews++; } }) : null;
+    return visible ? React.createElement(Panel, { sessionKey: "draft:A", contentVersion, messageHistory: items, onMessageHistoryChange: setItems, journeyRef, onPreview: () => { previews++; } }) : null;
   }
   const until = async (predicate) => {
     for (let i = 0; i < 180 && !predicate(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
@@ -147,6 +173,8 @@ export async function mountPanel({ respond, initialConversation, savedDraft, fai
   await act(async () => root.render(React.createElement(Host)));
   return {
     calls, writes, authoring, render, update, journeyRef, until, click, send,
+    replaceCover: async (value) => { persistedDraft.coverImage = value; contentVersion++; await act(async () => renderHost()); },
+    setAuthoringReady: async () => { window.canvasEditor.getTemplateAuthoringSnapshot = () => authoring; contentVersion++; await act(async () => renderHost()); },
     messages: () => messages, previews: () => previews, metadataWrites: () => metaWrites,
     exportPersistedDraft: () => structuredClone(persistedDraft),
     snapshot: () => capabilities.readDesignerAiCapabilitySnapshot(window, { conversationState: nameBridge.readDashboardDocumentNameState(window).designerAiConversation }),

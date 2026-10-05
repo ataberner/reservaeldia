@@ -881,8 +881,9 @@ export default function CanvasEditor({
   );
   const { handleBackgroundImageStatusChange } = useCanvasEditorStartupStatus({
     slug,
-    secciones,
-    seccionesOrdenadas,
+    // Hidden functional sections never mount FondoSeccion or report image status.
+    secciones: renderSecciones,
+    seccionesOrdenadas: renderSeccionesOrdenadas,
     cargado,
     onStartupStatusChange,
   });
@@ -965,7 +966,7 @@ export default function CanvasEditor({
   }, [readOnly]);
 
   const templateAuthoring = useTemplateFieldAuthoring({
-    enabled: canUseTemplateFields,
+    enabled: cargado && canUseTemplateFields,
     canEditSchema: canManageSite,
     canUseFields: canUseTemplateFields,
     slug,
@@ -2231,7 +2232,10 @@ export default function CanvasEditor({
 
     stageRef,
     elementRefs,
-    getTemplateAuthoringSnapshot: templateAuthoring.getSnapshot,
+    getTemplateAuthoringSnapshot:
+      templateAuthoring.hydrated || (cargado && !canUseTemplateFields)
+        ? templateAuthoring.getSnapshot
+        : null,
     getTemplateAuthoringStatus: templateAuthoring.getStatus,
     getDynamicFieldRepresentationStatus:
       templateAuthoring.getDynamicFieldRepresentationStatus,

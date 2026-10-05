@@ -42,6 +42,7 @@ de acceso libre al canvas, Firestore o Storage.
 | Tool schema, versión, allowlists y validación estructural/contextual | `shared/designerAiCapabilityContract.cjs` | Source checked-in; `functions/scripts/syncTemplateContract.cjs` genera copias para Functions. |
 | Ledger, procedencia, completitud global/guiada, dependencias y priorización | `shared/designerAiConversationLedger.cjs` | `GUIDED_FLOW_BLOCKS` es la única prioridad ejecutable; también se copia mecánicamente a Functions. |
 | Construcción de snapshot/contexto frontend | `src/domain/editor/designerAiCapabilities.js` | Reutiliza snapshot/bridges y normalizadores de los dominios reales. |
+| Normalización de fecha numérica | `shared/authoringValueNormalization.cjs`, consumido por `eventDetails/date.js` y el service | Parser/calendario existente compartido. Solo para un mensaje íntegramente numérico, el backend agrega ISO/validez al contexto; no crea estado, acciones ni evidencia de guardado. |
 | Ejecución de actions | `src/domain/editor/designerAiActionExecutor.js` | Corre en el navegador y delega en owners existentes; no hay tool executor backend. |
 | Nombre de documento y metadata conversacional | `src/lib/dashboardDocumentNameBridge.js` + `src/components/DashboardHeader.jsx` | El header persiste `designerAiConversation`, incluida `usage.hasStarted`, mediante la autoridad de sesión. |
 | Nombre registrado mínimo | `usuarios/{uid}.nombre`, leído por `designerAiChat` con `extractProfileFromDocData` | Solo el nombre normalizado llega al service; no se envía el perfil completo. |
@@ -121,17 +122,59 @@ Las decisiones estructurales de esta revisión están reflejadas así:
 - el panel deriva `entryMode` de la señal durable antes de marcarla como iniciada;
 - el callable incorpora únicamente el nombre registrado mínimo;
 - el brief y el cierre usan `ledger.guidedFlow`, no la completitud global;
-- RSVP queda reactivo y fuera de `nextBlock`;
+- RSVP aporta la decisión `rsvp.enabled` a `nextBlock`, después de Dress Code y
+  antes de Regalos; su personalización interna continúa reactiva;
 - los textos de ubicación se aplican como datos manuales y la decisión de abrir
   Places se representa aparte; el prompt no selecciona resultados ni recibe su
   metadata;
-- `COMPLETE_MESSAGE` se agrega una sola vez ante la transición verificada a
+- `buildDesignerAiCompletionMessage` se agrega una sola vez ante la transición verificada a
   completo. Conserva la respuesta del turno y ofrece preview, edición manual y
   continuidad por AI. El modelo no redacta un cierre recurrente.
+
+Desde la corrección conversacional del 2026-09-30, `deferred_by_user` se persiste
+en las resoluciones existentes con fingerprint (ledger 4, protocolo 2.3.0).
+Conserva un pendiente no terminal, pero deja de bloquear el recorrido. El brief
+expone postergados y bloqueantes por separado; su prioridad sigue perteneciendo
+al ledger compartido. Después del reread y guardado, `designerAiGuidedConversation`
+compone las preguntas de transición y recupera una continuación ausente. Respeta
+la aclaración mínima dentro del bloque (por ejemplo, el año faltante), controles
+locales y modo edición. No agrega llamadas al modelo, memoria ni otra preview.
+El cierre enumera los pendientes postergados; `guidedFlowCompleted` conserva sus
+garantías de persistencia y monotonía.
+
+Desde el 2026-10-02, `event.{phase}.end_time` pertenece a
+`outside_guided_flow`: conserva evidencia en el ledger global y edición mediante
+`event.set_datetime`, pero no entra en `guidedFlow`, `nextBlock` ni sus pendientes
+de cierre. El adaptador de preguntas no solicita hora de fin y las instrucciones
+del backend restringen su uso a pedidos explícitos del usuario.
+
+La reconciliación conserva `resolved_from_user` de un receipt efectivo y
+persistido frente a una aclaración redundante del modelo en el mismo lote.
+Regalos puede reutilizar `gifts.enabled:true` con `keep_existing` ante una
+aclaración antigua, solo con procedencia de usuario y un medio visible completo
+confirmado; no agrega estado ni atribuye evidencia a templates. El adaptador de
+preguntas conserva solicitudes imperativas de datos dentro del bloque y deriva
+el fallback de los medios elegidos aún incompletos.
 
 El prompt pide español permanente, voseo y la personalidad aprobada. Todavía no
 existe una evaluación durable que mida consistencia o calidad de esas respuestas;
 esto no reabre el orden funcional ya ejecutable.
+
+Portada también ofrece el cambio de la imagen actual antes de abrir el uploader.
+La decisión de presentación vive en el `journeyRef` de la sesión, como Galería;
+la postergación y la evidencia permanecen en el ledger existente. Tras un control
+verificado, el service descarta resoluciones redundantes del modelo y normaliza
+un `apply` que quedó vacío por ese filtro a `clarify`. Un `apply` originalmente
+vacío o con otras resoluciones inválidas sigue rechazándose. No hay nueva action,
+memoria durable ni relajación de la evidencia de persistencia.
+
+Tras guardar y releer una portada con `resolved_by_control`, la continuación se
+compone localmente desde `nextBlock`, sin otra llamada al modelo para proponer
+cambios vacíos. `buildDesignerAiLocalContinuation` reutiliza las preguntas del
+adaptador; registra la oferta de Galería en el handshake existente o retoma su
+control si ya había consentimiento. El request local pasa el validador existente.
+En edición solo confirma el cambio. `Continuar recorrido` también relee el ledger
+y continúa localmente, sin repetir la llamada fallida ni crear resoluciones.
 
 El target normativo permanece dividido entre el contrato conversacional y la
 sección 5 del capability contract. Cambios futuros deben modificar esos owners y
@@ -171,6 +214,11 @@ El payload contiene:
 Antes del callable el frontend elimina revisiones de media y fingerprints. El
 backend vuelve a sanear, limita el snapshot a 160 KB y elimina del contexto del
 modelo valores con procedencia `template_value` o `placeholder_or_sample`.
+Los nombres sin confirmación positiva también se redactan, incluyendo legacy
+`unknown`; texto presente no equivale a identidad confirmada. Panel y bridge
+esperan `templateAuthoring.hydrated` antes de consumir la primera entrada. El
+ledger conserva `names` como primer bloque pendiente; reentrada y reload no
+convierten valores de plantilla en datos de usuario.
 La lista externa de regalos expone presencia/configuración, no su URL.
 Los valores bancarios ocultos o de Regalos desactivado se eliminan tanto del
 payload del cliente como del input del proveedor en el backend. Se conserva
@@ -261,6 +309,12 @@ Las allowlists y shapes exactos viven en
 - La búsqueda Places conserva todos los resultados devueltos y solo obtiene
   details del resultado que selecciona el usuario. API key, sesión y respuestas
   completas permanecen en el navegador.
+- `getDesignerAiGooglePlaceVerifiedLeafIds` extiende la evidencia local de la
+  selección a nombre/dirección no vacíos aportados por Google, tras comparar
+  owner y snapshot de la phase. El panel persiste esas resoluciones, incluidas
+  confirmaciones de textos iguales al template. `verifiedContinuation` hace que
+  el formatter conserve el reconocimiento y derive la siguiente pregunta del
+  ledger aunque no cambie el bloque; en edición evita reabrir preguntas.
 - El selector de ubicación reemplaza temporalmente el área de trabajo del chat,
   usa todo su alto disponible y conserva el historial en memoria. Se monta con
   phase y precarga derivadas del snapshot; no expone fecha, horario, Dress Code,
@@ -295,7 +349,13 @@ Las allowlists y shapes exactos viven en
   slot exacto, lo desplaza a la vista y mueve el foco a su control. Ese target es
   solo el foco inicial: cambiar, agregar, eliminar o reordenar fotos actualiza el
   draft y el indicador transitorio de cambios, pero no completa la Gallery. El
-  panel continúa únicamente cuando el usuario activa `Terminé con esta galería`,
+  panel ofrece primero ayuda para cambiar las fotos, sin mostrar el editor de
+  Gallery antes de la decisión. El modelo interpreta la respuesta; una solicitud
+  anticipada de control se reemplaza por la pregunta. La sesión UI conserva el
+  ofrecimiento/aceptación para no repetirlo por cada Gallery. Rechazar la ayuda
+  usa `deferred_by_user` del ledger, recuerda asistente/tab Fotos y continúa tras
+  confirmar su persistencia. Si acepta editar, el panel continúa únicamente cuando
+  el usuario activa `Terminé con esta galería`,
   persiste la resolución de la hoja `guided_completion` exacta y confirma esa
   persistencia. Cerrar el control no reconcilia la hoja.
 - `google_place_picker` valida la phase contra disponibilidad/mode. El panel
@@ -473,8 +533,14 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   Una nueva intención descarta la recuperación previa. Los errores parciales
   usan exclusivamente el lote/receipts P0, con conteo de guardados y pendientes.
 - El loader Places comparte un intento por ventana, limita script/import a 12 s,
-  quita script y listeners ante error/timeout y permite una carga nueva. El
+  espera el callback de Maps para `loading=async` (el evento `load` del script
+  no acredita disponibilidad de la API), quita script/listeners/callback ante
+  error/timeout y permite una carga nueva. Cada intento tiene callback propio;
+  uno tardío no puede completar un retry posterior. El
   control conserva la búsqueda y ofrece retry y retorno a la alternativa manual.
+  El snapshot de capabilities relee la metadata canónica de ubicación desde
+  `authoring.values.__eventDetails.locations`, incluso sin objeto mapa en canvas,
+  para verificar la selección persistida de la misma phase.
 - Cancelar un selector de archivos liquida la solicitud pendiente y ambas
   operaciones de sidebar/toolbar; también al reemplazarla o desmontar. Una
   selección válida transfiere esa solicitud al upload existente.
@@ -552,8 +618,8 @@ Clasificación usada aquí:
 | Primer ingreso vs reingreso | Implementado | `designerAiConversation.usage.hasStarted`, `prepareDesignerAiConversationEntry` y persistencia confirmada antes del auto-start. |
 | Nombre registrado en el saludo | Implementado con fallback | El callable relee solo `usuarios/{uid}.nombre`; ausencia/error produce string vacío. La calidad del saludo no tiene eval real. |
 | Español permanente, tono aprobado y voseo consistente | Parcial | El prompt actual pide español rioplatense y voz compatible; no hay eval durable ni paridad completa con el contrato. |
-| Orden guiado `Nombres -> estructura -> evento -> Regalos -> Dress Code -> portada -> Galleries` | Implementado y testeado | `GUIDED_FLOW_BLOCKS`, `ledger.guidedFlow` y brief derivado en el ledger compartido. |
-| RSVP fuera del interrogatorio principal | Implementado y testeado | No integra `guidedFlow`; la allowlist/action RSVP continúa disponible para pedidos explícitos. |
+| Orden guiado `Nombres -> estructura -> evento -> Dress Code -> RSVP -> Regalos -> portada -> Galleries` | Implementado y testeado | `GUIDED_FLOW_BLOCKS`, `ledger.guidedFlow` y brief derivado en el ledger compartido. |
+| RSVP en el recorrido principal | Implementado y testeado localmente | Incluye su activación; personalización del formulario sigue reactiva, con la misma allowlist. |
 | Aprovechar varios datos adelantados | Parcial | El schema acepta lotes de hasta 19 actions y el prompt pide agrupar, pero no hay evaluación real de cumplimiento conversacional. |
 | Ubicación chat-first manual/Places | Implementado y testeado | Datos manuales se aplican por el owner, la decisión Maps es explícita, el control especializado reutiliza Places y la selección se verifica localmente antes de continuar. |
 | Regalos con valor/visibilidad independientes y lista externa | Implementado en dominio/capability | Root normalizada, flags por método, URL externa, actions y validación de readiness existentes. |

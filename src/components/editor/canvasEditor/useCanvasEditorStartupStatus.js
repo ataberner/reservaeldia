@@ -16,6 +16,11 @@ export default function useCanvasEditorStartupStatus({
     startupStatusFinalizedRef.current = false;
   }, [slug]);
 
+  useEffect(() => {
+    // Route resolution can reload the same document without remounting the editor.
+    if (!cargado) startupStatusFinalizedRef.current = false;
+  }, [cargado]);
+
   const handleBackgroundImageStatusChange = useCallback((payload) => {
     const assetKey =
       typeof payload?.assetKey === "string" && payload.assetKey.trim()
@@ -64,7 +69,8 @@ export default function useCanvasEditorStartupStatus({
     let pending = 0;
 
     sectionAssets.forEach((asset) => {
-      const status = backgroundLoadByAsset[asset.assetKey]?.status;
+      const current = backgroundLoadByAsset[asset.assetKey];
+      const status = current?.imageUrl === asset.imageUrl ? current.status : null;
 
       if (!status || status === "loading") {
         pending += 1;
@@ -100,7 +106,8 @@ export default function useCanvasEditorStartupStatus({
     if (!assets.length) return true;
 
     return assets.every((asset) => {
-      const status = backgroundLoadByAsset[asset.assetKey]?.status;
+      const current = backgroundLoadByAsset[asset.assetKey];
+      const status = current?.imageUrl === asset.imageUrl ? current.status : null;
       return status === "loaded" || status === "failed";
     });
   }, [backgroundLoadByAsset, seccionesOrdenadas]);

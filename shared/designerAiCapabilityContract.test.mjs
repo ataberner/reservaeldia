@@ -60,7 +60,7 @@ test("phase normalization does not generalize to RSVP, Gifts, Dress Code or Gall
 });
 
 test("the versioned allowlist keeps model and trusted-control actions disjoint", () => {
-  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.2.0");
+  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.3.0");
   assert.equal(new Set([...DESIGNER_AI_MODEL_ACTION_TYPES, ...DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES]).size,
     DESIGNER_AI_MODEL_ACTION_TYPES.length + DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES.length);
 });

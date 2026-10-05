@@ -1,10 +1,11 @@
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
-const LEDGER_VERSION = 3;
+const LEDGER_VERSION = 4;
 
 const DESIGNER_AI_LEDGER_STATUSES = Object.freeze({
   UNAVAILABLE: "unavailable",
   PENDING: "pending",
   NEEDS_CLARIFICATION: "needs_clarification",
+  DEFERRED_BY_USER: "deferred_by_user",
   REQUIRES_CONTROL: "requires_control",
   RESOLVED_FROM_USER: "resolved_from_user",
   RESOLVED_FROM_EXISTING_USER_DATA: "resolved_from_existing_user_data",
@@ -48,8 +49,9 @@ const GUIDED_FLOW_BLOCKS = Object.freeze([
   { id: "names", label: "nombres de quienes se casan" },
   { id: "event_structure", label: "estructura del evento" },
   { id: "event_data", label: "fecha, horarios y lugares del evento" },
-  { id: "gifts", label: "regalos" },
   { id: "dress_code", label: "dress code" },
+  { id: "rsvp", label: "confirmación de asistencia" },
+  { id: "gifts", label: "regalos" },
   { id: "cover", label: "foto de portada" },
   { id: "galleries", label: "fotos de Galleries" },
 ]);
@@ -107,6 +109,12 @@ function fingerprint(value) {
 
 function isTerminalDesignerAiLedgerStatus(status) {
   return TERMINAL_STATUSES.has(status);
+}
+
+function isConfirmedDesignerAiPersonName(leaf) {
+  return Boolean(leaf?.id?.startsWith("event.people.") &&
+    isTerminalDesignerAiLedgerStatus(leaf.status) &&
+    [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(leaf.provenance));
 }
 
 function isLikelyPlaceholder(value) {
@@ -244,7 +252,10 @@ function evaluateDesignerAiResolutionRule(resolution, snapshot, { actions = [], 
       const names = values.people || {};
       const name = values.documentName;
       const expected = buildAutomaticEventName(names.primaryName, names.secondaryName);
-      valid = id === "document.name" && Boolean(expected) && expected === name &&
+      const confirmedNames = Boolean(lastAction("event.set_people")) ||
+        ["event.people.primary_name", "event.people.secondary_name"].every((nameId) =>
+          isConfirmedDesignerAiPersonName(snapshot.ledger.leaves.find((entry) => entry.id === nameId)));
+      valid = id === "document.name" && confirmedNames && Boolean(expected) && expected === name &&
         (Boolean(lastAction("document.set_name")) || snapshot.conversation?.namePolicy?.mode === "automatic"); break;
     }
     default: valid = false;
@@ -319,6 +330,7 @@ function resolutionForLeaf(conversationState, leafId, valueFingerprint) {
   if (!resolution || resolution.fingerprint !== valueFingerprint) return null;
   if (!isTerminalDesignerAiLedgerStatus(resolution.status) && ![
     DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION,
+    DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER,
     DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL,
   ].includes(resolution.status)) return null;
   return resolution;
@@ -351,6 +363,10 @@ function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversati
     "story.text": "texto_historia",
   };
   if (changedKeys.has(dynamicKeyByLeaf[leafId])) return true;
+  // Names require positive provenance, including on legacy drafts. Text alone
+  // cannot distinguish a real couple from arbitrary template/demo names. Durable
+  // receipts are read before this fallback, so confirming an unchanged value works.
+  if (leafId.startsWith("event.people.")) return false;
   if (sourceContext.templateDerived === true) return false;
   return normalizeText(value).length > 0 && !isLikelyPlaceholder(value);
 }
@@ -383,7 +399,9 @@ function createLeaf({
     return { id, block, status: DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE, provenance: DESIGNER_AI_PROVENANCE.UNKNOWN, rule: null, fingerprint: valueFingerprint };
   }
   const persisted = resolutionForLeaf(conversationState, id, valueFingerprint);
-  if (persisted) {
+  if (persisted && !(id.startsWith("event.people.") &&
+      isTerminalDesignerAiLedgerStatus(persisted.status) &&
+      !isConfirmedDesignerAiPersonName({ ...persisted, id }))) {
     return { id, block, status: persisted.status, provenance: persisted.provenance, rule: persisted.rule, fingerprint: valueFingerprint };
   }
   const provenance = provenanceForInitialValue({ leafId: id, value, sourceContext, conversationState, systemDefault });
@@ -423,7 +441,7 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
   const leafIds = [];
   const include = (leafId) => {
     const leaf = byId.get(leafId);
-    if (!leaf || leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) return;
+    if (!leaf || leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE || leaf.block === "outside_guided_flow") return;
     if (!leafIds.includes(leafId)) leafIds.push(leafId);
   };
   const includePrefix = (prefix) => {
@@ -445,6 +463,9 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
     includePrefix("event.party.");
   }
 
+  // Enabling RSVP uses the existing normalized form. Its optional copy, order
+  // and question customizations stay reactive; they are not an interrogation.
+  include("rsvp.enabled");
   include("gifts.enabled");
   if (values.gifts?.enabled === true) {
     for (const [method, data] of Object.entries(values.gifts.methods || {})) {
@@ -476,13 +497,19 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
   const unresolvedLeafIds = leafIds.filter(
     (leafId) => !isTerminalDesignerAiLedgerStatus(byId.get(leafId)?.status)
   );
+  const deferredLeafIds = unresolvedLeafIds.filter(
+    (leafId) => byId.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER
+  );
+  const blockingLeafIds = unresolvedLeafIds.filter((id) => !deferredLeafIds.includes(id));
   return {
     leafIds,
     completion: {
       availableCount: leafIds.length,
       terminalCount: leafIds.length - unresolvedLeafIds.length,
       unresolvedLeafIds,
-      complete: unresolvedLeafIds.length === 0,
+      deferredLeafIds,
+      blockingLeafIds,
+      complete: blockingLeafIds.length === 0,
     },
   };
 }
@@ -511,7 +538,9 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   ]) {
     add({ id: `event.${phase}.date`, block: "event_data", value: data.date, available: datetimeAvailable });
     add({ id: `event.${phase}.start_time`, block: "event_data", value: data.startTime, available: datetimeAvailable });
-    add({ id: `event.${phase}.end_time`, block: "event_data", value: data.endTime, available: datetimeAvailable });
+    // Optional, reactive content: keep its value/evidence in the global ledger,
+    // but never require an end time to advance or finish the guided journey.
+    add({ id: `event.${phase}.end_time`, block: "outside_guided_flow", value: data.endTime, available: datetimeAvailable });
     add({ id: `event.${phase}.venue_name`, block: "event_data", value: data.venueName, available: locationAvailable });
     add({ id: `event.${phase}.address`, block: "event_data", value: data.address, available: locationAvailable });
     add({ id: `event.${phase}.place_selection`, block: "event_data", value: data.placeSelected === true, available: locationAvailable, defaultRequiresControl: Boolean(normalizeText(data.address)) && data.placeSelected !== true, existingCanResolve: data.placeSelected === true });
@@ -545,7 +574,7 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   }
 
   const rsvp = asRecord(values.rsvp);
-  add({ id: "rsvp.enabled", block: "outside_guided_flow", value: rsvp.enabled === true, available: availability.rsvp, existingCanResolve: false });
+  add({ id: "rsvp.enabled", block: "rsvp", value: rsvp.enabled === true, available: availability.rsvp, existingCanResolve: false });
   add({ id: "rsvp.questions.order", block: "outside_guided_flow", value: (rsvp.questions || []).map((question) => question.id), available: availability.rsvp, existingCanResolve: false });
   for (const question of Array.isArray(rsvp.questions) ? rsvp.questions : []) {
     const prefix = `rsvp.question.${question.id}`;
@@ -646,7 +675,7 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
       }
     }
   }
-  if (gifts.enabled === true && isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf?.status)) {
+  if (gifts.enabled === true && giftsEnabledLeaf) {
     const hasCompleteVisibleMethod = Object.entries(asRecord(gifts.methods)).some(([key, method]) => (
       method?.visible === true &&
       ["visible", "value"].every((suffix) => {
@@ -656,7 +685,14 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
         method?.configured === true || normalizeText(method?.value).length > 0
       )
     ));
-    if (!hasCompleteVisibleMethod) {
+    // Older turns may have persisted a clarification of the enabled flag while
+    // waiting for a method. Reuse only trusted, unchanged enabled data, through
+    // the existing rule, once a visible method has its own terminal evidence.
+    if (hasCompleteVisibleMethod && giftsEnabledLeaf.status === DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION &&
+        !designerAiResolutionRuleError({ leafId: giftsEnabledLeaf.id, rule: DESIGNER_AI_RESOLUTION_RULES.KEEP_EXISTING },
+          { values, ledger: { leaves } }, { projectActions: false })) {
+      Object.assign(giftsEnabledLeaf, { status: DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE, rule: DESIGNER_AI_RESOLUTION_RULES.KEEP_EXISTING });
+    } else if (!hasCompleteVisibleMethod && isTerminalDesignerAiLedgerStatus(giftsEnabledLeaf.status)) {
       Object.assign(giftsEnabledLeaf, {
         status: DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION,
         rule: null,
@@ -697,10 +733,15 @@ function buildDesignerAiConversationBrief(snapshot) {
     label: block.label,
     leafIds: unresolved.filter((leaf) => leaf.block === block.id).map((leaf) => leaf.id),
   })).filter((block) => block.leafIds.length > 0);
+  const deferredLeafIds = unresolved.filter((leaf) => leaf.status === DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER).map((leaf) => leaf.id);
+  const actionableBlocks = blocks.map((block) => ({ ...block,
+    leafIds: block.leafIds.filter((id) => !deferredLeafIds.includes(id)),
+  })).filter((block) => block.leafIds.length);
   return {
-    nextBlock: snapshot?.conversation?.mode === "editing" ? null : blocks[0] || null,
+    nextBlock: snapshot?.conversation?.mode === "editing" ? null : actionableBlocks[0] || null,
     needsAttention: blocks,
     unresolvedLeafIds: unresolved.map((leaf) => leaf.id),
+    deferredLeafIds,
     complete: snapshot?.ledger?.guidedFlow?.completion?.complete === true,
   };
 }
@@ -791,6 +832,9 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actionR
     if (!leafById.has(leafId)) continue;
     const status = resolution?.status;
     if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER && updates.get(leafId)?.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
+    // A model clarification cannot undo a valid value just verified by an
+    // effective, persisted receipt. Other leaves may still need clarification.
+    if (status === DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION && updates.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
     if (updates.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION) continue;
     const rule = normalizeText(resolution?.rule) || null;
     // This snapshot already contains the executed effects. Never replay an
@@ -848,6 +892,7 @@ module.exports = {
   fingerprintDesignerAiValue: fingerprint,
   isLikelyDesignerAiPlaceholder: isLikelyPlaceholder,
   isTerminalDesignerAiLedgerStatus,
+  isConfirmedDesignerAiPersonName,
   mapDesignerAiActionToLeafIds: mapActionToLeafIds,
   normalizeDesignerAiConversationState,
   prepareDesignerAiConversationEntry,

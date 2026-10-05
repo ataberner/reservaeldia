@@ -1,6 +1,7 @@
 import {
   findRenderObjectById,
 } from "../editor/renderObjectTree.js";
+import { buildDateInputValue, normalizeNumericEventDateValue } from "../../../shared/authoringValueNormalization.cjs";
 import {
   EVENT_DETAIL_FEATURES,
   getEventDetailFeatureLabel,
@@ -42,10 +43,6 @@ function asObject(value) {
   return value;
 }
 
-function padDateSegment(value) {
-  return String(value).padStart(2, "0");
-}
-
 const SPANISH_MONTH_BY_NAME = Object.freeze({
   enero: 1,
   febrero: 2,
@@ -61,41 +58,6 @@ const SPANISH_MONTH_BY_NAME = Object.freeze({
   noviembre: 11,
   diciembre: 12,
 });
-
-function buildDateInputValue({ year, month, day } = {}) {
-  const safeYear = Number(year);
-  const safeMonth = Number(month);
-  const safeDay = Number(day);
-  if (
-    !Number.isInteger(safeYear) ||
-    !Number.isInteger(safeMonth) ||
-    !Number.isInteger(safeDay) ||
-    safeYear < 1000 ||
-    safeMonth < 1 ||
-    safeMonth > 12 ||
-    safeDay < 1 ||
-    safeDay > 31
-  ) {
-    return "";
-  }
-
-  const parsed = new Date(safeYear, safeMonth - 1, safeDay);
-  if (
-    parsed.getFullYear() !== safeYear ||
-    parsed.getMonth() !== safeMonth - 1 ||
-    parsed.getDate() !== safeDay
-  ) {
-    return "";
-  }
-
-  return `${safeYear}-${padDateSegment(safeMonth)}-${padDateSegment(safeDay)}`;
-}
-
-function expandTwoDigitYear(year) {
-  const safeYear = Number(year);
-  if (!Number.isInteger(safeYear) || safeYear < 0 || safeYear > 99) return "";
-  return 2000 + safeYear;
-}
 
 function parsePath(path) {
   const source = normalizeText(path);
@@ -129,45 +91,15 @@ export function normalizeVisibleEventDateValue(value) {
   const raw = normalizeText(value);
   if (!raw) return "";
 
+  const numericDate = normalizeNumericEventDateValue(raw);
+  if (numericDate !== null) return numericDate;
+
   const isoDateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoDateOnlyMatch) {
     return buildDateInputValue({
       year: isoDateOnlyMatch[1],
       month: isoDateOnlyMatch[2],
       day: isoDateOnlyMatch[3],
-    });
-  }
-
-  const slashDateMatch = raw.match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\D.*)?$/
-  );
-  if (slashDateMatch) {
-    return buildDateInputValue({
-      day: slashDateMatch[1],
-      month: slashDateMatch[2],
-      year: slashDateMatch[3],
-    });
-  }
-
-  const dottedDateMatch = raw.match(
-    /^(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})(?:\D.*)?$/
-  );
-  if (dottedDateMatch) {
-    return buildDateInputValue({
-      day: dottedDateMatch[1],
-      month: dottedDateMatch[2],
-      year: dottedDateMatch[3],
-    });
-  }
-
-  const pipeShortYearDateMatch = raw.match(
-    /^(\d{1,2})\|(\d{1,2})\|(\d{2})(?:\D.*)?$/
-  );
-  if (pipeShortYearDateMatch) {
-    return buildDateInputValue({
-      day: pipeShortYearDateMatch[1],
-      month: pipeShortYearDateMatch[2],
-      year: expandTwoDigitYear(pipeShortYearDateMatch[3]),
     });
   }
 

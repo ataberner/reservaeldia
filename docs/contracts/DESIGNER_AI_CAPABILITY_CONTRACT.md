@@ -173,16 +173,28 @@ El orden de alto nivel es:
 1. **Nombres** de quienes se casan.
 2. **Estructura del evento**: un evento único o Ceremony + Party.
 3. **Datos del evento** aplicables a la estructura resuelta.
-4. **Regalos**.
-5. **Dress Code**.
-6. **Portada**, si existe una portada editable.
-7. **Galerías**, si existe al menos una Gallery aplicable.
-8. **Cierre** del recorrido guiado principal.
+4. **Dress Code**.
+5. **RSVP**: decidir si se confirma asistencia desde la invitación.
+6. **Regalos**.
+7. **Portada**, si existe una portada editable.
+8. **Galerías**, si existe al menos una Gallery aplicable.
+9. **Cierre** del recorrido guiado principal.
+
+Decisión aceptada por pedido explícito del usuario, 2026-09-30: incluir RSVP y
+permitir continuar/cerrar con postergaciones explícitas. Sustituye la exclusión
+anterior de RSVP; no amplía actions, tools ni modalidades del producto.
 
 La prioridad se calcula sobre el borrador releído. Solo se propone el primer
 bloque aplicable que todavía tenga una decisión o dato necesario pendiente; el
 sistema puede conocer otros pendientes, pero no debe convertirlos en un listado
 proactivo extenso.
+
+Decisión aceptada, 2026-10-02: la hora de finalización de ambas fases queda fuera
+del recorrido proactivo. `event.{phase}.end_time` conserva valor, procedencia,
+validación y evidencia en el ledger global, con bloque `outside_guided_flow`.
+No se pregunta, no bloquea el avance/cierre ni se marca resuelta o postergada por
+no haber sido mencionada. Si el usuario la aporta o pide modificarla, se usa la
+capacidad existente `event.set_datetime`; los valores guardados se conservan.
 
 ### 5.2 Reglas por bloque
 
@@ -194,6 +206,11 @@ proactivo extenso.
   `ceremony_party` antes de pedir indiscriminadamente fechas, horarios o lugares.
   `single` vuelve Party no aplicable; `ceremony_party` habilita los fields reales
   disponibles para ambas fases.
+  La fase técnica `ceremony` de `single` se presenta como **Evento**. El modelo
+  actual no conserva un subtipo fiable que distinga evento genérico de solo
+  fiesta: se reutiliza `getDesignerAiLocationPhaseLabel`, sin agregar estado.
+  Recordar permanentemente el rótulo Fiesta exigiría como mínimo un subtipo
+  semántico persistido del evento único; esa ampliación no se implementa aquí.
 - **Datos del evento:** se completan únicamente los fields declarados de fecha,
   inicio, fin, lugar y dirección para las fases aplicables. End time y venue name
   pueden resolverse solo mediante las reglas seguras ya versionadas. Lugar y
@@ -215,10 +232,25 @@ proactivo extenso.
 - **Dress Code:** se consulta si se desea mostrar. Una negativa conserva el valor
   normalizado oculto y continúa. Una afirmativa requiere el texto real y el
   field disponible; no requiere una vista materializada.
+- **RSVP:** el recorrido incluye `rsvp.enabled`. Sí/no usa `rsvp.set_enabled`
+  con el formulario normalizado existente. No se pregunta proactivamente por
+  cada label, color, orden u opción. Personalizar las preguntas sigue usando las
+  actions existentes a pedido; excluir esos detalles del interrogatorio no les
+  atribuye procedencia de usuario ni los marca falsamente resueltos.
 - **Portada:** se omite si `availability.cover` es falso. Si existe, el cambio usa
-  `cover_upload` y solo queda resuelto ante cambio real del fingerprint.
+  `cover_upload` después de preguntar si quiere cambiar la foto actual y recibir
+  aceptación. Solo queda resuelto por control ante cambio real del fingerprint.
+  Conservar la foto o postergar su cambio registra `deferred_by_user` sin cambiar
+  la imagen ni atribuir evidencia de reemplazo; no bloquea los bloques siguientes.
 - **Galerías:** se omiten si no hay una Gallery real con slots editables. Las
-  Galleries aplicables se recorren de a una y en el orden vigente del snapshot.
+  fotos se ofrecen primero mediante una pregunta de ayuda, sin abrir el panel.
+  Solo después de aceptar se presenta el control existente. La aceptación cubre
+  las galerías del recorrido: no se repite la pregunta por cada una. Si el usuario
+  no quiere cambiarlas ahora, las hojas `guided_completion` pendientes referidas
+  quedan `deferred_by_user`, sin modificar fotos ni atribuir completitud por control.
+  Se informa que puede retomarlo desde el asistente o el tab Fotos y se continúa
+  por el siguiente bloque pendiente, o el cierre si corresponde.
+  Las Galleries aplicables se recorren de a una y en el orden vigente del snapshot.
   `gallery_cell_upload` conserva `galleryId` y slot para seleccionar la Gallery
   correcta y enfocar un target inicial, pero ese slot no define completitud. Un
   reemplazo, agregado, eliminación o reordenamiento solo modifica la Gallery:
@@ -232,6 +264,9 @@ la Gallery en edición. El estado “hubo cambios” también es transitorio y s
 deriva contra el snapshot de apertura; sirve para la UX, pero no terminaliza la
 hoja. Solo la resolución `resolved_by_control` persistida representa “el usuario
 terminó esta Gallery”. No se agrega ese estado al objeto `tipo: "galeria"`.
+El ofrecimiento/aceptación del panel vive solamente en la sesión UI del recorrido;
+no crea metadata durable ni una nueva tool. La postergación conserva la autoridad
+del ledger y su persistencia existente, también después de reload.
 
 Una hoja terminal por control local conserva esa autoridad frente a la
 continuación conversacional: una `resolution` redundante del modelo se descarta
@@ -248,6 +283,15 @@ insertarse silenciosamente como bloque proactivo.
 ### 5.3 Adaptación y procedencia
 
 - No se pregunta otra vez una hoja terminal respaldada por evidencia vigente.
+- Una `needs_clarification` del modelo para la misma hoja no reemplaza el receipt
+  efectivo/persistido del valor válido aplicado en ese lote. Las aclaraciones de
+  otras hojas y los fallos de persistencia conservan su autoridad.
+- En Regalos, una aclaración antigua de `gifts.enabled:true` puede resolverse
+  mediante `keep_existing` únicamente si esa activación tiene procedencia de
+  usuario vigente y existe un medio visible completo con evidencia terminal en
+  valor y visibilidad. No se aplica a templates, valores desconocidos, datos
+  incompletos ni postergaciones explícitas. Las demás hojas elegidas siguen
+  pendientes si falta su valor; no se vuelve a elegir modalidad por ese motivo.
 - Si el usuario adelanta varios datos válidos, se validan y aprovechan en el
   mismo turno aunque correspondan a bloques posteriores.
 - Si un turno contiene datos ejecutables y además deja otro dato pendiente, las
@@ -261,17 +305,20 @@ insertarse silenciosamente como bloque proactivo.
 - Los bloques no disponibles por template/configuración se saltan.
 - Se solicita solamente información necesaria para una action, control o
   resolución válida. Nunca se completan huecos con inferencias no allowlisted.
-- Una postergación explícita del usuario no vuelve terminal la hoja ni cambia el
-  orden canónico. Durante la conversación activa puede omitirse temporalmente
-  esa pregunta y avanzar a otro dato aplicable; el ledger conserva el pendiente
-  para retomarlo más adelante. No se persiste un segundo orden ni un estado
-  funcional ficticio de completitud.
+- Una postergación explícita usa `deferred_by_user` con `rule:null` en las
+  resoluciones existentes, ligada al fingerprint vigente. No es terminal ni
+  resuelve la invitación. `nextBlock` omite esas hojas, conserva el orden canónico
+  y las informa en `deferredLeafIds`/`needsAttention`. Un lugar desconocido puede
+  postergar nombre, dirección y selección Maps de esa fase; no su fecha/hora.
+  Una aclaración necesaria para ejecutar una operación sigue bloqueándola.
+  No se permite postergar hojas inexistentes, no disponibles, terminales,
+  reactivas fuera del recorrido ni mutadas por el mismo lote. Cambiar el dato
+  invalida su fingerprint; un receipt confirmado reemplaza la postergación.
 
 ### 5.4 RSVP y cierre funcional
 
-RSVP **no forma parte del interrogatorio proactivo del recorrido guiado
-principal**. Sus capabilities V1 permanecen disponibles si el usuario pide
-configurarlo; esta exclusión no desactiva ni modifica RSVP en el producto.
+RSVP forma parte del recorrido proactivo según 5.1 y 5.2. Regalos se alcanza
+después de decidir o postergar RSVP, aunque exista un lugar postergado.
 
 El cierre del recorrido principal depende solo de los bloques aprobados en 5.1,
 no de haber recorrido todas las capabilities existentes. El texto de cierre debe
@@ -287,7 +334,7 @@ conserva los pendientes pero no propone automáticamente `nextBlock`. La UI
 reutiliza `generarVistaPrevia`: no se agrega una action ni se autoriza al modelo
 a generar preview. Compatibilidad y persistencia: sección 8.1 del mapa AI.
 
-Estado de implementación al 2026-08-28: el **orden entre bloques** está
+Estado de implementación al 2026-09-30: el **orden entre bloques** está
 implementado en el owner ejecutable.
 `shared/designerAiConversationLedger.cjs` expone `GUIDED_FLOW_BLOCKS` en el orden
 de 5.1 y construye `ledger.guidedFlow` con las hojas aplicables. Su
@@ -297,8 +344,10 @@ bloquear ese cierre. Cada Gallery aplicable aporta exactamente una hoja
 `media.gallery.{galleryId}.guided_completion`, ordenada según el snapshot. Los
 slots, sus fingerprints y `media.gallery.{galleryId}.order` quedan fuera de
 `guidedFlow` y mantienen sus estados/capabilities reales; por eso una mutación
-no puede avanzar el recorrido. RSVP e historia también permanecen fuera. El
-prompt consume el `nextBlock` derivado y no mantiene otra lista ejecutable.
+no puede avanzar el recorrido. Historia y personalización interna de RSVP
+permanecen reactivas. El prompt consume el `nextBlock` derivado; el panel relee
+el ledger tras persistir y compone la pregunta de transición o recupera una
+continuación ausente. El texto no decide el siguiente bloque.
 
 El gap histórico de completitud de Regalos quedó corregido en P0: se consideran
 los métodos elegidos y visibles, sin exigir campos no aportados ni copies
@@ -367,9 +416,19 @@ En `ceremony_party`, `event.ceremony.{venue_name,address,place_selection}` y
 verificación de Places debe coincidir simultáneamente con el owner local y con el
 snapshot de capabilities releído para la phase solicitada; nunca terminaliza las
 hojas hermanas de la otra phase. Después de reconciliar el control, la
-continuación se deriva nuevamente del primer pendiente de `guidedFlow`. Regalos
-solo puede ser el siguiente bloque proactivo cuando no queda ninguna hoja
-aplicable de `event_data`.
+continuación se deriva nuevamente del primer pendiente bloqueante de
+`guidedFlow`. Regalos solo puede ser el siguiente bloque proactivo cuando no
+quedan hojas bloqueantes de los bloques anteriores, incluidos Dress Code y RSVP.
+
+Una selección Places verificada terminaliza `place_selection` y los textos no
+vacíos de nombre/dirección aportados por ese resultado como `resolved_by_control`,
+también si coinciden con el template o con un valor previamente pendiente.
+Texto conservado por fallback cuando Google no lo aporta no gana evidencia de
+control. Se requiere coincidencia con el owner y el snapshot de esa phase, y
+persistir las resoluciones antes de continuar. Tras esa continuación verificada,
+la UI deriva la siguiente pregunta de las hojas pendientes, incluso dentro de
+`event_data`; una pregunta obsoleta del modelo no vuelve a solicitar una dirección
+ya confirmada. En edición conserva el reconocimiento sin reiniciar preguntas.
 
 La decisión de no usar Maps no inventa `placeId`, coordenadas ni metadata. Si
 existen lugar y dirección suficientes, conserva esa ubicación manual y continúa;
@@ -465,6 +524,7 @@ mapa ausente.
 | `unavailable` | El field/control no existe en este draft; la ausencia de una vista no alcanza para este estado. | Fuera del denominador. |
 | `pending` | Existe pero no tiene valor/decisión confiable. | No. |
 | `needs_clarification` | Dato parcial, ambiguo o conflictivo. | No. |
+| `deferred_by_user` | Postergado explícitamente; pendiente fuera de los bloqueantes del recorrido. | No. |
 | `requires_control` | Requiere uploader/Gallery/Places local. | No. |
 | `resolved_from_user` | Informado o decidido explícitamente. | Sí. |
 | `resolved_from_existing_user_data` | Personalización previa demostrable. | Sí. |
@@ -480,20 +540,23 @@ Esa fórmula describe `ledger.completion.complete` y su completitud operacional
 total. El mismo ledger expone además:
 
 ```text
-guidedComplete(draft) = every(ledger.guidedFlow.leafIds, isTerminal(status))
+guidedComplete(draft) = every(ledger.guidedFlow.leafIds, isTerminal(status) || status == deferred_by_user)
 ```
 
 `ledger.guidedFlow.leafIds` se deriva de los bloques de 5.1, dependencias,
 availability y medios realmente aplicables. Para Galleries contiene una hoja
-durable de finalización por Gallery, no sus slots. Excluye RSVP, historia, orden
-Gallery, fingerprints de contenido, slots y capabilities reactivas sin posición
+durable de finalización por Gallery, no sus slots. Incluye la decisión RSVP;
+excluye sus ajustes opcionales, historia, orden Gallery, fingerprints de contenido,
+slots y capabilities reactivas sin posición
 aprobada.
 `ledger.guidedFlow.completion.complete` es el único criterio ejecutable de cierre
 del recorrido principal; no marca esas otras hojas como completadas.
 
 No existe completitud por “capability mencionada”, bloque visitado ni chat
-recorrido. Tanto la completitud total como la del recorrido deben derivarse de
-hojas aplicables y terminales después de releer el borrador.
+recorrido. Se deriva del borrador releído: el recorrido puede finalizar con
+hojas explícitamente postergadas, conservadas en `unresolvedLeafIds` y
+`deferredLeafIds`; `blockingLeafIds` contiene el resto. `terminalCount` nunca
+cuenta postergaciones. La completitud global no cambia su definición.
 
 ### 10.2 Procedencia
 
@@ -510,6 +573,23 @@ El ledger distingue:
 Un valor no vacío no prueba personalización. `templateInput.changedKeys` puede
 aportar evidencia; valores de template/placeholders se mantienen no confiables.
 El historial no puede contradecir el borrador.
+
+Para nombres, ni siquiera un documento legacy sin metadata convierte texto en
+confirmación. Cada nombre necesita procedencia positiva: resolución durable de
+usuario ligada al fingerprint vigente, cambio demostrado respecto del baseline
+o `templateInput.changedKeys`. La confirmación explícita del mismo texto que el
+template vale por su receipt, sin exigir que los strings difieran. Un solo nombre
+confirmado no resuelve el bloque. Sin esa evidencia, `names` conserva la primera
+prioridad tanto en primera entrada como en reentrada/reload; `hasStarted` no
+acredita nombres. `guidedFlowCompleted` ya persistido conserva modo editing en
+documentos legacy, aunque el ledger muestre nombres con procedencia desconocida.
+La regla automática del nombre del documento exige ambos nombres confirmados o
+una acción `event.set_people` válida del mismo lote.
+
+La primera entrada espera también la hidratación del owner de authoring. El
+snapshot transitorio anterior no puede declarar los fields de nombres ausentes
+ni consumir la primera entrada. Esta preparación es local, sin nueva metadata
+durable ni campos adicionales enviados al modelo.
 
 ### 10.3 Reglas seguras versionadas
 
@@ -578,14 +658,52 @@ El flujo ejecutable actual es:
 5. `designerAiActionExecutor.js` delega en owners existentes.
 6. El panel relee, reconcilia y persiste `designerAiConversation`.
 
+El backend restringe el schema de esa misma tool por request: enumera únicamente
+las hojas disponibles y agrupa sus reglas compatibles usando el mismo predicado
+del validador compartido. `resolved_by_rule` requiere una regla compatible;
+los demás estados requieren `rule: null`. Esto no prueba condiciones semánticas,
+dependencias ni evidencia: los validadores backend/frontend siguen siendo
+obligatorios. No agrega una tool, action ni versión del protocolo. El diagnóstico
+de una regla incompatible identifica hoja y regla conocidas, sin reflejar valores
+de contenido ni identificadores desconocidos de la salida del modelo.
+
+La tool ofrecida al proveedor excluye `resolved_from_user`: ese estado lo deriva
+el reconciliador existente de actions ejecutadas, efectivas y persistidas, con
+evidencia vigente. El validador conserva compatibilidad con respuestas anteriores
+respaldadas por actions y sigue rechazando afirmaciones sin evidencia.
+`deferred_by_user` solo se ofrece para hojas guiadas pendientes elegibles según
+el mismo predicado del validador; datos no mencionados conservan su estado sin
+emitir resolutions. La postergación sigue requiriendo una decisión explícita.
+El schema aclara que `ceremony`/`event.ceremony.*` identifica cualquier evento
+único, incluso una fiesta; `party` es la segunda fase de `ceremony_party`.
+El único repair existente recibe índices, tipos, fases, hojas y reglas conocidas
+de la propuesta rechazada, con límites de cantidad y sin copiar valores ni texto
+libre. Conserva el deadline global y todas las validaciones semánticas.
+
 La ejecución de fields dinámicos delega en `updateTemplateFieldValue(s)` mediante
 los adapters específicos existentes. La proyección actualiza cero, una o varias
 vistas válidas; `detachedVisuals` no se consulta y la reinserción visual queda
 fuera de las capabilities de Designer AI.
 
+Fecha/hora modifica valores semánticos normalizados y solicita
+`preservePresentation` al owner de authoring. La proyección conserva por vista
+el patrón numérico/textual y el formato horario visibles; si no reconoce un
+patrón usa el preset del binding. No modifica schema, estilos ni metadata de
+presentación. Cambiar solo la hora no agrega hora a una vista que muestra solo
+fecha. Cambiar explícitamente presentación desde el editor conserva su ruta
+actual. El parser de fecha admite separadores `|`, `/`, `.` y año de 2/4 dígitos.
+La normalización numérica y validación de calendario viven en
+`shared/authoringValueNormalization.cjs`, consumido también por el service. Si el
+mensaje actual es íntegramente una fecha numérica, el contexto del modelo lleva
+su ISO/validez calculados (`numericDateInterpretation`), sin inferir destino ni
+reemplazar la acción, validación o evidencia de persistencia. Años cortos: 2000–2099.
+
 La arquitectura completa, incluido el límite client-side de tools, está en
-`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.2.0`; el ledger
-usa versión `3`. La versión 3 agrega una finalización durable por Gallery dentro
+`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.3.0`; el ledger
+usa versión `4`, que agrega postergación no terminal en las mismas resolutions.
+Un cliente incompatible conserva el fallback de recarga y no invoca al modelo.
+No hay backfill: los estados previos conservan su evidencia y su marca monotónica
+de cierre. La versión 3 agregó una finalización durable por Gallery dentro
 de `designerAiConversation.resolutions`. Un draft legacy sin esa resolución
 conserva sus fotos, pero la Gallery queda pendiente hasta la primera finalización
 explícita; no se infiere completitud por diferencias contra la plantilla.

@@ -275,6 +275,7 @@ export function buildTemplateAuthoringTargetPatches({
   secciones,
   targetObjectIds = null,
   measurementOptions = null,
+  preservePresentation = false,
 } = {}) {
   const safeField = asObject(field);
   const safeObjetos = Array.isArray(objetos) ? objetos : [];
@@ -306,6 +307,8 @@ export function buildTemplateAuthoringTargetPatches({
       field: safeField,
       target,
       value,
+      preservePresentation,
+      currentValue: baseObject[target?.path],
     });
     const storyTextTargetOptions = resolveStoryTextTargetOptions(
       safeField,

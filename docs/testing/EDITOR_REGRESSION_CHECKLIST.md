@@ -49,6 +49,36 @@ Resultado esperado:
 - el sidebar conserva su apertura/cierre normal despues de la carga
 - el Asistente y su visita guiada esperan a que la placa haya terminado de salir y conservan sus targets reales
 
+Regresion de apertura con secciones funcionales ocultas:
+
+- abrir un borrador cuya primera seccion guardada tenga una imagen y este oculta
+  por su configuracion funcional; el inicio debe esperar solo los recursos de la
+  primera seccion que realmente se renderiza;
+- repetir con fondo de color en la primera seccion visible y con una imagen que
+  falla; ambos casos deben permitir completar el inicio;
+- si la misma sesion vuelve a cargar, retirar `ready` hasta terminar la nueva
+  hidratacion y comprobar la URL actual de cada recurso, sin reutilizar el estado
+  de una imagen anterior bajo el mismo ID;
+- cambiar imagenes despues del inicio no debe reabrir la placa de carga.
+
+Ancla automatizada (React, datos sinteticos y sin Firebase):
+`node --test src/components/editor/canvasEditor/useCanvasEditorStartupStatus.test.mjs`.
+
+### [ ] Apertura y reapertura tras migrar campos dinamicos
+
+- abrir una copia de plantilla con objetos y secciones, tanto con authoring v1
+  como con v2 sin `templateInput`; esperar la migracion y reabrir el borrador;
+- comprobar que conserva los IDs, contenido y geometria de objetos y secciones,
+  incluso si la precarga de authoring omite las secciones o la escritura queda
+  en cola detras de una edicion;
+- la migracion inicial escribe solo authoring, valores y `eventDetails`, sin
+  reemplazar `objetos` ni `secciones`; inicia despues de hidratar el canvas;
+- una sesion de solo lectura no persiste la migracion y una reapertura ya
+  migrada no vuelve a escribirla.
+
+Ancla automatizada (servicio y migrador reales; persistencia sintetica):
+`node --test src/domain/templates/authoring/service.test.mjs`.
+
 ## 1. Seleccion y drag
 
 ### [ ] Seleccion simple y limpieza de seleccion

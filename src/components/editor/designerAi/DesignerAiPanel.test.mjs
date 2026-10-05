@@ -141,7 +141,7 @@ test("keeps verified changes and offers a guided continuation retry when copy ge
 
 test("verifies the exact selected Google place through the canonical authoring owner", () => {
   assert.match(panelSource, /readEventLocationAuthoringState\(window, feature\)/);
-  assert.match(panelSource, /isDesignerAiGooglePlaceControlReflected\(\{[\s\S]*snapshot,[\s\S]*persistedLocation,[\s\S]*phase: request\.phase,[\s\S]*expectedLocation/);
+  assert.match(panelSource, /getDesignerAiGooglePlaceVerifiedLeafIds\(\{[\s\S]*snapshot,[\s\S]*persistedLocation,[\s\S]*phase: request\.phase,[\s\S]*expectedLocation/);
   assert.match(panelSource, /onSelectionApplied=\{\(expectedLocation\) => completeActiveControlIfReflected/);
   assert.match(panelSource, /snapshotOverride: verifiedSnapshot/);
   assert.match(panelSource, /hojas ya quedaron terminales mediante una decisión o un control local verificado/);
@@ -151,7 +151,7 @@ test("verifies the exact selected Google place through the canonical authoring o
 test("waits for hydrated draft data and closes only from guided-flow completeness", () => {
   assert.match(panelSource, /documentState\.hydrated !== true/);
   assert.match(panelSource, /snapshot\.ledger\.guidedFlow\.completion\.complete/);
-  assert.match(panelSource, /La información principal de tu invitación ya está completa/);
+  assert.match(panelSource, /buildDesignerAiCompletionMessage\(snapshot\)/);
   assert.match(panelSource, /Ver vista previa/);
   assert.doesNotMatch(panelSource, /Listo, ya tenemos todo/);
 });

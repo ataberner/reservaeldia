@@ -569,26 +569,39 @@ test("interprets one strict call, extracts several data points and sends no priv
   assert.equal(requestBody.previous_response_id, undefined);
   const instructions = requestBody.input[0].content;
   assert.match(instructions, /TODAS las hojas disponibles/);
+  assert.match(instructions, /dd\/mm\/aa o dd\/mm\/aaaa/);
+  assert.match(instructions, /00–99 equivale a 2000–2099/);
+  assert.match(instructions, /No pidas cuatro dígitos ni repetir una fecha válida/);
+  assert.match(instructions, /día y mes que ya aportó para esa misma fecha en recentTurns/);
+  assert.match(instructions, /una fecha imposible necesita aclaración/);
   assert.match(instructions, /No hagas un formulario/);
+  assert.match(instructions, /No preguntes proactivamente por la hora de finalización/);
+  assert.match(instructions, /end_time está fuera del recorrido guiado/);
+  assert.match(instructions, /Si el usuario aporta o pide cambiar la hora de fin, usá event.set_datetime con endTime/);
   assert.match(instructions, /Extraé toda información válida espontánea/);
   assert.match(instructions, /Preguntá de forma directa por el siguiente dato necesario/);
   assert.match(instructions, /No ofrezcas proactivamente dejarlo para después/);
   assert.match(instructions, /dejá la hoja pendiente, no insistas ni repitas inmediatamente la pregunta/);
   assert.match(instructions, /acompañamiento natural; no encadenes preguntas secas, mecánicas o repetitivas/);
-  assert.match(instructions, /avanzá transitoriamente a otro dato aplicable sin marcarla como resuelta/);
+  assert.match(instructions, /deferred_by_user con rule null/);
   assert.match(instructions, /Ceremony y Party tienen hojas de ubicación independientes/);
   assert.match(instructions, /si event_data todavía contiene hojas de ubicación/);
   assert.match(instructions, /no avances a Regalos/);
   assert.match(instructions, /no preguntes a la vez por la dirección y por Google Maps/);
   assert.match(instructions, /Las hojas con estado resolved_by_control ya tienen evidencia local terminal/);
+  assert.match(instructions, /preguntá si quiere cambiar la foto de portada actual/);
+  assert.match(instructions, /la subo acá\?", solicitá cover_upload/);
   assert.match(instructions, /conversation\.mode es editing/);
   assert.match(instructions, /No redactes ese cierre ni reemplaces por él la respuesta al pedido actual/);
-  assert.match(instructions, /RSVP queda disponible solo ante un pedido explícito/);
+  assert.match(instructions, /RSVP forma parte de nextBlock/);
   assert.match(instructions, /cambiar, agregar, eliminar o reordenar fotos no completa la etapa/);
   assert.match(instructions, /media\.gallery\.\{galleryId\}\.guided_completion/);
   assert.match(instructions, /el slot solo define el foco inicial del control y nunca la completitud/);
   assert.match(instructions, /No abras varias Galleries a la vez ni saltees a otra/);
   assert.match(instructions, /Si identifica otra Gallery, continuá naturalmente con esa única Gallery/);
+  assert.match(instructions, /primero preguntá si quiere que lo ayudes a cambiar las fotos de las galerías/);
+  assert.match(instructions, /Todavía no solicites gallery_cell_upload ni presentes imágenes/);
+  assert.match(instructions, /desde el asistente o desde el tab Fotos y continuá con nextBlock/);
   assert.match(requestBody.input[1].content, /Prioridad conversacional derivada/);
   assert.match(requestBody.input[1].content, /"entryMode":"first_entry"/);
   assert.match(requestBody.input[1].content, /"registeredFirstName":"Agus"/);
@@ -690,6 +703,14 @@ test("does not expose template examples to the model and replaces their title fr
   assert.equal(result.resolutions.some((item) => item.leafId === "document.name" && item.rule === "automatic_event_name"), true);
 });
 
+test("does not repeat an automatic document name already persisted", () => {
+  const current = snapshot({ values: { documentName: "Casamiento Ana y Luz", people: { primaryName: "Ana", secondaryName: "Luz" } } });
+  current.conversation.namePolicy = { mode: "automatic", lastAutomaticName: "Casamiento Ana y Luz" };
+  const result = validateDesignerAiModelResult({ intent: "apply", assistantMessage: "Agregué Cocktail.", actions: [{ type: "event.set_dress_code", arguments: { enabled: true, value: "Cocktail" } }], resolutions: [], controlRequest: null }, current);
+  assert.deepEqual(result.actions.map((a) => a.type), ["event.set_dress_code"]);
+  assert.equal(result.resolutions.some((r) => r.leafId === "document.name"), false);
+});
+
 test("keeps an explicit document name authoritative and does not append the rule action", () => {
   const result = validateDesignerAiModelResult({
     intent: "apply",
@@ -745,6 +766,27 @@ test("derives the automatic name when both names were already trustworthy", () =
   }));
   assert.equal(result.actions.some((action) => action.type === "document.set_name" && action.arguments.name === "Casamiento Ana y Luz"), true);
 });
+
+for (const provenance of ["unknown", "template_value", "placeholder_or_sample"]) {
+  test(`unconfirmed names stay hidden and cannot trigger automatic naming: ${provenance}`, () => {
+    const current = snapshot({
+      values: { people: { primaryName: "Juan", secondaryName: "María" } },
+      leaves: [
+        leaf("document.name", "outside_guided_flow"),
+        leaf("event.people.primary_name", "names", "resolved_from_user", "user_current_session"),
+        leaf("event.people.secondary_name", "names", "pending", provenance),
+        leaf("event.mode", "event_structure"),
+      ],
+    });
+    assert.deepEqual(serviceModule.buildDesignerAiModelValues(current).people, { primaryName: "Juan", secondaryName: "" });
+    const response = { intent: "apply", assistantMessage: "Un único evento.", actions: [{ type: "event.set_mode", arguments: { mode: "single" } }], resolutions: [], controlRequest: null };
+    assert.deepEqual(validateDesignerAiModelResult(response, current).actions.map((action) => action.type), ["event.set_mode"]);
+    assert.throws(() => validateDesignerAiModelResult({ ...response,
+      actions: [...response.actions, { type: "document.set_name", arguments: { name: "Casamiento Juan y María" } }],
+      resolutions: [{ leafId: "document.name", status: "resolved_by_rule", rule: "automatic_event_name" }],
+    }, current));
+  });
+}
 
 test("accepts natural out-of-scope output and rejects generic canvas mutations", () => {
   const out = validateDesignerAiModelResult({
@@ -963,6 +1005,19 @@ test("drops redundant model resolutions for a location already verified by its l
     }],
   }, verifiedSnapshot);
   assert.deepEqual(result.resolutions, []);
+});
+
+for (const id of ["media.cover", "event.ceremony.place_selection"]) test(`verified control ${id}: redundant apply becomes a conversational no-op`, () => {
+  const verified = snapshot({ leaves: [leaf(id, id === "media.cover" ? "cover" : "event_data", "resolved_by_control", "user_current_session")] });
+  const proposal = { intent: "apply", assistantMessage: "Listo, seguimos.", actions: [], controlRequest: null,
+    resolutions: [{ leafId: id, status: "resolved_from_user", rule: null }] };
+  const result = validateDesignerAiModelResult(proposal, verified);
+  assert.equal(result.intent, "clarify");
+  assert.deepEqual(result.actions, []);
+  assert.deepEqual(result.resolutions, []);
+  assert.throws(() => validateDesignerAiModelResult({ ...proposal, resolutions: [] }, verified), /apply requiere/);
+  assert.throws(() => validateDesignerAiModelResult({ ...proposal, resolutions: [...proposal.resolutions,
+    { leafId: "unknown.leaf", status: "resolved_from_user", rule: null }] }, verified));
 });
 
 test("repairs one malformed structured output before returning an error to the chat", async () => {

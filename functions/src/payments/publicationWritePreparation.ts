@@ -79,6 +79,7 @@ export function buildPublicationHistoryWrite(params: {
     urlPublica: null,
     rsvp: publicationData.rsvp || null,
     gifts: publicationData.gifts || null,
+    ...(publicationData.music ? { music: publicationData.music } : {}),
     rsvpSummary: summary,
     totalRsvpsHistorico: summary.totalResponses,
     visitSummary: {

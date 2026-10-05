@@ -2,6 +2,7 @@ import {
   normalizeDraftRenderState,
   type DraftRenderState,
 } from "../drafts/sourceOfTruth";
+import { resolveMusicResource } from "../music/config";
 import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
 import {
   recordBackendCountdownError,
@@ -396,6 +397,16 @@ export function validatePreparedRenderPayload(
     rawGifts: payload.draftRenderState.gifts,
     functionalCtaContract: payload.functionalCtaContract,
   });
+  if (payload.draftRenderState.music?.enabled && !resolveMusicResource(payload.draftRenderState.music)) {
+    result.warnings.push(createIssue({
+      severity: "warning",
+      code: "music-track-unavailable",
+      message: "La canci\u00f3n elegida no est\u00e1 disponible. La invitaci\u00f3n se abrir\u00e1 sin m\u00fasica.",
+      fieldPath: "music.track",
+    }));
+    result.summary.warningCount = result.warnings.length;
+    result.summary.warningMessage = buildWarningMessage(result.warnings);
+  }
   const firstCountdownIssue = [...result.blockers, ...result.warnings].find(
     (issue) =>
       issue.code.includes("countdown") ||
@@ -438,6 +449,8 @@ export function buildPreviewRenderPayloadFromPreparedPayload(
     rawGifts: payload.draftRenderState.gifts || null,
     rsvpPreviewConfig: rsvpConfig,
     giftPreviewConfig: giftsConfig,
+    music: payload.draftRenderState.music,
+    musicResource: resolveMusicResource(payload.draftRenderState.music),
     preparedRenderContract: payload.preparedRenderContract,
     contractIssues: payload.contractIssues,
     runtimeSupport: payload.runtimeSupport,
@@ -466,6 +479,8 @@ export function generateHtmlFromPreparedRenderPayload(
         slug: getString(options.slug),
         isPreview: options.isPreview === true,
         gifts: payload.functionalCtaContract.gifts.config || null,
+        music: payload.draftRenderState.music,
+        musicResource: resolveMusicResource(payload.draftRenderState.music),
         rsvpSource: payload.draftRenderState.rsvp,
         giftsSource: payload.draftRenderState.gifts,
         functionalCtaContract: payload.functionalCtaContract,

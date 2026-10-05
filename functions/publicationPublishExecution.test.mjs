@@ -2526,3 +2526,18 @@ test("captureFirstSectionShareImage uses PUPPETEER_EXECUTABLE_PATH for local emu
     }
   }
 });
+
+test("executePublicationPublish persists catalog music by identity and writes the shared gate runtime", async (t) => {
+  const music = { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  const { draftData, artifacts } = await createExecutionInput(t, { music });
+  const harness = createExecutionHarness();
+  await executePublicationPublish({
+    draftSlug: "draft-music", publicSlug: "invitation-music", uid: "user-1", operation: "new",
+    paymentSessionId: "session-music", draftData, existingData: null, artifacts,
+    now: new Date("2026-03-27T09:00:00.000Z"), ...harness.deps,
+  });
+  assert.deepEqual(harness.calls.writes[0].publicationWrite.music, music);
+  assert.match(harness.calls.savedHtml[0].html, /id="invitation-entry-gate"/);
+  assert.match(harness.calls.savedHtml[0].html, /__invitationMusicRuntime/);
+  assert.equal("url" in harness.calls.writes[0].publicationWrite.music, false);
+});

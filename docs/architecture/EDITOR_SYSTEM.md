@@ -70,6 +70,8 @@ The current editable render state is:
 
 This state is owned by `CanvasEditor.jsx` and persisted through `useBorradorSync.js`, which delegates actual session transport to `editorSessionPersistence.js`.
 
+Music uses `useCanvasEditorMusicBridge` and the existing snapshot/event contract; it adds no canvas object or global mirror. Admin availability and authorization are separate. Its patch remains in the same persistence FIFO, using `saveDraftWithMusicV1` for one authorized atomic backend write when music is included. See [MUSIC_SYSTEM_CONTRACT](../contracts/MUSIC_SYSTEM_CONTRACT.md).
+
 Dynamic field values are authoring data, not canvas state. Writable drafts read
 and write them through `templateInput.values`; template sessions use
 `templateAuthoringDraft.defaults`. Canvas objects (including grouped children,

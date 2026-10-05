@@ -609,3 +609,7 @@ Manual validation steps:
 - Check mobile preview and mobile publish: title stays centered, Ceremony stacks centered below it, Fiesta stacks centered below Ceremony.
 - Remove the `¿Dónde?` title and repeat: Ceremony and Fiesta must remain centered.
 - Check desktop preview/publish: the original side-by-side desktop layout must not move.
+
+## Entrada con Música (2026-10-05)
+
+El generador común agrega gate sólo con configuración activa y canción resoluble. Desktop, mockup mobile, mobile-focused y publicación ejecutan el mismo runtime dentro del documento real. Smart Layout prepara geometría; la autoridad de motion effects espera loader oculto y entrada resuelta antes de consumir efectos. Countdown espera esa misma entrada. Cada nueva apertura monta un documento de preview nuevo y vuelve al gate; el audio del sidebar se detiene al abrir. La captura social resuelve sin audio antes de capturar. Ver [contrato Música](../contracts/MUSIC_SYSTEM_CONTRACT.md).

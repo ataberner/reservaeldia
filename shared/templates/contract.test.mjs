@@ -443,3 +443,10 @@ test("detached combined-name visuals retain both sidebar dependencies without in
     ["event_couple_names_ampersand"]
   );
 });
+
+test("template music preserves catalog identity and legacy optionality", () => {
+  assert.equal(Object.hasOwn(normalizeTemplateDocument({ id: "legacy" }), "music"), false);
+  const normalized = normalizeTemplateDocument({ id: "musical", music: { enabled: true, track: { source: "catalog", id: "platform-demo", url: "https://untrusted.invalid/audio.mp3" } } });
+  assert.deepEqual(normalized.music, { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true });
+  assert.equal(Object.hasOwn(buildCatalogFromTemplate(normalized), "music"), false, "template listing is not a render config owner");
+});

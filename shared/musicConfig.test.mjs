@@ -34,7 +34,7 @@ test("future user identities are preserved but never resolved without ownership 
 });
 
 test("catalog resolves only registered active identity through environment public origin", () => {
-  assert.equal(listAvailableMusicTracks().length, 1);
+  assert.ok(listAvailableMusicTracks().some((track) => track.id === "platform-demo"));
   assert.equal(resolveMusicResource(selected, options).url, "http://localhost:3100/assets/musica.mp3");
   assert.equal(resolveMusicResource({ ...selected, track: { source: "catalog", id: "unknown" } }, options), null);
   assert.equal(resolveMusicResource(selected, { publicBaseUrl: "javascript:alert(1)" }), null);

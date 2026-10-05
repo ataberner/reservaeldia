@@ -1,3 +1,4 @@
+import musicConfig from "../musicConfig.cjs";
 import { normalizeEventDetailsDocumentContract } from "../eventDetailsMigration.js";
 import { normalizeCoverImageSource } from "../coverImageContract.mjs";
 
@@ -835,6 +836,7 @@ export function normalizeTemplateDocument(raw, idOverride = "") {
     ...(templateAuthoringDraft ? { templateAuthoringDraft } : {}),
     ...(rsvp ? { rsvp } : {}),
     ...(gifts ? { gifts } : {}),
+    ...(source.music && typeof source.music === "object" ? { music: musicConfig.normalizeMusicConfig(source.music) } : {}),
     ...(eventDetails ? { eventDetails } : {}),
   };
 }

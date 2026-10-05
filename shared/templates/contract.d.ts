@@ -203,6 +203,7 @@ export interface TemplateDocument {
   templateAuthoringDraft?: TemplateAuthoringDraft | null;
   rsvp?: Record<string, unknown> | null;
   gifts?: Record<string, unknown> | null;
+  music?: { version: 1; enabled: boolean; track: { source: "catalog" | "user"; id: string } | null; volume: number; loop: boolean };
 }
 
 export interface TemplateCatalogDocument {

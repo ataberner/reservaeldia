@@ -569,6 +569,9 @@ export async function captureFirstSectionShareImage(
         {},
         async () => {
           const fontStats = await page.evaluate(() => {
+            // Capture the entered invitation, using its own lifecycle and no audio.
+            // This removes only gate presentation; the real DOM and effects remain.
+            window.__invitationMusicRuntime?.resolveWithoutMusic();
             const documentWithFonts = document as {
               fonts?: { ready?: Promise<unknown>; size?: number; status?: string };
             };

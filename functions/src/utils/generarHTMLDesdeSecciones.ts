@@ -9,6 +9,9 @@ import { generarModalGaleriaHTML, hayGaleriaConImagenes } from "./generarModalGa
 import { buildMobileSmartSectionLayoutScript } from "./mobileSmartSectionLayout";
 import { generarMotionEffectsRuntimeHTML } from "./generarMotionEffectsRuntime";
 import { generarInvitationLoaderRuntimeHTML } from "./generarInvitationLoaderRuntime";
+import { generarInvitationMusicRuntimeHTML, type InvitationMusicResource } from "./generarInvitationMusicRuntime";
+const { normalizeMusicConfig } = require("../../shared/musicConfig.cjs");
+const { resolveMusicResource } = require("../../shared/musicCatalog.cjs");
 import {
   resolveFunctionalCtaContract,
   type FunctionalCtaContract,
@@ -99,6 +102,8 @@ type GenerarHTMLOpciones = {
   slug?: string;
   isPreview?: boolean;
   gifts?: GiftsConfig | null;
+  music?: unknown;
+  musicResource?: InvitationMusicResource | null;
   rsvpSource?: unknown;
   giftsSource?: unknown;
   functionalCtaContract?: FunctionalCtaContract | null;
@@ -516,6 +521,11 @@ export function generarHTMLDesdeSecciones(
   const modalGaleria = hayGaleriaConImagenes(objetos) ? generarModalGaleriaHTML() : "";
   const invitationLoaderRuntime = generarInvitationLoaderRuntimeHTML();
   const motionEffectsRuntime = generarMotionEffectsRuntimeHTML();
+  const music = normalizeMusicConfig(opciones?.music);
+  const musicResource = opciones && Object.prototype.hasOwnProperty.call(opciones, "musicResource")
+    ? opciones.musicResource
+    : resolveMusicResource(music, { publicBaseUrl: readRenderEnvironment().publicBaseUrl });
+  const musicRuntime = generarInvitationMusicRuntimeHTML(music, musicResource);
 
   function hayCountdown(objs: any[]) {
     return hasRenderObjectDeep(
@@ -664,7 +674,14 @@ export function generarHTMLDesdeSecciones(
     }
     tickOneLegacy(root, parts);
   }
+  var countdownStarted = false;
   function boot(){
+    if (countdownStarted) return;
+    if (document.body.getAttribute("data-invitation-entry") === "pending") {
+      window.addEventListener("invitation-entry-resolved", boot, { once: true });
+      return;
+    }
+    countdownStarted = true;
     const roots = Array.from(document.querySelectorAll("[data-countdown]"));
     if(!roots.length) return;
     roots.forEach(function(root){
@@ -2237,6 +2254,7 @@ ${readRenderEnvironment().mode === "emulators" ? `<meta http-equiv="Content-Secu
   ${modalRSVP}
   ${modalRegalos}
   ${modalGaleria}
+  ${musicRuntime}
   ${motionEffectsRuntime}
 
   ${scriptCountdown}

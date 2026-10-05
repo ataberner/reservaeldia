@@ -6,6 +6,7 @@ import { buildPreviewFrameSrcDoc } from "../src/components/preview/previewFrameR
 
 const require = createRequire(import.meta.url);
 const { generarHTMLDesdeSecciones } = require("./lib/utils/generarHTMLDesdeSecciones.js");
+const { generarMotionEffectsRuntimeHTML } = require("./lib/utils/generarMotionEffectsRuntime.js");
 const { generarInvitationMusicRuntimeHTML } = require("./lib/utils/generarInvitationMusicRuntime.js");
 const MUSIC = { enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
 const RESOURCE = { url: "https://music.invalid/test.mp3", id: "platform-demo", source: "catalog" };
@@ -27,8 +28,8 @@ async function waitUntil(predicate, message) {
   }
 }
 
-function openInvitation(t, { html = generatedHtml(), playResult = "success", viewport = 1280, peerHost = null, reducedMotion = false } = {}) {
-  const state = { audio: [], playCalls: 0, pauseCalls: 0, io: [], countdownIntervals: 0, entryEvents: 0, runtimeErrors: [] };
+function openInvitation(t, { html = generatedHtml(), playResult = "success", viewport = 1280, peerHost = null, reducedMotion = false, observerAvailable = true } = {}) {
+  const state = { audio: [], playCalls: 0, pauseCalls: 0, io: [], countdownIntervals: 0, entryEvents: 0, runtimeErrors: [], scrollResets: 0, scrollListeners: 0 };
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (error) => state.runtimeErrors.push(error));
   const dom = new JSDOM(html, {
@@ -40,7 +41,12 @@ function openInvitation(t, { html = generatedHtml(), playResult = "success", vie
       Object.defineProperty(window, "innerWidth", { value: viewport, configurable: true });
       window.matchMedia = (query) => ({ matches: reducedMotion && query.includes("prefers-reduced-motion"), addListener() {}, removeListener() {} });
       if (peerHost) Object.defineProperty(window, "parent", { value: peerHost });
-      window.scrollTo = () => {};
+      window.scrollTo = () => { state.scrollResets++; };
+      const addWindowEventListener = window.addEventListener.bind(window);
+      window.addEventListener = (name, listener, options) => {
+        if (name === "scroll") state.scrollListeners++;
+        addWindowEventListener(name, listener, options);
+      };
       window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
       window.cancelAnimationFrame = (id) => window.clearTimeout(id);
       const setInterval = window.setInterval.bind(window);
@@ -55,6 +61,7 @@ function openInvitation(t, { html = generatedHtml(), playResult = "success", vie
         disconnect() { this.targets.clear(); }
         enter() { this.callback(Array.from(this.targets, (target) => ({ target, isIntersecting: true }))); }
       };
+      if (!observerAvailable) delete window.IntersectionObserver;
       window.Audio = class extends window.EventTarget {
         constructor() { super(); this.paused = true; this.currentTime = 0; state.audio.push(this); }
         play() {
@@ -244,3 +251,71 @@ test("Escape enters silently and reduced-motion fallback still waits for the gat
   assert.equal(state.io.length, 0);
   assert.equal(state.entryEvents, 1);
 });
+
+
+test("entry resets restored native scroll once; audio controls preserve subsequent scrolling", async (t) => {
+  const { document, window, state } = openInvitation(t);
+  document.documentElement.scrollTop = 230;
+  document.body.scrollTop = 170;
+  let scrollAtEntry = null;
+  window.addEventListener("invitation-entry-resolved", () => {
+    scrollAtEntry = [document.documentElement.scrollTop, document.body.scrollTop];
+  });
+  assert.equal(state.scrollResets, 0);
+  document.getElementById("invitation-enter-music").click();
+  assert.deepEqual(scrollAtEntry, [0, 0]);
+  assert.equal(state.scrollResets, 1);
+  document.documentElement.scrollTop = 420;
+  document.body.scrollTop = 300;
+  document.getElementById("invitation-music-control").click();
+  document.getElementById("invitation-music-control").click();
+  window.__invitationMusicRuntime.resolveWithoutMusic();
+  assert.equal(document.documentElement.scrollTop, 420);
+  assert.equal(document.body.scrollTop, 300);
+  assert.equal(state.scrollResets, 1);
+});
+
+for (const observerAvailable of [true, false]) {
+  test(`gallery, draw, zoom, RSVP and parallax wait for entry (IntersectionObserver=${observerAvailable})`, async (t) => {
+    const html = `<!doctype html><html><body data-loader-ready="1">
+      <div class="inv"><section class="sec" data-decor-parallax="soft">
+        <div class="sec-decor-item" data-decor-depth="0.5">Flor</div>
+        <div class="objeto" data-motion="rsvp" data-type="rsvp">Confirmar</div>
+        <div class="objeto" data-motion="hover" data-type="shape">Hover</div>
+        <div class="objeto" data-motion="reveal" data-type="gallery" data-motion-id="gallery">
+          <div class="galeria-celda">Foto 1</div><div class="galeria-celda">Foto 2</div>
+        </div>
+        <div class="objeto" data-motion="zoom" data-type="shape" data-motion-id="shape">Forma</div>
+        <div class="group-child-root" data-motion="draw" data-type="shape" data-motion-id="line">Linea</div>
+      </section></div>
+      ${generarInvitationMusicRuntimeHTML(MUSIC, RESOURCE)}
+      ${generarMotionEffectsRuntimeHTML()}
+    </body></html>`;
+    const { document, window, state } = openInvitation(t, { html, observerAvailable });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const gallery = document.querySelector('[data-motion-id="gallery"]');
+    const cells = [...document.querySelectorAll(".galeria-celda")];
+    assert.equal(state.io.length, 0);
+    assert.equal(cells.some((cell) => cell.classList.contains("mefx-stagger-on")), false);
+    assert.equal(document.querySelector(".sec-decor-item").style.transform, "");
+    assert.equal(document.querySelector('[data-motion="rsvp"]').classList.contains("mefx-rsvp"), false);
+    assert.equal(state.scrollListeners, 0);
+    document.getElementById("invitation-enter-silent").click();
+    if (observerAvailable) {
+      await waitUntil(() => state.io.length === 1, "gallery observer did not start");
+      state.io[0].enter();
+    }
+    await waitUntil(() => gallery.classList.contains("mefx-reveal-on"), "gallery reveal did not activate");
+    assert.equal(cells.every((cell) => cell.classList.contains("mefx-stagger-on")), true);
+    assert.equal(document.querySelector('[data-motion-id="shape"]').classList.contains("mefx-zoom-on"), true);
+    assert.equal(document.querySelector('[data-motion-id="line"]').classList.contains("mefx-draw-on"), true);
+    assert.equal(state.entryEvents, 1);
+    assert.equal(state.io.length, observerAvailable ? 1 : 0);
+    assert.equal(document.querySelector('[data-motion="rsvp"]').classList.contains("mefx-rsvp"), true);
+    assert.equal(document.querySelector('[data-motion="hover"]').classList.contains("mefx-hover"), true);
+    await waitUntil(() => document.querySelector(".sec-decor-item").style.transform.includes("translate3d"), "parallax did not start");
+    assert.equal(state.scrollListeners, 1);
+    window.__invitationMusicRuntime.resolveWithoutMusic();
+    assert.equal(state.scrollListeners, 1);
+  });
+}

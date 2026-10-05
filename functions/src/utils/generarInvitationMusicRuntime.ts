@@ -175,6 +175,16 @@ export function generarInvitationMusicRuntimeHTML(
       if (previousAriaHidden === null) invitation.removeAttribute("aria-hidden");
       else invitation.setAttribute("aria-hidden", previousAriaHidden);
     }
+    // A fresh entry starts at the first viewport even after browser restoration.
+    // Afterwards, the document/body remain the sole native scroll authority.
+    var scrollingRoot = document.scrollingElement || document.documentElement;
+    scrollingRoot.scrollTop = 0;
+    scrollingRoot.scrollLeft = 0;
+    if (document.body !== scrollingRoot) {
+      document.body.scrollTop = 0;
+      document.body.scrollLeft = 0;
+    }
+    window.scrollTo(0, 0);
     window.dispatchEvent(new CustomEvent("invitation-entry-resolved"));
     if (moveFocus && invitation) {
       var hadTabIndex = invitation.hasAttribute("tabindex");

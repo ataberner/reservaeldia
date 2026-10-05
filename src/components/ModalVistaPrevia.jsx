@@ -1,3 +1,4 @@
+import { EDITOR_BRIDGE_EVENTS } from "@/lib/editorBridgeContracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ExternalLink,
@@ -146,7 +147,9 @@ function PreviewIframeDocument({
 
   useEffect(() => {
     if (!iframeRef.current || !srcDocResult.srcDoc) return;
+    const frameWindow = iframeRef.current.contentWindow;
     onMountRef.current?.(iframeRef.current);
+    return () => frameWindow?.__invitationMusicRuntime?.dispose?.();
   }, [srcDocResult.srcDoc]);
 
   return (
@@ -744,6 +747,10 @@ export default function ModalVistaPrevia({
   const showNoticeLayer =
     showPublishActions || publishNoticePresentation.notices.length > 0;
   const preparationFailed = !htmlContent && Boolean(publishError);
+
+  useEffect(() => {
+    if (visible) window.dispatchEvent(new CustomEvent(EDITOR_BRIDGE_EVENTS.PREVIEW_OPEN));
+  }, [visible]);
 
   useEffect(() => {
     if (!visible || !previewTimingSessionId) return;

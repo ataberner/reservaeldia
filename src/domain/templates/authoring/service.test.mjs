@@ -128,3 +128,14 @@ test("read-only migration writes nothing and migrating a saved draft again is id
   assert.equal(harness.writes.length, 1);
   assert.deepEqual(harness.document.secciones, legacyDraft().secciones);
 });
+
+
+test("template creation preserves optional music identity without introducing it for legacy", () => {
+  const source = legacyDraft();
+  const harness = createHarness(source);
+  const legacyPayload = harness.buildTemplatePayloadFromAuthoring({ draftData: source });
+  assert.equal(Object.hasOwn(legacyPayload, "music"), false);
+  const music = { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  const payload = harness.buildTemplatePayloadFromAuthoring({ draftData: { ...source, music } });
+  assert.deepEqual(payload.music, music);
+});

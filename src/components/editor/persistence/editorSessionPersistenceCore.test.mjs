@@ -146,3 +146,15 @@ test("draft persistence strips undefined values before writing", async () => {
   assert.equal("optional" in writes[0].patch.objetos[0], false);
   assert.equal(writes[0].patch.draftContentMeta.lastReason, "undefined-strip");
 });
+
+
+test("draft persistence reports the actual callable transport selected by its adapter", async () => {
+  const persistence = createEditorSessionPersistence({
+    writeDraftPatch: async () => ({ transport: "callable" }),
+  });
+  const result = await persistence.persistEditorSessionPatch({
+    session: { kind: "draft", id: "music-draft" },
+    patch: { music: { enabled: false } },
+  });
+  assert.equal(result.transport, "callable");
+});

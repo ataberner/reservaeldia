@@ -120,6 +120,7 @@ function createEditorSnapshotController() {
       secciones: null,
       rsvp: null,
       gifts: null,
+      music: null,
       eventDetails: null,
     },
     resolvers: {
@@ -131,7 +132,7 @@ function createEditorSnapshotController() {
   const api = Object.freeze({
     version: EDITOR_SNAPSHOT_ADAPTER_VERSION,
     getRenderSnapshot() {
-      const { objetos, secciones, rsvp, gifts, eventDetails } = state.renderState;
+      const { objetos, secciones, rsvp, gifts, music, eventDetails } = state.renderState;
       if (!Array.isArray(objetos) || !Array.isArray(secciones)) return null;
 
       return cloneSnapshotValue({
@@ -139,6 +140,7 @@ function createEditorSnapshotController() {
         secciones,
         rsvp: isRecord(rsvp) ? rsvp : null,
         gifts: isRecord(gifts) ? gifts : null,
+        ...(isRecord(music) ? { music } : {}),
         eventDetails: isRecord(eventDetails) ? eventDetails : null,
       });
     },
@@ -173,6 +175,7 @@ function createEditorSnapshotController() {
           : null,
         rsvp: isRecord(nextState.rsvp) ? nextState.rsvp : null,
         gifts: isRecord(nextState.gifts) ? nextState.gifts : null,
+        music: isRecord(nextState.music) ? nextState.music : null,
         eventDetails: isRecord(nextState.eventDetails) ? nextState.eventDetails : null,
       };
     },
@@ -182,6 +185,7 @@ function createEditorSnapshotController() {
         secciones: null,
         rsvp: null,
         gifts: null,
+        music: null,
         eventDetails: null,
       };
     },

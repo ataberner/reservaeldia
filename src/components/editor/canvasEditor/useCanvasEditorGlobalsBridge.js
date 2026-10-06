@@ -18,6 +18,7 @@ export default function useCanvasEditorGlobalsBridge({
   secciones,
   rsvpConfig,
   giftsConfig,
+  musicConfig,
   eventDetailsConfig,
   altoCanvas,
   seccionActivaId,
@@ -40,6 +41,7 @@ export default function useCanvasEditorGlobalsBridge({
       secciones: seccionesOrdenadas,
       rsvp: rsvpConfig,
       gifts: giftsConfig,
+      music: musicConfig,
       eventDetails: eventDetailsConfig,
     });
     window.dispatchEvent(
@@ -57,6 +59,7 @@ export default function useCanvasEditorGlobalsBridge({
     secciones,
     rsvpConfig,
     giftsConfig,
+    musicConfig,
     eventDetailsConfig,
     altoCanvas,
     seccionActivaId,

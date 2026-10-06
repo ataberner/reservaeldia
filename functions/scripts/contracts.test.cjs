@@ -91,7 +91,7 @@ async function until(condition, message, timeout = 45000) {
   throw new Error(`Plazo agotado: ${message}`);
 }
 
-test("shared contracts: read-only checks, build, watch and real consumer", { timeout: 240000 }, async t => {
+test("shared contracts: read-only checks, build, watch and real consumer", { timeout: 480000 }, async t => {
   const root = path.resolve(__dirname, "../.."), base = path.join(root, ".local-isolation");
   fs.mkdirSync(base, { recursive: true });
   const directory = fs.mkdtempSync(path.join(base, "contracts-test-")), workspace = path.join(directory, "workspace");
@@ -209,10 +209,12 @@ test("shared contracts: read-only checks, build, watch and real consumer", { tim
     events = () => fs.existsSync(watchLog) ? fs.readFileSync(watchLog, "utf8").split(/\r?\n/).flatMap(line => {
       try { const event = JSON.parse(line); return event.component === "contracts-build" ? [event] : []; } catch { return []; }
     }) : [];
+    // A save during compilation requires two real tsc cycles before readiness.
+    // Cold Windows runs take 25-32s per cycle; keep a bounded 90s wait for both.
     const readyAfter = async index => until(() => {
       assert.equal(watcher.done, undefined, "Watcher must stay active");
       return events().slice(index).find(e => e.state === "ready");
-    }, "watch ready for latest inputs");
+    }, "watch ready for latest inputs", 90000);
     // Cross-platform test driver invokes the real watch entrypoint and its same
     // signal handler; it never kills by process name or by a shared port.
     const driver = `const fs=require('node:fs'); const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(stopFile)})){clearInterval(timer);process.emit('SIGINT');}},25); require('./scripts/buildContracts.cjs').buildContracts(true).finally(()=>clearInterval(timer));`;

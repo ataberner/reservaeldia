@@ -1,3 +1,4 @@
+import { normalizeMusicConfig } from "../../../shared/musicConfig.js";
 import { normalizeEventDetailsConfig } from "../../../shared/eventDetailsConfig.js";
 import { ensureValuesForSchema } from "../../../shared/templates/contract.js";
 
@@ -109,6 +110,9 @@ export function normalizeDraftRenderState(rawDraft) {
     secciones: normalizeRenderArray(safeDraft.secciones),
     rsvp: normalizeRsvp(safeDraft.rsvp),
     gifts: normalizeGifts(safeDraft.gifts),
+    ...(safeDraft.music && typeof safeDraft.music === "object"
+      ? { music: normalizeMusicConfig(safeDraft.music) }
+      : {}),
     eventDetails: normalizeEventDetailsConfig(safeDraft.eventDetails),
   };
 }

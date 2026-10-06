@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { normalizeMusicConfig } from "../music/config";
 import { requireAdmin, isSuperAdmin } from "../auth/adminAuth";
 import { normalizeDraftRenderState } from "../drafts/sourceOfTruth";
 import { normalizeInvitationType } from "../utils/invitationType";
@@ -811,6 +812,7 @@ function buildTemplateEditorDocument(
     estadoBorrador: "active",
     rsvp: template.rsvp && typeof template.rsvp === "object" ? template.rsvp : null,
     gifts: template.gifts && typeof template.gifts === "object" ? template.gifts : null,
+    music: normalizeMusicConfig(template.music),
     eventDetails:
       template.eventDetails && typeof template.eventDetails === "object"
         ? template.eventDetails
@@ -888,6 +890,7 @@ function buildTemplatePayloadFromDraft(
       : {}),
     rsvp: renderState.rsvp,
     gifts: renderState.gifts,
+    music: renderState.music,
     eventDetails: renderState.eventDetails,
   };
 }
@@ -972,6 +975,7 @@ function buildTemplatePayloadFromEditorDocument(
         : currentTemplate.gifts && typeof currentTemplate.gifts === "object"
           ? currentTemplate.gifts
           : null,
+    music: normalizeMusicConfig("music" in source ? source.music : currentTemplate.music),
     eventDetails:
       "eventDetails" in source
         ? source.eventDetails && typeof source.eventDetails === "object"
@@ -1599,6 +1603,7 @@ export const adminOpenTemplateWorkspaceV1 = onCall(
         loaded.normalized.gifts && typeof loaded.normalized.gifts === "object"
           ? loaded.normalized.gifts
           : null,
+      music: normalizeMusicConfig(loaded.normalized.music),
       eventDetails:
         loaded.normalized.eventDetails && typeof loaded.normalized.eventDetails === "object"
           ? loaded.normalized.eventDetails

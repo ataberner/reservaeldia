@@ -1,3 +1,4 @@
+import { normalizeMusicConfig } from "../../../../shared/musicConfig.js";
 import { normalizeRsvpConfig } from "../../../domain/rsvp/config.js";
 import { normalizeGiftConfig } from "../../../domain/gifts/config.js";
 import { normalizePantallaObjectPosition } from "../../../domain/drafts/pantallaPosition.js";
@@ -125,6 +126,7 @@ export function buildPersistableRenderState({
   secciones,
   rsvp,
   gifts,
+  music,
   eventDetails,
   validarPuntosLinea,
   ALTURA_PANTALLA_EDITOR,
@@ -169,6 +171,7 @@ export function buildPersistableRenderState({
     gifts: rawGifts
       ? cleanUndefinedDeep(normalizeGiftConfig(rawGifts, { forceEnabled: false }))
       : null,
+    ...(music && typeof music === "object" ? { music: normalizeMusicConfig(music) } : {}),
     eventDetails: cleanUndefinedDeep(normalizedEventDetails),
     countdownForAudit,
   };

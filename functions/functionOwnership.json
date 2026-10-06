@@ -1032,6 +1032,16 @@
       "manifestHash": "692bf2f47d603b7d490c638764a289ab3071577477359c6ca07e83735172d98e"
     },
     {
+      "name": "saveDraftWithMusicV1",
+      "domain": "editor",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "a70480b1b05702703d686d2a33caf523219f0d7a3197b104d8da15bd2d4f42b0"
+    },
+    {
       "name": "setAdminClaim",
       "domain": "identity-support",
       "codebase": "default",

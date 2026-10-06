@@ -72,6 +72,7 @@ export async function persistBorradorSyncState({
     secciones: safeState.secciones,
     rsvp: safeState.rsvp,
     gifts: safeState.gifts,
+    music: safeState.music,
     eventDetails: safeState.eventDetails,
     validarPuntosLinea,
     ALTURA_PANTALLA_EDITOR,
@@ -118,6 +119,9 @@ export async function persistBorradorSyncState({
       secciones: seccionesLimpias,
       rsvp: rsvpLimpio,
       gifts: giftsLimpios,
+      ...(safeState.canEditMusic === true && persistedRenderState.music
+        ? { music: persistedRenderState.music }
+        : {}),
       eventDetails: eventDetailsLimpio,
       ...(normalizedAuthoring
         ? { templateAuthoringDraft: normalizedAuthoring }

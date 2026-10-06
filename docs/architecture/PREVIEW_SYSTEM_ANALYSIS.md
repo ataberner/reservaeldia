@@ -260,6 +260,15 @@ Native-scale preview keeps the generated image transform authoritative. The
 override changes neither image bounds nor parallax inputs; it is a
 scaled-iframe rasterization rule, not part of the invitation render contract.
 
+Scaled image-background containers also use `contain: paint` within their
+already-clipped `.sec-bg` bounds. Chromium can otherwise blend the moving image
+and its white underlay independently at a fractional section junction (observed
+at mobile scale `0.32`, DPR `1`, with unchanged section and image geometry).
+Paint containment removes that blended row without moving or overlapping
+sections, changing the image crop, or moving parallax updates into layout. The
+existing scaled-iframe pixel matrix covers the correction; native preview and
+published HTML do not receive it.
+
 The same scaled-iframe boundary owns one narrower SVG raster correction for
 section dividers. On every scaled embedded mockup, the SVG paint extends one
 logical pixel beyond each clipped lateral edge. A generated `bottom` divider
@@ -609,3 +618,7 @@ Manual validation steps:
 - Check mobile preview and mobile publish: title stays centered, Ceremony stacks centered below it, Fiesta stacks centered below Ceremony.
 - Remove the `¿Dónde?` title and repeat: Ceremony and Fiesta must remain centered.
 - Check desktop preview/publish: the original side-by-side desktop layout must not move.
+
+## Entrada con Música (2026-10-05)
+
+El generador común agrega gate sólo con configuración activa y canción resoluble. Desktop, mockup mobile, mobile-focused y publicación ejecutan el mismo runtime dentro del documento real. Smart Layout prepara geometría; la autoridad de motion effects espera loader oculto y entrada resuelta antes de consumir efectos. Countdown espera esa misma entrada. Cada nueva apertura monta un documento de preview nuevo y vuelve al gate; el audio del sidebar se detiene al abrir. La captura social resuelve sin audio antes de capturar. Ver [contrato Música](../contracts/MUSIC_SYSTEM_CONTRACT.md).

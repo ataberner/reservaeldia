@@ -486,8 +486,12 @@ reportes de integración no se acepta.
 | 130 | Interrupción; consultar también el resultado de limpieza |
 
 Los procesos acotados tienen máximos de 3 minutos por etapa, 4 minutos de
-readiness, 5 minutos para el supervisor de pruebas sync/watch (4 dentro del test),
+readiness, 9 minutos para el supervisor de pruebas sync/watch (8 dentro del test),
 10 minutos para Rules/countdown y 25 minutos globales de verificación.
+La espera de readiness del test de watch es de 90 segundos: una ráfaga durante
+compilación requiere dos ciclos TypeScript reales (25-32 s por ciclo en el
+Windows auditado el 2026-10-05). Mantiene las mismas assertions, diagnósticos
+y comprobación de limpieza; no cambia los límites del compilador ni de producción.
 Navegador permite 5 minutos dentro del test y 6 en su supervisor para el arranque
 y compilación en frío de Next; el primer intento 5A agotó el límite histórico
 de 150 segundos y quedó conservado como falla de infraestructura.

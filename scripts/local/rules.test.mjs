@@ -7,6 +7,8 @@ import { createRequire } from "node:module";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getFirestore, connectFirestoreEmulator, doc, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocFromServer,
   getDocsFromServer, setDoc, updateDoc, deleteDoc, deleteField, terminate } from "firebase/firestore";
+import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, getIdToken, signOut } from "firebase/auth";
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from "firebase/functions";
 import { getStorage, connectStorageEmulator, ref, uploadBytes, getBytes, list, deleteObject } from "firebase/storage";
 import { cases, identities, authorities } from "./rulesCases.mjs";
 
@@ -204,6 +206,60 @@ test(`${collection}: Admin SDK bypass and real atomic reservation across concurr
   assert.equal((await reference.get()).exists, false);
 });
 }
+
+test("music callable: real Auth claims, owner transaction, SDK denial and ordinary preservation", { timeout: 120000 }, async () => {
+  const app = initializeApp({ projectId: contract.LOCAL_PROJECT, apiKey: "synthetic-emulator-only" }, `music-callable-${randomUUID()}`);
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, `http://${contract.HOST}:${contract.EMULATORS.auth}`, { disableWarnings: true });
+  const functions = getFunctions(app, contract.REGION);
+  connectFunctionsEmulator(functions, contract.HOST, contract.EMULATORS.functions);
+  const db = getFirestore(app);
+  connectFirestoreEmulator(db, contract.HOST, contract.EMULATORS.firestore);
+  const save = httpsCallable(functions, "saveDraftWithMusicV1");
+  const draftId = `${runId}-music-callable`, foreignId = `${draftId}-foreign`;
+  const ref = adminDb.doc(`borradores/${draftId}`), foreign = adminDb.doc(`borradores/${foreignId}`);
+  const music = { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  let uid;
+  try {
+    const credential = await createUserWithEmailAndPassword(auth, `${draftId}@example.test`, `Synthetic-${randomUUID()}!`);
+    uid = credential.user.uid;
+    await ref.set({ userId: uid, objetos: [], secciones: [], gifts: { enabled: false, stale: true } });
+    await foreign.set({ userId: `${uid}-foreign` });
+    await assert.rejects(save({ draftId, patch: { music } }), { code: "functions/permission-denied" });
+    await admin.auth().setCustomUserClaims(uid, { admin: true });
+    await getIdToken(credential.user, true);
+    await assert.rejects(updateDoc(doc(db, "borradores", draftId), { music }), { code: "permission-denied" });
+    await assert.rejects(save({ draftId: foreignId, patch: { music } }), { code: "functions/permission-denied" });
+    await save({ draftId, patch: { music, gifts: { enabled: false }, nombre: "Music invitation", draftContentMeta: { lastReason: "integration-test" } } });
+    const saved = (await ref.get()).data();
+    assert.deepEqual(saved.music, music);
+    assert.deepEqual(saved.gifts, { enabled: false }, "root map replacement must match existing updateDoc transport");
+    assert.equal(saved.nombre, "Music invitation");
+    assert.equal(saved.userId, uid);
+    assert.ok(saved.ultimaEdicion.toDate() instanceof Date);
+    await admin.auth().setCustomUserClaims(uid, {});
+    await getIdToken(credential.user, true);
+    await save({ draftId, patch: { music, nombre: "Ordinary owner edit" } });
+    await assert.rejects(save({ draftId, patch: { music: { ...music, enabled: false } } }), { code: "functions/permission-denied" });
+    assert.equal((await ref.get()).data().nombre, "Ordinary owner edit");
+  } finally {
+    await signOut(auth);
+    await terminate(db);
+    await deleteApp(app);
+    await ref.delete();
+    await foreign.delete();
+    if (uid) {
+      // Auth creates the disabled email fixture asynchronously; wait boundedly
+      // for that exact UID before deleting the task-owned test records.
+      const deadline = Date.now() + 15000;
+      const welcome = adminDb.doc(`welcomeEmailDeliveries/${uid}`);
+      while (!(await welcome.get()).exists && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+      await admin.auth().deleteUser(uid);
+      await welcome.delete();
+      await adminDb.doc(`newUserNotificationDeliveries/${uid}`).delete();
+    }
+  }
+});
 
 for (const entry of cases) test(`${entry.group}: ${entry.id}`, { timeout: 25000 }, async () => {
   const c = expand(entry, entry.id);

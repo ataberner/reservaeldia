@@ -1,6 +1,7 @@
 // Executable matrix. A = accepted obligation, C = current behavior, Q = proposal.
 // IDs are stable; placeholders expand only to synthetic session identifiers.
 export const authorities = {
+  M1: "docs/contracts/MUSIC_SYSTEM_CONTRACT.md (music authoring is backend authorized; preserve legacy ownership)",
   A1: "docs/architecture/ARCHITECTURE_GUIDELINES.md#43-security-first (ownership)",
   A2: "docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md (backend publication / visit authority)",
   A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (non-admin writes forbidden)",
@@ -445,3 +446,26 @@ for (const [name, resource] of [["other-assets", "assets/other-catalog/{ID}/file
 observed("4b2b-other-assets-list", "A", "storage", "assets/other-catalog", "list", "allow", { objectFixture: "assets/other-catalog/{ID}/file.png" });
 
 if (new Set(cases.map(c => c.id)).size !== cases.length) throw new Error("Duplicate Rules case ID");
+
+// Music V1: SDK writers cannot create or change catalog selections. The
+// existing editor FIFO uses the owner-checked admin callable for those patches.
+const defaultMusic = { version: 1, enabled: false, track: null, volume: 0.35, loop: true };
+const activeMusic = { ...defaultMusic, enabled: true, track: { source: "catalog", id: "platform-demo" } };
+for (const identity of ["A", "admin", "superclaim", "role", "serverSuper"]) {
+  const owner = identity === "A" ? "{A}" : identity === "serverSuper" ? "{SUPER}" : "{ADMIN}";
+  const base = { userId: owner, marker: "music-fixture" };
+  const musicCase = (suffix, operation, expected, extra = {}) => add(
+    `music-${identity}-${suffix}`, "acceptance", identity, "firestore", "borradores/{ID}",
+    operation, expected, "M1", { data: base, ...extra });
+  musicCase("default-create", "create", "allow", { payload: { ...base, music: defaultMusic } });
+  musicCase("active-create", "create", "deny", { payload: { ...base, music: activeMusic } });
+  musicCase("disabled-selection-create", "create", "deny", { payload: { ...base, music: { ...activeMusic, enabled: false } } });
+  musicCase("legacy-default", "update", "allow", { payload: { music: defaultMusic } });
+  musicCase("enable", "update", "deny", { payload: { music: activeMusic } });
+  musicCase("active-preserved", "update", "allow", { data: { ...base, music: activeMusic }, payload: { music: activeMusic, nombre: "Updated title" } });
+  musicCase("disable", "update", "deny", { data: { ...base, music: activeMusic }, payload: { music: { ...activeMusic, enabled: false } } });
+  musicCase("remove", "replace", "deny", { data: { ...base, music: activeMusic }, payload: base });
+}
+add("music-cross-owner-write", "acceptance", "B", "firestore", "borradores/{ID}", "update", "deny", "M1", {
+  data: { userId: "{A}", music: activeMusic }, payload: { music: activeMusic, nombre: "Foreign edit" },
+});

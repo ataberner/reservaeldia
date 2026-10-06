@@ -7,6 +7,7 @@ import MiniToolbarTabContador from "@/components/MiniToolbarTabContador";
 import MiniToolbarTabMenu from "@/components/MiniToolbarTabMenu";
 import MiniToolbarTabEfectos from "@/components/MiniToolbarTabEfectos";
 import MiniToolbarTabRsvp from "@/components/MiniToolbarTabRsvp";
+import MiniToolbarTabMusica from "@/components/MiniToolbarTabMusica";
 import MiniToolbarTabRegalos from "@/components/MiniToolbarTabRegalos";
 import MiniToolbarTabDetallesEvento from "@/components/MiniToolbarTabDetallesEvento";
 
@@ -29,6 +30,8 @@ export default function MiniToolbar({
   onInsertarGaleria,
   editorReadOnly = false,
   canUseGalleryBuilder = false,
+  canUseMusic = false,
+  panelActive = true,
   templateSessionMeta = null,
   rsvpForcePresetSelection,
   onRsvpPresetSelectionComplete,
@@ -150,6 +153,10 @@ export default function MiniToolbar({
           simplifiedForAssistant={assistantMode}
           assistantSubstep={assistantSubstep}
         />
+      )}
+
+      {botonActivo === "musica" && canUseMusic && (
+        <MiniToolbarTabMusica active={panelActive} />
       )}
 
       {botonActivo === "regalos" && (

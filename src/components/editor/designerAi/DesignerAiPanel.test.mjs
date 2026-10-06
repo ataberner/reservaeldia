@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const panelSource = readFileSync(new URL("./DesignerAiPanel.jsx", import.meta.url), "utf8");
+const panelSource = readFileSync(new URL("./DesignerAiPanel.jsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const sidebarSource = readFileSync(new URL("../../DashboardSidebar.jsx", import.meta.url), "utf8");
 const layoutSource = readFileSync(new URL("../../DashboardLayout.jsx", import.meta.url), "utf8");
 const historySource = readFileSync(new URL("../../../domain/editor/designerAiMessageHistory.js", import.meta.url), "utf8");

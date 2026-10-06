@@ -47,6 +47,8 @@ export default function useBorradorSync({
   secciones,
   rsvp,
   gifts,
+  music,
+  canEditMusic = false,
   eventDetails,
   getTemplateAuthoringSnapshot = null,
   cargado,
@@ -56,6 +58,7 @@ export default function useBorradorSync({
   setSecciones,
   setRsvp,
   setGifts,
+  setMusic,
   setEventDetails,
   setCargado,
   setSeccionActivaId,
@@ -94,6 +97,7 @@ export default function useBorradorSync({
     secciones: [],
     rsvp: null,
     gifts: null,
+    music: null,
     eventDetails: null,
     getTemplateAuthoringSnapshot: null,
     cargado: false,
@@ -106,6 +110,8 @@ export default function useBorradorSync({
     secciones,
     rsvp,
     gifts,
+    music,
+    canEditMusic,
     eventDetails,
     getTemplateAuthoringSnapshot,
     cargado,
@@ -405,6 +411,9 @@ export default function useBorradorSync({
           if (typeof setGifts === "function") {
             setGifts(loadResult.giftsForSetter);
           }
+          if (typeof setMusic === "function") {
+            setMusic(loadResult.musicForSetter);
+          }
           if (typeof setEventDetails === "function") {
             setEventDetails(loadResult.eventDetailsForSetter);
           }
@@ -421,6 +430,7 @@ export default function useBorradorSync({
               secciones: loadResult.hydratedSecciones,
               rsvp: loadResult.rawRsvp,
               gifts: loadResult.rawGifts,
+              ...(loadResult.musicForSetter ? { music: loadResult.musicForSetter } : {}),
               eventDetails: loadResult.rawEventDetails,
               loadedAt: Date.now(),
             });
@@ -441,6 +451,7 @@ export default function useBorradorSync({
             setSeccionActivaId((prev) => prev || loadResult.hydratedSecciones[0].id);
           }
         } else {
+          if (typeof setMusic === "function") setMusic(null);
           pushEditorBreadcrumb("borrador-load-missing", {
             slug: loadResult.session.id,
             sessionKind: loadResult.session.kind,
@@ -527,6 +538,7 @@ export default function useBorradorSync({
     cargado,
     clearScheduledPersist,
     gifts,
+    music,
     eventDetails,
     ignoreNextUpdateRef,
     objetos,

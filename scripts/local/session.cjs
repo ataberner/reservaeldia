@@ -138,8 +138,8 @@ function copyWorkspace(workspace) {
     if (fs.existsSync(path.join(ROOT, name))) copySourceTree(path.join(ROOT, name), path.join(workspace, name));
   }
   // public/ also contains legacy invitations. Copy only application branding and
-  // UI icons, never example invitations, photo libraries or public HTML records.
-  for (const name of ["icons", "favicon_io", "favicon.ico", "assets/img/logo.svg", "assets/img/logo.png", "assets/img/logo_reservaeldia.png", "assets/img/wave-top.svg", "assets/img/wave-bottom.svg"]) {
+  // UI icons and the platform music catalog, never example invitations, photo libraries or public HTML records.
+  for (const name of ["assets/musica.mp3", "assets/music", "icons", "favicon_io", "favicon.ico", "assets/img/logo.svg", "assets/img/logo.png", "assets/img/logo_reservaeldia.png", "assets/img/wave-top.svg", "assets/img/wave-bottom.svg"]) {
     const source = path.join(ROOT, "public", name);
     if (fs.existsSync(source)) { fs.mkdirSync(path.dirname(path.join(workspace, "public", name)), { recursive: true }); copySourceTree(source, path.join(workspace, "public", name)); }
   }

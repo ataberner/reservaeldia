@@ -277,6 +277,9 @@ export function buildDashboardPreviewGeneratorInput({
       slug: slugPreview,
       isPreview: true,
       gifts: safePreviewPayload.giftPreviewConfig || null,
+      ...(safePreviewPayload.renderState?.music
+        ? { music: safePreviewPayload.renderState.music }
+        : {}),
       rsvpSource: safePreviewPayload.rsvpPreviewConfig ?? safePreviewPayload.rawRsvp ?? null,
       giftsSource: safePreviewPayload.giftPreviewConfig ?? safePreviewPayload.rawGifts ?? null,
     },

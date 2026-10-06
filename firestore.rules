@@ -26,6 +26,20 @@ service cloud.firestore {
       return isOwner(request.resource.data.userId);
     }
 
+    function hasDefaultMusic(data) {
+      return !("music" in data) || data.music == null || (
+        data.music is map &&
+        data.music.keys().hasOnly(["version", "enabled", "track", "volume", "loop"]) &&
+        data.music.version == 1 && data.music.enabled == false &&
+        data.music.track == null && data.music.volume == 0.35 && data.music.loop == true
+      );
+    }
+
+    function preservesMusic() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(["music"]) ||
+        (hasDefaultMusic(resource.data) && hasDefaultMusic(request.resource.data));
+    }
+
     function isPublicationOwner(publicSlug) {
       return isOwner(get(/databases/$(database)/documents/publicadas/$(publicSlug)).data.userId);
     }
@@ -229,10 +243,11 @@ service cloud.firestore {
     }
 
     match /borradores/{draftId} {
-      allow create: if isDraftOwnerOnCreate();
+      // Music mutations use the atomic, owner-checked admin callable.
+      allow create: if isDraftOwnerOnCreate() && hasDefaultMusic(request.resource.data);
       allow read, delete: if isDraftOwner();
       allow update: if isDraftOwner() &&
-        request.resource.data.userId == resource.data.userId;
+        request.resource.data.userId == resource.data.userId && preservesMusic();
     }
 
     // A4: roots/operation results remain administrative even when published.

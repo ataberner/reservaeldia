@@ -219,6 +219,7 @@ export async function loadBorradorSyncState({
       rawGifts && typeof rawGifts === "object"
         ? normalizeGiftConfig(rawGifts, { forceEnabled: false })
         : null,
+    musicForSetter: renderState.music || null,
     rawRsvp: rawRsvp && typeof rawRsvp === "object" ? rawRsvp : null,
     rawGifts: rawGifts && typeof rawGifts === "object" ? rawGifts : null,
     eventDetailsForSetter: rawEventDetails,

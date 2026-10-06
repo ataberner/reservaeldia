@@ -1,3 +1,5 @@
+import { normalizeMusicConfig, type MusicConfig } from "../music/config";
+
 export const DRAFT_SOURCE_OF_TRUTH_VERSION = 2;
 export const DRAFT_CANONICAL_SOURCE = "draft_render_state" as const;
 // Render roots remain canonical for presentation. Structured dynamic values live
@@ -132,6 +134,7 @@ export type DraftRenderState = {
   secciones: unknown[];
   rsvp: UnknownRecord | null;
   gifts: UnknownRecord | null;
+  music: MusicConfig;
   eventDetails: UnknownRecord;
 };
 
@@ -143,6 +146,7 @@ export function normalizeDraftRenderState(rawDraft: unknown): DraftRenderState {
     secciones: normalizeRenderArray(safeDraft.secciones),
     rsvp: normalizeRsvp(safeDraft.rsvp),
     gifts: normalizeGifts(safeDraft.gifts),
+    music: normalizeMusicConfig(safeDraft.music),
     eventDetails: normalizeEventDetailsConfig(safeDraft.eventDetails) as UnknownRecord,
   };
 }

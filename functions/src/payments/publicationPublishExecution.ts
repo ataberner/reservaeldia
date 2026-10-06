@@ -402,6 +402,7 @@ export async function executePublicationPublish(
       invitadosCount: draftData.invitadosCount || 0,
       rsvp: artifacts.rsvp,
       gifts: artifacts.gifts,
+      music: artifacts.draftRenderState.music,
       ...plannedPublish.activeLifecyclePatch,
       borradorSlug: draftSlug,
       ultimaOperacion: operation,

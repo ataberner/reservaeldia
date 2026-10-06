@@ -1685,6 +1685,14 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
   assert.ok(calls.evaluateSources.some((source) => source.includes("ignoredImageCount")));
   assert.ok(calls.evaluateSources.some((source) => source.includes("window.scrollTo(0, 0)")));
   assert.ok(calls.evaluateSources.some((source) => source.includes("getAnimations")));
+  const entryResolutionIndex = calls.evaluateSources.findIndex((source) =>
+    source.includes("__invitationMusicRuntime") && source.includes("resolveWithoutMusic")
+  );
+  const effectsSettleIndex = calls.evaluateSources.findIndex((source) =>
+    source.includes("waitForFirstSectionVisualSettled")
+  );
+  assert.ok(entryResolutionIndex >= 0, "share capture enters without audio through the invitation lifecycle");
+  assert.ok(entryResolutionIndex < effectsSettleIndex, "entry resolves before settling/capturing entrance effects");
   assert.ok(
     calls.evaluateSources.some((source) =>
       source.includes("waitForFirstSectionVisualSettled")
@@ -2517,4 +2525,19 @@ test("captureFirstSectionShareImage uses PUPPETEER_EXECUTABLE_PATH for local emu
       process.env.PUPPETEER_EXECUTABLE_PATH = previousExecutablePath;
     }
   }
+});
+
+test("executePublicationPublish persists catalog music by identity and writes the shared gate runtime", async (t) => {
+  const music = { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  const { draftData, artifacts } = await createExecutionInput(t, { music });
+  const harness = createExecutionHarness();
+  await executePublicationPublish({
+    draftSlug: "draft-music", publicSlug: "invitation-music", uid: "user-1", operation: "new",
+    paymentSessionId: "session-music", draftData, existingData: null, artifacts,
+    now: new Date("2026-03-27T09:00:00.000Z"), ...harness.deps,
+  });
+  assert.deepEqual(harness.calls.writes[0].publicationWrite.music, music);
+  assert.match(harness.calls.savedHtml[0].html, /id="invitation-entry-gate"/);
+  assert.match(harness.calls.savedHtml[0].html, /__invitationMusicRuntime/);
+  assert.equal("url" in harness.calls.writes[0].publicationWrite.music, false);
 });

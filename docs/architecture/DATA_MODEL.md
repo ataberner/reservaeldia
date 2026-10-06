@@ -9,12 +9,13 @@ The data model is the contract that keeps three different runtimes aligned:
 2. Editor-session persistence: Firestore `borradores` for drafts and template editor documents for template sessions.
 3. HTML generation for preview and publication.
 
-In the current codebase, the canonical draft invitation render state is a Firestore draft document with five render fields. Template editor sessions carry the same render fields in template editor documents and must be accessed through the session-aware editor persistence boundary:
+In the current codebase, the canonical draft invitation render state is a Firestore draft document with the render fields below. Template editor sessions carry the same render fields in template editor documents and must be accessed through the session-aware editor persistence boundary:
 
 - `objetos`
 - `secciones`
 - `rsvp`
 - `gifts`
+- `music` (optional global config; absence means OFF)
 - `eventDetails`
 
 Everything else on the same draft document is auxiliary metadata. This distinction is critical because `normalizeDraftRenderState` explicitly discards non-render fields and returns only those render keys for editor, preview, and publish flows.
@@ -37,6 +38,7 @@ This is the only part of the draft or template editor document that `normalizeDr
 | `secciones` | `borradores/{slug}` | editor, preview, publish | Canonical render array. Required for modern draft compatibility. |
 | `rsvp` | `borradores/{slug}` | editor, preview, publish | Optional root config. Normalized before save and before publish. |
 | `gifts` | `borradores/{slug}` | editor, preview, publish | Optional root config. Normalized before save and before publish. |
+| `music` | `borradores/{slug}` | editor, preview, publish | Optional global config; identity only, no URL. See the Music V1 section below. |
 | `eventDetails` | `borradores/{slug}` | editor, preview, publish | Optional root config. Normalized to `{ mode: "single" | "ceremony_party", dressCode: { enabled: boolean, value: string } }`. |
 
 Normalized render shape:
@@ -47,6 +49,7 @@ Normalized render shape:
   secciones: any[],
   rsvp: object | null,
   gifts: object | null,
+  music?: { version: 1, enabled: boolean, track: null | { source: "catalog" | "user", id: string }, volume: number, loop: boolean },
   eventDetails: {
     mode: "single" | "ceremony_party",
     dressCode: { enabled: boolean, value: string },
@@ -157,6 +160,7 @@ Observed publication fields include:
 | `invitadosCount` | `publicadas/{publicSlug}` | Auxiliary publication metric. |
 | `rsvp` | `publicadas/{publicSlug}` | Normalized published RSVP config. |
 | `gifts` | `publicadas/{publicSlug}` | Normalized published gifts config. |
+| `music` | `publicadas/{publicSlug}` | Normalized published global music config; HTML contains the resolved catalog resource. |
 | `estado` | `publicadas/{publicSlug}` | Publication state metadata. Backend lifecycle interpretation does not rely on `estado` alone; the current source of truth is `functions/src/payments/publicationLifecycle.ts`. |
 | `publicadaAt` / `publicadaEn` | `publicadas/{publicSlug}` | Primary first-publication timestamps for active publication docs. Backend timeline helpers use these first and only fall back to lifecycle timestamps in callers that explicitly opt into that compatibility path. |
 | `venceAt` / `vigenteHasta` | `publicadas/{publicSlug}` | Primary expiration timestamps. Backend lifecycle interpretation currently treats `venceAt ?? vigenteHasta` as the stored expiration input before any lifecycle/date-derived fallback. |
@@ -1180,7 +1184,7 @@ The modern draft schema is embedded in a single Firestore document:
 Current editor persistence behavior:
 
 - Editor-session writes go through `src/components/editor/persistence/editorSessionPersistence.js`.
-- Draft sessions write `objetos`, `secciones`, `rsvp`, `gifts`, `eventDetails`, `draftContentMeta`, and `ultimaEdicion` to `borradores/{slug}`.
+- Draft sessions write `objetos`, `secciones`, `rsvp`, `gifts`, optional `music`, `eventDetails`, `draftContentMeta`, and `ultimaEdicion` to `borradores/{slug}`.
 - Template sessions write the same editor render fields through the template editor callable surface; they do not write `borradores/{templateId}`.
 - It strips `undefined` recursively before writing.
 - It normalizes section decoration payloads before writing.
@@ -1318,10 +1322,10 @@ Input:
 
 Transformation:
 
-- `normalizeDraftRenderState` keeps only `objetos`, `secciones`, `rsvp`, `gifts`, and `eventDetails`
+- `normalizeDraftRenderState` keeps only `objetos`, `secciones`, `rsvp`, `gifts`, optional `music`, and `eventDetails`
 - Storage-backed URLs are refreshed recursively on load
 - section decoration payloads are normalized
-- `rsvp`, `gifts`, and `eventDetails` are normalized through dedicated config normalizers
+- `rsvp`, `gifts`, optional `music`, and `eventDetails` are normalized through dedicated config normalizers
 - missing `yNorm` values are backfilled for `altoModo: "pantalla"` sections
 
 Output:
@@ -1331,7 +1335,7 @@ Output:
 #### 2. Editor Save
 Input:
 
-- live editor state: `objetos`, `secciones`, `rsvp`, `gifts`, `eventDetails`
+- live editor state: `objetos`, `secciones`, `rsvp`, `gifts`, optional `music`, `eventDetails`
 
 Transformation:
 
@@ -1479,3 +1483,9 @@ Those rewrites do not mean the logical invitation element changed. The stable id
 - object `id`
 - `seccionId`
 - normalized root config identity
+
+## Música global (V1)
+
+Root opcional `music` en el render state de drafts/templates. Ausencia equivale a OFF; no requiere migración. Shape normalizado: `{ version: 1, enabled: false, track: null | { source: "catalog" | "user", id: string }, volume: 0.35, loop: true }`. Volumen finito en [0,1]; OFF conserva track. No contiene URL ni ruta MP3. `shared/musicConfig.cjs` es el normalizador; `shared/musicCatalog.cjs` resuelve la identidad durante preparación/render. La fuente user se conserva como extensión, sin upload/resolución en V1.
+
+Música pasa por hidratación, snapshot, autosave FIFO, flush, preparación preview/publish, copias administrativas de templates y persistencia de publicación. Los autosaves de drafts legacy conservan la ausencia; backend, templates y publicaciones pueden materializar OFF. La creación desde plantilla sólo habilita Música para autores autorizados. El writer de patches con Música usa una callable atómica que verifica owner y autorización del cambio; no se convierte en dueño de estado. Ver [contrato Música](../contracts/MUSIC_SYSTEM_CONTRACT.md) para autorización, gate, recursos y pruebas.

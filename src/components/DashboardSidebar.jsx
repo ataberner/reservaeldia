@@ -11,6 +11,7 @@ import {
     FaFont,
     FaGift,
     FaMagic,
+    FaMusic,
     FaRegCalendarAlt,
     FaRegClock,
     FaRegEnvelope,
@@ -76,6 +77,7 @@ import {
     EDITOR_BRIDGE_EVENTS,
 } from "@/lib/editorBridgeContracts";
 import { DASHBOARD_DOCUMENT_NAME_EVENTS } from "@/lib/dashboardDocumentNameBridge";
+import { canAccessMusic } from "@/domain/music/access";
 import { canAccessDesignerAi } from "@/domain/editor/designerAiAccess";
 import {
     readCanvasEditorMethod,
@@ -172,6 +174,14 @@ const SIDEBAR_TOOL_TABS = Object.freeze([
         desktopLabel: "Regalos",
         mobileLabel: "Regalos",
         Icon: FaGift,
+    },
+    {
+        id: "musica",
+        title: "Música",
+        desktopLabel: "Música",
+        mobileLabel: "Música",
+        Icon: FaMusic,
+        requiresMusic: true,
     },
     {
         id: "efectos",
@@ -489,6 +499,10 @@ export default function DashboardSidebar({
     });
     const canUseCountdown = canManageSite === true;
     const canUseEffects = canManageSite === true;
+    const canUseMusic = canAccessMusic({
+        canManageSite: canManageSite && !loadingAdminAccess,
+        editorReadOnly,
+    });
     const canUseDesignerAi = canAccessDesignerAi({
         loadingAdminAccess,
         isSuperAdmin,
@@ -1114,6 +1128,10 @@ export default function DashboardSidebar({
     }, [botonActivo, canUseEffects, closeSidebarPanel]);
 
     useEffect(() => {
+        if (botonActivo === "musica" && !canUseMusic) closeSidebarPanel();
+    }, [botonActivo, canUseMusic, closeSidebarPanel]);
+
+    useEffect(() => {
         return () => {
             publishSidebarPanelLayout({
                 pinned: false,
@@ -1567,6 +1585,7 @@ export default function DashboardSidebar({
         contador: "from-[#d27a47] to-[#b85b31]",
         rsvp: "from-[#2a8b6f] to-[#1d6f58]",
         regalos: "from-[#d15b7f] to-[#b64568]",
+        musica: "from-[#9665bc] to-[#692b9a]",
         efectos: "from-[#7c6a24] to-[#a9852d]",
     };
 
@@ -1748,6 +1767,7 @@ export default function DashboardSidebar({
         if (tab.requiresGalleryBuilder) return canUseGalleryBuilder;
         if (tab.requiresCountdown) return canUseCountdown;
         if (tab.requiresAdmin) return canUseEffects;
+        if (tab.requiresMusic) return canUseMusic;
         return true;
     });
 
@@ -2229,6 +2249,8 @@ export default function DashboardSidebar({
                             onInsertarGaleria={insertarGaleria}
                             editorReadOnly={editorReadOnly}
                             canUseGalleryBuilder={canUseGalleryBuilder}
+                            canUseMusic={canUseMusic}
+                            panelActive={sidebarAbierta}
                             templateSessionMeta={templateSessionMeta}
                             rsvpForcePresetSelection={rsvpForcePresetSelection}
                             onRsvpPresetSelectionComplete={() => setRsvpForcePresetSelection(false)}

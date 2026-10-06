@@ -666,6 +666,13 @@ export function generarMotionEffectsRuntimeHTML(): string {
     });
   }
 
+  function waitForInvitationEntry(){
+    if (document.body.getAttribute("data-invitation-entry") !== "pending") return Promise.resolve();
+    return new Promise(function(resolve){
+      window.addEventListener("invitation-entry-resolved", resolve, { once: true });
+    });
+  }
+
   function collectDecorParallaxSections(){
     return Array.from(document.querySelectorAll(".sec[data-decor-parallax]"))
       .map(function(section){
@@ -1133,14 +1140,18 @@ export function generarMotionEffectsRuntimeHTML(): string {
           return;
         }
 
-        var preparedElements = prepareAllElements() || [];
+        // Gate presentation keeps the real invitation visible without consuming
+        // any effect. Layout/resource readiness still releases the existing loader.
+        var prepareAfterEntry = document.body.getAttribute("data-invitation-entry") === "pending";
+        var preparedElements = prepareAfterEntry ? [] : (prepareAllElements() || []);
         dispatchRuntimeEvent(RUNTIME_READY_EVENT, {
           source: "motion-effects-runtime",
           criticalImageCount: criticalImages.imageCount,
           criticalImageFailures: criticalImages.failedCount,
           fonts: fontsStatus
         });
-        waitForLoaderHidden().then(function(){
+        waitForLoaderHidden().then(waitForInvitationEntry).then(function(){
+          if (prepareAfterEntry) preparedElements = prepareAllElements() || [];
           requestAnimationFrame(function(){
             requestAnimationFrame(function(){
               boot(preparedElements);

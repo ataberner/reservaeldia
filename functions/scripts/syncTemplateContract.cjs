@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const artifacts = [
-  ...["giftsConfig", "rsvpCatalog", "rsvpConfig", "rsvpEditorOps", "authoringValueNormalization", "gallerySlotOrder", "designerAiConfigReducers", "designerAiActionProjection"].map((name) => ({
+  ...["musicConfig", "musicCatalog", "giftsConfig", "rsvpCatalog", "rsvpConfig", "rsvpEditorOps", "authoringValueNormalization", "gallerySlotOrder", "designerAiConfigReducers", "designerAiActionProjection"].map((name) => ({
     label: `Dominio puro compartido: ${name}`,
     sourcePath: path.resolve(__dirname, `../../shared/${name}.cjs`),
     targetPaths: [path.resolve(__dirname, `../shared/${name}.cjs`), path.resolve(__dirname, `../lib/shared/${name}.cjs`)],

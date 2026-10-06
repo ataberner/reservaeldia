@@ -112,6 +112,8 @@ import {
 } from "../../shared/functionalAssociations.js";
 import { normalizeEventDetailsConfig } from "../../shared/eventDetailsConfig.js";
 import { createDefaultRsvpConfig, normalizeRsvpConfig } from "@/domain/rsvp/config";
+import useCanvasEditorMusicBridge from "@/components/editor/canvasEditor/useCanvasEditorMusicBridge";
+import { canAccessMusic } from "@/domain/music/access";
 import { createDefaultGiftConfig, normalizeGiftConfig } from "@/domain/gifts/config";
 import TemplateEditorialDrawer from "@/components/editor/templateEditorial/TemplateEditorialDrawer";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
@@ -465,6 +467,7 @@ export default function CanvasEditor({
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
   const [rsvpConfig, setRsvpConfig] = useState(null);
   const [giftsConfig, setGiftsConfig] = useState(null);
+  const [musicConfig, setMusicConfig] = useState(null);
   const [eventDetailsConfig, setEventDetailsConfig] = useState(() =>
     normalizeEventDetailsConfig(null)
   );
@@ -724,6 +727,11 @@ export default function CanvasEditor({
     giftsConfig,
     setGiftsConfig,
   });
+  useCanvasEditorMusicBridge({
+    musicConfig,
+    setMusicConfig,
+    canEditMusic: canAccessMusic({ canManageSite, editorReadOnly: readOnly }),
+  });
   useBorradorSync({
     slug,
     editorSession,
@@ -737,6 +745,8 @@ export default function CanvasEditor({
     secciones,
     rsvp: rsvpConfig,
     gifts: giftsConfig,
+    music: musicConfig,
+    canEditMusic: canAccessMusic({ canManageSite, editorReadOnly: readOnly }),
     eventDetails: eventDetailsConfig,
     getTemplateAuthoringSnapshot: () => templateAuthoringSnapshotRef.current,
     cargado,
@@ -745,6 +755,7 @@ export default function CanvasEditor({
     setSecciones,
     setRsvp: setRsvpConfig,
     setGifts: setGiftsConfig,
+    setMusic: setMusicConfig,
     setEventDetails: setEventDetailsConfig,
     setCargado,
     setSeccionActivaId,
@@ -2284,6 +2295,7 @@ export default function CanvasEditor({
     secciones,
     rsvpConfig,
     giftsConfig,
+    musicConfig,
     eventDetailsConfig,
     altoCanvas,
     seccionActivaId,

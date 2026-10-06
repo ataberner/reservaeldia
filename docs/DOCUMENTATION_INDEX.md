@@ -318,6 +318,13 @@ ownership is reached; Assistant, checkout and countdown docs are not default con
 - Hydration, autosave, flush and bridges: [EDITOR_SYSTEM.md](architecture/EDITOR_SYSTEM.md) and the persistence/runtime sections of [ARCHITECTURE_OVERVIEW.md](architecture/ARCHITECTURE_OVERVIEW.md); start at `src/components/editor/persistence/editorSessionPersistence.js`, `src/components/editor/persistence/draftWriteCoordinator.js`, `src/lib/editorBridgeContracts.js`, `src/domain/drafts/criticalFlush.js` and `src/domain/drafts/flushGate.js` as applicable.
 - Dashboard thumbnails/clean canvas export: the clean-image checks in [EDITOR_REGRESSION_CHECKLIST.md](testing/EDITOR_REGRESSION_CHECKLIST.md), `src/utils/dashboardCanvasExport.js`, `src/utils/guardarThumbnail.js` and `src/utils/dashboardCanvasExport.test.mjs`. Add the preview or share-image contract only if that distinct artifact is affected.
 
+### Música
+
+1. [MUSIC_SYSTEM_CONTRACT.md](contracts/MUSIC_SYSTEM_CONTRACT.md): estado global, identidad, permisos y lifecycle P0.
+2. [MUSIC_CATALOG.md](operations/MUSIC_CATALOG.md): carga manual, metadata, activación y límites de HTML ya publicado.
+3. [MUSIC_V1_VERIFICATION.md](testing/MUSIC_V1_VERIFICATION.md): evidencia local, comandos reproducibles y limitaciones.
+4. Preview y persistencia conservan sus rutas anteriores; Música consume sus autoridades.
+
 ### Regalos
 
 1. [GIFTS_SYSTEM_CONTRACT.md](contracts/GIFTS_SYSTEM_CONTRACT.md) for domain semantics, methods, visibility, completeness and owner routing.

@@ -154,3 +154,14 @@ test("template creation rejects duplicate identities from a read-only live snaps
     /borrador contiene ids de objeto duplicados \(duplicated-text\)/
   );
 });
+
+
+test("creating a template from the editor uses the current music root", () => {
+  const music = { version: 1, enabled: false, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  const result = composeDraftTemplateCreationPayload({
+    draftData: { objetos: [], secciones: [], music: { enabled: true } },
+    liveEditorSnapshot: { objetos: [], secciones: [], music },
+    buildPayload: ({ draftData }) => draftData,
+  });
+  assert.deepEqual(result.payload.music, music);
+});

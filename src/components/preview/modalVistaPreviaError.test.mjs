@@ -5,6 +5,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import swc from "next/dist/build/swc/index.js";
+import * as bridgeContracts from "../../lib/editorBridgeContracts.js";
 import * as layout from "./modalVistaPreviaLayout.js";
 import * as frameRuntime from "./previewFrameRuntime.js";
 import * as presentation from "../../domain/dashboard/previewValidationPresentation.js";
@@ -17,6 +18,7 @@ const { code } = await swc.transform(source, {
   module: { type: "commonjs" },
 });
 const adapters = {
+  "@/lib/editorBridgeContracts": bridgeContracts,
   "@/components/preview/modalVistaPreviaLayout": layout,
   "@/components/preview/previewFrameRuntime": frameRuntime,
   "@/domain/dashboard/previewValidationPresentation": presentation,

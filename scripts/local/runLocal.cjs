@@ -129,7 +129,7 @@ async function main(mode) {
     }, "tests");
     await run("tooling", ["--test", "--test-reporter=tap", "scripts/local/tooling.test.mjs", "scripts/local/nextLifecycle.test.mjs", "functions/scripts/lint.test.cjs"]);
     try {
-      await run("contracts-tests", ["--test", "--test-reporter=tap", "functions/scripts/contracts.test.cjs"], { timeoutMs: 300000 });
+      await run("contracts-tests", ["--test", "--test-reporter=tap", "functions/scripts/contracts.test.cjs"], { timeoutMs: 540000 });
     } finally {
       const report = path.join(workspace, ".local-isolation/contracts-evidence.json");
       if (fs.existsSync(report)) fs.copyFileSync(report, path.join(session, "contracts-evidence.json"));

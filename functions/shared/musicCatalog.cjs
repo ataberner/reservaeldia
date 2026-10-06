@@ -5,8 +5,8 @@ const { normalizeMusicConfig, MUSIC_FEATURE_AVAILABILITY } = require("./musicCon
 const MUSIC_CATALOG = Object.freeze([
   Object.freeze({
     id: "platform-demo",
-    title: "Canción de prueba",
-    artist: "Reserva el Día · prueba",
+    title: "Perfect",
+    artist: "Ed Sheeran",
     audioReference: "/assets/musica.mp3",
     active: true,
   }),

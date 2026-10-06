@@ -260,6 +260,15 @@ Native-scale preview keeps the generated image transform authoritative. The
 override changes neither image bounds nor parallax inputs; it is a
 scaled-iframe rasterization rule, not part of the invitation render contract.
 
+Scaled image-background containers also use `contain: paint` within their
+already-clipped `.sec-bg` bounds. Chromium can otherwise blend the moving image
+and its white underlay independently at a fractional section junction (observed
+at mobile scale `0.32`, DPR `1`, with unchanged section and image geometry).
+Paint containment removes that blended row without moving or overlapping
+sections, changing the image crop, or moving parallax updates into layout. The
+existing scaled-iframe pixel matrix covers the correction; native preview and
+published HTML do not receive it.
+
 The same scaled-iframe boundary owns one narrower SVG raster correction for
 section dividers. On every scaled embedded mockup, the SVG paint extends one
 logical pixel beyond each clipped lateral edge. A generated `bottom` divider

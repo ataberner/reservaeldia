@@ -697,6 +697,10 @@ export function buildScrollbarStyleText({
   return `
         ${legacyLayoutCss}
         ${parityScrollRootCss}
+        /* Keep the image and its clipped background in one paint boundary. */
+        html[data-preview-raster-scale="scaled"] .sec[data-fondo="imagen"] .sec-bg {
+          contain: paint;
+        }
         html[data-preview-raster-scale="scaled"] .sec-bg-image {
           left: var(--bg-image-left, 0px);
           top: var(--bg-image-top, 0px);

@@ -1126,7 +1126,8 @@ export function generarMotionEffectsRuntimeHTML(): string {
       var remainingMs = remainingCriticalReadyMs();
       return Promise.all([
         waitForFirstSectionCriticalImages(remainingMs),
-        waitForFirstSectionFonts(Math.min(FONTS_TIMEOUT_MS, remainingMs))
+        waitForFirstSectionFonts(Math.min(FONTS_TIMEOUT_MS, remainingMs)),
+        window.__invitationMusicRuntime ? window.__invitationMusicRuntime.ready : Promise.resolve("disabled")
       ]).then(function(results){
         var criticalImages = results[0];
         var fontsStatus = results[1];
@@ -1148,7 +1149,8 @@ export function generarMotionEffectsRuntimeHTML(): string {
           source: "motion-effects-runtime",
           criticalImageCount: criticalImages.imageCount,
           criticalImageFailures: criticalImages.failedCount,
-          fonts: fontsStatus
+          fonts: fontsStatus,
+          music: results[2]
         });
         waitForLoaderHidden().then(waitForInvitationEntry).then(function(){
           if (prepareAfterEntry) preparedElements = prepareAllElements() || [];

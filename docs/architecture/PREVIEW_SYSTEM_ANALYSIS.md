@@ -58,6 +58,14 @@ The draft preview path is:
 5. The backend validates with `validatePreparedRenderPayload(...)` and generates preview HTML through `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })` only when validation allows it.
 6. The result is classified as `previewAuthority: "draft-authoritative"` and the final HTML is committed to the active guarded session.
 
+Critical draft flushes allow up to 90 seconds for the existing write FIFO and
+callable persistence, returning immediately on confirmation or failure. The
+former six-second event deadline could expire during a music save, before any
+invitation audio was requested. No timeout is treated as a confirmed save.
+Once HTML is ready, active music preloads alongside critical visual resources;
+the shared runtime keeps the heart until playback can start, with the optional
+audio failure/deadline behavior owned by [Music](../contracts/MUSIC_SYSTEM_CONTRACT.md).
+
 New upload/editor writes persist a canonical asset descriptor alongside the
 render URL: Storage path, object generation, download token, and source image
 dimensions where crop materialization needs them. If those persisted values

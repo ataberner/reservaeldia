@@ -69,3 +69,38 @@ Logs adicionales: `music-final-build.log`, `music-final-tests.log`, `music-parit
 No se verificaron dispositivos físicos ni Safari/iOS; Chromium con viewport mobile no prueba esas implementaciones. No se ejecutó el gate integrado completo `verify:local`; sí sus verificaciones relevantes de ownership, Rules, configuración y lint, además de las suites funcionales listadas. Cinco capturas optativas legacy permanecieron omitidas; la nueva prueba Chromium cubre Música y mockups reales, no reemplaza toda su matriz legacy.
 
 No se inspeccionaron claims, Rules, recursos ni invitaciones de producción. La decisión de entrada es por documento, sin persistencia permanente. La canción incluida es el asset preexistente de prueba; carga/activación y límites sobre HTML ya publicado se documentan en [MUSIC_CATALOG](../operations/MUSIC_CATALOG.md).
+
+## Seguimiento: guardado y precarga bajo el corazón — 2026-10-05
+
+Alcance: corrección local sobre `769b8b68`, sin deploy ni republicación. La eliminación preexistente de `public/assets/musica.mp3` se conserva fuera del diff de esta tarea; el probe usa el MP3 activo de Transporte.
+
+HECHO: el texto reportado proviene del timeout de 6 segundos del flush crítico, antes de generar HTML o solicitar audio de la invitación. Seleccionar Música usa `saveDraftWithMusicV1` dentro del FIFO; el límite anterior era inferior al deadline predeterminado del transporte callable (70 segundos). No se reprodujo ni se atribuyó a una causa de red concreta la demora de producción.
+
+Cambios: el flush espera confirmación hasta 90 segundos, sin demora mínima ni éxito artificial; audio activo se precarga una sola vez en paralelo con imágenes/fuentes y comparte readiness con el corazón; espera `canplay` sin descargar necesariamente todo el MP3. El audio no reproduce sin gesto. Error/precarga ignorada liberan la espera opcional, con máximo de 8 segundos. Captura social cancela la precarga tras DOMContentLoaded, antes de esperar `load`.
+
+| Verificación local | Resultado |
+| --- | --- |
+| Build Functions (`node --require ./scripts/local/networkGuard.cjs functions/scripts/buildContracts.cjs`) | PASS; 68 copias verificadas. |
+| Flush/cola/scheduling/transporte Música y editor | 30/30 PASS; incluye confirmación a 8 segundos, deadline agotado sin snapshot y preservación de errores. |
+| Música/runtime/motion/frames/pipeline | 82/82 PASS; incluye audio lento, metadata insuficiente, error, timeout opcional, dispose y paridad preview/publish. La suite final de Música agrega la excepción de `load()` y pasa 30/30 (solapados con el grupo anterior). |
+| Publicación/captura social (`functions/publicationPublishExecution.test.mjs`) | 43/43 PASS; cancelación de audio antes de esperar el documento y HTML con precarga del catálogo activo. La fixture anterior usaba el ID retirado `platform-demo`; se corrigió al catálogo vigente. |
+| Render/paridad/mobile y readiness | La corrida conjunta dio 113 PASS, 3 fallos y 3 skips. Dos fallos de publicación quedaron corregidos en la suite anterior (fixture retirada y contador de evaluaciones por cancelación anticipada). El fallo temporal de readiness pasó al repetir `functions/invitationRuntimeReadiness.test.mjs` solo, sin modificarlo. Los 3 skips de capturas optativas siguen sin ejecutarse. |
+| Lint Functions | 273 archivos, cero errores, 234 warnings. |
+| Ownership Functions | PASS en rerun aislado: tres builds, 41/41 tests y discovery CLI real de 102 default, 3 payments, 3 email, sin operaciones remotas. El primer intento tuvo 40 PASS y un timeout de 30 s al cargar JSDOM en un proceso nuevo; no se alteró su test ni deadline. CLI fijada 14.4.0 reutilizada con `--cli` desde `prepared-hlifiv`, ya que faltaba en la ruta local habitual. |
+| `node --require ./scripts/local/networkGuard.cjs scripts/checkMusicBrowser.mjs` | PASS: cinco superficies, dos iframes escalados, reproducción MP3 real, exclusión, silencio, pausa/reanudación, dispose y reapertura. Captura `music-browser-1791252966334/paired-iframe-gates.png` inspeccionada. |
+| `node --require ./scripts/local/networkGuard.cjs scripts/checkMusicLoadingBrowser.mjs` | PASS: seis corridas con caché deshabilitada, MP3 local y requests externas bloqueadas. |
+
+Medición antes/después en Chromium 138.0.7204.157, tres repeticiones por superficie, imagen con demora de 1000 ms y MP3 con demora de 700 ms. Son medianas locales, no latencias de producción ni garantías para Safari/iOS:
+
+| Superficie | Corazón antes → después | Gesto → audio antes → después | Inicio → audio antes → después |
+| --- | --- | --- | --- |
+| Publicada desktop | 1496 → 1581 ms | 807 → 4 ms | 2350 → 1611 ms |
+| Preview mobile | 1415 → 1402 ms | 807 → 5 ms | 2269 → 1463 ms |
+
+La primera corrida desktop tiene mayor variabilidad (corazón: 2409 ms antes, 3834 ms después); la mejora atribuible al cambio es iniciar descarga en paralelo y reutilizar audio listo desde el gesto. Una ejecución inicial del probe agotó la espera del loader durante otros checks; el rerun secuencial pasó. Se preservan los seis valores de cada versión en `.local-isolation/music-loading-{baseline,after}/results.json`; `--baseline` sólo corresponde al runtime anterior sin precarga.
+
+Logs: `.local-isolation/music-loading-{editor-tests,runtime-tests,final-runtime-tests,publish-tests,parity-tests,readiness-retry,final-build,lint,ownership,ownership-retry}.log`. El lint focalizado final del runtime Música y los dos tests modificados también pasó (cero errores, una advertencia preexistente). No se ejecutaron el gate integrado completo, Rules ni un build Next: no se cambiaron permisos, schemas ni componentes React. No se verificaron dispositivos físicos ni producción. El HTML ya publicado conserva su runtime anterior hasta una republicación autorizada.
+
+Solapamiento observado al cierre: otro trabajo modificó `generarInvitationLoaderRuntime.ts` y las esperas/fallos visuales de `generarMotionEffectsRuntime.ts` después de las verificaciones anteriores. Se preservan esos cambios. Esta tarea sólo agrega al segundo la promesa de precarga y su resultado `music` en readiness; no es autora del retiro de los fallos visuales ni del nuevo timeout del loader. La matriz anterior describe la revisión de Música previa a ese solapamiento.
+
+Verificación acotada del conjunto posterior: build y 68 copias PASS (`music-loading-combined-build.log`), Música 30/30 PASS (`music-loading-combined-runtime-tests.log`) y Chromium PASS nuevamente en las cinco superficies/iframes (`music-browser-1791253762694`). La revisión general de las modificaciones simultáneas de readiness, sus tests y documentación pertenece al otro trabajo. El diff exclusivo de esta tarea, incluidos sus dos hunks compartidos, queda en `.local-isolation/music-loading-task.patch` para facilitar revisión sin incluir esos cambios ajenos.

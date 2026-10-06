@@ -28,7 +28,7 @@ async function waitUntil(predicate, message) {
   }
 }
 
-function openInvitation(t, { html = generatedHtml(), playResult = "success", viewport = 1280, peerHost = null, reducedMotion = false, observerAvailable = true } = {}) {
+function openInvitation(t, { html = generatedHtml(), playResult = "success", preloadResult = "ready", viewport = 1280, peerHost = null, reducedMotion = false, observerAvailable = true } = {}) {
   const state = { audio: [], playCalls: 0, pauseCalls: 0, io: [], countdownIntervals: 0, entryEvents: 0, runtimeErrors: [], scrollResets: 0, scrollListeners: 0 };
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (error) => state.runtimeErrors.push(error));
@@ -49,6 +49,11 @@ function openInvitation(t, { html = generatedHtml(), playResult = "success", vie
       };
       window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
       window.cancelAnimationFrame = (id) => window.clearTimeout(id);
+      const setTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, duration) => {
+        if (duration === 8000) state.preloadTimeout = callback;
+        return setTimeout(callback, duration);
+      };
       const setInterval = window.setInterval.bind(window);
       window.setInterval = (callback, duration) => {
         if (duration === 1000) state.countdownIntervals++;
@@ -63,7 +68,13 @@ function openInvitation(t, { html = generatedHtml(), playResult = "success", vie
       };
       if (!observerAvailable) delete window.IntersectionObserver;
       window.Audio = class extends window.EventTarget {
-        constructor() { super(); this.paused = true; this.currentTime = 0; state.audio.push(this); }
+        constructor() {
+          super();
+          if (preloadResult === "throw") throw new Error("Audio unavailable");
+          this.paused = true; this.currentTime = 0;
+          this.readyState = preloadResult === "ready" ? 3 : 0;
+          state.audio.push(this);
+        }
         play() {
           state.playCalls++;
           if (playResult === "throw") throw new Error("play blocked");
@@ -75,7 +86,11 @@ function openInvitation(t, { html = generatedHtml(), playResult = "success", vie
         }
         pause() { state.pauseCalls++; this.paused = true; this.dispatchEvent(new window.Event("pause")); }
         removeAttribute(name) { if (name === "src") this.src = ""; }
-        load() { this.loadedAfterDispose = true; }
+        load() {
+          if (preloadResult === "load-throw") throw new Error("Load unavailable");
+          if (!this.src) this.loadedAfterDispose = true;
+          if (this.src && preloadResult === "error") this.dispatchEvent(new window.Event("error"));
+        }
       };
       window.addEventListener("invitation-entry-resolved", () => state.entryEvents++);
     },
@@ -121,7 +136,8 @@ for (const [name, previewViewport] of [["published", null], ["desktop preview", 
       assert.equal(document.querySelectorAll(".inv").length, 1);
       assert.equal(document.body.getAttribute("data-invitation-entry"), "pending");
       assert.equal(invitation.hasAttribute("inert"), true);
-      assert.equal(state.audio.length, 0, "no MP3/audio allocation before explicit choice");
+      assert.equal(state.audio.length, 1, "preload reuses the player without starting playback");
+      assert.equal(state.playCalls, 0);
       assert.equal(state.io.length, 0, "observer must not consume intersections behind blur");
       assert.equal(state.countdownIntervals, 0, "countdown timeline must not start behind blur");
       assert.equal(title.classList.contains("mefx-reveal-on"), false);
@@ -141,7 +157,7 @@ for (const [name, previewViewport] of [["published", null], ["desktop preview", 
       assert.equal(state.playCalls, withMusic ? 1 : 0);
       assert.equal(document.getElementById("invitation-music-control").hidden, !withMusic);
       if (withMusic) {
-        assert.equal(state.audio[0].preload, "none");
+        assert.equal(state.audio[0].preload, "auto");
         assert.equal(state.audio[0].volume, 0.35);
         assert.equal(state.audio[0].loop, true);
       }
@@ -200,18 +216,20 @@ test("each preview opening gets a new unresolved gate, independent of previous c
   first.window.__invitationMusicRuntime.dispose();
   const second = openInvitation(t);
   assert.equal(second.document.body.getAttribute("data-invitation-entry"), "pending");
-  assert.equal(second.state.audio.length, 0);
+  assert.equal(second.state.audio.length, 1);
+  assert.equal(second.state.playCalls, 0);
   assert.equal(first.state.audio[0].paused, true);
 });
 
-test("share-image entry uses the same silent lifecycle without allocating audio", async (t) => {
+test("share-image entry cancels preload and uses the same lifecycle without playing audio", async (t) => {
   const { window, state, document } = openInvitation(t);
   const invitation = document.querySelector(".inv");
   window.__invitationMusicRuntime.resolveWithoutMusic();
   await waitUntil(() => state.io.length === 1, "share capture did not start effects");
   assert.equal(document.body.getAttribute("data-invitation-entry"), "resolved");
   assert.equal(document.querySelector(".inv"), invitation);
-  assert.equal(state.audio.length, 0);
+  assert.equal(state.playCalls, 0);
+  assert.equal(state.audio[0].src, "");
 });
 
 test("runtime serialization rejects unsafe URL schemes and cannot close its script", () => {
@@ -219,6 +237,51 @@ test("runtime serialization rejects unsafe URL schemes and cannot close its scri
   const html = generarInvitationMusicRuntimeHTML(MUSIC, { ...RESOURCE, url: "https://music.invalid/</script><script>alert(1)</script>" });
   assert.equal((html.match(/<script>/g) || []).length, 1);
   assert.equal((html.match(/<\/script>/g) || []).length, 1);
+});
+
+for (const isPreview of [false, true]) {
+  test(`heart waits for playable audio, not metadata (preview=${isPreview})`, async (t) => {
+    const { document, state, window } = openInvitation(t, { html: generatedHtml({ isPreview }), preloadResult: "pending" });
+    await new Promise(resolve => setTimeout(resolve, 60));
+    assert.equal(document.body.dataset.loaderReady, "0");
+    assert.ok(document.getElementById("inv-loader"));
+    assert.equal(state.playCalls, 0);
+    const audio = state.audio[0];
+    audio.readyState = 1;
+    audio.dispatchEvent(new window.Event("loadedmetadata"));
+    audio.dispatchEvent(new window.Event("canplay"));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(document.body.dataset.loaderReady, "0");
+    audio.readyState = 3;
+    audio.dispatchEvent(new window.Event("canplay"));
+    await waitUntil(() => !document.getElementById("inv-loader"), "playable audio must release the heart");
+    assert.equal(await window.__invitationMusicRuntime.ready, "ready");
+    document.getElementById("invitation-enter-music").click();
+    assert.equal(state.audio.length, 1);
+    assert.equal(state.playCalls, 1);
+  });
+}
+
+for (const preloadResult of ["error", "throw", "load-throw", "pending"]) {
+  test(`preload ${preloadResult} cannot block entry permanently`, async (t) => {
+    const { document, state, window } = openInvitation(t, { preloadResult });
+    if (preloadResult === "pending") state.preloadTimeout();
+    assert.equal(await window.__invitationMusicRuntime.ready, preloadResult === "pending" ? "timeout" : "error");
+    await waitUntil(() => !document.getElementById("inv-loader"), "optional audio failure must release loader");
+    assert.notEqual(document.body.dataset.loaderError, "1");
+    document.getElementById("invitation-enter-silent").click();
+    assert.equal(document.body.dataset.invitationEntry, "resolved");
+    assert.equal(state.playCalls, 0);
+  });
+}
+
+test("dispose cancels pending readiness and prevents late audio from playing", async (t) => {
+  const { window, state } = openInvitation(t, { preloadResult: "pending" });
+  window.__invitationMusicRuntime.dispose();
+  assert.equal(await window.__invitationMusicRuntime.ready, "cancelled");
+  state.audio[0].dispatchEvent(new window.Event("playing"));
+  assert.equal(state.audio[0].paused, true);
+  assert.equal(state.audio[0].src, "");
 });
 
 

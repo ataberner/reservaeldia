@@ -35,7 +35,7 @@ V1 utiliza un catálogo de código de assets públicos de la plataforma. Es una 
 
 Una sola `.inv` real permanece montada. El gate agrega blur, overlay e inert; no clona HTML, no captura screenshot y no reconstruye el árbol.
 
-1. El DOM, las fuentes, las imágenes críticas y Smart Layout preparan geometría.
+1. El DOM, las fuentes, las imágenes críticas y Smart Layout preparan geometría. En paralelo, la única instancia de audio precarga la canción activa, sin reproducirla.
 2. El runtime de efectos emite readiness y el loader existente se retira.
 3. Con gate pendiente, se difieren preparación/activación de efectos, IntersectionObserver de entradas, parallax y arranque de countdown. Las animaciones CSS dentro de la invitación quedan pausadas.
 4. Ambas decisiones fijan el scroll inicial en cero y resuelven una sola vez `invitation-entry-resolved`. La autoridad existente prepara/activa efectos con su temporización normal y los countdowns toman la hora actual.
@@ -43,9 +43,13 @@ Una sola `.inv` real permanece montada. El gate agrega blur, overlay e inert; no
 
 La experiencia no se guarda en localStorage ni en el draft. Cada documento nuevo de preview vuelve a mostrar el gate. Los iframes desktop/mobile pueden conservar decisiones independientes pero coordinan exclusión de audio entre sí. Abrir preview detiene la escucha del sidebar. Desmontar/cerrar libera los reproductores.
 
-El reproductor usa `preload="none"`, se crea sólo tras aceptar Música, mantiene loop/volumen durante scroll y cambia entre pausa/continuación sin regenerar el HTML. “Entrar sin música” no muestra control flotante. Un fallo de reproducción permite reintentar desde un control en estado pausado. Safe areas y posición izquierda evitan ocupar el CTA flotante habitual a la derecha.
+Decisión aceptada por el pedido de carga bajo el corazón, 2026-10-05: el reproductor usa `preload="auto"` desde el arranque. La readiness existente espera `canplay` / `readyState >= 3`, junto con los recursos visuales; no espera la descarga completa ni `play()`. Así preview y HTML publicado comparten la espera del corazón y reutilizan el buffer al aceptar Música. Ante error de audio o ausencia de precarga del navegador, el plazo máximo de 8 segundos libera esa espera opcional y conserva entrada/reintento desde el gesto. OFF o una selección no resuelta siguen sin crear audio ni descargar MP3.
 
-El renderer de imagen social resuelve la misma entrada sin audio antes de capturar la primera sección. No genera una segunda versión de la invitación.
+El reproductor mantiene loop/volumen durante scroll y cambia entre pausa/continuación sin regenerar el HTML. “Entrar sin música” cancela la precarga y no muestra control flotante. Un fallo de reproducción permite reintentar desde un control en estado pausado. Safe areas y posición izquierda evitan ocupar el CTA flotante habitual a la derecha.
+
+El renderer de imagen social resuelve la misma entrada sin reproducción y cancela la precarga tras DOMContentLoaded, antes de esperar `window.load` o capturar la primera sección. No genera una segunda versión de la invitación.
+
+La confirmación de guardado es independiente de la carga MP3. El flush crítico conserva FIFO, confirmación y lectura backend; espera hasta 90 segundos para abarcar la cola y el transporte callable (deadline predeterminado de 70 segundos), resolviendo apenas llega el resultado. No convierte un timeout ni un error de persistencia en éxito. El corazón del modal permanece durante esa espera.
 
 ## Verificación
 
@@ -55,5 +59,6 @@ El renderer de imagen social resuelve la misma entrada sin audio antes de captur
 - Tests de `src/domain/music/` y de persistencia: exclusión/cleanup, capability, transporte y round trip.
 - Suites existentes de render, publicación, preview, geometría mobile y runtime de efectos.
 - `node scripts/checkMusicBrowser.mjs`: gate desktop/mobile, estado inicial de efectos, una única instancia DOM, scroll, silencio y reapertura.
+- `node scripts/checkMusicLoadingBrowser.mjs`: precarga paralela con imagen crítica, audio reproducible al retirar el corazón y latencia desde el gesto; MP3 local, caché deshabilitada y demoras controladas.
 
 Los resultados ejecutados y sus limitaciones se registran en la entrega; este contrato no certifica Rules desplegadas ni reproducción en dispositivos físicos.

@@ -537,7 +537,7 @@ export async function captureFirstSectionShareImage(
       await runSubstage(
         SHARE_IMAGE_RENDER_SUBSTAGES.LOADING_HTML,
         {
-          waitUntil: "load",
+          waitUntil: "domcontentloaded",
         },
         async () => {
           await page.setViewport({
@@ -547,9 +547,12 @@ export async function captureFirstSectionShareImage(
           });
           assertNotTimedOut();
           await page.setContent(params.html, {
-            waitUntil: "load",
+            waitUntil: "domcontentloaded",
             timeout: timeoutMs,
           });
+          // Cancel optional audio before waiting for window.load. A slow MP3
+          // must not consume the share-image capture's resource deadline.
+          await page.evaluate(() => window.__invitationMusicRuntime?.resolveWithoutMusic());
         }
       );
       assertNotTimedOut();
@@ -569,9 +572,6 @@ export async function captureFirstSectionShareImage(
         {},
         async () => {
           const fontStats = await page.evaluate(() => {
-            // Capture the entered invitation, using its own lifecycle and no audio.
-            // This removes only gate presentation; the real DOM and effects remain.
-            window.__invitationMusicRuntime?.resolveWithoutMusic();
             const documentWithFonts = document as {
               fonts?: { ready?: Promise<unknown>; size?: number; status?: string };
             };

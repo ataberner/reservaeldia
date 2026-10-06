@@ -7,7 +7,7 @@ Autoridad funcional: [MUSIC_SYSTEM_CONTRACT](../contracts/MUSIC_SYSTEM_CONTRACT.
 
 ## Agregar una canción
 
-Todo cambio se prepara en `feature/music` / `C:\\Reservaeldia-music` y pasa revisión. Esta tarea no despliega ni mergea.
+Todo cambio se prepara en una rama aislada de `main` y pasa revisión. El release productivo se construye y despliega exclusivamente desde `main`, después de integrar y validar.
 
 1. Preparar un MP3 que la plataforma pueda distribuir. V1 no implementa upload desde el navegador ni almacenamiento privado.
 2. Copiar el archivo a `public/assets/music/<nombre-estable>.mp3`. Esto es la carga manual al catálogo de assets de Hosting, que se subirá con el release normal autorizado desde main. Evitar espacios y no reemplazar bytes bajo una identidad ya publicada; usar un nombre nuevo al cambiar la grabación.

@@ -1,13 +1,19 @@
 const { normalizeMusicConfig, MUSIC_FEATURE_AVAILABILITY } = require("./musicConfig.cjs");
 
 // Platform-owned public assets; never accept a URL/path supplied by a draft.
-// This existing repository MP3 is a test track, not a licensed production catalog.
 const MUSIC_CATALOG = Object.freeze([
   Object.freeze({
-    id: "platform-demo",
-    title: "Canción de prueba",
-    artist: "Reserva el Día · prueba",
-    audioReference: "/assets/musica.mp3",
+    id: "perfect-ed-sheeran",
+    title: "Perfect",
+    artist: "Ed Sheeran",
+    audioReference: "/assets/music/perfect.mp3",
+    active: true,
+  }),
+  Object.freeze({
+    id: "transpote-jorge-drexler",
+    title: "Transporte",
+    artist: "Jorge Drexler",
+    audioReference: "/assets/music/transporte.mp3",
     active: true,
   }),
 ]);

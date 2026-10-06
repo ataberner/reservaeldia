@@ -5,7 +5,7 @@ import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 const { normalizeDraftRenderState } = requireBuiltModule("lib/drafts/sourceOfTruth.js");
 const { prepareRenderPayload, validatePreparedRenderPayload, buildPreviewRenderPayloadFromPreparedPayload, generateHtmlFromPreparedRenderPayload } = requireBuiltModule("lib/render/prepareRenderPayload.js");
 const { normalizeMusicConfig } = requireBuiltModule("lib/music/config.js");
-const music = { ...normalizeMusicConfig(null), enabled: true, track: { source: "catalog", id: "platform-demo" } };
+const music = { ...normalizeMusicConfig(null), enabled: true, track: { source: "catalog", id: "perfect-ed-sheeran" } };
 const draft = (config) => ({ objetos: [{ id: "title", tipo: "texto", texto: "Invitation", seccionId: "hero", x: 20, y: 20, width: 300, height: 60, fontSize: 32 }], secciones: [{ id: "hero", orden: 1, altura: 600, fondo: "#fff" }], ...(config === undefined ? {} : { music: config }) });
 
 test("legacy and disabled music produce no entry gate or audio resource in either prepared surface", async (t) => {
@@ -17,7 +17,7 @@ test("legacy and disabled music produce no entry gate or audio resource in eithe
     for (const isPreview of [true, false]) {
       const html = generateHtmlFromPreparedRenderPayload(prepared, { slug: "music-test", isPreview });
       assert.doesNotMatch(html, /id="invitation-entry-gate"/);
-      assert.doesNotMatch(html, /assets\/musica\.mp3/);
+      assert.doesNotMatch(html, /assets\/music\/perfect\.mp3/);
     }
   }
 });
@@ -27,13 +27,13 @@ test("prepared preview and publication share canonical selection and the same mu
   assert.equal(validatePreparedRenderPayload(prepared).canPublish, true);
   const preview = buildPreviewRenderPayloadFromPreparedPayload(prepared);
   assert.deepEqual(preview.music, music);
-  assert.equal(preview.musicResource.id, "platform-demo");
-  assert.match(preview.musicResource.url, /^https:\/\/reservaeldia\.com\.ar\/assets\/musica\.mp3$/);
+  assert.equal(preview.musicResource.id, "perfect-ed-sheeran");
+  assert.match(preview.musicResource.url, /^https:\/\/reservaeldia\.com\.ar\/assets\/music\/perfect\.mp3$/);
   for (const isPreview of [true, false]) {
     const html = generateHtmlFromPreparedRenderPayload(prepared, { slug: "music-test", isPreview });
     assert.match(html, /id="invitation-entry-gate"/);
     assert.match(html, /__invitationMusicRuntime/);
-    assert.match(html, /assets\/musica\.mp3/);
+    assert.match(html, /assets\/music\/perfect\.mp3/);
   }
   assert.equal(mock.downloadReads.length, 0);
 });

@@ -28,7 +28,9 @@ Object.freeze({
 6. Probar selección, guardar/recargar, escucha del sidebar, preview con/sin audio y cierre/reapertura en el entorno aislado. La copia local incluye `public/assets/music` y el MP3 de prueba.
 7. Publicar sólo mediante el procedimiento habitual aprobado desde main, incluyendo assets Hosting y consumidores backend del catálogo en el mismo release compatible. No usar un deploy desde el worktree de Música.
 
-La entrada inicial `platform-demo` usa el archivo preexistente `public/assets/musica.mp3` y metadata explícita de prueba. No se inventó el nombre artístico ni la licencia de esa grabación.
+El catálogo activo incluye **Perfect**, de **Ed Sheeran** (`perfect-ed-sheeran`, `public/assets/music/perfect.mp3`). La entrada inicial `platform-demo` ya no está activa; `public/assets/musica.mp3` se conserva en los releases por compatibilidad con HTML previamente publicado. Los drafts que seleccionan ese ID necesitan elegir una canción activa.
+
+La entrada activa `transpote-jorge-drexler` corresponde a **Transporte**, de **Jorge Drexler**, y usa `public/assets/music/transporte.mp3`. El ID conserva la escritura solicitada al incorporarla al catálogo.
 
 ## Activar o desactivar
 

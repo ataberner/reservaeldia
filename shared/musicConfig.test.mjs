@@ -1,17 +1,18 @@
 import test from "node:test";
+import { readdirSync, statSync } from "node:fs";
 import assert from "node:assert/strict";
 import config from "./musicConfig.cjs";
 import catalog from "./musicCatalog.cjs";
 const { normalizeMusicConfig, createDefaultMusicConfig } = config;
 const { resolveMusicResource, listAvailableMusicTracks } = catalog;
 const options = { publicBaseUrl: "http://localhost:3100" };
-const selected = { enabled: true, track: { source: "catalog", id: "platform-demo" } };
+const selected = { enabled: true, track: { source: "catalog", id: "perfect-ed-sheeran" } };
 
 test("legacy and OFF have no resource; OFF preserves selected identity", () => {
   assert.deepEqual(normalizeMusicConfig(undefined), createDefaultMusicConfig());
   assert.equal(resolveMusicResource(undefined, options), null);
   const off = normalizeMusicConfig({ ...selected, enabled: false });
-  assert.equal(off.track.id, "platform-demo");
+  assert.equal(off.track.id, "perfect-ed-sheeran");
   assert.equal(resolveMusicResource(off, options), null);
 });
 
@@ -34,12 +35,23 @@ test("future user identities are preserved but never resolved without ownership 
 });
 
 test("catalog resolves only registered active identity through environment public origin", () => {
-  assert.ok(listAvailableMusicTracks().some((track) => track.id === "platform-demo"));
-  assert.equal(resolveMusicResource(selected, options).url, "http://localhost:3100/assets/musica.mp3");
+  assert.ok(listAvailableMusicTracks().some((track) => track.id === "perfect-ed-sheeran"));
+  assert.equal(resolveMusicResource(selected, options).url, "http://localhost:3100/assets/music/perfect.mp3");
   assert.equal(resolveMusicResource({ ...selected, track: { source: "catalog", id: "unknown" } }, options), null);
   assert.equal(resolveMusicResource(selected, { publicBaseUrl: "javascript:alert(1)" }), null);
   assert.equal(resolveMusicResource(selected, { publicBaseUrl: "http://remote.example" }), null);
   assert.equal(resolveMusicResource(selected, { publicBaseUrl: "https://user:pass@example.com" }), null);
   assert.equal(resolveMusicResource(selected, { publicBaseUrl: "https://example.com/nested/" }).url,
-    "https://example.com/assets/musica.mp3");
+    "https://example.com/assets/music/perfect.mp3");
+});
+
+test("active catalog assets exist with exact Hosting casing and resolve both songs", () => {
+  const tracks = listAvailableMusicTracks();
+  assert.deepEqual(tracks.map(track => track.id), ["perfect-ed-sheeran", "transpote-jorge-drexler"]);
+  for (const track of tracks) {
+    const asset = new URL(`../public${track.audioReference}`, import.meta.url);
+    assert.ok(readdirSync(new URL(".", asset)).includes(track.audioReference.split("/").at(-1)));
+    assert.ok(statSync(asset).size > 0);
+    assert.equal(resolveMusicResource({ enabled: true, track: { source: "catalog", id: track.id } }, options).url, `http://localhost:3100${track.audioReference}`);
+  }
 });

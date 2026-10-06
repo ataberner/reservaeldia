@@ -3,7 +3,7 @@ import test from "node:test";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 const { buildDraftMusicPatch, saveDraftWithMusicHandler } = requireBuiltModule("lib/music/draftMusicWrite.js");
 const { normalizeMusicConfig } = requireBuiltModule("lib/music/config.js");
-const music = { ...normalizeMusicConfig(null), enabled: true, track: { source: "catalog", id: "platform-demo" } };
+const music = { ...normalizeMusicConfig(null), enabled: true, track: { source: "catalog", id: "perfect-ed-sheeran" } };
 const request = (uid, token = { admin: true }, patch = { music }) => ({ auth: uid ? { uid, token } : undefined, data: { draftId: "draft-test", patch } });
 function store(owner = "owner", exists = true, savedMusic) {
   const writes = [];

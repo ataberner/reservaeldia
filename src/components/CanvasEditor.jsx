@@ -320,6 +320,8 @@ export default function CanvasEditor({
   onHistorialChange,
   onFuturosChange,
   userId,
+  userEmail = "",
+  userEmailVerified = false,
   onStartupStatusChange,
   canManageSite = false,
   readOnly = false,
@@ -727,10 +729,18 @@ export default function CanvasEditor({
     giftsConfig,
     setGiftsConfig,
   });
+  const canEditMusic = canAccessMusic({
+    canManageSite,
+    editorReadOnly: readOnly,
+    userUid: userId,
+    userEmail,
+    userEmailVerified,
+    editorSession,
+  });
   useCanvasEditorMusicBridge({
     musicConfig,
     setMusicConfig,
-    canEditMusic: canAccessMusic({ canManageSite, editorReadOnly: readOnly }),
+    canEditMusic,
   });
   useBorradorSync({
     slug,
@@ -746,7 +756,7 @@ export default function CanvasEditor({
     rsvp: rsvpConfig,
     gifts: giftsConfig,
     music: musicConfig,
-    canEditMusic: canAccessMusic({ canManageSite, editorReadOnly: readOnly }),
+    canEditMusic,
     eventDetails: eventDetailsConfig,
     getTemplateAuthoringSnapshot: () => templateAuthoringSnapshotRef.current,
     cargado,

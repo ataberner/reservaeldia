@@ -362,6 +362,8 @@ test("canvas editor props preserve current read-only and initial-data precedence
       onHistorialChange: setHistorialExternos,
       onFuturosChange: setFuturosExternos,
       userId: "user-1",
+      userEmail: "",
+      userEmailVerified: false,
       secciones: [],
       onStartupStatusChange: handleEditorStartupStatusChange,
       canManageSite: false,
@@ -388,6 +390,17 @@ test("canvas editor props preserve current read-only and initial-data precedence
     }).initialEditorData.slug,
     "template-1"
   );
+});
+
+test("canvas receives authenticated music identity without acquiring admin privileges", () => {
+  const props = buildDashboardCanvasEditorProps({
+    usuarioUid: "pilot", usuarioEmail: "jpeses@gmail.com", usuarioEmailVerified: true,
+    canManageSite: false, editorSession: { kind: "draft", id: "owned-draft" },
+  });
+  assert.equal(props.userId, "pilot");
+  assert.equal(props.userEmail, "jpeses@gmail.com");
+  assert.equal(props.userEmailVerified, true);
+  assert.equal(props.canManageSite, false);
 });
 
 test("preview gate state keeps template and read-only sessions from exposing publish and checkout actions", () => {

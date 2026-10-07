@@ -27,7 +27,8 @@ La arquitectura, contexto, auth, persistencia y seguridad pertenecen a
 
 ## 2. Invariante de producto
 
-`Diseñador AI` es un adaptador conversacional, exclusivo para superadmins, sobre
+`Diseñador AI` (tab `Tu asistente`) es un adaptador conversacional para todos los
+usuarios autenticados, sin requisito de rol administrativo, sobre
 capacidades ya expuestas por `Asistente`. No es una segunda autoridad del editor
 ni una vía genérica al canvas.
 
@@ -44,9 +45,12 @@ la elimina: puede seguir disponible ante un pedido explícito. El conjunto de
 capabilities y el conjunto de pendientes del recorrido guiado son contratos
 relacionados, pero no idénticos.
 
-V1 solo se monta en una sesión autenticada, editable, `draft`, no selector y con
-rol superadmin. Los templates, vistas administrativas read-only y usuarios no
-superadmin quedan fuera.
+Por decisión explícita del usuario del 2026-10-06, se monta en toda sesión
+autenticada, editable, `draft` y no selector. Los templates y vistas read-only
+siguen fuera. El callable exige autenticación; las mutaciones conservan los
+owners, validaciones y permisos del borrador. El tab manual `Asistente`, su
+apertura automática y su visita guiada quedan reservados a admin y superadmin
+mediante el acceso administrativo existente (`canManageSite` resuelto).
 
 ## 3. Fuentes de disponibilidad y owners
 
@@ -189,6 +193,13 @@ bloque aplicable que todavía tenga una decisión o dato necesario pendiente; el
 sistema puede conocer otros pendientes, pero no debe convertirlos en un listado
 proactivo extenso.
 
+Decisión aceptada por pedido explícito del usuario, 2026-10-06: la aplicación
+elige también el dato concreto de cada turno mediante `brief.nextStep`
+(`blockId`, `kind`, `phase`, `leafIds`). Es una proyección del ledger vigente,
+no un cursor persistido. `nextBlock` conserva compatibilidad y diagnóstico.
+La misma prioridad gobierna apertura, respuestas humanas, controles y reingreso.
+El modelo interpreta datos y propone acciones; no elige la pregunta proactiva.
+
 Decisión aceptada, 2026-10-02: la hora de finalización de ambas fases queda fuera
 del recorrido proactivo. `event.{phase}.end_time` conserva valor, procedencia,
 validación y evidencia en el ledger global, con bloque `outside_guided_flow`.
@@ -201,7 +212,8 @@ capacidad existente `event.set_datetime`; los valores guardados se conservan.
 - **Nombres:** si ambos nombres tienen valor y procedencia confiable, no se
   preguntan otra vez. Un placeholder, muestra o valor heredado no confirmado no
   resuelve el bloque. El nombre automático del documento es un efecto derivado
-  seguro de los nombres, no otro interrogatorio previo.
+  seguro de los nombres, no otro interrogatorio previo. Si sólo uno está
+  confirmado, se solicita únicamente el nombre restante.
 - **Estructura:** `eventDetails.mode` debe resolverse como `single` o
   `ceremony_party` antes de pedir indiscriminadamente fechas, horarios o lugares.
   `single` vuelve Party no aplicable; `ceremony_party` habilita los fields reales
@@ -212,8 +224,15 @@ capacidad existente `event.set_datetime`; los valores guardados se conservan.
   Recordar permanentemente el rótulo Fiesta exigiría como mínimo un subtipo
   semántico persistido del evento único; esa ampliación no se implementa aquí.
 - **Datos del evento:** se completan únicamente los fields declarados de fecha,
-  inicio, fin, lugar y dirección para las fases aplicables. End time y venue name
-  pueden resolverse solo mediante las reglas seguras ya versionadas. Lugar y
+  inicio, lugar y dirección para las fases aplicables. Se recorre Ceremony antes
+  de Party y, dentro de cada fase, fecha → hora de inicio → nombre del lugar →
+  dirección/decisión de Maps. La hora de fin conserva su capability reactiva.
+  Se omiten datos confirmados, no disponibles o postergados explícitamente.
+  Un nombre de lugar de plantilla no habilita saltar a Maps: debe tener evidencia
+  terminal y procedencia de usuario. Con lugar confirmado y dirección pendiente,
+  se ofrece Maps o carga manual; al elegir manual se pregunta sólo la dirección.
+  Si ya existe dirección confirmada, se conserva sin pedirla otra vez. Venue name
+  puede resolverse solo mediante las reglas seguras ya versionadas. Lugar y
   dirección aportados por chat se escriben inmediatamente como ubicación manual.
   Luego debe quedar una decisión explícita: buscar/verificar mediante Places o
   conservar los datos manuales. Places requiere el control local; rechazarlo usa
@@ -283,9 +302,17 @@ insertarse silenciosamente como bloque proactivo.
 ### 5.3 Adaptación y procedencia
 
 - No se pregunta otra vez una hoja terminal respaldada por evidencia vigente.
-- Una `needs_clarification` del modelo para la misma hoja no reemplaza el receipt
+- Una `needs_clarification` o `requires_control` del modelo para la misma hoja no reemplaza el receipt
   efectivo/persistido del valor válido aplicado en ese lote. Las aclaraciones de
   otras hojas y los fallos de persistencia conservan su autoridad.
+- `requires_control` sólo se ofrece y acepta en hojas atendidas por controles
+  locales existentes: portada, finalización/slots de Gallery y nombre, dirección
+  o selección Maps de una fase. Regalos, RSVP y nombres de protagonistas no
+  tienen un control local de este tipo. Schema y validación usan el mismo owner.
+  Si una respuesta incluye esa resolución sin control compatible y una action
+  válida sobre la misma hoja, backend y frontend descartan sólo la resolución
+  redundante; no confirman el dato hasta obtener el receipt persistido. Sin esa
+  action, o con shape/regla inválidos, se conserva el rechazo del resultado.
 - En Regalos, una aclaración antigua de `gifts.enabled:true` puede resolverse
   mediante `keep_existing` únicamente si esa activación tiene procedencia de
   usuario vigente y existe un medio visible completo con evidencia terminal en
@@ -345,9 +372,9 @@ bloquear ese cierre. Cada Gallery aplicable aporta exactamente una hoja
 slots, sus fingerprints y `media.gallery.{galleryId}.order` quedan fuera de
 `guidedFlow` y mantienen sus estados/capabilities reales; por eso una mutación
 no puede avanzar el recorrido. Historia y personalización interna de RSVP
-permanecen reactivas. El prompt consume el `nextBlock` derivado; el panel relee
-el ledger tras persistir y compone la pregunta de transición o recupera una
-continuación ausente. El texto no decide el siguiente bloque.
+permanecen reactivas. Desde el ajuste del 2026-10-06 el prompt consume también
+`nextStep`; el panel relee el ledger tras persistir y compone todas las preguntas
+guiadas desde ese paso concreto. El texto no decide el siguiente bloque ni dato.
 
 El gap histórico de completitud de Regalos quedó corregido en P0: se consideran
 los métodos elegidos y visibles, sin exigir campos no aportados ni copies
@@ -574,6 +601,22 @@ Un valor no vacío no prueba personalización. `templateInput.changedKeys` puede
 aportar evidencia; valores de template/placeholders se mantienen no confiables.
 El historial no puede contradecir el borrador.
 
+Revalidación 2026-10-06: para un dato presente sin evidencia de usuario,
+`unknown` representa procedencia no confirmada, incluida una inferencia. No se
+agrega un flag paralelo de confirmación: el ledger existente combina procedencia,
+estado y fingerprint del valor. `template_value`, `system_default` y
+`placeholder_or_sample` conservan el origen de ejemplo; sólo evidencia positiva
+de usuario acredita una confirmación.
+
+El snapshot consulta `templateInput.changedKeys` **vivo** del owner de authoring,
+calculado con el mismo normalizador de persistencia. La metadata de hidratación
+del Header es fallback para adapters legacy. Esta comparación autoritativa evita
+que restaurar un default por edición/undo lo convierta en dato confirmado por
+una mera diferencia respecto del baseline. Sólo se aplica a claves declaradas
+por el schema; Dress Code reconoce `event_dress_code` y el alias legacy válido.
+Un baseline conserva procedencia de usuario únicamente para el mismo fingerprint
+no vacío. Un fingerprint vacío legacy no demuestra una edición posterior.
+
 Para nombres, ni siquiera un documento legacy sin metadata convierte texto en
 confirmación. Cada nombre necesita procedencia positiva: resolución durable de
 usuario ligada al fingerprint vigente, cambio demostrado respecto del baseline
@@ -634,6 +677,10 @@ coincide con el resultado automático anterior.
 - El panel solo confirma éxito después de validación, ejecución y reread.
 - Una revisión distinta entre request y respuesta cancela el lote completo antes
   de aplicar.
+- Una edición manual durante un lote no autoriza a reinterpretar sus acciones
+  pendientes sobre ese estado nuevo. Se detiene el lote, se conservan los efectos
+  ya confirmados y se invalida la recuperación que podría sobrescribir esa
+  edición. El usuario debe formular una nueva solicitud; no hay rollback general.
 - Un control solo resuelve por la evidencia propia de su dominio: cambio de
   fingerprint para portada; confirmación explícita y persistida para la Gallery
   exacta; o coincidencia exacta de `placeId`, lugar y dirección seleccionados
@@ -651,12 +698,24 @@ La política textual de confirmaciones, errores y negativas está en
 El flujo ejecutable actual es:
 
 1. `DesignerAiPanel.jsx` relee snapshot y ledger.
-2. `designerAiChat` autoriza superadmin y valida payload.
-3. OpenAI devuelve una única `submit_designer_ai_result` estricta.
+2. `designerAiChat` exige usuario autenticado y valida payload.
+3. La apertura automática devuelve un saludo determinista; los pedidos del
+   usuario pasan por OpenAI, que devuelve una única `submit_designer_ai_result` estricta.
 4. Backend valida resultado; frontend valida revisión, actions, controles y
    resolutions otra vez.
 5. `designerAiActionExecutor.js` delega en owners existentes.
 6. El panel relee, reconcilia y persiste `designerAiConversation`.
+
+Decisión aceptada por esta auditoría, 2026-10-06: el seed de apertura existente
+vive en `DESIGNER_AI_AUTO_START_MESSAGE`, compartido por frontend/backend. Sólo
+ese seed con `entryMode:first_entry|reentry` habilita el camino sin modelo. El
+resultado añade `entryGreeting` opcional, generado por el servidor, fuera de la
+tool del modelo. La pregunta se compone desde el ledger en el frontend. La
+apertura nunca autoriza actions, resolutions ni controles del modelo: el panel
+los descarta también ante un backend anterior y usa un saludo genérico si falta
+`entryGreeting`. Los clientes anteriores ignoran el campo opcional; la versión
+`2.3.0` y las capabilities permanecen compatibles. Un mensaje humano con modo
+de entrada conserva interpretación normal.
 
 El backend restringe el schema de esa misma tool por request: enumera únicamente
 las hojas disponibles y agrupa sus reglas compatibles usando el mismo predicado

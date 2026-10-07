@@ -19,7 +19,7 @@ import {
     FaShapes,
     FaTimes,
 } from "react-icons/fa";
-import { Bot, GripHorizontal, Redo2, Sparkles, Undo2 } from "lucide-react";
+import { GripHorizontal, Redo2, Sparkles, Undo2 } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import useModalCrearSeccion from "@/hooks/useModalCrearSeccion";
 import useMisImagenes from "@/hooks/useMisImagenes";
@@ -79,6 +79,7 @@ import {
 import { DASHBOARD_DOCUMENT_NAME_EVENTS } from "@/lib/dashboardDocumentNameBridge";
 import { canAccessMusic } from "@/domain/music/access";
 import { canAccessDesignerAi } from "@/domain/editor/designerAiAccess";
+import { canAccessAssistant } from "@/domain/editor/assistantAccess";
 import {
     readCanvasEditorMethod,
     readEditorCoverImage,
@@ -359,11 +360,12 @@ export default function DashboardSidebar({
     futurosExternos = [],
     editorReadOnly = false,
     canManageSite = false,
-    isSuperAdmin = false,
     loadingAdminAccess = true,
     editorSession = null,
     templateSessionMeta = null,
     userUid = "",
+    userEmail = "",
+    userEmailVerified = false,
     assistantTourEditorReady = false,
     assistantTourPreferencesLoaded = false,
     assistantTourOptOut = false,
@@ -379,31 +381,39 @@ export default function DashboardSidebar({
         closePanel: closeEditorPanel,
     } = useEditorPanelCoordinator();
     const isLeftPanelActive = activePanel === EDITOR_PANEL_IDS.LEFT;
+    const canUseAssistant = canAccessAssistant({ loadingAdminAccess, canManageSite });
+    const canUseDesignerAi = canAccessDesignerAi({
+        userUid,
+        editorReadOnly,
+        editorSession,
+        modoSelector,
+    });
+    const [isMobileViewport, setIsMobileViewport] = useState(
+        typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
+    );
 
     // --------------------------
     // Estados internos del sidebar
     // --------------------------
-    const initialAutoAssistantDraftKey = resolveEditorSidebarAutoOpenDraftKey({
+    const initialAutoDesignerAi = isMobileViewport && canUseDesignerAi;
+    const initialAutoAssistantDraftKey = canUseAssistant && !initialAutoDesignerAi ? resolveEditorSidebarAutoOpenDraftKey({
         slugInvitacion,
         editorSession,
         modoSelector,
-    });
+    }) : null;
     const shouldAutoOpenAssistantInitially = Boolean(initialAutoAssistantDraftKey);
-    const initialAssistantTabId = shouldAutoOpenAssistantInitially
+    const initialAssistantTabId = initialAutoDesignerAi ? "designer-ai" : shouldAutoOpenAssistantInitially
         ? getAssistantStep(0)?.id || "detalles"
         : null;
-    const [hoverSidebar, setHoverSidebar] = useState(shouldAutoOpenAssistantInitially);
-    const [fijadoSidebar, setFijadoSidebar] = useState(shouldAutoOpenAssistantInitially);
+    const [hoverSidebar, setHoverSidebar] = useState(initialAutoDesignerAi || shouldAutoOpenAssistantInitially);
+    const [fijadoSidebar, setFijadoSidebar] = useState(initialAutoDesignerAi || shouldAutoOpenAssistantInitially);
     const [, setMostrarGaleria] = useState(false);
     const [, setImagenesSeleccionadas] = useState(0);
-    const [isMobileViewport, setIsMobileViewport] = useState(
-        typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
-    );
     const [showMobileScrollHint, setShowMobileScrollHint] = useState(false);
     const [mobilePanelHeight, setMobilePanelHeight] = useState(
         () => {
             const bounds = resolveMobilePanelHeightBounds();
-            return shouldAutoOpenAssistantInitially && isMobileViewport
+            return (initialAutoDesignerAi || shouldAutoOpenAssistantInitially) && isMobileViewport
                 ? bounds.max
                 : bounds.defaultHeight;
         }
@@ -502,13 +512,10 @@ export default function DashboardSidebar({
     const canUseMusic = canAccessMusic({
         canManageSite: canManageSite && !loadingAdminAccess,
         editorReadOnly,
-    });
-    const canUseDesignerAi = canAccessDesignerAi({
-        loadingAdminAccess,
-        isSuperAdmin,
-        editorReadOnly,
+        userUid,
+        userEmail,
+        userEmailVerified,
         editorSession,
-        modoSelector,
     });
     const assistantStoryTextStepState =
         typeof window !== "undefined"
@@ -573,6 +580,8 @@ export default function DashboardSidebar({
     const mobilePanelResizeSessionRef = useRef(null);
     const mobileToolbarScrollRef = useRef(null);
     const autoAssistantDraftKeyRef = useRef(initialAutoAssistantDraftKey || null);
+    const designerAiInitialOpeningRef = useRef("");
+    const assistantTourRestartSeenRef = useRef(assistantTourRestartKey);
 
     const syncAssistantStoryTextStep = useCallback(() => {
         if (typeof window === "undefined") return assistantHasStoryTextStep;
@@ -693,6 +702,7 @@ export default function DashboardSidebar({
     };
 
     const openAssistantAtStep = useCallback((stepIndex, options = {}) => {
+        if (!canUseAssistant) return;
         const flowOptions = resolveAssistantFlowOptions();
         const safeStepIndex = clampAssistantStepIndex(stepIndex, flowOptions);
         const step = getAssistantStep(safeStepIndex, flowOptions);
@@ -747,7 +757,7 @@ export default function DashboardSidebar({
             const bounds = resolveMobilePanelHeightBounds();
             setMobilePanelHeight(bounds.max);
         }
-    }, [isMobileViewport, openEditorPanel, resolveAssistantFlowOptions]);
+    }, [canUseAssistant, isMobileViewport, openEditorPanel, resolveAssistantFlowOptions]);
 
     const handleAssistantAccessClick = useCallback(() => {
         const flowOptions = resolveAssistantFlowOptions();
@@ -813,9 +823,9 @@ export default function DashboardSidebar({
     ]);
 
     useEffect(() => {
-        if (modoSelector) {
+        if (!canUseAssistant || modoSelector) {
             logAssistantTourDebug("sidebar-auto-assistant-skip", () => ({
-                reason: "selector-mode",
+                reason: canUseAssistant ? "selector-mode" : "assistant-access-unavailable",
                 previousAutoDraftKey: autoAssistantDraftKeyRef.current,
                 ...sidebarDebugStateRef.current,
             }));
@@ -828,6 +838,12 @@ export default function DashboardSidebar({
             editorSession,
             modoSelector,
         });
+        if (isMobileViewport && canUseDesignerAi) {
+            // Mobile's initial panel belongs to Designer AI, including when
+            // administrative access resolves after the user has closed it.
+            autoAssistantDraftKeyRef.current = draftKey || null;
+            return;
+        }
         if (!draftKey) {
             logAssistantTourDebug("sidebar-auto-assistant-skip", () => ({
                 reason: "missing-draft-key",
@@ -857,7 +873,17 @@ export default function DashboardSidebar({
             expandMobilePanel: true,
             debugReason: "sidebar-auto-open-draft",
         });
-    }, [editorSession, modoSelector, openAssistantAtStep, slugInvitacion]);
+    }, [canUseAssistant, canUseDesignerAi, isMobileViewport, editorSession, modoSelector, openAssistantAtStep, slugInvitacion]);
+
+    useEffect(() => {
+        if (canUseAssistant || !assistantActive) return;
+        setAssistantActive(false);
+        setAssistantHasStarted(false);
+        setBotonActivo(null);
+        setFijadoSidebar(false);
+        setHoverSidebar(false);
+        closeEditorPanel(EDITOR_PANEL_IDS.LEFT);
+    }, [assistantActive, canUseAssistant, closeEditorPanel]);
 
     const assistantTourDraftKey = resolveEditorSidebarAutoOpenDraftKey({
         slugInvitacion,
@@ -879,6 +905,9 @@ export default function DashboardSidebar({
     }, []);
 
     const handleAssistantTourRequestAssistantMode = useCallback(() => {
+        // The sidebar owns automatic opening. A late tour preference/readiness
+        // effect cannot reclaim a panel the user closed or replaced with chat.
+        if (!assistantActive) return;
         logAssistantTourDebug("assistant-tour-request-assistant-mode", () => ({
             source: "DashboardSidebar.handleAssistantTourRequestAssistantMode",
             ...sidebarDebugStateRef.current,
@@ -887,7 +916,14 @@ export default function DashboardSidebar({
             expandMobilePanel: true,
             debugReason: "tour-request-assistant-mode",
         });
-    }, [openAssistantAtStep]);
+    }, [assistantActive, openAssistantAtStep]);
+
+    useEffect(() => {
+        if (assistantTourRestartSeenRef.current === assistantTourRestartKey) return;
+        assistantTourRestartSeenRef.current = assistantTourRestartKey;
+        if (!canUseAssistant || !assistantTourDraftKey || !assistantTourRestartKey) return;
+        openAssistantAtStep(0, { expandMobilePanel: true });
+    }, [assistantTourDraftKey, assistantTourRestartKey, canUseAssistant, openAssistantAtStep]);
 
     const handleAssistantPrevious = useCallback(() => {
         const flowOptions = resolveAssistantFlowOptions();
@@ -1556,6 +1592,20 @@ export default function DashboardSidebar({
     }, [canUseDesignerAi, isMobileViewport, openEditorPanel]);
 
     useEffect(() => {
+        const draftKey = resolveEditorSidebarAutoOpenDraftKey({
+            slugInvitacion,
+            editorSession,
+            modoSelector,
+        });
+        if (!canUseDesignerAi || !draftKey) return;
+        if (designerAiInitialOpeningRef.current === draftKey) return;
+        // Consume the initial decision on desktop too. Resizing, tab changes,
+        // access refreshes and a manual close must never reopen the panel.
+        designerAiInitialOpeningRef.current = draftKey;
+        if (isMobileViewport) handleDesignerAiAccessClick();
+    }, [canUseDesignerAi, editorSession, handleDesignerAiAccessClick, isMobileViewport, modoSelector, slugInvitacion]);
+
+    useEffect(() => {
         if (canUseDesignerAi || botonActivo !== "designer-ai") return;
         setAssistantActive(false);
         setBotonActivo(null);
@@ -1632,6 +1682,7 @@ export default function DashboardSidebar({
     );
     const assistantCurrentStep = assistantNavigation.currentStep;
     const shouldShowAssistantControls =
+        canUseAssistant &&
         assistantActive &&
         Boolean(botonActivo) &&
         isAssistantTabId(botonActivo, assistantFlowOptions) &&
@@ -1882,7 +1933,7 @@ export default function DashboardSidebar({
             >
                 {/* Escritorio: barra vertical a la izquierda */}
                 <div className="mt-2 hidden flex-col items-start gap-2 py-3 pl-0 pr-0 md:flex">
-                    <button
+                    {canUseAssistant ? <button
                         type="button"
                         onClick={handleAssistantAccessClick}
                         className={desktopAssistantButtonClass}
@@ -1893,18 +1944,18 @@ export default function DashboardSidebar({
                         <span className="whitespace-nowrap">
                             {assistantAccessLabel}
                         </span>
-                    </button>
+                    </button> : null}
                     {canUseDesignerAi ? (
                         <button
                             type="button"
                             onClick={handleDesignerAiAccessClick}
                             className={designerAiButtonClass}
-                            title="Diseñador AI"
-                            aria-label="Abrir Diseñador AI"
+                            title="Tu asistente"
+                            aria-label="Abrir Tu asistente"
                             aria-pressed={designerAiActive}
                         >
-                            <Bot className="h-4 w-4 shrink-0" aria-hidden="true" />
-                            <span className="whitespace-nowrap">Diseñador AI</span>
+                            <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+                            <span className="whitespace-nowrap">Tu asistente</span>
                         </button>
                     ) : null}
                     <div className="h-px w-[158px] bg-[#efe5fb]" />
@@ -1978,7 +2029,7 @@ export default function DashboardSidebar({
                                 </span>
                             </div>
 
-                            <div className="flex min-w-[70px] shrink-0 flex-col items-center gap-1.5">
+                            {canUseAssistant ? <div className="flex min-w-[70px] shrink-0 flex-col items-center gap-1.5">
                                 <button
                                     type="button"
                                     onClick={handleAssistantAccessClick}
@@ -1991,7 +2042,7 @@ export default function DashboardSidebar({
                                 <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
                                     {assistantAccessLabel}
                                 </span>
-                            </div>
+                            </div> : null}
 
                             {canUseDesignerAi ? (
                                 <div className="flex min-w-[76px] shrink-0 flex-col items-center gap-1.5">
@@ -2003,14 +2054,14 @@ export default function DashboardSidebar({
                                                 ? "border-white/70 bg-[#692B9A] text-white shadow-[0_10px_20px_rgba(105,43,154,0.2)] ring-2 ring-white/55"
                                                 : "border-[#d9c0ec] bg-white text-[#692B9A] shadow-[0_8px_16px_rgba(105,43,154,0.12)] hover:bg-[#FAF5FF]"
                                         }`}
-                                        title="Diseñador AI"
-                                        aria-label="Abrir Diseñador AI"
+                                        title="Tu asistente"
+                                        aria-label="Abrir Tu asistente"
                                         aria-pressed={designerAiActive}
                                     >
-                                        <Bot className="h-4 w-4" aria-hidden="true" />
+                                        <Sparkles className="h-4 w-4" aria-hidden="true" />
                                     </button>
-                                    <span className="text-[10px] font-semibold leading-none text-[#5f3596]">
-                                        Diseñador AI
+                                    <span className="whitespace-nowrap text-[10px] font-semibold leading-none text-[#5f3596]">
+                                        Tu asistente
                                     </span>
                                 </div>
                             ) : null}
@@ -2314,7 +2365,7 @@ export default function DashboardSidebar({
 
 
 
-            <AssistantGuidedTour
+            {canUseAssistant && botonActivo !== "designer-ai" && (assistantActive || !isMobileViewport) ? <AssistantGuidedTour
                 draftKey={assistantTourDraftKey}
                 userUid={userUid}
                 editorReady={assistantTourEditorReady}
@@ -2329,7 +2380,7 @@ export default function DashboardSidebar({
                 fieldEditSignal={assistantTourFieldEditSignal}
                 openingKey={assistantTourOpeningKey}
                 restartKey={assistantTourRestartKey}
-            />
+            /> : null}
 
             <ModalCrearSeccion
                 visible={modalCrear.visible}

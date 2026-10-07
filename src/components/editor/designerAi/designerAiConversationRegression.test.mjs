@@ -17,7 +17,7 @@ for (const variant of [
     const fields = structuredClone(draft.authoring.fieldsSchema);
     let run = await mountPanel({ savedDraft: draft, respond: async (payload, index) => {
       const step = fixture[index - 1];
-      const result = service.validateDesignerAiModelResult({ intent: step.actions?.length ? "apply" : "clarify", assistantMessage: step.assistantMessage, actions: step.actions || [], resolutions: step.resolutions || [], controlRequest: null }, payload.capabilitySnapshot);
+      const result = service.validateDesignerAiModelResult({ intent: step.actions?.length ? "apply" : "clarify", assistantMessage: step.assistantMessage, actions: step.actions || [], resolutions: step.resolutions || [], controlRequest: null, clarification: step.clarification || null }, payload.capabilitySnapshot);
       return { ...result };
     } });
     try {
@@ -26,6 +26,10 @@ for (const variant of [
         await run.send(step.user);
         assert.equal(run.messages().some((m) => m.intent === "error"), false, step.user + ": " + run.messages().at(-1).content);
         assert.doesNotMatch(run.messages().at(-1).content, /guardé \d cambios|Nombre de la invitación actualizado|Ceremonia ·/);
+        if (step.user === "un unico evento") {
+          assert.equal(run.messages().at(-1).content, "Listo. Evento único configurado. ¿Qué día es el evento?");
+          assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "event_data");
+        }
         if (step.user === "es el 24 de diceimbre") assert.match(run.messages().at(-1).content, /año/);
         if (step.user === "2026" || step.user === "24/12/26" || step.user === "es a las 20:00") {
           assert.equal(run.render().objetos.find((o) => o.id === "date-view").texto, "24|12|26");

@@ -2,6 +2,9 @@ const conversationLedger = require("./designerAiConversationLedger.cjs");
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 
 const DESIGNER_AI_CONTRACT_VERSION = "2.3.0";
+// Existing internal opening turn. Shared so only this seed can bypass the model;
+// a real user message with an entry mode still follows normal interpretation.
+const DESIGNER_AI_AUTO_START_MESSAGE = "Iniciá la conversación con una bienvenida breve y guiame desde el primer bloque que todavía tenga información pendiente.";
 
 const DESIGNER_AI_ACTION_ORIGINS = Object.freeze({
   MODEL: "model",
@@ -717,6 +720,19 @@ function canDeferDesignerAiLeaf(leafId, snapshot) {
     !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf.status));
 }
 
+// Only these leaves can receive evidence from an existing local control.
+// Availability and target identity are still validated against the snapshot.
+function designerAiControlTypeForLeaf(leafId) {
+  if (leafId === "media.cover") return "cover_upload";
+  if (/^media\.gallery\..+\.(?:guided_completion|slot\..+)$/.test(leafId)) {
+    return "gallery_cell_upload";
+  }
+  if (/^event\.(?:ceremony|party)\.(?:venue_name|address|place_selection)$/.test(leafId)) {
+    return "google_place_picker";
+  }
+  return null;
+}
+
 function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = [] } = {}) {
   if (!Array.isArray(resolutions) || resolutions.length > 120) {
     return { ok: false, errors: ["Las resoluciones deben contener entre 0 y 120 elementos."] };
@@ -739,6 +755,10 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = 
     }
     if (!MODEL_RESOLUTION_STATUS_SET.has(record.status)) {
       errors.push(`Resolucion ${index}: estado no permitido.`);
+    }
+    if (record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL &&
+        !designerAiControlTypeForLeaf(record.leafId)) {
+      errors.push(`Resolucion ${index}: la hoja no tiene un control local compatible.`);
     }
     if (
       /^media\.gallery\..+\.guided_completion$/.test(String(record.leafId || "")) &&
@@ -768,6 +788,24 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = 
     }
   });
   return { ok: errors.length === 0, errors };
+}
+
+function discardRedundantDesignerAiControlResolutions(resolutions, snapshot, { actions = [] } = {}) {
+  if (!Array.isArray(resolutions) || resolutions.length > 120) return resolutions;
+  // A proposal never proves persistence. This only drops an unsupported model
+  // request duplicated by a valid action; the executor must still earn a receipt.
+  if (!validateDesignerAiActionBatch(actions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot }).ok) return resolutions;
+  const actionLeafIds = new Set(actions.flatMap(conversationLedger.mapDesignerAiActionToLeafIds));
+  const availableLeafIds = new Set((snapshot?.ledger?.leaves || [])
+    .filter((leaf) => leaf.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE)
+    .map((leaf) => leaf.id));
+  return resolutions.filter((resolution) => {
+    const record = asRecord(resolution);
+    if (!record || !hasExactKeys(record, ["leafId", "status", "rule"])) return true;
+    return record.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL ||
+      record.rule !== null || !availableLeafIds.has(record.leafId) ||
+      Boolean(designerAiControlTypeForLeaf(record.leafId)) || !actionLeafIds.has(record.leafId);
+  });
 }
 
 function discardInactiveDesignerAiPhaseResolutions(resolutions, snapshot, { actions = [] } = {}) {
@@ -949,6 +987,44 @@ const DESIGNER_AI_RESOLUTION_SCHEMA = {
   required: ["leafId", "status", "rule"],
 };
 
+const DESIGNER_AI_CLARIFICATION_KINDS = Object.freeze(["missing_year", "invalid_date", "missing_value"]);
+const DESIGNER_AI_CLARIFICATION_SCHEMA = {
+  anyOf: [
+    { type: "null" },
+    {
+      type: "object", additionalProperties: false,
+      properties: {
+        leafId: STRING(180),
+        kind: { type: "string", enum: [...DESIGNER_AI_CLARIFICATION_KINDS] },
+      },
+      required: ["leafId", "kind"],
+    },
+  ],
+};
+
+// Interpretation describes an ambiguity, never the proactive question. The UI
+// also checks membership in the real nextStep after actions and metadata persist.
+function validateDesignerAiClarification(clarification, snapshot, { resolutions = [] } = {}) {
+  if (clarification == null) return { ok: true, errors: [] };
+  const record = asRecord(clarification);
+  if (!record || !hasExactKeys(record, ["leafId", "kind"]) ||
+      !DESIGNER_AI_CLARIFICATION_KINDS.includes(record.kind)) {
+    return { ok: false, errors: ["La aclaracion estructurada es invalida."] };
+  }
+  const leaf = snapshot?.ledger?.leaves?.find((entry) => entry.id === record.leafId);
+  if (!leaf || leaf.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) {
+    return { ok: false, errors: ["La aclaracion requiere una hoja disponible."] };
+  }
+  if (record.kind !== "missing_value" && !/^event\.(ceremony|party)\.date$/.test(record.leafId)) {
+    return { ok: false, errors: ["La aclaracion de fecha requiere una hoja de fecha."] };
+  }
+  if (!resolutions.some((entry) => entry?.leafId === record.leafId &&
+      entry.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION && entry.rule === null)) {
+    return { ok: false, errors: ["La aclaracion requiere una resolucion needs_clarification compatible."] };
+  }
+  return { ok: true, errors: [] };
+}
+
 const DESIGNER_AI_TOOL = Object.freeze({
   type: "function",
   name: "submit_designer_ai_result",
@@ -959,12 +1035,14 @@ const DESIGNER_AI_TOOL = Object.freeze({
     additionalProperties: false,
     properties: {
       intent: { type: "string", enum: ["apply", "clarify", "out_of_scope"] },
-      assistantMessage: STRING(700),
+      assistantMessage: { ...STRING(700), description: "En modo guided, explicacion breve sin proponer la siguiente pregunta; la aplicacion la compone desde nextStep. En editing responde al pedido actual." },
       actions: { type: "array", maxItems: 19, items: DESIGNER_AI_MODEL_ACTION_SCHEMA },
       controlRequest: DESIGNER_AI_CONTROL_REQUEST_SCHEMA,
       resolutions: { type: "array", maxItems: 120, items: DESIGNER_AI_RESOLUTION_SCHEMA },
+      clarification: { ...DESIGNER_AI_CLARIFICATION_SCHEMA, description: "Normalmente null. Solo una ambiguedad del mensaje actual con resolution needs_clarification para la misma hoja. missing_year e invalid_date son exclusivos de fechas; missing_value pide el dato del paso. Nunca elige el siguiente pendiente: la UI solo la usa cuando coincide con nextStep despues de aplicar los cambios." },
+      notice: { type: ["string", "null"], enum: ["unsupported_request", null], description: "unsupported_request si todo o parte del pedido excede las capabilities; conserva las acciones validas del mismo mensaje. En otro caso null." },
     },
-    required: ["intent", "assistantMessage", "actions", "controlRequest", "resolutions"],
+    required: ["intent", "assistantMessage", "actions", "controlRequest", "resolutions", "clarification", "notice"],
   },
 });
 
@@ -983,7 +1061,10 @@ function buildDesignerAiTool(snapshot) {
     const nonRuleStatuses = (controlledGallery ? [statuses.REQUIRES_CONTROL, statuses.DEFERRED_BY_USER] :
       [...MODEL_RESOLUTION_STATUS_SET].filter((status) => ![
         statuses.RESOLVED_BY_RULE, statuses.RESOLVED_FROM_USER,
-      ].includes(status))).filter((status) => status !== statuses.DEFERRED_BY_USER || canDeferDesignerAiLeaf(leaf.id, snapshot));
+      ].includes(status))).filter((status) => (
+        (status !== statuses.DEFERRED_BY_USER || canDeferDesignerAiLeaf(leaf.id, snapshot)) &&
+        (status !== statuses.REQUIRES_CONTROL || designerAiControlTypeForLeaf(leaf.id))
+      ));
     const key = JSON.stringify([rules, nonRuleStatuses]);
     if (!groups.has(key)) groups.set(key, { rules, nonRuleStatuses, ids: [] });
     groups.get(key).ids.push(leaf.id);
@@ -1024,6 +1105,8 @@ function buildDesignerAiTool(snapshot) {
 }
 
 module.exports = {
+  DESIGNER_AI_AUTO_START_MESSAGE,
+  DESIGNER_AI_CLARIFICATION_KINDS,
   DESIGNER_AI_ACTION_ORIGINS,
   DESIGNER_AI_CONTRACT_VERSION,
   DESIGNER_AI_CONTROL_TYPES,
@@ -1035,8 +1118,10 @@ module.exports = {
   SNAPSHOT_AVAILABILITY_KEYS,
   containsForbiddenSnapshotData,
   discardInactiveDesignerAiPhaseResolutions,
+  discardRedundantDesignerAiControlResolutions,
   sanitizeCapabilitySnapshot,
   validateDesignerAiActionBatch,
+  validateDesignerAiClarification,
   validateDesignerAiControlRequest,
   validateDesignerAiResolutionUpdates,
   minimizeDesignerAiGiftValues,

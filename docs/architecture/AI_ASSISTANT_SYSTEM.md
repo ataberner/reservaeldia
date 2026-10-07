@@ -2,7 +2,8 @@
 
 Status: Canonical Architecture Reference.
 
-Revalidado contra implementación y tests el 2026-08-28.
+Mapa actualizado contra implementación local el 2026-10-06. Evidencia de esta
+auditoría, mediciones sintéticas y límites en la sección 15; no acredita despliegue.
 
 Hardening P0 revalidado localmente el 2026-09-27. Evidencia y límites:
 [DESIGNER_AI_P0_HARDENING.md](../testing/DESIGNER_AI_P0_HARDENING.md).
@@ -11,7 +12,9 @@ Etapa V1 local, 2026-09-28: [verificación y límites del cierre](../testing/DES
 
 ## 1. Propósito y autoridad
 
-Este documento es el mapa técnico canónico del tab `Diseñador AI`. Define
+Este documento es el mapa técnico canónico de `Diseñador AI`, cuyo tab se muestra
+como `Tu asistente`, con el mismo ícono `Sparkles` del tab `Asistente`
+(identificador interno `designer-ai`). Define
 límites, flujo, owners reales y estado de garantías sobre interfaz, backend,
 instrucciones, contexto, mensajes, tools, streaming, sesiones, persistencia,
 autorización, seguridad, fallbacks, reintentos, rate limits, cancelación y
@@ -30,15 +33,18 @@ de acceso libre al canvas, Firestore o Storage.
 
 | Responsabilidad | Owner actual | Observaciones |
 | --- | --- | --- |
-| Gate de acceso frontend | `src/domain/editor/designerAiAccess.js` | Exige superadmin resuelto, draft writable y no selector. |
+| Gate de acceso frontend | `src/domain/editor/designerAiAccess.js` | Exige UID autenticado, draft writable y no selector; disponible para todos los roles, sin depender de la consulta administrativa. |
+| Acceso al Asistente manual y su tour | `src/domain/editor/assistantAccess.js` | Exige `canManageSite` resuelto (admin o superadmin); Sidebar y Header lo consumen para botones, autoapertura, montaje y restauración del tour. |
 | Entrada de tab, panel responsive, exclusión del Asistente e historial efímero por borrador | `src/components/DashboardSidebar.jsx` | Monta/desmonta `DesignerAiPanel`; abrirlo desactiva Assistant. Su estado React sobrevive al cambio de tab y se descarta con el `sidebarInstanceKey` al salir o cambiar de borrador. |
 | UI, envío, loader, controles locales, stale guards y mensajes seguros | `src/components/editor/designerAi/DesignerAiPanel.jsx` | Consume y actualiza el historial del sidebar; no existe un reducer/store de conversación independiente. |
 | Control especializado de ubicación | `src/components/editor/designerAi/DesignerAiLocationControl.jsx` | Superficie mínima de búsqueda/selección/cierre; ocupa el área de trabajo del chat mientras está activa y no monta el formulario completo de Detalles del evento. |
 | Decisión y targeting conversacional de ubicación | `src/domain/editor/designerAiLocationInteraction.js` | Deriva phase, precarga y decisión Maps desde resultado + snapshot; no persiste un segundo modelo. |
 | Proveedor Google Places | `src/domain/eventDetails/googlePlaces.js` | Loader, sesión de autocomplete, sugerencias y details compartidos por el tab manual y Diseñador AI. |
 | Mutación canónica de ubicación | `src/domain/eventDetails/locationAuthoring.js` + `updateTemplateAuthoringEventLocation` | Coordina fields/defaults y el objeto `mapa-google`; diferencia escritura manual de selección Google. |
-| Callable backend | `designerAiChat` inline en `functions/src/index.ts` | Autoriza superadmin, carga secret, relee el nombre mínimo del perfil, invoca service y redacta logs/respuestas de error. |
+| Callable backend | `designerAiChat` inline en `functions/src/index.ts` | Autoriza y valida antes de I/O; relee el nombre mínimo solo al ingresar. La apertura automática retorna un saludo sin OpenAI; las demás intervenciones cargan secret e invocan el service. |
 | Cliente OpenAI, instrucciones, input, validación de salida y errores upstream | `functions/src/designerAi/service.ts` | Usa Responses API sin streaming. |
+| Saludo de apertura y pregunta guiada | `buildDesignerAiOpeningResponse` en el service + `src/domain/editor/designerAiGuidedConversation.js` | El backend personaliza el saludo; el frontend compone la pregunta desde el ledger vigente. El seed compartido vive en el capability contract. |
+| Medición local de turnos | `src/domain/editor/designerAiTiming.js` | Evento local con duraciones, resultado y UUID de batch; sin mensajes ni snapshot. El service mide etapas internas y el callable las registra con su latencia total. |
 | Tool schema, versión, allowlists y validación estructural/contextual | `shared/designerAiCapabilityContract.cjs` | Source checked-in; `functions/scripts/syncTemplateContract.cjs` genera copias para Functions. |
 | Ledger, procedencia, completitud global/guiada, dependencias y priorización | `shared/designerAiConversationLedger.cjs` | `GUIDED_FLOW_BLOCKS` es la única prioridad ejecutable; también se copia mecánicamente a Functions. |
 | Construcción de snapshot/contexto frontend | `src/domain/editor/designerAiCapabilities.js` | Reutiliza snapshot/bridges y normalizadores de los dominios reales. |
@@ -47,7 +53,7 @@ de acceso libre al canvas, Firestore o Storage.
 | Nombre de documento y metadata conversacional | `src/lib/dashboardDocumentNameBridge.js` + `src/components/DashboardHeader.jsx` | El header persiste `designerAiConversation`, incluida `usage.hasStarted`, mediante la autoridad de sesión. |
 | Nombre registrado mínimo | `usuarios/{uid}.nombre`, leído por `designerAiChat` con `extractProfileFromDocData` | Solo el nombre normalizado llega al service; no se envía el perfil completo. |
 | Persistencia del borrador | `src/components/editor/persistence/editorSessionPersistence.js` | Draft: Firestore bajo el usuario; templates no están habilitados para Designer AI. |
-| Autorización backend | `functions/src/auth/adminAuth.ts` | `requireSuperAdmin` usa UID autenticado y `SUPERADMINS_UIDS`/runtime config. |
+| Autorización backend | `functions/src/auth/adminAuth.ts` | `requireAuth` exige `request.auth.uid`; Designer AI no requiere claims administrativos ni `SUPERADMINS_UIDS`. |
 | Autorización de escritura de drafts | `firestore.rules` | El cliente solo actualiza `borradores/{id}` si es owner y no cambia `userId`. |
 | Tests | `shared/designerAi*.test.mjs`, `src/domain/editor/designerAi*.test.mjs`, `src/components/editor/designerAi/DesignerAiPanel.test.mjs`, `functions/designerAi*.test.mjs` | Cobertura estructural/dominio; no evalúan calidad del modelo real. |
 
@@ -56,12 +62,14 @@ de acceso libre al canvas, Firestore o Storage.
 ```text
 DashboardSidebar
   -> monta DesignerAiPanel para un draft writable autorizado
-  -> Panel relee metadata, deriva first_entry/reentry y persiste usage.hasStarted
-  -> Panel arma snapshot mínimo + ledger global/guided
+  -> Panel espera hidratación de metadata y authoring
+  -> deriva first_entry/reentry y persiste usage.hasStarted
+  -> relee snapshot mínimo + ledger global/guided después de esa persistencia
   -> callable designerAiChat valida auth y payload
-  -> service arma developer instructions + estado mínimo + últimos turnos
-  -> OpenAI devuelve una única function_call submit_designer_ai_result
-  -> backend valida salida y devuelve propuesta estructurada
+  -> apertura automática: saludo estructurado sin modelo ni propuesta de cambios
+     otros mensajes: service arma instrucciones + contexto + últimos turnos
+       -> OpenAI devuelve una única function_call submit_designer_ai_result
+       -> backend valida salida y devuelve propuesta estructurada
   -> Panel descarta sesión/revisión obsoleta y revalida el lote
   -> designerAiActionExecutor delega en owners existentes del editor
   -> Panel relee el borrador, reconcilia ledger y persiste metadata
@@ -70,6 +78,21 @@ DashboardSidebar
 
 La function call de OpenAI es un sobre de salida estructurada; no ejecuta por sí
 misma una tool de negocio. Las actions reales se ejecutan después en el cliente.
+El panel también elimina actions, resolutions y controles de una apertura
+automática recibida de un backend anterior: ingresar no autoriza una mutación.
+
+En mobile, un draft editable con acceso al asistente abre `Tu asistente` al
+ingresar. `designerAiInitialOpeningRef` consume esa decisión una vez por draft,
+también en desktop, donde no abre automáticamente el panel de IA. Cambiar tabs,
+cerrar manualmente, refrescar permisos o redimensionar no repite la apertura.
+La carga tardía del acceso puede completar la apertura inicial móvil; el tour
+manual no la reemplaza. Un nuevo montaje por recarga vuelve a ser un ingreso;
+no hay una preferencia durable nueva de panel cerrado.
+
+El placeholder tiene una sola definición runtime, en el textarea del panel:
+`Contame que tenes en mente...`. Se puede componer el siguiente mensaje mientras
+hay una operación en curso; el submit conserva la exclusión por `sendingRef` y
+la barrera de hidratación. Reintentar o procesar un turno oculto no vacía ese texto.
 
 Cuando una selección requiere precisión visual o autoridad externa, el flujo
 reemplaza transitoriamente el área de historial + composer, sin perder el
@@ -98,21 +121,49 @@ escriben el mismo shape; cada superficie conserva solo su presentación.
 
 ### 4.1 Implementación vigente
 
-`SYSTEM_INSTRUCTIONS` vive inline en `functions/src/designerAi/service.ts`. El
-service agrega un segundo mensaje `developer` con snapshot mínimo y prioridad del
+`SYSTEM_INSTRUCTIONS` vive inline en `functions/src/designerAi/service.ts`. Para
+mensajes que requieren interpretación, el service agrega un segundo mensaje
+`developer` con snapshot mínimo y prioridad del
 ledger, luego hasta seis turnos recientes y finalmente el mensaje del usuario.
 La configuración observada es modelo `gpt-5.6-luna`, reasoning effort `none`,
 text verbosity `low`, `max_output_tokens:4000`, `store:false`, una tool forzada y
 sin parallel tool calls ni `previous_response_id`.
 
+La apertura automática se reconoce por la combinación de `entryMode:first_entry`
+o `reentry` y el seed exacto `DESIGNER_AI_AUTO_START_MESSAGE`, compartido por cliente
+y backend. No depende de inferir intención con el modelo. `buildDesignerAiOpeningResponse`
+retorna `clarify`, arrays vacíos y control nulo; incluye `entryGreeting` opcional,
+producido solo por el servidor, igual al saludo de `assistantMessage`. El modelo
+no puede agregar ese campo. La UI toma ese saludo y deriva la pregunta del primer
+pendiente actual; si habla con un backend anterior sin `entryGreeting`, usa un
+saludo local seguro sin conservar preguntas potencialmente contradictorias.
+En edición invita a pedir ajustes sin reabrir el recorrido. Un mensaje humano
+con `entryMode:first_entry` que no coincide con el seed sigue pasando por el modelo.
+
+En turnos guiados la salida agrega dos campos opcionales para compatibilidad:
+`clarification:{leafId,kind}|null` (`missing_year`, `invalid_date`, `missing_value`)
+y `notice:"unsupported_request"|null`. El schema del proveedor los requiere
+nullable; el parser acepta la ausencia de versiones anteriores. No cambia la
+versión de actions, payloads ni metadata persistida. El backend valida shape,
+disponibilidad, tipo de hoja y resolución `needs_clarification` correspondiente.
+El frontend valida el target contra `brief.nextStep` del snapshot real después
+de persistir; una aclaración desactualizada usa la pregunta local sin otra
+llamada al modelo. No se proyectan receipts de éxito para elegir preguntas.
+
+El compositor guiado usa confirmaciones locales de receipts, avisos acotados y
+la pregunta de `nextStep`; no incorpora `assistantMessage` libre ni intenta
+separar preguntas por puntuación. En edición mantiene la respuesta libre. El
+texto de los controles también es local. Así un resultado de backend anterior
+sin esos campos sigue siendo utilizable sin cederle el orden de preguntas.
+
 La documentación no se carga dinámicamente ni compila el prompt. Por lo tanto:
 
 - el contrato conversacional es autoridad de producto para futuros cambios;
 - el capability contract y el schema compartido son autoridad para acciones;
-- `SYSTEM_INSTRUCTIONS` es el owner ejecutable principal, pero el cliente también
-  aporta seeds operativos, el cierre verificado y fallbacks visibles en
+- `SYSTEM_INSTRUCTIONS` es el owner ejecutable de interpretación, pero el cliente
+  consume el seed compartido y aporta el cierre verificado y fallbacks visibles en
   `DesignerAiPanel.jsx`;
-- el orden no se repite en esos textos: el service consume `nextBlock` derivado
+- el orden no se repite en esos textos: el service consume `nextBlock` y `nextStep` derivados
   de `ledger.guidedFlow`;
 - no existe hoy un test de paridad documento -> instrucciones ni módulos de
   prompt separados por responsabilidad.
@@ -208,8 +259,9 @@ El payload contiene:
   envía solo como `message` (máximo 1200), también al reintentar;
 - snapshot saneado con availability, valores funcionales acotados, ledger
   global/guiado, `usage.hasStarted` y política de nombre;
-- contexto server-side con un único campo `registeredFirstName`, obtenido de
-  `usuarios/{uid}.nombre` y normalizado a string vacío cuando no existe.
+- contexto server-side de ingreso con un único campo `registeredFirstName`,
+  obtenido de `usuarios/{uid}.nombre` y normalizado a string vacío cuando no
+  existe. Una continuación no relee el perfil.
 
 Antes del callable el frontend elimina revisiones de media y fingerprints. El
 backend vuelve a sanear, limita el snapshot a 160 KB y elimina del contexto del
@@ -219,6 +271,18 @@ Los nombres sin confirmación positiva también se redactan, incluyendo legacy
 esperan `templateAuthoring.hydrated` antes de consumir la primera entrada. El
 ledger conserva `names` como primer bloque pendiente; reentrada y reload no
 convierten valores de plantilla en datos de usuario.
+La procedencia sigue perteneciendo al ledger existente, no a un booleano paralelo:
+`template_value`/`placeholder_or_sample` indican ejemplos; `unknown` representa
+datos sin evidencia suficiente; `existing_user_data`/`user_current_session`
+requieren evidencia de usuario. La confirmación es específica al fingerprint:
+un receipt o una baseline confirmada no acreditan un valor posterior diferente.
+El snapshot usa `getTemplateAuthoringSnapshot().templateInput.changedKeys` del
+owner vivo cuando existe;
+la metadata del header es un fallback de hidratación. Restaurar un default de
+plantilla no se convierte en confirmación por diferir de la baseline de entrada.
+Las claves de authoring presentes delimitan esa comparación, conservando los
+dominios sin binding y el alias legacy de Dress Code. La definición normativa y
+los casos de procedencia permanecen en el capability contract.
 La lista externa de regalos expone presencia/configuración, no su URL.
 Los valores bancarios ocultos o de Regalos desactivado se eliminan tanto del
 payload del cliente como del input del proveedor en el backend. Se conserva
@@ -266,7 +330,7 @@ allowlisted.
 
 Límite: el backend solo relee Firestore para el nombre mínimo del perfil; no
 recibe un ID de draft ni relee el borrador para verificar el snapshot. Valida
-estructura y coherencia interna de datos aportados por un cliente superadmin, no
+estructura y coherencia interna de datos aportados por un cliente autenticado, no
 su correspondencia server-side con un borrador actual.
 
 ## 6. Tools, autorización y validación
@@ -283,7 +347,7 @@ Las allowlists y shapes exactos viven en
 
 ### 6.2 Garantías implementadas
 
-- El callable exige autenticación y `requireSuperAdmin` antes de leer el secret o
+- El callable exige autenticación mediante `requireAuth` antes de leer el secret o
   procesar el payload.
 - Backend valida versión, claves exactas, tamaños, datos prohibidos, actions,
   IDs disponibles, dependencias, controles y resoluciones.
@@ -373,13 +437,13 @@ Las allowlists y shapes exactos viven en
 | Tema | Estado actual |
 | --- | --- |
 | Streaming de respuesta | No implementado. `responses.create` retorna completo y el callable responde al final. |
-| Progreso | Estados locales `Preparando cambios…`, `Aplicando cambios…` y `Guardando…`, publicados también en live region. No hay tokens parciales ni job durable. |
-| Concurrencia por panel | `sendingRef` impide un segundo envío mientras hay uno pendiente. |
+| Progreso | `Preparando la respuesta…` mientras se espera el resultado; luego `designerAiExecutionFeedback` describe la acción validada que informa el executor (nombres, fecha, horario, ubicación, etc.) durante su aplicación y persistencia. El panel conserva `Guardando…` para la metadata final. El progreso se publica también en live region y no confirma éxito antes del receipt. No hay tokens parciales ni job durable. |
+| Concurrencia por panel | `sendingRef` impide un segundo envío mientras hay uno pendiente; el textarea permite escribir el mensaje siguiente y los reintentos no lo borran. |
 | Cancelación de red | El cliente no conserva un handle de cancelación del callable. El backend aborta intentos OpenAI al vencer su timeout/deadline compartido. |
 | Cambio de sesión | Invalida irreversiblemente operaciones ligadas a documentId/kind y su ciclo de montaje, también A → B → A. Places, uploads y callbacks del header comprueban identidad antes de mutar/publicar. El request backend puede seguir consumiendo recursos. |
-| Cambio de contenido | Antes de aplicar se compara `snapshot.revision`; un cambio produce fallback stale y cero mutación de ese lote. |
+| Cambio de contenido | Antes de aplicar se compara `snapshot.revision`; un cambio produce fallback stale y cero mutación de ese lote. Durante la ejecución se debe detener el resto del lote ante una edición manual incompatible; los receipts conservan únicamente lo efectivamente guardado, sin rollback de escrituras previas. |
 | Espera de reflejo | El panel relee hasta 120 frames y cancela esa espera local al cambiar sesión. |
-| Duplicados | `appliedBatchIdsRef` evita repetir un batch durante el montaje actual. |
+| Duplicados | `appliedBatchIdsRef` evita repetir un batch durante el montaje actual; una respuesta repetida produce feedback explícito y cero escrituras adicionales. |
 
 Una respuesta descartada por sesión/revisión no debe mostrarse ni ejecutarse. Esa
 protección es local; no cancela el procesamiento server-side ni impide costo
@@ -398,6 +462,14 @@ upstream.
 - Desmontar solo el panel al alternar tabs no pierde esos mensajes ni inicia otra
   conversación al volver. Cambiar o cerrar el borrador remonta el sidebar y
   descarta el historial.
+- Al recuperar historial guiado se contrasta la última continuación con el paso
+  vigente. Si quedó desactualizada se agrega la pregunta local correcta sin
+  borrar mensajes, abrir controles ni llamar al modelo. La huella del paso y
+  sus hojas es sólo evidencia efímera de presentación: preserva una aclaración
+  de año cuando sigue siendo válida y no se persiste ni decide la prioridad.
+- Si se desmontó con un turno pendiente y el último mensaje conservado es del
+  usuario, al volver informa la interrupción y pide revisar el borrador/enviar
+  otra solicitud. No reproduce automáticamente un lote que pudo guardarse en parte.
 - No se usa `previous_response_id`; cada request reconstruye contexto con un
   máximo de los seis turnos visibles más recientes, aunque la UI retenga treinta.
 
@@ -458,10 +530,11 @@ de fotos ya guardadas no se revierten.
 `designerAiConversation.usage.hasStarted` es la señal durable y única:
 
 - ausencia o `false` produce `first_entry`;
-- el panel prepara el snapshot de ingreso, persiste `true` mediante el bridge
-  existente y envía `entryMode:first_entry`;
-- un remount, cambio de tab, refresh o sesión posterior relee `true` y envía
-  `entryMode:reentry`;
+- el panel prepara el ingreso, persiste `true` mediante el bridge existente,
+  relee el snapshot vigente y envía `entryMode:first_entry`;
+- un refresh o una sesión posterior sin historial efímero relee `true` y envía
+  `entryMode:reentry`; desmontar/remontar solo el panel conservando historial no
+  crea otro auto-start, como se detalla en 8.1;
 - `autoStartedSessionRef` sigue evitando duplicados solo dentro del montaje, pero
   no participa de la clasificación durable;
 - baseline, resolutions, mensajes, placeholders o contenido completo nunca se
@@ -471,11 +544,14 @@ Compatibilidad legacy: un draft sin `usage` normaliza `hasStarted:false`; la
 próxima apertura es su primer ingreso determinista y desde ese momento queda
 marcado. No hay backfill ni reconstrucción histórica.
 
-El callable relee `usuarios/{uid}` después de autorizar, usa
+El callable relee `usuarios/{uid}` solo para `first_entry`/`reentry`, después de
+autorizar y validar el payload, y usa
 `extractProfileFromDocData` y pasa solo `profile.nombre` al service como
 `registeredFirstName`. Si el documento/campo no existe o la lectura falla, usa
 `null`/string vacío y el saludo no inventa nombre. El panel no recibe ni persiste
 perfil, email, apellido o `nombreCompleto`.
+La apertura automática devuelve únicamente el saludo seguro; no carga el cliente
+OpenAI ni resuelve el secret. Las continuaciones omiten la lectura del perfil.
 
 ### 8.4 Retención
 
@@ -491,11 +567,15 @@ adicional del proveedor aplicable a estas requests.
 - Solo Functions importa `openai` y lee `defineSecret("OPENAI_API_KEY")`.
 - El navegador no recibe el SDK server-side ni la clave.
 - Requests a OpenAI usan `store:false` y no usan `previous_response_id`.
-- Logs de éxito incluyen UID, trace ID, batch ID, latencia, intent, cantidad de
-  actions, presencia de control, cantidad de reparaciones semánticas y request ID
-  de OpenAI.
-- Logs de error incluyen UID, trace ID, latencia, clase segura de error y request
-  ID.
+- Logs de éxito incluyen UID, trace ID, batch ID, latencia total del callable,
+  intent, cantidad de actions, presencia de control, reparaciones y request ID
+  de OpenAI cuando existe. Agregan `responseKind`, latencia del service, lectura
+  del perfil y validación inicial, más las métricas numéricas de la sección 15.2.
+- Logs de error incluyen UID, trace ID, latencia, clase/resumen seguro de error,
+  métricas disponibles y request ID. `failureReason` usa el resumen fijo de la
+  categoría: un diagnóstico interno puede contener IDs dinámicos provenientes
+  del cliente y no se registra. El fallo de perfil usa `profile_read_failed`,
+  sin serializar la excepción Firestore.
 - El código actual no registra prompt, mensajes, snapshot, valores funcionales,
   URLs privadas ni secret en esos eventos.
 
@@ -514,7 +594,8 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   5 s. Cada intento recibe `min(25 s, tiempo restante)`, señal de abort y
   `maxRetries:0`; no hay retries ocultos del SDK. No inicia otro intento con
   menos de 1 s. Respeta Retry-After si cabe y usa demora acotada si falta.
-- Una salida estructurada que falla validación, incluidas claves faltantes o
+- La apertura automática no necesita request ni repair de modelo. Una salida
+  estructurada de interpretación que falla validación, incluidas claves faltantes o
   adicionales, se clasifica como `malformed-output`, nunca `invalid-payload`.
   Dispone de un único intento de
   reparación semántica con el motivo acotado del validador. La segunda salida
@@ -524,9 +605,9 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   se mapean a errores Firebase seguros.
 - El callable adjunta a cada error una categoría segura, indicación de
   reintentabilidad y `referenceId`; el panel muestra una causa resumida y esa
-  referencia. Los logs usan el mismo ID y conservan el motivo controlado del
-  validador, sin registrar payloads, prompts, secretos ni respuestas crudas del
-  proveedor.
+  referencia. Los logs usan el mismo ID y un resumen fijo de la categoría, sin
+  registrar diagnósticos con IDs dinámicos, payloads, prompts, secretos ni
+  respuestas crudas del proveedor.
 - El panel traduce códigos conocidos a mensajes sin detalle interno sensible.
 - Antes de ejecutar ofrece `Reintentar` y relee el snapshot para interpretar el
   mismo pedido. Un fallo de metadata inicial también tiene retry explícito.
@@ -559,8 +640,9 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   transporte está limitada por el deadline compartido.
 - No hay rate limit propio por UID, draft, IP o ventana temporal; solo se mapea el
   429 del proveedor.
-- No hay presupuesto/cuota del producto ni telemetría de tokens/costo visible en
-  este subsistema.
+- No hay presupuesto/cuota del producto ni cálculo de costo. Los logs técnicos
+  cuentan tokens informados por respuestas del proveedor; no hay dashboard de
+  costo ni se atribuye consumo a intentos que no devolvieron usage.
 
 ## 11. Conocimiento funcional y carga por dominio
 
@@ -585,9 +667,10 @@ accesible. La lectura documental para cambios debe seguir esta tabla:
 | Preview/publicación | [PREVIEW_SYSTEM_ANALYSIS.md](PREVIEW_SYSTEM_ANALYSIS.md) y contratos de render/publicación | No son actions directas de Designer AI V1. |
 | Guided Tour del Asistente | [GUIDED_TOUR_SYSTEM.md](GUIDED_TOUR_SYSTEM.md) | Sistema independiente; Designer AI debe mantenerlo desmontado. |
 
-Cuando no existe documento enfocado para una regla de un dominio, el código
-vigente es fuente de verdad según `DOCUMENTATION_INDEX.md`; la solución no es
-copiar una interpretación dentro de los docs del asistente.
+Cuando no existe documento enfocado, el código demuestra el comportamiento
+vigente; no define automáticamente la regla esperada. Se investigan owners y
+evidencia siguiendo `DOCUMENTATION_INDEX.md`, sin inventar decisiones de producto
+ni copiar una autoridad paralela dentro de los docs del asistente.
 
 ## 12. Garantías, inferencias y gaps
 
@@ -602,7 +685,7 @@ Clasificación usada aquí:
 | Área | Clasificación | Evidencia o gap |
 | --- | --- | --- |
 | Secret aislado en Functions | Implementado | `defineSecret`, SDK solo backend. |
-| Autorización del callable | Implementado | `requireSuperAdmin`. |
+| Autorización del callable | Implementado | `requireAuth`, para todos los roles autenticados. |
 | Autorización server-side de cada tool | No implementado | Tools se ejecutan en cliente; backend solo valida propuesta. |
 | Validación estructural backend/frontend | Implementado | Contrato compartido y validadores. |
 | Desfase de versión frontend/backend | Implementado y testeado | Antes de validar el payload, cualquier `contractVersion` no vacía distinta de la vigente recibe una respuesta segura que conserva la versión del cliente y solicita recarga; no llega a OpenAI ni se presenta como mensaje inválido. |
@@ -616,7 +699,7 @@ Clasificación usada aquí:
 | Chat persistido | No implementado deliberadamente | Hasta treinta mensajes en memoria React por borrador; solo los seis turnos más recientes forman el contexto de cada request. |
 | Metadata de ledger persistida | Implementado | `designerAiConversation` en draft. |
 | Primer ingreso vs reingreso | Implementado | `designerAiConversation.usage.hasStarted`, `prepareDesignerAiConversationEntry` y persistencia confirmada antes del auto-start. |
-| Nombre registrado en el saludo | Implementado con fallback | El callable relee solo `usuarios/{uid}.nombre`; ausencia/error produce string vacío. La calidad del saludo no tiene eval real. |
+| Nombre registrado en el saludo | Implementado con fallback | Solo el ingreso relee `usuarios/{uid}.nombre`; ausencia/error produce string vacío. El saludo automático es determinista y la pregunta deriva del ledger, sin evaluación del modelo. |
 | Español permanente, tono aprobado y voseo consistente | Parcial | El prompt actual pide español rioplatense y voz compatible; no hay eval durable ni paridad completa con el contrato. |
 | Orden guiado `Nombres -> estructura -> evento -> Dress Code -> RSVP -> Regalos -> portada -> Galleries` | Implementado y testeado | `GUIDED_FLOW_BLOCKS`, `ledger.guidedFlow` y brief derivado en el ledger compartido. |
 | RSVP en el recorrido principal | Implementado y testeado localmente | Incluye su activación; personalización del formulario sigue reactiva, con la misma allowlist. |
@@ -631,11 +714,11 @@ Clasificación usada aquí:
 | Streaming/cancelación real | No implementado | Respuesta completa y descarte local. |
 | Prevención de respuesta obsoleta | Implementado en cliente | Session sequence + revision check. |
 | Idempotencia durable | No implementado | Sets en memoria por montaje. |
-| Reintentos | Parcial | Un retry del SDK, una reparación semántica y continuación verificada. Un lote parcial puede reanudarse en la sesión actual: valida identidad y estado, salta efectos confirmados y reintenta su writer cuando corresponde. No es idempotencia durable; nueva intención y desmontaje invalidan esa recuperación. |
+| Reintentos | Parcial | Un retry de transporte controlado por el service (`maxRetries:0` en SDK), una reparación semántica y continuación verificada. Un lote parcial puede reanudarse en la sesión actual: valida identidad y estado, salta efectos confirmados y reintenta su writer cuando corresponde. No es idempotencia durable; nueva intención y desmontaje invalidan esa recuperación. |
 | Rate limit propio | No implementado | Solo traducción de 429 upstream. |
 | Redacción de logs | Implementada por allowlist actual | Sin helper/policy automatizada para cambios futuros. |
 | Evaluación conversacional real | No implementada | Tests usan fixtures/mock y assertions de source. |
-| Owner único de instrucciones/copy runtime | Parcial | Prompt principal en service; seeds, cierre y fallbacks también viven en el panel. |
+| Owner único de instrucciones/copy runtime | Parcial | Interpretación en service; seed compartido; preguntas derivadas en el adaptador guiado; cierre y fallbacks de UI conservan sus owners. No se carga documentación como prompt. |
 
 ## 13. Cambio seguro y mantenimiento
 
@@ -686,3 +769,355 @@ están en [DESIGNER_AI_P0_HARDENING.md](../testing/DESIGNER_AI_P0_HARDENING.md).
 Estas pruebas cubren contratos ejecutables, no calidad conversacional de una
 respuesta real del modelo. Los criterios para crear una evaluación durable
 independiente viven en `AI_ASSISTANT_CONVERSATION_CONTRACT.md`.
+
+## 15. Auditoría local del 2026-10-06
+
+### 15.1 Hallazgos, causas y decisiones implementadas
+
+La revisión contrastó los contratos con entrada, hidratación, reingreso, ledger,
+snapshot, callable, propuesta, ejecución y persistencia. Las diferencias de
+implementación se corrigieron hacia las reglas vigentes; abrir mobile y el
+placeholder responden al pedido explícito de esta auditoría. No hubo cambios de
+modelo, permisos, owners de escritura, render ni publicación.
+
+| Prioridad / problema | Causa comprobada | Corrección / alcance |
+| --- | --- | --- |
+| P0: primera pregunta distinta de Nombres | La UI conservaba cualquier pregunta del modelo si el bloque seguía siendo el mismo, aun cuando contradecía `nextBlock`. La entrada podía además recibir una propuesta de mutación. | Saludo de apertura sin modelo, pregunta desde el ledger y apertura de solo lectura incluso ante respuestas de un backend anterior. No se altera la interpretación de mensajes humanos. |
+| P0: procedencia desactualizada | La metadata de `changedKeys` del header podía quedar vieja tras una edición manual. Una baseline de entrada y un default restaurado no demuestran por sí solos confirmación. | Snapshot desde el authoring vivo; evidencia conservada solo para su fingerprint; defaults/unknown no adquieren confirmación por ingreso o cambio de historial. No se agrega otra metadata de confirmación. |
+| P0: snapshot anterior a espera de persistencia inicial | El ingreso retenía el snapshot capturado antes de guardar metadata y podía ignorar una edición durante la espera/reintento. | Se relee después de confirmar el guardado inicial. |
+| P0: edición manual sobrescrita durante un lote | El control de revisión anterior a ejecutar no cubría la espera de frames, el writer del owner ni el guardado entre acciones. Capturar el estado observado después de esa espera absorbía la edición manual como baseline. | El executor proyecta el estado esperado desde el snapshot previo mediante la proyección canónica; detiene las acciones siguientes e invalida recuperación incompatible. Regresiones cubren primer frame, writer y flush. El panel también verifica cambios durante el guardado final de metadata antes de mostrar éxito. |
+| P1: mobile no comenzaba desplegado o podía reabrirse | La decisión inicial no estaba consumida por identidad de draft y se mezclaba con la apertura del Asistente manual. | Apertura móvil una vez por draft con acceso; cierre, tabs, permisos tardíos y resize no fuerzan reapertura. Desktop consume la decisión sin autoabrir IA. |
+| P1: turno pendiente silencioso o escritura en composer perdida | Desmontar conservaba el mensaje del usuario pero invalidaba la operación; el envío oculto/retry vaciaba el composer. | Mensaje de interrupción al reabrir, sin replay; escritura permitida durante espera; solo un envío explícito vacía su propio texto. |
+| P1: duplicado sin explicación / progreso prematuro | La deduplicación salía silenciosamente y el progreso inicial anunciaba cambios antes de conocer el resultado. | Feedback explícito de duplicado sin mutación; `Preparando la respuesta…` antes de la propuesta y progreso específico solo después de validarla. |
+| P1: I/O y diagnósticos innecesarios | Cada turno leía perfil antes de validar. Los logs podían serializar la excepción Firestore o IDs dinámicos del validador. | Validación antes de I/O, perfil solo en entradas, logs con categorías fijas y métricas numéricas. |
+| P2: copy del composer | Existía un placeholder distinto en el textarea. | Se modifica su definición única al texto solicitado, sin constante paralela. |
+
+Los tests V1/lifecycle que antes aplicaban acciones durante el auto-start ahora
+envían un pedido humano explícito antes de probar progreso, cierre o recuperación.
+Conservan las assertions de escrituras, modo edición, persistencia y ausencia de
+opciones duplicadas; no se usa el nuevo saludo para justificar cambios no pedidos.
+
+Verificación final local, 2026-10-06:
+
+- **471/471** tests del asistente, shared, backend, Sidebar, authoring, bridge y
+  persistencia. Ejecutados con `node --test --test-concurrency=2 --test-reporter=tap`
+  sobre el listado conservado en
+  `.local-isolation/assistant-audit-20261006/tested-files.txt`; resultado en
+  `.local-isolation/assistant-audit-20261006/tests.tap`.
+- **60/60** tests de `functions/renderContractCompatibility.test.mjs` y
+  `shared/previewPublishParity.test.mjs`, usando el build actual y fixtures
+  sintéticos. Resultado en `.local-isolation/assistant-audit-20261006/render-tests.tap`.
+- `npm.cmd --prefix functions run build`: compilación y **70 copias** compartidas
+  verificadas. `npm.cmd --prefix functions run lint`: **274 archivos, cero errores,
+  234 advertencias**. Reporte `.local-isolation/assistant-audit-lint.json`.
+- Diff incremental revisado contra la copia inicial del working tree; no se
+  revirtieron cambios ajenos. `git diff --check` sin errores.
+
+Ejecuciones focales adicionales (incluyen subconjuntos de la batería anterior):
+
+- Backend (`designerAiService`, `designerAiAuthorization`, `designerAiDates`,
+  `designerAiResolutionSchema`) más panel V1/lifecycle: **126/126**, exit 0.
+- `functionOwnership`, `runtimeConfiguration` y `discoveryInitialization`, con
+  guards de red existentes: **22/22**, exit 0. El registro actual descubrió
+  102/3/3 endpoints, 108 en total, sin desconocidos ni duplicados y con metadata
+  coincidente. No son inventario remoto ni discovery con la CLI real.
+- Typecheck de Functions y revisión de whitespace del diff pasaron. El gate
+  completo `verify:ownership` quedó bloqueado por ausencia de la CLI local fijada;
+  no se instaló ni se reconstruyeron los paquetes secundarios con el disco casi
+  lleno. Las pruebas parciales no reemplazan ese gate.
+
+Los anchors adicionales están en `designerAiTurnSafety.test.mjs`,
+`designerAiNames.test.mjs`, `designerAiTiming.test.mjs`, las regresiones del ledger
+y los tests responsive del Sidebar, junto a sus respectivos owners. Los conteos
+anteriores corresponden a las ejecuciones puntuales indicadas, no a una garantía
+de toda la aplicación ni a una prueba del modelo real. La auditoría no desplegó,
+no consultó borradores reales ni invocó OpenAI.
+
+Alcance de archivos mantenidos de esta auditoría (las modificaciones ajenas del
+working tree no forman parte de esta lista):
+
+- UI: `src/components/DashboardSidebar.jsx`,
+  `src/components/editor/designerAi/DesignerAiPanel.jsx`.
+- Estado y ejecución: `shared/designerAiCapabilityContract.cjs` y su wrapper `.js`,
+  `shared/designerAiConversationLedger.cjs`,
+  `src/domain/editor/designerAiCapabilities.js`, `designerAiGuidedConversation.js`,
+  `designerAiActionExecutor.js`, `designerAiTiming.js`, y
+  `src/components/editor/templateAuthoring/useTemplateFieldAuthoring.js`.
+- Backend: `functions/src/designerAi/service.ts` y el bloque `designerAiChat`
+  con sus imports en `functions/src/index.ts`. Se sincronizaron los dos contratos
+  de AI en `functions/shared/` y `functions/lib/shared/` mediante el build.
+- Tests: `functions/designerAiService.test.mjs`,
+  `functions/designerAiAuthorization.test.mjs`,
+  `shared/designerAiConversationLedger.test.mjs`,
+  `src/components/DashboardSidebar.access.test.mjs`,
+  `src/components/editor/templateAuthoring/DynamicFieldRuntimeHardening.test.mjs`;
+  en `src/domain/editor/`: `designerAiCapabilities.test.mjs`,
+  `designerAiGuidedConversation.test.mjs`, `designerAiActionExecutor.test.mjs`,
+  `designerAiTiming.test.mjs`; en `src/components/editor/designerAi/`:
+  `DesignerAiPanel.test.mjs`, `designerAiLifecycle.test.mjs`,
+  `designerAiMapsContinuation.test.mjs`, `designerAiNames.test.mjs`,
+  `designerAiV1.test.mjs`, `designerAiTurnSafety.test.mjs` y
+  `testSupport/panelHarness.mjs`.
+- Documentación existente: este mapa, `GUIDED_TOUR_SYSTEM.md`,
+  `AI_ASSISTANT_CONVERSATION_CONTRACT.md` y `DESIGNER_AI_CAPABILITY_CONTRACT.md`.
+
+Limitaciones de verificación: responsive/lifecycle se ejercitan con React/JSDOM,
+no con navegación visual real en dispositivos; no se ejecutó build/export de
+Next ni el gate integral de emuladores. Las Rules, configuración desplegada y
+calidad conversacional del modelo real no quedan certificadas por estas suites.
+
+### 15.2 Latencia: medición y optimizaciones
+
+Antes de esta revisión solo se registraba `latencyMs` del service en éxitos;
+omitía el tiempo previo del perfil y no separaba preparación, proveedor, retry y
+validación. La instrumentación ahora permite distinguir estas etapas:
+
+| Superficie / métrica | Qué mide y qué no mide |
+| --- | --- |
+| Frontend `contextMs` | Preparación local desde la admisión del envío y snapshot; puede incluir la marca inicial de uso de un envío humano previo al auto-start. No incluye hidratación anterior ni el tiempo humano escribiendo. |
+| `callableMs` | Espera del callable, incluida red y trabajo backend; no debe sumarse otra vez con sus métricas internas. |
+| `actionsAndPersistenceMs` | Ejecución, evidencia y persistencia de actions por los owners existentes. |
+| `metadataMs` | Confirmación de metadata conversacional del camino principal. El guardado inicial anterior al auto-start y la recuperación parcial no tienen desglose propio; sus esperas dentro del turno sí afectan su duración total. |
+| `firstFeedbackMs` | Momento en que el efecto React observó el estado de progreso. Es feedback percibido aproximado, no el primer token del modelo. |
+| `responseReadyMs` / `responseVisibleMs` | Fin de procesamiento local / efecto React posterior al commit del resultado. No acreditan el paint exacto del navegador. |
+| Backend `latencyMs`, `serviceLatencyMs`, `profileReadMs`, `payloadValidationMs` | Callable total, service, lectura de perfil y validación previa al I/O. |
+| `telemetry.contextPreparationMs`, `providerMs`, `retryWaitMs`, `resultValidationMs` | Preparación de input/schema, suma de intentos del proveedor, espera de retry y validación de propuestas. Incluye errores cuando se dispone de medición. |
+| `providerAttempts`, `transportRetryCount`, `repairCount` | Cantidades para diferenciar una respuesta lenta de varios intentos. |
+| `inputBytes`, `toolSchemaBytes`, `inputTokens`, `outputTokens` | Tamaño del input base y schema; tokens informados por respuestas recibidas, sumando repair. No se inventa usage de intentos fallidos ni se calcula costo. |
+
+Frontend emite `CustomEvent("designer-ai-turn-timing")` local, sin envío de red:
+solo duraciones, `outcome` (`success`, `error`, `duplicate`) y, si es UUID válido,
+`batchId` para correlacionar con el log backend. No contiene texto, snapshot,
+identidad del draft ni `clientMessageId` arbitrario. En consola local puede
+observarse con `window.addEventListener("designer-ai-turn-timing", e => console.table(e.detail))`.
+No se mide TTFT real: no hay streaming y la respuesta útil se presenta después de
+validar/persistir. Nunca se aplican fragmentos parciales de una function call.
+
+Optimizaciones verificables por operaciones eliminadas:
+
+- Apertura automática: **una llamada al modelo → cero**. También evita instanciar
+  el SDK y resolver el secret en ese camino; conserva la lectura mínima de perfil.
+- Continuación: **una lectura de perfil → cero**. Se conserva el deadline global
+  de 40 s, el máximo de 25 s por intento, un retry de transporte y una reparación
+  semántica. Apertura/reingreso mantienen el fallback de perfil a los 3 s.
+
+No se midieron cold starts, red, Firestore ni latencia real de OpenAI. No se
+atribuyen milisegundos productivos a esas optimizaciones. El contexto sigue
+acotado por allowlists, con instrucciones inline y una tool forzada; no descarga
+documentación remota. Seleccionar contexto por intención, cambiar modelo/schema,
+caché de perfil o streaming exigiría evaluar pérdida de información, invalidación
+y calidad; no se implementó por especulación.
+
+Baseline CPU local con fixture `production-recovery`, proveedor en memoria sin
+I/O, dos warmups y diez muestras, Node/Windows del workspace: input **26.526 bytes**,
+schema **24.660 bytes**. Medianas: validación de payload **1,029 ms**, preparación
+**2,024 ms**, proveedor simulado **0,223 ms**, validación de resultado **0,454 ms**,
+total **3,763 ms**. Es una medición del pipeline local, no una comparación
+antes/después ni un benchmark del proveedor; las medianas de etapas no tienen
+por qué sumar exactamente la mediana total.
+
+Reproducción desde la raíz en PowerShell, después de sincronizar/compilar las
+fuentes actuales con el build existente:
+
+```powershell
+@'
+import { performance } from 'node:perf_hooks';
+import service from './functions/lib/designerAi/service.js';
+import { designerAiDateCases, dateCasePayload } from './functions/testSupport/designerAiDateCases.mjs';
+const payload = dateCasePayload(designerAiDateCases.find(x => x.id === 'production-recovery'));
+const samples = [];
+const client = { responses: { create: async () => ({ output: [{ type: 'function_call', name: 'submit_designer_ai_result', arguments: JSON.stringify({ intent: 'clarify', assistantMessage: 'Seguimos.', actions: [], controlRequest: null, resolutions: [] }) }] }) } };
+for (let i = 0; i < 12; i++) {
+  const r = await service.interpretDesignerAiChat({ payload, client, now: () => performance.now() });
+  samples.push({ ...r.telemetry, totalMs: r.latencyMs });
+}
+const keys = ['payloadValidationMs', 'contextPreparationMs', 'providerMs', 'resultValidationMs', 'totalMs'];
+const medians = Object.fromEntries(keys.map(k => { const s = samples.slice(2).map(x => x[k]).sort((a,b) => a-b); return [k, +((s[4]+s[5])/2).toFixed(3)]; }));
+console.log({ warmup: 2, samples: 10, inputBytes: samples[0].inputBytes, toolSchemaBytes: samples[0].toolSchemaBytes, medianMs: medians });
+'@ | node --input-type=module
+```
+
+Persisten los límites de secciones anteriores: sin idempotencia durable del
+backend ni cuota propia, sin cancelación del callable desde el cliente y sin
+evaluación con modelo real. Detener un lote ante conflicto no es una transacción
+ni revierte escrituras confirmadas; múltiples ventanas y cambios remotos siguen
+requiriendo evidencia de concurrencia adicional.
+
+### 15.3 Despliegue autorizado y verificado — 2026-10-06
+
+Después de la auditoría, el usuario autorizó el deploy. Se publicaron Hosting y
+únicamente `functions:default:designerAiChat` en `reservaeldia-7a440`.
+Verificación final: **2026-10-06T21:42:58Z**, Hosting
+`NKbUsXF1v6rnlef7ZMwAe`, función ACTIVE `designeraichat-00038-dax`.
+El inventario de 108 funciones sólo cambió en ese callable; su configuración,
+entorno y binding de `OPENAI_API_KEY` se conservaron. No se desplegaron Rules.
+
+La release reutilizó la base publicada `60df068f` y sus cambios del asistente,
+con hashes de fuentes y backups previos. Durante el deploy del backend se detectó
+otra publicación de Hosting (`gYHZPEkovQPXb-3vrw_yJ`). Se detuvo la publicación del
+frontend, se preservaron sus dos archivos de portada y su historial estático,
+y se recompiló sin incorporar cambios pendientes ajenos. Los detalles y la
+comparación de fuentes están en `.local-isolation/assistant-audit-release-20261006/`.
+
+La copia exacta pasó **469 tests del asistente**, **60 de render** y el gate completo
+de ownership: **41 tests, tres builds y discovery real de las tres codebases** con
+CLI 14.4.0. Los dos tests menos respecto de la auditoría local pertenecen al piloto
+de música excluido del release. Lint: cero errores y 234 advertencias. Next
+build/export y retención de assets pasaron. En producción se comprobaron el build,
+76 archivos estáticos, los bytes del bundle del asistente y el rechazo 401 de una
+llamada anónima. Evidencia final: `release-result.json` en el directorio indicado.
+No se probaron borradores autenticados ni llamadas al modelo real en producción.
+
+### 15.4 Corrección del orden durante toda la conversación — 2026-10-06
+
+La revisión posterior reprodujo un defecto que el fix de apertura no cubría:
+cuando el bloque no cambiaba, el compositor conservaba cualquier pregunta del
+modelo. El chequeo de signos/verbos no validaba su tema; además el orden interno
+preguntaba dirección antes del nombre del lugar y el reingreso podía conservar
+una pregunta antigua. Las ofertas pasivas de Maps tenían otra prioridad,
+dependiente de actions/resolutions y de texto no confirmado.
+
+El cambio autorizado consolida estas decisiones en `brief.nextStep`. La UI
+deriva pregunta y ofertas pasivas desde el mismo snapshot confirmado. Las
+continuaciones automáticas no abren Maps ni adelantan portada/galerías;
+los pedidos humanos conservan sus controles reactivos. El historial se conserva
+y se reconcilia localmente con el paso actual. No se incorpora un cursor durable
+ni se modifican los owners del borrador, render, persistencia o publicación.
+
+La aclaración estructurada y el aviso acotado descritos en sección 4 conservan
+compatibilidad con backend/frontend anteriores. En una combinación temporal de
+versiones puede pedirse una fecha completa en lugar de sólo el año; los datos
+aportados y las acciones válidas se conservan. Un texto libre del modelo nunca
+se usa como evidencia de cambio guardado ni como selector del próximo dato.
+
+No cambia el modelo ni sus límites. Resolver preguntas y restaurar continuaciones
+es trabajo local sin requests adicionales. Continúan las métricas de 15.2;
+esta corrección no afirma una reducción medida de latencia del proveedor.
+Tests relevantes agregados: `designerAiReentry.test.mjs`, selector en
+`shared/designerAiConversationLedger.test.mjs`, compositor/control de ubicación,
+schema y service; se conservan regresiones de nombres, Maps, regalos, imágenes,
+hora de fin, receipts y recuperación. La evidencia reproducible de esta entrega
+se conserva en `.local-isolation/assistant-question-order-20261006/`.
+
+Despliegue autorizado completado: Hosting `XKh5Xm63lpR5sKP9o5FD2` y
+`designerAiChat` ACTIVE `designeraichat-00039-jod`. La copia exacta pasó **512/512
+tests del asistente/dependencias**, **60/60 de render**, **41/41 del gate de
+ownership**, tres builds y discovery de las tres codebases. Lint: cero errores,
+234 advertencias preexistentes. Next build/export y retención estática pasaron.
+Se verificaron remotamente 75 archivos estáticos, los bytes del bundle, rechazo
+anónimo 401 y que sólo cambió ese callable dentro del inventario de 108 funciones.
+Configuración, Secrets bindings, Rules y fuentes ajenas se conservaron. No hubo
+pruebas autenticadas de borradores ni turnos contra el modelo real en producción.
+El registro de despliegue documental se agregó después de congelar las fuentes
+publicadas; `release-result.json` conserva los hashes exactos de esa release.
+
+### 15.5 Nombres heredados al crear desde plantilla — 2026-10-06
+
+El reporte posterior de apertura directamente por ceremonia/fiesta permitió
+reproducir un defecto anterior al ledger. `copiarPlantilla` produce
+`templateAuthoringDraft` con defaults, sin `templateInput` ni defaults superiores.
+La migración a v2 rellenaba estos últimos ausentes con vacíos antes de combinar
+fuentes: los vacíos reemplazaban el baseline de la plantilla y sus nombres de
+ejemplo aparecían en `changedKeys` como si fueran datos del usuario.
+
+La migración ahora combina fuentes dispersas antes de normalizar valores
+faltantes. Conserva vacíos explícitos, baselines personalizados y valores reales.
+La prueba de integración usa el productor de metadata del backend, el servicio
+real de carga, persistencia en memoria, reingreso y edición manual posterior.
+Los tests anteriores construían snapshots ya normalizados y no cubrían esa
+entrada. No cambia el orden de preguntas ni se fuerza una pregunta en la UI.
+
+También se corrige la lectura de nombres con claves personalizadas y roles
+semánticos válidos. Valor y procedencia siguen el mismo binding del owner de
+nombres; la aparición posterior de un objeto visual no confirma defaults ni
+un cambio en una vista combinada confirma campos individuales sin modificar.
+El snapshot público, los writers y el contrato de acciones conservan su shape.
+
+Límite: un borrador ya migrado por la versión defectuosa puede haber persistido
+baselines vacíos y confirmación derivada de ellos. Es indistinguible localmente
+de algunos casos de edición real; no se invalidan confirmaciones en masa ni se
+reescriben sus datos. Requiere revisar el borrador y la evidencia de su origen.
+Schemas sin roles de nombres siguen sin ofrecer esa capability: habilitarla
+solamente en el ledger dejaría al owner sin campos donde guardar la respuesta.
+
+La corrección es local, sin requests adicionales ni cambios en el proveedor.
+Evidencia de esta entrega: `.local-isolation/assistant-template-names-20261006/`.
+
+El borrador concreto aportado por el usuario se verificó contra su plantilla,
+sin cambios desde antes de su creación. Trece campos coincidían con los ejemplos,
+sus tres baselines estaban vacíos y no existían resolutions explícitas. Se
+restauraron solamente esas referencias y once procedencias inferidas, con backup,
+precondición `updateTime` y readback. Valores actuales y render no se modificaron;
+el selector pasó de `event_structure` a `names`. Esta reparación puntual no es
+una migración automática de otros borradores. Una pestaña abierta debe recargarse
+para descartar su snapshot anterior.
+
+Despliegue verificado: Hosting `PB9aq2tXeYXpvjJkwpdpY`, preservando la release
+concurrente de acceso a música `fGEE0idle-MTjFMTaZ60g` y sus fuentes verificadas.
+Se comprobaron 124 archivos estáticos y los bytes de los bundles del asistente;
+el inventario de funciones quedó idéntico, con `designerAiChat` en
+`designeraichat-00039-jod`. No se desplegaron Functions ni Rules.
+
+La copia exacta verificó 638 tests del asistente/dependencias, 15 de música,
+60 de render y 41 de ownership, además de tres builds y discovery real de las
+tres codebases. Se conserva evidencia de dos incidencias del runner: un timeout
+de inicialización que pasó al repetir sin cambios y siete fallos de música por
+mezclar `NODE_ENV=test` con modo Firebase de producción. Los quince tests de
+música pasaron con construcción de URLs de producción y red remota bloqueada;
+no se modificaron tests para aceptar esos fallos. Lint: cero errores y 234
+advertencias. Next build/export, retención estática y revisión independiente del
+diff pasaron. No se ejecutaron turnos contra el modelo real ni verificación visual
+autenticada. Este registro se agregó después de congelar las fuentes del deploy;
+`release-result.json` conserva sus hashes exactos.
+
+### 15.6 Regalos confirmados que vuelven a quedar pendientes — 2026-10-06
+
+Se reprodujo el intercambio reportado con acciones válidas de activación y alias
+visible, acompañadas de `requires_control` sobre `gifts.enabled`, la visibilidad
+del alias o su valor. Schema y validator admitían ese estado en cualquier hoja,
+aunque Regalos no tiene control local. La reconciliación podía reemplazar el
+receipt persistido con esa resolución y volver a pedir la modalidad o el alias.
+La reproducción prueba el defecto; no atribuye al incidente una respuesta del
+proveedor cuya traza no está disponible.
+
+El contrato compartido restringe ese estado a hojas con control compatible.
+Backend y panel descartan únicamente la resolución redundante sin control sobre
+una hoja cubierta por una action válida; los demás errores mantienen validación
+estricta. La reconciliación conserva la autoridad del receipt efectivo y
+persistido frente a ese conflicto. El alias no se confirma por existir un valor
+ni por la propuesta del modelo. Persistencia fallida, controles reales pendientes
+y campos explícitamente ocultos conservan su comportamiento.
+
+La corrección no introduce requests, cambios de modelo ni escrituras nuevas.
+No reinterpreta metadata histórica como confirmada: una etiqueta de procedencia
+aislada no demuestra un receipt anterior. Un nuevo turno válido permite guardar
+y resolver los datos. Las regresiones cubren backend, schema, ledger, panel,
+reingreso y reintento. Evidencia del cambio y deploy:
+`.local-isolation/assistant-gifts-control-20261006/`.
+
+Despliegue autorizado verificado: `designerAiChat` ACTIVE en
+`designeraichat-00040-vit`, con configuración y demás funciones sin cambios.
+Se conservó Hosting `wW-VpiFp17XL8QkfoZnmz`: una publicación concurrente desde el
+workspace ya incluía el arreglo frontend. Se verificaron 78 archivos estáticos,
+los bytes de los 24 assets del dashboard y 65 tests del contrato/ledger sobre
+los módulos compilados reales, además del enlace normalizador → validator →
+ejecución del Panel. El build aislado `o9RrJtSV_3ToyaZqlnr-N` pasó, pero no se
+publicó por encima de esa release concurrente y sus assets.
+
+La copia de backend verificó 683 tests del asistente/dependencias, 15 de música,
+60 de render y 41 de ownership, con tres builds y discovery de las tres
+codebases. Lint: cero errores y 234 advertencias existentes. Se conservaron los
+fallos de preparación: faltaban fixtures/configuraciones de verificación en la
+copia frontend anterior; se restauraron sin cambiar expectativas y pasaron los
+checks afectados. El primer deploy agotó los 10 segundos del discovery local
+antes de subir código; el reintento usó 60 segundos sólo para el CLI, conservando
+el timeout de producción. Se verificó rechazo anónimo 401, sin turnos contra el
+modelo real ni modificación de borradores.
+
+Los historiales ya afectados no se reparan sólo al recargar. Si quedó
+`gifts.enabled` en `requires_control`, actualizar únicamente el alias no confirma
+esa activación. Una nueva confirmación explícita de activar Regalos y dejar
+visible el alias permite resolver las hojas afectadas con evidencia persistida;
+no se infiere esa confirmación automáticamente desde metadata ambigua. Este
+registro se agregó después de congelar las fuentes del backend y se distingue
+del manifiesto de la publicación frontend concurrente en `release-result.json`.

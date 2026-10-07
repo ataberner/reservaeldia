@@ -1,5 +1,7 @@
 import { httpsCallable } from "firebase/functions";
-import { functions as cloudFunctions } from "@/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db, functions as cloudFunctions } from "@/firebase";
+import { getPublicationStatus } from "./state.js";
 
 const transitionPublicationStateCallable = httpsCallable(
   cloudFunctions,
@@ -19,6 +21,24 @@ const getMyPublicationVisitMetricsCallable = httpsCallable(
 );
 
 const PUBLICATION_METRICS_BATCH_SIZE = 25;
+
+export function subscribeToPublicationStatus({ slug, onChange, onError }) {
+  const safeSlug = typeof slug === "string" ? slug.trim() : "";
+  if (!safeSlug || safeSlug.includes("/")) {
+    throw new Error("Slug invalido para consultar la publicacion.");
+  }
+
+  return onSnapshot(
+    doc(db, "publicadas", safeSlug),
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      // A cached pre-update state must not advertise the invitation as available.
+      if (snapshot.metadata.fromCache) return;
+      onChange(snapshot.exists() ? getPublicationStatus(snapshot.data()) : null);
+    },
+    onError
+  );
+}
 
 function toNonNegativeInteger(value) {
   const parsed = Number(value);

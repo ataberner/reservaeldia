@@ -1,6 +1,10 @@
 import { requestEditorDraftFlush } from "./flushGate.js";
 import { normalizeEditorSession } from "./session.js";
 
+// Includes the FIFO ahead of this flush and the callable transport (whose
+// default deadline is 70s). This is a ceiling, never an artificial delay.
+export const CRITICAL_DRAFT_FLUSH_TIMEOUT_MS = 90000;
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
@@ -72,7 +76,7 @@ export async function flushEditorPersistenceBeforeCriticalAction({
       result = await requestFlush({
         slug: safeSlug,
         reason,
-        timeoutMs: 6000,
+        timeoutMs: CRITICAL_DRAFT_FLUSH_TIMEOUT_MS,
       });
     } catch (flushError) {
       result = {

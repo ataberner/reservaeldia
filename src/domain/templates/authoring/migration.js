@@ -699,16 +699,15 @@ export function migrateDynamicAuthoringStateV2({
     normalizedFields,
     normalizedAuthoring.defaults
   );
-  const normalizedTemplateDefaults = ensureValuesForSchema(
-    normalizedFields,
-    migratedTemplateDefaults
-  );
+  // Keep the template map sparse until sources are merged. A copied draft can
+  // carry defaults only inside authoringDraft; filling absent template keys
+  // first would replace those defaults with empty values and invent changes.
   const normalizedBaselineDefaults = ensureValuesForSchema(
     normalizedFields,
     migratedInputDefaults,
     {
       ...normalizedAuthoringDefaults,
-      ...normalizedTemplateDefaults,
+      ...migratedTemplateDefaults,
     }
   );
   const normalizedInitialValues = ensureValuesForSchema(

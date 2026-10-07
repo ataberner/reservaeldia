@@ -298,6 +298,8 @@ export default function Dashboard() {
     setFuturosExternos,
     usuarioUid: usuario?.uid,
     handleEditorStartupStatusChange,
+    usuarioEmail: usuario?.email,
+    usuarioEmailVerified: usuario?.emailVerified,
     canManageSite,
     isAdminReadOnlyView,
     isEditorReadOnly,

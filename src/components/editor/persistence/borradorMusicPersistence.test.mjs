@@ -6,6 +6,7 @@ import * as session from "../../../domain/drafts/session.js";
 import * as sourceOfTruth from "../../../domain/drafts/sourceOfTruth.js";
 import * as renderState from "./borradorSyncRenderState.js";
 import * as templateContract from "../../../../shared/templates/contract.js";
+import { canAccessMusic } from "../../../domain/music/access.js";
 const require = createRequire(import.meta.url);
 const ts = require("../../../../functions/node_modules/typescript");
 
@@ -35,6 +36,10 @@ for (const [label, canEditMusic, savedMusic, expectedMusic] of [
   ["ordinary owner retains existing music without writing it", false, music, undefined],
   ["admin writes configured music atomically with the render snapshot", true, music, music],
   ["admin editing a legacy draft does not materialize music", true, undefined, undefined],
+  ["verified music pilot persists music through the same editor snapshot", canAccessMusic({
+    userUid: "pilot", userEmail: "jpeses@gmail.com", userEmailVerified: true,
+    editorSession: { kind: "draft", id: "draft-test" },
+  }), music, music],
 ]) {
   test(label, async () => {
     const previousWindow = globalThis.window;

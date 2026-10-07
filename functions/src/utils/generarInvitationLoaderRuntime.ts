@@ -15,6 +15,7 @@ ${INVITATION_LOADER_PRESENTATION_HTML}
   var EXIT_FALLBACK_MS = 300;
   var closed = false;
   var failed = false;
+  var waitTimer = 0;
 
   function dispatchLoaderEvent(name){
     try {
@@ -27,6 +28,9 @@ ${INVITATION_LOADER_PRESENTATION_HTML}
   function closeLoader(){
     if (closed || failed) return;
     closed = true;
+    if (waitTimer) window.clearTimeout(waitTimer);
+    window.removeEventListener(RUNTIME_READY_EVENT, closeLoader);
+    window.removeEventListener(RUNTIME_FAIL_EVENT, showLoaderError);
 
     if (document.body) {
       document.body.setAttribute("data-loader-ready", "1");
@@ -102,9 +106,9 @@ ${INVITATION_LOADER_PRESENTATION_HTML}
     window.addEventListener(RUNTIME_READY_EVENT, closeLoader, { once: true });
     window.addEventListener(RUNTIME_FAIL_EVENT, showLoaderError, { once: true });
 
-    window.setTimeout(function(){
-      showLoaderError({ detail: { reason: "loader-timeout" } });
-    }, MAX_WAIT_MS);
+    // A missed/late readiness signal must not strand the invitation behind the
+    // heart. Closing only releases presentation; resource loading continues.
+    waitTimer = window.setTimeout(closeLoader, MAX_WAIT_MS);
   }
 
   if (document.readyState === "loading") {

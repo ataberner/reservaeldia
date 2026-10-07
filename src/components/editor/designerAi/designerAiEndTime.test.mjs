@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mountPanel, ledger, contract } from "./testSupport/panelHarness.mjs";
 import { templateDraft } from "./testSupport/conversationRegressionFixture.mjs";
-import { buildDesignerAiGuidedQuestion, buildDesignerAiCompletionMessage } from "../../../domain/editor/designerAiGuidedConversation.js";
+import { buildDesignerAiGuidedQuestion, buildDesignerAiCompletionMessage, withDesignerAiGuidedContinuation } from "../../../domain/editor/designerAiGuidedConversation.js";
 
 function progress(mode, status = "pending", finished = false) {
   const values = contract.sanitizeCapabilitySnapshot({ values: {
@@ -21,6 +21,24 @@ function progress(mode, status = "pending", finished = false) {
   return { values, availability, conversation: { mode: "guided" },
     ledger: ledger.buildDesignerAiLedger({ values, availability, conversationState: { resolutions } }) };
 }
+
+test("only an explicit end-time request permits a reactive clarification outside the guided step", () => {
+  for (const mode of ["single", "ceremony_party"]) {
+    const snapshot = progress(mode, "needs_clarification");
+    const result = { intent: "clarify", clarification: { leafId: "event.ceremony.end_time", kind: "missing_value" },
+      resolutions: [{ leafId: "event.ceremony.end_time", status: "needs_clarification", rule: null }] };
+    const render = userMessage => withDesignerAiGuidedContinuation("Pasame la dirección.", {
+      previousSnapshot: snapshot, snapshot, result, userMessage,
+    });
+    for (const text of ["Hola", "Empieza a las ocho", "Después seguimos"]) assert.match(render(text), /Dress Code/);
+    assert.equal(render("No sé cómo indicar a qué hora termina la ceremonia"), mode === "single"
+      ? "¿A qué hora termina el evento?" : "¿A qué hora termina la ceremonia?");
+    if (mode === "ceremony_party") {
+      assert.match(render("Quiero cambiar la hora de fin"), /cuál querés cambiar/);
+      assert.match(render("La fiesta termina a las ocho"), /Dress Code/, "a mismatched phase cannot ask about the ceremony");
+    }
+  }
+});
 
 for (const mode of ["single", "ceremony_party"]) {
   for (const status of ["pending", "needs_clarification", "deferred_by_user"]) {

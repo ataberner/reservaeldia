@@ -5,6 +5,7 @@ const { buildDraftMusicPatch, saveDraftWithMusicHandler } = requireBuiltModule("
 const { normalizeMusicConfig } = requireBuiltModule("lib/music/config.js");
 const music = { ...normalizeMusicConfig(null), enabled: true, track: { source: "catalog", id: "perfect-ed-sheeran" } };
 const request = (uid, token = { admin: true }, patch = { music }) => ({ auth: uid ? { uid, token } : undefined, data: { draftId: "draft-test", patch } });
+const pilotToken = { email: "jpeses@gmail.com", email_verified: true };
 function store(owner = "owner", exists = true, savedMusic) {
   const writes = [];
   const ref = { id: "draft-test" };
@@ -26,6 +27,39 @@ test("music write authorizes configured superadmin without changing claims or Ru
   const fake = store();
   assert.deepEqual(await saveDraftWithMusicHandler(request("owner", {}), fake.db), { ok: true, draftId: "draft-test" });
   assert.equal(fake.writes.length, 1);
+});
+
+test("verified music pilot can save and disable music in their own draft without admin claims", async () => {
+  for (const email of ["jpeses@gmail.com", " JPESES@GMAIL.COM "]) {
+    const fake = store();
+    const authToken = { ...pilotToken, email };
+    await saveDraftWithMusicHandler(request("owner", authToken, { music, nombre: "Pilot invitation", objetos: [], secciones: [] }), fake.db);
+    assert.deepEqual(fake.writes[0].patch.music, music);
+    assert.equal(fake.writes[0].patch.nombre, "Pilot invitation");
+    const saved = store("owner", true, music);
+    await saveDraftWithMusicHandler(request("owner", authToken, { music: { ...music, enabled: false } }), saved.db);
+    assert.deepEqual(saved.writes[0].patch.music, { ...music, enabled: false });
+    assert.equal(Object.hasOwn(authToken, "admin"), false);
+  }
+});
+
+test("music pilot access rejects unverified identities, other users and forged body identity", async () => {
+  for (const token of [
+    {}, { email: pilotToken.email }, { ...pilotToken, email_verified: false },
+    { ...pilotToken, email_verified: "true" }, { ...pilotToken, email: "another@example.test" },
+    { ...pilotToken, email: "jpeses+other@gmail.com" },
+  ]) {
+    const fake = store();
+    const forged = request("owner", token);
+    Object.assign(forged.data, { email: pilotToken.email, email_verified: true, admin: true });
+    await assert.rejects(saveDraftWithMusicHandler(forged, fake.db), { code: "permission-denied" });
+    assert.equal(fake.writes.length, 0);
+  }
+  for (const [owner, exists, code] of [["foreign", true, "permission-denied"], ["owner", false, "not-found"]]) {
+    const fake = store(owner, exists);
+    await assert.rejects(saveDraftWithMusicHandler(request("owner", pilotToken), fake.db), { code });
+    assert.equal(fake.writes.length, 0);
+  }
 });
 test("music save commits the whole editor patch atomically and preserves selection when disabled", async () => {
   const fake = store();

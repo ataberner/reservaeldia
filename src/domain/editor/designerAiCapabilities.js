@@ -15,7 +15,9 @@ import {
 } from "../../../shared/countdownEventDetails.js";
 import {
   collectEventPersonNameFields,
-  resolveEventPersonNamesFromAuthoring,
+  EVENT_PERSON_NAME_ROLES,
+  getEventPersonNameFieldKey,
+  resolveEventPersonNameBindingsFromAuthoring,
 } from "../eventDetails/personNames.js";
 import { EVENT_DETAIL_FEATURES } from "../eventDetails/features.js";
 import {
@@ -214,7 +216,12 @@ export function buildDesignerAiCapabilitySnapshot({
     values: defaults,
     objetos: objects,
   };
-  const people = resolveEventPersonNamesFromAuthoring({ fieldsSchema, defaults, objetos: objects });
+  const personBindings = resolveEventPersonNameBindingsFromAuthoring({
+    fieldsSchema,
+    defaults,
+    objetos: objects,
+  });
+  const people = personBindings.names;
   const ceremony = resolvePhaseState({
     authoringSnapshot: authoringWithObjects,
     objects,
@@ -267,11 +274,55 @@ export function buildDesignerAiCapabilitySnapshot({
     gifts: buildGiftSnapshot(render.gifts, objects),
   };
   const normalizedConversationState = normalizeDesignerAiConversationState(conversationState);
+  // The authoring owner updates templateInput against its original defaults.
+  // Header metadata is only a hydration fallback: its changedKeys can be stale
+  // after manual edits (or an undo) before the assistant is opened.
+  const liveTemplateInput = authoring.templateInput && typeof authoring.templateInput === "object"
+    ? authoring.templateInput : null;
+  const authoringSourceContext = liveTemplateInput
+    ? { ...asRecord(sourceContext), templateDerived: true,
+      changedKeysAuthoritative: true,
+      authoringFieldKeys: fieldsSchema.map((field) => normalizeText(field?.key)).filter(Boolean),
+      changedKeys: Array.isArray(liveTemplateInput.changedKeys) ? liveTemplateInput.changedKeys : [] }
+    : sourceContext;
+  // The shared ledger consumes semantic field keys. Resolve aliases from the
+  // same binding that supplied each value, including a combined names field;
+  // an unrelated/stale view must not confirm names read from another source.
+  const rawChangedKeys = asRecord(authoringSourceContext).changedKeys;
+  const actualChangedKeys = new Set(
+    Array.isArray(rawChangedKeys) ? rawChangedKeys.map(normalizeText) : []
+  );
+  const declaredFieldKeys = new Set(
+    fieldsSchema.map((field) => normalizeText(field?.key)).filter(Boolean)
+  );
+  const changedKeys = new Set(actualChangedKeys);
+  const rawAuthoringFieldKeys = asRecord(authoringSourceContext).authoringFieldKeys;
+  const authoringFieldKeys = new Set(
+    Array.isArray(rawAuthoringFieldKeys)
+      ? rawAuthoringFieldKeys.map(normalizeText)
+      : declaredFieldKeys
+  );
+  for (const [name, role] of [
+    ["primaryName", EVENT_PERSON_NAME_ROLES.PRIMARY],
+    ["secondaryName", EVENT_PERSON_NAME_ROLES.SECONDARY],
+  ]) {
+    const semanticKey = getEventPersonNameFieldKey(role);
+    const actualKey = personBindings.fieldKeys[name];
+    changedKeys.delete(semanticKey);
+    authoringFieldKeys.delete(semanticKey);
+    if (actualChangedKeys.has(actualKey)) changedKeys.add(semanticKey);
+    if (declaredFieldKeys.has(actualKey)) authoringFieldKeys.add(semanticKey);
+  }
+  const currentSourceContext = {
+    ...asRecord(authoringSourceContext),
+    changedKeys: [...changedKeys],
+    authoringFieldKeys: [...authoringFieldKeys],
+  };
   const ledger = buildDesignerAiLedger({
     availability,
     values,
     conversationState: normalizedConversationState,
-    sourceContext,
+    sourceContext: currentSourceContext,
   });
   const safe = sanitizeCapabilitySnapshot({
     revision: "pending",

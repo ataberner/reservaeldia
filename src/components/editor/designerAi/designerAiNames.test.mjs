@@ -14,10 +14,68 @@ function namesDraft({ names = ["Juan", "María"], legacy = false, changedKeys = 
   return draft;
 }
 const nextBlock = snapshot => ledger.buildDesignerAiConversationBrief(snapshot).nextBlock?.id;
+const opening = assistantMessage => ({ assistantMessage, entryGreeting: assistantMessage });
 const greeting = payload => {
   assert.equal(nextBlock(payload.capabilitySnapshot), "names");
-  return { assistantMessage: "¡Hola! Para empezar, ¿me compartís los nombres de quienes se casan?" };
+  return opening("¡Hola! Te acompaño a preparar tu invitación.");
 };
+
+for (const entryMode of ["first_entry", "reentry"]) {
+  test(`safe opening greeting gets exactly one ledger names question on ${entryMode}`, async () => {
+    const assistantMessage = "¡Hola, Reserva! Te acompaño a preparar tu invitación.";
+    const run = await mountPanel({
+      savedDraft: namesDraft({ conversation: { usage: { hasStarted: entryMode === "reentry" } } }),
+      respond: payload => {
+        assert.equal(payload.entryMode, entryMode);
+        return opening(assistantMessage);
+      },
+    });
+    try {
+      await run.until(() => run.messages().length === 1);
+      assert.equal(run.messages()[0].content, `${assistantMessage} ¿Me compartís los nombres de quienes se casan?`);
+      assert.equal(nextBlock(run.snapshot()), "names");
+      assert.equal(run.calls.length, 1);
+    } finally { await run.close(); }
+  });
+}
+
+test("a greeting without a names request still adds the pending question once", async () => {
+  const run = await mountPanel({ savedDraft: namesDraft(), respond: () => opening("¡Hola, Reserva!") });
+  try {
+    await run.until(() => run.messages().length === 1);
+    assert.equal(run.messages()[0].content, "¡Hola, Reserva! ¿Me compartís los nombres de quienes se casan?");
+  } finally { await run.close(); }
+});
+
+for (const assistantMessage of [
+  "¡Hola, Reserva! ¿Qué día es el evento? ¿Y en qué lugar?",
+  "¡Hola, Reserva! Para empezar, contame los nombres de las dos personas que se casan.",
+  "¡Hola! ¿Cómo estás? ¿Me pasás la dirección?",
+]) test(`legacy opening cannot bypass or duplicate the names question: ${assistantMessage}`, async () => {
+  const run = await mountPanel({ savedDraft: namesDraft(), respond: () => ({ assistantMessage }) });
+  try {
+    await run.until(() => run.messages().length === 1);
+    assert.equal(run.messages()[0].content, "¡Hola! Sigamos con tu invitación. ¿Me compartís los nombres de quienes se casan?");
+    assert.equal(nextBlock(run.snapshot()), "names");
+    assert.equal(run.calls.length, 1);
+  } finally { await run.close(); }
+});
+
+test("a normal human reply presents a structured clarification inside the names block", async () => {
+  const clarification = "Contame también el nombre de la otra persona que se casa.";
+  const run = await mountPanel({ savedDraft: namesDraft(), respond: (payload, count) =>
+    count === 1 ? greeting(payload) : { assistantMessage: clarification,
+      clarification: { leafId: "event.people.secondary_name", kind: "missing_value" },
+      resolutions: [{ leafId: "event.people.secondary_name", status: "needs_clarification", rule: null }],
+    } });
+  try {
+    await run.until(() => run.messages().length === 1);
+    await run.send("Soy Ana.");
+    assert.match(run.messages().at(-1).content, /otra persona que se casa/);
+    assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === nameIds[0]).status, "pending");
+    assert.equal(run.calls[1].entryMode, "continuation");
+  } finally { await run.close(); }
+});
 
 test("entry waits for authoring hydration before classifying name availability or recording usage", async () => {
   const run = await mountPanel({ savedDraft: namesDraft(), authoringReady: false, respond: greeting });
@@ -42,7 +100,8 @@ for (const [name, options] of [
   const run = await mountPanel({ savedDraft: namesDraft(options), respond: greeting });
   try {
     await run.until(() => run.messages().length === 1);
-    assert.match(run.messages()[0].content, /nombres de quienes se casan/);
+    assert.match(run.messages()[0].content, options.changedKeys?.length
+      ? /otra persona que se casa/ : /nombres de quienes se casan/);
     const leaves = run.snapshot().ledger.leaves.filter(leaf => nameIds.includes(leaf.id));
     assert.equal(leaves[1].status, "pending");
     assert.equal(leaves[0].status, options.changedKeys?.length ? "resolved_from_existing_user_data" : "pending");
@@ -89,7 +148,7 @@ for (const names of [["Ana", "Luz"], ["Juan", "María"]]) {
       run = await mountPanel({ savedDraft: saved, respond: payload => {
         assert.equal(payload.entryMode, "reentry");
         assert.equal(nextBlock(payload.capabilitySnapshot), "event_structure");
-        return { assistantMessage: "Seguimos: ¿ceremonia y fiesta o un único evento?" };
+        return opening("¡Hola! Sigamos con tu invitación.");
       } });
       await run.until(() => run.messages().length === 1);
       assert.equal(nextBlock(run.snapshot()), "event_structure");
@@ -103,13 +162,27 @@ test("completed legacy draft retains editing despite names with unknown provenan
     respond: payload => {
       assert.equal(payload.capabilitySnapshot.conversation.mode, "editing");
       assert.equal(nextBlock(payload.capabilitySnapshot), undefined);
-      return { assistantMessage: "Podés seguir ajustando tu invitación." };
+      return opening("Podés seguir ajustando tu invitación.");
     } });
   try {
     await run.until(() => run.messages().length === 1);
     assert.equal(run.exportPersistedDraft().conversation.usage.guidedFlowCompleted, true);
     assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === nameIds[0]).status, "pending");
+    assert.equal(run.messages()[0].content, "Podés seguir ajustando tu invitación.");
     assert.doesNotMatch(run.messages()[0].content, /nombres/);
+  } finally { await run.close(); }
+});
+
+test("legacy editing entry cannot claim changes discarded by the read-only opening", async () => {
+  const run = await mountPanel({ savedDraft: namesDraft({ legacy: true,
+    conversation: { usage: { hasStarted: true, guidedFlowCompleted: true } } }),
+    respond: () => ({ intent: "apply", assistantMessage: "Cambié los nombres y ya está todo listo.",
+      actions: [{ type: "event.set_people", arguments: { primaryName: "Otra", secondaryName: "Pareja" } }] }) });
+  try {
+    await run.until(() => run.messages().length === 1);
+    assert.equal(run.messages()[0].content, "¡Hola! Sigamos con tu invitación. Contame qué querés ajustar.");
+    assert.deepEqual(run.snapshot().values.people, { primaryName: "Juan", secondaryName: "María" });
+    assert.equal(run.writes.length, 0);
   } finally { await run.close(); }
 });
 

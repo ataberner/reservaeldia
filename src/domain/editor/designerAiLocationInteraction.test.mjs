@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { buildDesignerAiLedger, buildDesignerAiNextStep } from "../../../shared/designerAiConversationLedger.js";
 
 import {
   buildDesignerAiGooglePlaceControlState,
@@ -14,6 +15,7 @@ import {
 
 function snapshot(overrides = {}) {
   return {
+    conversation: { mode: "editing" },
     availability: { ceremonyLocation: true, partyLocation: true },
     values: {
       eventMode: "single",
@@ -30,6 +32,78 @@ function snapshot(overrides = {}) {
     ...overrides,
   };
 }
+
+function guidedSnapshot({ pending = ["event.ceremony.address", "event.ceremony.place_selection"], eventMode = "single" } = {}) {
+  const availability = { people: true, eventMode: true, ceremonyDatetime: true, ceremonyLocation: true,
+    partyDatetime: true, partyLocation: true };
+  const location = { date: "2027-10-06", startTime: "18:00", endTime: "", venueName: "Salón Los Robles", address: "Calle 123", placeSelected: false };
+  const values = { documentName: "", people: { primaryName: "Ana", secondaryName: "Luz" }, eventMode,
+    ceremony: { ...location }, party: { ...location, venueName: "Estancia", address: "Ruta 8 km 40" },
+    dressCode: { enabled: false, value: "" }, story: "", media: { hasCover: false, contentRevision: "" }, galleries: [],
+    rsvp: { enabled: false, questions: [], modal: { title: "", subtitle: "", submitLabel: "", primaryColor: "" } },
+    gifts: { enabled: false, methods: {}, introText: "", buttonText: "" } };
+  const sourceContext = { templateDerived: true, changedKeys: [] };
+  const initial = buildDesignerAiLedger({ availability, values, sourceContext });
+  const confirmedIds = ["event.people.primary_name", "event.people.secondary_name", "event.mode",
+    ...["ceremony", "party"].flatMap(phase => ["date", "start_time", "venue_name", "address"].map(field => `event.${phase}.${field}`))];
+  const resolutions = initial.leaves.filter(leaf => confirmedIds.includes(leaf.id) && !pending.includes(leaf.id))
+    .map(leaf => ({ leafId: leaf.id, fingerprint: leaf.fingerprint, status: "resolved_from_user", provenance: "user_current_session", rule: null }));
+  return { availability, values, conversation: { mode: "guided" },
+    ledger: buildDesignerAiLedger({ availability, values, sourceContext, conversationState: { resolutions } }) };
+}
+
+test("guided passive Maps offers cannot bypass pending names, dates or the venue", () => {
+  for (const leafId of ["event.people.primary_name", "event.ceremony.date", "event.ceremony.start_time", "event.ceremony.venue_name"]) {
+    const current = guidedSnapshot({ pending: [leafId, "event.ceremony.address", "event.ceremony.place_selection"] });
+    assert.deepEqual(resolveDesignerAiLocationDecisions({
+      actions: [{ type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "Salón Los Robles" } }],
+      resolutions: [{ leafId: "event.ceremony.place_selection", status: "needs_clarification" }],
+    }, current), [], leafId);
+  }
+});
+
+test("guided entry and reentry derive Maps buttons from the current step without model output", () => {
+  const current = guidedSnapshot();
+  assert.equal(buildDesignerAiNextStep(current).kind, "location_method");
+  for (const result of [undefined, {}, { actions: [], resolutions: [], controlRequest: null }]) {
+    const decisions = resolveDesignerAiLocationDecisions(result, current);
+    assert.equal(decisions.length, 1);
+    assert.equal(decisions[0].phase, "ceremony");
+    assert.equal(decisions[0].query, "Salón Los Robles");
+    assert.equal(decisions[0].address, "", "unconfirmed template address is not suggested or preloaded");
+  }
+});
+
+test("guided Maps offers follow only the current phase and accept a confirmed address preload", () => {
+  const current = guidedSnapshot({ pending: ["event.party.place_selection"], eventMode: "ceremony_party" });
+  const ceremonyLeaf = current.ledger.leaves.find(leaf => leaf.id === "event.ceremony.place_selection");
+  Object.assign(ceremonyLeaf, { status: "resolved_by_rule", rule: "leave_empty" });
+  assert.deepEqual(buildDesignerAiNextStep(current), {
+    blockId: "event_data", kind: "place_selection", phase: "party", leafIds: ["event.party.place_selection"],
+  });
+  const decisions = resolveDesignerAiLocationDecisions({ resolutions: [
+    { leafId: "event.ceremony.place_selection", status: "needs_clarification" },
+  ] }, current);
+  assert.deepEqual(decisions.map(decision => [decision.phase, decision.query]), [["party", "Estancia, Ruta 8 km 40"]]);
+});
+
+test("a guided manual decision removes passive offers and explicit Maps controls are not duplicated", () => {
+  const current = guidedSnapshot();
+  assert.deepEqual(resolveDesignerAiLocationDecisions({ controlRequest: { type: "google_place_picker", phase: "ceremony" } }, current), []);
+  Object.assign(current.ledger.leaves.find(leaf => leaf.id === "event.ceremony.place_selection"), { status: "resolved_by_rule", rule: "leave_empty" });
+  assert.equal(buildDesignerAiNextStep(current).kind, "address");
+  assert.deepEqual(resolveDesignerAiLocationDecisions({ actions: [{ type: "event.set_location_text", arguments: { phase: "ceremony" } }] }, current), []);
+});
+
+test("a guided Maps search never preloads deferred or unconfirmed template text", () => {
+  const current = guidedSnapshot({ pending: ["event.ceremony.venue_name", "event.ceremony.address", "event.ceremony.place_selection"] });
+  for (const leaf of current.ledger.leaves.filter(leaf => ["event.ceremony.venue_name", "event.ceremony.address"].includes(leaf.id))) {
+    leaf.status = "deferred_by_user";
+  }
+  assert.equal(buildDesignerAiNextStep(current).kind, "place_selection");
+  const [decision] = resolveDesignerAiLocationDecisions({}, current);
+  assert.deepEqual([decision.query, decision.venueName, decision.address], ["", "", ""]);
+});
 
 test("manual venue and address produce a preloaded single-event Maps decision", () => {
   const decisions = resolveDesignerAiLocationDecisions({
@@ -96,6 +170,36 @@ test("explicit Maps control or manual rejection removes the pending decision", (
   }, snapshot());
   assert.deepEqual(rejected, []);
 });
+
+test("a persisted manual decision prevents another offer when the venue name is completed", () => {
+  const current = snapshot();
+  Object.assign(current.ledger.leaves[0], { status: "resolved_by_rule", rule: "leave_empty" });
+  for (const resolutions of [[], [{ leafId: "event.ceremony.place_selection", status: "needs_clarification", rule: null }]]) {
+    assert.deepEqual(resolveDesignerAiLocationDecisions({
+      actions: [{ type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "Mi casa", address: "Av. Ejemplo 1234" } }],
+      resolutions,
+      controlRequest: null,
+    }, current), []);
+  }
+});
+
+for (const manualPhase of ["ceremony", "party"]) {
+  test(`the saved ${manualPhase} decision does not hide the other phase's pending offer`, () => {
+    const current = snapshot();
+    current.values.eventMode = "ceremony_party";
+    for (const leaf of current.ledger.leaves) {
+      Object.assign(leaf, leaf.id === `event.${manualPhase}.place_selection`
+        ? { status: "resolved_by_rule", rule: "leave_empty" }
+        : { status: "requires_control", rule: null });
+    }
+    const decisions = resolveDesignerAiLocationDecisions({
+      actions: ["ceremony", "party"].map(phase => ({ type: "event.set_location_text", arguments: { phase, venueName: "Lugar", address: "Calle 123" } })),
+      resolutions: [],
+      controlRequest: null,
+    }, current);
+    assert.deepEqual(decisions.map(decision => decision.phase), [manualPhase === "ceremony" ? "party" : "ceremony"]);
+  });
+}
 
 test("control state preserves preload and baseline while manual reply stays phase-specific", () => {
   const decision = {

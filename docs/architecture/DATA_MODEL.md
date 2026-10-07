@@ -973,6 +973,11 @@ Dynamic values and their canvas representations are separate contracts:
   authority. Every declared `fieldsSchema` key is normalized into the applicable
   value bag, including valid empty values such as `""` and `[]`; consumers test
   key presence rather than truthiness.
+- Person names are read through the actual key of the field declaring
+  `primary_person_name`, `secondary_person_name`, or `couple_names`. The assistant
+  derives provenance from that same binding; a changed combined view does not
+  confirm names supplied by unchanged individual fields. Canonical field names
+  are ledger adapters, not a second value authority.
 - Canvas objects, grouped children, maps, countdowns, and
   `eventDetails.dressCode.value` are projections. Editing a structured value
   applies it to every valid target without transferring ownership of position,
@@ -1063,6 +1068,15 @@ order; a non-baseline authoring default; an existing `templateInput.values` key;
 then authoring, initial, or template defaults. Lossy transforms such as formatted
 date text are not inverted without an existing legacy resolver. Dress Code and
 the first valid map metadata for each phase migrate through the same boundary.
+
+The draft baseline preserves explicitly supplied `templateInput.defaults` first,
+then supplied template defaults, then authoring defaults. Missing template keys
+are not explicit empty defaults: schema normalization must not synthesize empty
+values before merging these sources. Otherwise copying a template without a
+top-level `defaults` bag turns inherited example values into `changedKeys` and
+falsely attributes them to the user. Explicit empty strings and arrays remain
+valid baseline values. Already persisted v2 baselines cannot be reconstructed
+from `changedKeys` alone; the same shape can represent a real user edit.
 
 `templateAuthoringDraft.fieldsSchema` may include standardized dynamic fields. The current standardized fields are:
 

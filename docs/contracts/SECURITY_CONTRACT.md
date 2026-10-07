@@ -242,18 +242,25 @@ Esta tabla **es propuesta**. Preserva las diferencias funcionales observadas en
 `resolveTemplatePermissions`, guards S y contratos, sin aceptar por ello todos
 los grants actuales. No concede lectura directa universal de datos de clientes.
 
+Excepción ya decidida para Designer AI, 2026-10-06: `Tu asistente` queda
+disponible para todos los usuarios autenticados en borradores editables, y el
+tab manual `Asistente` para admin y superadmin. Esta decisión acotada elimina
+la propuesta de reservar `designerAiUse` a S; no acepta las demás propuestas de
+Q1 ni modifica permisos de datos. Ver el
+[contrato de capacidades](DESIGNER_AI_CAPABILITY_CONTRACT.md#2-invariante-de-producto).
+
 | Nivel | Capacidades propuestas | Exclusiones / canal |
 | --- | --- | --- |
 | Usuario | Editar borradores/biblioteca propios; consultas propias de publicación/RSVP; consumo del catálogo autorizado; publicación por checkout/CALL. | Ninguna capacidad administrativa. Campos `admin`, `role` o `red` escritos en su perfil no autorizan. |
 | M | `catalogManage` (iconos/decoraciones/presets) y `templateEdit` (en proceso/revisión; restaurar sólo lo que archivó). | No publicar/editar plantilla ya publicada, hard-delete editorial, administrar usuarios/privilegios, precios, sitio, analítica global ni soporte privado. Cada operación sigue validando estado/actor. |
-| S | Capacidades M más `templatePublish`, `templateDelete`, `siteManage`, `pricingManage`, `analyticsReadExport`, `analyticsOperate`, `userSupport`, `designerAiUse`, `accessManage`. | Gestión sensible sólo CALL. Soporte es consulta específica auditada, no SDK glcud sobre todo el tenant ni permiso para editar invitaciones privadas arbitrariamente. No cambia pagos, publicación pública, retención ni proveedores. |
+| S | Capacidades M más `templatePublish`, `templateDelete`, `siteManage`, `pricingManage`, `analyticsReadExport`, `analyticsOperate`, `userSupport`, `accessManage`. | Gestión sensible sólo CALL. Soporte es consulta específica auditada, no SDK glcud sobre todo el tenant ni permiso para editar invitaciones privadas arbitrariamente. No cambia pagos, publicación pública, retención ni proveedores. |
 
 Correspondencias concretas para no perder consumidores al unificar helpers:
 
 | Entrada observada | Capacidad propuesta / compatibilidad |
 | --- | --- |
 | `listAdminUsers`, `getAdminUserByEmail`, `getUsersStats`, `listUsersDirectory`, `getUserDirectoryDetail`, `getAdminDraftSnapshot` en index.ts; `prepareDraftPreviewRender` con `administrativeOwnerUid` | `userSupport`, lectura administrativa explícita y scope de usuario/borrador validado. La UI de soporte no obtiene un SDK privilegiado general. Esta excepción de lectura a ownership requiere aceptar Q1-A. |
-| `designerAiChat` en index.ts y `canAccessDesignerAi` del frontend | `designerAiUse`; conserva el acceso restringido observado. No habilitar IA en el demo ni cambiar su contrato funcional. |
+| `designerAiChat` en index.ts y `canAccessDesignerAi` del frontend | Decisión vigente del 2026-10-06: autenticación con `requireAuth`, sin capacidad administrativa. La persistencia conserva ownership del borrador. El bloqueo de llamadas reales a IA en el demo sigue vigente. |
 | Pricing e historial, `upsertPublicationDiscountCode`, `listPublicationDiscountCodes`, `listPublicationDiscountCodeUsage` | `pricingManage`; conserva validación comercial existente. No concede saltar checkout o emitir una publicación fuera del backend. |
 | Overview/export de analytics; `adminRebuildBusinessAnalyticsV1` | `analyticsReadExport` para leer/exportar y `analyticsOperate` para solicitar rebuild. Los jobs/schedulers siguen siendo backend, no capacidades de un cliente. |
 | `adminCommitTemplateWorkspaceV1`, `adminCreateTemplateFromDraftV1` permiten a S ciertos cruces de workspace/propietario | No trasladar ese bypass a Rules ni asumir que soporte autoriza copiar contenido privado al catálogo. Propuesta: edición de workspace propio; conversión de borrador ajeno requiere autorización específica de contenido antes de concederse. Es un punto de compatibilidad/decisión en Q1-A, no una corrección silenciosa. |

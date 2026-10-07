@@ -1594,6 +1594,7 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
     waitForFunction: 0,
     evaluate: 0,
     evaluateSources: [],
+    order: [],
     screenshot: null,
     closed: false,
   };
@@ -1603,16 +1604,19 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
     async setViewport(input) {
       calls.viewport = input;
     },
-    async setContent(html) {
+    async setContent(html, options) {
       calls.content = html;
+      assert.equal(options.waitUntil, "domcontentloaded");
     },
     async waitForFunction() {
       calls.waitForFunction += 1;
+      calls.order.push("document-wait");
     },
     async evaluate(fn) {
       calls.evaluate += 1;
       const source = String(fn);
       calls.evaluateSources.push(source);
+      if (source.includes("resolveWithoutMusic")) calls.order.push("cancel-audio");
       if (source.includes("ignoredImageCount")) {
         return {
           hasFirstSection: true,
@@ -1665,6 +1669,7 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
   );
 
   assert.equal(output.toString(), "final-jpeg");
+  assert.deepEqual(calls.order.slice(0, 2), ["cancel-audio", "document-wait"]);
   assert.equal(calls.executablePathCalls, 1);
   assert.deepEqual(calls.launchOptions, {
     executablePath: "/tmp/chromium",
@@ -1676,7 +1681,7 @@ test("captureFirstSectionShareImage isolates .inv > .sec:first-child and capture
   assert.deepEqual(calls.viewport, { width: 1200, height: 630, deviceScaleFactor: 1 });
   assert.match(calls.content, /class="inv"/);
   assert.equal(calls.waitForFunction, 1);
-  assert.equal(calls.evaluate, 9);
+  assert.equal(calls.evaluate, 10);
   assert.ok(
     calls.evaluateSources.some((source) =>
       source.includes('querySelector(".inv > .sec:first-child")')
@@ -2528,7 +2533,7 @@ test("captureFirstSectionShareImage uses PUPPETEER_EXECUTABLE_PATH for local emu
 });
 
 test("executePublicationPublish persists catalog music by identity and writes the shared gate runtime", async (t) => {
-  const music = { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  const music = { version: 1, enabled: true, track: { source: "catalog", id: "transpote-jorge-drexler" }, volume: 0.35, loop: true };
   const { draftData, artifacts } = await createExecutionInput(t, { music });
   const harness = createExecutionHarness();
   await executePublicationPublish({
@@ -2539,5 +2544,6 @@ test("executePublicationPublish persists catalog music by identity and writes th
   assert.deepEqual(harness.calls.writes[0].publicationWrite.music, music);
   assert.match(harness.calls.savedHtml[0].html, /id="invitation-entry-gate"/);
   assert.match(harness.calls.savedHtml[0].html, /__invitationMusicRuntime/);
+  assert.match(harness.calls.savedHtml[0].html, /audio\.preload = "auto"/);
   assert.equal("url" in harness.calls.writes[0].publicationWrite.music, false);
 });

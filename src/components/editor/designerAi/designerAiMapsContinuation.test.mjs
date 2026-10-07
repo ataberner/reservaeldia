@@ -12,6 +12,31 @@ const location = { placeId: "synthetic-selected-place", displayName: "Salón de 
 const staleReply = "Perfecto, el lugar quedó guardado. ¿Querés indicarme la dirección manualmente? Y, si ya la tienen definida, ¿hasta qué hora dura el evento?";
 const action = (type, args) => ({ type, arguments: args });
 
+test("verified manual location continuation cannot reopen Maps from a model control request", async () => {
+  const run = await mountPanel({ savedDraft: templateDraft(), locationControl: SelectionControl,
+    respond: (_, index) => index === 1 ? { assistantMessage: "Hola.", entryGreeting: "Hola." } : index === 2 ? {
+      intent: "apply", assistantMessage: "Datos guardados.", actions: [
+        action("event.set_people", { primaryName: "Ana", secondaryName: "Luz" }),
+        action("event.set_mode", { mode: "single" }),
+        action("event.set_datetime", { phase: "ceremony", date: "2027-08-24", startTime: "20:00", endTime: null }),
+        action("event.set_location_text", { phase: "ceremony", venueName: "Salón de prueba", address: "Calle Ejemplo 123" }),
+      ],
+    } : { intent: "apply", assistantMessage: "Abramos Google Maps para buscar la dirección.",
+      controlRequest: { type: "google_place_picker", phase: "ceremony" } },
+  });
+  try {
+    await run.until(() => run.messages().length === 1);
+    await run.send("Somos Ana y Luz. Un evento el 24/08/2027 a las 20 en Salón de prueba, Calle Ejemplo 123.");
+    await run.click("Usar estos datos");
+    await run.until(() => run.calls.length === 3 && document.querySelector("section[aria-label='Tu asistente']")?.getAttribute("aria-busy") === "false");
+    assert.equal(document.querySelector('[data-designer-ai-location-control]'), null);
+    assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === "event.ceremony.place_selection").rule, "leave_empty");
+    assert.match(run.messages().at(-1).content, /Dress Code/);
+    assert.doesNotMatch(run.messages().at(-1).content, /Maps|buscar la dirección/);
+    assert.equal(run.messages().at(-1).intent, "apply");
+  } finally { await run.close(); }
+});
+
 // Exercise the real owner/verification/persistence path; only Places UI and the
 // provider are synthetic. The returned copy reproduces the observed bad reply.
 function SelectionControl({ phase, onSelectionApplied, onCancel }) {
@@ -48,6 +73,7 @@ for (const variant of ["new address", "same template address", "clarification", 
       if (index === 3) return { actions: [action("event.set_mode", { mode: twoPhases ? "ceremony_party" : "single" }),
         action("event.set_datetime", { phase: "ceremony", date: "2026-12-24", startTime: "20:00", endTime: null })], assistantMessage: "¿Cómo se llama el lugar?" };
       if (index === 4) return { actions: variant === "same template address" ? [] : [action("event.set_location_text", { phase: "ceremony", venueName: location.displayName, address: "" })],
+        controlRequest: variant === "same template address" ? { type: "google_place_picker", phase: "ceremony" } : null,
         resolutions: [{ leafId: "event.ceremony.place_selection", status: "needs_clarification", rule: null },
           ...(["clarification", "deferred"].includes(variant) ? [{ leafId: "event.ceremony.address", status: variant === "deferred" ? "deferred_by_user" : "needs_clarification", rule: null }] : [])],
         assistantMessage: "¿Querés buscarlo en Google Maps o cargar la dirección manualmente?" };
@@ -58,8 +84,8 @@ for (const variant of ["new address", "same template address", "clarification", 
       await run.until(() => run.messages().length === 1);
       await run.send("Somos Ana y Luz.");
       await run.send(twoPhases ? "Ceremonia y fiesta. La ceremonia es el 24/12/26 a las 20." : "Solo fiesta, el 24/12/26 a las 20.");
-      await run.send("Se llama Salón de prueba.");
-      await run.click("Buscar en Google Maps");
+      await run.send(variant === "same template address" ? "Buscá Salón de prueba en Google Maps." : "Se llama Salón de prueba.");
+      if (variant !== "same template address") await run.click("Buscar en Google Maps");
       if (variant === "cancel") {
         await run.click("Cancelar selección");
         assert.equal(run.calls.length, 4);
@@ -77,7 +103,7 @@ for (const variant of ["new address", "same template address", "clarification", 
         failWrite = false; failMetadata = false;
       }
       await act(async () => document.querySelector('[data-designer-ai-location-control] button').click());
-      await run.until(() => run.calls.length === 5 && !document.querySelector("textarea")?.disabled);
+      await run.until(() => run.calls.length === 5 && document.querySelector("section[aria-label='Tu asistente']")?.getAttribute("aria-busy") === "false");
       if (variant === "continuation failure") {
         assert.equal(run.messages().at(-1).canRetryContinuation, true);
         await run.click("Continuar recorrido");
@@ -123,9 +149,74 @@ for (const variant of ["new address", "same template address", "clarification", 
 
 test("verified continuation suppresses stale questions without losing ordinary date clarification", () => {
   const values = contract.sanitizeCapabilitySnapshot({ values: { eventMode: "single", ceremony: { date: "" } } }).values;
-  const snapshot = { values, conversation: { mode: "guided" }, ledger: ledger.buildDesignerAiLedger({ values, availability: { ceremonyDatetime: true } }) };
-  const result = { intent: "clarify", actions: [], resolutions: [] };
-  assert.equal(withDesignerAiGuidedContinuation("¿De qué año?", { previousSnapshot: snapshot, snapshot, result }), "¿De qué año?");
+  const snapshot = { values, conversation: { mode: "guided" }, ledger: ledger.buildDesignerAiLedger({ values, availability: { people: false, eventMode: false, ceremonyDatetime: true } }) };
+  const result = { intent: "clarify", actions: [], resolutions: [], clarification: { leafId: "event.ceremony.date", kind: "missing_year" } };
+  assert.equal(withDesignerAiGuidedContinuation("¿De qué año?", { previousSnapshot: snapshot, snapshot, result }), "¿De qué año es la fecha del evento?");
   const editing = { ...snapshot, conversation: { mode: "editing" } };
   assert.equal(withDesignerAiGuidedContinuation("¿Querés indicarme la dirección manualmente?", { previousSnapshot: editing, snapshot: editing, result, verifiedContinuation: true }), "Listo.");
 });
+
+for (const choice of ["button", "chat"]) {
+  test(`manual location stays selected after naming the venue and reloading: ${choice}`, async () => {
+    const address = "Calle de Prueba 459, Ciudad de Prueba";
+    const manual = { leafId: "event.ceremony.place_selection", status: "resolved_by_rule", rule: "leave_empty" };
+    const hasMapsOffer = () => [...document.querySelectorAll("button")].some(button => button.textContent.trim() === "Buscar en Google Maps");
+    const selectionLeaf = snapshot => snapshot.ledger.leaves.find(leaf => leaf.id === manual.leafId);
+    let run = await mountPanel({ savedDraft: templateDraft(), respond: (_, index) => {
+      if (index === 1) return { assistantMessage: "¿Cómo se llaman?" };
+      if (index === 2) return { actions: [action("event.set_people", { primaryName: "Ana", secondaryName: "Luz" })], assistantMessage: "¿Un único evento o ceremonia y fiesta?" };
+      if (index === 3) return { actions: [action("event.set_mode", { mode: "single" })], assistantMessage: "¿Qué día es el evento?" };
+      if (index === 4) return { actions: [action("event.set_datetime", { phase: "ceremony", date: "2026-12-24", startTime: null, endTime: null })], assistantMessage: "¿A qué hora comienza y dónde será el evento?" };
+      if (index === 5) return {
+        actions: [action("event.set_datetime", { phase: "ceremony", date: null, startTime: "20:00", endTime: null }),
+          action("event.set_location_text", { phase: "ceremony", venueName: "", address })],
+        assistantMessage: "Anoté el horario y la dirección. ¿Querés verificarla en Google Maps o usar la dirección manual?",
+      };
+      if ((index === 6 && choice === "chat") || (index === 7 && choice === "button")) return {
+        resolutions: choice === "chat" ? [manual] : [], assistantMessage: "Perfecto, queda cargada manualmente la dirección. ¿Cómo se llama el lugar?" };
+      return { actions: [action("event.set_location_text", { phase: "ceremony", venueName: "Mi casa", address })],
+        assistantMessage: "El lugar queda como Mi casa. ¿Quieren incluir Dress Code?" };
+    } });
+    try {
+      await run.until(() => run.messages().length === 1);
+      await run.send("Somos Ana y Luz.");
+      await run.send("Un único evento.");
+      await run.send("24/12/26");
+      await run.send(`Es a las 20:00 en ${address}.`);
+      assert.equal(hasMapsOffer(), false, "confirm the venue before offering a passive Maps decision");
+      assert.match(run.messages().at(-1).content, /Cómo se llama el lugar/);
+      if (choice === "button") {
+        await run.send("Es mi casa.");
+        assert.equal(hasMapsOffer(), true);
+        await run.click("Usar estos datos");
+        await run.until(() => run.calls.length === 7 && document.querySelector("section[aria-label='Tu asistente']")?.getAttribute("aria-busy") === "false");
+      } else {
+        await run.send("Prefiero cargar manualmente la dirección del evento, sin usar Google Maps.");
+      }
+      assert.equal(selectionLeaf(run.snapshot()).rule, "leave_empty");
+      assert.match(run.messages().at(-1).content, choice === "chat" ? /Cómo se llama el lugar/ : /Dress Code/);
+      assert.equal(hasMapsOffer(), false);
+      if (choice === "chat") await run.send("Es mi casa.");
+      assert.equal(selectionLeaf(run.snapshot()).status, "resolved_by_rule");
+      assert.equal(run.snapshot().values.ceremony.address, address);
+      assert.equal(run.snapshot().values.ceremony.venueName, "Mi casa");
+      assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "dress_code");
+      assert.match(run.messages().at(-1).content, /Dress Code/);
+      assert.equal(hasMapsOffer(), false, "naming a manual venue must not repeat the Maps decision");
+
+      const savedDraft = run.exportPersistedDraft();
+      await run.close(); run = null;
+      run = await mountPanel({ savedDraft, locationControl: SelectionControl, respond: (_, index) => index === 1
+        ? { assistantMessage: "¿Quieren incluir Dress Code?" }
+        : index === 2 ? { actions: [action("event.set_location_text", { phase: "ceremony", venueName: "Nuestra casa", address })], assistantMessage: "Actualicé el nombre del lugar." }
+          : { intent: "apply", controlRequest: { type: "google_place_picker", phase: "ceremony" }, assistantMessage: "Busquemos la dirección en Google Maps." } });
+      await run.until(() => run.messages().length === 1);
+      assert.equal(selectionLeaf(run.snapshot()).rule, "leave_empty");
+      await run.send("El lugar se llama Nuestra casa.");
+      assert.equal(hasMapsOffer(), false, "the persisted choice also applies after a full reload");
+      assert.equal(selectionLeaf(run.snapshot()).status, "resolved_by_rule");
+      await run.send("Ahora sí quiero buscar esa dirección en Google Maps.");
+      assert.ok(document.querySelector('[data-designer-ai-location-control="ceremony"]'), "an explicit later request can still open Maps");
+    } finally { await run?.close(); }
+  });
+}

@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createDraftWriteCoordinator } from "../persistence/draftWriteCoordinator.js";
+import { normalizeDraftTemplateInput } from "../../../domain/drafts/sourceOfTruth.js";
+import { ensureDefaultsForSchema, ensureValuesForSchema, normalizeDetachedVisuals } from "../../../../shared/templates/contract.js";
 
 const hookSource = fs.readFileSync(
   new URL("./useTemplateFieldAuthoring.js", import.meta.url),
@@ -43,6 +45,36 @@ function readCallbackSlice(name, nextName) {
   assert.notEqual(end, -1, `${nextName} callback missing`);
   return hookSource.slice(start, end);
 }
+
+test("live authoring provenance uses the same draft defaults and changed keys as persistence", () => {
+  const dependencies = {
+    useCallback: callback => callback,
+    asObject: value => value && typeof value === "object" ? value : {},
+    normalizeText: value => String(value || "").trim(),
+    latestAuthoringStateRef: { current: { objetos: [] } },
+    ensureDefaultsForSchema, ensureValuesForSchema, normalizeDetachedVisuals,
+    normalizeDraftTemplateInput, validateAuthoringState: () => ({ isReady: true }),
+    editorSession: { kind: "draft", id: "synthetic" },
+    draftMeta: {}, sourceTemplateId: "template", AUTHORING_DRAFT_VERSION: 2,
+  };
+  const hydrate = new Function(...Object.keys(dependencies),
+    `${readCallbackSlice("hydrateSnapshot", "persistSnapshot")}\nreturn hydrateSnapshot;`
+  )(...Object.values(dependencies));
+  const fieldsSchema = [
+    { key: "first", type: "text" }, { key: "second", type: "text" },
+  ];
+  const original = { first: "Modelo", second: "Ejemplo" };
+  const initial = hydrate({ fieldsSchema, defaults: original, values: original });
+  assert.deepEqual(initial.templateInput.changedKeys, []);
+  const edited = hydrate({ ...initial, values: { first: "Ana", second: "Ejemplo" } });
+  assert.deepEqual(edited.templateInput.changedKeys, ["first"]);
+  assert.deepEqual(edited.templateInput.defaults, original);
+  assert.deepEqual(edited.templateInput, normalizeDraftTemplateInput({
+    templateInput: edited.templateInput, fieldsSchema, defaults: original,
+  }));
+  const reverted = hydrate({ ...edited, values: original });
+  assert.deepEqual(reverted.templateInput.changedKeys, []);
+});
 
 test("authoring persistence always carries the complete reached render roots", () => {
   const persistSlice = readCallbackSlice("persistSnapshot", "commitSnapshot");

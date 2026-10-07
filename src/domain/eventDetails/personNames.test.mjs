@@ -14,11 +14,53 @@ import {
   resolveEventPersonNameVisualFieldKeys,
   resolveEventPersonNamesState,
   resolveEventPersonNamesFromAuthoring,
+  resolveEventPersonNameBindingsFromAuthoring,
   splitEventCoupleNamesText,
 } from "./personNames.js";
 import {
   buildTemplateAuthoringTargetPatches,
 } from "../templates/authoring/targetApplication.js";
+
+const customPersonFields = [
+  { key: "first_guest", type: "text", eventDetailsRole: "primary_person_name", applyTargets: [{ scope: "objeto", id: "first-name", path: "texto" }] },
+  { key: "second_guest", type: "text", eventDetailsRole: "secondary_person_name", applyTargets: [{ scope: "objeto", id: "second-name", path: "texto" }] },
+];
+
+test("semantic person roles read their declared keys before canonical aliases or stale canvas text", () => {
+  const input = { fieldsSchema: customPersonFields,
+    defaults: { first_guest: "Ana", second_guest: "Luz", event_primary_person_name: "Alias anterior", event_secondary_person_name: "Otro alias" },
+    objetos: [{ id: "first-name", texto: "Vista anterior" }, { id: "second-name", texto: "Otra vista" }] };
+  assert.deepEqual(resolveEventPersonNamesFromAuthoring(input), { primaryName: "Ana", secondaryName: "Luz" });
+  assert.deepEqual(resolveEventPersonNameBindingsFromAuthoring(input), {
+    names: { primaryName: "Ana", secondaryName: "Luz" },
+    fieldKeys: { primaryName: "first_guest", secondaryName: "second_guest" },
+  });
+  input.defaults.first_guest = "";
+  assert.deepEqual(resolveEventPersonNamesFromAuthoring(input), { primaryName: "", secondaryName: "Luz" }, "an explicit empty custom field remains authoritative");
+});
+
+test("custom person fields round trip through the existing writer without canvas targets", () => {
+  const fieldsSchema = customPersonFields.map(field => ({ ...field, applyTargets: [] }));
+  const defaults = buildEventPersonNameDefaults({ fieldsSchema, defaults: { first_guest: "Ana", second_guest: "Luz" },
+    names: { primaryName: "Sol", secondaryName: "Mar" } });
+  assert.deepEqual(defaults, { first_guest: "Sol", second_guest: "Mar" });
+  assert.deepEqual(resolveEventPersonNamesFromAuthoring({ fieldsSchema, defaults }), { primaryName: "Sol", secondaryName: "Mar" });
+});
+
+test("person bindings identify only the combined source actually used for a missing individual value", () => {
+  const fieldsSchema = [...customPersonFields,
+    { key: "couple_title", type: "text", eventDetailsRole: "couple_names", applyTargets: [] }];
+  assert.deepEqual(resolveEventPersonNameBindingsFromAuthoring({ fieldsSchema,
+    defaults: { first_guest: "Sol", couple_title: "Ana y Luz" } }), {
+    names: { primaryName: "Sol", secondaryName: "Luz" },
+    fieldKeys: { primaryName: "first_guest", secondaryName: "couple_title" },
+  });
+  assert.deepEqual(resolveEventPersonNameBindingsFromAuthoring({ fieldsSchema,
+    defaults: { first_guest: "Sol", second_guest: "", couple_title: "Ana y Luz" } }), {
+    names: { primaryName: "Sol", secondaryName: "" },
+    fieldKeys: { primaryName: "first_guest", secondaryName: "second_guest" },
+  });
+});
 
 test("combined person-name visuals depend on both structured name fields", () => {
   const ensured = ensureEventPersonNameFields({

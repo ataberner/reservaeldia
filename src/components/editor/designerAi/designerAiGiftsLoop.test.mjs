@@ -22,6 +22,100 @@ function draft({ enabled = true, parentStatus = "needs_clarification", provenanc
 }
 const hasGallery = () => document.body.textContent.includes("Terminé con esta galería");
 
+for (const leafId of ["gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value"]) {
+  test(`a redundant requires_control on ${leafId} does not reject the alias batch or survive reentry`, async () => {
+    let run = await mountPanel({ savedDraft: draft({ enabled: false, parentStatus: "pending" }), respond: (_, index) => index === 1
+      ? { assistantMessage: "Contame cómo quieren recibir regalos." }
+      : { actions: [gift("set_enabled", { enabled: true }), aliasAction],
+        resolutions: [{ leafId, status: "requires_control", rule: null }],
+        assistantMessage: "Habilité regalos y dejé visible el alias." } });
+    try {
+      await run.until(() => run.messages().length === 1);
+      await run.send("Activá regalos y mostrá el alias ALIAS.PRUEBA.");
+      assert.notEqual(run.messages().at(-1).intent, "error");
+      assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "galleries");
+      for (const id of ["gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value"]) {
+        assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === id).status, "resolved_from_user");
+      }
+      assert.equal(hasGallery(), false, "the next photo offer still needs the user's acceptance");
+      const saved = run.exportPersistedDraft();
+      assert.equal(saved.render.gifts.enabled, true);
+      assert.equal(saved.render.gifts.visibility.alias, true);
+      assert.equal(saved.render.gifts.bank.alias, "ALIAS.PRUEBA");
+      assert.ok(saved.conversation.resolutions.every(item => item.leafId !== leafId || item.status !== "requires_control"));
+      await run.close(); run = null;
+      run = await mountPanel({ savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
+      await run.until(() => run.messages().length === 1);
+      assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "galleries");
+      assert.doesNotMatch(run.messages().at(-1).content, /lista externa|datos bancarios|Pasame el alias/);
+      assert.equal(run.writes.length, 0, "reentry does not replay the confirmed alias mutation");
+    } finally { await run?.close(); }
+  });
+}
+
+test("a redundant control resolution cannot make a hidden alias disappear or complete Gifts", async () => {
+  const run = await mountPanel({ savedDraft: draft({ alias: "ALIAS.CONSERVADO", parentStatus: "resolved_from_user" }), respond: (_, index) => index === 1
+    ? { assistantMessage: "Seguimos." }
+    : { actions: [gift("set_method", { method: "alias", value: null, visible: false })],
+      resolutions: [{ leafId: "gifts.method.alias.visible", status: "requires_control", rule: null }],
+      assistantMessage: "Oculté el alias." } });
+  try {
+    await run.until(() => run.messages().length === 1);
+    await run.send("Ocultá el alias, pero conservá su valor.");
+    assert.notEqual(run.messages().at(-1).intent, "error");
+    const saved = run.exportPersistedDraft();
+    assert.equal(saved.render.gifts.bank.alias, "ALIAS.CONSERVADO");
+    assert.equal(saved.render.gifts.visibility.alias, false);
+    assert.equal(run.snapshot().values.gifts.methods.alias.value, "ALIAS.CONSERVADO");
+    const payload = capabilities.buildDesignerAiCallablePayload({ snapshot: run.snapshot(),
+      message: "Seguimos.", clientMessageId: "hidden-alias-followup" });
+    assert.equal(JSON.stringify(payload).includes("ALIAS.CONSERVADO"), false,
+      "hidden banking data remains local and persisted, outside the model context");
+    assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "gifts");
+    assert.equal(hasGallery(), false);
+  } finally { await run.close(); }
+});
+
+test("a real Gallery control remains available alongside a confirmed gift action", async () => {
+  const run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+    ? { assistantMessage: "Pasame el alias." }
+    : index === 2 ? { actions: [aliasAction], assistantMessage: "Agregué el alias." }
+    : { actions: [aliasAction], controlRequest: gallery,
+      resolutions: [{ leafId: ledger.buildDesignerAiGalleryCompletionLeafId(galleryId), status: "requires_control", rule: null }],
+      assistantMessage: "Acá podés cambiar las fotos." } });
+  try {
+    await run.until(() => run.messages().length === 1);
+    await run.send("Usá ALIAS.PRUEBA.");
+    assert.equal(hasGallery(), false);
+    await run.send("Sí, mantengan ese alias y quiero cambiar las fotos de la galería.");
+    assert.notEqual(run.messages().at(-1).intent, "error");
+    assert.equal(hasGallery(), true);
+    const saved = run.exportPersistedDraft();
+    assert.equal(saved.render.gifts.bank.alias, "ALIAS.PRUEBA");
+    const galleryResolution = saved.conversation.resolutions.find(item => item.leafId === ledger.buildDesignerAiGalleryCompletionLeafId(galleryId));
+    assert.equal(galleryResolution.status, "requires_control");
+    assert.equal(run.snapshot().ledger.guidedFlow.completion.complete, false);
+  } finally { await run.close(); }
+});
+
+for (const variant of ["without an action", "not covered by the action"]) {
+  test(`an unsupported control requirement ${variant} still fails before mutation`, async () => {
+    const actions = variant === "without an action" ? [] : [aliasAction];
+    const leafId = actions.length ? "gifts.intro_text" : "gifts.method.alias.value";
+    const run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+      ? { assistantMessage: "Pasame el alias." }
+      : { actions, resolutions: [{ leafId, status: "requires_control", rule: null }], assistantMessage: "Listo." } });
+    try {
+      await run.until(() => run.messages().length === 1);
+      await run.send("El alias es ALIAS.PRUEBA.");
+      assert.equal(run.messages().at(-1).intent, "error");
+      assert.equal(run.writes.length, 0);
+      assert.equal(run.exportPersistedDraft().render.gifts.bank.alias, "");
+      assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "gifts");
+    } finally { await run.close(); }
+  });
+}
+
 for (const variant of ["prior clarification", "same-turn parent clarification", "same-turn alias clarification"]) {
   test(`confirmed alias advances once to Gallery and never returns to Gifts: ${variant}`, async () => {
     const prior = variant === "prior clarification";
@@ -63,13 +157,17 @@ for (const variant of ["prior clarification", "same-turn parent clarification", 
 }
 
 test("asking for the selected bank data does not append a second choice of gift method", () => {
-  const value = draft();
+  const value = draft({ parentStatus: "resolved_from_user" });
+  const initial = capabilities.buildDesignerAiCapabilitySnapshot({ authoringSnapshot: value.authoring, renderSnapshot: value.render, conversationState: value.conversation });
+  const visibility = initial.ledger.leaves.find(leaf => leaf.id === "gifts.method.alias.visible");
+  value.conversation.resolutions.push({ leafId: visibility.id, fingerprint: visibility.fingerprint,
+    status: "resolved_from_user", provenance: "user_current_session", rule: null });
   const snapshot = capabilities.buildDesignerAiCapabilitySnapshot({ authoringSnapshot: value.authoring, renderSnapshot: value.render, conversationState: value.conversation });
   for (const message of ["Perfecto. Pasame el alias que quieran mostrar.", "Compartime el enlace de la lista.", "¿Qué alias quieren mostrar?"]) {
     for (const resolutions of [[], [{ leafId: "gifts.enabled", status: "needs_clarification", rule: null }]]) {
       for (const actions of [[], [gift("set_enabled", { enabled: true })]]) {
         assert.equal(withDesignerAiGuidedContinuation(message, { previousSnapshot: snapshot, snapshot,
-          result: { intent: actions.length ? "apply" : "clarify", actions, resolutions } }), message);
+          result: { intent: actions.length ? "apply" : "clarify", actions, resolutions } }), "Pasame el alias que quieran mostrar.");
       }
     }
   }
@@ -118,21 +216,27 @@ test("a deliberately selected incomplete method asks only for its missing value"
   } finally { await run.close(); }
 });
 
-test("failed alias persistence blocks progression until the existing retry confirms it", async () => {
-  let fail = false;
-  const run = await mountPanel({ savedDraft: draft(), failWrite: () => fail, respond: (_, index) => index === 1
-    ? { assistantMessage: "Pasame el alias." }
-    : { actions: [aliasAction], assistantMessage: "Agregué el alias. ¿Quieren ayuda con las fotos?" } });
-  try {
-    await run.until(() => run.messages().length === 1);
-    fail = true;
-    await run.send("El alias es ALIAS.PRUEBA.");
-    assert.equal(run.messages().at(-1).intent, "error");
-    assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "gifts");
-    assert.equal(hasGallery(), false);
-    fail = false;
-    await run.click("Reintentar pendientes");
-    await run.until(() => ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id === "galleries");
-    assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === "gifts.method.alias.value").status, "resolved_from_user");
-  } finally { await run.close(); }
-});
+for (const variant of ["alias only", "enable and alias with redundant control"]) {
+  test(`failed alias persistence blocks progression until the existing retry confirms it: ${variant}`, async () => {
+    let fail = false;
+    const aliasOnly = variant === "alias only";
+    const run = await mountPanel({ savedDraft: draft({ enabled: aliasOnly }), failWrite: () => fail, respond: (_, index) => index === 1
+      ? { assistantMessage: "Pasame el alias." }
+      : { actions: aliasOnly ? [aliasAction] : [gift("set_enabled", { enabled: true }), aliasAction],
+        resolutions: aliasOnly ? [] : [{ leafId: "gifts.method.alias.value", status: "requires_control", rule: null }],
+        assistantMessage: "Agregué el alias. ¿Quieren ayuda con las fotos?" } });
+    try {
+      await run.until(() => run.messages().length === 1);
+      fail = true;
+      await run.send("El alias es ALIAS.PRUEBA.");
+      assert.equal(run.messages().at(-1).intent, "error");
+      assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "gifts");
+      assert.equal(run.exportPersistedDraft().render.gifts.bank.alias, "");
+      assert.equal(hasGallery(), false);
+      fail = false;
+      await run.click("Reintentar pendientes");
+      await run.until(() => ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id === "galleries");
+      assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === "gifts.method.alias.value").status, "resolved_from_user");
+    } finally { await run.close(); }
+  });
+}

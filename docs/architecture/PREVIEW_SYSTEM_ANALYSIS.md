@@ -58,6 +58,14 @@ The draft preview path is:
 5. The backend validates with `validatePreparedRenderPayload(...)` and generates preview HTML through `generateHtmlFromPreparedRenderPayload(..., { isPreview: true })` only when validation allows it.
 6. The result is classified as `previewAuthority: "draft-authoritative"` and the final HTML is committed to the active guarded session.
 
+Critical draft flushes allow up to 90 seconds for the existing write FIFO and
+callable persistence, returning immediately on confirmation or failure. The
+former six-second event deadline could expire during a music save, before any
+invitation audio was requested. No timeout is treated as a confirmed save.
+Once HTML is ready, active music preloads alongside critical visual resources;
+the shared runtime keeps the heart until playback can start, with the optional
+audio failure/deadline behavior owned by [Music](../contracts/MUSIC_SYSTEM_CONTRACT.md).
+
 New upload/editor writes persist a canonical asset descriptor alongside the
 render URL: Storage path, object generation, download token, and source image
 dimensions where crop materialization needs them. If those persisted values
@@ -204,12 +212,17 @@ or for resources owned by later sections. Every rendered network image in the
 first section, including ordinary image objects and gallery cells, is
 eager/high-priority and is emitted as a head preload; corresponding resources
 in later sections are lazy/low-priority. The loader can therefore reveal the
-invitation atomically after the first section is renderable instead of exposing
-late object images. On a critical resource failure or the bounded timeout, the
-invitation remains hidden and the loader changes to an error state with an
-explicit retry. That failed document is sealed: a resource that completes
-later cannot reveal it. The preview shell observes the same error protocol and
-keeps its outer loader; retry remounts/reloads the document. The durable
+invitation after the first section is renderable when its assets finish within
+the initial wait. Since the accepted 2026-10-05 resource-loading change, a failed
+image or exhausted 2600 ms visual budget releases readiness with diagnostic
+statuses instead of permanently blocking the document. Pending resources keep
+loading; late assets can appear without a reload. The visual budget starts after
+DOM parsing; first-section fonts retain their 1200 ms cap and optional music
+retains its own preload contract. The loader's separate 10-second watchdog also
+reveals the invitation. The preview shell observes the same loader-hidden event
+and removes its outer presentation on desktop and mobile. Explicit fatal-event
+compatibility remains, but visual resource failures no longer emit that event.
+The durable
 cross-surface contract is owned by
 [`RENDER_COMPATIBILITY_MATRIX.md`](../contracts/RENDER_COMPATIBILITY_MATRIX.md).
 

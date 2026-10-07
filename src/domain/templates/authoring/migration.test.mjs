@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { formatTemplateDateTextValue } from "../fieldValueResolver.js";
 import { migrateDynamicAuthoringStateV2 } from "./migration.js";
+import { buildDesignerAiCapabilitySnapshot } from "../../editor/designerAiCapabilities.js";
+import { buildDesignerAiConversationBrief } from "../../../../shared/designerAiConversationLedger.js";
 
 function field(key, extra = {}) {
   return {
@@ -12,6 +14,154 @@ function field(key, extra = {}) {
     ...extra,
   };
 }
+
+test("copied authoring defaults remain the baseline when template defaults are absent or partial", () => {
+  const defaults = { first: "Clara", second: "Bruno", other: "Template" };
+  const authoringDraft = {
+    version: 2,
+    fieldsSchema: Object.keys(defaults).map((key) => field(key, { applyTargets: [] })),
+    defaults,
+  };
+
+  for (const templateDefaults of [undefined, {}, { other: "Template" }]) {
+    const result = migrateDynamicAuthoringStateV2({ authoringDraft, templateDefaults });
+    assert.equal(result.migrated, true);
+    assert.deepEqual(result.templateInput.defaults, defaults);
+    for (const [key, value] of Object.entries(defaults)) {
+      assert.equal(result.templateInput.values[key], value);
+    }
+    assert.deepEqual(result.templateInput.changedKeys, []);
+    assert.deepEqual(authoringDraft.defaults, defaults);
+  }
+});
+
+test("explicit empty template and input defaults retain precedence over authoring defaults", () => {
+  const result = migrateDynamicAuthoringStateV2({
+    authoringDraft: {
+      version: 2,
+      fieldsSchema: ["template_empty", "input_empty"].map((key) => field(key, { applyTargets: [] })),
+      defaults: { template_empty: "Author template", input_empty: "Author input" },
+    },
+    templateDefaults: { template_empty: "", input_empty: "Template input" },
+    templateInput: { policyVersion: 1, defaults: { input_empty: "" } },
+  });
+  assert.deepEqual(result.templateInput.defaults, { template_empty: "", input_empty: "" });
+  assert.equal(result.templateInput.values.template_empty, "Author template");
+  assert.equal(result.templateInput.values.input_empty, "Author input");
+  assert.deepEqual(result.templateInput.changedKeys, ["template_empty", "input_empty"]);
+});
+
+test("migration preserves real personalization and explicit empty user values against their input baseline", () => {
+  const defaults = { person: "Clara", note: "Template note" };
+  const result = migrateDynamicAuthoringStateV2({
+    authoringDraft: {
+      version: 2,
+      fieldsSchema: Object.keys(defaults).map((key) => field(key, { applyTargets: [] })),
+      defaults,
+    },
+    templateInput: {
+      policyVersion: 1,
+      defaults,
+      initialValues: defaults,
+      values: { person: "Valentina", note: "" },
+    },
+  });
+  assert.deepEqual(result.templateInput.defaults, defaults);
+  assert.equal(result.templateInput.values.person, "Valentina");
+  assert.equal(result.templateInput.values.note, "");
+  assert.deepEqual(result.templateInput.changedKeys, ["person", "note"]);
+});
+
+test("new copied draft migration keeps template names pending in the assistant", () => {
+  // copiarPlantilla writes templateAuthoringDraft, without top-level defaults
+  // or templateInput; loadAuthoringState migrates that aligned stored metadata.
+  const defaults = { event_primary_person_name: "Clara", event_secondary_person_name: "Bruno" };
+  const authoringDraft = {
+    version: 2,
+    sourceTemplateId: "synthetic-template",
+    fieldsSchema: Object.keys(defaults).map((key) => field(key, { applyTargets: [] })),
+    defaults,
+  };
+  const migrated = migrateDynamicAuthoringStateV2({
+    authoringDraft,
+    sourceTemplateId: "synthetic-template",
+    objetos: [],
+    eventDetails: { mode: "single" },
+  });
+  const snapshot = buildDesignerAiCapabilitySnapshot({
+    documentNameState: { documentKind: "draft", editable: true },
+    renderSnapshot: { objetos: [], eventDetails: migrated.eventDetails },
+    authoringSnapshot: {
+      ...migrated.authoringDraft,
+      values: migrated.values,
+      templateInput: migrated.templateInput,
+    },
+    sourceContext: { templateDerived: true },
+  });
+  assert.deepEqual(snapshot.values.people, { primaryName: "Clara", secondaryName: "Bruno" });
+  assert.deepEqual(migrated.templateInput.changedKeys, []);
+  assert.deepEqual(snapshot.ledger.leaves.filter((leaf) => leaf.block === "names").map((leaf) => ({
+    status: leaf.status,
+    provenance: leaf.provenance,
+  })), [
+    { status: "pending", provenance: "template_value" },
+    { status: "pending", provenance: "template_value" },
+  ]);
+  assert.equal(buildDesignerAiConversationBrief(snapshot).nextStep.kind, "names");
+});
+
+test("copied dates and places also stay pending after names and event structure are confirmed", () => {
+  const fieldsSchema = [
+    ["event_primary_person_name", "primary_person_name", "text"],
+    ["event_secondary_person_name", "secondary_person_name", "text"],
+    ["event_ceremony_date", "ceremony_date", "date"],
+    ["event_ceremony_start_time", "ceremony_start_time", "time"],
+    ["event_ceremony_venue_name", "ceremony_venue_name", "text"],
+    ["event_ceremony_venue_address", "ceremony_venue_address", "location"],
+  ].map(([key, eventDetailsRole, type]) => field(key, { eventDetailsRole, type, applyTargets: [] }));
+  const defaults = {
+    event_primary_person_name: "Clara",
+    event_secondary_person_name: "Bruno",
+    event_ceremony_date: "2027-04-10",
+    event_ceremony_start_time: "18:00",
+    event_ceremony_venue_name: "Lugar de la plantilla",
+    event_ceremony_venue_address: "Direccion de la plantilla",
+  };
+  const migrated = migrateDynamicAuthoringStateV2({
+    authoringDraft: { version: 2, fieldsSchema, defaults },
+    eventDetails: { mode: "single" },
+  });
+  const input = {
+    documentNameState: { documentKind: "draft", editable: true },
+    authoringSnapshot: {
+      ...migrated.authoringDraft,
+      values: migrated.values,
+      templateInput: migrated.templateInput,
+    },
+    renderSnapshot: { objetos: [], eventDetails: migrated.eventDetails },
+    sourceContext: { templateDerived: true },
+  };
+  const initial = buildDesignerAiCapabilitySnapshot(input);
+  assert.deepEqual(migrated.templateInput.changedKeys, []);
+  const confirmed = new Set(["event.people.primary_name", "event.people.secondary_name", "event.mode"]);
+  const afterConfirmation = buildDesignerAiCapabilitySnapshot({
+    ...input,
+    conversationState: {
+      resolutions: initial.ledger.leaves.filter((leaf) => confirmed.has(leaf.id)).map((leaf) => ({
+        leafId: leaf.id, fingerprint: leaf.fingerprint,
+        status: "resolved_from_user", provenance: "user_current_session",
+      })),
+    },
+  });
+  const next = buildDesignerAiConversationBrief(afterConfirmation).nextStep;
+  assert.equal(next.kind, "date");
+  assert.equal(next.phase, "ceremony");
+  for (const suffix of ["date", "start_time", "venue_name", "address"]) {
+    const leaf = afterConfirmation.ledger.leaves.find((entry) => entry.id === `event.ceremony.${suffix}`);
+    assert.equal(leaf.status, "pending");
+    assert.equal(leaf.provenance, "template_value");
+  }
+});
 
 test("v1 migration applies the documented value precedence and preserves empty own keys", () => {
   const fieldsSchema = [

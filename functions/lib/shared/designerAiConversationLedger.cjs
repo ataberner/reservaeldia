@@ -344,7 +344,6 @@ function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversati
   if (!hasMeaningfulValue(value)) return false;
   const valueFingerprint = fingerprint(value);
   const baseline = baselineForLeaf(conversationState, leafId);
-  if (baseline && baseline.fingerprint !== valueFingerprint) return true;
   const changedKeys = new Set(Array.isArray(sourceContext.changedKeys) ? sourceContext.changedKeys : []);
   const dynamicKeyByLeaf = {
     "event.people.primary_name": "event_primary_person_name",
@@ -359,10 +358,24 @@ function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversati
     "event.party.end_time": "event_party_end_time",
     "event.party.venue_name": "event_party_venue_name",
     "event.party.address": "event_party_venue_address",
-    "event.dress_code.value": "dress_code",
+    "event.dress_code.value": "event_dress_code",
     "story.text": "texto_historia",
   };
-  if (changedKeys.has(dynamicKeyByLeaf[leafId])) return true;
+  // The owner still accepts legacy role-bound Dress Code fields named dress_code.
+  const fieldKeys = leafId === "event.dress_code.value"
+    ? [dynamicKeyByLeaf[leafId], "dress_code"] : [dynamicKeyByLeaf[leafId]].filter(Boolean);
+  if (fieldKeys.some((key) => changedKeys.has(key))) return true;
+  // The entry baseline is durable evidence only for its captured value. Preserve
+  // an already established user value when source metadata is not available on
+  // reentry; an empty legacy fingerprint cannot prove a later manual change.
+  if (baseline?.fingerprint === valueFingerprint &&
+      [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(baseline.provenance)) return true;
+  // A live comparison with the template defaults is stronger than the heuristic
+  // "different from entry". Restoring a default after opening must not confirm it.
+  const unchangedTemplateField = sourceContext.changedKeysAuthoritative === true &&
+    sourceContext.templateDerived === true && fieldKeys.some((key) =>
+      !Array.isArray(sourceContext.authoringFieldKeys) || sourceContext.authoringFieldKeys.includes(key));
+  if (baseline?.fingerprint && baseline.fingerprint !== valueFingerprint && !unchangedTemplateField) return true;
   // Names require positive provenance, including on legacy drafts. Text alone
   // cannot distinguish a real couple from arbitrary template/demo names. Durable
   // receipts are read before this fallback, so confirming an unchanged value works.
@@ -519,6 +532,8 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   const source = {
     templateDerived: sourceContext?.templateDerived === true,
     changedKeys: Array.isArray(sourceContext?.changedKeys) ? sourceContext.changedKeys.map(normalizeText) : [],
+    changedKeysAuthoritative: sourceContext?.changedKeysAuthoritative === true,
+    authoringFieldKeys: Array.isArray(sourceContext?.authoringFieldKeys) ? sourceContext.authoringFieldKeys.map(normalizeText) : null,
   };
   const leaves = [];
   const add = (input) => leaves.push(createLeaf({ ...input, sourceContext: source, conversationState: state }));
@@ -716,6 +731,50 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
   };
 }
 
+// A step is a derived question target, never persisted progress. Keep the block
+// inventory compatible while narrowing the next turn to one decision or datum.
+function deriveDesignerAiNextStep(snapshot, nextBlock) {
+  if (!nextBlock) return null;
+  const ids = nextBlock.leafIds;
+  const step = (kind, leafIds, phase = null) => ({ blockId: nextBlock.id, kind, phase, leafIds });
+  switch (nextBlock.id) {
+    case "names": return step("names", ids);
+    case "event_structure": return step("event_structure", ids);
+    case "event_data": {
+      const phase = ["ceremony", "party"].find((candidate) => ids.some((id) => id.startsWith(`event.${candidate}.`)));
+      if (!phase) return null;
+      const idFor = (field) => `event.${phase}.${field}`;
+      for (const field of ["date", "start_time", "venue_name"]) {
+        if (ids.includes(idFor(field))) return step(field, [idFor(field)], phase);
+      }
+      const addressId = idFor("address");
+      const placeId = idFor("place_selection");
+      if (ids.includes(addressId)) {
+        const venueId = idFor("venue_name");
+        const venue = snapshot?.ledger?.leaves?.find((leaf) => leaf.id === venueId);
+        const trustedVenue = isTerminalDesignerAiLedgerStatus(venue?.status) &&
+          [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(venue?.provenance) &&
+          validResolutionValue(venueId, snapshot?.values?.[phase]?.venueName);
+        return trustedVenue && ids.includes(placeId)
+          ? step("location_method", [addressId, placeId], phase)
+          : step("address", [addressId], phase);
+      }
+      return ids.includes(placeId) ? step("place_selection", [placeId], phase) : null;
+    }
+    case "dress_code": return ids.includes("event.dress_code.enabled")
+      ? step("dress_code_enabled", ["event.dress_code.enabled"])
+      : step("dress_code_value", ["event.dress_code.value"]);
+    case "rsvp": return step("rsvp_enabled", ["rsvp.enabled"]);
+    case "gifts": {
+      const values = ids.filter((id) => /^gifts\.method\.[^.]+\.value$/.test(id));
+      return values.length ? step("gift_method_values", values) : step("gifts_choice", ids);
+    }
+    case "cover": return step("cover", ["media.cover"]);
+    case "galleries": return step("gallery", ids.slice(0, 1));
+    default: return null;
+  }
+}
+
 function buildDesignerAiConversationBrief(snapshot) {
   const leaves = Array.isArray(snapshot?.ledger?.leaves) ? snapshot.ledger.leaves : [];
   const guidedLeafIds = new Set(
@@ -737,13 +796,19 @@ function buildDesignerAiConversationBrief(snapshot) {
   const actionableBlocks = blocks.map((block) => ({ ...block,
     leafIds: block.leafIds.filter((id) => !deferredLeafIds.includes(id)),
   })).filter((block) => block.leafIds.length);
+  const nextBlock = snapshot?.conversation?.mode === "editing" ? null : actionableBlocks[0] || null;
   return {
-    nextBlock: snapshot?.conversation?.mode === "editing" ? null : actionableBlocks[0] || null,
+    nextBlock,
+    nextStep: deriveDesignerAiNextStep(snapshot, nextBlock),
     needsAttention: blocks,
     unresolvedLeafIds: unresolved.map((leaf) => leaf.id),
     deferredLeafIds,
     complete: snapshot?.ledger?.guidedFlow?.completion?.complete === true,
   };
+}
+
+function buildDesignerAiNextStep(snapshot) {
+  return buildDesignerAiConversationBrief(snapshot).nextStep;
 }
 
 function mapActionToLeafIds(action) {
@@ -832,9 +897,10 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actionR
     if (!leafById.has(leafId)) continue;
     const status = resolution?.status;
     if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER && updates.get(leafId)?.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
-    // A model clarification cannot undo a valid value just verified by an
+    // A model clarification/control request cannot undo a valid value verified by an
     // effective, persisted receipt. Other leaves may still need clarification.
-    if (status === DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION && updates.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
+    if ([DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL].includes(status) &&
+        updates.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
     if (updates.get(leafId)?.status === DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION) continue;
     const rule = normalizeText(resolution?.rule) || null;
     // This snapshot already contains the executed effects. Never replay an
@@ -883,6 +949,7 @@ module.exports = {
   buildAutomaticEventName,
   buildDesignerAiGalleryCompletionLeafId,
   buildDesignerAiConversationBrief,
+  buildDesignerAiNextStep,
   buildDesignerAiLedger,
   captureDesignerAiActionEvidence,
   matchesDesignerAiActionEvidence,

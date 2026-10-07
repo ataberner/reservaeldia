@@ -1,13 +1,11 @@
 export function canAccessDesignerAi({
-  loadingAdminAccess = true,
-  isSuperAdmin = false,
+  userUid = "",
   editorReadOnly = false,
   editorSession = null,
   modoSelector = false,
 } = {}) {
   return (
-    loadingAdminAccess === false &&
-    isSuperAdmin === true &&
+    Boolean(String(userUid || "").trim()) &&
     editorReadOnly !== true &&
     modoSelector !== true &&
     String(editorSession?.kind || "").trim().toLowerCase() === "draft"

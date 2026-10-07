@@ -8,7 +8,76 @@ import { containsForbiddenSnapshotData } from "../../../shared/designerAiCapabil
 import ledgerRuntime from "../../../shared/designerAiConversationLedger.js";
 import { setEventLocationProviderMetadata } from "../eventDetails/location.js";
 
-const { buildDesignerAiConversationBrief } = ledgerRuntime;
+const { buildDesignerAiConversationBrief, reconcileDesignerAiConversationState } = ledgerRuntime;
+
+const customPersonFields = [
+  { key: "custom_first", type: "text", eventDetailsRole: "primary_person_name", applyTargets: [{ scope: "objeto", id: "first", path: "texto" }] },
+  { key: "custom_second", type: "text", eventDetailsRole: "secondary_person_name", applyTargets: [{ scope: "objeto", id: "second", path: "texto" }] },
+];
+function customNamesSnapshot({ fields = customPersonFields, values = { custom_first: "Ana", custom_second: "Luz" },
+  changedKeys = [], objects = [], conversationState = {} } = {}) {
+  return buildDesignerAiCapabilitySnapshot({
+    authoringSnapshot: { fieldsSchema: fields, values, templateInput: { changedKeys } },
+    renderSnapshot: { objetos: objects }, conversationState,
+  });
+}
+const nameLeaves = snapshot => snapshot.ledger.leaves.filter(leaf => leaf.block === "names");
+
+test("custom semantic name fields stay unconfirmed when template objects hydrate after entry", () => {
+  const initial = customNamesSnapshot();
+  assert.deepEqual(initial.values.people, { primaryName: "Ana", secondaryName: "Luz" });
+  const conversationState = reconcileDesignerAiConversationState({ snapshot: initial, previousState: {} });
+  const hydrated = customNamesSnapshot({ conversationState,
+    objects: [{ id: "first", tipo: "texto", texto: "Ana" }, { id: "second", tipo: "texto", texto: "Luz" }] });
+  assert.equal(buildDesignerAiConversationBrief(hydrated).nextStep.kind, "names");
+  assert.ok(nameLeaves(hydrated).every(leaf => leaf.status === "pending" && leaf.provenance === "template_value"));
+  assert.equal(hydrated.revision, initial.revision);
+});
+
+test("custom field provenance blocks baseline-only confirmation of late template values", () => {
+  const initial = customNamesSnapshot({ values: {} });
+  const conversationState = reconcileDesignerAiConversationState({ snapshot: initial, previousState: {} });
+  const hydrated = customNamesSnapshot({ values: {}, conversationState,
+    objects: [{ id: "first", tipo: "texto", texto: "Ana" }, { id: "second", tipo: "texto", texto: "Luz" }] });
+  assert.deepEqual(hydrated.values.people, { primaryName: "Ana", secondaryName: "Luz" });
+  assert.ok(nameLeaves(hydrated).every(leaf => leaf.status === "pending"));
+  assert.equal(buildDesignerAiConversationBrief(hydrated).nextStep.kind, "names");
+});
+
+test("custom semantic changed keys confirm only their actual individual values and undo restores pending", () => {
+  const baseline = customNamesSnapshot();
+  const conversationState = reconcileDesignerAiConversationState({ snapshot: baseline, previousState: {} });
+  const partial = customNamesSnapshot({ values: { custom_first: "Sol", custom_second: "Luz" }, changedKeys: ["custom_first"], conversationState });
+  assert.deepEqual(nameLeaves(partial).map(leaf => leaf.status), ["resolved_from_existing_user_data", "pending"]);
+  assert.deepEqual(buildDesignerAiConversationBrief(partial).nextStep.leafIds, ["event.people.secondary_name"]);
+  const confirmed = customNamesSnapshot({ values: { custom_first: "Sol", custom_second: "Mar" }, changedKeys: ["custom_first", "custom_second"], conversationState });
+  assert.equal(buildDesignerAiConversationBrief(confirmed).nextStep.kind, "event_structure");
+  const restored = customNamesSnapshot({ conversationState });
+  assert.ok(nameLeaves(restored).every(leaf => leaf.status === "pending"));
+  assert.equal(buildDesignerAiConversationBrief(restored).nextStep.kind, "names");
+});
+
+test("custom combined names confirm both only when that field supplies the names", () => {
+  const couple = { key: "couple_title", type: "text", eventDetailsRole: "couple_names", applyTargets: [] };
+  const confirmed = customNamesSnapshot({ fields: [couple], values: { couple_title: "Ana y Luz" }, changedKeys: ["couple_title"] });
+  assert.ok(nameLeaves(confirmed).every(leaf => leaf.status === "resolved_from_existing_user_data"));
+  const separate = customNamesSnapshot({ fields: [...customPersonFields, couple],
+    values: { custom_first: "Ana", custom_second: "Luz", couple_title: "Sol y Mar" }, changedKeys: ["couple_title"] });
+  assert.deepEqual(separate.values.people, { primaryName: "Ana", secondaryName: "Luz" });
+  assert.ok(nameLeaves(separate).every(leaf => leaf.status === "pending"));
+});
+
+test("obsolete canonical changed keys cannot confirm custom semantic fields", () => {
+  const current = customNamesSnapshot({ changedKeys: ["event_primary_person_name", "event_secondary_person_name"] });
+  assert.ok(nameLeaves(current).every(leaf => leaf.status === "pending"));
+  const input = { fieldsSchema: customPersonFields, values: { custom_first: "Ana", custom_second: "Luz" } };
+  const legacy = buildDesignerAiCapabilitySnapshot({ authoringSnapshot: input,
+    sourceContext: { templateDerived: true, changedKeys: ["custom_first", "custom_second"] } });
+  assert.ok(nameLeaves(legacy).every(leaf => leaf.status === "resolved_from_existing_user_data"));
+  const malformed = buildDesignerAiCapabilitySnapshot({ authoringSnapshot: input,
+    sourceContext: { templateDerived: true, changedKeys: {} } });
+  assert.ok(nameLeaves(malformed).every(leaf => leaf.status === "pending"));
+});
 
 test("durable guided completion selects editing without changing ledger, revision or model usage context", () => {
   const build = (guidedFlowCompleted) => buildDesignerAiCapabilitySnapshot({
@@ -227,6 +296,33 @@ test("does not confuse a template value with existing user personalization", () 
   const documentLeaf = current.ledger.leaves.find((leaf) => leaf.id === "document.name");
   assert.equal(documentLeaf.status, "pending");
   assert.equal(documentLeaf.provenance, "placeholder_or_sample");
+});
+
+test("live authoring provenance overrides stale Header changedKeys before first opening", () => {
+  const names = ["event_primary_person_name", "event_secondary_person_name"];
+  const build = (liveKeys, headerKeys) => buildDesignerAiCapabilitySnapshot({
+    documentNameState: { designerAiSourceContext: { templateDerived: true, changedKeys: headerKeys } },
+    authoringSnapshot: { fieldsSchema, values: {
+      event_primary_person_name: "Ana", event_secondary_person_name: "Luz",
+    }, templateInput: { changedKeys: liveKeys } },
+  });
+  const edited = build(names, []);
+  assert.equal(buildDesignerAiConversationBrief(edited).nextBlock.id, "event_structure");
+  assert.ok(edited.ledger.leaves.filter((leaf) => leaf.id.startsWith("event.people.")).every((leaf) => leaf.provenance === "existing_user_data"));
+  const undone = build([], names);
+  assert.equal(buildDesignerAiConversationBrief(undone).nextBlock.id, "names");
+  assert.ok(undone.ledger.leaves.filter((leaf) => leaf.id.startsWith("event.people.")).every((leaf) => leaf.provenance === "template_value"));
+});
+
+test("manual Dress Code edits use the owner's current canonical field provenance", () => {
+  const snapshot = buildDesignerAiCapabilitySnapshot({
+    authoringSnapshot: { fieldsSchema: [{ key: "event_dress_code", eventDetailsRole: "dress_code", type: "text", applyTargets: [] }],
+      values: { event_dress_code: "Cocktail" }, templateInput: { changedKeys: ["event_dress_code"] } },
+    documentNameState: { designerAiSourceContext: { templateDerived: true, changedKeys: [] } },
+  });
+  const dress = snapshot.ledger.leaves.find((leaf) => leaf.id === "event.dress_code.value");
+  assert.equal(dress.status, "resolved_from_existing_user_data");
+  assert.equal(dress.provenance, "existing_user_data");
 });
 
 test("a Party Google map never supplies Ceremony location in ceremony_party", () => {

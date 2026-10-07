@@ -7,6 +7,7 @@ import {
   DESIGNER_AI_MODEL_ACTION_TYPES,
   DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES,
   containsForbiddenSnapshotData,
+  discardRedundantDesignerAiControlResolutions,
   sanitizeCapabilitySnapshot,
   validateDesignerAiActionBatch,
   validateDesignerAiControlRequest,
@@ -26,6 +27,85 @@ const snapshot = sanitizeCapabilitySnapshot({
       questions: [{ id: "attendance", type: "single_select", options: [{ id: "yes", label: "Sí" }] }],
     },
   },
+});
+
+function controlResolutionSnapshot() {
+  const ids = [
+    "event.people.primary_name", "event.mode", "event.ceremony.date", "rsvp.enabled",
+    "gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value",
+    "gifts.method.cbu.value", "media.cover", "media.gallery.gallery-1.guided_completion",
+    "media.gallery.gallery-1.slot.cell-a", "media.gallery.gallery-1.order",
+    ...["ceremony", "party"].flatMap((phase) =>
+      ["venue_name", "address", "place_selection"].map((field) => `event.${phase}.${field}`)),
+  ];
+  return sanitizeCapabilitySnapshot({ ...snapshot, ledger: { leaves: ids.map((id) => ({
+    id, status: "pending", provenance: "unknown", fingerprint: id,
+  })) } });
+}
+
+test("requires_control is offered and validated only for leaves with an existing local control", () => {
+  const initial = controlResolutionSnapshot();
+  const tool = contractRuntime.buildDesignerAiTool(initial);
+  for (const leaf of initial.ledger.leaves) {
+    const supported = leaf.id === "media.cover" ||
+      leaf.id === "media.gallery.gallery-1.guided_completion" ||
+      leaf.id === "media.gallery.gallery-1.slot.cell-a" ||
+      /^event\.(ceremony|party)\.(venue_name|address|place_selection)$/.test(leaf.id);
+    const resolution = { leafId: leaf.id, status: "requires_control", rule: null };
+    assert.equal(validateDesignerAiResolutionUpdates([resolution], initial).ok, supported, leaf.id);
+    const schemaAllowsControl = tool.parameters.properties.resolutions.items.anyOf.some((branch) => {
+      const definition = branch.properties.leafId.$ref.split("/").at(-1);
+      return tool.parameters.$defs[definition].enum.includes(leaf.id) &&
+        branch.properties.status.enum?.includes("requires_control");
+    });
+    assert.equal(schemaAllowsControl, supported, `schema: ${leaf.id}`);
+  }
+});
+
+test("redundant unsupported control resolutions are dropped without confirming a proposal", () => {
+  const initial = controlResolutionSnapshot();
+  const original = structuredClone(initial);
+  const actions = [
+    { type: "gifts.set_enabled", arguments: { enabled: true } },
+    { type: "gifts.set_method", arguments: { method: "alias", value: "SYNTHETIC.ALIAS", visible: true } },
+  ];
+  const redundant = ["gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value"]
+    .map((leafId) => ({ leafId, status: "requires_control", rule: null }));
+  assert.equal(validateDesignerAiResolutionUpdates(redundant, initial, { actions }).ok, false);
+  assert.deepEqual(discardRedundantDesignerAiControlResolutions(redundant, initial, { actions }), []);
+  assert.deepEqual(initial, original, "normalization cannot write values, evidence or state");
+  assert.equal(redundant.length, 3, "provider result is preserved for diagnostics");
+});
+
+test("control normalization preserves malformed, unrelated, unavailable and valid control resolutions", () => {
+  const initial = controlResolutionSnapshot();
+  const action = { type: "gifts.set_method", arguments: { method: "alias", value: "SYNTHETIC.ALIAS", visible: true } };
+  const redundant = { leafId: "gifts.method.alias.value", status: "requires_control", rule: null };
+  const preserved = [
+    { ...redundant, extra: true }, { ...redundant, rule: "keep_existing" },
+    { ...redundant, leafId: "unknown.leaf" }, { ...redundant, leafId: "gifts.method.cbu.value" },
+    { ...redundant, status: "needs_clarification" }, { ...redundant, status: "deferred_by_user" },
+    { ...redundant, leafId: "media.cover" },
+    { ...redundant, leafId: "event.ceremony.address" },
+    { ...redundant, leafId: "media.gallery.gallery-1.guided_completion" },
+    null,
+  ];
+  assert.deepEqual(discardRedundantDesignerAiControlResolutions([redundant, ...preserved], initial, { actions: [action] }), preserved);
+  assert.deepEqual(discardRedundantDesignerAiControlResolutions([redundant], initial), [redundant]);
+  for (const actions of [
+    [{ ...action, arguments: { ...action.arguments, visible: null } }],
+    [action, { type: "unsupported.action", arguments: {} }],
+    [{ ...action, arguments: { ...action.arguments, value: null } }],
+  ]) {
+    assert.deepEqual(discardRedundantDesignerAiControlResolutions([redundant], initial, { actions }), [redundant]);
+  }
+  const unavailable = structuredClone(initial);
+  unavailable.ledger.leaves.find((leaf) => leaf.id === redundant.leafId).status = "unavailable";
+  assert.deepEqual(discardRedundantDesignerAiControlResolutions([redundant], unavailable, { actions: [action] }), [redundant]);
+  const locationAction = { type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "", address: "Synthetic address" } };
+  const addressControl = { ...redundant, leafId: "event.ceremony.address" };
+  assert.equal(validateDesignerAiActionBatch([locationAction], { origin: "model", snapshot: initial }).ok, true);
+  assert.deepEqual(discardRedundantDesignerAiControlResolutions([addressControl], initial, { actions: [locationAction] }), [addressControl]);
 });
 
 test("inactive phase normalization leaves the raw semantic validator strict", () => {

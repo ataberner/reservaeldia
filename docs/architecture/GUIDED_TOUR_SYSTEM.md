@@ -25,6 +25,33 @@ desactiva `assistantActive`, el tour queda desmontado y los controles reutilizad
 no deben exponer `data-assistant-tour-*`. Su conversación, tools y arquitectura
 se documentan fuera de esta página.
 
+Desde el cambio de acceso del 2026-10-06, el tab `Asistente` y su visita guiada
+están disponibles sólo para admin y superadmin. `assistantAccess.js` consume
+`canManageSite` y `loadingAdminAccess` del acceso administrativo existente.
+`DashboardSidebar` aplica ese gate a ambos botones responsive, estado inicial,
+apertura automática, apertura por callback, controles y montaje del tour; al
+perder el permiso cierra el modo Asistente. `DashboardHeader` aplica el mismo
+gate a la restauración del tour. La preferencia persistida no concede acceso.
+`Tu asistente` (Designer AI) queda disponible para todos los usuarios autenticados
+en borradores editables, conforme a su contrato de capacidades.
+
+En mobile, desde la auditoría del 2026-10-06, la apertura inicial del borrador
+prioriza `Tu asistente`, también para administradores. `DashboardSidebar` consume
+esa decisión una vez por entrada; cerrar el panel, cambiar de tab, actualizar
+permisos o redimensionar la ventana no vuelve a abrirlo. En desktop conserva la
+apertura administrativa anterior del Asistente manual. Un nuevo montaje por
+reingreso o recarga constituye una nueva entrada al editor.
+
+El tour se desmonta mientras está seleccionado Designer AI. En mobile sólo se
+monta al activar el Asistente manual. Su solicitud tardía de activación (por
+ejemplo, al completar la carga de preferencias) sólo se acepta si
+`assistantActive` continúa activo: la autoapertura pertenece al Sidebar y el
+tour no puede recuperar un panel cerrado o sustituido. La restauración explícita
+`Volver a mostrar visita guiada` sigue el flujo de preferencia existente;
+`assistantTourRestartKey` confirmado hace que el Sidebar abra el Asistente
+manual una vez. Las pruebas de montaje, cierre, navegación, resize, efectos
+repetidos y restauración están en `src/components/DashboardSidebar.access.test.mjs`.
+
 ## Resumen ejecutivo
 
 El guided tour actual es una capa de UI montada sobre el Dashboard/editor. No es un segundo flujo del Asistente y no posee la navegación de pasos. Observa el estado real del Asistente que vive en `DashboardSidebar`, calcula qué elemento DOM debe destacar, posiciona un tooltip y avanza su fase interna cuando detecta acciones del usuario.
@@ -53,7 +80,7 @@ El sistema tiene tres capas:
 3. Capa de guided tour.
    `AssistantGuidedTour` recibe estado del Asistente, preferencias y señales de edición. Su dominio puro calcula gating, fase, target, mensajes y geometría. El componente mide el DOM, renderiza un portal sobre `document.body`, escucha eventos necesarios y avanza solo su fase visual.
 
-El contrato arquitectónico ya aparece resumido en [EDITOR_SYSTEM.md](EDITOR_SYSTEM.md): el guided tour debe observar el Asistente y los targets reales, no reemplazar sus handlers ni navegar por cuenta propia salvo una activación inicial del Asistente mediante el callback existente.
+El contrato arquitectónico ya aparece resumido en [EDITOR_SYSTEM.md](EDITOR_SYSTEM.md): el guided tour debe observar el Asistente y los targets reales, no reemplazar sus handlers ni navegar por cuenta propia. El callback existente sólo reafirma un Asistente activo; apertura inicial y restauración explícita son coordinadas por el Sidebar.
 
 ## Componentes y responsabilidades
 

@@ -262,6 +262,7 @@ test("the authenticated opt-out remains global across drafts, reload hydration a
 test("the restore row stays actionable after hydration so it can restart a closed active session", () => {
   assert.deepEqual(
     resolveAssistantGuidedTourRestoreMenuItemState({
+      canUseAssistant: true,
       hasActiveEditor: false,
       preferencesLoaded: true,
       assistantTourOptOut: true,
@@ -275,6 +276,7 @@ test("the restore row stays actionable after hydration so it can restart a close
   );
   assert.deepEqual(
     resolveAssistantGuidedTourRestoreMenuItemState({
+      canUseAssistant: true,
       hasActiveEditor: false,
       preferencesLoaded: true,
       assistantTourOptOut: false,
@@ -288,6 +290,7 @@ test("the restore row stays actionable after hydration so it can restart a close
   );
   assert.deepEqual(
     resolveAssistantGuidedTourRestoreMenuItemState({
+      canUseAssistant: true,
       hasActiveEditor: true,
       preferencesLoaded: true,
       assistantTourOptOut: true,
@@ -301,6 +304,7 @@ test("the restore row stays actionable after hydration so it can restart a close
   );
   assert.deepEqual(
     resolveAssistantGuidedTourRestoreMenuItemState({
+      canUseAssistant: true,
       hasActiveEditor: false,
       preferencesLoaded: false,
       assistantTourOptOut: true,
@@ -314,6 +318,7 @@ test("the restore row stays actionable after hydration so it can restart a close
   );
   assert.deepEqual(
     resolveAssistantGuidedTourRestoreMenuItemState({
+      canUseAssistant: true,
       preferencesLoaded: true,
       assistantTourSaving: true,
     }),

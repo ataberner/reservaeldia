@@ -24,6 +24,7 @@ type DesignerAiCapabilitySnapshot = {
 };
 type DesignerAiConversationBrief = {
   nextBlock: { id: string; label: string; leafIds: string[] } | null;
+  nextStep: { blockId: string; kind: string; phase: "ceremony" | "party" | null; leafIds: string[] } | null;
   needsAttention: Array<{ id: string; label: string; leafIds: string[] }>;
   unresolvedLeafIds: string[];
   complete: boolean;
@@ -32,15 +33,18 @@ type DesignerAiConversationBrief = {
 const capabilityContract = require("../../shared/designerAiCapabilityContract.cjs") as {
   DESIGNER_AI_ACTION_ORIGINS: { MODEL: "model" };
   DESIGNER_AI_CONTRACT_VERSION: string;
+  DESIGNER_AI_AUTO_START_MESSAGE: string;
   DESIGNER_AI_TOOL: Record<string, unknown>;
   DESIGNER_AI_MODEL_ACTION_TYPES: readonly string[];
   buildDesignerAiTool(snapshot: DesignerAiCapabilitySnapshot): Record<string, unknown>;
   containsForbiddenSnapshotData(value: unknown): boolean;
   discardInactiveDesignerAiPhaseResolutions(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { actions: DesignerAiAction[] }): unknown;
+  discardRedundantDesignerAiControlResolutions(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { actions: DesignerAiAction[] }): unknown;
   sanitizeCapabilitySnapshot(value: unknown): DesignerAiCapabilitySnapshot;
   minimizeDesignerAiGiftValues(value: unknown): Record<string, unknown>;
   minimizeDesignerAiRecentTurns(turns: unknown, gifts: unknown): Array<{ role: string; content: string }>;
   validateDesignerAiActionBatch(actions: unknown, options: { origin: "model"; snapshot: DesignerAiCapabilitySnapshot }): { ok: boolean; errors: string[] };
+  validateDesignerAiClarification(clarification: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { resolutions: unknown[] }): { ok: boolean; errors: string[] };
   validateDesignerAiControlRequest(request: unknown, snapshot: DesignerAiCapabilitySnapshot, context?: { actions: DesignerAiAction[] }): { ok: boolean; errors: string[] };
   validateDesignerAiResolutionUpdates(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context?: { actions: DesignerAiAction[] }): { ok: boolean; errors: string[] };
 };
@@ -75,10 +79,12 @@ Planificación obligatoria:
 2. Emití en un único lote todas las acciones compatibles. No cambies valores que el usuario no mencionó. Resolvé primero el modo efectivo: single siempre usa phase ceremony y hojas event.ceremony.*, también si el usuario dice fiesta. party/event.party.* es exclusivamente la segunda fase cuando hay ceremony_party. Esta correspondencia rige actions, resolutions y controlRequest del mismo lote.
 3. Usá resolutions para decisiones sin mutación, reglas documentadas, controles pendientes o ambigüedades. Una hoja no queda resuelta por haber sido mencionada. No apliques una regla por analogía ni en bloque: cada rule debe ser compatible con el leafId exacto. Si no existe una regla compatible, dejá la hoja pendiente o usá needs_clarification con rule null.
    No emitas resolved_from_user: el editor lo deriva exclusivamente de los receipts de actions efectivas y persistidas. Para datos aportados proponé las actions correspondientes, sin duplicarlas en resolutions. No enumeres en resolutions todas las hojas del ledger: incluí solo decisiones relevantes al mensaje actual; las demás conservan su estado. Por ejemplo, «solo fiesta» requiere event.set_mode(single), no resolver fechas, horarios ni lugares que no fueron aportados.
-   resolutions normalmente es []. Omitir una hoja conserva su estado pendiente; no hace falta declararla needs_clarification ni deferred_by_user para poder preguntar por ella. «No lo mencionó» nunca significa «pidió dejarlo para después». Si el usuario solo elige la estructura, devolvé su action y resolutions: []; preguntá por los datos faltantes en assistantMessage.
-4. Para la siguiente pregunta proactiva seguí nextBlock de la prioridad derivada. Ante una postergación explícita (todavía no sé, después, dejalo pendiente), emití deferred_by_user con rule null exclusivamente para las hojas a las que se refiere esa frase: conserva el pendiente y el sistema lo excluye de los bloqueantes. Lugar desconocido posterga venue_name, address y place_selection de esa phase; no posterga date, start_time ni end_time, aunque falten. No uses needs_clarification para postergar ni postergues sin que el usuario lo pida. La hora de fin no mencionada no está postergada. Fecha sin año necesita aclaración; no inventes el año. La UI deriva la siguiente etapa después de persistir los cambios.
+   resolutions normalmente es []. Omitir una hoja conserva su estado pendiente; no hace falta declararla needs_clarification ni deferred_by_user para poder preguntar por ella. «No lo mencionó» nunca significa «pidió dejarlo para después». Si el usuario solo elige la estructura, devolvé su action, resolutions: [] y clarification: null; la aplicación preguntará por el siguiente dato faltante.
+4. La aplicación elige la siguiente pregunta proactiva mediante nextStep (hojas y phase), derivado del ledger después de persistir los cambios. No elijas otra pregunta ni intentes adelantarla en assistantMessage. Ante una postergación explícita (todavía no sé, después, dejalo pendiente), emití deferred_by_user con rule null exclusivamente para las hojas a las que se refiere esa frase: conserva el pendiente y el sistema lo excluye de los bloqueantes. Lugar desconocido posterga venue_name, address y place_selection de esa phase; no posterga date, start_time ni end_time, aunque falten. No uses needs_clarification para postergar ni postergues sin que el usuario lo pida. La hora de fin no mencionada no está postergada. Fecha sin año necesita aclaración; no inventes el año.
 5. La interfaz comunica una sola vez la transición del recorrido a completo. No redactes ese cierre ni reemplaces por él la respuesta al pedido actual. La completitud global es diagnóstica y no gobierna el cierre.
 6. Usá intent apply si devolvés al menos una action o controlRequest, aunque también necesites preguntar por otro dato faltante. Reservá clarify para respuestas sin acciones ni controles.
+7. En modo guided, assistantMessage contiene solo una explicación breve, sin preguntas ni instrucciones para aportar el siguiente dato. La UI compone la pregunta, las confirmaciones y los avisos con evidencia local; no reutiliza esa prosa. Las reglas de preguntar o aclarar que siguen describen la necesidad funcional, no autorizan preguntas libres. Si hay una ambigüedad del mensaje actual, declarala con needs_clarification y clarification {leafId,kind}: missing_year si el usuario aportó día/mes sin año, invalid_date si la fecha aportada es imposible, missing_value para otra aclaración del dato. No uses clarification para un dato simplemente no mencionado. La UI solo presenta esa aclaración si corresponde a nextStep después de los cambios; las ambigüedades de otros pasos quedan pendientes. Por defecto clarification es null. En editing conservá la respuesta natural al pedido actual.
+8. Si alguna parte del pedido excede las capabilities, emití notice unsupported_request incluso si otra parte admite actions. En los demás casos notice es null. Nunca descartes datos válidos adelantados por estar fuera del paso actual: aplicalos en el mismo lote y conservá las ambigüedades sin inventar valores.
 
 Reglas seguras:
 - Interpretá fechas numéricas como día/mes/año (dd/mm/aa o dd/mm/aaaa), también con separadores . o |. Un año de dos dígitos ya está informado: 00–99 equivale a 2000–2099, igual que en el editor. Por ejemplo, 24/12/26 es 2026-12-24 y 03/04/26 es 2026-04-03. No pidas cuatro dígitos ni repetir una fecha válida por ese motivo; proponé event.set_datetime con fecha ISO YYYY-MM-DD. Validá el calendario: una fecha imposible necesita aclaración, nunca la corrijas silenciosamente.
@@ -109,14 +115,14 @@ Reglas seguras:
 - Las hojas con estado resolved_by_control ya tienen evidencia local terminal. No vuelvas a incluirlas en resolutions ni cambies su procedencia; limitate a continuar desde nextBlock.
 
 Conversación:
-- Si entryMode es first_entry, saludá de manera humana y breve, usá registeredFirstName cuando exista y comenzá por nextBlock sin enumerar capacidades ni pendientes.
-- Si entryMode es reentry, saludá nuevamente, usá registeredFirstName cuando exista, transmití continuidad y proponé seguir por nextBlock. No descargues la lista completa.
+- Si entryMode es first_entry, saludá de manera humana y breve, usá registeredFirstName cuando exista y no enumeres capacidades ni pendientes. La aplicación formula la primera pregunta guiada.
+- Si entryMode es reentry, saludá nuevamente, usá registeredFirstName cuando exista y transmití continuidad. La aplicación formula la siguiente pregunta guiada; no descargues la lista completa.
 - Si registeredFirstName está vacío, saludá sin inventar un nombre. Si entryMode es continuation, no reinicies ni vuelvas a saludar como si se abriera el panel.
 - Nunca preguntes si se conserva un nombre de plantilla.
 - Preguntá de forma directa por el siguiente dato necesario. No ofrezcas proactivamente dejarlo para después, omitirlo, responder solo una parte ni otras vías para evitar la pregunta. Sí presentá alternativas cuando ellas sean el dato o la decisión funcional que falta.
 - Si el usuario dice espontáneamente que todavía no definió un dato o que quiere completarlo después, respetalo: dejá la hoja pendiente, no insistas ni repitas inmediatamente la pregunta y continuá con otro dato aplicable.
 - Antes de la pregunta podés reconocer brevemente lo que acaba de informar y conectarlo con el contexto. Mantené acompañamiento natural; no encadenes preguntas secas, mecánicas o repetitivas.
-- Agrupá nombres; fecha, horario de inicio y lugar de una fase; configuración RSVP; o medios de Regalos. No hagas un formulario pregunta por pregunta.
+- Aprovechá todos los nombres, fechas, horarios, lugares y configuraciones aportados juntos; no exijas que el usuario los repita según el orden guiado. La aplicación mantiene una única pregunta siguiente desde nextStep.
 - Extraé toda información válida espontánea, aunque pertenezca a bloques distintos.
 - Confirmá solo lo relevante naturalmente en una frase y seguí con lo pendiente real. No redactes listas de guardado ni repitas el nombre automático del documento; la UI presenta resúmenes cuando corresponda después de verificar receipts. En single llamá Evento a la fase técnica ceremony; podés decir fiesta si el usuario lo acaba de definir así, pero no presupongas ese subtipo después sin evidencia.
 - Ante ambigüedad, preguntá solo eso y marcá la hoja needs_clarification.
@@ -131,23 +137,41 @@ type DesignerAiEntryMode = "first_entry" | "reentry" | "continuation";
 type DesignerAiUserContext = { registeredFirstName?: string | null };
 export type DesignerAiChatPayload = { contractVersion: string; clientMessageId: string; entryMode: DesignerAiEntryMode; message: string; recentTurns: DesignerAiTurn[]; capabilitySnapshot: DesignerAiCapabilitySnapshot };
 type DesignerAiResolution = { leafId: string; status: string; rule: string | null };
+type DesignerAiClarification = { leafId: string; kind: "missing_year" | "invalid_date" | "missing_value" };
 type DesignerAiAction = { type: string; arguments: Record<string, any> };
 export type DesignerAiPublicResult = {
   contractVersion: string;
   batchId: string;
   intent: "apply" | "clarify" | "out_of_scope";
   assistantMessage: string;
+  entryGreeting?: string;
   actions: DesignerAiAction[];
   controlRequest: Record<string, unknown> | null;
   resolutions: DesignerAiResolution[];
+  clarification?: DesignerAiClarification | null;
+  notice?: "unsupported_request" | null;
 };
 
 const DESIGNER_AI_LEGACY_RELOAD_MESSAGE = "Actualizamos Diseñador AI. Recargá la página para continuar con la nueva versión.";
-export type DesignerAiServiceResult = DesignerAiPublicResult & { traceId: string; openAiRequestId: string | null; latencyMs: number; repairCount: number };
+export type DesignerAiServiceTelemetry = {
+  payloadValidationMs: number;
+  contextPreparationMs: number;
+  providerMs: number;
+  retryWaitMs: number;
+  resultValidationMs: number;
+  providerAttempts: number;
+  transportRetryCount: number;
+  inputBytes: number;
+  toolSchemaBytes: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+export type DesignerAiServiceResult = DesignerAiPublicResult & { traceId: string; openAiRequestId: string | null; latencyMs: number; repairCount: number; telemetry: DesignerAiServiceTelemetry };
 
 export class DesignerAiServiceError extends Error {
   readonly kind: "invalid-payload" | "missing-secret" | "timeout" | "rate-limit" | "malformed-output" | "upstream";
   readonly openAiRequestId: string | null;
+  telemetry?: DesignerAiServiceTelemetry;
   constructor(kind: DesignerAiServiceError["kind"], message: string, openAiRequestId: string | null = null) {
     super(message);
     this.name = "DesignerAiServiceError";
@@ -389,6 +413,35 @@ function sanitizeRegisteredFirstName(value: unknown): string {
   return normalizeText(value).slice(0, 80);
 }
 
+// Only the exact shared opening seed is a UI lifecycle request. A real user
+// message tagged first_entry/reentry must still be interpreted normally.
+export function buildDesignerAiOpeningResponse(
+  payload: DesignerAiChatPayload,
+  userContext: DesignerAiUserContext = {},
+  createId: () => string = () => randomUUID()
+): DesignerAiPublicResult | null {
+  if (payload.entryMode === "continuation" ||
+      payload.message !== capabilityContract.DESIGNER_AI_AUTO_START_MESSAGE) return null;
+  const name = sanitizeRegisteredFirstName(userContext.registeredFirstName);
+  const greeting = `¡Hola${name ? `, ${name}` : ""}!`;
+  const invitation = payload.capabilitySnapshot.conversation.mode === "editing"
+    ? "Contame qué querés ajustar en tu invitación."
+    : payload.entryMode === "reentry"
+      ? "Sigamos con tu invitación."
+      : "Te acompaño a preparar tu invitación.";
+  const entryGreeting = `${greeting} ${invitation}`;
+  return {
+    contractVersion: capabilityContract.DESIGNER_AI_CONTRACT_VERSION,
+    batchId: createId(),
+    intent: "clarify",
+    assistantMessage: entryGreeting,
+    entryGreeting,
+    actions: [],
+    controlRequest: null,
+    resolutions: [],
+  };
+}
+
 function buildOpenAiInput(
   payload: DesignerAiChatPayload,
   userContext: DesignerAiUserContext = {}
@@ -544,16 +597,36 @@ export function discardModelResolutionsForControlVerifiedLeaves(
 export function validateDesignerAiModelResult(value: unknown, snapshot: DesignerAiCapabilitySnapshot): Omit<DesignerAiPublicResult, "contractVersion" | "batchId"> {
   const result = asRecord(value);
   if (!result) throw new DesignerAiServiceError("malformed-output", "La salida estructurada es inválida.");
-  ensureExactKeys(result, ["intent", "assistantMessage", "actions", "controlRequest", "resolutions"], "La salida del modelo", "malformed-output");
+  // Additive response fields keep old callers/fixtures compatible. The current
+  // provider schema requires both fields explicitly, using null when absent.
+  const hasClarification = Object.prototype.hasOwnProperty.call(result, "clarification");
+  const hasNotice = Object.prototype.hasOwnProperty.call(result, "notice");
+  ensureExactKeys(result, ["intent", "assistantMessage", "actions", "controlRequest", "resolutions",
+    ...(hasClarification ? ["clarification"] : []), ...(hasNotice ? ["notice"] : [])], "La salida del modelo", "malformed-output");
   const intent = String(result.intent);
   const assistantMessage = normalizeText(result.assistantMessage);
   if (!(["apply", "clarify", "out_of_scope"].includes(intent)) || !assistantMessage || assistantMessage.length > 700 || !Array.isArray(result.actions) || !Array.isArray(result.resolutions)) throw new DesignerAiServiceError("malformed-output", "La salida estructurada está incompleta.");
+  if (hasNotice && result.notice !== null && result.notice !== "unsupported_request") throw new DesignerAiServiceError("malformed-output", "El aviso estructurado es inválido.");
+  const clarificationValidation = capabilityContract.validateDesignerAiClarification(result.clarification, snapshot, { resolutions: result.resolutions });
+  if (!clarificationValidation.ok) throw new DesignerAiServiceError("malformed-output", clarificationValidation.errors.join(" "));
   if (intent === "out_of_scope" && (result.actions.length > 0 || result.controlRequest !== null || result.resolutions.length > 0)) throw new DesignerAiServiceError("malformed-output", "out_of_scope no puede mutar ni resolver hojas.");
   const applicableResolutions = capabilityContract.discardInactiveDesignerAiPhaseResolutions(result.resolutions, snapshot, { actions: result.actions });
+  // Preserve valid mutations when legacy/provider output redundantly asks for a
+  // nonexistent control on the same action-covered leaf. The shared boundary
+  // leaves every malformed, unrelated or real-control proposal for validation.
+  const actionableResolutions = capabilityContract.discardRedundantDesignerAiControlResolutions(
+    applicableResolutions, snapshot, { actions: result.actions }
+  );
   const safeResolutions = discardModelResolutionsForControlVerifiedLeaves(
-    applicableResolutions,
+    actionableResolutions,
     snapshot
   ) as unknown[];
+  // Inactive phases and already verified controls may discard a redundant
+  // resolution. Its associated clarification must not survive independently.
+  const clarification = result.clarification && safeResolutions.some((resolution) => {
+    const record = asRecord(resolution);
+    return record?.leafId === result.clarification.leafId && record?.status === "needs_clarification";
+  }) ? result.clarification as DesignerAiClarification : null;
   const actionValidation = capabilityContract.validateDesignerAiActionBatch(result.actions, { origin: capabilityContract.DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot });
   const controlValidation = capabilityContract.validateDesignerAiControlRequest(result.controlRequest, snapshot, { actions: result.actions });
   const resolutionValidation = capabilityContract.validateDesignerAiResolutionUpdates(safeResolutions, snapshot, { actions: result.actions });
@@ -566,7 +639,9 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
     result.actions.length > 0 || result.controlRequest !== null
   ) ? "apply" : intent;
   if (normalizedIntent === "apply" && result.actions.length === 0 && result.controlRequest === null && safeResolutions.length === 0) throw new DesignerAiServiceError("malformed-output", "apply requiere acciones, una decisión o un control local.");
-  const augmented = augmentAutomaticEventName({ intent: normalizedIntent as DesignerAiPublicResult["intent"], assistantMessage, actions: result.actions as DesignerAiAction[], controlRequest: result.controlRequest as Record<string, unknown> | null, resolutions: safeResolutions as DesignerAiResolution[] }, snapshot);
+  const augmented = augmentAutomaticEventName({ intent: normalizedIntent as DesignerAiPublicResult["intent"], assistantMessage, actions: result.actions as DesignerAiAction[], controlRequest: result.controlRequest as Record<string, unknown> | null, resolutions: safeResolutions as DesignerAiResolution[],
+    ...(hasClarification ? { clarification } : {}), ...(hasNotice ? { notice: result.notice as "unsupported_request" | null } : {}),
+  }, snapshot);
   const augmentedActions = capabilityContract.validateDesignerAiActionBatch(augmented.actions, {
     origin: capabilityContract.DESIGNER_AI_ACTION_ORIGINS.MODEL,
     snapshot,
@@ -626,36 +701,65 @@ export async function interpretDesignerAiChat({
   deadline?: ReturnType<typeof createDesignerAiDeadline>;
   waitForRetry?: typeof waitDesignerAiRetry;
 }): Promise<DesignerAiServiceResult> {
-  const validatedPayload = validateDesignerAiChatPayload(payload);
   const startedAt = now();
   const traceId = createId();
+  const telemetry: DesignerAiServiceTelemetry = {
+    payloadValidationMs: 0, contextPreparationMs: 0, providerMs: 0,
+    retryWaitMs: 0, resultValidationMs: 0, providerAttempts: 0,
+    transportRetryCount: 0, inputBytes: 0, toolSchemaBytes: 0,
+    inputTokens: 0, outputTokens: 0,
+  };
+  const elapsed = (start: number) => Math.max(0, now() - start);
   try {
+    const validationStartedAt = now();
+    const validatedPayload = validateDesignerAiChatPayload(payload);
+    telemetry.payloadValidationMs = elapsed(validationStartedAt);
+    const contextStartedAt = now();
     const baseInput = buildOpenAiInput(validatedPayload, userContext) as any[];
     const modelTool = capabilityContract.buildDesignerAiTool(validatedPayload.capabilitySnapshot);
-    let transportRetries = 0;
+    telemetry.inputBytes = Buffer.byteLength(JSON.stringify(baseInput), "utf8");
+    telemetry.toolSchemaBytes = Buffer.byteLength(JSON.stringify(modelTool), "utf8");
+    telemetry.contextPreparationMs = elapsed(contextStartedAt);
     const createResponse = async (input: any[]) => {
-      const attempt = () => deadline.run((signal, timeout) => client.responses.create({
-        model: MODEL,
-        reasoning: { effort: "none" },
-        text: { verbosity: "low" },
-        store: false,
-        input: input as any,
-        tools: [modelTool] as any,
-        tool_choice: { type: "function", name: "submit_designer_ai_result" } as any,
-        parallel_tool_calls: false,
-        max_output_tokens: 4000,
-      }, { signal, timeout, maxRetries: 0 }));
+      const attempt = async () => {
+        const attemptStartedAt = now();
+        try {
+          const response = await deadline.run((signal, timeout) => {
+            telemetry.providerAttempts++;
+            return client.responses.create({
+              model: MODEL,
+              reasoning: { effort: "none" },
+              text: { verbosity: "low" },
+              store: false,
+              input: input as any,
+              tools: [modelTool] as any,
+              tool_choice: { type: "function", name: "submit_designer_ai_result" } as any,
+              parallel_tool_calls: false,
+              max_output_tokens: 4000,
+            }, { signal, timeout, maxRetries: 0 });
+          });
+          // Counts only: never retain raw responses or input in diagnostics.
+          const usage = response.usage;
+          if (Number.isSafeInteger(usage?.input_tokens) && usage!.input_tokens >= 0) telemetry.inputTokens += usage!.input_tokens;
+          if (Number.isSafeInteger(usage?.output_tokens) && usage!.output_tokens >= 0) telemetry.outputTokens += usage!.output_tokens;
+          return response;
+        } finally { telemetry.providerMs += elapsed(attemptStartedAt); }
+      };
       try { return await attempt(); }
       catch (error) {
         const delay = designerAiRetryDelay(error, now());
-        if (delay === null || transportRetries >= 1) throw error;
+        if (delay === null || telemetry.transportRetryCount >= 1) throw error;
         if (deadline.remainingMs() < delay + DESIGNER_AI_MIN_ATTEMPT_MS) throw new DesignerAiDeadlineError();
-        transportRetries++;
-        await deadline.run((signal) => waitForRetry(delay, signal), { maxMs: deadline.remainingMs(), minimumMs: delay + DESIGNER_AI_MIN_ATTEMPT_MS });
+        telemetry.transportRetryCount++;
+        const retryStartedAt = now();
+        try {
+          await deadline.run((signal) => waitForRetry(delay, signal), { maxMs: deadline.remainingMs(), minimumMs: delay + DESIGNER_AI_MIN_ATTEMPT_MS });
+        } finally { telemetry.retryWaitMs += elapsed(retryStartedAt); }
         return attempt();
       }
     };
     const validateResponse = (response: any) => {
+      const resultStartedAt = now();
       try {
         return validateDesignerAiModelResult(
           readFunctionCall(response),
@@ -670,7 +774,7 @@ export async function interpretDesignerAiChat({
           );
         }
         throw error;
-      }
+      } finally { telemetry.resultValidationMs += elapsed(resultStartedAt); }
     };
 
     let response = await createResponse(baseInput);
@@ -702,9 +806,12 @@ export async function interpretDesignerAiChat({
       openAiRequestId: normalizeText((response as any)?._request_id) || null,
       latencyMs: Math.max(0, now() - startedAt),
       repairCount,
+      telemetry,
     };
   } catch (error) {
-    throw mapOpenAiError(error);
+    const mappedError = mapOpenAiError(error);
+    mappedError.telemetry = telemetry;
+    throw mappedError;
   }
 }
 

@@ -8,12 +8,12 @@ const layoutSource = readFileSync(new URL("../../DashboardLayout.jsx", import.me
 const historySource = readFileSync(new URL("../../../domain/editor/designerAiMessageHistory.js", import.meta.url), "utf8");
 
 test("starts a ledger-driven conversation internally and keeps the seed out of the visible chat", () => {
-  assert.match(panelSource, /const AUTO_START_MESSAGE = .*primer bloque.*pendiente/);
+  assert.match(panelSource, /const AUTO_START_MESSAGE = DESIGNER_AI_AUTO_START_MESSAGE/);
   assert.doesNotMatch(panelSource, /primera capacidad disponible/);
   assert.doesNotMatch(panelSource, /aunque ya esté completa/);
   assert.match(
     panelSource,
-    /submitMessageRef\.current\?\.\(AUTO_START_MESSAGE, \{[\s\S]*entryMode: entry\.entryMode,[\s\S]*snapshotOverride: initialSnapshot/
+    /submitMessageRef\.current\?\.\(AUTO_START_MESSAGE, \{[\s\S]*entryMode: entry\.entryMode,[\s\S]*snapshotOverride: readSnapshot\(\)/
   );
   assert.match(panelSource, /showUserMessage\s*\? appendDesignerAiMessageHistory/);
 });
@@ -111,7 +111,7 @@ test("uses the documented minimal visual tokens without changing chat controls",
   assert.match(panelSource, /font-\['DM_Sans',sans-serif\]/);
   assert.match(panelSource, /font-\['Source_Sans_3',sans-serif\]/);
   assert.match(panelSource, /min-h-11 min-w-11/);
-  assert.match(panelSource, /disabled=\{sending \|\| Boolean\(activeControl\)\}/);
+  assert.match(panelSource, /aria-busy=\{sending \|\| !conversationReady\}/);
 });
 
 test("offers an explicit Maps decision, preserves preload and keeps cancellation non-terminal", () => {

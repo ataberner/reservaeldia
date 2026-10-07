@@ -2,6 +2,46 @@ import { getDesignerAiLocationPhaseLabel } from "./designerAiLocationInteraction
 
 const methodNames = { holder: "Titular", bank: "Banco", alias: "Alias", cbu: "CBU", cuit: "CUIT", giftListLink: "Lista de regalos" };
 
+export function buildDesignerAiExecutionProgress(action, snapshot) {
+  const args = action?.arguments || {};
+  switch (action?.type) {
+    case "document.set_name": return "Actualizando el nombre de la invitación…";
+    case "event.set_people": return "Actualizando los nombres…";
+    case "event.set_mode": return "Organizando el evento…";
+    case "event.set_datetime": {
+      const hasDate = args.date != null;
+      const hasTime = args.startTime != null || args.endTime != null;
+      if (hasDate && hasTime) return "Actualizando la fecha y el horario…";
+      if (hasDate) return "Actualizando la fecha…";
+      if (hasTime) return "Actualizando el horario…";
+      return "Haciendo los cambios…";
+    }
+    case "event.set_location_text": {
+      const current = snapshot?.values?.[args.phase];
+      const hasLocation = current?.venueName || current?.address || current?.placeSelected;
+      return !hasLocation && (args.venueName || args.address)
+        ? "Agregando la ubicación…"
+        : "Actualizando la ubicación…";
+    }
+    case "event.set_dress_code": return "Actualizando el código de vestimenta…";
+    case "story.set_text": return "Actualizando la historia…";
+    case "gallery.move_photo": return "Reordenando las fotos…";
+    case "rsvp.set_enabled":
+    case "rsvp.set_question_active":
+    case "rsvp.update_question":
+    case "rsvp.move_question":
+    case "rsvp.add_option":
+    case "rsvp.rename_option":
+    case "rsvp.remove_option":
+    case "rsvp.update_modal": return "Actualizando la confirmación de asistencia…";
+    case "gifts.set_enabled":
+    case "gifts.set_method":
+    case "gifts.set_intro_text":
+    case "gifts.set_button_text": return "Actualizando los regalos…";
+    default: return "Haciendo los cambios…";
+  }
+}
+
 function describeAction(action, snapshot) {
   const a = action.arguments || {};
   const questionLabel = snapshot?.values?.rsvp?.questions?.find((q) => q.id === a.questionId)?.label;

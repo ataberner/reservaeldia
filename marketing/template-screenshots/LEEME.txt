@@ -1,0 +1,31 @@
+Reserva el D?a ? capturas de plantillas publicadas
+
+Plantillas activas y publicadas: 11
+Capturas correctas: 11
+Fallas pendientes: 0
+Dimensiones verificadas de cada PNG: 390 ? 844 px. S?lo viewport, fullPage=false, scrollY=0.
+
+Fuente: cat?logo p?blico plantillas_catalog, estado=active y estadoEditorial=publicada, sin filtrar tipo. El listado se volvi? a consultar al finalizar y no cambi?.
+Render: HTML exacto devuelto por preparePublicTemplatePreview desplegada, que usa generarHTMLDesdeSecciones con isPreview=true. Es la vista previa p?blica de las plantillas, sin personalizar ni crear invitaciones de clientes. Se mostr? en Chromium m?vil sin el marco del modal ni UI del editor. La respuesta de navegaci?n fue suministrada s?lo dentro del navegador de captura para conservar el origen p?blico de los recursos.
+
+Validaci?n: recursos de imagen y fuentes cargados; loader cerrado; sin errores HTTP/JavaScript en las capturas finales; sin overlays visibles; archivos PNG decodificados y comprobados por dimensiones, contenido y SHA-256. Los 11 PNG tambi?n se revisaron visualmente.
+Incidencias resueltas: un arranque de Chromium requiri? usar el ejecutable aislado; hubo un reintento por espera del loader; el control inicial confundi? placeholders vac?os y ocultos de gallery-lightbox con im?genes rotas, y se corrigi? ?nicamente el script temporal. Como se volvi? a capturar al terminar una animaci?n natural del contador.
+
+Archivos (se conservaron los slugs actuales, incluidos los hist?ricos):
+oliva-rustica-romantica.png ? Oliva · Rústica romántica ? ID: amelia-minimal-moderna-1785378732100-template-1787236398783
+prueba-base.png ? Milano · Moderna tipográfica ? ID: efectos-1775406487557
+magnolia-botanica-elegante.png ? Magnolia · Botánica elegante ? ID: eterno-fotografica-natural-1785377814714-template-1787252092900
+borgona-floral-contemporanea.png ? Borgoña · Floral contemporánea ? ID: jardin-floral-romantica-1785713548582-template-1787252238768
+agosto-3.png ? Como · Elegancia italiana ? ID: milano-moderna-tipografica-1785438426715-template-1787232414024
+lumiere-fotografica-elegante.png ? Lumière · Fotográfica elegante ? ID: milano-moderna-tipografica-1785710780763-template-1787252333359
+prueba-1-juli.png ? Noir · Elegante oscura ? ID: nueva-invitacion-en-blanco-1774704789526
+prueba-5-juli.png ? Aquarelle · Acuarela artística ? ID: nueva-invitacion-en-blanco-1774834289187
+prueba-6-juli.png ? Amelia · Minimal moderna ? ID: nueva-invitacion-en-blanco-1774842065082
+prueba-8-juli.png ? Eterno · Fotográfica natural ? ID: nueva-invitacion-en-blanco-1774908703665
+jardin-floral-romantica.png ? Jardín · Floral romántica ? ID: prueba-3-juli-adaptada-1777299595473
+
+Carpeta: C:\Reservaeldia\marketing\template-screenshots
+Informe autom?tico: capture-report.json
+Herramienta temporal no integrada a producci?n: C:\Reservaeldia\.local-isolation\marketing-capture\capture.mjs
+Verificaci?n local reproducible, desde C:\Reservaeldia: node .local-isolation/marketing-capture/verify.mjs
+No se modificaron c?digo de producci?n, datos, plantillas ni Firestore. No se hizo deploy.

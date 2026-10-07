@@ -5,6 +5,7 @@ import {
   normalizeDetachedVisuals,
 } from "../../../../shared/templates/contract.js";
 import { collectGalleryMediaUrls } from "../../../../shared/templates/galleryDynamicLayout.js";
+import { normalizeDraftTemplateInput } from "@/domain/drafts/sourceOfTruth";
 import {
   buildElementFieldIndex,
   buildFieldFromElement,
@@ -452,16 +453,20 @@ export default function useTemplateFieldAuthoring({
         normalizedIncoming.detachedVisuals,
         incomingFields
       );
+      const sourceTemplateInput = normalizedIncoming.templateInput || draftMeta?.templateInput;
+      const templateInput = normalizeText(editorSession?.kind).toLowerCase() === "template"
+        ? null
+        : normalizeDraftTemplateInput({
+            templateInput: { ...asObject(sourceTemplateInput), values: incomingValues },
+            fieldsSchema: incomingFields,
+            defaults: incomingDefaults,
+          });
       const nextStatus = validateAuthoringState({
         fieldsSchema: incomingFields,
         defaults: incomingDefaults,
         values: incomingValues,
         detachedVisuals: incomingDetachedVisuals,
-        templateInput:
-          normalizedIncoming.templateInput &&
-          typeof normalizedIncoming.templateInput === "object"
-            ? normalizedIncoming.templateInput
-            : draftMeta?.templateInput || null,
+        templateInput,
         objetos: Array.isArray(objetosForValidation)
           ? objetosForValidation
           : [],
@@ -477,25 +482,13 @@ export default function useTemplateFieldAuthoring({
         defaults: incomingDefaults,
         values: incomingValues,
         detachedVisuals: incomingDetachedVisuals,
-        templateInput:
-          normalizedIncoming.templateInput &&
-          typeof normalizedIncoming.templateInput === "object"
-            ? {
-                ...normalizedIncoming.templateInput,
-                values: incomingValues,
-              }
-            : draftMeta?.templateInput && typeof draftMeta.templateInput === "object"
-              ? {
-                  ...draftMeta.templateInput,
-                  values: incomingValues,
-                }
-              : null,
+        templateInput,
         status: nextStatus,
         updatedAt: normalizedIncoming.updatedAt || null,
         updatedByUid: normalizeText(normalizedIncoming.updatedByUid) || null,
       };
     },
-    [draftMeta?.templateInput, sourceTemplateId]
+    [draftMeta?.templateInput, editorSession?.kind, sourceTemplateId]
   );
 
   const persistSnapshot = useCallback(

@@ -1,9 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDesignerAiExecutionFeedback, withDesignerAiExecutionFeedback } from "./designerAiExecutionFeedback.js";
+import { buildDesignerAiExecutionFeedback, buildDesignerAiExecutionProgress, withDesignerAiExecutionFeedback } from "./designerAiExecutionFeedback.js";
 
 const receipt = (type, args, overrides = {}) => ({ action: { type, arguments: args }, requested: true, executed: true, effective: true, persisted: true, error: null, ...overrides });
 const enable = receipt("rsvp.set_enabled", { enabled: true });
+
+test("progress distinguishes date and time changes without using private values", () => {
+  const progress = (args) => buildDesignerAiExecutionProgress({ type: "event.set_datetime", arguments: args });
+  assert.equal(progress({ date: "2026-12-24", startTime: null, endTime: null }), "Actualizando la fecha…");
+  assert.equal(progress({ date: null, startTime: "20:00", endTime: null }), "Actualizando el horario…");
+  assert.equal(progress({ date: null, startTime: null, endTime: "" }), "Actualizando el horario…");
+  assert.equal(progress({ date: "2026-12-24", startTime: "20:00", endTime: null }), "Actualizando la fecha y el horario…");
+  assert.equal(buildDesignerAiExecutionProgress(), "Haciendo los cambios…");
+  assert.equal(buildDesignerAiExecutionProgress({ type: "unknown" }), "Haciendo los cambios…");
+  assert.equal(buildDesignerAiExecutionProgress({ type: "gifts.set_method", arguments: { method: "alias", value: "SYNTHETIC.PRIVATE" } }), "Actualizando los regalos…");
+});
+
+test("location progress distinguishes adding from updating or clearing, scoped to the requested phase", () => {
+  const action = { type: "event.set_location_text", arguments: { phase: "party", venueName: "Mi casa", address: "" } };
+  const snapshot = { values: { ceremony: { venueName: "Iglesia" }, party: {} } };
+  assert.equal(buildDesignerAiExecutionProgress(action, snapshot), "Agregando la ubicación…");
+  snapshot.values.party.address = "Calle de prueba 123";
+  assert.equal(buildDesignerAiExecutionProgress(action, snapshot), "Actualizando la ubicación…");
+  assert.equal(buildDesignerAiExecutionProgress({ ...action, arguments: { phase: "party", venueName: "", address: "" } }), "Actualizando la ubicación…");
+});
 
 test("execution feedback never treats executed or optimistic effects as saved", () => {
   for (const bad of [{ effective: false }, { persisted: false }, { error: "conflict" }]) {

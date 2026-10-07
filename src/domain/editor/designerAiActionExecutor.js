@@ -1,5 +1,6 @@
 import {
   DESIGNER_AI_ACTION_ORIGINS,
+  sanitizeCapabilitySnapshot,
   validateDesignerAiActionBatch,
 } from "../../../shared/designerAiCapabilityContract.js";
 import { normalizeEventDetailsConfig } from "../../../shared/eventDetailsConfig.js";
@@ -7,6 +8,7 @@ import {
   buildCountdownTargetIsoFromLocalParts,
 } from "../../../shared/countdownEventDetails.js";
 import { persistDashboardDocumentUpdate } from "../../lib/dashboardDocumentNameBridge.js";
+import { buildDesignerAiCapabilitySnapshot } from "./designerAiCapabilities.js";
 import { confirmDesignerAiPersistence, isDesignerAiActionEffective, readDesignerAiActionEvidence, waitForDesignerAiEffect } from "./designerAiActionEvidence.js";
 import { EDITOR_BRIDGE_EVENTS } from "../../lib/editorBridgeContracts.js";
 import {
@@ -23,7 +25,7 @@ import { normalizeRsvpConfig } from "../rsvp/config.js";
 import configReducers from "../../../shared/designerAiConfigReducers.cjs";
 import actionProjection from "../../../shared/designerAiActionProjection.cjs";
 const { applyRsvpAction, applySelectedGiftAction, confirmedGiftMethods: readConfirmedGiftMethods } = configReducers;
-const { orderDesignerAiActions } = actionProjection;
+const { orderDesignerAiActions, projectDesignerAiValues } = actionProjection;
 import { normalizeGiftConfig } from "../gifts/config.js";
 import { captureDesignerAiActionEvidence, matchesDesignerAiActionEvidence, fingerprintDesignerAiValue } from "../../../shared/designerAiConversationLedger.js";
 import {
@@ -278,6 +280,20 @@ function recoveryStateFingerprint(snapshot) {
   return fingerprintDesignerAiValue({ document: snapshot.documentIdentity, availability: snapshot.availability, values: snapshot.values });
 }
 
+function projectActionState(snapshot, action, expectedRender) {
+  const values = projectDesignerAiValues(snapshot, [action]);
+  if (expectedRender.gifts) {
+    // Gifts' existing reducer also hides unconfirmed methods and owns URL
+    // normalization. Derive those exact values through the snapshot adapter;
+    // the shared action projection owns the CTA's permitted text effect.
+    values.gifts = {
+      ...buildDesignerAiCapabilitySnapshot({ renderSnapshot: { gifts: expectedRender.gifts } }).values.gifts,
+      buttonText: values.gifts.buttonText,
+    };
+  }
+  return { ...snapshot, values: sanitizeCapabilitySnapshot({ ...snapshot, values }).values };
+}
+
 function recoveryConflict() {
   return Object.assign(new Error("El estado cambió o no permite reanudar con seguridad. Enviá una nueva solicitud para interpretar el estado actual."), { code: "designer-ai/recovery-conflict" });
 }
@@ -322,6 +338,7 @@ export async function executeDesignerAiActionBatch(
   const actionResults = recovery ? structuredClone(recovery.actionResults) : ordered.map((action) => ({
     action, requested: true, executed: false, effective: false, persisted: false, error: null,
   }));
+  let verifiedStateFingerprint = recoveryStateFingerprint(actualSnapshot);
   const captureRecovery = (expectedRender = {}) => ({
     actions: ordered, actionResults: structuredClone(actionResults), expectedRender,
     confirmedGiftMethods: [...confirmedGiftMethods], isSessionCurrent,
@@ -333,40 +350,59 @@ export async function executeDesignerAiActionBatch(
     const receipt = actionResults[index];
     if (receipt.persisted && !receipt.error) continue;
     let persistenceError = null;
+    let ownerPersistence = Promise.resolve();
+    const observeOwnerPersistence = (promise) => Promise.resolve(promise).catch((error) => {
+      persistenceError = error;
+    });
     let expectedRender = receipt.effective ? recovery.expectedRender : {};
     try {
       if (!isSessionCurrent()) throw Object.assign(new Error("La sesión del borrador cambió antes de aplicar el lote."), { code: "designer-ai/stale-session" });
+      if (recoveryStateFingerprint(readDesignerAiActionEvidence(targetWindow).snapshot) !== verifiedStateFingerprint) {
+        throw Object.assign(new Error("El borrador cambió durante la aplicación. Enviá una nueva solicitud con el estado actual."), { code: "designer-ai/stale-snapshot" });
+      }
       const persistOnly = receipt.effective;
-      receipt.beforeStateFingerprint = recoveryStateFingerprint(readDesignerAiActionEvidence(targetWindow).snapshot);
+      const beforeActionSnapshot = readDesignerAiActionEvidence(targetWindow).snapshot;
+      receipt.beforeStateFingerprint = recoveryStateFingerprint(beforeActionSnapshot);
       receipt.executed = true;
       receipt.error = null;
-      onProgress(persistOnly ? "saving" : "applying");
+      onProgress(persistOnly ? "saving" : "applying", action);
       if (action.type === "document.set_name") {
-        try { await persistDashboardDocumentUpdate({
+        ownerPersistence = observeOwnerPersistence(persistDashboardDocumentUpdate({
           name: action.arguments.name,
           source: "designer-ai",
-        }, targetWindow); } catch (error) { persistenceError = error; }
+        }, targetWindow));
       } else if (persistOnly) {
         // The effect is still exact; retry its existing writer, never the additive mutation.
       } else if (getActionOwner(action.type) === "event") {
-        try { await executeEventAction(action, targetWindow); } catch (error) { persistenceError = error; }
+        ownerPersistence = observeOwnerPersistence(executeEventAction(action, targetWindow));
       } else if (getActionOwner(action.type) === "story") {
-        try { await executeStoryAction(action, targetWindow); } catch (error) { persistenceError = error; }
+        ownerPersistence = observeOwnerPersistence(executeStoryAction(action, targetWindow));
       } else if (getActionOwner(action.type) === "gallery") {
         expectedRender = executeGalleryAction(action, targetWindow);
       } else {
         expectedRender = await executeConfigOwners([action], targetWindow, confirmedGiftMethods);
       }
+      const expectedSnapshot = persistOnly
+        ? beforeActionSnapshot
+        : projectActionState(beforeActionSnapshot, action, expectedRender);
       const reflected = () => {
         const { snapshot: current, render } = readDesignerAiActionEvidence(targetWindow);
         return isDesignerAiActionEffective(action, current, render, expectedRender);
       };
       await waitForDesignerAiEffect(reflected, { isSessionCurrent, waitFrame, attempts: evidenceAttempts });
       receipt.effective = true;
-      receipt.evidence = captureDesignerAiActionEvidence(receipt.action, readDesignerAiActionEvidence(targetWindow).snapshot);
+      const effectiveSnapshot = readDesignerAiActionEvidence(targetWindow).snapshot;
+      // Keep pre-action values plus this action's legitimate effects. A manual
+      // edit during the first React commit must not become the tail's baseline.
+      verifiedStateFingerprint = recoveryStateFingerprint(expectedSnapshot);
+      receipt.evidence = captureDesignerAiActionEvidence(receipt.action, effectiveSnapshot);
+      // Observe the local effect while the existing authoring owner writes it.
+      // Waiting for its network acknowledgement first would absorb concurrent
+      // manual edits into this batch's baseline and allow the tail to erase them.
+      await ownerPersistence;
       if (persistenceError) throw persistenceError;
       if (action.type !== "document.set_name") {
-        onProgress("saving");
+        onProgress("saving", action);
         const persisted = await confirmDesignerAiPersistence(targetWindow, isSessionCurrent);
         if (!isDesignerAiActionEffective(action, persisted.snapshot, persisted.render, expectedRender)) {
           throw Object.assign(new Error("El guardado no contiene el efecto solicitado."), { code: "designer-ai/persistence-failed" });
@@ -385,7 +421,13 @@ export async function executeDesignerAiActionBatch(
       receipt.error = error.code || "designer-ai/action-failed";
       error.appliedActions = applied;
       error.actionResults = actionResults;
-      error.recovery = captureRecovery(expectedRender);
+      // A changed draft invalidates the remaining intent, even if an earlier
+      // action persisted. Retrying that old tail could overwrite a manual edit.
+      const stateChanged = receipt.effective &&
+        recoveryStateFingerprint(readDesignerAiActionEvidence(targetWindow).snapshot) !== verifiedStateFingerprint;
+      error.recovery = error.code === "designer-ai/stale-snapshot" || stateChanged
+        ? null
+        : captureRecovery(expectedRender);
       throw error;
     }
   }

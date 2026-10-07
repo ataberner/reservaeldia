@@ -4,6 +4,7 @@ import { requireAdmin, requireAuth } from "../auth/adminAuth";
 import { buildDraftContentMeta } from "../drafts/sourceOfTruth";
 import { normalizeMusicConfig, resolveMusicResource } from "./config";
 const { MUSIC_FEATURE_AVAILABILITY } = require("../../shared/musicConfig.cjs");
+const { isMusicPilotUser } = require("../../shared/musicAccess.cjs");
 
 type UnknownRecord = Record<string, unknown>;
 const EDITOR_PATCH_KEYS = new Set([
@@ -92,7 +93,12 @@ export async function saveDraftWithMusicHandler(
     const musicChanged = JSON.stringify(normalizeMusicConfig(incomingPatch.music)) !==
       JSON.stringify(normalizeMusicConfig(current.music));
     if (musicChanged) {
-      requireAdmin(request);
+      const pilotAccess = isMusicPilotUser({
+        uid,
+        email: request.auth?.token.email,
+        emailVerified: request.auth?.token.email_verified,
+      });
+      if (!pilotAccess) requireAdmin(request);
       if (MUSIC_FEATURE_AVAILABILITY.editor !== true) {
         throw new HttpsError("failed-precondition", "M\u00fasica no est\u00e1 disponible.");
       }

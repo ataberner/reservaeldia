@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DESIGNER_AI_CONTRACT_VERSION,
+  DESIGNER_AI_AUTO_START_MESSAGE,
   sanitizeCapabilitySnapshot,
 } from "../shared/designerAiCapabilityContract.js";
 import serviceModule from "./lib/designerAi/service.js";
@@ -12,6 +13,7 @@ const {
   buildDesignerAiClientCompatibilityResponse,
   buildDesignerAiConversationBrief,
   buildDesignerAiErrorDetails,
+  buildDesignerAiOpeningResponse,
   discardModelResolutionsForControlVerifiedLeaves,
   DesignerAiServiceError,
   createDesignerAiOpenAiClient,
@@ -19,6 +21,98 @@ const {
   validateDesignerAiChatPayload,
   validateDesignerAiModelResult,
 } = serviceModule;
+
+test("legacy responses remain compatible while new nullable interpretation fields survive", () => {
+  const legacy = { intent: "clarify", assistantMessage: "Seguimos.", actions: [], controlRequest: null, resolutions: [] };
+  const current = snapshot();
+  assert.deepEqual(validateDesignerAiModelResult(legacy, current), legacy);
+  assert.deepEqual(validateDesignerAiModelResult({ ...legacy, clarification: null, notice: null }, current),
+    { ...legacy, clarification: null, notice: null });
+});
+
+test("names and structure supplied with a partial date preserve actions and the year clarification", () => {
+  const current = snapshot();
+  const clarification = { leafId: "event.ceremony.date", kind: "missing_year" };
+  const actions = [
+    { type: "event.set_people", arguments: { primaryName: "Ana", secondaryName: "Luz" } },
+    { type: "event.set_mode", arguments: { mode: "single" } },
+  ];
+  const proposed = { intent: "apply", assistantMessage: "Anoté sus nombres y la estructura.", actions,
+    controlRequest: null, resolutions: [{ leafId: clarification.leafId, status: "needs_clarification", rule: null }], clarification, notice: null };
+  const result = validateDesignerAiModelResult(proposed, current);
+  assert.deepEqual(result.actions.filter(action => action.type !== "document.set_name"), actions);
+  assert.deepEqual(result.clarification, clarification);
+  assert.deepEqual(result.resolutions.filter(resolution => resolution.leafId !== "document.name"), proposed.resolutions);
+  assert.equal(result.actions.some(action => action.type === "event.set_datetime"), false);
+  // The input still starts at names. Only the frontend's post-persistence ledger
+  // can authorize presenting this year question after these actions succeed.
+  assert.equal(buildDesignerAiConversationBrief(current).nextStep.kind, "names");
+});
+
+for (const kind of ["missing_year", "invalid_date", "missing_value"]) {
+  test(`structured clarification accepts ${kind} for an actual date ambiguity`, () => {
+    const clarification = { leafId: "event.ceremony.date", kind };
+    const result = validateDesignerAiModelResult({ intent: "clarify", assistantMessage: "Falta precisar ese dato.", actions: [], controlRequest: null,
+      resolutions: [{ leafId: clarification.leafId, status: "needs_clarification", rule: null }], clarification, notice: null }, snapshot());
+    assert.deepEqual(result.clarification, clarification);
+  });
+}
+
+test("clarification cannot carry free prose, unknown targets, incompatible kinds or invented ambiguity", () => {
+  const valid = { leafId: "event.ceremony.date", kind: "missing_year" };
+  const base = { intent: "clarify", assistantMessage: "Seguimos.", actions: [], controlRequest: null,
+    resolutions: [{ leafId: valid.leafId, status: "needs_clarification", rule: null }], clarification: valid };
+  const current = snapshot();
+  for (const clarification of [
+    { ...valid, question: "PRIVATE_PROMPT_DO_NOT_ECHO" },
+    { ...valid, scope: "user_request" },
+    { ...valid, kind: "PRIVATE_PROMPT_DO_NOT_ECHO" },
+    { ...valid, leafId: "PRIVATE_PROMPT_DO_NOT_ECHO" },
+    { leafId: "event.ceremony.address", kind: "missing_year" },
+    { leafId: "event.people.primary_name", kind: "invalid_date" },
+  ]) {
+    assert.throws(() => validateDesignerAiModelResult({ ...base, clarification }, current), error =>
+      error.kind === "malformed-output" && !error.message.includes("PRIVATE_PROMPT_DO_NOT_ECHO"));
+  }
+  assert.throws(() => validateDesignerAiModelResult({ ...base, resolutions: [] }, current), /needs_clarification/);
+  const unavailable = snapshot({ leaves: [leaf(valid.leafId, "event_data", "unavailable")] });
+  assert.throws(() => validateDesignerAiModelResult(base, unavailable), /hoja disponible/);
+});
+
+test("an inactive phase discards its clarification together with redundant resolution", () => {
+  const current = snapshot({ leaves: [leaf("event.mode", "event_structure"), leaf("event.ceremony.date", "event_data"), leaf("event.party.date", "event_data")] });
+  const result = validateDesignerAiModelResult({ intent: "apply", assistantMessage: "Un único evento.",
+    actions: [{ type: "event.set_mode", arguments: { mode: "single" } }], controlRequest: null,
+    resolutions: [{ leafId: "event.party.date", status: "needs_clarification", rule: null }],
+    clarification: { leafId: "event.party.date", kind: "missing_year" } }, current);
+  assert.deepEqual(result.resolutions, []);
+  assert.equal(result.clarification, null);
+  assert.equal(result.actions[0].arguments.mode, "single");
+});
+
+test("unsupported notice retains executable data from mixed requests and rejects arbitrary text", () => {
+  const action = { type: "event.set_mode", arguments: { mode: "single" } };
+  const proposed = { intent: "apply", assistantMessage: "La tipografía se ajusta desde el editor.",
+    actions: [action], controlRequest: null, resolutions: [], clarification: null, notice: "unsupported_request" };
+  const result = validateDesignerAiModelResult(proposed, snapshot());
+  assert.deepEqual(result.actions, [action]);
+  assert.equal(result.notice, "unsupported_request");
+  assert.throws(() => validateDesignerAiModelResult({ ...proposed, notice: "PRIVATE_PROMPT_DO_NOT_ECHO" }, snapshot()), error =>
+    error.kind === "malformed-output" && !error.message.includes("PRIVATE_PROMPT_DO_NOT_ECHO"));
+});
+
+test("provider receives the deterministic step and structured interpretation instructions", async () => {
+  let request;
+  await interpretDesignerAiChat({ payload: payload(), client: { responses: { create: async body => {
+    request = body;
+    return functionResponse({ intent: "clarify", assistantMessage: "Seguimos.", actions: [], controlRequest: null,
+      resolutions: [], clarification: null, notice: null });
+  } } } });
+  assert.match(request.input[1].content, /"nextStep":\{"blockId":"names","kind":"names"/);
+  assert.match(request.input[0].content, /La aplicación elige la siguiente pregunta proactiva mediante nextStep/);
+  assert.match(request.input[0].content, /assistantMessage contiene solo una explicación breve, sin preguntas/);
+  assert.deepEqual(request.tools[0].parameters.required.slice(-2), ["clarification", "notice"]);
+});
 
 for (const position of ["before", "ends at limit", "starts at limit", "crosses", "after", "multiple", "normal"]) {
   test(`M1 complete client -> provider -> repair redacts before truncating: ${position}`, async () => {
@@ -150,6 +244,77 @@ function functionResponse(result, requestId = "req_test") {
     }],
   };
 }
+
+for (const entryMode of ["first_entry", "reentry"]) {
+  for (const mode of ["guided", "editing"]) {
+    test(`opening ${entryMode}/${mode} is deterministic and contains no model proposal`, () => {
+      const input = payload({ entryMode, message: DESIGNER_AI_AUTO_START_MESSAGE });
+      input.capabilitySnapshot.conversation.mode = mode;
+      const result = buildDesignerAiOpeningResponse(input, { registeredFirstName: "Ana" }, () => "opening-batch");
+      assert.equal(result.batchId, "opening-batch");
+      assert.match(result.assistantMessage, /^¡Hola, Ana!/);
+      assert.equal(result.entryGreeting, result.assistantMessage);
+      if (mode === "editing") assert.match(result.assistantMessage, /qué querés ajustar/);
+      // The frontend supplies the question from the current, persisted ledger.
+      else assert.equal(result.assistantMessage.includes("¿"), false);
+      assert.equal(result.intent, "clarify");
+      assert.deepEqual(result.actions, []);
+      assert.deepEqual(result.resolutions, []);
+      assert.equal(result.controlRequest, null);
+    });
+  }
+}
+
+test("opening optimization keeps actual first-entry user text and continuation on the model path", () => {
+  assert.equal(buildDesignerAiOpeningResponse(payload({ entryMode: "first_entry", message: "Somos Ana y Luz" })), null);
+  assert.equal(buildDesignerAiOpeningResponse(payload({ message: DESIGNER_AI_AUTO_START_MESSAGE })), null);
+  assert.match(buildDesignerAiOpeningResponse(payload({ entryMode: "reentry", message: DESIGNER_AI_AUTO_START_MESSAGE })).assistantMessage, /^¡Hola! Sigamos/);
+});
+
+test("service telemetry separates provider, retry and validation and aggregates repair usage without content", async () => {
+  let clock = 0, calls = 0;
+  const bodies = [];
+  const result = await interpretDesignerAiChat({
+    payload: payload(), now: () => clock,
+    waitForRetry: async (ms) => { clock += ms; },
+    client: { responses: { create: async (body) => {
+      bodies.push(body);
+      clock += ++calls * 10;
+      if (calls === 1) throw { status: 503, headers: { "retry-after-ms": "50" } };
+      return { ...functionResponse({ intent: "clarify", assistantMessage: "Seguimos.", actions: [], resolutions: [], controlRequest: null, ...(calls === 2 ? { invalid: true } : {}) }),
+        usage: { input_tokens: calls * 10, output_tokens: calls, total_tokens: calls * 11 } };
+    } } },
+  });
+  assert.equal(result.repairCount, 1);
+  assert.equal(result.latencyMs, 110);
+  assert.equal("entryGreeting" in result, false);
+  assert.deepEqual(result.telemetry, {
+    payloadValidationMs: 0, contextPreparationMs: 0, providerMs: 60,
+    retryWaitMs: 50, resultValidationMs: 0, providerAttempts: 3,
+    transportRetryCount: 1,
+    inputBytes: Buffer.byteLength(JSON.stringify(bodies[0].input), "utf8"),
+    toolSchemaBytes: Buffer.byteLength(JSON.stringify(bodies[0].tools[0]), "utf8"),
+    inputTokens: 50, outputTokens: 5,
+  });
+  assert.ok(Object.values(result.telemetry).every((value) => typeof value === "number" && value >= 0));
+});
+
+test("failed model requests retain numeric stage diagnostics without provider content", async () => {
+  let clock = 0;
+  await assert.rejects(interpretDesignerAiChat({
+    payload: payload(), now: () => clock,
+    client: { responses: { create: async () => {
+      clock += 10;
+      throw { status: 400, message: "PRIVATE_PROVIDER_ERROR", response: "PRIVATE_BODY" };
+    } } },
+  }), (error) => {
+    assert.equal(error.kind, "upstream");
+    assert.equal(error.telemetry.providerAttempts, 1);
+    assert.equal(error.telemetry.providerMs, 10);
+    assert.equal(JSON.stringify(error).includes("PRIVATE_"), false);
+    return true;
+  });
+});
 
 function singleEventResult() {
   return {
@@ -574,7 +739,7 @@ test("interprets one strict call, extracts several data points and sends no priv
   assert.match(instructions, /No pidas cuatro dígitos ni repetir una fecha válida/);
   assert.match(instructions, /día y mes que ya aportó para esa misma fecha en recentTurns/);
   assert.match(instructions, /una fecha imposible necesita aclaración/);
-  assert.match(instructions, /No hagas un formulario/);
+  assert.match(instructions, /no exijas que el usuario los repita según el orden guiado/);
   assert.match(instructions, /No preguntes proactivamente por la hora de finalización/);
   assert.match(instructions, /end_time está fuera del recorrido guiado/);
   assert.match(instructions, /Si el usuario aporta o pide cambiar la hora de fin, usá event.set_datetime con endTime/);
@@ -938,6 +1103,86 @@ test("keeps only the provided venue and does not resolve an absent address", () 
     false
   );
 });
+
+for (const leafId of ["gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value"]) {
+  test(`valid gift actions survive a redundant nonexistent control on ${leafId} without model repair`, async () => {
+    const current = buildDesignerAiCapabilitySnapshot({ renderSnapshot: { objetos: [], gifts: { enabled: false } } });
+    const actions = [
+      { type: "gifts.set_enabled", arguments: { enabled: true } },
+      { type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.SINTETICO", visible: true } },
+    ];
+    const proposed = { intent: "apply", assistantMessage: "Listo.", actions, controlRequest: null,
+      resolutions: [{ leafId, status: "requires_control", rule: null }], clarification: null, notice: null };
+    let calls = 0;
+    const result = await interpretDesignerAiChat({
+      payload: payload({ message: "Datos bancarios. Alias: ALIAS.SINTETICO", capabilitySnapshot: current }),
+      client: { responses: { create: async () => { calls++; return functionResponse(proposed); } } },
+    });
+    assert.deepEqual(result.actions, actions);
+    assert.deepEqual(result.resolutions, []);
+    assert.equal(result.controlRequest, null);
+    assert.equal(result.repairCount, 0);
+    assert.equal(calls, 1);
+    assert.deepEqual(proposed.resolutions, [{ leafId, status: "requires_control", rule: null }]);
+  });
+}
+
+test("discarding a redundant gift control preserves explicit hiding and unrelated clarification", () => {
+  const current = buildDesignerAiCapabilitySnapshot({ renderSnapshot: { objetos: [], gifts: { enabled: true } } });
+  const actions = [{ type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.SINTETICO", visible: false } }];
+  const clarification = { leafId: "gifts.method.holder.value", kind: "missing_value" };
+  const pending = { leafId: clarification.leafId, status: "needs_clarification", rule: null };
+  const result = validateDesignerAiModelResult({ intent: "apply", assistantMessage: "Conservo el alias oculto.",
+    actions, controlRequest: null, clarification, resolutions: [
+      { leafId: "gifts.method.alias.value", status: "requires_control", rule: null }, pending,
+    ] }, current);
+  assert.deepEqual(result.actions, actions);
+  assert.deepEqual(result.resolutions, [pending]);
+  assert.deepEqual(result.clarification, clarification);
+});
+
+test("invalid gift controls without matching valid actions and malformed resolutions remain errors", () => {
+  const current = buildDesignerAiCapabilitySnapshot({ renderSnapshot: { objetos: [], gifts: { enabled: false } } });
+  const action = { type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.SINTETICO", visible: true } };
+  const resolution = { leafId: "gifts.method.alias.visible", status: "requires_control", rule: null };
+  const base = { intent: "apply", assistantMessage: "Listo.", actions: [action], controlRequest: null, resolutions: [resolution] };
+  for (const proposed of [
+    { ...base, actions: [] },
+    { ...base, actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } }] },
+    { ...base, actions: [{ ...action, arguments: { ...action.arguments, visible: "true" } }] },
+    { ...base, resolutions: [{ ...resolution, extra: true }] },
+    { ...base, resolutions: [{ ...resolution, rule: "keep_existing" }] },
+    { ...base, resolutions: [{ ...resolution, leafId: "unknown.leaf" }] },
+    { ...base, resolutions: Array.from({ length: 121 }, () => ({ ...resolution })) },
+  ]) {
+    assert.throws(() => validateDesignerAiModelResult(proposed, current), error => error.kind === "malformed-output");
+  }
+});
+
+for (const [label, request, leafId] of [
+  ["Maps", { type: "google_place_picker", phase: "ceremony" }, "event.ceremony.place_selection"],
+  ["Cover", { type: "cover_upload" }, "media.cover"],
+  ["Gallery", { type: "gallery_cell_upload", galleryId: "synthetic-gallery", cellId: "photo", cellIndex: 0 }, "media.gallery.synthetic-gallery.guided_completion"],
+]) {
+  test(`real ${label} controls and their pending resolutions remain available with gift actions`, () => {
+    const current = buildDesignerAiCapabilitySnapshot({
+      authoringSnapshot: { fieldsSchema: [
+        { key: "event_ceremony_venue_name", eventDetailsRole: "ceremony_venue_name", type: "text", applyTargets: [] },
+        { key: "event_ceremony_venue_address", eventDetailsRole: "ceremony_venue_address", type: "text", applyTargets: [] },
+      ], values: { event_ceremony_venue_name: "Lugar sintético", event_ceremony_venue_address: "Dirección sintética" } },
+      renderSnapshot: { objetos: [{ id: "synthetic-gallery", tipo: "galeria", rows: 1, cols: 1,
+        cells: [{ id: "photo", mediaUrl: "https://example.test/photo.jpg" }] }], eventDetails: { mode: "single" }, gifts: { enabled: false } },
+      coverImage: "https://example.test/cover.jpg",
+    });
+    const actions = [{ type: "gifts.set_enabled", arguments: { enabled: true } }];
+    const resolution = { leafId, status: "requires_control", rule: null };
+    const result = validateDesignerAiModelResult({ intent: "apply", assistantMessage: "Abramos el control.",
+      actions, controlRequest: request, resolutions: [resolution] }, current);
+    assert.deepEqual(result.actions, actions);
+    assert.deepEqual(result.controlRequest, request);
+    assert.deepEqual(result.resolutions, [resolution]);
+  });
+}
 
 test("allows the Google Places control only after an explicit acceptance", () => {
   const result = validateDesignerAiModelResult({

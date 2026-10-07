@@ -9,6 +9,7 @@ export const LEDGER_VERSION = runtime.LEDGER_VERSION;
 export const buildAutomaticEventName = runtime.buildAutomaticEventName;
 export const buildDesignerAiGalleryCompletionLeafId = runtime.buildDesignerAiGalleryCompletionLeafId;
 export const buildDesignerAiConversationBrief = runtime.buildDesignerAiConversationBrief;
+export const buildDesignerAiNextStep = runtime.buildDesignerAiNextStep;
 export const buildDesignerAiLedger = runtime.buildDesignerAiLedger;
 export const captureDesignerAiActionEvidence = runtime.captureDesignerAiActionEvidence;
 export const matchesDesignerAiActionEvidence = runtime.matchesDesignerAiActionEvidence;

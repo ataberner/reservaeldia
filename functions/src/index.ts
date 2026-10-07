@@ -164,8 +164,10 @@ import {
   DesignerAiServiceError,
   buildDesignerAiClientCompatibilityResponse,
   buildDesignerAiErrorDetails,
+  buildDesignerAiOpeningResponse,
   createDesignerAiOpenAiClient,
   interpretDesignerAiChat,
+  validateDesignerAiChatPayload,
 } from "./designerAi/service";
 import { createDesignerAiDeadline } from "./designerAi/deadline";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
@@ -3023,10 +3025,10 @@ async function readDesignerAiRegisteredFirstName(uid: string): Promise<string | 
       profileSnap.exists ? profileSnap.data() : null
     );
     return profile.nombre;
-  } catch (error) {
+  } catch {
     logger.warn("No se pudo obtener el nombre mínimo para Diseñador AI", {
       uid,
-      error,
+      category: "profile_read_failed",
     });
     return null;
   }
@@ -3040,10 +3042,12 @@ export const designerAiChat = onCall(
     timeoutSeconds: 45,
   },
   async (request: CallableRequest<unknown>) => {
-    const uid = requireSuperAdmin(request);
+    const uid = requireAuth(request);
     const fallbackTraceId = randomUUID();
     const startedAt = Date.now();
     const deadline = createDesignerAiDeadline({ startedAt });
+    let profileReadMs = 0;
+    let payloadValidationMs = 0;
 
     try {
       const compatibilityResponse = buildDesignerAiClientCompatibilityResponse(
@@ -3057,6 +3061,35 @@ export const designerAiChat = onCall(
         });
         return compatibilityResponse;
       }
+      const validationStartedAt = Date.now();
+      const payload = validateDesignerAiChatPayload(request.data);
+      payloadValidationMs = Math.max(0, Date.now() - validationStartedAt);
+      // The profile only personalizes entry greetings. Ordinary turns need no
+      // Firestore read, and invalid requests must fail before any profile I/O.
+      const profileStartedAt = Date.now();
+      const registeredFirstName = payload.entryMode === "continuation" ? null : await deadline.run(
+        () => readDesignerAiRegisteredFirstName(uid),
+        { maxMs: 3_000 }
+      ).catch(() => null);
+      profileReadMs = Math.max(0, Date.now() - profileStartedAt);
+      const openingResponse = buildDesignerAiOpeningResponse(payload, { registeredFirstName });
+      if (openingResponse) {
+        logger.info("designerAiChat completado", {
+          uid,
+          traceId: fallbackTraceId,
+          batchId: openingResponse.batchId,
+          latencyMs: Math.max(0, Date.now() - startedAt),
+          profileReadMs,
+          payloadValidationMs,
+          responseKind: "opening",
+          providerAttempts: 0,
+          result: openingResponse.intent,
+          actionCount: 0,
+          controlRequested: false,
+          repairCount: 0,
+        });
+        return openingResponse;
+      }
       let secretValue = "";
       try {
         secretValue = openAiApiKey.value();
@@ -3067,12 +3100,8 @@ export const designerAiChat = onCall(
         );
       }
       const client = createDesignerAiOpenAiClient(secretValue);
-      const registeredFirstName = await deadline.run(
-        () => readDesignerAiRegisteredFirstName(uid),
-        { maxMs: 3_000 }
-      ).catch(() => null);
       const result = await interpretDesignerAiChat({
-        payload: request.data,
+        payload,
         client,
         userContext: { registeredFirstName },
         deadline,
@@ -3082,13 +3111,19 @@ export const designerAiChat = onCall(
         openAiRequestId,
         latencyMs,
         repairCount,
+        telemetry,
         ...publicResult
       } = result;
       logger.info("designerAiChat completado", {
         uid,
         traceId,
         batchId: publicResult.batchId,
-        latencyMs,
+        latencyMs: Math.max(0, Date.now() - startedAt),
+        serviceLatencyMs: latencyMs,
+        profileReadMs,
+        payloadValidationMs,
+        responseKind: "model",
+        telemetry,
         result: publicResult.intent,
         actionCount: publicResult.actions.length,
         controlRequested: Boolean(publicResult.controlRequest),
@@ -3106,8 +3141,13 @@ export const designerAiChat = onCall(
         uid,
         traceId: fallbackTraceId,
         latencyMs: Math.max(0, Date.now() - startedAt),
+        profileReadMs,
+        payloadValidationMs,
+        telemetry: serviceError?.telemetry || null,
         result: serviceError?.kind || "unknown",
-        failureReason: serviceError?.message || null,
+        // Validator diagnostics can contain dynamic leaf IDs supplied by the
+        // client. Log the fixed presentation, never the internal diagnostic.
+        failureReason: errorDetails.summary,
         referenceId: errorDetails.referenceId,
         openAiRequestId: serviceError?.openAiRequestId || null,
       });

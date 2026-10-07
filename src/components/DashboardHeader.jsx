@@ -14,6 +14,7 @@ import {
 import AppHeader from "@/components/appHeader/AppHeader";
 import CanvasEditorHeader from "@/components/editor/header/CanvasEditorHeader";
 import { logAssistantTourDebug } from "@/components/editor/assistantTour/assistantTourDebug";
+import { canAccessAssistant } from "@/domain/editor/assistantAccess";
 import { markEditorSessionIntentionalExit } from "@/lib/monitoring/editorIssueReporter";
 import { normalizeEditorSession } from "@/domain/drafts/session";
 import { buildTemplatePayloadFromAuthoring } from "@/domain/templates/authoring/service";
@@ -1116,6 +1117,7 @@ export default function DashboardHeader(props) {
     const canShowSiteManagementAction = !loadingAdminAccess && isSuperAdmin;
     const assistantTourRestoreMenuItemState =
         resolveAssistantGuidedTourRestoreMenuItemState({
+            canUseAssistant: canAccessAssistant({ loadingAdminAccess, canManageSite }),
             preferencesLoaded: assistantTourPreferencesLoaded,
             assistantTourOptOut,
             assistantTourSaving,

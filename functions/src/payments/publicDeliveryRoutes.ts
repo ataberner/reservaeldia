@@ -1,5 +1,6 @@
 import { normalizePublicSlug } from "../utils/publicSlug";
 import { resolvePublicationLifecycleSnapshotFromData } from "./publicationLifecycle";
+import { buildPublicInvitationUnavailablePage } from "./publicInvitationUnavailablePage";
 import {
   isCompliantPublishedShareImageBuffer,
   isCurrentGeneratedShareImageRequest,
@@ -22,15 +23,14 @@ export type PublicDeliveryResponse = {
   body: string | Buffer;
 };
 
-const PUBLIC_INVITATION_ROBOTS_HEADERS = Object.freeze({
-  "X-Robots-Tag": PUBLIC_INVITATION_ROBOTS_CONTENT,
-});
 const PUBLIC_INVITATION_HTML_HEADERS = Object.freeze({
   "Content-Type": "text/html; charset=utf-8",
   "Cache-Control": "private, no-store, max-age=0",
   "X-Robots-Tag": PUBLIC_INVITATION_ROBOTS_CONTENT,
 });
 const PUBLIC_SHARE_IMAGE_ROBOTS_HEADERS = Object.freeze({
+  // Hosting caches unqualified 404s even after a publication becomes available.
+  "Cache-Control": "private, no-store, max-age=0",
   "X-Robots-Tag": PUBLIC_SHARE_IMAGE_ROBOTS_CONTENT,
 });
 
@@ -106,8 +106,8 @@ export async function resolvePublicInvitationHtmlResponse(params: {
   if (!slug) {
     return {
       status: 400,
-      headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
-      body: "Falta el slug",
+      headers: PUBLIC_INVITATION_HTML_HEADERS,
+      body: buildPublicInvitationUnavailablePage(400, slug),
     };
   }
 
@@ -120,8 +120,8 @@ export async function resolvePublicInvitationHtmlResponse(params: {
   if (!access.ok) {
     return {
       status: access.status,
-      headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
-      body: access.message,
+      headers: PUBLIC_INVITATION_HTML_HEADERS,
+      body: buildPublicInvitationUnavailablePage(access.status, slug),
     };
   }
 
@@ -130,8 +130,8 @@ export async function resolvePublicInvitationHtmlResponse(params: {
     if (!content) {
       return {
         status: 404,
-        headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
-        body: "Invitacion publicada no encontrada",
+        headers: PUBLIC_INVITATION_HTML_HEADERS,
+        body: buildPublicInvitationUnavailablePage(404, slug),
       };
     }
 
@@ -147,8 +147,8 @@ export async function resolvePublicInvitationHtmlResponse(params: {
     });
     return {
       status: 500,
-      headers: PUBLIC_INVITATION_ROBOTS_HEADERS,
-      body: "No se pudo cargar la invitacion",
+      headers: PUBLIC_INVITATION_HTML_HEADERS,
+      body: buildPublicInvitationUnavailablePage(500, slug),
     };
   }
 }

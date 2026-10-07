@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, LoaderCircle, MapPin, Send, X } from "lucide-react";
+import { LoaderCircle, MapPin, Send, Sparkles, X } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
 import DesignerAiLocationControl from "@/components/editor/designerAi/DesignerAiLocationControl";
 import {
   DESIGNER_AI_ACTION_ORIGINS,
+  DESIGNER_AI_AUTO_START_MESSAGE,
   DESIGNER_AI_CONTRACT_VERSION,
+  discardRedundantDesignerAiControlResolutions,
   validateDesignerAiActionBatch,
   validateDesignerAiControlRequest,
   validateDesignerAiResolutionUpdates,
@@ -31,9 +33,10 @@ import {
 } from "@/domain/editor/designerAiMessageHistory";
 import { executeDesignerAiActionBatch } from "@/domain/editor/designerAiActionExecutor";
 import { confirmDesignerAiPersistence } from "@/domain/editor/designerAiActionEvidence";
-import { buildDesignerAiExecutionFeedback, withDesignerAiExecutionFeedback } from "@/domain/editor/designerAiExecutionFeedback";
-import { buildDesignerAiCompletionMessage, buildDesignerAiLocalContinuation, withDesignerAiGuidedContinuation, resolveDesignerAiGalleryHelp, resolveDesignerAiCoverHelp, DESIGNER_AI_COVER_HELP_QUESTION, DESIGNER_AI_COVER_HELP_LATER, DESIGNER_AI_GALLERY_HELP_QUESTION, DESIGNER_AI_GALLERY_HELP_LATER } from "@/domain/editor/designerAiGuidedConversation";
+import { buildDesignerAiExecutionFeedback, buildDesignerAiExecutionProgress, withDesignerAiExecutionFeedback } from "@/domain/editor/designerAiExecutionFeedback";
+import { buildDesignerAiCompletionMessage, buildDesignerAiGuidedQuestion, buildDesignerAiLocalContinuation, buildDesignerAiScopeNotice, resolveDesignerAiEntryGreeting, withDesignerAiGuidedContinuation, resolveDesignerAiGalleryHelp, resolveDesignerAiCoverHelp, DESIGNER_AI_COVER_HELP_QUESTION, DESIGNER_AI_COVER_HELP_LATER, DESIGNER_AI_GALLERY_HELP_QUESTION, DESIGNER_AI_GALLERY_HELP_LATER } from "@/domain/editor/designerAiGuidedConversation";
 import useEditorDocumentOperation from "@/hooks/useEditorDocumentOperation";
+import { createDesignerAiTurnTiming } from "@/domain/editor/designerAiTiming";
 import {
   buildDesignerAiGooglePlaceControlState,
   buildDesignerAiLocationSearchQuery,
@@ -50,7 +53,7 @@ import {
   persistDashboardDocumentUpdate,
 } from "@/lib/dashboardDocumentNameBridge";
 
-const AUTO_START_MESSAGE = "Iniciá la conversación con una bienvenida breve y guiame desde el primer bloque que todavía tenga información pendiente.";
+const AUTO_START_MESSAGE = DESIGNER_AI_AUTO_START_MESSAGE;
 
 function buildControlContinueMessage(completedLeafIds, snapshot) {
   if (snapshot.conversation?.mode === "editing") {
@@ -72,6 +75,19 @@ function createMessage(role, content, extra = {}) {
   };
 }
 
+// Presentation evidence lives only with the in-memory message. The fresh ledger
+// still selects the next step; this merely lets reentry retain a valid, more
+// specific clarification (such as a missing year) without replaying its turn.
+function guidedPresentationEvidence(snapshot, clarification = null) {
+  if (snapshot.conversation?.mode === "editing") return {};
+  const step = buildDesignerAiConversationBrief(snapshot).nextStep;
+  if (!step || (clarification?.leafId && !step.leafIds.includes(clarification.leafId))) return {};
+  const leaves = step.leafIds.map(id => snapshot.ledger.leaves.find(leaf => leaf.id === id))
+    .map(leaf => leaf && { id: leaf.id, fingerprint: leaf.fingerprint, status: leaf.status });
+  return { guidedStepFingerprint: fingerprintDesignerAiValue({ step, leaves,
+    question: buildDesignerAiGuidedQuestion(snapshot) }) };
+}
+
 function normalizeCallableError(error) {
   const code = String(error?.code || "");
   if (code.includes("recovery-conflict") || code.includes("evidence-conflict")) {
@@ -84,7 +100,7 @@ function normalizeCallableError(error) {
       : code.includes("deadline-exceeded")
         ? "La respuesta tardó demasiado y no se aplicaron cambios."
         : code.includes("failed-precondition")
-          ? "Diseñador AI todavía no está disponible en este entorno."
+          ? "Tu asistente todavía no está disponible en este entorno."
           : code.includes("invalid-argument")
             ? "No pude interpretar ese mensaje. Probá contándolo de otra manera."
            : code.includes("stale-snapshot")
@@ -341,13 +357,15 @@ export default function DesignerAiPanel({
   );
   const [draftMessage, setDraftMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [executionPhase, setExecutionPhase] = useState("Preparando cambios…");
+  const [conversationReady, setConversationReady] = useState(false);
+  const [executionPhase, setExecutionPhase] = useState(buildDesignerAiExecutionProgress());
   const [activeControl, setActiveControl] = useState(null);
   const [locationDecisions, setLocationDecisions] = useState([]);
   const [liveMessage, setLiveMessage] = useState("");
   const sessionKeyRef = useRef(sessionKey);
   const messagesRef = useRef(messages);
   const sendingRef = useRef(false);
+  const turnTimingRef = useRef(null);
   const submitMessageRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messageComposerRef = useRef(null);
@@ -429,6 +447,11 @@ export default function DesignerAiPanel({
   }, [beginOperation]);
 
   useEffect(() => {
+    if (sending) turnTimingRef.current?.markFeedback();
+    else turnTimingRef.current?.publish(window);
+  }, [messages, sending]);
+
+  useEffect(() => {
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
     messagesEndRef.current?.scrollIntoView?.({
       block: "nearest",
@@ -453,6 +476,13 @@ export default function DesignerAiPanel({
   } = {}) => {
     const message = String(rawMessage || "").trim();
     if (!message || sendingRef.current) return;
+    // Composing is allowed during hydration; interpreting an empty temporary
+    // schema as a complete invitation is not.
+    if (!readDashboardDocumentNameState(window).hydrated ||
+        !readDesignerAiCapabilitySnapshot(window).authoringReady) return;
+    const timing = createDesignerAiTurnTiming();
+    turnTimingRef.current = timing;
+    const stopContext = timing.startStage("contextMs");
     requestRetryRef.current = null;
     const requestSessionKey = sessionKeyRef.current;
     const requestSequence = ++requestSequenceRef.current;
@@ -474,42 +504,65 @@ export default function DesignerAiPanel({
       messagesRef.current = conversationWithUser;
       setMessages(conversationWithUser);
     }
-    setDraftMessage("");
+    if (showUserMessage) setDraftMessage("");
     setActiveControl(null);
     activeControlRef.current = null;
     controlVerificationRef.current = false;
     setLocationDecisions([]);
     sendingRef.current = true;
     setSending(true);
-    setExecutionPhase("Preparando cambios…");
-    setLiveMessage("Preparando la invitación.");
+    const initialProgress = "Preparando la respuesta…";
+    setExecutionPhase(initialProgress);
+    setLiveMessage(initialProgress);
 
     let result = resume?.result || null;
     let execution = null;
     let executionStarted = false;
+    let outcome = "error";
     try {
       if (!conversationStateRef.current.usage.hasStarted) {
         await persistConversationState({ ...conversationStateRef.current, usage: { ...conversationStateRef.current.usage, hasStarted: true } });
         if (!operation.isCurrent()) return;
       }
       if (resume && !operation.isCurrent()) throw Object.assign(new Error("La sesión cambió."), { code: "designer-ai/recovery-conflict" });
-      const response = resume ? { data: resume.result } : await callable(buildDesignerAiCallablePayload({
+      const payload = resume ? null : buildDesignerAiCallablePayload({
         clientMessageId: userMessage.id,
         message,
         recentTurns,
         snapshot: initialSnapshot,
         entryMode,
-      }));
+      });
+      stopContext();
+      const stopCallable = timing.startStage("callableMs");
+      let response;
+      try { response = resume ? { data: resume.result } : await callable(payload); }
+      finally { stopCallable(); }
       if (!operation.isCurrent() || sessionKeyRef.current !== requestSessionKey || requestSequenceRef.current !== requestSequence) return;
       result = response?.data;
       if (!isValidCallableResponse(result)) throw Object.assign(new Error("Respuesta inválida."), { code: "designer-ai/malformed-response" });
-      if (!resume && appliedBatchIdsRef.current.has(result.batchId)) return;
+      timing.setBatchId(result.batchId);
+      // Opening is a read-only application decision, including during a rolling
+      // backend upgrade. A greeting seed never authorizes model-proposed writes.
+      const automaticEntry = message === AUTO_START_MESSAGE && entryMode !== "continuation";
+      if (automaticEntry) result = { ...result, intent: "clarify", actions: [], resolutions: [], controlRequest: null, clarification: null, notice: null };
+      if (!resume && appliedBatchIdsRef.current.has(result.batchId)) {
+        outcome = "duplicate";
+        const duplicateMessage = "Recibí una respuesta repetida y no volví a aplicar sus cambios. Podés enviar una nueva solicitud.";
+        setMessages(current => appendDesignerAiMessageHistory(current, createMessage("assistant", duplicateMessage)));
+        setLiveMessage(duplicateMessage);
+        return;
+      }
 
       const currentSnapshot = readSnapshot();
       if (currentSnapshot.revision !== initialSnapshot.revision) throw Object.assign(new Error("El borrador cambió."), { code: "designer-ai/stale-snapshot" });
       const remainingActions = resume ? resume.recovery.actionResults.filter((r) => !r.effective).map((r) => r.action) : result.actions;
       const actionValidation = validateDesignerAiActionBatch(remainingActions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot: currentSnapshot });
       const controlValidation = validateDesignerAiControlRequest(result.controlRequest, currentSnapshot, { actions: remainingActions });
+      // Older backend/model responses can attach an unnecessary local-control
+      // wait to a leaf already covered by this valid action batch. Discard only
+      // that redundancy; completion still requires the executor's saved receipt.
+      if (!resume && actionValidation.ok) result = { ...result,
+        resolutions: discardRedundantDesignerAiControlResolutions(result.resolutions, currentSnapshot, { actions: result.actions }) };
       // A resume retains the original validated intent. Rules are checked against
       // observed state during reconciliation; confirmed actions aren't projected twice.
       const resolutionValidation = resume ? { ok: true, errors: [] } : validateDesignerAiResolutionUpdates(result.resolutions, currentSnapshot, { actions: result.actions });
@@ -521,19 +574,21 @@ export default function DesignerAiPanel({
       let actionResults = [];
       if (result.actions.length > 0) {
         executionStarted = true;
-        execution = await executeDesignerAiActionBatch(result.actions, {
+        const stopActions = timing.startStage("actionsAndPersistenceMs");
+        try { execution = await executeDesignerAiActionBatch(result.actions, {
           snapshot: currentSnapshot,
           targetWindow: window,
           isSessionCurrent: () => operation.isCurrent() && sessionKeyRef.current === requestSessionKey,
           waitFrame: () => waitOneEditorFrame(pendingFramesRef.current),
           recovery: resume?.recovery || null,
-          onProgress: (phase) => {
+          onProgress: (_phase, action) => {
             if (!operation.isCurrent()) return;
-            const text = phase === "saving" ? "Guardando…" : "Aplicando cambios…";
+            const text = buildDesignerAiExecutionProgress(action, currentSnapshot);
             setExecutionPhase(text);
             setLiveMessage(text);
           },
         });
+        } finally { stopActions(); }
         actionResults = execution.actionResults;
       }
       if (!operation.isCurrent()) return;
@@ -545,42 +600,66 @@ export default function DesignerAiPanel({
         resolutions: result.resolutions,
       });
       setExecutionPhase("Guardando…");
-      await persistConversationState(nextConversationState);
+      setLiveMessage("Guardando…");
+      const stopMetadata = timing.startStage("metadataMs");
+      try { await persistConversationState(nextConversationState); }
+      finally { stopMetadata(); }
       if (!operation.isCurrent()) return;
       recoveryRef.current = null;
       const finalSnapshot = readDesignerAiCapabilitySnapshot(window, { conversationState: nextConversationState });
+      if (fingerprintDesignerAiValue({ availability: reflectedSnapshot.availability, values: reflectedSnapshot.values }) !==
+          fingerprintDesignerAiValue({ availability: finalSnapshot.availability, values: finalSnapshot.values })) {
+        throw Object.assign(new Error("La invitación cambió mientras se guardaba el progreso."), {
+          code: "designer-ai/stale-snapshot", actionResults, recovery: null,
+        });
+      }
       const coverHelp = resolveDesignerAiCoverHelp({ result, snapshot: finalSnapshot,
         decision: journeyRef.current.coverHelp, userReply: resume?.controlUserReply ?? controlUserReply });
       journeyRef.current.coverHelp = coverHelp.decision;
-      const galleryHelp = resolveDesignerAiGalleryHelp({ result, snapshot: finalSnapshot,
+      const galleryHelp = resolveDesignerAiGalleryHelp({ result: { ...result, controlRequest: coverHelp.controlRequest }, snapshot: finalSnapshot,
         decision: journeyRef.current.galleryHelp, userReply: resume?.controlUserReply ?? controlUserReply });
       journeyRef.current.galleryHelp = galleryHelp.decision;
-      const controlRequest = coverHelp.offer ? null : galleryHelp.controlRequest || null;
+      const proposedControlRequest = coverHelp.offer ? null : galleryHelp.controlRequest || null;
+      // Automatic continuation cannot reinterpret a Maps choice or open a
+      // picker ahead of the fresh step. Explicit human requests remain reactive.
+      const controlRequest = finalSnapshot.conversation.mode !== "editing" &&
+        !(resume?.controlUserReply ?? controlUserReply) && proposedControlRequest?.type === "google_place_picker"
+        ? null : proposedControlRequest;
+      const continuationResult = { ...result, controlRequest };
       const controlState = controlRequest
         ? buildTrustedControlState(controlRequest, finalSnapshot)
         : null;
       activeControlRef.current = controlState;
       setActiveControl(controlState);
       setLocationDecisions(
-        controlState ? [] : resolveDesignerAiLocationDecisions(result, finalSnapshot)
+        controlState ? [] : resolveDesignerAiLocationDecisions(continuationResult, finalSnapshot)
       );
       const helpQuestion = coverHelp.offer ? DESIGNER_AI_COVER_HELP_QUESTION : galleryHelp.offer ? DESIGNER_AI_GALLERY_HELP_QUESTION : "";
       const helpNotice = coverHelp.deferred ? DESIGNER_AI_COVER_HELP_LATER : galleryHelp.deferred ? DESIGNER_AI_GALLERY_HELP_LATER : "";
-      const invitationFeedback = helpQuestion && buildDesignerAiExecutionFeedback(actionResults, { snapshot: finalSnapshot })
+      const executionFeedback = buildDesignerAiExecutionFeedback(actionResults, { snapshot: finalSnapshot })
         ? withDesignerAiExecutionFeedback("Listo.", actionResults, finalSnapshot, { userMessage: message }) : "";
       const assistantMessage = helpQuestion
-        ? [invitationFeedback, helpNotice, helpQuestion].filter(Boolean).join("\n\n")
+        ? [automaticEntry ? resolveDesignerAiEntryGreeting(result) : "", executionFeedback, helpNotice,
+          buildDesignerAiScopeNotice(continuationResult), helpQuestion].filter(Boolean).join("\n\n")
         : withDesignerAiGuidedContinuation(
           withDesignerAiExecutionFeedback(helpNotice || result.assistantMessage, actionResults, finalSnapshot, { userMessage: message }),
-          { previousSnapshot: currentSnapshot, snapshot: finalSnapshot, result, verifiedContinuation }
+          { previousSnapshot: currentSnapshot, snapshot: finalSnapshot, result: continuationResult, verifiedContinuation,
+            executionFeedback, trustedAcknowledgement: helpNotice || (verifiedContinuation ? "El cambio quedó guardado." : ""),
+            userMessage: message,
+            entryMode: message === AUTO_START_MESSAGE ? entryMode : "continuation" }
         );
       setMessages((current) => {
-        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", assistantMessage, { intent: result.intent }));
+        const next = appendDesignerAiMessageHistory(current, createMessage("assistant", assistantMessage, {
+          intent: result.intent,
+          ...(!controlState && (!helpQuestion || helpQuestion === buildDesignerAiGuidedQuestion(finalSnapshot))
+            ? guidedPresentationEvidence(finalSnapshot, result.clarification) : {}),
+        }));
         messagesRef.current = next;
         return next;
       });
       setLiveMessage(assistantMessage);
       publishGuidedCompletion(finalSnapshot);
+      outcome = "success";
     } catch (error) {
       if (!operation.isCurrent() || sessionKeyRef.current !== requestSessionKey) return;
       if (!error.actionResults && execution) {
@@ -605,9 +684,12 @@ export default function DesignerAiPanel({
           : "";
       const partialFeedback = buildDesignerAiExecutionFeedback(error.actionResults, { partial: true, snapshot: readSnapshot() });
       const safeMessage = partialFeedback
-        ? `${partialFeedback}\n\n${error.actionResults.every((item) => item.persisted && !item.error)
+        ? `${partialFeedback}\n\n${error.code === "designer-ai/stale-snapshot"
+          ? "La invitación cambió durante la operación. Revisá el borrador y enviá una nueva solicitud para usar su estado actual."
+          : error.actionResults.every((item) => item.persisted && !item.error)
           ? "No pude guardar el progreso del recorrido. Podés reintentar desde acá."
-          : "Podés reintentar los cambios pendientes."}`
+          : error.recovery ? "Podés reintentar los cambios pendientes."
+          : "La invitación cambió durante la operación. Enviá una nueva solicitud para usar su estado actual."}`
         : verifiedContinuation
         ? VERIFIED_CONTINUATION_FALLBACK
         : `${normalizeCallableError(error)}${reflected}`;
@@ -633,6 +715,7 @@ export default function DesignerAiPanel({
     } finally {
       if (recoveryRef.current?.operation !== operation) operation.cancel();
       if (sessionKeyRef.current === requestSessionKey && requestSequenceRef.current === requestSequence) {
+        timing.complete(outcome);
         sendingRef.current = false;
         setSending(false);
       }
@@ -651,6 +734,7 @@ export default function DesignerAiPanel({
     // Header metadata and field authoring hydrate independently. An early empty
     // schema must not turn the names into unavailable leaves or persist an entry.
     if (!readDesignerAiCapabilitySnapshot(window).authoringReady) return false;
+    setConversationReady(true);
     if (journeyRef.current.sessionKey !== sessionKeyRef.current) {
       journeyRef.current = { sessionKey: sessionKeyRef.current, initialized: false, editing: false };
     }
@@ -667,6 +751,35 @@ export default function DesignerAiPanel({
         documentState.designerAiConversation
       );
       autoStartedSessionRef.current = sessionKeyRef.current;
+      const snapshot = readSnapshot();
+      // The durable completion marker may have changed while the panel was
+      // closed. Reentry never resets that experience or announces closure again.
+      journeyRef.current.editing = journeyRef.current.editing || snapshot.conversation.mode === "editing" ||
+        snapshot.ledger.guidedFlow.completion.complete;
+      setLocationDecisions(resolveDesignerAiLocationDecisions({}, snapshot));
+      // A pending turn is cancelled on unmount. Do not silently leave its user
+      // message unanswered, or replay a batch that may have partially persisted.
+      if (messagesRef.current.at(-1)?.role === "user") {
+        const interruptedMessage = "La operación se interrumpió al cerrar el asistente. Revisá el borrador y enviá una nueva solicitud para continuar.";
+        setMessages(current => appendDesignerAiMessageHistory(current, createMessage("assistant", interruptedMessage)));
+        setLiveMessage(interruptedMessage);
+        return true;
+      }
+      const lastMessage = messagesRef.current.at(-1);
+      const question = !journeyRef.current.editing ? buildDesignerAiGuidedQuestion(snapshot) : "";
+      const presentation = guidedPresentationEvidence(snapshot);
+      const sameStep = presentation.guidedStepFingerprint &&
+        lastMessage?.guidedStepFingerprint === presentation.guidedStepFingerprint;
+      // Keep history and explicit recovery controls. A changed/legacy question
+      // receives a local continuation from the current draft, without a model
+      // request, an automatic control, a metadata write or an input reset.
+      if (question && !sameStep && lastMessage?.intent !== "error" && !lastMessage?.canRetryContinuation &&
+          !String(lastMessage?.content || "").trim().endsWith(question)) {
+        setMessages(current => appendDesignerAiMessageHistory(current,
+          createMessage("assistant", question, { intent: "clarify", ...presentation })));
+        setLiveMessage(question);
+        return true;
+      }
       setLiveMessage("");
       return true;
     }
@@ -696,14 +809,15 @@ export default function DesignerAiPanel({
           void submitMessageRef.current?.(AUTO_START_MESSAGE, {
             showUserMessage: false,
             entryMode: entry.entryMode,
-            snapshotOverride: initialSnapshot,
+            // Metadata persistence/retry may have waited while the person edited.
+            snapshotOverride: readSnapshot(),
           });
         },
         onPersistenceError: () => {
           if (sessionKeyRef.current !== requestSessionKey) return;
           sendingRef.current = false;
           setSending(false);
-          const safeMessage = "No pude iniciar Diseñador AI porque no se guardó el estado del borrador. Podés reintentar desde acá.";
+          const safeMessage = "No pude iniciar Tu asistente porque no se guardó el estado del borrador. Podés reintentar desde acá.";
           const errorMessage = createMessage("assistant", safeMessage, { intent: "error" });
           requestRetryRef.current = { messageId: errorMessage.id, run: beginConversation };
           setMessages((current) => {
@@ -717,7 +831,7 @@ export default function DesignerAiPanel({
     };
     void beginConversation();
     return true;
-  }, [journeyRef, persistConversationState, setMessages]);
+  }, [journeyRef, persistConversationState, readSnapshot, setMessages]);
 
   useEffect(() => {
     cancelPendingEditorFrames(pendingFramesRef.current);
@@ -729,6 +843,7 @@ export default function DesignerAiPanel({
     requestRetryRef.current = null;
     sendingRef.current = false;
     activeControlRef.current = null;
+    turnTimingRef.current = null;
     controlVerificationRef.current = false;
     restoreChatFocusRef.current = false;
     autoStartedSessionRef.current = "";
@@ -737,6 +852,7 @@ export default function DesignerAiPanel({
     setLocationDecisions([]);
     setSending(false);
     setDraftMessage("");
+    setConversationReady(false);
     setLiveMessage("Preparando la conversación.");
     const timerId = window.setTimeout(() => {
       if (sessionKeyRef.current !== sessionKey) return;
@@ -784,9 +900,11 @@ export default function DesignerAiPanel({
     const control = continuation.controlRequest ? buildTrustedControlState(continuation.controlRequest, snapshot) : null;
     activeControlRef.current = control;
     setActiveControl(control);
-    setLocationDecisions([]);
+    setLocationDecisions(control ? [] : resolveDesignerAiLocationDecisions({}, snapshot));
     setMessages((current) => {
-      const next = appendDesignerAiMessageHistory(current, createMessage("assistant", continuation.assistantMessage, { intent: "clarify" }));
+      const next = appendDesignerAiMessageHistory(current, createMessage("assistant", continuation.assistantMessage, {
+        intent: "clarify", ...(!control ? guidedPresentationEvidence(snapshot) : {}),
+      }));
       messagesRef.current = next;
       return next;
     });
@@ -1161,14 +1279,15 @@ export default function DesignerAiPanel({
   return (
     <section
       className="flex h-full max-h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-white p-0 text-left font-['DM_Sans',sans-serif] text-[#262626] transition-none [&_h2]:[text-shadow:none] [&_h3]:[text-shadow:none] [&_p]:m-0 [&_p]:[text-shadow:none] [&_section]:transition-none"
-      aria-label="Diseñador AI"
+      aria-label="Tu asistente"
+      aria-busy={sending || !conversationReady}
     >
       <header className="flex min-h-12 shrink-0 items-center gap-2.5 border-b border-[#E5E5E5] bg-white px-3 pr-12">
         <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#FAF5FF] text-[#692B9A]" aria-hidden="true">
-          <Bot className="h-4 w-4" />
+          <Sparkles className="h-4 w-4" />
         </span>
         <h2 className="m-0 truncate text-sm font-semibold leading-5 text-[#262626]">
-          Diseñador AI
+          Tu asistente
         </h2>
       </header>
       {activeControl ? (
@@ -1259,7 +1378,7 @@ export default function DesignerAiPanel({
         <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSubmit} className="shrink-0 border-t border-[#E5E5E5] bg-white px-3 py-2.5">
-        <label htmlFor="designer-ai-message" className="sr-only">Mensaje para Diseñador AI</label>
+        <label htmlFor="designer-ai-message" className="sr-only">Mensaje para Tu asistente</label>
         <div className="flex items-end gap-2">
           <textarea
             ref={messageComposerRef}
@@ -1267,12 +1386,12 @@ export default function DesignerAiPanel({
             value={draftMessage}
             onChange={(event) => setDraftMessage(event.target.value.slice(0, 1200))}
             onKeyDown={handleComposerKeyDown}
-            disabled={sending || Boolean(activeControl)}
+            disabled={Boolean(activeControl)}
             rows={3}
-            placeholder="Contame los datos o cambios que quieran hacer."
+            placeholder="Contame que tenes en mente..."
             className="min-h-[68px] min-w-0 flex-1 resize-none rounded-xl border border-[#d8d3d5] bg-[#FBF7F9] px-3 py-2.5 font-['Source_Sans_3',sans-serif] text-sm leading-5 text-[#262626] outline-none transition-colors placeholder:text-[#81797d] focus:border-[#692B9A] focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-not-allowed disabled:bg-[#f2eff1]"
           />
-          <button type="submit" disabled={sending || Boolean(activeControl) || !draftMessage.trim()} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-[#692B9A] text-white transition-colors hover:bg-[#57227f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-not-allowed disabled:bg-[#c9c3c7]" aria-label="Enviar mensaje">
+          <button type="submit" disabled={!conversationReady || sending || Boolean(activeControl) || !draftMessage.trim()} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-[#692B9A] text-white transition-colors hover:bg-[#57227f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#EFDBFF] disabled:cursor-not-allowed disabled:bg-[#c9c3c7]" aria-label="Enviar mensaje">
             {sending
               ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
               : <Send className="h-4 w-4" aria-hidden="true" />}

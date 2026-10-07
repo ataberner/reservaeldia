@@ -10,6 +10,7 @@ import * as history from "../../../../domain/editor/designerAiMessageHistory.js"
 import * as executor from "../../../../domain/editor/designerAiActionExecutor.js";
 import * as feedback from "../../../../domain/editor/designerAiExecutionFeedback.js";
 import * as guidedConversation from "../../../../domain/editor/designerAiGuidedConversation.js";
+import * as timing from "../../../../domain/editor/designerAiTiming.js";
 import { buildTemplateAuthoringTargetPatches } from "../../../../domain/templates/authoring/targetApplication.js";
 import { expandEventDateProjectionFieldKeys, resolveEventDateTargetProjectionValue } from "../../../../domain/eventDetails/date.js";
 import * as evidence from "../../../../domain/editor/designerAiActionEvidence.js";
@@ -41,7 +42,7 @@ export function loadComponent(path, dependencies) {
 
 // Real panel, validators, ledger, executor and receipts. Only editor I/O and
 // provider transport are synthetic; no Firebase, Maps or OpenAI connection.
-export async function mountPanel({ respond, initialConversation, initialMessages = [], savedDraft, failWrite = () => false, failMetadata = () => false, beforeWrite = async () => {}, fullFields = false, authoringReady = true, locationControl } = {}) {
+export async function mountPanel({ respond, initialConversation, initialMessages = [], savedDraft, failWrite = () => false, failMetadata = () => false, beforeWrite = async () => {}, beforeMetadata = null, fullFields = false, authoringReady = true, locationControl } = {}) {
   const dom = new JSDOM("<div id='root'></div>", { url: "https://local.test", pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -105,8 +106,9 @@ export async function mountPanel({ respond, initialConversation, initialMessages
   nameBridge.publishDashboardDocumentNameState({ documentId: "A", hydrated: true, editable: true,
     name: persistedDraft.name, designerAiConversation: persistedDraft.conversation, designerAiSourceContext: persistedDraft.sourceContext }, window);
   update(initialRender);
-  window.addEventListener("dashboard-document-name-update-request", ({ detail }) => {
+  window.addEventListener("dashboard-document-name-update-request", async ({ detail }) => {
     detail.onAccepted();
+    if (beforeMetadata) await beforeMetadata();
     if (failMetadata(++metaWrites)) { detail.onPersistenceError?.(new Error("Synthetic metadata failure")); return; }
     const current = nameBridge.readDashboardDocumentNameState(window);
     const state = { ...current, name: detail.hasName ? detail.name : current.name,
@@ -122,7 +124,7 @@ export async function mountPanel({ respond, initialConversation, initialMessages
   window.addEventListener("actualizar-elemento", ({ detail }) => update({ objetos: render().objetos.map((o) => o.id === detail.id ? { ...o, ...detail.cambios } : o) }));
   const noop = () => null;
   const Panel = loadComponent(new URL("../DesignerAiPanel.jsx", import.meta.url), {
-    "lucide-react": { Bot: noop, LoaderCircle: noop, MapPin: noop, Send: noop, X: noop },
+    "lucide-react": { Sparkles: noop, LoaderCircle: noop, MapPin: noop, Send: noop, X: noop },
     "firebase/functions": { httpsCallable: () => async (payload) => {
       calls.push(payload);
       const result = await respond(payload, calls.length);
@@ -139,6 +141,7 @@ export async function mountPanel({ respond, initialConversation, initialMessages
     "@/domain/editor/designerAiActionEvidence": evidence,
     "@/domain/editor/designerAiExecutionFeedback": feedback,
     "@/domain/editor/designerAiGuidedConversation": guidedConversation,
+    "@/domain/editor/designerAiTiming": timing,
     "@/hooks/useEditorDocumentOperation": useEditorDocumentOperation,
     "@/domain/editor/designerAiLocationInteraction": location,
     "@/domain/eventDetails/features": features,
@@ -168,7 +171,7 @@ export async function mountPanel({ respond, initialConversation, initialMessages
     const props = input[Object.keys(input).find((key) => key.startsWith("__reactProps"))];
     await act(async () => props.onChange({ target: { value: text } }));
     await act(async () => document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
-    await until(() => calls.length > before && !document.querySelector("textarea")?.disabled);
+    await until(() => calls.length > before && document.querySelector("section[aria-label='Tu asistente']")?.getAttribute("aria-busy") === "false");
   };
   await act(async () => root.render(React.createElement(Host)));
   return {

@@ -10,10 +10,23 @@ import * as cover from "../../../../shared/coverImageContract.mjs";
 import * as assets from "../../../../shared/renderAssetContract.js";
 import * as migration from "./migration.js";
 import { createDraftWriteCoordinator } from "../../../components/editor/persistence/draftWriteCoordinator.js";
+import { buildDesignerAiCapabilitySnapshot } from "../../editor/designerAiCapabilities.js";
+import { buildDesignerAiGuidedQuestion } from "../../editor/designerAiGuidedConversation.js";
+import ledgerRuntime from "../../../../shared/designerAiConversationLedger.js";
 
 const require = createRequire(import.meta.url);
 const ts = require("../../../../functions/node_modules/typescript");
 const serviceSource = readFileSync(new URL("./service.js", import.meta.url), "utf8");
+
+// Use the same metadata producer as copiarPlantilla, without loading Firebase.
+const metadataModule = { exports: {} };
+new Function("module", "exports", ts.transpileModule(readFileSync(
+  new URL("../../../../functions/src/templates/draftAuthoringMetadata.ts", import.meta.url), "utf8"
+), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText)(
+  metadataModule, metadataModule.exports
+);
+const { buildDraftTemplateAuthoringMetadata } = metadataModule.exports;
+const { buildDesignerAiConversationBrief } = ledgerRuntime;
 
 // Execute the production service and migration; replace only remote I/O.
 function createHarness(initialDocument) {
@@ -69,6 +82,85 @@ function legacyDraft() {
     },
   };
 }
+
+function copiedInvitationDraft() {
+  const template = {
+    fieldsSchema: [
+      { key: "event_primary_person_name", type: "text", eventDetailsRole: "primary_person_name", applyTargets: [] },
+      { key: "event_secondary_person_name", type: "text", eventDetailsRole: "secondary_person_name", applyTargets: [] },
+    ],
+    defaults: { event_primary_person_name: "Clara", event_secondary_person_name: "Bruno" },
+  };
+  return {
+    plantillaId: "synthetic-template", sourceTemplateId: "synthetic-template",
+    objetos: [], secciones: [], eventDetails: { mode: "single" },
+    templateAuthoringDraft: buildDraftTemplateAuthoringMetadata({
+      template, templateId: "synthetic-template", uid: "synthetic-user", updatedAt: "synthetic-time",
+    }),
+  };
+}
+
+function invitationCapabilities(authoringSnapshot, document, conversationState) {
+  return buildDesignerAiCapabilitySnapshot({
+    authoringSnapshot, renderSnapshot: document, conversationState,
+    documentNameState: { documentKind: "draft", documentId: "synthetic-draft", editable: true },
+  });
+}
+
+test("copied template authoring keeps sample names unconfirmed through initial load, persistence and reentry", async () => {
+  const original = copiedInvitationDraft();
+  const expectedDefaults = original.templateAuthoringDraft.defaults;
+  // copiarPlantilla stores authoring defaults, without root defaults/templateInput.
+  assert.equal(Object.hasOwn(original, "templateInput"), false);
+  assert.equal(Object.hasOwn(original, "defaults"), false);
+  const harness = createHarness(original);
+  const loaded = await harness.loadAuthoringState({
+    slug: "synthetic-draft", templateId: original.plantillaId,
+    preloadedDraft: original, persistMigration: true,
+  });
+  assert.deepEqual(loaded.templateInput.defaults, expectedDefaults);
+  assert.deepEqual(Object.fromEntries(Object.keys(expectedDefaults).map((key) =>
+    [key, loaded.templateInput.values[key]])), expectedDefaults);
+  assert.deepEqual(loaded.templateInput.changedKeys, []);
+  assert.equal(harness.writes.length, 1);
+
+  const reopened = await harness.loadAuthoringState({ slug: "synthetic-draft", persistMigration: true });
+  assert.equal(reopened.migration.applied, false);
+  assert.equal(harness.writes.length, 1);
+  for (const [authoringSnapshot, conversationState] of [[loaded, null], [reopened, { usage: { hasStarted: true } }]]) {
+    const snapshot = invitationCapabilities(authoringSnapshot, harness.document, conversationState);
+    assert.equal(snapshot.availability.people, true);
+    assert.equal(buildDesignerAiConversationBrief(snapshot).nextStep.kind, "names");
+    assert.match(buildDesignerAiGuidedQuestion(snapshot), /nombres/i);
+    for (const id of ["event.people.primary_name", "event.people.secondary_name"]) {
+      const leaf = snapshot.ledger.leaves.find((entry) => entry.id === id);
+      assert.equal(leaf.status, "pending");
+      assert.notEqual(leaf.provenance, "existing_user_data");
+    }
+  }
+  assert.deepEqual(harness.document.templateInput.defaults, expectedDefaults);
+  assert.deepEqual(harness.document.templateInput.changedKeys, []);
+});
+
+test("manual names saved after copied-template hydration remain confirmed when the draft is reopened", async () => {
+  const harness = createHarness(copiedInvitationDraft());
+  const loaded = await harness.loadAuthoringState({ slug: "synthetic-draft", persistMigration: true });
+  const names = { event_primary_person_name: "Ana", event_secondary_person_name: "Luz" };
+  await harness.saveAuthoringDraft({
+    slug: "synthetic-draft", templateId: "synthetic-template",
+    state: { ...loaded, values: names, objetos: [] },
+  });
+  const reopened = await harness.loadAuthoringState({ slug: "synthetic-draft", persistMigration: true });
+  assert.deepEqual(reopened.templateInput.defaults, copiedInvitationDraft().templateAuthoringDraft.defaults);
+  assert.deepEqual(reopened.templateInput.values, names);
+  assert.deepEqual(reopened.templateInput.changedKeys, Object.keys(names));
+  const snapshot = invitationCapabilities(reopened, harness.document, { usage: { hasStarted: true } });
+  assert.equal(buildDesignerAiConversationBrief(snapshot).nextStep.kind, "event_structure");
+  for (const id of ["event.people.primary_name", "event.people.secondary_name"]) {
+    const leaf = snapshot.ledger.leaves.find((entry) => entry.id === id);
+    assert.equal(leaf.status, "resolved_from_existing_user_data");
+  }
+});
 
 for (const [kind, version] of [["draft", 1], ["template", 1], ["draft", 2]]) {
   test(`${kind} v${version} migration with a partial preload preserves persisted sections and objects`, async () => {

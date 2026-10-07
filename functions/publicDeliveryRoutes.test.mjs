@@ -36,6 +36,104 @@ function createLogger() {
   };
 }
 
+function assertUnavailableHtml(result, status, slug = "mi-slug") {
+  assert.equal(result.status, status);
+  assert.deepEqual(result.headers, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "private, no-store, max-age=0",
+    "X-Robots-Tag": "noindex, noarchive",
+  });
+  assert.match(String(result.body), /<!doctype html>/);
+  assert.match(String(result.body), /<html lang="es">/);
+  assert.match(String(result.body), /name="viewport"/);
+  assert.match(String(result.body), status >= 500
+    ? /<h1>No pudimos cargar la invitación<\/h1>/
+    : /<h1>Invitación no disponible<\/h1>/);
+  assert.ok(String(result.body).includes(`href="${slug ? `/i/${slug}` : "/"}"`));
+  assert.doesNotMatch(String(result.body), /<script|publicada_pausada|user-1/);
+}
+
+for (const [name, publicationData] of [
+  ["missing", null],
+  ["paused", createActivePublication({ estado: "publicada_pausada" })],
+  ["trashed", createActivePublication({ estado: "papelera" })],
+  ["draft", createActivePublication({ estado: "draft" })],
+  ["finalized", createActivePublication({ estado: "finalized" })],
+  ["expired", createActivePublication({ venceAt: "2000-01-01T00:00:00Z" })],
+]) {
+  test(`public invitation ${name} rejection is not cached and does not read the artifact`, async () => {
+    let finalized = 0;
+    const result = await resolvePublicInvitationHtmlResponse({
+      slugInput: "mi-slug",
+      async loadPublicationData() { return publicationData; },
+      async finalizeExpiredPublication() { finalized += 1; },
+      async readPublicHtmlArtifact() { assert.fail("must reject before reading storage"); },
+    });
+    assertUnavailableHtml(result, 404);
+    assert.equal(finalized, name === "expired" ? 1 : 0);
+  });
+}
+
+test("public invitation invalid slug and metadata failures return uncached error pages", async () => {
+  const params = {
+    slugInput: "",
+    async loadPublicationData() { throw new Error("private backend details"); },
+    async finalizeExpiredPublication() { assert.fail("must not finalize"); },
+    async readPublicHtmlArtifact() { assert.fail("must not read storage"); },
+  };
+  assertUnavailableHtml(await resolvePublicInvitationHtmlResponse(params), 400, "");
+  const failed = await resolvePublicInvitationHtmlResponse({ ...params, slugInput: "mi-slug" });
+  assertUnavailableHtml(failed, 500);
+  assert.doesNotMatch(String(failed.body), /private backend details/);
+});
+
+test("same public url recovers from missing or paused to active without a cacheable rejection", async () => {
+  let publicationData = null;
+  let htmlReads = 0;
+  const params = {
+    slugInput: "mi-slug",
+    async loadPublicationData() { return publicationData; },
+    async finalizeExpiredPublication() { assert.fail("must not finalize"); },
+    async readPublicHtmlArtifact() { htmlReads += 1; return "<html>invitation</html>"; },
+  };
+  assertUnavailableHtml(await resolvePublicInvitationHtmlResponse(params), 404);
+  publicationData = createActivePublication({ estado: "publicada_pausada" });
+  assertUnavailableHtml(await resolvePublicInvitationHtmlResponse(params), 404);
+  publicationData = createActivePublication();
+  const active = await resolvePublicInvitationHtmlResponse(params);
+  assert.equal(active.status, 200);
+  assert.equal(active.body, "<html>invitation</html>");
+  assert.equal(active.headers["Cache-Control"], "private, no-store, max-age=0");
+  assert.equal(htmlReads, 1);
+});
+
+test("public share errors are never cached, including lifecycle, missing artifact and read failures", async () => {
+  const params = {
+    slugInput: "mi-slug",
+    requestedVersionInput: "v1",
+    async loadPublicationData() {
+      return createActivePublication({
+        share: { status: "generated", source: "renderer", version: "v1",
+          storagePath: "publicadas/mi-slug/share.jpg" },
+      });
+    },
+    async finalizeExpiredPublication() { assert.fail("must not finalize"); },
+    async readPublicShareImageArtifact() { return null; },
+  };
+  for (const [expectedStatus, override] of [
+    [400, { slugInput: "" }],
+    [404, { async loadPublicationData() { return null; } }],
+    [404, { async loadPublicationData() { return createActivePublication({ estado: "publicada_pausada" }); } }],
+    [404, {}],
+    [500, { async readPublicShareImageArtifact() { throw new Error("storage failed"); } }],
+  ]) {
+    const result = await resolvePublicShareImageResponse({ ...params, ...override });
+    assert.equal(result.status, expectedStatus);
+    assert.equal(result.headers["Cache-Control"], "private, no-store, max-age=0");
+    assert.equal(result.headers["X-Robots-Tag"], "noindex");
+  }
+});
+
 test("public invitation route fails closed when published metadata exists but index artifact is missing", async () => {
   let htmlReads = 0;
   const result = await resolvePublicInvitationHtmlResponse({
@@ -55,13 +153,7 @@ test("public invitation route fails closed when published metadata exists but in
   });
 
   assert.equal(htmlReads, 1);
-  assert.deepEqual(result, {
-    status: 404,
-    headers: {
-      "X-Robots-Tag": "noindex, noarchive",
-    },
-    body: "Invitacion publicada no encontrada",
-  });
+  assertUnavailableHtml(result, 404);
 });
 
 test("public invitation route serves active html with noindex robots headers", async () => {
@@ -104,13 +196,7 @@ test("public invitation route fails closed when index artifact cannot be downloa
     logger,
   });
 
-  assert.deepEqual(result, {
-    status: 500,
-    headers: {
-      "X-Robots-Tag": "noindex, noarchive",
-    },
-    body: "No se pudo cargar la invitacion",
-  });
+  assertUnavailableHtml(result, 500);
   assert.equal(calls.errors.length, 1);
   assert.equal(calls.errors[0].message, "Error descargando invitacion publica por slug");
   assert.equal(calls.errors[0].context.slug, "mi-slug");
@@ -149,6 +235,7 @@ test("public share image route rejects stale versions before reading storage", a
   assert.deepEqual(result, {
     status: 404,
     headers: {
+      "Cache-Control": "private, no-store, max-age=0",
       "X-Robots-Tag": "noindex",
     },
     body: "Imagen share no encontrada",
@@ -187,6 +274,7 @@ test("public share image route rejects fallback metadata as non-current generate
   assert.deepEqual(result, {
     status: 404,
     headers: {
+      "Cache-Control": "private, no-store, max-age=0",
       "X-Robots-Tag": "noindex",
     },
     body: "Imagen share no encontrada",
@@ -262,6 +350,7 @@ test("public share image route fails closed when the current artifact is not com
   assert.deepEqual(result, {
     status: 404,
     headers: {
+      "Cache-Control": "private, no-store, max-age=0",
       "X-Robots-Tag": "noindex",
     },
     body: "Imagen share no encontrada",

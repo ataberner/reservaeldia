@@ -5,6 +5,7 @@ import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
 const { normalizeDraftRenderState } = requireBuiltModule("lib/drafts/sourceOfTruth.js");
 const { prepareRenderPayload, validatePreparedRenderPayload, buildPreviewRenderPayloadFromPreparedPayload, generateHtmlFromPreparedRenderPayload } = requireBuiltModule("lib/render/prepareRenderPayload.js");
 const { normalizeMusicConfig } = requireBuiltModule("lib/music/config.js");
+const { saveDraftWithMusicHandler } = requireBuiltModule("lib/music/draftMusicWrite.js");
 const music = { ...normalizeMusicConfig(null), enabled: true, track: { source: "catalog", id: "perfect-ed-sheeran" } };
 const draft = (config) => ({ objetos: [{ id: "title", tipo: "texto", texto: "Invitation", seccionId: "hero", x: 20, y: 20, width: 300, height: 60, fontSize: 32 }], secciones: [{ id: "hero", orden: 1, altura: 600, fondo: "#fff" }], ...(config === undefined ? {} : { music: config }) });
 
@@ -45,6 +46,31 @@ test("unavailable tracks warn and leave invitation accessible without a gate", a
     assert.equal(result.canPublish, true);
     assert.ok(result.warnings.some((issue) => issue.code === "music-track-unavailable"));
     assert.doesNotMatch(generateHtmlFromPreparedRenderPayload(prepared), /id="invitation-entry-gate"/);
+  }
+});
+
+test("music saved by the verified pilot reaches preview and published HTML", async (t) => {
+  const mock = installFirebaseStorageMock(); t.after(() => mock.restore());
+  let savedDraft = { userId: "pilot", ...draft() };
+  const ref = {};
+  const db = {
+    collection: () => ({ doc: () => ref }),
+    runTransaction: async run => run({
+      get: async () => ({ exists: true, data: () => savedDraft }),
+      set: (_, patch) => { savedDraft = { ...savedDraft, ...patch }; },
+    }),
+  };
+  await saveDraftWithMusicHandler({
+    auth: { uid: "pilot", token: { email: "jpeses@gmail.com", email_verified: true } },
+    data: { draftId: "pilot-draft", patch: { music } },
+  }, db);
+  const prepared = await prepareRenderPayload(savedDraft);
+  assert.equal(validatePreparedRenderPayload(prepared).canPublish, true);
+  assert.deepEqual(buildPreviewRenderPayloadFromPreparedPayload(prepared).music, music);
+  for (const isPreview of [true, false]) {
+    const html = generateHtmlFromPreparedRenderPayload(prepared, { slug: "pilot-draft", isPreview });
+    assert.match(html, /id="invitation-entry-gate"/);
+    assert.match(html, /assets\/music\/perfect\.mp3/);
   }
 });
 test("draft source of truth normalizes music and cannot persist a physical audio URL", () => {

@@ -15,6 +15,7 @@ import * as history from "../../../domain/editor/designerAiMessageHistory.js";
 import * as executor from "../../../domain/editor/designerAiActionExecutor.js";
 import * as feedback from "../../../domain/editor/designerAiExecutionFeedback.js";
 import * as guidedConversation from "../../../domain/editor/designerAiGuidedConversation.js";
+import * as timing from "../../../domain/editor/designerAiTiming.js";
 import * as evidence from "../../../domain/editor/designerAiActionEvidence.js";
 import * as location from "../../../domain/editor/designerAiLocationInteraction.js";
 import * as features from "../../../domain/eventDetails/features.js";
@@ -56,7 +57,7 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     { type: "rsvp.set_enabled", arguments: { enabled: true } },
   ];
   const Panel = loadHook("./DesignerAiPanel.jsx", {
-    "lucide-react": { Bot: noop, LoaderCircle: noop, MapPin: noop, Send: noop, X: noop },
+    "lucide-react": { Sparkles: noop, LoaderCircle: noop, MapPin: noop, Send: noop, X: noop },
     "firebase/functions": { httpsCallable: () => async () => {
       providerCalls++;
       return { data: { contractVersion: capabilityContract.DESIGNER_AI_CONTRACT_VERSION, batchId: "integrated-partial", intent: "apply", assistantMessage: "Cambios confirmados", actions, resolutions: [], controlRequest: null } };
@@ -72,6 +73,7 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     "@/domain/editor/designerAiActionEvidence": evidence,
     "@/domain/editor/designerAiExecutionFeedback": feedback,
     "@/domain/editor/designerAiGuidedConversation": guidedConversation,
+    "@/domain/editor/designerAiTiming": timing,
     "@/hooks/useEditorDocumentOperation": useEditorDocumentOperation,
     "@/domain/editor/designerAiLocationInteraction": location,
     "@/domain/eventDetails/features": features,
@@ -98,7 +100,7 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     syncEditorSnapshotRenderState({ ...current, objetos: [...current.objetos, detail] }, window);
   });
   function Host() {
-    const [items, setItems] = useState([]);
+    const [items, setItems] = useState([{ id: "greeting", role: "assistant", content: "¿Qué querés ajustar?" }]);
     messages = items;
     return React.createElement(Panel, { sessionKey: "draft:A", messageHistory: items, onMessageHistoryChange: setItems });
   }
@@ -108,6 +110,10 @@ test("H3 integrated panel retry resumes the saved batch without another model re
   };
   try {
     await act(async () => { root.render(React.createElement(Host)); });
+    const input = document.querySelector("textarea");
+    const props = input[Object.keys(input).find((key) => key.startsWith("__reactProps"))];
+    await act(async () => props.onChange({ target: { value: "Agregá Tal vez, cambiá el título a Nos vemos y activá RSVP." } }));
+    await act(async () => document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
     await until(() => messages.some((m) => m.recoveryBatchId));
     assert.equal(messages.some((m) => m.content.startsWith("Listo, guardé")), false);
     assert.match(messages.at(-1).content, /Se guardaron 1 de 3 cambios/);

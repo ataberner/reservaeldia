@@ -250,11 +250,12 @@ export default function DashboardLayout({
             futurosExternos={futurosExternos}
             editorReadOnly={editorReadOnly}
             canManageSite={canManageSite}
-            isSuperAdmin={isSuperAdmin}
             loadingAdminAccess={loadingAdminAccess}
             editorSession={editorSession}
             templateSessionMeta={templateSessionMeta}
             userUid={usuario?.uid || ""}
+            userEmail={usuario?.email || ""}
+            userEmailVerified={usuario?.emailVerified === true}
             assistantTourEditorReady={resolvedAssistantTourEditorReady}
             assistantTourPreferencesLoaded={assistantTourPreferencesLoaded}
             assistantTourOptOut={assistantTourOptOut}

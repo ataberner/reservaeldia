@@ -8,6 +8,7 @@ const {
   buildAutomaticEventName,
   buildDesignerAiGalleryCompletionLeafId,
   buildDesignerAiConversationBrief,
+  buildDesignerAiNextStep,
   buildDesignerAiLedger,
   captureDesignerAiActionEvidence,
   mapDesignerAiActionToLeafIds,
@@ -98,6 +99,59 @@ function snapshotFor(ledger, values = fixture().values) {
   return { ledger, values, conversation: { namePolicy: { mode: "unknown", lastAutomaticName: "" } } };
 }
 
+for (const leafId of ["gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value"]) {
+  test(`a persisted gift receipt outranks requires_control and survives reentry: ${leafId}`, () => {
+    const base = fixture();
+    const values = {
+      ...base.values,
+      eventMode: "single",
+      ceremony: { ...base.values.ceremony, placeSelected: true },
+      gifts: {
+        ...base.values.gifts,
+        enabled: true,
+        methods: { ...base.values.gifts.methods, alias: { value: "SYNTHETIC.ALIAS", visible: true } },
+      },
+    };
+    const initial = build({ values });
+    const previousState = { resolutions: initial.leaves
+      .filter((leaf) => initial.guidedFlow.leafIds.includes(leaf.id) && !["gifts", "cover", "galleries"].includes(leaf.block))
+      .map((leaf) => ({ leafId: leaf.id, fingerprint: leaf.fingerprint,
+        status: "resolved_from_user", provenance: "user_current_session", rule: null })) };
+    const snapshot = snapshotFor(build({ values, conversationState: previousState }), values);
+    const actions = [
+      { type: "gifts.set_enabled", arguments: { enabled: true } },
+      { type: "gifts.set_method", arguments: { method: "alias", value: "SYNTHETIC.ALIAS", visible: true } },
+    ];
+    const actionResults = actions.map((action) => ({ action, executed: true, effective: true, persisted: true,
+      evidence: captureDesignerAiActionEvidence(action, snapshot) }));
+    const state = reconcileDesignerAiConversationState({ snapshot, previousState, actionResults,
+      resolutions: [{ leafId, status: "requires_control", rule: null }] });
+    const restored = JSON.parse(JSON.stringify(state));
+    const current = build({ values, conversationState: prepareDesignerAiConversationEntry(restored).persistedState });
+    assert.equal(current.leaves.find((leaf) => leaf.id === leafId).status, "resolved_from_user");
+    assert.equal(buildDesignerAiConversationBrief(snapshotFor(current, values)).nextStep.blockId, "cover");
+  });
+}
+
+test("requires_control protection never promotes proposals, failed writes or old metadata to confirmation", () => {
+  const values = fixture().values;
+  const snapshot = snapshotFor(build(), values);
+  const action = { type: "gifts.set_method", arguments: { method: "alias", value: "SYNTHETIC.ALIAS", visible: true } };
+  const leafId = "gifts.method.alias.value";
+  const resolutions = [{ leafId, status: "requires_control", rule: null }];
+  for (const actionResults of [[], [{ action, executed: true, effective: true, persisted: false }],
+    [{ action, executed: true, effective: true, persisted: true,
+      evidence: captureDesignerAiActionEvidence(action, { ...snapshot, documentIdentity: "another-draft" }) }]]) {
+    const state = reconcileDesignerAiConversationState({ snapshot, actionResults, resolutions });
+    const resolution = state.resolutions.find((entry) => entry.leafId === leafId);
+    assert.equal(resolution.status, actionResults.length ? "needs_clarification" : "requires_control");
+  }
+  const existing = { resolutions: [{ ...resolutions[0], provenance: "user_current_session",
+    fingerprint: snapshot.ledger.leaves.find((leaf) => leaf.id === leafId).fingerprint }] };
+  const restored = reconcileDesignerAiConversationState({ snapshot, previousState: existing });
+  assert.equal(restored.resolutions.find((entry) => entry.leafId === leafId).status, "requires_control");
+});
+
 test("ledger expands RSVP, Gifts and media into structural leaves", () => {
   const ledger = build();
   const ids = new Set(ledger.leaves.map((leaf) => leaf.id));
@@ -148,6 +202,79 @@ test("template changedKeys provide evidence for existing user data", () => {
   assert.equal(ledger.leaves.find((leaf) => leaf.id === "event.people.primary_name").status, "resolved_from_existing_user_data");
   assert.equal(ledger.leaves.find((leaf) => leaf.id === "event.ceremony.date").status, "resolved_from_existing_user_data");
   assert.equal(ledger.leaves.find((leaf) => leaf.id === "event.people.secondary_name").status, "pending");
+});
+
+test("entry baseline preserves proven names on reentry without repeating source metadata", () => {
+  const initial = build({ sourceContext: { templateDerived: true,
+    changedKeys: ["event_primary_person_name", "event_secondary_person_name"] } });
+  const conversationState = reconcileDesignerAiConversationState({ snapshot: snapshotFor(initial) });
+  const reopened = build({ conversationState, sourceContext: { templateDerived: true, changedKeys: [] } });
+  for (const leaf of reopened.leaves.filter((entry) => entry.id.startsWith("event.people."))) {
+    assert.equal(leaf.status, "resolved_from_existing_user_data");
+    assert.equal(leaf.provenance, "existing_user_data");
+  }
+  assert.equal(buildDesignerAiConversationBrief({ ledger: reopened }).nextBlock.id, "event_structure");
+});
+
+test("unknown/template baselines and missing legacy fingerprints never confirm unchanged names", () => {
+  const initial = build();
+  for (const provenance of ["unknown", "template_value", "placeholder_or_sample"]) {
+    for (const missingFingerprint of [false, true]) {
+      const conversationState = { baseline: initial.leaves.map((leaf) => ({ leafId: leaf.id,
+        fingerprint: missingFingerprint ? "" : leaf.fingerprint, provenance })) };
+      const reopened = build({ conversationState });
+      assert.equal(buildDesignerAiConversationBrief({ ledger: reopened }).nextBlock.id, "names");
+      assert.ok(reopened.leaves.filter((leaf) => leaf.id.startsWith("event.people.")).every((leaf) => leaf.status === "pending"));
+    }
+  }
+});
+
+test("restoring template names after entry cannot acquire confirmation from a baseline delta", () => {
+  const values = { ...fixture().values, people: { primaryName: "Mica", secondaryName: "Juana" } };
+  const initial = build({ values,
+    sourceContext: { templateDerived: true, changedKeys: ["event_primary_person_name", "event_secondary_person_name"] } });
+  const conversationState = reconcileDesignerAiConversationState({ snapshot: snapshotFor(initial, values) });
+  const restored = build({ conversationState,
+    sourceContext: { templateDerived: true, changedKeys: [], changedKeysAuthoritative: true } });
+  assert.ok(restored.leaves.filter((leaf) => leaf.id.startsWith("event.people.")).every((leaf) => leaf.status === "pending"));
+  assert.equal(buildDesignerAiConversationBrief({ ledger: restored }).nextBlock.id, "names");
+});
+
+test("authoritative changedKeys recognize canonical and legacy Dress Code fields", () => {
+  for (const key of ["event_dress_code", "dress_code"]) {
+    const ledger = build({ sourceContext: { templateDerived: true, changedKeysAuthoritative: true,
+      authoringFieldKeys: [key], changedKeys: [key] } });
+    const dress = ledger.leaves.find((leaf) => leaf.id === "event.dress_code.value");
+    assert.equal(dress.status, "resolved_from_existing_user_data", key);
+    assert.equal(dress.provenance, "existing_user_data", key);
+  }
+});
+
+test("an authoritative comparison does not treat an absent canonical key as an unchanged template field", () => {
+  const initial = build();
+  const conversationState = reconcileDesignerAiConversationState({ snapshot: snapshotFor(initial) });
+  const changed = build({ conversationState, values: { dressCode: { enabled: false, value: "Cocktail" } },
+    sourceContext: { templateDerived: true, changedKeysAuthoritative: true,
+      authoringFieldKeys: ["custom_dress_code"], changedKeys: ["custom_dress_code"] } });
+  assert.equal(changed.leaves.find((leaf) => leaf.id === "event.dress_code.value").status, "resolved_from_existing_user_data");
+});
+
+test("name provenance separates template, unknown inference and explicit confirmation of identical text", () => {
+  const template = build();
+  const inferred = build({ sourceContext: { templateDerived: false, changedKeys: [] } });
+  const action = { type: "event.set_people", arguments: { primaryName: "Ana", secondaryName: "Luz" } };
+  const snapshot = snapshotFor(template);
+  const conversationState = reconcileDesignerAiConversationState({ snapshot,
+    actionResults: [{ action, executed: true, effective: true, persisted: true,
+      evidence: captureDesignerAiActionEvidence(action, snapshot) }] });
+  const confirmed = build({ conversationState });
+  for (const id of ["event.people.primary_name", "event.people.secondary_name"]) {
+    assert.equal(template.leaves.find((leaf) => leaf.id === id).provenance, "template_value");
+    assert.equal(inferred.leaves.find((leaf) => leaf.id === id).provenance, "unknown");
+    assert.equal(inferred.leaves.find((leaf) => leaf.id === id).status, "pending");
+    assert.equal(confirmed.leaves.find((leaf) => leaf.id === id).provenance, "user_current_session");
+    assert.equal(confirmed.leaves.find((leaf) => leaf.id === id).status, "resolved_from_user");
+  }
 });
 
 test("automatic event name is safe, normalized and rejects samples", () => {
@@ -790,4 +917,158 @@ test("Dress Code becomes next only after both applicable locations are resolved 
     leafId.startsWith("event.ceremony.") ||
     leafId.startsWith("event.party.")
   )), false);
+});
+
+test("nextStep derives names and structure without persisting a new cursor or changing nextBlock", () => {
+  const initial = snapshotFor(build());
+  const unchanged = JSON.stringify(initial);
+  const brief = buildDesignerAiConversationBrief(initial);
+  assert.deepEqual(brief.nextStep, { blockId: "names", kind: "names", phase: null,
+    leafIds: ["event.people.primary_name", "event.people.secondary_name"] });
+  assert.deepEqual(buildDesignerAiNextStep(initial), brief.nextStep);
+  assert.deepEqual(brief.nextBlock.leafIds, brief.nextStep.leafIds);
+  assert.equal(JSON.stringify(initial), unchanged);
+  const oneName = snapshotFor(build({ sourceContext: { templateDerived: true,
+    changedKeys: ["event_primary_person_name"] } }));
+  assert.deepEqual(buildDesignerAiNextStep(oneName).leafIds, ["event.people.secondary_name"]);
+  const knownNames = snapshotFor(buildWithResolvedIds(fixture().values, (leaf) => leaf.block === "names"));
+  assert.deepEqual(buildDesignerAiNextStep(knownNames), { blockId: "event_structure", kind: "event_structure",
+    phase: null, leafIds: ["event.mode"] });
+});
+
+test("event steps ask date, start time, venue, location method and provider decision in order", () => {
+  const values = { ...fixture().values, eventMode: "single" };
+  const prerequisite = ["event.people.primary_name", "event.people.secondary_name", "event.mode"];
+  const ordered = ["date", "start_time", "venue_name", "address", "place_selection"];
+  const expected = [
+    ["date", ["date"]],
+    ["start_time", ["start_time"]],
+    ["venue_name", ["venue_name"]],
+    ["location_method", ["address", "place_selection"]],
+    ["place_selection", ["place_selection"]],
+  ];
+  for (const [index, [kind, suffixes]] of expected.entries()) {
+    const resolved = new Set([...prerequisite, ...ordered.slice(0, index).map((field) => `event.ceremony.${field}`)]);
+    const ledger = buildWithResolvedIds(values, (leaf) => resolved.has(leaf.id));
+    const snapshot = snapshotFor(ledger, values);
+    assert.deepEqual(buildDesignerAiNextStep(snapshot), { blockId: "event_data", kind, phase: "ceremony",
+      leafIds: suffixes.map((field) => `event.ceremony.${field}`) }, kind);
+    assert.ok(buildDesignerAiConversationBrief(snapshot).nextBlock.leafIds.length >= suffixes.length);
+  }
+});
+
+test("an inherited venue remains the next datum despite a nonempty address or place result", () => {
+  const values = { ...fixture().values, ceremony: { ...fixture().values.ceremony, placeSelected: true } };
+  const ledger = buildWithResolvedIds(values, (leaf) => leaf.block === "names" || leaf.id === "event.mode" ||
+    ["event.ceremony.date", "event.ceremony.start_time"].includes(leaf.id));
+  const venue = ledger.leaves.find((leaf) => leaf.id === "event.ceremony.venue_name");
+  assert.equal(venue.provenance, "template_value");
+  assert.deepEqual(buildDesignerAiNextStep(snapshotFor(ledger, values)), { blockId: "event_data",
+    kind: "venue_name", phase: "ceremony", leafIds: [venue.id] });
+});
+
+test("a deferred or rule-omitted venue cannot lend its template text to a location choice", () => {
+  for (const omitted of [false, true]) {
+    const values = { ...fixture().values, eventMode: "single",
+      ceremony: { ...fixture().values.ceremony, ...(omitted ? { venueName: "" } : {}) } };
+    const initial = build({ values });
+    const resolutions = initial.leaves.filter((leaf) => leaf.block === "names" ||
+      ["event.mode", "event.ceremony.date", "event.ceremony.start_time"].includes(leaf.id))
+      .map((leaf) => terminalResolution(leaf));
+    const venue = initial.leaves.find((leaf) => leaf.id === "event.ceremony.venue_name");
+    resolutions.push({ leafId: venue.id, fingerprint: venue.fingerprint,
+      status: omitted ? "resolved_by_rule" : "deferred_by_user",
+      provenance: omitted ? "automatic_rule" : "user_current_session",
+      rule: omitted ? "optional_venue_name_omitted" : null });
+    const ledger = build({ values, conversationState: { resolutions } });
+    assert.deepEqual(buildDesignerAiNextStep(snapshotFor(ledger, values)), { blockId: "event_data",
+      kind: "address", phase: "ceremony", leafIds: ["event.ceremony.address"] });
+  }
+});
+
+test("an explicit manual-location decision asks only for the pending address", () => {
+  const values = { ...fixture().values, eventMode: "single" };
+  const ledger = buildWithResolvedIds(values, (leaf) => leaf.block === "names" || leaf.id === "event.mode" ||
+    (leaf.id.startsWith("event.ceremony.") && leaf.id !== "event.ceremony.address"));
+  assert.deepEqual(buildDesignerAiNextStep(snapshotFor(ledger, values)), { blockId: "event_data",
+    kind: "address", phase: "ceremony", leafIds: ["event.ceremony.address"] });
+});
+
+test("location_method requires terminal user provenance, not merely text or a legacy terminal status", () => {
+  const values = fixture().values;
+  const ledger = buildWithResolvedIds(values, (leaf) => leaf.block === "names" || leaf.id === "event.mode" ||
+    ["event.ceremony.date", "event.ceremony.start_time", "event.ceremony.venue_name"].includes(leaf.id));
+  for (const provenance of ["template_value", "placeholder_or_sample", "unknown", "automatic_rule", "system_default"]) {
+    const current = structuredClone(ledger);
+    current.leaves.find((leaf) => leaf.id === "event.ceremony.venue_name").provenance = provenance;
+    assert.equal(buildDesignerAiNextStep(snapshotFor(current, values)).kind, "address", provenance);
+  }
+  assert.equal(buildDesignerAiNextStep(snapshotFor(ledger, values)).kind, "location_method");
+});
+
+test("a double event completes the first phase before asking even the date of the second", () => {
+  const values = fixture().values;
+  const partial = buildWithResolvedIds(values, (leaf) => leaf.block === "names" || leaf.id === "event.mode" ||
+    ["event.ceremony.date", "event.ceremony.start_time"].includes(leaf.id));
+  assert.equal(buildDesignerAiNextStep(snapshotFor(partial, values)).kind, "venue_name");
+  assert.equal(buildDesignerAiNextStep(snapshotFor(partial, values)).phase, "ceremony");
+  const ceremonyDone = buildWithResolvedIds(values, (leaf) => leaf.block === "names" || leaf.id === "event.mode" ||
+    leaf.id.startsWith("event.ceremony."));
+  const snapshot = snapshotFor(ceremonyDone, values);
+  assert.deepEqual(buildDesignerAiNextStep(snapshot), { blockId: "event_data", kind: "date", phase: "party",
+    leafIds: ["event.party.date"] });
+  // Phase and field priority do not depend on transport ordering of the leaves.
+  snapshot.ledger.leaves.reverse();
+  assert.equal(buildDesignerAiNextStep(snapshot).phase, "party");
+});
+
+test("nextStep respects skips, reentry, editing and complete flow without inventing confirmation", () => {
+  const initial = build();
+  const deferredNames = initial.leaves.filter((leaf) => leaf.block === "names").map((leaf) => ({
+    leafId: leaf.id, fingerprint: leaf.fingerprint, status: "deferred_by_user", provenance: "user_current_session", rule: null,
+  }));
+  const partial = snapshotFor(build({ conversationState: { usage: { hasStarted: true }, resolutions: deferredNames } }));
+  assert.equal(buildDesignerAiNextStep(partial).kind, "event_structure");
+  assert.ok(partial.ledger.leaves.filter((leaf) => leaf.block === "names").every((leaf) => leaf.status === "deferred_by_user"));
+  assert.equal(buildDesignerAiNextStep({ ...partial, conversation: { mode: "editing" } }), null);
+  const complete = snapshotFor(buildWithResolvedIds(fixture().values, () => true));
+  assert.equal(buildDesignerAiNextStep(complete), null);
+  const noPeople = snapshotFor(build({ availability: { people: false } }));
+  assert.equal(buildDesignerAiNextStep(noPeople).kind, "event_structure");
+});
+
+test("non-event nextStep kinds retain decisions, chosen gift values and one gallery target", () => {
+  const before = (targetBlock) => {
+    const order = ["names", "event_structure", "event_data", "dress_code", "rsvp", "gifts", "cover", "galleries"];
+    return (leaf) => order.indexOf(leaf.block) >= 0 && order.indexOf(leaf.block) < order.indexOf(targetBlock);
+  };
+  for (const [block, kind, leafIds] of [
+    ["dress_code", "dress_code_enabled", ["event.dress_code.enabled"]],
+    ["rsvp", "rsvp_enabled", ["rsvp.enabled"]],
+    ["gifts", "gifts_choice", ["gifts.enabled"]],
+    ["cover", "cover", ["media.cover"]],
+    ["galleries", "gallery", ["media.gallery.gallery-1.guided_completion"]],
+  ]) {
+    const values = fixture().values;
+    const ledger = buildWithResolvedIds(values, before(block));
+    assert.deepEqual(buildDesignerAiNextStep(snapshotFor(ledger, values)), { blockId: block, kind, phase: null, leafIds });
+  }
+  const dressValues = { ...fixture().values, dressCode: { enabled: true, value: "Elegante" } };
+  const dress = buildWithResolvedIds(dressValues, (leaf) => before("dress_code")(leaf) || leaf.id === "event.dress_code.enabled");
+  assert.equal(buildDesignerAiNextStep(snapshotFor(dress, dressValues)).kind, "dress_code_value");
+  const giftValues = { ...fixture().values, gifts: { ...fixture().values.gifts, enabled: true,
+    methods: { alias: { value: "", visible: true }, holder: { value: "", visible: true } } } };
+  const gifts = buildWithResolvedIds(giftValues, (leaf) => before("gifts")(leaf) || leaf.id === "gifts.enabled" || leaf.id.endsWith(".visible"));
+  assert.deepEqual(buildDesignerAiNextStep(snapshotFor(gifts, giftValues)), { blockId: "gifts", kind: "gift_method_values", phase: null,
+    leafIds: ["gifts.method.alias.value", "gifts.method.holder.value"] });
+  const galleries = [...fixture().values.galleries, { id: "gallery-2", slots: [{ cellId: "second-a", index: 0, occupied: true, contentRevision: "second-photo" }] }];
+  const galleryValues = { ...fixture().values, galleries };
+  const galleriesPending = buildWithResolvedIds(galleryValues, before("galleries"));
+  assert.deepEqual(buildDesignerAiConversationBrief(snapshotFor(galleriesPending, galleryValues)).nextBlock.leafIds,
+    ["media.gallery.gallery-1.guided_completion", "media.gallery.gallery-2.guided_completion"]);
+  assert.deepEqual(buildDesignerAiNextStep(snapshotFor(galleriesPending, galleryValues)).leafIds,
+    ["media.gallery.gallery-1.guided_completion"]);
+  const firstGalleryDone = buildWithResolvedIds(galleryValues, (leaf) => before("galleries")(leaf) || leaf.id === "media.gallery.gallery-1.guided_completion");
+  assert.deepEqual(buildDesignerAiNextStep(snapshotFor(firstGalleryDone, galleryValues)).leafIds,
+    ["media.gallery.gallery-2.guided_completion"]);
 });

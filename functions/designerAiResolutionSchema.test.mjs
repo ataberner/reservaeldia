@@ -16,7 +16,7 @@ const snapshot = contract.sanitizeCapabilitySnapshot({
 const valid = {
   intent: "apply", assistantMessage: "Perfecto, un único evento. ¿Qué día es la fiesta?",
   actions: [{ type: "event.set_mode", arguments: { mode: "single" } }],
-  controlRequest: null, resolutions: [],
+  controlRequest: null, resolutions: [], clarification: null, notice: null,
 };
 // The production log records five incompatible pairs, not their field/rule
 // values. This fixture reproduces that failure class; it is not a stored output.
@@ -25,6 +25,24 @@ const invalid = { ...valid, resolutions: [...valid.resolutions, ...phaseIds.map(
 }))] };
 const compile = (schema) => new Ajv({ allErrors: true }).compile(schema);
 const providerResponse = (result) => ({ output: [{ type: "function_call", name: "submit_designer_ai_result", arguments: JSON.stringify(result) }] });
+
+test("question interpretation fields are strict nullable data without prose or priority overrides", () => {
+  const validate = compile(contract.buildDesignerAiTool(snapshot).parameters);
+  assert.equal(validate(valid), true);
+  for (const key of ["clarification", "notice"]) {
+    const missing = { ...valid };
+    delete missing[key];
+    assert.equal(validate(missing), false, `${key} is required in provider output`);
+  }
+  const clarification = { leafId: "event.ceremony.date", kind: "missing_year" };
+  assert.equal(validate({ ...valid, clarification }), true);
+  for (const extra of [{ question: "Pasame la direccion" }, { scope: "user_request" }, { priority: 0 }]) {
+    assert.equal(validate({ ...valid, clarification: { ...clarification, ...extra } }), false);
+  }
+  assert.equal(validate({ ...valid, clarification: { ...clarification, kind: "ask_address" } }), false);
+  assert.equal(validate({ ...valid, notice: "unsupported_request" }), true);
+  assert.equal(validate({ ...valid, notice: "Pregunta por la direccion" }), false);
+});
 
 test("production failure class: generic schema permits five invalid pairs; request schema forbids them", () => {
   assert.equal(compile(contract.DESIGNER_AI_TOOL.parameters)(invalid), true);

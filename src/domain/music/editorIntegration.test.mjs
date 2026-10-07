@@ -17,6 +17,19 @@ test("availability, authorization and read-only mode are independent gates", () 
   assert.equal(canAccessMusic({ canManageSite: true, editorReadOnly: true }), false);
 });
 
+test("verified music pilot can edit drafts without administrative access", () => {
+  const pilot = { userUid: "pilot", userEmail: "jpeses@gmail.com", userEmailVerified: true,
+    editorSession: { kind: "draft", id: "owned-draft" }, canManageSite: false };
+  assert.equal(canAccessMusic(pilot), true);
+  assert.equal(canAccessMusic({ ...pilot, userEmail: " JPESES@GMAIL.COM " }), true);
+  for (const patch of [
+    { userUid: "" }, { userEmail: "another@example.test" }, { userEmail: "jpeses+other@gmail.com" },
+    { userEmailVerified: false }, { userEmailVerified: "true" }, { userEmail: null },
+    { editorSession: null }, { editorSession: { kind: "template" } },
+    { editorReadOnly: true }, { available: false },
+  ]) assert.equal(canAccessMusic({ ...pilot, ...patch }), false, JSON.stringify(patch));
+});
+
 test("legacy editor persistence/snapshots do not materialize an optional music property", () => {
   const state = normalizeDraftRenderState({ objetos: [], secciones: [] });
   assert.equal(Object.hasOwn(state, "music"), false);

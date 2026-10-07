@@ -272,6 +272,101 @@ test("H2 consecutive same-leaf actions credit the final receipt, not an earlier 
   assert.equal(state.resolutions.find((r) => r.leafId === "rsvp.enabled").status, "resolved_from_user");
 });
 
+test("manual changes during persistence stop the remaining actions without overwriting or offering unsafe recovery", async () => {
+  const { target } = createRuntime();
+  installOwners(target);
+  let release;
+  let started;
+  const writing = new Promise(resolve => { started = resolve; });
+  const pending = new Promise(resolve => { release = resolve; });
+  const flush = target.canvasEditor.flushPersistenceNow;
+  let writes = 0;
+  target.canvasEditor.flushPersistenceNow = async () => {
+    writes++;
+    const receipt = await flush();
+    started();
+    await pending;
+    return receipt;
+  };
+  const updateTitle = { type: "rsvp.update_modal", arguments: {
+    title: "Propuesta anterior", subtitle: null, submitLabel: null, primaryColor: null,
+  } };
+  const execution = executeBatch([enableRsvp, updateTitle], {
+    snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, ...fastEvidence,
+  }).catch(error => error);
+  await writing;
+  const render = readEditorRenderSnapshot(target);
+  syncEditorSnapshotRenderState({ ...render, rsvp: {
+    ...render.rsvp, modal: { ...render.rsvp.modal, title: "Edición manual más reciente" },
+  } }, target);
+  release();
+  const result = await execution;
+  assert.equal(result.code, "designer-ai/stale-snapshot");
+  assert.equal(result.recovery, null);
+  assert.equal(result.actionResults[0].persisted, true);
+  assert.equal(result.actionResults[1].executed, false);
+  assert.equal(writes, 1);
+  assert.equal(readDesignerAiCapabilitySnapshot(target).values.rsvp.modal.title, "Edición manual más reciente");
+});
+
+test("a manual edit during the first commit frame cannot become the next action's baseline", async () => {
+  const { target } = createRuntime();
+  installOwners(target);
+  let frames = 0;
+  const actions = [enableRsvp, { type: "rsvp.update_modal", arguments: {
+    title: "Propuesta anterior", subtitle: null, submitLabel: null, primaryColor: null,
+  } }];
+  const result = await executeBatch(actions, {
+    snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target,
+    evidenceAttempts: 2,
+    waitFrame: async () => {
+      if (++frames !== 1) return;
+      const render = readEditorRenderSnapshot(target);
+      syncEditorSnapshotRenderState({ ...render, rsvp: {
+        ...render.rsvp, modal: { ...render.rsvp.modal, title: "Edición manual antes del primer commit" },
+      } }, target);
+    },
+  }).catch(error => error);
+  assert.equal(result.code, "designer-ai/stale-snapshot");
+  assert.equal(result.recovery, null);
+  assert.equal(result.actionResults[0].persisted, true);
+  assert.equal(result.actionResults[1].executed, false);
+  assert.equal(readDesignerAiCapabilitySnapshot(target).values.rsvp.modal.title, "Edición manual antes del primer commit");
+});
+
+for (const rejectOwnerWrite of [false, true]) {
+  test(`manual changes while an authoring owner saves do not become the batch baseline (reject=${rejectOwnerWrite})`, async () => {
+    const { target } = createRuntime();
+    installOwners(target);
+    const authoring = target.canvasEditor.getTemplateAuthoringSnapshot();
+    let release;
+    const pending = new Promise((resolve, reject) => {
+      release = () => rejectOwnerWrite ? reject(new Error("Synthetic authoring write failure")) : resolve();
+    });
+    target.canvasEditor.updateTemplateAuthoringEventPersonNames = async ({ primaryName, secondaryName }) => {
+      Object.assign(authoring.defaults, { event_primary_person_name: primaryName, event_secondary_person_name: secondaryName });
+      await pending;
+    };
+    const actions = [
+      { type: "event.set_people", arguments: { primaryName: "Ana", secondaryName: "Luis" } },
+      { type: "story.set_text", arguments: { text: "Propuesta anterior" } },
+    ];
+    const execution = executeBatch(actions, {
+      snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, ...fastEvidence,
+    }).catch(error => error);
+    // The local effect is observed, but the owner's write is still pending.
+    await new Promise(resolve => setImmediate(resolve));
+    authoring.defaults.texto_historia = "Edición manual durante el guardado";
+    release();
+    const result = await execution;
+    assert.equal(result.recovery, null);
+    assert.equal(result.actionResults[0].effective, true);
+    assert.equal(result.actionResults[0].persisted, !rejectOwnerWrite);
+    assert.equal(result.actionResults[1].executed, false);
+    assert.equal(authoring.defaults.texto_historia, "Edición manual durante el guardado");
+  });
+}
+
 test("H2 a receipt cannot be reused for another action, leaf or document", async () => {
   const { target } = createRuntime();
   const result = await executeDesignerAiActionBatch([enableRsvp], { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target });

@@ -10,6 +10,7 @@ import * as catalog from "../../shared/musicCatalog.js";
 import * as snapshot from "../lib/editorSnapshotAdapter.js";
 import * as contracts from "../lib/editorBridgeContracts.js";
 import * as previewController from "../domain/music/previewController.js";
+import { canAccessMusic } from "../domain/music/access.js";
 const require = createRequire(import.meta.url);
 const ts = require("../../functions/node_modules/typescript");
 const { JSDOM } = require("../../functions/node_modules/jsdom");
@@ -84,7 +85,7 @@ test("real panel selects and persists IDs; OFF retains selection and opening pre
     assert.equal(document.querySelector('[role="switch"]').getAttribute("aria-checked"), "false");
     assert.equal(mounted.audios.length, 0);
     await mounted.click('[role="radio"]');
-    assert.equal(mounted.config().track.id, "platform-demo");
+    assert.equal(mounted.config().track.id, "perfect-ed-sheeran");
     await mounted.click('[role="switch"]');
     assert.equal(mounted.config().enabled, true);
     await mounted.click('button[aria-label^="Escuchar"]');
@@ -95,7 +96,7 @@ test("real panel selects and persists IDs; OFF retains selection and opening pre
     assert.equal(mounted.audios[0].src, undefined);
     await mounted.click('[role="switch"]');
     assert.equal(mounted.config().enabled, false);
-    assert.equal(mounted.config().track.id, "platform-demo");
+    assert.equal(mounted.config().track.id, "perfect-ed-sheeran");
     await mounted.click('button[aria-label^="Escuchar"]');
     await mounted.hide();
     assert.equal(mounted.audios[1].paused, true);
@@ -108,6 +109,19 @@ test("mutation authority ignores direct music events without permission", async 
   try {
     await mounted.event(contracts.EDITOR_BRIDGE_EVENTS.MUSIC_CONFIG_UPDATE, { config: { enabled: true, track: { source: "catalog", id: "platform-demo" } } });
     assert.equal(mounted.config(), null);
+  } finally { await mounted.close(); }
+});
+
+test("music pilot can select and enable catalog music through the editor bridge", async () => {
+  const mounted = await mount({ canEdit: canAccessMusic({
+    userUid: "pilot", userEmail: "jpeses@gmail.com", userEmailVerified: true,
+    editorSession: { kind: "draft", id: "pilot-draft" },
+  }) });
+  try {
+    await mounted.click('[role="radio"]');
+    await mounted.click('[role="switch"]');
+    assert.equal(mounted.config().enabled, true);
+    assert.deepEqual(mounted.config().track, { source: "catalog", id: "perfect-ed-sheeran" });
   } finally { await mounted.close(); }
 });
 

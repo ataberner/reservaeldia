@@ -37,8 +37,8 @@ let audioRequests = 0;
 const server = http.createServer((req, res) => {
   if (req.url === "/audio.mp3") {
     audioRequests++;
-    res.writeHead(200, { "Content-Type": "audio/mpeg", "Content-Length": fs.statSync(path.join(root, "public/assets/musica.mp3")).size });
-    fs.createReadStream(path.join(root, "public/assets/musica.mp3")).pipe(res);
+    res.writeHead(200, { "Content-Type": "audio/mpeg", "Content-Length": fs.statSync(path.join(root, "public/assets/music/transporte.mp3")).size });
+    fs.createReadStream(path.join(root, "public/assets/music/transporte.mp3")).pipe(res);
   } else { res.writeHead(404); res.end(); }
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -77,7 +77,7 @@ try {
       window.addEventListener("invitation-entry-resolved", () => window.__musicProbe.entries++);
     });
     await new Promise(resolve => setTimeout(resolve, 1200));
-    assert.equal(audioRequests, 0, "Gate must not request MP3");
+    assert.ok(audioRequests > 0, "MP3 must preload behind the heart");
     const pending = await page.evaluate(() => ({
       pending: document.body.dataset.invitationEntry,
       count: document.querySelectorAll(".inv").length,
@@ -108,7 +108,7 @@ try {
     assert.equal(entered.blur, "none");
     assert.equal(entered.controlHidden, true);
     assert.equal(entered.countdown, true);
-    assert.equal(audioRequests, 0);
+    assert.equal(await page.$eval("#invitation-music-control", node => node.dataset.playing), "false");
     await page.screenshot({ path: path.join(output, surface.name + "-entered.png") });
     await page.evaluate(() => window.scrollTo(0, 900));
     await page.waitForFunction(() => document.querySelector('[data-obj-id="below"]').classList.contains("mefx-reveal-on"));
@@ -124,7 +124,7 @@ try {
     music, musicResource: { source: "catalog", id: "platform-demo", url: origin + "/audio.mp3" },
   }), { waitUntil: "load" });
   await page.waitForFunction(() => !document.getElementById("inv-loader"));
-  assert.equal(audioRequests, 0);
+  assert.ok(audioRequests > 0);
   await page.click("#invitation-enter-music");
   await page.waitForFunction(() => document.getElementById("invitation-music-control").dataset.playing === "true", { timeout: 15000 });
   await page.click("#invitation-music-control");

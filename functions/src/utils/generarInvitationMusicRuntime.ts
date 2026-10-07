@@ -100,6 +100,10 @@ export function generarInvitationMusicRuntimeHTML(
   var playbackRequested = false;
   var playbackGeneration = 0;
   var peerHost = null;
+  var preloadTimer = 0;
+  var preloadSettled = false;
+  var resolveReady;
+  var ready = new Promise(function(resolve){ resolveReady = resolve; });
   document.documentElement.setAttribute("data-invitation-entry", "pending");
   document.body.setAttribute("data-invitation-entry", "pending");
   if (invitation) { invitation.setAttribute("inert", ""); invitation.setAttribute("aria-hidden", "true"); }
@@ -128,26 +132,64 @@ export function generarInvitationMusicRuntimeHTML(
     }
   } catch (_error) { peerHost = null; }
 
+  function finishPreload(status){
+    if (preloadSettled) return;
+    preloadSettled = true;
+    if (preloadTimer) window.clearTimeout(preloadTimer);
+    if (audio) {
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("error", onPreloadError);
+    }
+    resolveReady(status);
+  }
+  function onCanPlay(){
+    // Enough buffered data to start, without waiting for the whole MP3.
+    if (audio && audio.readyState >= 3) finishPreload("ready");
+  }
+  function onPreloadError(){ finishPreload("error"); }
+  function ensureAudio(){
+    if (audio) return audio;
+    audio = new Audio();
+    audio.preload = "auto";
+    audio.loop = config.loop;
+    audio.volume = config.volume;
+    audio.addEventListener("playing", function(){
+      if (disposed || !playbackRequested) { audio.pause(); return; }
+      updateControl(true);
+    });
+    audio.addEventListener("pause", function(){ updateControl(false); });
+    audio.addEventListener("ended", function(){ playbackRequested = false; updateControl(false); });
+    audio.addEventListener("error", function(){ playbackRequested = false; updateControl(false); });
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("error", onPreloadError);
+    audio.src = config.url;
+    return audio;
+  }
+  function preloadAudio(){
+    // Some mobile browsers decline preload. An unavailable optional resource
+    // must not trap guests behind the loader; play can retry from their gesture.
+    preloadTimer = window.setTimeout(function(){ finishPreload("timeout"); }, 8000);
+    try { ensureAudio().load(); onCanPlay(); }
+    catch (_error) { finishPreload("error"); }
+  }
+  function releaseAudio(){
+    finishPreload("cancelled");
+    try {
+      pause();
+      if (audio) { audio.removeAttribute("src"); audio.load(); }
+    } catch (_error) {
+      // Unsupported media APIs must not prevent silent entry or iframe cleanup.
+      updateControl(false);
+    }
+  }
   function startAudio(){
     if (disposed) return;
     var generation = ++playbackGeneration;
     playbackRequested = true;
     control.hidden = false;
     try {
-      if (!audio) {
-        audio = new Audio();
-        audio.preload = "none";
-        audio.loop = config.loop;
-        audio.volume = config.volume;
-        audio.src = config.url;
-        audio.addEventListener("playing", function(){
-          if (disposed || !playbackRequested) { audio.pause(); return; }
-          updateControl(true);
-        });
-        audio.addEventListener("pause", function(){ updateControl(false); });
-        audio.addEventListener("ended", function(){ playbackRequested = false; updateControl(false); });
-        audio.addEventListener("error", function(){ playbackRequested = false; updateControl(false); });
-      }
+      ensureAudio();
+      if (audio.error) audio.load();
       if (peerHost) peerHost.dispatchEvent(new peerHost.CustomEvent("invitation-music-play", { detail: window }));
       // Called synchronously inside the gesture. A rejected or pending play promise
       // can never hold access to the invitation hostage.
@@ -193,13 +235,21 @@ export function generarInvitationMusicRuntimeHTML(
       if (!hadTabIndex) invitation.removeAttribute("tabindex");
     }
   }
-  function resolveWithoutMusic(){ resolveEntry(false); }
+  function resolveWithoutMusic(){
+    if (resolved || disposed) return;
+    releaseAudio();
+    resolveEntry(false);
+  }
   function enterWithMusic(){
     if (resolved || disposed) return;
     startAudio();
     resolveEntry(true);
   }
-  function enterWithoutMusic(){ resolveEntry(true); }
+  function enterWithoutMusic(){
+    if (resolved || disposed) return;
+    releaseAudio();
+    resolveEntry(true);
+  }
   function togglePlayback(){
     if (playbackRequested) pause();
     else startAudio();
@@ -220,8 +270,7 @@ export function generarInvitationMusicRuntimeHTML(
   function dispose(){
     if (disposed) return;
     disposed = true;
-    pause();
-    if (audio) { audio.removeAttribute("src"); audio.load(); }
+    releaseAudio();
     if (peerHost) peerHost.removeEventListener("invitation-music-play", onPeerPlayback);
     window.removeEventListener("invitation-loader-hidden", focusGate);
     window.removeEventListener("pagehide", onPageHide);
@@ -240,7 +289,8 @@ export function generarInvitationMusicRuntimeHTML(
   gate.addEventListener("keydown", trapGateFocus);
   window.addEventListener("invitation-loader-hidden", focusGate, { once: true });
   window.addEventListener("pagehide", onPageHide);
-  window.__invitationMusicRuntime = { resolveWithoutMusic: resolveWithoutMusic, pause: pause, dispose: dispose };
+  window.__invitationMusicRuntime = { ready: ready, resolveWithoutMusic: resolveWithoutMusic, pause: pause, dispose: dispose };
+  preloadAudio();
 })();
 </script>
 `.trim();

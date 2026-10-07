@@ -1,3 +1,5 @@
+import { buildDesignerAiNextStep, DESIGNER_AI_PROVENANCE, isTerminalDesignerAiLedgerStatus } from "../../../shared/designerAiConversationLedger.js";
+
 const PLACE_SELECTION_LEAF = /^event\.(ceremony|party)\.place_selection$/;
 
 function normalizeText(value) {
@@ -25,6 +27,10 @@ export function resolveDesignerAiLocationDecisions(result, snapshot) {
   const safeSnapshot = asRecord(snapshot);
   const values = asRecord(safeSnapshot.values);
   const availability = asRecord(safeSnapshot.availability);
+  const leaves = Array.isArray(safeSnapshot.ledger?.leaves) ? safeSnapshot.ledger.leaves : [];
+  const guided = safeSnapshot.conversation?.mode !== "editing";
+  const nextStep = guided ? buildDesignerAiNextStep(safeSnapshot) : null;
+  if (guided && !["location_method", "place_selection"].includes(nextStep?.kind)) return [];
   const explicitControlPhase = safeResult.controlRequest?.type === "google_place_picker"
     ? safeResult.controlRequest.phase
     : "";
@@ -44,24 +50,39 @@ export function resolveDesignerAiLocationDecisions(result, snapshot) {
   );
 
   return ["ceremony", "party"].flatMap((phase) => {
+    if (guided && phase !== nextStep.phase) return [];
     if (phase === explicitControlPhase) return [];
     if (phase === "ceremony" && availability.ceremonyLocation !== true) return [];
     if (phase === "party" && availability.partyLocation !== true) return [];
     const location = asRecord(values[phase]);
     if (location.placeSelected === true) return [];
+    // The reread ledger owns earlier decisions too. Updating manual text does
+    // not by itself reopen a Maps choice that the user already resolved.
+    const selectionLeaf = leaves.find((leaf) => leaf.id === `event.${phase}.place_selection`);
+    if (isTerminalDesignerAiLedgerStatus(selectionLeaf?.status)) return [];
     const resolution = resolutionByPhase.get(phase);
     const decisionPending = resolution?.status === "needs_clarification";
     const alreadyResolved = resolution?.status === "resolved_by_rule";
-    if (alreadyResolved || (!decisionPending && !actionPhases.has(phase))) return [];
-    const query = buildDesignerAiLocationSearchQuery(location);
-    if (!query) return [];
+    if (!guided && (alreadyResolved || (!decisionPending && !actionPhases.has(phase)))) return [];
+    // Passive guided controls follow the same fresh step as the question, even
+    // on entry with no model actions. Template text is never a search preload.
+    const trustedValue = (field, value) => {
+      const leaf = leaves.find((entry) => entry.id === `event.${phase}.${field}`);
+      return isTerminalDesignerAiLedgerStatus(leaf?.status) &&
+        [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(leaf?.provenance)
+        ? normalizeText(value) : "";
+    };
+    const venueName = guided ? trustedValue("venue_name", location.venueName) : normalizeText(location.venueName);
+    const address = guided ? trustedValue("address", location.address) : normalizeText(location.address);
+    const query = buildDesignerAiLocationSearchQuery({ venueName, address });
+    if (!guided && !query) return [];
     return [{
       phase,
       eventMode: values.eventMode === "ceremony_party" ? "ceremony_party" : "single",
       label: getDesignerAiLocationPhaseLabel(phase, values.eventMode),
       query,
-      venueName: normalizeText(location.venueName),
-      address: normalizeText(location.address),
+      venueName,
+      address,
       cancelled: false,
     }];
   });

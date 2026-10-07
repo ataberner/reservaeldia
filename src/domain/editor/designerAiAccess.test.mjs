@@ -3,18 +3,28 @@ import assert from "node:assert/strict";
 import { canAccessDesignerAi } from "./designerAiAccess.js";
 
 const allowed = {
-  loadingAdminAccess: false,
-  isSuperAdmin: true,
+  userUid: "user-1",
   editorReadOnly: false,
   editorSession: { kind: "draft", id: "draft-1" },
   modoSelector: false,
 };
 
-test("Designer AI is available only to a resolved superadmin in a writable draft", () => {
+test("Tu asistente is available to every authenticated role, independently of admin lookup", () => {
   assert.equal(canAccessDesignerAi(allowed), true);
-  for (const patch of [
+  for (const role of [
+    { isSuperAdmin: false, canManageSite: false, loadingAdminAccess: false },
+    { isSuperAdmin: false, canManageSite: true, loadingAdminAccess: false },
+    { isSuperAdmin: true, canManageSite: true, loadingAdminAccess: false },
     { loadingAdminAccess: true },
-    { isSuperAdmin: false },
+  ]) assert.equal(canAccessDesignerAi({ ...allowed, ...role }), true);
+});
+
+test("Tu asistente still requires a session and a writable draft outside the selector", () => {
+  assert.equal(canAccessDesignerAi(), false);
+  for (const patch of [
+    { userUid: "" },
+    { userUid: null },
+    { userUid: "  " },
     { editorReadOnly: true },
     { editorSession: { kind: "template" } },
     { editorSession: null },

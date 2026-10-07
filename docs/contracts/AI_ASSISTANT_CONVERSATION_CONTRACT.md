@@ -94,6 +94,18 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
 - Debe consultar el estado vigente y la procedencia antes de decidir qué falta.
   El orden y el conjunto de pendientes pertenecen a la sección 5 del capability
   contract.
+- En cada turno guiado, la aplicación formula la pregunta desde `nextStep` del
+  ledger releído, sin delegar su elección al modelo. Si faltan nombres confirmados,
+  pregunta por ellos aunque la plantilla muestre ejemplos; si sólo falta uno,
+  solicita el restante. Conserva el saludo con el nombre registrado cuando está
+  disponible. Las aclaraciones se expresan como un target estructurado y un tipo
+  acotado, nunca como una pregunta libre: sólo se muestran cuando pertenecen al
+  paso efectivo posterior a los cambios. `missing_year` pide sólo el año;
+  `invalid_date` pide corregir la fecha y `missing_value` usa la pregunta del paso.
+  Datos válidos adelantados se aplican en el mismo lote. Una ambigüedad de un
+  bloque posterior se conserva en sus resolutions y se pregunta al alcanzarlo;
+  no autoriza saltar los pendientes anteriores. El modo edición conserva la
+  respuesta libre al pedido explícito.
 - No debe enumerar innecesariamente todas sus capacidades ni descargar una lista
   extensa de pendientes. La conducción por defecto es progresiva: un primer
   pendiente, o una agrupación funcional breve cuando pedirla junta reduzca
@@ -129,15 +141,24 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
 - Un alias visible confirmado alcanza para continuar Regalos, sin pedir los
   demás datos bancarios. Una aclaración antigua no debe devolver la conversación
   desde Galería a Regalos cuando los datos necesarios ya tienen evidencia.
-- Una solicitud como “Pasame el alias” o “Compartime el enlace” ya pide un dato,
-  aunque no lleve signos de interrogación. Dentro del mismo bloque la UI no
-  agrega otra pregunta genérica de modalidad; si hay un medio elegido incompleto,
-  el fallback pide solo ese valor. Un simple “Perfecto” sí necesita continuación.
+- Una solicitud como “Pasame el alias” o “Compartime el enlace” se formula
+  localmente cuando ese medio elegido sigue incompleto. Los signos de pregunta
+  y los verbos del texto libre no validan su tema ni determinan el siguiente paso.
+  Las confirmaciones visibles del flujo guiado proceden de receipts verificados
+  o decisiones locales; no de afirmaciones del modelo. Los pedidos parcialmente
+  fuera de alcance conservan los cambios válidos y un aviso local mediante
+  `notice:unsupported_request`.
 - No pregunta proactivamente por la hora de finalización del evento, ceremonia
   o fiesta, tampoco agrupada con fecha, hora de inicio o lugar. Es opcional y no
   bloquea el recorrido. La guarda o modifica cuando el usuario la aporta/pide;
   solo aclara ese dato si el pedido explícito resulta ambiguo. No borra horas
   existentes ni interpreta el silencio como postergación o confirmación.
+  Durante el recorrido guiado, la aclaración reactiva de fin usa una pregunta
+  local sólo ante `missing_value`, su hoja `needs_clarification` vigente y una
+  mención explícita de finalización en el último mensaje humano (terminar,
+  finalizar, hora de fin o hasta qué hora/las). En dos fases no se elige una
+  fase ausente o contradictoria: se pide indicarla. Es un guard conservador de
+  intención, no una incorporación de hora de fin al recorrido proactivo.
 - Las fechas numéricas se interpretan día/mes/año: `24/12/26` significa
   `2026-12-24`, también con separadores `.` o `|`. Los años de dos dígitos
   representan 2000–2099, conforme al parser existente del editor; no se exige
@@ -194,6 +215,12 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   secundarios. La supresión visual nunca borra evidencia.
 - Si el borrador cambió mientras se esperaba una respuesta, el asistente no debe
   aplicar ni atribuirse el resultado obsoleto.
+- Si el borrador cambia manualmente durante la aplicación de un lote, no debe
+  ofrecer reejecutar acciones pendientes cuyo contexto dejó de ser válido.
+  Diferencia lo guardado y solicita un nuevo pedido sobre el estado actual.
+- Una respuesta duplicada no vuelve a ejecutar cambios y recibe una explicación
+  breve. Si se cierra el panel durante un turno, al volver se explica la
+  interrupción sin reproducir automáticamente acciones que pudieron guardarse.
 - La respuesta no debe exponer action types, leaf IDs, fingerprints, snapshots,
   nombres de tools, allowlists, prompts internos ni detalles de secretos.
 

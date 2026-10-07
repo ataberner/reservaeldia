@@ -281,7 +281,6 @@ export function generarMotionEffectsRuntimeHTML(): string {
   var STAGGER_SELECTOR = ".galeria-celda";
   var PREPARING_CLASS = "mefx-preparing";
   var RUNTIME_READY_EVENT = "invitation-runtime-ready";
-  var RUNTIME_FAIL_EVENT = "invitation-runtime-failed";
   var LOADER_HIDDEN_EVENT = "invitation-loader-hidden";
   var LOADER_WAIT_TIMEOUT_MS = 2400;
   var CRITICAL_READY_TIMEOUT_MS = 2600;
@@ -451,26 +450,16 @@ export function generarMotionEffectsRuntimeHTML(): string {
     return Math.max(0, CRITICAL_READY_TIMEOUT_MS - (Date.now() - criticalReadyStartedAt));
   }
 
-  function waitForDomReady(maxWaitMs){
+  function waitForDomReady(){
     return new Promise(function(resolve){
       if (document.readyState !== "loading") {
         resolve("ready");
         return;
       }
 
-      var finished = false;
-      var timer = 0;
-      var finish = function(status){
-        if (finished) return;
-        finished = true;
-        document.removeEventListener("DOMContentLoaded", onReady);
-        if (timer) window.clearTimeout(timer);
-        resolve(status);
-      };
-      var onReady = function(){ finish("ready"); };
-
-      document.addEventListener("DOMContentLoaded", onReady, { once: true });
-      timer = window.setTimeout(function(){ finish("timeout"); }, Math.max(0, maxWaitMs));
+      document.addEventListener("DOMContentLoaded", function(){
+        resolve("ready");
+      }, { once: true });
     });
   }
 
@@ -1115,31 +1104,21 @@ export function generarMotionEffectsRuntimeHTML(): string {
   function startBoot(){
     if (bootStarted) return;
     bootStarted = true;
-    criticalReadyStartedAt = Date.now();
-
-    waitForDomReady(remainingCriticalReadyMs()).then(function(domStatus){
-      if (domStatus !== "ready") {
-        dispatchRuntimeEvent(RUNTIME_FAIL_EVENT, { reason: "dom-ready-timeout" });
-        return;
-      }
-
+    waitForDomReady().then(function(){
+      // Parsing is a prerequisite, not a failed asset. Start the visual wait
+      // budget only after the document can be measured and the loader is armed.
+      criticalReadyStartedAt = Date.now();
       var remainingMs = remainingCriticalReadyMs();
       return Promise.all([
         waitForFirstSectionCriticalImages(remainingMs),
-        waitForFirstSectionFonts(Math.min(FONTS_TIMEOUT_MS, remainingMs))
+        waitForFirstSectionFonts(Math.min(FONTS_TIMEOUT_MS, remainingMs)),
+        window.__invitationMusicRuntime ? window.__invitationMusicRuntime.ready : Promise.resolve("disabled")
       ]).then(function(results){
         var criticalImages = results[0];
         var fontsStatus = results[1];
 
-        if (criticalImages.backgroundStatus === "error") {
-          dispatchRuntimeEvent(RUNTIME_FAIL_EVENT, { reason: "first-background-failed" });
-          return;
-        }
-        if (criticalImages.timedOut) {
-          dispatchRuntimeEvent(RUNTIME_FAIL_EVENT, { reason: "critical-assets-timeout" });
-          return;
-        }
-
+        // Resource errors and slow networks must not seal an otherwise usable
+        // invitation. Pending images/fonts keep loading in the same document.
         // Gate presentation keeps the real invitation visible without consuming
         // any effect. Layout/resource readiness still releases the existing loader.
         var prepareAfterEntry = document.body.getAttribute("data-invitation-entry") === "pending";
@@ -1148,7 +1127,10 @@ export function generarMotionEffectsRuntimeHTML(): string {
           source: "motion-effects-runtime",
           criticalImageCount: criticalImages.imageCount,
           criticalImageFailures: criticalImages.failedCount,
-          fonts: fontsStatus
+          criticalImagesTimedOut: criticalImages.timedOut,
+          criticalBackground: criticalImages.backgroundStatus,
+          fonts: fontsStatus,
+          music: results[2]
         });
         waitForLoaderHidden().then(waitForInvitationEntry).then(function(){
           if (prepareAfterEntry) preparedElements = prepareAllElements() || [];

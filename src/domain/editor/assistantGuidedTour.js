@@ -1903,9 +1903,13 @@ export function shouldRestartAssistantGuidedTourSession({
 }
 
 export function resolveAssistantGuidedTourRestoreMenuItemState({
+  canUseAssistant = false,
   preferencesLoaded = false,
   assistantTourSaving = false,
 } = {}) {
+  if (canUseAssistant !== true) {
+    return { visible: false, canRestore: false, disabled: true, label: "Volver a mostrar visita guiada" };
+  }
   if (preferencesLoaded !== true) {
     return {
       visible: true,

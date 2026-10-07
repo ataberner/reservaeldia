@@ -469,6 +469,11 @@ Idempotency expectations:
 - `published`: terminal success only when a backend `publicUrl` or
   `receipt.publicUrl` is available. The modal preserves receipt state and
   notifies the parent dashboard with the backend URL and slug.
+  Successful update does not reactivate a paused invitation. The success view
+  reads current owner-accessible `publicadas/{slug}` metadata before claiming
+  public availability or enabling open/copy actions. A paused publication offers
+  the existing resume transition explicitly; a failed availability read must
+  not be presented as publicly accessible.
 - `approved_slug_conflict`: paid but unresolved. The modal must show the
   conflict recovery flow and call `retryPaidPublicationWithNewSlug` with a new
   validated slug.
@@ -524,7 +529,15 @@ Public visitors hit `/i/{slug}`. Firebase Hosting rewrites to
 7. returns HTML only if the artifact exists
 8. decorates only that successful HTTP response with the non-visual visit
    runtime; the Storage artifact remains the render authority and is not edited
-9. returns the HTML response with `Cache-Control: private, no-store`
+9. returns every HTML response, including `400`, `404`, and `500`, with
+   `Cache-Control: private, no-store, max-age=0`; Hosting must not retain an old
+   rejection after publication or reactivation
+
+Rejected HTML requests show a responsive, non-indexable unavailable page with
+an explicit retry link. It does not expose owner data, private lifecycle details,
+or backend errors, and retains the actual HTTP error status. Successful invitation
+HTML remains the stored artifact. Share-image errors also prohibit caching;
+successful versioned share images retain their immutable cache policy.
 
 The response runtime sends `POST /i/{slug}/visit` only after the document is
 visible. The endpoint revalidates lifecycle and requires both the anonymous

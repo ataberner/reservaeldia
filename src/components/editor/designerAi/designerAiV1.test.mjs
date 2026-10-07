@@ -1,8 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { act } from "react";
 import { mountPanel, ledger } from "./testSupport/panelHarness.mjs";
 
 const action = (type, args) => ({ type, arguments: args });
+const opening = { assistantMessage: "¡Hola! Sigamos con tu invitación.", entryGreeting: "¡Hola! Sigamos con tu invitación." };
+const completeRequest = "Somos Ana y Juan. Un evento el 15/03/2027 a las 18:30 en Salón de prueba, Calle Ejemplo 123. Sin Google Maps, Regalos, RSVP ni Dress Code.";
+async function submitWhilePending(message) {
+  const input = document.querySelector("textarea");
+  const props = input[Object.keys(input).find((key) => key.startsWith("__reactProps"))];
+  await act(async () => props.onChange({ target: { value: message } }));
+  await act(async () => document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+}
 const completedInvitation = {
   intent: "apply", assistantMessage: "Datos actualizados.",
   actions: [
@@ -30,7 +39,8 @@ test("E11 retries the same failed provider turn once without adding a duplicate 
     await run.send("Cambiá la hora a las 19.");
     assert.equal(run.writes.length, 0);
     await run.click("Reintentar");
-    await run.until(() => run.calls.length === 3 && run.messages().at(-1).content.startsWith("Seguimos."));
+    await run.until(() => run.calls.length === 3 && run.messages().at(-1).intent === "clarify");
+    assert.match(run.messages().at(-1).content, /ceremonia y fiesta/);
     assert.equal(run.calls[2].message, run.calls[1].message);
     assert.equal(run.messages().filter((m) => m.role === "user").length, 1);
     assert.equal(run.writes.length, 0);
@@ -38,7 +48,7 @@ test("E11 retries the same failed provider turn once without adding a duplicate 
 });
 
 test("E11 auto-start metadata failure recovers in place before calling the provider", async () => {
-  const run = await mountPanel({ failMetadata: (n) => n === 1, respond: async () => ({ assistantMessage: "Hola, seguimos." }) });
+  const run = await mountPanel({ failMetadata: (n) => n === 1, respond: async () => ({ assistantMessage: "Hola, seguimos.", entryGreeting: "Hola, seguimos." }) });
   try {
     await run.until(() => run.messages().some((m) => m.intent === "error"));
     assert.equal(run.calls.length, 0);
@@ -73,7 +83,8 @@ test("E12 current >700 character message occurs once, including safe retry", asy
     await run.until(() => run.messages().length === 1);
     await run.send(long);
     await run.click("Reintentar");
-    await run.until(() => run.calls.length === 3 && run.messages().at(-1).content.startsWith("Seguimos."));
+    await run.until(() => run.calls.length === 3 && run.messages().at(-1).intent === "clarify");
+    assert.match(run.messages().at(-1).content, /ceremonia y fiesta/);
     for (const payload of run.calls.slice(1)) {
       assert.equal(payload.message, long);
       assert.ok(payload.recentTurns.length <= 6);
@@ -82,18 +93,61 @@ test("E12 current >700 character message occurs once, including safe retry", asy
   } finally { await run.close(); }
 });
 
-test("execution feedback shows saving and withholds confirmation until the receipt arrives", async () => {
+test("execution progress stays generic before the response and withholds confirmation until persistence", async () => {
   let release;
+  let respond;
   const pendingWrite = new Promise((resolve) => { release = resolve; });
-  const run = await mountPanel({ beforeWrite: () => pendingWrite, respond: async () => ({ intent: "apply", assistantMessage: "Listo.", actions: [action("rsvp.set_enabled", { enabled: true })] }) });
+  const pendingResponse = new Promise((resolve) => { respond = resolve; });
+  const run = await mountPanel({ beforeWrite: () => pendingWrite, respond: (_, index) => index === 1 ? opening : pendingResponse });
   try {
+    await run.until(() => run.messages().length === 1);
+    await submitWhilePending("Activá la confirmación de asistencia.");
+    await run.until(() => run.calls.length === 2);
+    assert.match(document.body.textContent, /Preparando la respuesta…/);
+    assert.equal(document.querySelector("[aria-live='polite']").textContent, "Preparando la respuesta…");
+    assert.equal(run.writes.length, 0);
+    respond({ intent: "apply", assistantMessage: "Listo.", actions: [action("rsvp.set_enabled", { enabled: true })] });
     await run.until(() => run.writes.length === 1);
-    assert.match(document.body.textContent, /Guardando/);
-    assert.equal(run.messages().length, 0);
+    assert.match(document.body.textContent, /Actualizando la confirmación de asistencia…/);
+    assert.equal(run.messages().at(-1).role, "user");
     release();
     await run.until(() => run.messages().some((m) => m.content.startsWith("Listo. RSVP activado.")));
     assert.equal(run.snapshot().values.rsvp.enabled, true);
-  } finally { release(); await run.close(); }
+  } finally { respond({ assistantMessage: "Seguimos." }); release(); await run.close(); }
+});
+
+test("progress follows each action in a batch and stays visible and accessible while its write is pending", async () => {
+  const releases = [];
+  const run = await mountPanel({
+    fullFields: true,
+    beforeWrite: () => new Promise((resolve) => releases.push(resolve)),
+    respond: async (_, index) => index === 1 ? opening : ({
+      intent: "apply", assistantMessage: "Listo.",
+      actions: [
+        action("event.set_people", { primaryName: "Ana", secondaryName: "Luz" }),
+        action("event.set_datetime", { phase: "ceremony", date: "2026-12-24", startTime: null, endTime: null }),
+        action("event.set_location_text", { phase: "ceremony", venueName: "Mi casa", address: "Calle de prueba 123" }),
+      ],
+    }),
+  });
+  try {
+    await run.until(() => run.messages().length === 1);
+    await submitWhilePending("Somos Ana y Luz. El evento es el 24/12/2026 en Mi casa, Calle de prueba 123.");
+    const labels = ["Actualizando los nombres…", "Actualizando la fecha…", "Agregando la ubicación…"];
+    for (const [index, label] of labels.entries()) {
+      await run.until(() => releases.length === index + 1);
+      assert.equal(document.querySelector("[aria-live='polite']").textContent, label);
+      assert.ok(document.querySelector("[role='log']").textContent.includes(label));
+      assert.equal(run.messages().at(-1).role, "user");
+      releases[index]();
+    }
+    await run.until(() => run.messages().length === 3);
+    assert.equal(run.snapshot().values.ceremony.address, "Calle de prueba 123");
+    assert.doesNotMatch(document.querySelector("[role='log']").textContent, /Actualizando|Agregando la ubicación…/);
+  } finally {
+    await run.close();
+    for (const release of releases) release();
+  }
 });
 
 test("E8 guided -> complete -> editing: one closure, preview, sidebar reentry and reactive capabilities", async () => {
@@ -107,14 +161,16 @@ test("E8 guided -> complete -> editing: one closure, preview, sidebar reentry an
     { assistantMessage: "Saqué la pregunta de restricciones alimentarias.", actions: [action("rsvp.set_question_active", { questionId: "dietary_notes", active: false })] },
     { assistantMessage: "La dirección quedó pendiente.", actions: [action("event.set_location_text", { phase: "ceremony", venueName: "Salón de prueba", address: "" })] },
   ];
-  const run = await mountPanel({ fullFields: true, respond: async (_, index) => ({ intent: "apply", ...responses[index - 1] }) });
+  const run = await mountPanel({ fullFields: true, respond: async (_, index) => index === 1 ? opening : ({ intent: "apply", ...responses[index - 2] }) });
   try {
+    await run.until(() => run.messages().length === 1);
+    await run.send(completeRequest);
     await run.until(() => run.messages().some((m) => m.guidedCompletion));
     assert.equal(run.snapshot().ledger.guidedFlow.completion.complete, true);
     assert.equal(run.journeyRef.current.editing, true);
     await run.toggle(false);
     await run.toggle(true);
-    assert.equal(run.calls.length, 1);
+    assert.equal(run.calls.length, 2);
     assert.equal(run.messages().filter((m) => m.guidedCompletion).length, 1);
     const before = run.metadataWrites();
     await run.click("Ver vista previa");
@@ -142,13 +198,13 @@ test("E8 guided -> complete -> editing: one closure, preview, sidebar reentry an
     assert.equal(run.journeyRef.current.editing, true);
     assert.equal(run.messages().filter((m) => m.guidedCompletion).length, 1);
     assert.equal(run.messages().at(-1).content, responses.at(-1).assistantMessage);
-    for (const payload of run.calls.slice(1)) assert.equal(payload.capabilitySnapshot.conversation.mode, "editing");
+    for (const payload of run.calls.slice(2)) assert.equal(payload.capabilitySnapshot.conversation.mode, "editing");
     const editingSnapshot = { ...run.snapshot(), conversation: { ...run.snapshot().conversation, mode: "editing" } };
     assert.equal(ledger.buildDesignerAiConversationBrief(editingSnapshot).nextBlock, null);
     assert.ok(ledger.buildDesignerAiConversationBrief(editingSnapshot).unresolvedLeafIds.length);
     await run.toggle(false);
     await run.toggle(true);
-    assert.equal(run.calls.length, responses.length);
+    assert.equal(run.calls.length, responses.length + 1);
     assert.equal(run.journeyRef.current.editing, true);
     assert.equal(run.messages().filter((m) => m.guidedCompletion).length, 1);
     assert.ok(run.writes.every((w) => w.templateAuthoringDraft));
@@ -157,10 +213,12 @@ test("E8 guided -> complete -> editing: one closure, preview, sidebar reentry an
 
 for (const reopenPending of [false, true]) {
   test(`E8 durable completion survives a full reload (pending=${reopenPending}) without another closure`, async () => {
-    let run = await mountPanel({ fullFields: true, respond: async (_, index) => index === 1
+    let run = await mountPanel({ fullFields: true, respond: async (_, index) => index === 1 ? opening : index === 2
       ? completedInvitation
       : { intent: "apply", assistantMessage: "La dirección quedó pendiente.", actions: [action("event.set_location_text", { phase: "ceremony", venueName: "Salón de prueba", address: "" })] } });
     try {
+      await run.until(() => run.messages().length === 1);
+      await run.send(completeRequest);
       await run.until(() => run.messages().some((m) => m.guidedCompletion));
       assert.equal(run.exportPersistedDraft().conversation.usage.guidedFlowCompleted, true);
       if (reopenPending) await run.send("Sacá la dirección, todavía no la definimos.");
@@ -209,8 +267,10 @@ test("E8 a never-completed legacy draft reloads in guided mode", async () => {
 });
 
 test("E8 a currently complete legacy draft acquires the marker on entry without repeating the closure", async () => {
-  let run = await mountPanel({ fullFields: true, respond: async () => completedInvitation });
+  let run = await mountPanel({ fullFields: true, respond: async (_, index) => index === 1 ? opening : completedInvitation });
   try {
+    await run.until(() => run.messages().length === 1);
+    await run.send(completeRequest);
     await run.until(() => run.messages().some((m) => m.guidedCompletion));
     const savedDraft = run.exportPersistedDraft();
     delete savedDraft.conversation.usage.guidedFlowCompleted;
@@ -226,8 +286,10 @@ test("E8 a currently complete legacy draft acquires the marker on entry without 
 });
 
 test("E8 a failed final metadata write cannot persist completion or announce success", async () => {
-  const run = await mountPanel({ fullFields: true, failMetadata: (n) => n > 1, respond: async () => completedInvitation });
+  const run = await mountPanel({ fullFields: true, failMetadata: (n) => n > 2, respond: async (_, index) => index === 1 ? opening : completedInvitation });
   try {
+    await run.until(() => run.messages().length === 1);
+    await run.send(completeRequest);
     await run.until(() => run.messages().some((m) => m.intent === "error"));
     assert.equal(run.exportPersistedDraft().conversation.usage.guidedFlowCompleted, false);
     assert.equal(run.messages().some((m) => m.guidedCompletion), false);

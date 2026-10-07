@@ -135,12 +135,24 @@ decorations, countdown frames, ordinary image objects, gallery cells, and a
 bounded request for fonts used there. All first-section network images are
 emitted eager/high-priority and as head preloads; subsequent-section images are
 lazy/low-priority. It must not gate the invitation loader on global
-`window.load`, global font readiness, or resources in later sections. Critical
-failure and the single bounded timeout fail closed: the invitation stays
-hidden, the canonical loader presents an error and retry action, and a late
-readiness event cannot reveal that failed document. The outer preview shell
-consumes both `invitation-loader-hidden` and `invitation-runtime-failed`; retry
-reloads the public document or remounts the preview iframe.
+`window.load`, global font readiness, or resources in later sections.
+
+Decision accepted on 2026-10-05, by the request to prevent resource-loading
+errors from interrupting invitation access: after DOM parsing, visual resources
+receive a bounded initial wait (currently 2600 ms, fonts capped at 1200 ms).
+An image failure or exhausted resource budget releases readiness with diagnostic
+statuses; it must not emit a fatal runtime event, seal the document, or require
+a reload. Outstanding requests continue in that document, so late images/fonts
+can render normally. A genuinely unavailable image can remain absent; the rest
+of the invitation remains usable. Music keeps its own optional preload/entry
+contract. The loader's independent 10-second watchdog also releases presentation
+instead of displaying a resource error. Its hidden event is emitted only once.
+The outer preview shell consumes `invitation-loader-hidden` identically on
+desktop and mobile. Support for an explicit `invitation-runtime-failed` event
+remains for compatibility; resource delays/errors no longer produce it.
+This replaces the former permanent fail-closed resource-loading policy, without
+changing backend validation, persistence confirmation or share-image capture
+requirements. Regression: `functions/invitationRuntimeReadiness.test.mjs`.
 
 Prepared asset normalization keeps Storage as authority. It reads object
 metadata at most once per path for compatibility assets. A canonical persisted

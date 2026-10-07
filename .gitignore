@@ -54,6 +54,8 @@ yarn-error.log*
 # =========================
 firebase-key.json
 functions/firebase-debug.log
+/firebase-debug.log
+/firebase-debug.*.log
 
 # =========================
 # Typescript

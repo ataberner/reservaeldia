@@ -14,6 +14,7 @@ import { cases, identities, authorities } from "./rulesCases.mjs";
 
 const require = createRequire(import.meta.url);
 const contract = require("../../shared/firebaseEnvironment.cjs");
+const { listAvailableMusicTracks } = require("../../shared/musicCatalog.cjs");
 const runId = `rules-${randomUUID()}`;
 const replacements = { A: `${runId}-a`, B: `${runId}-b`, ADMIN: `${runId}-admin`, SUPER: `${runId}-server-super` };
 const expand = (value, id) => JSON.parse(JSON.stringify(value).replace(/\{(A|B|ADMIN|SUPER|ID)\}/g,
@@ -218,7 +219,9 @@ test("music callable: real Auth claims, owner transaction, SDK denial and ordina
   const save = httpsCallable(functions, "saveDraftWithMusicV1");
   const draftId = `${runId}-music-callable`, foreignId = `${draftId}-foreign`;
   const ref = adminDb.doc(`borradores/${draftId}`), foreign = adminDb.doc(`borradores/${foreignId}`);
-  const music = { version: 1, enabled: true, track: { source: "catalog", id: "platform-demo" }, volume: 0.35, loop: true };
+  const [catalogTrack] = listAvailableMusicTracks();
+  assert.ok(catalogTrack, "music integration requires an available catalog track");
+  const music = { version: 1, enabled: true, track: { source: "catalog", id: catalogTrack.id }, volume: 0.35, loop: true };
   let uid;
   try {
     const credential = await createUserWithEmailAndPassword(auth, `${draftId}@example.test`, `Synthetic-${randomUUID()}!`);

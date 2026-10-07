@@ -159,6 +159,40 @@ browser helper accepts `--timings --startup-baseline` for the saved before build
 and `--timings` for the after build; `--reuse-owned` is only for this task's already
 running demo emulators. No production deployment is implied by these checks.
 
+### Automatic startup connection recovery (2026-10-07)
+
+`useDashboardAuthGate` keeps the Firebase session and profile-validation gate
+while transient Auth/callable transport failures recover. The shared scheduler
+in `src/lib/auth/dashboardAuthRecovery.js` allows one request per recovery loop:
+700/1,500/3,000 ms retries, then 15-second probes. Hidden pages pause; online,
+pageshow, focus and visibility changes can wake a pending wait. Browser offline
+status is advisory and slows visible probes rather than disabling them forever.
+Cleanup and account changes invalidate late results and remove timers/listeners.
+Forced token refresh is reserved for one rejected callable credential; ordinary
+transport failures reuse Firebase's normal token lifecycle.
+
+Transient recovery records breadcrumbs without creating an editor-issue banner.
+The loader retains its normal presentation during short retries; a prolonged
+wait displays a passive connection status and automatically resumes. The specific
+legacy persisted profile-check `auth/network-request-failed` report is retired
+when read, while other pending diagnostics remain intact. Permanent credential
+and authorization failures keep their existing handling.
+
+A successful recovered profile check advances `startupRecoveryGeneration`.
+Dashboard readers revalidate through their existing owners, without remounting
+the editor. Read-only requests also retry their own transient failures; profile
+completion, preferences writes and other mutations are not automatically replayed.
+Publications and template startup reads request server results, preserving the
+default source behavior for other consumers. An initial empty cached draft
+snapshot waits for server confirmation, and scope-tagged loading prevents stale
+account/generation results from marking the home ready. Profile completeness and
+administrative access remain server-validated; no persisted access cache was added.
+
+Regression anchors: `src/lib/auth/dashboardAuthRecovery.test.mjs`,
+`src/hooks/useDashboardAuthGate.test.mjs`,
+`src/hooks/dashboardStartupReaders.test.mjs` and
+`src/domain/dashboard/startupRecovery.test.mjs`.
+
 Facts:
 
 - `src/pages/_app.js` imports both `styles/globals.css` and `styles/styles.css`, so both files apply to the landing and dashboard app routes.

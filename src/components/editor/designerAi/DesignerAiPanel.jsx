@@ -494,6 +494,9 @@ export default function DesignerAiPanel({
     }
     const operation = resume?.operation || beginOperation();
     const initialSnapshot = snapshotOverride || readSnapshot();
+    // Keep the original pre-action evidence across retries. A later local edit
+    // must not make an invalidated Gifts choice look current again.
+    let previousSnapshot = resume?.previousSnapshot || initialSnapshot;
     const userMessage = createMessage("user", message);
     const conversationWithUser = showUserMessage
       ? appendDesignerAiMessageHistory(messagesRef.current, userMessage)
@@ -555,6 +558,7 @@ export default function DesignerAiPanel({
 
       const currentSnapshot = readSnapshot();
       if (currentSnapshot.revision !== initialSnapshot.revision) throw Object.assign(new Error("El borrador cambió."), { code: "designer-ai/stale-snapshot" });
+      previousSnapshot = resume?.previousSnapshot || currentSnapshot;
       const remainingActions = resume ? resume.recovery.actionResults.filter((r) => !r.effective).map((r) => r.action) : result.actions;
       const actionValidation = validateDesignerAiActionBatch(remainingActions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot: currentSnapshot });
       const controlValidation = validateDesignerAiControlRequest(result.controlRequest, currentSnapshot, { actions: remainingActions });
@@ -595,6 +599,7 @@ export default function DesignerAiPanel({
       const reflectedSnapshot = readSnapshot();
       const nextConversationState = reconcileDesignerAiConversationState({
         snapshot: reflectedSnapshot,
+        previousSnapshot,
         previousState: conversationStateRef.current,
         actionResults,
         resolutions: result.resolutions,
@@ -666,11 +671,11 @@ export default function DesignerAiPanel({
         error.actionResults = execution.actionResults;
         error.recovery = execution.recovery;
       }
-      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation,
+      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation, previousSnapshot,
         controlUserReply: resume?.controlUserReply ?? controlUserReply } : null;
       if (error.actionResults?.length) {
         const partialState = reconcileDesignerAiConversationState({
-          snapshot: readSnapshot(), previousState: conversationStateRef.current,
+          snapshot: readSnapshot(), previousSnapshot, previousState: conversationStateRef.current,
           actionResults: error.actionResults,
         });
         conversationStateRef.current = partialState;

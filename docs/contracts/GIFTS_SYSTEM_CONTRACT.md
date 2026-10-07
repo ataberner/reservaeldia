@@ -84,6 +84,22 @@ se respetan los valores y visibilidades solicitados mediante los mismos owners.
 La conducción proactiva, en cambio, sigue una sola vía y no agrega preguntas de
 la otra modalidad una vez que la primera quedó resuelta.
 
+Cuando el usuario elige una vía sin aportar todavía sus datos, esa intención se
+conserva en `designerAiConversation.resolutions`, mediante las hojas
+conversacionales `gifts.bank_details` y `gifts.external_list`. No son campos del
+root `gifts` ni preferencias de exposición: no habilitan datos heredados, no
+seleccionan Alias por defecto y no completan la sección. La elección bancaria
+pide los datos que quiera mostrar (un alias alcanza); la externa pide el enlace.
+Una elección explícita nueva reemplaza las solicitudes anteriores; ambas hojas
+en el mismo turno representan una combinación explícita. Sin nueva elección se
+conserva la intención vigente. Su validación, evidencia y vigencia pertenecen al
+capability contract. Recargar no obliga a repetir una elección ya persistida.
+Si el usuario decide aportar esos datos más adelante, se posterga la solicitud
+vigente sin borrar la elección, desactivar Regalos ni exponer valores heredados.
+El recorrido continúa y conserva ese pendiente para el cierre y el reingreso.
+En una combinación puede postergar sólo la lista mientras conserva los datos
+bancarios ya guardados. Esta postergación no equivale a completitud funcional.
+
 Para **lista externa**:
 
 - se solicita el enlace, sin inventarlo ni completarlo;

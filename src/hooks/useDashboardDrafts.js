@@ -5,6 +5,8 @@ import { isDraftTrashed } from "@/domain/drafts/state";
 import { getDraftPreviewCandidates } from "@/domain/drafts/preview";
 import { resolveDraftPublicationLifecycleState } from "@/domain/invitations/readResolution";
 
+const INITIAL_CACHE_RECOVERY_DELAY_MS = 5200;
+
 function toMs(value) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -106,26 +108,54 @@ function normalizeDraftItem(docItem) {
   };
 }
 
-export function useDashboardDrafts({ userUid }) {
+export function useDashboardDrafts({ userUid, startupRecoveryGeneration = 0 }) {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [recoveryState, setRecoveryState] = useState("idle");
+  const [resolvedScope, setResolvedScope] = useState(null);
+  const scope = JSON.stringify([userUid, startupRecoveryGeneration]);
 
   useEffect(() => {
+    let mounted = true;
+    let hasResolvedSnapshot = false;
+    let initialCacheTimer = null;
+    const clearInitialCacheTimer = () => {
+      if (initialCacheTimer !== null) clearTimeout(initialCacheTimer);
+      initialCacheTimer = null;
+    };
     if (!userUid) {
       setDrafts([]);
       setLoading(false);
       setError("");
+      setRecoveryState("idle");
+      setResolvedScope(scope);
       return () => {};
     }
 
     setLoading(true);
     setError("");
+    setRecoveryState("idle");
 
     const draftsQuery = query(collection(db, "borradores"), where("userId", "==", userUid));
     const unsubscribe = onSnapshot(
       draftsQuery,
+      { includeMetadataChanges: true },
       (snapshot) => {
+        if (!mounted) return;
+        // An empty local cache is not evidence that this account has no drafts.
+        // Keep normal startup quiet while the SDK obtains its server snapshot.
+        if (snapshot.metadata?.fromCache && snapshot.docs.length === 0) {
+          if (!hasResolvedSnapshot && initialCacheTimer === null) {
+            initialCacheTimer = setTimeout(() => {
+              initialCacheTimer = null;
+              if (mounted && !hasResolvedSnapshot) setRecoveryState("waiting");
+            }, INITIAL_CACHE_RECOVERY_DELAY_MS);
+          }
+          return;
+        }
+        clearInitialCacheTimer();
+        hasResolvedSnapshot = true;
         const items = snapshot.docs
           .map(normalizeDraftItem)
           .filter(Boolean)
@@ -133,17 +163,28 @@ export function useDashboardDrafts({ userUid }) {
 
         setDrafts(items);
         setLoading(false);
+        setResolvedScope(scope);
+        setError("");
+        setRecoveryState("idle");
       },
       (loadError) => {
+        if (!mounted) return;
+        clearInitialCacheTimer();
         console.error("Error cargando borradores del dashboard:", loadError);
         setDrafts([]);
         setLoading(false);
+        setResolvedScope(scope);
+        setRecoveryState("idle");
         setError(loadError?.message || "No se pudieron cargar tus borradores.");
       }
     );
 
-    return () => unsubscribe();
-  }, [userUid]);
+    return () => {
+      mounted = false;
+      clearInitialCacheTimer();
+      unsubscribe();
+    };
+  }, [userUid, startupRecoveryGeneration, scope]);
 
   const removeDraft = useCallback((slug) => {
     const safeSlug = String(slug || "").trim();
@@ -153,9 +194,10 @@ export function useDashboardDrafts({ userUid }) {
   }, []);
 
   return {
-    drafts,
-    loading,
+    drafts: resolvedScope === scope ? drafts : [],
+    loading: loading || resolvedScope !== scope,
     error,
+    recoveryState,
     removeDraft,
   };
 }

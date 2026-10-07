@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 import { functions as cloudFunctions } from "@/firebase";
 import { getErrorMessage } from "@/domain/dashboard/helpers";
+import { isLegacyDashboardAuthNetworkIssue } from "@/domain/dashboard/startupRecovery";
 import {
   buildEditorIssueTransportPayload,
   clearPendingEditorIssue,
@@ -102,7 +103,10 @@ export function useDashboardEditorIssues({
     window.addEventListener("editor-issue-captured", onIssueCaptured);
 
     const pending = readPendingEditorIssue();
-    if (pending) {
+    if (isLegacyDashboardAuthNetworkIssue(pending)) {
+      clearPendingEditorIssue();
+      pushEditorBreadcrumb("dashboard-auth-legacy-network-report-cleared", {});
+    } else if (pending) {
       setEditorIssueReport(pending);
     }
 

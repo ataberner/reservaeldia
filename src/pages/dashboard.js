@@ -61,9 +61,11 @@ export default function Dashboard() {
     showProfileCompletion,
     profileInitialValues,
     handleCompleteProfile,
+    authRecoveryState,
+    startupRecoveryGeneration,
   } = useDashboardAuthGate({ router });
-  const { loadingAdminAccess, isSuperAdmin, canManageSite } =
-    useAdminAccess(usuario);
+  const { loadingAdminAccess, isSuperAdmin, canManageSite, adminRecoveryState } =
+    useAdminAccess(usuario, startupRecoveryGeneration);
   const {
     slugInvitacion,
     setSlugInvitacion,
@@ -144,7 +146,10 @@ export default function Dashboard() {
       ? adminDraftView
       : null,
   });
-  const userUiPreferences = useUserUiPreferences(usuario?.uid);
+  const userUiPreferences = useUserUiPreferences(usuario?.uid, startupRecoveryGeneration);
+  const [homeRecoveryState, setHomeRecoveryState] = useState("idle");
+  const waitingForConnection = authRecoveryState === "waiting" ||
+    adminRecoveryState === "waiting" || homeRecoveryState === "waiting";
   const tipoSeleccionado = DEFAULT_TIPO_INVITACION;
   const [zoom, setZoom] = useState(0.8);
   const [historialExternos, setHistorialExternos] = useState([]);
@@ -179,7 +184,7 @@ export default function Dashboard() {
     initialEditorData: templateWorkspaceView?.initialData || null,
     isResolvingEditorRoute,
     isHomeView: pageViewState.isHomeView,
-    homeResetKey: tipoSeleccionado,
+    homeResetKey: `${tipoSeleccionado}:${usuario?.uid || ""}:${startupRecoveryGeneration}`,
   });
   const previewGateState = buildDashboardPreviewGateState({
     isTemplateEditorSession,
@@ -394,7 +399,7 @@ export default function Dashboard() {
 
   if (checkingAuth && !usuario) return (
     <>
-      <DashboardHomeStartupLoader fullScreen />
+      <DashboardHomeStartupLoader fullScreen reconnecting={waitingForConnection} />
       <BrowserStorageRecoveryBanner />
     </>
   );
@@ -403,17 +408,18 @@ export default function Dashboard() {
   return (
     <>
       <BrowserStorageRecoveryBanner />
-      {checkingAuth && <DashboardHomeStartupLoader fullScreen />}
-      {!checkingAuth && pageViewState.isHomeView && shouldRenderHomeStartupLoader && (
+      {checkingAuth && <DashboardHomeStartupLoader fullScreen reconnecting={waitingForConnection} />}
+      {!checkingAuth && pageViewState.isHomeView && (shouldRenderHomeStartupLoader || waitingForConnection) && (
         <DashboardHomeStartupLoader
           fullScreen
-          exiting={isHomeStartupLoaderExiting}
+          exiting={isHomeStartupLoaderExiting && !waitingForConnection}
+          reconnecting={waitingForConnection}
         />
       )}
       <div
         hidden={checkingAuth}
-        inert={checkingAuth || showHomeStartupLoader ? true : undefined}
-        aria-hidden={checkingAuth || showHomeStartupLoader ? "true" : undefined}
+        inert={checkingAuth || showHomeStartupLoader || (pageViewState.isHomeView && waitingForConnection) ? true : undefined}
+        aria-hidden={checkingAuth || showHomeStartupLoader || (pageViewState.isHomeView && waitingForConnection) ? "true" : undefined}
       >
       <DashboardLayout key={usuario.uid} {...layoutProps}>
       {editorIssueReport && (
@@ -464,6 +470,8 @@ export default function Dashboard() {
           >
           <DashboardHomeView
             usuario={usuario}
+            startupRecoveryGeneration={startupRecoveryGeneration}
+            onRecoveryStateChange={setHomeRecoveryState}
             tipoInvitacion={tipoSeleccionado}
             isSuperAdmin={isSuperAdmin}
             onSelectTemplate={openTemplateModal}

@@ -1,5 +1,10 @@
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 const LEDGER_VERSION = 4;
+const DESIGNER_AI_GIFT_REQUEST_LEAF_IDS = Object.freeze([
+  "gifts.bank_details",
+  "gifts.external_list",
+]);
+const GIFT_REQUEST_LEAF_ID_SET = new Set(DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
 
 const DESIGNER_AI_LEDGER_STATUSES = Object.freeze({
   UNAVAILABLE: "unavailable",
@@ -479,8 +484,15 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
   // Enabling RSVP uses the existing normalized form. Its optional copy, order
   // and question customizations stay reactive; they are not an interrogation.
   include("rsvp.enabled");
-  include("gifts.enabled");
+  const giftRequestIds = values.gifts?.enabled === true
+    ? DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.filter((leafId) => isExplicitGiftRequest(byId.get(leafId)))
+    : [];
+  // An explicit family request owns the remaining guided question, including
+  // its deferral. Keep the parent's real readiness in the ledger without asking
+  // the user to choose again just because that family's data is still pending.
+  if (!giftRequestIds.length) include("gifts.enabled");
   if (values.gifts?.enabled === true) {
+    for (const leafId of giftRequestIds) include(leafId);
     for (const [method, data] of Object.entries(values.gifts.methods || {})) {
       const visibility = byId.get(`gifts.method.${method}.visible`);
       if (data.visible === true && isTerminalDesignerAiLedgerStatus(visibility?.status) &&
@@ -525,6 +537,27 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
       complete: blockingLeafIds.length === 0,
     },
   };
+}
+
+function giftRequestValue(gifts) {
+  return { enabled: gifts?.enabled === true, methods: asRecord(gifts?.methods) };
+}
+
+function isExplicitGiftRequest(resolution) {
+  return [DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER]
+    .includes(resolution?.status) && resolution.provenance === DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION &&
+    resolution.rule === null;
+}
+
+function hasConfirmedGiftMethod(gifts, byId, matchesMethod = () => true) {
+  return Object.entries(asRecord(gifts.methods)).some(([key, method]) => (
+    matchesMethod(key) && method?.visible === true &&
+    ["visible", "value"].every((suffix) => {
+      const leaf = byId.get(`gifts.method.${key}.${suffix}`);
+      return isTerminalDesignerAiLedgerStatus(leaf?.status) &&
+        [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(leaf?.provenance);
+    }) && (method?.configured === true || normalizeText(method?.value).length > 0)
+  ));
 }
 
 function buildDesignerAiLedger({ availability = {}, values = {}, conversationState = {}, sourceContext = {} } = {}) {
@@ -691,15 +724,7 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
     }
   }
   if (gifts.enabled === true && giftsEnabledLeaf) {
-    const hasCompleteVisibleMethod = Object.entries(asRecord(gifts.methods)).some(([key, method]) => (
-      method?.visible === true &&
-      ["visible", "value"].every((suffix) => {
-        const leaf = byId.get(`gifts.method.${key}.${suffix}`);
-        return isTerminalDesignerAiLedgerStatus(leaf?.status) && ["user_current_session", "existing_user_data"].includes(leaf?.provenance);
-      }) && (
-        method?.configured === true || normalizeText(method?.value).length > 0
-      )
-    ));
+    const hasCompleteVisibleMethod = hasConfirmedGiftMethod(gifts, byId);
     // Older turns may have persisted a clarification of the enabled flag while
     // waiting for a method. Reuse only trusted, unchanged enabled data, through
     // the existing rule, once a visible method has its own terminal evidence.
@@ -712,6 +737,25 @@ function buildDesignerAiLedger({ availability = {}, values = {}, conversationSta
         status: DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION,
         rule: null,
       });
+    }
+  }
+
+  // These leaves record only the requested conversational path. They never
+  // supply a bank value, URL, visibility preference or functional readiness.
+  for (const leafId of DESIGNER_AI_GIFT_REQUEST_LEAF_IDS) {
+    const value = giftRequestValue(gifts);
+    const valueFingerprint = fingerprint(value);
+    const request = resolutionForLeaf(state, leafId, valueFingerprint);
+    const selected = gifts.enabled === true && isExplicitGiftRequest(request);
+    const fulfilled = hasConfirmedGiftMethod(gifts, byId, (method) =>
+      leafId === "gifts.external_list" ? method === "giftListLink" : method !== "giftListLink");
+    add({ id: leafId, block: "gifts", value, available: availability.gifts, existingCanResolve: false });
+    const leaf = leaves[leaves.length - 1];
+    if (leaf.status !== DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) {
+      Object.assign(leaf, selected && !fulfilled
+        ? { status: request.status, provenance: DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, rule: null }
+        : { status: DESIGNER_AI_LEDGER_STATUSES.NOT_APPLICABLE_BY_DEPENDENCY, provenance: DESIGNER_AI_PROVENANCE.AUTOMATIC_RULE,
+          rule: selected ? "gift_request_fulfilled" : "no_gift_request" });
     }
   }
 
@@ -767,7 +811,10 @@ function deriveDesignerAiNextStep(snapshot, nextBlock) {
     case "rsvp": return step("rsvp_enabled", ["rsvp.enabled"]);
     case "gifts": {
       const values = ids.filter((id) => /^gifts\.method\.[^.]+\.value$/.test(id));
-      return values.length ? step("gift_method_values", values) : step("gifts_choice", ids);
+      if (values.length) return step("gift_method_values", values);
+      if (ids.includes("gifts.bank_details")) return step("gift_bank_details", ["gifts.bank_details"]);
+      if (ids.includes("gifts.external_list")) return step("gift_external_list", ["gifts.external_list"]);
+      return step("gifts_choice", ids);
     }
     case "cover": return step("cover", ["media.cover"]);
     case "galleries": return step("gallery", ids.slice(0, 1));
@@ -862,9 +909,13 @@ function captureDesignerAiActionEvidence(action, snapshot) {
   };
 }
 
+function matchesDesignerAiActionIdentity(action, evidence, snapshot) {
+  return Boolean(evidence && evidence.actionFingerprint === fingerprint(action) &&
+    evidence.documentIdentity === (snapshot?.documentIdentity || null));
+}
+
 function matchesDesignerAiActionEvidence(action, evidence, snapshot, leafId) {
-  if (!evidence || evidence.actionFingerprint !== fingerprint(action) ||
-      evidence.documentIdentity !== (snapshot?.documentIdentity || null)) return false;
+  if (!matchesDesignerAiActionIdentity(action, evidence, snapshot)) return false;
   const ids = mapActionToLeafIds(action);
   const current = new Map((snapshot?.ledger?.leaves || []).map((leaf) => [leaf.id, leaf.fingerprint]));
   const confirmed = new Map((evidence.leaves || []).map((leaf) => [leaf.leafId, leaf.fingerprint]));
@@ -872,7 +923,7 @@ function matchesDesignerAiActionEvidence(action, evidence, snapshot, leafId) {
     Boolean(confirmed.get(id)) && current.get(id) === confirmed.get(id));
 }
 
-function reconcileDesignerAiConversationState({ snapshot, previousState, actionResults = [], resolutions = [], controlLeafIds = [] } = {}) {
+function reconcileDesignerAiConversationState({ snapshot, previousSnapshot, previousState, actionResults = [], resolutions = [], controlLeafIds = [] } = {}) {
   // A proposal or dispatch cannot resolve a leaf. Receipts come from the executor
   // only after the relevant local effect and its durable write were confirmed.
   const confirmed = actionResults.filter((result) => result.effective === true && result.persisted === true && !result.error);
@@ -895,6 +946,7 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actionR
   for (const resolution of Array.isArray(resolutions) ? resolutions : []) {
     const leafId = normalizeText(resolution?.leafId);
     if (!leafById.has(leafId)) continue;
+    if (GIFT_REQUEST_LEAF_ID_SET.has(leafId)) continue;
     const status = resolution?.status;
     if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER && updates.get(leafId)?.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
     // A model clarification/control request cannot undo a valid value verified by an
@@ -928,6 +980,82 @@ function reconcileDesignerAiConversationState({ snapshot, previousState, actionR
     if (!leaf) continue;
     existing.set(leafId, { ...update, fingerprint: leaf.fingerprint });
   }
+  const giftReceipts = actionResults.filter((result) => result.action?.type?.startsWith("gifts."));
+  const finalGiftReceiptByLeaf = new Map();
+  for (const result of giftReceipts) {
+    for (const leafId of mapActionToLeafIds(result.action)) finalGiftReceiptByLeaf.set(leafId, result);
+  }
+  // Earlier persisted writes may be superseded inside one legitimate batch.
+  // Every receipt needs its own identity; the last receipt owns each final leaf.
+  const verifiedGiftReceipts = giftReceipts.length > 0 && giftReceipts.every((result) =>
+    result.executed && confirmed.includes(result) && matchesDesignerAiActionIdentity(result.action, result.evidence, snapshot)) &&
+    [...finalGiftReceiptByLeaf].every(([leafId, result]) =>
+      matchesDesignerAiActionEvidence(result.action, result.evidence, snapshot, leafId));
+  const activationVerified = verifiedGiftReceipts && giftReceipts.some((result) =>
+    result.action.type === "gifts.set_enabled" && result.action.arguments.enabled === true) &&
+    nextSnapshot.values?.gifts?.enabled === true;
+  const deactivationVerified = verifiedGiftReceipts && giftReceipts.some((result) =>
+    result.action.type === "gifts.set_enabled" && result.action.arguments.enabled === false) &&
+    nextSnapshot.values?.gifts?.enabled === false;
+  const selectedRequests = (Array.isArray(resolutions) ? resolutions : []).filter((resolution) =>
+    GIFT_REQUEST_LEAF_ID_SET.has(resolution?.leafId) &&
+    [DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER].includes(resolution.status) &&
+    resolution.rule === null && Object.keys(resolution).length === 3 &&
+    leafById.has(resolution.leafId) && leafById.get(resolution.leafId).status !== DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE);
+  if (deactivationVerified || (activationVerified && selectedRequests.length)) {
+    // A new explicit choice replaces the prior set; two markers mean both.
+    for (const leafId of DESIGNER_AI_GIFT_REQUEST_LEAF_IDS) existing.delete(leafId);
+  }
+  if (activationVerified && selectedRequests.length) {
+    for (const { leafId, status } of selectedRequests) {
+      const leaf = leafById.get(leafId);
+      if (leaf) existing.set(leafId, { leafId, fingerprint: leaf.fingerprint,
+        status,
+        provenance: DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, rule: null });
+    }
+  } else if (!deactivationVerified) {
+    const sameDocument = previousSnapshot && Boolean(nextSnapshot.documentIdentity) &&
+      previousSnapshot.documentIdentity === nextSnapshot.documentIdentity;
+    for (const leafId of DESIGNER_AI_GIFT_REQUEST_LEAF_IDS) {
+      const request = existing.get(leafId);
+      const leaf = leafById.get(leafId);
+      if (!request || !leaf || !isExplicitGiftRequest(request)) continue;
+      if (request.fingerprint === leaf.fingerprint) continue;
+      // The local leaf was fingerprinted before sensitive gift values were
+      // minimized. Recomputing from the public values would lose hidden URLs.
+      const priorFingerprint = sameDocument
+        ? previousSnapshot.ledger?.leaves?.find((entry) => entry.id === leafId)?.fingerprint
+        : null;
+      if (verifiedGiftReceipts && request.fingerprint === priorFingerprint) {
+        existing.set(leafId, { ...request, fingerprint: leaf.fingerprint });
+      }
+      // Otherwise retain the old fingerprint as non-current evidence. A manual
+      // edit or an unconfirmed write cannot renew the request or invent consent.
+    }
+  }
+  for (const resolution of Array.isArray(resolutions) ? resolutions : []) {
+    // With verified activation, the complete requested set (including already
+    // deferred families) was replaced above. Otherwise only defer a prior choice.
+    if ((activationVerified && selectedRequests.length) || (giftReceipts.length && !verifiedGiftReceipts)) continue;
+    const leafId = resolution?.leafId;
+    if (!GIFT_REQUEST_LEAF_ID_SET.has(leafId) ||
+        resolution.status !== DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER ||
+        resolution.rule !== null || Object.keys(resolution).length !== 3) continue;
+    const original = state.resolutions.find((entry) => entry.leafId === leafId);
+    const request = existing.get(leafId);
+    const leaf = leafById.get(leafId);
+    if (!isExplicitGiftRequest(original) || !isExplicitGiftRequest(request) ||
+        !leaf || request.fingerprint !== leaf.fingerprint) continue;
+    const previousLeaf = previousSnapshot?.documentIdentity &&
+      previousSnapshot.documentIdentity === nextSnapshot.documentIdentity
+      ? previousSnapshot.ledger?.leaves?.find((entry) => entry.id === leafId)
+      : null;
+    const wasPending = isExplicitGiftRequest(leaf) ||
+      (isExplicitGiftRequest(previousLeaf) && original.fingerprint === previousLeaf.fingerprint);
+    // A deferral preserves an existing selected family; it cannot create one.
+    // Other-family changes may have refreshed its fingerprint via receipts above.
+    if (wasPending) existing.set(leafId, { ...request, status: DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER });
+  }
   const baseline = state.baseline.length > 0 ? state.baseline : leaves.map((leaf) => ({ leafId: leaf.id, fingerprint: leaf.fingerprint, provenance: leaf.provenance || DESIGNER_AI_PROVENANCE.UNKNOWN }));
   const nameAction = [...actions].reverse().find((action) => action?.type === "document.set_name");
   const automaticResolution = updates.get("document.name")?.rule === DESIGNER_AI_RESOLUTION_RULES.AUTOMATIC_EVENT_NAME;
@@ -943,6 +1071,7 @@ module.exports = {
   CONVERSATION_BLOCKS,
   GUIDED_FLOW_BLOCKS,
   DESIGNER_AI_LEDGER_STATUSES,
+  DESIGNER_AI_GIFT_REQUEST_LEAF_IDS,
   DESIGNER_AI_PROVENANCE,
   DESIGNER_AI_RESOLUTION_RULES,
   LEDGER_VERSION,

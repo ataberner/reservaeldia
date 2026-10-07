@@ -245,6 +245,231 @@ function functionResponse(result, requestId = "req_test") {
   };
 }
 
+for (const [message, ids, methods, deferredIds = []] of [
+  ["datos bancarios", ["gifts.bank_details"], []],
+  ["una lista externa", ["gifts.external_list"], []],
+  ["ambos; mi alias es ALIAS.SINTETICO", ["gifts.bank_details", "gifts.external_list"],
+    [{ type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.SINTETICO", visible: true } }]],
+  ["datos bancarios, pero lo paso después", ["gifts.bank_details"], [], ["gifts.bank_details"]],
+  ["banco ahora, alias ALIAS.SINTETICO; la lista después", ["gifts.bank_details", "gifts.external_list"],
+    [{ type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.SINTETICO", visible: true } }], ["gifts.external_list"]],
+]) {
+  test(`explicit gifts choice is retained without inventing data: ${message}`, async () => {
+    const current = snapshot({ values: { gifts: { enabled: false, methods: { alias: { value: "TEMPLATE_ALIAS_PRIVATE", visible: true } } } },
+      leaves: [leaf("gifts.enabled", "gifts"), leaf("gifts.bank_details", "gifts"), leaf("gifts.external_list", "gifts"),
+        leaf("gifts.method.alias.value", "gifts", "pending", "template_value")] });
+    const proposal = { intent: "apply", assistantMessage: "Seguimos con los regalos.",
+      actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } }, ...methods],
+      controlRequest: null, resolutions: ids.map(leafId => ({ leafId, status: deferredIds.includes(leafId) ? "deferred_by_user" : "needs_clarification", rule: null })), clarification: null, notice: null };
+    const requests = [];
+    const result = await interpretDesignerAiChat({ payload: payload({ message, capabilitySnapshot: current }), client: { responses: { create: async request => {
+      requests.push(request);
+      return functionResponse(proposal);
+    } } } });
+    assert.equal(result.repairCount, 0);
+    assert.equal(requests.length, 1);
+    assert.deepEqual(result.actions, proposal.actions);
+    assert.deepEqual(result.resolutions, proposal.resolutions);
+    assert.equal(JSON.stringify(requests[0].input).includes("TEMPLATE_ALIAS_PRIVATE"), false);
+    assert.match(requests[0].input[0].content, /No elijas Alias ni otro campo por el usuario/);
+    assert.match(requests[0].input[0].content, /no borres valores para simular una elección/);
+  });
+}
+
+test("clients predating persisted gifts choices receive reload guidance without executing", () => {
+  const input = payload({ contractVersion: "2.3.0", message: "datos bancarios" });
+  const response = buildDesignerAiClientCompatibilityResponse(input);
+  assert.equal(response.contractVersion, "2.3.0");
+  assert.deepEqual(response.actions, []);
+  assert.deepEqual(response.resolutions, []);
+  assert.equal(response.controlRequest, null);
+  assert.match(response.assistantMessage, /recarg/i);
+  assert.throws(() => validateDesignerAiChatPayload(input), error => error.kind === "invalid-payload");
+});
+
+test("postponing a selected gift route preserves data from the other route without reactivation", async () => {
+  const current = snapshot({ values: { gifts: { enabled: true } }, leaves: [
+    { ...leaf("gifts.enabled", "gifts", "resolved_from_user", "user_current_session"), block: "gifts" },
+    { ...leaf("gifts.external_list", "gifts", "needs_clarification", "user_current_session"), block: "gifts" },
+  ] });
+  const proposal = { intent: "apply", assistantMessage: "Lo dejamos pendiente.",
+    actions: [{ type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.SINTETICO", visible: true } }],
+    resolutions: [{ leafId: "gifts.external_list", status: "deferred_by_user", rule: null }], controlRequest: null, clarification: null, notice: null };
+  let calls = 0;
+  const result = await interpretDesignerAiChat({ payload: payload({ message: "Mi alias es ALIAS.SINTETICO, el link lo paso después", capabilitySnapshot: current }), client: { responses: { create: async request => {
+    calls += 1;
+    assert.match(request.input[0].content, /postergá su hoja vigente gifts.bank_details o gifts.external_list con deferred_by_user/);
+    return functionResponse(proposal);
+  } } } });
+  assert.equal(calls, 1);
+  assert.equal(result.repairCount, 0);
+  assert.deepEqual(result.actions, proposal.actions);
+  assert.deepEqual(result.resolutions, proposal.resolutions);
+});
+
+function venueReplyPayload({ phase = "ceremony", message = "friendly", priorMessage = message, address = "" } = {}) {
+  return payload({
+    message,
+    recentTurns: [
+      { role: "assistant", content: "¿Cómo se llama el lugar?" },
+      { role: "user", content: priorMessage },
+      { role: "assistant", content: "Guardé la fecha. ¿Cómo se llama el lugar del evento?" },
+    ],
+    capabilitySnapshot: snapshot({
+      values: { eventMode: phase === "party" ? "ceremony_party" : "single", [phase]: { venueName: "", address, placeSelected: false } },
+      leaves: [
+        leaf(`event.${phase}.venue_name`, "event_data"),
+        leaf(`event.${phase}.address`, "event_data", address ? "resolved_from_user" : "pending", address ? "user_current_session" : "unknown"),
+        leaf(`event.${phase}.place_selection`, "event_data"),
+      ],
+    }),
+  });
+}
+
+function noVenueInterpretation() {
+  return { intent: "clarify", assistantMessage: "Seguimos.", actions: [], controlRequest: null, resolutions: [], clarification: null, notice: null };
+}
+
+for (const [phase, message, priorMessage] of [
+  ["ceremony", "friendly", " FRIENDLY "],
+  ["ceremony", "Salón Los Robles", "salón   los\nrobles"],
+  ["party", "Quinta Norte", "QUINTA NORTE"],
+]) {
+  for (const withClarification of [false, true]) {
+    test(`repeated venue reply uses one repair without synthesizing ${phase}/${message}/${withClarification}`, async () => {
+      const input = venueReplyPayload({ phase, message, priorMessage });
+      const leafId = `event.${phase}.venue_name`;
+      const first = noVenueInterpretation();
+      if (withClarification) {
+        first.resolutions = [{ leafId, status: "needs_clarification", rule: null }];
+        first.clarification = { leafId, kind: "missing_value" };
+      }
+      const action = { type: "event.set_location_text", arguments: { phase, venueName: message, address: "" } };
+      const requests = [];
+      const result = await interpretDesignerAiChat({ payload: input, client: { responses: { create: async request => {
+        requests.push(request);
+        return functionResponse(requests.length === 1 ? first : { ...noVenueInterpretation(), intent: "apply", actions: [action] });
+      } } } });
+      assert.equal(requests.length, 2);
+      assert.equal(result.repairCount, 1);
+      assert.deepEqual(result.actions, [action]);
+      assert.equal(result.controlRequest, null);
+      assert.match(JSON.stringify(requests[1].input), /sin interpretar después de que el usuario repitió/);
+      assert.match(JSON.stringify(requests[1].input), /No repitas una salida vacía ni inventes un nombre/);
+      assert.deepEqual(first.actions, []);
+    });
+  }
+}
+
+test("two stalled venue interpretations expose a safe recoverable error after one repair", async () => {
+  const input = venueReplyPayload({ message: "PRIVATE_VENUE_DO_NOT_ECHO" });
+  let calls = 0;
+  await assert.rejects(interpretDesignerAiChat({ payload: input, client: { responses: { create: async () => {
+    calls += 1;
+    return functionResponse(noVenueInterpretation(), `req_venue_${calls}`);
+  } } } }), error => {
+    assert.equal(error.kind, "malformed-output");
+    assert.equal(error.reason, "repeated_venue_answer_uninterpreted");
+    assert.equal(error.openAiRequestId, "req_venue_2");
+    assert.equal(error.message.includes(input.message), false);
+    const details = buildDesignerAiErrorDetails(error, "venue-reference");
+    assert.equal(details.category, "invalid_model_output");
+    assert.equal(details.retryable, true);
+    assert.equal(details.summary, "No pude interpretar el nombre del lugar. Probá escribiendo «El lugar se llama…».");
+    assert.equal(JSON.stringify(details).includes(input.message), false);
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+test("short venue instructions preserve a previously confirmed address", async () => {
+  const address = "Calle Sintética 123";
+  const input = venueReplyPayload({ address });
+  input.recentTurns = [{ role: "assistant", content: "¿Cómo se llama el lugar del evento?" }];
+  const action = { type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "friendly", address } };
+  let request;
+  const result = await interpretDesignerAiChat({ payload: input, client: { responses: { create: async body => {
+    request = body;
+    return functionResponse({ ...noVenueInterpretation(), intent: "apply", actions: [action] });
+  } } } });
+  assert.deepEqual(result.actions, [action]);
+  assert.equal(result.repairCount, 0);
+  assert.match(request.input[0].content, /friendly.*Salón Los Robles/);
+  assert.match(request.input[0].content, /conservá la dirección vigente confirmada cuando sólo aporta el nombre/);
+  assert.match(request.input[0].content, /el nombre vigente confirmado cuando sólo aporta dirección/);
+  assert.match(request.input[0].content, /No exijas una dirección ni abrir Google Maps para guardar un nombre/);
+  assert.match(request.input[1].content, /Calle Sintética 123/);
+  assert.equal(buildDesignerAiConversationBrief(input.capabilitySnapshot).nextStep.kind, "venue_name");
+});
+
+const venueProgressExceptions = [
+  ["first reply", input => { input.recentTurns = [input.recentTurns.at(-1)]; }],
+  ["most recent user differs despite an older matching user", input => { input.recentTurns.splice(-1, 0, { role: "user", content: "el 24/12/26 a las 20:00" }); }],
+  ["no subsequent assistant", input => { input.recentTurns.pop(); }],
+  ["first entry", input => { input.entryMode = "first_entry"; }],
+  ["reentry", input => { input.entryMode = "reentry"; }],
+  ["editing", input => { input.capabilitySnapshot.conversation.mode = "editing"; }],
+  ["different pending step", input => {
+    input.capabilitySnapshot.ledger.leaves.unshift(leaf("event.ceremony.date", "event_data"));
+    input.capabilitySnapshot.ledger.guidedFlow.leafIds.unshift("event.ceremony.date");
+  }],
+  ...["¿friendly?", "friendly?", "GRACIAS", "ok", "sí", "no", "de acuerdo", DESIGNER_AI_AUTO_START_MESSAGE].map(message =>
+    [message, input => { input.message = message; input.recentTurns[1].content = message; }]),
+];
+for (const [label, modify] of venueProgressExceptions) {
+  test(`venue no-progress guard preserves ${label}`, async () => {
+    const input = venueReplyPayload();
+    modify(input);
+    let calls = 0;
+    const result = await interpretDesignerAiChat({ payload: input, client: { responses: { create: async () => {
+      calls += 1;
+      return functionResponse(noVenueInterpretation());
+    } } } });
+    assert.equal(calls, 1);
+    assert.equal(result.repairCount, 0);
+    assert.deepEqual(result.actions, []);
+  });
+}
+
+for (const [label, override] of [
+  ["venue action", { intent: "apply", actions: [{ type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "friendly", address: "" } }] }],
+  ["out of order action", { intent: "apply", actions: [{ type: "rsvp.set_enabled", arguments: { enabled: true } }] }],
+  ["location control", { controlRequest: { type: "google_place_picker", phase: "ceremony" } }],
+  ["unsupported notice", { notice: "unsupported_request" }],
+  ["out of scope", { intent: "out_of_scope" }],
+  ["deferral", { resolutions: [{ leafId: "event.ceremony.venue_name", status: "deferred_by_user", rule: null }] }],
+  ["different clarification", { resolutions: [{ leafId: "event.ceremony.address", status: "needs_clarification", rule: null }], clarification: { leafId: "event.ceremony.address", kind: "missing_value" } }],
+  ["control resolution", { resolutions: [{ leafId: "event.ceremony.venue_name", status: "requires_control", rule: null }] }],
+  ["optional venue decision", { intent: "apply", resolutions: [{ leafId: "event.ceremony.venue_name", status: "resolved_by_rule", rule: "optional_venue_name_omitted" }] }],
+]) {
+  test(`venue no-progress guard preserves meaningful ${label}`, async () => {
+    const input = venueReplyPayload({ address: label === "optional venue decision" ? "Calle Sintética 123" : "" });
+    const proposed = { ...noVenueInterpretation(), ...override };
+    let calls = 0;
+    const result = await interpretDesignerAiChat({ payload: input, client: { responses: { create: async () => {
+      calls += 1;
+      return functionResponse(proposed);
+    } } } });
+    assert.equal(calls, 1);
+    assert.equal(result.repairCount, 0);
+    assert.deepEqual(result.actions, proposed.actions);
+    assert.deepEqual(result.resolutions, proposed.resolutions);
+    assert.deepEqual(result.controlRequest, proposed.controlRequest);
+  });
+}
+
+test("repair may interpret a repeated ambiguous reply as a deferral without inventing a venue", async () => {
+  let calls = 0;
+  const resolution = { leafId: "event.ceremony.venue_name", status: "deferred_by_user", rule: null };
+  const result = await interpretDesignerAiChat({ payload: venueReplyPayload({ message: "no sé todavía" }), client: { responses: { create: async () => {
+    calls += 1;
+    return functionResponse({ ...noVenueInterpretation(), resolutions: calls === 1 ? [] : [resolution] });
+  } } } });
+  assert.equal(calls, 2);
+  assert.deepEqual(result.actions, []);
+  assert.deepEqual(result.resolutions, [resolution]);
+});
+
 for (const entryMode of ["first_entry", "reentry"]) {
   for (const mode of ["guided", "editing"]) {
     test(`opening ${entryMode}/${mode} is deterministic and contains no model proposal`, () => {

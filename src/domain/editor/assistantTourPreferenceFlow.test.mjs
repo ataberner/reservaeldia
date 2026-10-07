@@ -41,8 +41,8 @@ test("the preference wiring stays user-scoped and uses the existing callables wi
 
   assert.match(hookSource, /httpsCallable\(cloudFunctions,\s*"getMyUiPreferences"\)/);
   assert.match(hookSource, /httpsCallable\(cloudFunctions,\s*"updateMyUiPreferences"\)/);
-  assert.match(hookSource, /\[getMyUiPreferencesCallable, userUid\]/);
-  assert.match(hookSource, /if \(!mounted\) return/);
+  assert.match(hookSource, /\[getMyUiPreferencesCallable, userUid, startupRecoveryGeneration\]/);
+  assert.match(hookSource, /if \(!isCurrent\(\)/);
   assert.match(
     hookSource,
     /await updateMyUiPreferencesCallable\(normalizedPatch\)[\s\S]*?setPreferences\(savedPreferences\)/

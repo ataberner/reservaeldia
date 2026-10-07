@@ -7,6 +7,8 @@ import {
   splitDisplayName,
 } from "@/domain/dashboard/helpers";
 import { handleDashboardStartupError } from "@/domain/dashboard/startupRecovery";
+import { createDashboardAuthRecovery } from "@/lib/auth/dashboardAuthRecovery";
+import { pushEditorBreadcrumb } from "@/lib/monitoring/editorIssueReporter";
 
 const PROFILE_INITIAL_VALUES = Object.freeze({
   nombre: "",
@@ -17,6 +19,8 @@ const PROFILE_INITIAL_VALUES = Object.freeze({
 export function useDashboardAuthGate({ router }) {
   const [usuario, setUsuario] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authRecoveryState, setAuthRecoveryState] = useState("idle");
+  const [startupRecoveryGeneration, setStartupRecoveryGeneration] = useState(0);
   const [showProfileCompletion, setShowProfileCompletion] = useState(false);
   const [profileInitialValues, setProfileInitialValues] = useState(
     PROFILE_INITIAL_VALUES
@@ -59,6 +63,7 @@ export function useDashboardAuthGate({ router }) {
     let mounted = true;
     let signOutRedirectPending = false;
     let authCheckVersion = 0;
+    let activeRecovery = null;
 
     const handleAuthFailure = (error, context = {}) =>
       handleDashboardStartupError({
@@ -93,122 +98,164 @@ export function useDashboardAuthGate({ router }) {
       auth,
       (user) => {
         if (!user && signOutRedirectPending) return;
+        activeRecovery?.cancel();
+        activeRecovery = null;
         const version = ++authCheckVersion;
         const isCurrentCheck = () => mounted && version === authCheckVersion;
         signOutRedirectPending = false;
         void (async () => {
           try {
-        if (!isCurrentCheck()) return;
-        setCheckingAuth(true);
-        setShowProfileCompletion(false);
-
-        if (!user) {
-          setUsuario(null);
-          void router.replace("/").catch((error) => {
-            handleAuthFailure(error, {
-              operation: "auth-router-replace",
-              phase: "missing-session",
-            });
-            if (isCurrentCheck()) setCheckingAuth(false);
-          });
-          return;
-        }
-
-        const providerIds = (user.providerData || [])
-          .map((provider) => provider?.providerId)
-          .filter(Boolean);
-        const hasPasswordProvider = providerIds.includes("password");
-        const hasGoogleProvider = providerIds.includes("google.com");
-        const hasOnlyPasswordProvider = hasPasswordProvider && !hasGoogleProvider;
-
-        if (hasOnlyPasswordProvider && user.emailVerified !== true) {
-          await signOutSafely("email-not-verified", user);
-          if (!isCurrentCheck()) return;
-          setShowProfileCompletion(false);
-          setUsuario(null);
-          setCheckingAuth(false);
-          void router.replace("/?authNotice=email-not-verified").catch((error) => {
-            handleAuthFailure(error, {
-              operation: "auth-router-replace",
-              phase: "email-not-verified",
-              user,
-            });
-          });
-          return;
-        }
-
-        // Start authenticated reads in parallel. checkingAuth still keeps the
-        // dashboard hidden and its entry actions blocked until profile validation.
-        setUsuario(user);
-        try {
-          await user.getIdToken();
-          if (!isCurrentCheck()) return;
-
-          let result;
-          try {
-            result = await getMyProfileStatusCallable({});
-          } catch {
             if (!isCurrentCheck()) return;
-            await user.getIdToken(true);
-            await new Promise((resolve) => setTimeout(resolve, 700));
-            if (!isCurrentCheck()) return;
-            result = await getMyProfileStatusCallable({});
-          }
-
-          if (!isCurrentCheck()) return;
-          const statusData = result?.data || {};
-
-          if (statusData.profileComplete !== true) {
-            const fallbackNames = splitDisplayName(
-              statusData?.profile?.nombreCompleto || user.displayName || ""
-            );
-
-            setProfileInitialValues({
-              nombre: statusData?.profile?.nombre || fallbackNames.nombre || "",
-              apellido:
-                statusData?.profile?.apellido || fallbackNames.apellido || "",
-              fechaNacimiento: statusData?.profile?.fechaNacimiento || "",
-              nombreCompleto:
-                statusData?.profile?.nombreCompleto || user.displayName || "",
-            });
-            setShowProfileCompletion(true);
-          } else {
+            setCheckingAuth(true);
+            setAuthRecoveryState("idle");
             setShowProfileCompletion(false);
-          }
 
-          setUsuario(user);
-        } catch (error) {
-          if (!isCurrentCheck()) return;
-          console.error("Error validando estado de perfil:", error);
-          const handled = handleAuthFailure(error, {
-            operation: "profile-status-check",
-            phase: "profile-validation",
-            user,
-          });
-          if (handled.isRecoverableStorageError) {
-            if (!isCurrentCheck()) return;
-            setShowProfileCompletion(false);
-            setUsuario(user || auth.currentUser || null);
-            setCheckingAuth(false);
-            return;
-          }
+            if (!user) {
+              setUsuario(null);
+              void router.replace("/").catch((error) => {
+                handleAuthFailure(error, {
+                  operation: "auth-router-replace",
+                  phase: "missing-session",
+                });
+                if (isCurrentCheck()) setCheckingAuth(false);
+              });
+              return;
+            }
 
-          await signOutSafely("profile-check-failed", user);
-          if (!isCurrentCheck()) return;
-          setShowProfileCompletion(false);
-          setUsuario(null);
-          void router.replace("/?authNotice=profile-check-failed").catch((error) => {
-            handleAuthFailure(error, {
-              operation: "auth-router-replace",
-              phase: "profile-check-failed",
-              user,
-            });
-          });
-        } finally {
-          if (isCurrentCheck()) {
-            setCheckingAuth(false);
-          }
-        }
+            const providerIds = (user.providerData || [])
+              .map((provider) => provider?.providerId)
+              .filter(Boolean);
+            const hasPasswordProvider = providerIds.includes("password");
+            const hasGoogleProvider = providerIds.includes("google.com");
+            const hasOnlyPasswordProvider = hasPasswordProvider && !hasGoogleProvider;
+
+            if (hasOnlyPasswordProvider && user.emailVerified !== true) {
+              await signOutSafely("email-not-verified", user);
+              if (!isCurrentCheck()) return;
+              setShowProfileCompletion(false);
+              setUsuario(null);
+              setCheckingAuth(false);
+              void router.replace("/?authNotice=email-not-verified").catch((error) => {
+                handleAuthFailure(error, {
+                  operation: "auth-router-replace",
+                  phase: "email-not-verified",
+                  user,
+                });
+              });
+              return;
+            }
+
+            // Start authenticated reads in parallel. checkingAuth still keeps the
+            // dashboard hidden and its entry actions blocked until profile validation.
+            setUsuario(user);
+            let validationPhase = "auth-token";
+            try {
+              let forceRefreshRequested = false;
+              let forceRefreshPending = false;
+              const recovery = createDashboardAuthRecovery({
+                isCurrent: isCurrentCheck,
+                onStateChange: setAuthRecoveryState,
+                onRetry: ({ error, attempt, delayMs }) => {
+                  pushEditorBreadcrumb("dashboard-auth-recovery", {
+                    phase: validationPhase,
+                    code: error?.code || "",
+                    attempt,
+                    delayMs,
+                  });
+                },
+                task: async () => {
+                  validationPhase = forceRefreshPending ? "auth-token-refresh" : "auth-token";
+                  // A restored user may already have a usable token. Only a rejected
+                  // callable credential warrants forcing a new one.
+                  if (forceRefreshPending) await user.getIdToken(true);
+                  else await user.getIdToken();
+                  if (!isCurrentCheck()) return null;
+                  forceRefreshPending = false;
+                  validationPhase = "profile-validation";
+                  try {
+                    return await getMyProfileStatusCallable({});
+                  } catch (error) {
+                    if (!isCurrentCheck()) return null;
+                    if (error?.code !== "functions/unauthenticated" || forceRefreshRequested) {
+                      throw error;
+                    }
+                    forceRefreshRequested = true;
+                    forceRefreshPending = true;
+                    validationPhase = "auth-token-refresh";
+                    pushEditorBreadcrumb("dashboard-auth-token-refresh", {
+                      code: error.code,
+                    });
+                    await user.getIdToken(true);
+                    if (!isCurrentCheck()) return null;
+                    forceRefreshPending = false;
+                    validationPhase = "profile-validation";
+                    return getMyProfileStatusCallable({});
+                  }
+                },
+              });
+              activeRecovery = recovery;
+              const outcome = await recovery.promise;
+              if (activeRecovery === recovery) activeRecovery = null;
+
+              if (!isCurrentCheck() || outcome.status !== "success") return;
+              const statusData = outcome.value?.data || {};
+              if (outcome.recovered || forceRefreshRequested) {
+                setStartupRecoveryGeneration((current) => current + 1);
+                pushEditorBreadcrumb("dashboard-auth-recovered", {});
+              }
+
+              if (statusData.profileComplete !== true) {
+                const fallbackNames = splitDisplayName(
+                  statusData?.profile?.nombreCompleto || user.displayName || ""
+                );
+
+                setProfileInitialValues({
+                  nombre: statusData?.profile?.nombre || fallbackNames.nombre || "",
+                  apellido:
+                    statusData?.profile?.apellido || fallbackNames.apellido || "",
+                  fechaNacimiento: statusData?.profile?.fechaNacimiento || "",
+                  nombreCompleto:
+                    statusData?.profile?.nombreCompleto || user.displayName || "",
+                });
+                setShowProfileCompletion(true);
+              } else {
+                setShowProfileCompletion(false);
+              }
+
+              setUsuario(user);
+            } catch (error) {
+              if (!isCurrentCheck()) return;
+              console.error("Error validando estado de perfil:", error);
+              const handled = handleAuthFailure(error, {
+                operation: "profile-status-check",
+                phase: validationPhase,
+                user,
+              });
+              if (handled.isRecoverableStorageError) {
+                if (!isCurrentCheck()) return;
+                setShowProfileCompletion(false);
+                setUsuario(user || auth.currentUser || null);
+                setCheckingAuth(false);
+                return;
+              }
+
+              await signOutSafely("profile-check-failed", user);
+              if (!isCurrentCheck()) return;
+              setShowProfileCompletion(false);
+              setUsuario(null);
+              void router.replace("/?authNotice=profile-check-failed").catch((error) => {
+                handleAuthFailure(error, {
+                  operation: "auth-router-replace",
+                  phase: "profile-check-failed",
+                  user,
+                });
+              });
+            } finally {
+              if (isCurrentCheck()) {
+                setAuthRecoveryState("idle");
+                setCheckingAuth(false);
+              }
+            }
           } catch (error) {
             if (!isCurrentCheck()) return;
             handleAuthFailure(error, {
@@ -224,6 +271,8 @@ export function useDashboardAuthGate({ router }) {
         })();
       },
       (error) => {
+        activeRecovery?.cancel();
+        activeRecovery = null;
         authCheckVersion += 1;
         handleAuthFailure(error, {
           operation: "auth-state-listener",
@@ -231,6 +280,7 @@ export function useDashboardAuthGate({ router }) {
           user: auth.currentUser,
         });
         if (!mounted) return;
+        setAuthRecoveryState("idle");
         setUsuario(null);
         setShowProfileCompletion(false);
         setCheckingAuth(false);
@@ -239,6 +289,7 @@ export function useDashboardAuthGate({ router }) {
 
     return () => {
       mounted = false;
+      activeRecovery?.cancel();
       unsubscribe();
     };
   }, [getMyProfileStatusCallable, router]);
@@ -246,6 +297,8 @@ export function useDashboardAuthGate({ router }) {
   return {
     usuario,
     checkingAuth,
+    authRecoveryState,
+    startupRecoveryGeneration,
     showProfileCompletion,
     profileInitialValues,
     handleCompleteProfile,

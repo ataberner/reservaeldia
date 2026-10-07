@@ -111,6 +111,19 @@
   color: #667085;
 }
 
+.connectionHint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: #667085;
+}
+
+.waiting .halo,
+.waiting .ring,
+.waiting .heart {
+  animation-play-state: paused;
+}
+
 @keyframes dashboardHomeLoaderSpin {
   to {
     transform: rotate(360deg);

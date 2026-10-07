@@ -1,11 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runDashboardStartupOperation } from "./startupRecovery.js";
+import { isLegacyDashboardAuthNetworkIssue, runDashboardStartupOperation } from "./startupRecovery.js";
 import { resetBrowserStorageRecoveryForTests } from "../../lib/storage/browserStorageRecovery.js";
 
 function waitForUnhandledTurn() {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+test("only the old auth network startup report is retired from pending diagnostics", () => {
+  const detail = { module: "useDashboardAuthGate", operation: "profile-status-check" };
+  const report = {
+    source: "dashboard.startup",
+    message: "Firebase: Error (auth/network-request-failed).",
+    detail: JSON.stringify(detail),
+  };
+  assert.equal(isLegacyDashboardAuthNetworkIssue(report), true);
+  assert.equal(isLegacyDashboardAuthNetworkIssue({ ...report, detail }), true);
+  assert.equal(isLegacyDashboardAuthNetworkIssue({ ...report, message: "Firebase: Error (auth/user-disabled)." }), false);
+  assert.equal(isLegacyDashboardAuthNetworkIssue({ ...report, source: "editor.save" }), false);
+  assert.equal(isLegacyDashboardAuthNetworkIssue({ ...report, detail: { ...detail, module: "useDashboardEditorRoute" } }), false);
+  assert.equal(isLegacyDashboardAuthNetworkIssue({ ...report, detail: { ...detail, operation: "auth-sign-out" } }), false);
+  assert.equal(isLegacyDashboardAuthNetworkIssue({ ...report, detail: "invalid-json" }), false);
+  assert.equal(isLegacyDashboardAuthNetworkIssue(null), false);
+});
 
 test("rejected startup promises are captured and do not reach unhandledRejection", async () => {
   resetBrowserStorageRecoveryForTests();

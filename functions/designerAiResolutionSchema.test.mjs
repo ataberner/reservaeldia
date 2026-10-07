@@ -44,6 +44,37 @@ test("question interpretation fields are strict nullable data without prose or p
   assert.equal(validate({ ...valid, notice: "Pregunta por la direccion" }), false);
 });
 
+test("gift choice group schema permits only pending interpretation with separately validated activation", () => {
+  const ids = ["gifts.bank_details", "gifts.external_list"];
+  const current = contract.sanitizeCapabilitySnapshot({ ...snapshot, availability: { gifts: true }, ledger: { leaves: ids.map(id => leaf(id)) } });
+  const validate = compile(contract.buildDesignerAiTool(current).parameters);
+  const selected = { ...valid, actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } }],
+    resolutions: ids.map(leafId => ({ leafId, status: "needs_clarification", rule: null })) };
+  assert.equal(validate(selected), true);
+  assert.deepEqual(service.validateDesignerAiModelResult(selected, current).resolutions, selected.resolutions);
+  for (const status of ["resolved_from_user", "resolved_by_rule", "requires_control"]) {
+    const invalid = { ...selected, resolutions: [{ ...selected.resolutions[0], status, rule: status === "resolved_by_rule" ? "keep_existing" : null }] };
+    assert.equal(validate(invalid), false, status);
+    assert.throws(() => service.validateDesignerAiModelResult(invalid, current), error => error.kind === "malformed-output");
+  }
+  assert.throws(() => service.validateDesignerAiModelResult({ ...selected, actions: [] }, current), /eleccion de Regalos/);
+});
+
+test("gift deferral requires prior selection or validated activation beyond the provider schema", () => {
+  const current = contract.sanitizeCapabilitySnapshot({ ...snapshot, availability: { gifts: true }, values: { gifts: { enabled: true } },
+    ledger: { leaves: [{ ...leaf("gifts.external_list", "needs_clarification"), provenance: "user_current_session", rule: null }, leaf("gifts.bank_details")],
+      guidedFlow: { leafIds: ["gifts.external_list"] } } });
+  const validate = compile(contract.buildDesignerAiTool(current).parameters);
+  const deferred = { ...valid, actions: [], resolutions: [{ leafId: "gifts.external_list", status: "deferred_by_user", rule: null }] };
+  assert.equal(validate(deferred), true);
+  assert.deepEqual(service.validateDesignerAiModelResult(deferred, current).resolutions, deferred.resolutions);
+  const invented = { ...deferred, resolutions: [{ ...deferred.resolutions[0], leafId: "gifts.bank_details" }] };
+  assert.equal(validate(invented), true);
+  assert.throws(() => service.validateDesignerAiModelResult(invented, current), error => error.kind === "malformed-output");
+  const activated = { ...invented, actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } }] };
+  assert.deepEqual(service.validateDesignerAiModelResult(activated, current).resolutions, activated.resolutions);
+});
+
 test("production failure class: generic schema permits five invalid pairs; request schema forbids them", () => {
   assert.equal(compile(contract.DESIGNER_AI_TOOL.parameters)(invalid), true);
   const tool = contract.buildDesignerAiTool(snapshot);

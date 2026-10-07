@@ -1,7 +1,8 @@
 const conversationLedger = require("./designerAiConversationLedger.cjs");
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 
-const DESIGNER_AI_CONTRACT_VERSION = "2.3.0";
+const DESIGNER_AI_CONTRACT_VERSION = "2.4.0";
+const GIFT_REQUEST_LEAF_ID_SET = new Set(conversationLedger.DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
 // Existing internal opening turn. Shared so only this seed can bypass the model;
 // a real user message with an entry mode still follows normal interpretation.
 const DESIGNER_AI_AUTO_START_MESSAGE = "Iniciá la conversación con una bienvenida breve y guiame desde el primer bloque que todavía tenga información pendiente.";
@@ -720,6 +721,15 @@ function canDeferDesignerAiLeaf(leafId, snapshot) {
     !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf.status));
 }
 
+function canDeferDesignerAiGiftRequest(leafId, snapshot) {
+  const leaf = snapshot?.ledger?.leaves?.find((item) => item.id === leafId);
+  return Boolean(GIFT_REQUEST_LEAF_ID_SET.has(leafId) && snapshot?.values?.gifts?.enabled === true && canDeferDesignerAiLeaf(leafId, snapshot) &&
+    [conversationLedger.DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION,
+      conversationLedger.DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER].includes(leaf?.status) &&
+    leaf.provenance === conversationLedger.DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION &&
+    leaf.rule === null && isNonEmptyString(leaf.fingerprint, 120));
+}
+
 // Only these leaves can receive evidence from an existing local control.
 // Availability and target identity are still validated against the snapshot.
 function designerAiControlTypeForLeaf(leafId) {
@@ -744,6 +754,7 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = 
       .filter(Boolean)
   );
   const errors = [];
+  const giftRequests = new Set();
   resolutions.forEach((resolution, index) => {
     const record = asRecord(resolution);
     if (!record || !hasExactKeys(record, ["leafId", "status", "rule"])) {
@@ -755,6 +766,26 @@ function validateDesignerAiResolutionUpdates(resolutions, snapshot, { actions = 
     }
     if (!MODEL_RESOLUTION_STATUS_SET.has(record.status)) {
       errors.push(`Resolucion ${index}: estado no permitido.`);
+    }
+    if (GIFT_REQUEST_LEAF_ID_SET.has(record.leafId)) {
+      if (giftRequests.has(record.leafId)) errors.push(`Resolucion ${index}: la eleccion de Regalos esta duplicada.`);
+      giftRequests.add(record.leafId);
+      const enableAction = [...actions].reverse().find((action) => action?.type === "gifts.set_enabled");
+      const deferred = record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER;
+      const validDecision = deferred
+        ? (canDeferDesignerAiGiftRequest(record.leafId, snapshot) || enableAction?.arguments?.enabled === true) && !actions.some((action) =>
+          (action?.type === "gifts.set_enabled" && action.arguments?.enabled === false) ||
+          (action?.type === "gifts.set_method" && (record.leafId === "gifts.external_list"
+            ? action.arguments?.method === "giftListLink" : action.arguments?.method !== "giftListLink")))
+        : record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION && enableAction?.arguments?.enabled === true;
+      if (snapshot?.availability?.gifts !== true ||
+          record.rule !== null || !validDecision ||
+          !validateDesignerAiActionBatch(actions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot }).ok) {
+        errors.push(deferred
+          ? `Resolucion ${index}: postergar Regalos requiere una eleccion vigente o gifts.set_enabled(true), sin desactivarla ni modificar datos de la misma via.`
+          : `Resolucion ${index}: la eleccion de Regalos requiere needs_clarification, rule null y gifts.set_enabled(true) valido en el mismo lote.`);
+      }
+      return;
     }
     if (record.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL &&
         !designerAiControlTypeForLeaf(record.leafId)) {
@@ -840,6 +871,7 @@ function discardInactiveDesignerAiPhaseResolutions(resolutions, snapshot, { acti
 
 function isResolutionRuleCompatible(leafId, rule) {
   const id = String(leafId || "");
+  if (GIFT_REQUEST_LEAF_ID_SET.has(id)) return false;
   const rules = conversationLedger.DESIGNER_AI_RESOLUTION_RULES;
   switch (rule) {
     case rules.AUTOMATIC_EVENT_NAME:
@@ -1056,13 +1088,15 @@ function buildDesignerAiTool(snapshot) {
   for (const leaf of snapshot?.ledger?.leaves || []) {
     if (leaf.status === statuses.UNAVAILABLE || seen.has(leaf.id)) continue;
     seen.add(leaf.id);
+    const giftRequest = GIFT_REQUEST_LEAF_ID_SET.has(leaf.id);
+    if (giftRequest && snapshot?.availability?.gifts !== true) continue;
     const controlledGallery = /^media\.gallery\..+\.guided_completion$/.test(leaf.id);
-    const rules = controlledGallery ? [] : [...RESOLUTION_RULE_SET].filter((rule) => isResolutionRuleCompatible(leaf.id, rule));
-    const nonRuleStatuses = (controlledGallery ? [statuses.REQUIRES_CONTROL, statuses.DEFERRED_BY_USER] :
+    const rules = controlledGallery || giftRequest ? [] : [...RESOLUTION_RULE_SET].filter((rule) => isResolutionRuleCompatible(leaf.id, rule));
+    const nonRuleStatuses = (giftRequest ? [statuses.NEEDS_CLARIFICATION, statuses.DEFERRED_BY_USER] : controlledGallery ? [statuses.REQUIRES_CONTROL, statuses.DEFERRED_BY_USER] :
       [...MODEL_RESOLUTION_STATUS_SET].filter((status) => ![
         statuses.RESOLVED_BY_RULE, statuses.RESOLVED_FROM_USER,
       ].includes(status))).filter((status) => (
-        (status !== statuses.DEFERRED_BY_USER || canDeferDesignerAiLeaf(leaf.id, snapshot)) &&
+        (status !== statuses.DEFERRED_BY_USER || giftRequest || canDeferDesignerAiLeaf(leaf.id, snapshot)) &&
         (status !== statuses.REQUIRES_CONTROL || designerAiControlTypeForLeaf(leaf.id))
       ));
     const key = JSON.stringify([rules, nonRuleStatuses]);
@@ -1097,7 +1131,7 @@ function buildDesignerAiTool(snapshot) {
       properties: {
         ...DESIGNER_AI_TOOL.parameters.properties,
         resolutions: alternatives.length ?
-          { type: "array", maxItems: 120, description: "Normalmente []. Solo decisiones explícitas relevantes al mensaje actual. No copies el ledger ni enumeres datos faltantes. Las actions se resuelven automáticamente al persistirse; las hojas omitidas conservan su estado. No postergues nada solo porque el usuario no lo mencionó.", items: { anyOf: alternatives } } :
+          { type: "array", maxItems: 120, description: "Normalmente []. Solo decisiones explícitas relevantes al mensaje actual. No copies el ledger ni enumeres datos faltantes. Las actions se resuelven automáticamente al persistirse; las hojas omitidas conservan su estado. No postergues nada solo porque el usuario no lo mencionó. gifts.bank_details y gifts.external_list conservan una elección explícita pendiente de datos mediante needs_clarification y rule null; requieren gifts.set_enabled(true) en el mismo lote. Emití ambas para una combinación explícita, incluso si aporta datos de una sola vía. deferred_by_user con rule null posterga una vía elegida pendiente sin reactivarla; una nueva elección postergada sí requiere gifts.set_enabled(true). No modifiques datos de la vía postergada ni dupliques la misma hoja.", items: { anyOf: alternatives } } :
           { ...DESIGNER_AI_TOOL.parameters.properties.resolutions, maxItems: 0 },
       },
     },

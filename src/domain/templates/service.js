@@ -513,8 +513,8 @@ export async function createDraftFromTemplateWithInput({
   };
 }
 
-export async function listTemplates({ tipo } = {}) {
-  return listTemplatesFromRepository({ tipo });
+export async function listTemplates({ tipo, source } = {}) {
+  return listTemplatesFromRepository({ tipo, source });
 }
 
 export async function getTemplateById(id) {

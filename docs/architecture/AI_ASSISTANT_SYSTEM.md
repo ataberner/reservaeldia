@@ -183,7 +183,7 @@ Las decisiones estructurales de esta revisión están reflejadas así:
   continuidad por AI. El modelo no redacta un cierre recurrente.
 
 Desde la corrección conversacional del 2026-09-30, `deferred_by_user` se persiste
-en las resoluciones existentes con fingerprint (ledger 4, protocolo 2.3.0).
+en las resoluciones existentes con fingerprint (ledger 4, protocolo 2.4.0).
 Conserva un pendiente no terminal, pero deja de bloquear el recorrido. El brief
 expone postergados y bloqueantes por separado; su prioridad sigue perteneciendo
 al ledger compartido. Después del reread y guardado, `designerAiGuidedConversation`
@@ -192,6 +192,21 @@ la aclaración mínima dentro del bloque (por ejemplo, el año faltante), contro
 locales y modo edición. No agrega llamadas al modelo, memoria ni otra preview.
 El cierre enumera los pendientes postergados; `guidedFlowCompleted` conserva sus
 garantías de persistencia y monotonía.
+
+Las elecciones de Regalos sin datos también usan esas resoluciones, mediante
+`gifts.bank_details` y `gifts.external_list`; no agregan configuración funcional.
+El ledger conserva la elección persistida, deriva las preguntas específicas y
+la satisface sólo con datos visibles confirmados. El panel pasa al reconciliador
+el snapshot previo al lote (también al reintentar) para renovar su fingerprint
+únicamente tras receipts Gifts verificados, sin revivir una elección invalidada
+por ediciones manuales. Validación y semántica pertenecen a la sección 4.4 del
+capability contract. El renderer sólo aporta el texto de la pregunta.
+Una solicitud vigente puede postergarse mediante `deferred_by_user` en su propia
+hoja, conservando la elección y los datos. Mientras esas hojas representan el
+pendiente, el recorrido no duplica el bloqueo con `gifts.enabled`; su estado
+real y la validación funcional de Regalos permanecen en el ledger y el dominio.
+Elegir una vía y postergarla en el mismo turno también requiere la activación
+verificada antes de guardar esa nueva elección.
 
 Desde el 2026-10-02, `event.{phase}.end_time` pertenece a
 `outside_guided_flow`: conserva evidencia en el ledger global y edición mediante
@@ -600,6 +615,20 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   Dispone de un único intento de
   reparación semántica con el motivo acotado del validador. La segunda salida
   vuelve a atravesar todas las validaciones; no se aplican resultados parciales.
+- En `continuation` guiado, si sigue pendiente `venue_name`, el usuario repite
+  su último mensaje humano y la interpretación vuelve sin acciones, control,
+  aviso ni decisión útil (sólo vacío o `needs_clarification` de ese nombre),
+  el service utiliza esa misma reparación única. Compara el historial acotado
+  existente, ignorando mayúsculas y espacios; no requiere que la pregunta
+  anterior sea idéntica porque puede contener feedback de la fecha guardada.
+  Excluye aperturas, modo edición, preguntas con signos y acuses simples.
+  No clasifica el texto como un nombre ni fabrica una mutación. Si tampoco
+  logra interpretarlo en la reparación, devuelve un error recuperable con una
+  sugerencia local para expresar el nombre, conservando `invalid_model_output`
+  y el retry del panel. No agrega llamadas a los turnos que ya producen efectos
+  o decisiones válidas. La primera respuesta breve se interpreta mediante las
+  instrucciones contextualizadas por `nextStep`; el guard corta su repetición,
+  no certifica que cualquier texto libre sea un lugar.
 - El callable tiene timeout de 45 segundos.
 - Timeout, upstream rate limit, secret ausente, payload inválido y fallo genérico
   se mapean a errores Firebase seguros.
@@ -705,6 +734,7 @@ Clasificación usada aquí:
 | RSVP en el recorrido principal | Implementado y testeado localmente | Incluye su activación; personalización del formulario sigue reactiva, con la misma allowlist. |
 | Aprovechar varios datos adelantados | Parcial | El schema acepta lotes de hasta 19 actions y el prompt pide agrupar, pero no hay evaluación real de cumplimiento conversacional. |
 | Ubicación chat-first manual/Places | Implementado y testeado | Datos manuales se aplican por el owner, la decisión Maps es explícita, el control especializado reutiliza Places y la selección se verifica localmente antes de continuar. |
+| Keys personalizadas de ubicación | Defecto pendiente, reproducido localmente 2026-10-07 | El writer usa la key asociada al rol, pero `resolveEventLocationFromAuthoring` aún lee keys canónicas para nombre/dirección. Un campo con rol válido y key personalizada puede quedar escrito sin que el snapshot verifique su efecto. Es independiente del bucle sin actions: el borrador investigado usaba keys canónicas. Requiere corregir el lector y verificar sus consumidores de editor/render antes de ampliar el arreglo. |
 | Regalos con valor/visibilidad independientes y lista externa | Implementado en dominio/capability | Root normalizada, flags por método, URL externa, actions y validación de readiness existentes. |
 | Recorrido guiado interno de Regalos | Hardening P0 implementado y testeado | Usa métodos visibles confirmados, oculta defaults no elegidos conservando datos y excluye intro/botón de la completitud. Alias solo, lista externa y combinación se prueban contra las actions existentes, sin estado de modalidad adicional. |
 | Portada y múltiples Galleries por disponibilidad real | Implementado en orquestación/control | Portada conserva evidencia por fingerprint. Cada Gallery con slots aporta una hoja durable, respeta el orden del snapshot y avanza solo por finalización explícita; cambios y cierre del control no completan. |

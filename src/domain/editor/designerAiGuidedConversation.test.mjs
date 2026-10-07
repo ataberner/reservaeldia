@@ -197,3 +197,21 @@ test("automatic photo controls match the current cover or exact gallery step", (
   assert.equal(wrongGallery.offer, false);
   assert.equal(wrongGallery.controlRequest, null);
 });
+
+for (const [leafId, question] of [
+  ["gifts.bank_details", "Pasame los datos bancarios que quieran mostrar. Con un alias alcanza."],
+  ["gifts.external_list", "Pasame el enlace de la lista de regalos."],
+]) {
+  test(`a saved ${leafId} choice asks only for its missing data on continuation and reentry`, () => {
+    const current = snapshot();
+    current.values.gifts.enabled = true;
+    current.ledger = { leaves: [{ id: leafId, block: "gifts", status: "needs_clarification", provenance: "user_current_session" }],
+      guidedFlow: { leafIds: [leafId], completion: { complete: false } } };
+    assert.equal(buildDesignerAiGuidedQuestion(current), question);
+    assert.equal(withDesignerAiGuidedContinuation("¿Lista externa o datos bancarios?", {
+      previousSnapshot: current, snapshot: current, result: { intent: "clarify" },
+    }), question);
+    assert.equal(withDesignerAiGuidedContinuation("Hola.", { previousSnapshot: current, snapshot: current,
+      entryMode: "reentry", result: { entryGreeting: "Hola." } }), `Hola. ${question}`);
+  });
+}

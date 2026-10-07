@@ -98,6 +98,7 @@ Reglas seguras:
 - Party usa la fecha de Ceremony únicamente si “después”, “ese mismo día” o equivalente lo hace inequívoco.
 - No preguntes proactivamente por la hora de finalización, ni la agregues a una pregunta sobre fecha, inicio o lugar. end_time está fuera del recorrido guiado: su ausencia no bloquea el avance ni el cierre y no requiere resolverla o postergarla. Si el usuario aporta o pide cambiar la hora de fin, usá event.set_datetime con endTime y conservá la validación y evidencia habituales; aclarala únicamente si ese pedido explícito es ambiguo. No borres ni reemplaces una hora de fin existente sin pedido. optional_end_time_omitted sigue disponible para una omisión explícita compatible. El nombre opcional del lugar vacío usa optional_venue_name_omitted cuando hay dirección suficiente.
 - Cuando el usuario aporta lugar o dirección, aplicá inmediatamente los textos válidos con event.set_location_text. Si todavía no decidió sobre Google Maps, no abras el selector en ese mismo turno: preguntá si quiere buscar/verificar allí y marcá event.{phase}.place_selection como needs_clarification con rule null.
+- Si nextStep.kind es venue_name, interpretá una respuesta breve en el contexto de ese nombre de lugar y de nextStep.phase. Por ejemplo, «friendly» o «Salón Los Robles» pueden ser el nombre aportado aunque no digan «el lugar se llama»: proponé event.set_location_text con ese venueName. Esta action escribe ambos textos: conservá la dirección vigente confirmada cuando sólo aporta el nombre, y el nombre vigente confirmado cuando sólo aporta dirección, salvo pedido explícito de cambiarlos. Usá address vacío únicamente si no existe una dirección confirmada; nunca reemplaces por vacío un dato real que el usuario no pidió borrar. En single la phase es ceremony. No exijas una dirección ni abrir Google Maps para guardar un nombre; conservá preguntas, postergaciones y otras intenciones explícitas sin convertirlas en nombres.
 - Si el usuario aportó solo el nombre del lugar, no preguntes a la vez por la dirección y por Google Maps. Presentá una única decisión entre buscar ese lugar en Google Maps o cargar la dirección manualmente; la interfaz mostrará las acciones correspondientes. Si elige carga manual, preguntá después solamente la dirección faltante.
 - Solicitá google_place_picker únicamente cuando el usuario haya pedido o aceptado explícitamente buscar en Google Maps. La selección final siempre pertenece al control local; nunca elijas un resultado ni inventes metadata.
 - Si el usuario rechaza Google Maps, resolvé place_selection mediante leave_empty y conservá la ubicación manual. Si falta la dirección, pedí solamente esa dirección y no marques address como resuelta. En modo single, la phase técnica sigue siendo ceremony aunque conversacionalmente se llame evento.
@@ -107,6 +108,9 @@ Reglas seguras:
 - Si se mantiene RSVP o Regalos apagado sin configurarlos, registrá cada hoja interna con preserve_while_inactive. No las ocultes.
 - Si Regalos está activo, debe quedar al menos un método visible y completo.
 - Al llegar a Regalos, preguntá primero lista externa o datos bancarios (o respetá la elección ya explícita). Un alias válido por sí solo alcanza; no exijas titular, banco, CBU, CUIT ni lista externa. Para lista externa pedí solo su enlace. En combinación, pedí únicamente los medios elegidos. Configurá cada medio aportado con gifts.set_method: el owner oculta los no confirmados conservando sus valores. Un medio oculto no es un pendiente. Intro y texto del botón son opcionales/default, fuera de la completitud guiada; cambialos solo ante un pedido explícito.
+- Si el usuario elige datos bancarios sin aportar valores, proponé gifts.set_enabled(true) y la resolution {leafId:"gifts.bank_details",status:"needs_clarification",rule:null}; para lista externa usá gifts.external_list, y para ambos emití las dos. Estas hojas conservan únicamente la elección explícita mientras faltan datos; no confirman valores ni visibilidad. El nuevo conjunto reemplaza la elección anterior: si pidió una combinación y aporta solo los datos de una vía, conservá ambas hojas en ese lote junto con gifts.set_enabled(true). Con datos aportados usá también las actions normales de cada medio. No elijas Alias ni otro campo por el usuario, no muestres valores heredados mediante value:null/visible:true y no borres valores para simular una elección. Si no hay una nueva elección explícita, omití estas resolutions y conservá la decisión vigente del ledger.
+- Si ya eligió una vía de Regalos y dice «lo paso después» o no tiene todavía sus datos, postergá su hoja vigente gifts.bank_details o gifts.external_list con deferred_by_user y rule null. No hace falta reactivar Regalos ni desactivarlo; no vuelvas a preguntar la modalidad ni postergues gifts.enabled en lugar de esa vía. Podés aplicar datos aportados de la otra vía en el mismo turno, pero no modificar datos de la vía que se posterga ni emitir dos resolutions para la misma hoja. Si posterga explícitamente ambos, postergá ambas hojas vigentes. Una nueva elección explícita posterior usa needs_clarification y gifts.set_enabled(true) para retomarla.
+- También puede elegir una vía y postergarla en el mismo mensaje, por ejemplo «datos bancarios, pero lo paso después»: proponé gifts.set_enabled(true) y su hoja con deferred_by_user y rule null. Si elige banco ahora y lista después, conservá las dos hojas, banco con needs_clarification y lista con deferred_by_user, junto con la activación y los datos bancarios realmente aportados; nunca inventes un enlace ni desactives la vía que dejó para después.
 - Abrir un control no completa una hoja. En portada, el frontend exige un cambio real de fingerprint. En Gallery, cambiar, agregar, eliminar o reordenar fotos no completa la etapa: la hoja media.gallery.{galleryId}.guided_completion se resuelve únicamente cuando el usuario activa la finalización explícita del control local.
 - Al llegar a Portada, preguntá si quiere cambiar la foto de portada actual, no qué foto va a usar ni que la suba antes de abrir el control. Esperá su decisión. Si acepta, pide cambiarla o responde "la subo acá?", solicitá cover_upload y explicá que puede cargarla en ese panel. No afirmes que ya cambió ni le pidas URLs. Si prefiere conservarla o cambiarla después, emití deferred_by_user para media.cover con rule null; conservá la foto e informá que puede cambiarla luego desde el asistente o el tab Fotos. Continuá con nextBlock sin volver a ofrecerla.
 - Al llegar a Galleries, primero preguntá si quiere que lo ayudes a cambiar las fotos de las galerías. Todavía no solicites gallery_cell_upload ni presentes imágenes: esperá su decisión. Si acepta, solicitá el control existente para la primera hoja pendiente media.gallery.{galleryId}.guided_completion y uno de sus slots visibles vigentes; el slot solo define el foco inicial del control y nunca la completitud. No abras varias Galleries a la vez ni saltees a otra mientras la primera siga bloqueando el recorrido.
@@ -171,12 +175,14 @@ export type DesignerAiServiceResult = DesignerAiPublicResult & { traceId: string
 export class DesignerAiServiceError extends Error {
   readonly kind: "invalid-payload" | "missing-secret" | "timeout" | "rate-limit" | "malformed-output" | "upstream";
   readonly openAiRequestId: string | null;
+  readonly reason: "repeated_venue_answer_uninterpreted" | null;
   telemetry?: DesignerAiServiceTelemetry;
-  constructor(kind: DesignerAiServiceError["kind"], message: string, openAiRequestId: string | null = null) {
+  constructor(kind: DesignerAiServiceError["kind"], message: string, openAiRequestId: string | null = null, reason: DesignerAiServiceError["reason"] = null) {
     super(message);
     this.name = "DesignerAiServiceError";
     this.kind = kind;
     this.openAiRequestId = openAiRequestId;
+    this.reason = reason;
   }
 }
 
@@ -222,9 +228,9 @@ export function buildDesignerAiErrorDetails(
     : null;
   return {
     category: presentation?.category || "internal_error",
-    summary:
-      presentation?.summary ||
-      "Ocurrió un error interno no clasificado en Diseñador AI.",
+    summary: error?.kind === "malformed-output" && error.reason === "repeated_venue_answer_uninterpreted"
+      ? "No pude interpretar el nombre del lugar. Probá escribiendo «El lugar se llama…»."
+      : presentation?.summary || "Ocurrió un error interno no clasificado en Diseñador AI.",
     retryable: presentation?.retryable ?? true,
     referenceId: normalizeText(traceId).slice(0, 80),
   };
@@ -661,6 +667,45 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   return augmented;
 }
 
+const VENUE_REPLY_ACKNOWLEDGEMENTS = new Set([
+  "sí", "si", "no", "ok", "okay", "dale", "listo", "gracias", "perfecto",
+  "genial", "bien", "bueno", "entendido", "de acuerdo",
+]);
+
+function assertDesignerAiVenueReplyProgress(
+  result: Omit<DesignerAiPublicResult, "contractVersion" | "batchId">,
+  payload: DesignerAiChatPayload
+): void {
+  const snapshot = payload.capabilitySnapshot;
+  if (payload.entryMode !== "continuation" || snapshot.conversation.mode !== "guided" ||
+      payload.message === capabilityContract.DESIGNER_AI_AUTO_START_MESSAGE ||
+      /[?¿]/.test(payload.message) || result.actions.length || result.controlRequest ||
+      result.notice || result.intent === "out_of_scope") return;
+  const step = buildDesignerAiConversationBrief(snapshot).nextStep;
+  if (step?.kind !== "venue_name" || !step.phase) return;
+  const leafId = `event.${step.phase}.venue_name`;
+  if (!step.leafIds.includes(leafId) || result.resolutions.some((resolution) =>
+    resolution.leafId !== leafId || resolution.status !== "needs_clarification" || resolution.rule !== null)) return;
+  const normalizeReply = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
+  const reply = normalizeReply(payload.message);
+  if (VENUE_REPLY_ACKNOWLEDGEMENTS.has(reply)) return;
+  const turns = payload.recentTurns;
+  if (turns[turns.length - 1]?.role !== "assistant") return;
+  let previousUser: DesignerAiTurn | undefined;
+  for (let index = turns.length - 2; index >= 0; index--) {
+    if (turns[index].role === "user") { previousUser = turns[index]; break; }
+  }
+  if (!previousUser || normalizeReply(previousUser.content) !== reply) return;
+  // Repetition proves a stalled interpretation, not a valid venue name. Ask the
+  // existing repair to reconsider the whole turn; never synthesize a mutation.
+  throw new DesignerAiServiceError(
+    "malformed-output",
+    `La respuesta dejó ${leafId} sin interpretar después de que el usuario repitió el mismo mensaje. Reinterpretá el turno y su contexto: conservá preguntas, ambigüedades, postergaciones y otras intenciones; proponé una action sólo si corresponde. No repitas una salida vacía ni inventes un nombre.`,
+    null,
+    "repeated_venue_answer_uninterpreted"
+  );
+}
+
 function mapOpenAiError(error: any): DesignerAiServiceError {
   if (error instanceof DesignerAiServiceError) return error;
   if (error instanceof DesignerAiDeadlineError) return new DesignerAiServiceError("timeout", error.message);
@@ -761,16 +806,19 @@ export async function interpretDesignerAiChat({
     const validateResponse = (response: any) => {
       const resultStartedAt = now();
       try {
-        return validateDesignerAiModelResult(
+        const result = validateDesignerAiModelResult(
           readFunctionCall(response),
           validatedPayload.capabilitySnapshot
         );
+        assertDesignerAiVenueReplyProgress(result, validatedPayload);
+        return result;
       } catch (error) {
         if (error instanceof DesignerAiServiceError && error.kind === "malformed-output") {
           throw new DesignerAiServiceError(
             error.kind,
             error.message,
-            normalizeText(response?._request_id) || null
+            normalizeText(response?._request_id) || null,
+            error.reason
           );
         }
         throw error;

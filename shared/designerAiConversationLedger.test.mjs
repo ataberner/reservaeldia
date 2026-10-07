@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import ledgerRuntime from "./designerAiConversationLedger.js";
+import { projectDesignerAiValues } from "./designerAiActionProjection.cjs";
 
 const {
   DESIGNER_AI_LEDGER_STATUSES,
+  DESIGNER_AI_GIFT_REQUEST_LEAF_IDS,
   DESIGNER_AI_RESOLUTION_RULES,
   buildAutomaticEventName,
   buildDesignerAiGalleryCompletionLeafId,
@@ -11,11 +13,333 @@ const {
   buildDesignerAiNextStep,
   buildDesignerAiLedger,
   captureDesignerAiActionEvidence,
+  isTerminalDesignerAiLedgerStatus,
   mapDesignerAiActionToLeafIds,
   normalizeDesignerAiConversationState,
   prepareDesignerAiConversationEntry,
   reconcileDesignerAiConversationState,
 } = ledgerRuntime;
+
+const giftRequest = (leafId) => ({ leafId, status: "needs_clarification", rule: null });
+const enableGifts = { type: "gifts.set_enabled", arguments: { enabled: true } };
+const giftMethod = (method, value, visible = true) => ({ type: "gifts.set_method", arguments: { method, value, visible } });
+
+function giftRequestSnapshot(values, state = {}, availability = null, documentIdentity = "draft:gift-choice") {
+  const input = fixture();
+  const allowed = availability || Object.fromEntries(Object.keys(input.availability)
+    .map((key) => [key, ["gifts", "cover"].includes(key)]));
+  const currentValues = values || { ...input.values, galleries: [] };
+  return { values: currentValues, availability: allowed, documentIdentity,
+    ledger: buildDesignerAiLedger({ values: currentValues, availability: allowed,
+      conversationState: state, sourceContext: { templateDerived: true, changedKeys: [] } }),
+    conversation: { mode: "guided", namePolicy: { mode: "unknown", lastAutomaticName: "" } } };
+}
+
+function giftRequestTurn(before, previousState, actions, requests = [], options = {}) {
+  const applied = giftRequestSnapshot(projectDesignerAiValues(before, actions), previousState, before.availability, before.documentIdentity);
+  const receipts = actions.map((action) => ({ action, executed: true, effective: true, persisted: true,
+    evidence: captureDesignerAiActionEvidence(action, applied) }));
+  const state = reconcileDesignerAiConversationState({ snapshot: applied, previousState,
+    previousSnapshot: Object.hasOwn(options, "previousSnapshot") ? options.previousSnapshot : before,
+    actionResults: options.receipts ? options.receipts(receipts) : receipts,
+    resolutions: options.resolutions || requests.map(giftRequest) });
+  return { state, applied, snapshot: giftRequestSnapshot(applied.values, state, before.availability, before.documentIdentity) };
+}
+
+const giftStep = (snapshot) => buildDesignerAiConversationBrief(snapshot).nextStep?.kind;
+
+test("gift family requests are available but outside guided flow until activation and an explicit choice persist", () => {
+  const initial = giftRequestSnapshot();
+  for (const id of DESIGNER_AI_GIFT_REQUEST_LEAF_IDS) {
+    assert.equal(initial.ledger.leaves.find((leaf) => leaf.id === id).status, "not_applicable_by_dependency");
+    assert.equal(initial.ledger.guidedFlow.leafIds.includes(id), false);
+  }
+  assert.equal(giftStep(initial), "gifts_choice");
+  const active = giftRequestTurn(initial, {}, [enableGifts]);
+  assert.equal(giftStep(active.snapshot), "gifts_choice", "activation is not a choice between banking and list");
+  const unavailable = giftRequestSnapshot(initial.values, {}, { ...initial.availability, gifts: false });
+  for (const id of DESIGNER_AI_GIFT_REQUEST_LEAF_IDS) {
+    assert.equal(unavailable.ledger.leaves.find((leaf) => leaf.id === id).status, "unavailable");
+  }
+});
+
+test("choosing only banking survives reload without exposing sample fields and one confirmed alias satisfies it", () => {
+  const initial = giftRequestSnapshot();
+  const chosen = giftRequestTurn(initial, {}, [enableGifts], ["gifts.bank_details"]);
+  assert.equal(giftStep(chosen.snapshot), "gift_bank_details");
+  assert.equal(chosen.snapshot.values.gifts.methods.alias.value, initial.values.gifts.methods.alias.value);
+  assert.ok(Object.values(chosen.snapshot.values.gifts.methods).every((method) => method.visible === false));
+  const restored = giftRequestSnapshot(chosen.snapshot.values, JSON.parse(JSON.stringify(chosen.state)));
+  assert.equal(giftStep(restored), "gift_bank_details");
+  const supplied = giftRequestTurn(restored, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")]);
+  assert.equal(giftStep(supplied.snapshot), "cover");
+  assert.equal(supplied.snapshot.ledger.leaves.find((leaf) => leaf.id === "gifts.bank_details").rule, "gift_request_fulfilled");
+  assert.equal(supplied.snapshot.values.gifts.methods.cbu.visible, false);
+});
+
+test("a selected external list asks only for its URL without setting a visibility flag or inventing a URL", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], ["gifts.external_list"]);
+  assert.equal(giftStep(chosen.snapshot), "gift_external_list");
+  assert.equal(chosen.snapshot.values.gifts.methods.giftListLink.visible, false);
+  assert.equal(chosen.snapshot.values.gifts.methods.giftListLink.configured, false);
+  const supplied = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("giftListLink", "https://example.test/list")]);
+  assert.equal(giftStep(supplied.snapshot), "cover");
+});
+
+test("both selected families require both, banking first, including reload between their values", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  assert.equal(giftStep(chosen.snapshot), "gift_bank_details");
+  const bank = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")]);
+  assert.equal(giftStep(bank.snapshot), "gift_external_list");
+  const restored = giftRequestSnapshot(bank.snapshot.values, JSON.parse(JSON.stringify(bank.state)));
+  assert.equal(giftStep(restored), "gift_external_list");
+  const list = giftRequestTurn(restored, bank.state, [giftMethod("giftListLink", "https://example.test/list")]);
+  assert.equal(giftStep(list.snapshot), "cover");
+});
+
+test("a new explicit family set replaces the old choice; unrelated turns keep the current choice", () => {
+  let turn = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], ["gifts.bank_details"]);
+  for (const id of ["gifts.external_list", "gifts.bank_details"]) {
+    turn = giftRequestTurn(turn.snapshot, turn.state, [enableGifts], [id]);
+    assert.deepEqual(turn.state.resolutions.filter((item) => DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.includes(item.leafId))
+      .map((item) => item.leafId), [id]);
+  }
+  const unchanged = reconcileDesignerAiConversationState({ snapshot: turn.snapshot, previousState: turn.state });
+  assert.equal(giftStep(giftRequestSnapshot(turn.snapshot.values, unchanged)), "gift_bank_details");
+});
+
+test("family choice and data in the same persisted batch satisfy the family immediately", () => {
+  const result = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts, giftMethod("alias", "SYNTHETIC.ALIAS")], ["gifts.bank_details"]);
+  assert.equal(giftStep(result.snapshot), "cover");
+});
+
+test("default visibility, hidden banking data and template provenance cannot satisfy a chosen family", () => {
+  const initial = giftRequestSnapshot();
+  initial.values.gifts.methods.alias.visible = true;
+  const chosen = giftRequestTurn(giftRequestSnapshot(initial.values), {}, [enableGifts], ["gifts.bank_details"]);
+  assert.equal(giftStep(chosen.snapshot), "gift_bank_details");
+  const hidden = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.HIDDEN", false)]);
+  assert.equal(giftStep(hidden.snapshot), "gift_bank_details");
+  const untrusted = structuredClone(chosen.state);
+  untrusted.resolutions.find((item) => item.leafId === "gifts.bank_details").provenance = "template_value";
+  assert.equal(giftStep(giftRequestSnapshot(chosen.snapshot.values, untrusted)), "gifts_choice");
+});
+
+for (const failure of ["proposal", "not_effective", "not_persisted", "wrong_document", "partial"]) {
+  test(`a gift family choice cannot be credited from ${failure}`, () => {
+    const actions = [enableGifts, ...(failure === "partial" ? [giftMethod("alias", "SYNTHETIC.ALIAS")] : [])];
+    const result = giftRequestTurn(giftRequestSnapshot(), {}, actions, ["gifts.bank_details"], { receipts: (receipts) => {
+      if (failure === "proposal") return [];
+      if (failure === "not_effective") receipts[0].effective = false;
+      if (failure === "not_persisted") receipts[0].persisted = false;
+      if (failure === "wrong_document") receipts[0].evidence.documentIdentity = "draft:other";
+      if (failure === "partial") Object.assign(receipts[1], { executed: false, effective: false, persisted: false, error: "failed" });
+      return receipts;
+    } });
+    assert.equal(result.state.resolutions.some((item) => item.leafId === "gifts.bank_details"), false);
+    assert.notEqual(giftStep(result.snapshot), "gift_bank_details");
+  });
+}
+
+test("a failed gift write cannot refresh a prior choice, but its verified retry uses the original pre-action snapshot", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const action = giftMethod("alias", "SYNTHETIC.ALIAS");
+  const failed = giftRequestTurn(chosen.snapshot, chosen.state, [action], [], {
+    receipts: (receipts) => receipts.map((receipt) => ({ ...receipt, persisted: false, error: "failed" })),
+  });
+  assert.equal(failed.state.resolutions.find((item) => item.leafId === "gifts.external_list").fingerprint,
+    chosen.state.resolutions.find((item) => item.leafId === "gifts.external_list").fingerprint);
+  const retried = giftRequestTurn(failed.snapshot, failed.state, [action], [], { previousSnapshot: chosen.snapshot });
+  assert.equal(giftStep(retried.snapshot), "gift_external_list");
+});
+
+test("missing context, another document or intervening manual edits cannot refresh a gift request", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  for (const previousSnapshot of [undefined, { ...chosen.snapshot, documentIdentity: "draft:other" }]) {
+    const result = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")], [], { previousSnapshot });
+    assert.equal(result.snapshot.ledger.guidedFlow.leafIds.includes("gifts.external_list"), false);
+  }
+  const manualValues = structuredClone(chosen.snapshot.values);
+  manualValues.gifts.methods.cbu.value = "SYNTHETIC.MANUAL";
+  const manual = giftRequestSnapshot(manualValues, chosen.state);
+  assert.equal(manual.ledger.guidedFlow.leafIds.includes("gifts.bank_details"), false);
+  const later = giftRequestTurn(manual, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")]);
+  assert.equal(later.snapshot.ledger.guidedFlow.leafIds.includes("gifts.external_list"), false);
+});
+
+test("gift request renewal uses the local leaf fingerprint before private URL minimization", () => {
+  const initial = giftRequestSnapshot();
+  initial.values.gifts.methods.giftListLink = {
+    value: "https://example.test/hidden-list", configured: true, contentRevision: "synthetic-url-revision", visible: false,
+  };
+  const chosen = giftRequestTurn(giftRequestSnapshot(initial.values), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const minimizedPreviousSnapshot = structuredClone(chosen.snapshot);
+  minimizedPreviousSnapshot.values.gifts.methods.giftListLink.value = "";
+  const supplied = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")], [], {
+    previousSnapshot: minimizedPreviousSnapshot,
+  });
+  assert.equal(giftStep(supplied.snapshot), "gift_external_list");
+});
+
+test("successive writes to one gift field renew both requests using the final verified receipt", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const first = giftMethod("alias", "SYNTHETIC.FIRST");
+  const last = giftMethod("alias", "SYNTHETIC.FINAL");
+  const intermediate = giftRequestSnapshot(projectDesignerAiValues(chosen.snapshot, [first]), chosen.state);
+  const result = giftRequestTurn(chosen.snapshot, chosen.state, [first, last], [], {
+    receipts: (receipts) => {
+      receipts[0].evidence = captureDesignerAiActionEvidence(first, intermediate);
+      return receipts;
+    },
+  });
+  assert.equal(giftStep(result.snapshot), "gift_external_list");
+  assert.equal(result.snapshot.values.gifts.methods.alias.value, "SYNTHETIC.FINAL");
+});
+
+test("verified deactivation clears both family requests and explicit field questions keep priority", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const specific = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "", true)]);
+  assert.equal(giftStep(specific.snapshot), "gift_method_values");
+  assert.deepEqual(buildDesignerAiConversationBrief(specific.snapshot).nextStep.leafIds, ["gifts.method.alias.value"]);
+  const disabled = giftRequestTurn(chosen.snapshot, chosen.state, [{ type: "gifts.set_enabled", arguments: { enabled: false } }]);
+  assert.equal(disabled.state.resolutions.some((item) => DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.includes(item.leafId)), false);
+  assert.equal(giftStep(disabled.snapshot), "cover");
+});
+
+const deferGiftRequest = (leafId) => ({ leafId, status: "deferred_by_user", rule: null });
+
+for (const [leafId, method, value] of [
+  ["gifts.bank_details", "alias", "SYNTHETIC.ALIAS"],
+  ["gifts.external_list", "giftListLink", "https://example.test/list"],
+]) {
+  test(`deferring ${leafId} preserves the selected family across reentry without repeating the choice`, () => {
+    const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], [leafId]);
+    const deferred = giftRequestTurn(chosen.snapshot, chosen.state, [], [], {
+      resolutions: [deferGiftRequest(leafId)],
+    });
+    const restored = giftRequestSnapshot(deferred.snapshot.values, JSON.parse(JSON.stringify(deferred.state)));
+    assert.equal(giftStep(restored), "cover");
+    assert.ok(restored.ledger.guidedFlow.leafIds.includes(leafId));
+    assert.ok(!restored.ledger.guidedFlow.leafIds.includes("gifts.enabled"));
+    assert.equal(restored.ledger.leaves.find((leaf) => leaf.id === "gifts.enabled").status, "needs_clarification");
+    assert.equal(restored.ledger.leaves.find((leaf) => leaf.id === leafId).status, "deferred_by_user");
+    assert.deepEqual(buildDesignerAiConversationBrief(restored).deferredLeafIds, [leafId]);
+    assert.deepEqual(restored.values.gifts, chosen.snapshot.values.gifts);
+    const supplied = giftRequestTurn(restored, deferred.state, [giftMethod(method, value)]);
+    assert.equal(supplied.snapshot.ledger.leaves.find((leaf) => leaf.id === leafId).rule, "gift_request_fulfilled");
+    assert.equal(giftStep(supplied.snapshot), "cover");
+    const resumed = giftRequestTurn(restored, deferred.state, [enableGifts], [leafId]);
+    assert.equal(resumed.snapshot.ledger.leaves.find((leaf) => leaf.id === leafId).status, "needs_clarification");
+    assert.equal(giftStep(resumed.snapshot), leafId === "gifts.bank_details" ? "gift_bank_details" : "gift_external_list");
+  });
+}
+
+test("deferring both gift families leaves both unresolved and removes only their guided blocking", () => {
+  const initial = giftRequestSnapshot();
+  initial.availability.cover = false;
+  const chosen = giftRequestTurn(initial, {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const deferred = giftRequestTurn(chosen.snapshot, chosen.state, [], [], {
+    resolutions: DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.map(deferGiftRequest),
+  });
+  assert.equal(giftStep(deferred.snapshot), undefined);
+  assert.equal(deferred.snapshot.ledger.guidedFlow.completion.complete, true);
+  assert.deepEqual(buildDesignerAiConversationBrief(deferred.snapshot).deferredLeafIds, DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  for (const leafId of DESIGNER_AI_GIFT_REQUEST_LEAF_IDS) {
+    assert.equal(deferred.snapshot.ledger.leaves.find((leaf) => leaf.id === leafId).status, "deferred_by_user");
+  }
+  const restored = giftRequestSnapshot(deferred.snapshot.values, deferred.state, initial.availability);
+  assert.equal(buildDesignerAiConversationBrief(restored).nextStep, null);
+});
+
+test("a combination can defer just the list after banking is complete and enabled is already terminal", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const bank = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")]);
+  assert.ok(isTerminalDesignerAiLedgerStatus(bank.snapshot.ledger.leaves.find((leaf) => leaf.id === "gifts.enabled").status));
+  const deferred = giftRequestTurn(bank.snapshot, bank.state, [], [], {
+    resolutions: [deferGiftRequest("gifts.external_list")],
+  });
+  assert.equal(giftStep(deferred.snapshot), "cover");
+  assert.deepEqual(buildDesignerAiConversationBrief(deferred.snapshot).deferredLeafIds, ["gifts.external_list"]);
+  assert.equal(deferred.snapshot.values.gifts.methods.alias.value, "SYNTHETIC.ALIAS");
+});
+
+test("a verified other-family write can be combined with deferring the still-pending gift family", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const result = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")], [], {
+    resolutions: [deferGiftRequest("gifts.external_list")],
+  });
+  assert.equal(giftStep(result.snapshot), "cover");
+  assert.deepEqual(buildDesignerAiConversationBrief(result.snapshot).deferredLeafIds, ["gifts.external_list"]);
+  const failed = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")], [], {
+    resolutions: [deferGiftRequest("gifts.external_list")],
+    receipts: (receipts) => receipts.map((receipt) => ({ ...receipt, persisted: false, error: "failed" })),
+  });
+  assert.equal(failed.state.resolutions.find((item) => item.leafId === "gifts.external_list").status, "needs_clarification");
+});
+
+test("deferrals cannot select an unchosen family or renew an incompatible manual edit", () => {
+  const initial = giftRequestSnapshot();
+  const unchosen = giftRequestTurn(initial, {}, [], [], {
+    resolutions: [deferGiftRequest("gifts.bank_details")],
+  });
+  assert.equal(unchosen.state.resolutions.some((entry) => entry.leafId === "gifts.bank_details"), false);
+  assert.equal(giftStep(unchosen.snapshot), "gifts_choice");
+  const chosen = giftRequestTurn(initial, {}, [enableGifts], ["gifts.bank_details"]);
+  const manualValues = structuredClone(chosen.snapshot.values);
+  manualValues.gifts.methods.alias.value = "SYNTHETIC.MANUAL";
+  const manual = giftRequestSnapshot(manualValues, chosen.state);
+  const deferred = giftRequestTurn(manual, chosen.state, [], [], {
+    resolutions: [deferGiftRequest("gifts.bank_details")],
+  });
+  assert.equal(deferred.state.resolutions.find((entry) => entry.leafId === "gifts.bank_details").status, "needs_clarification");
+  assert.equal(deferred.snapshot.ledger.guidedFlow.leafIds.includes("gifts.bank_details"), false);
+});
+
+test("an explicit initial gift choice may defer its data only with verified activation", () => {
+  const initial = giftRequestSnapshot();
+  const choice = [deferGiftRequest("gifts.bank_details")];
+  const chosen = giftRequestTurn(initial, {}, [enableGifts], [], { resolutions: choice });
+  assert.equal(giftStep(chosen.snapshot), "cover");
+  assert.deepEqual(buildDesignerAiConversationBrief(chosen.snapshot).deferredLeafIds, ["gifts.bank_details"]);
+  assert.deepEqual(chosen.snapshot.values.gifts.methods, initial.values.gifts.methods);
+  const restored = giftRequestSnapshot(chosen.snapshot.values, chosen.state);
+  assert.equal(restored.ledger.leaves.find((leaf) => leaf.id === "gifts.bank_details").status, "deferred_by_user");
+  for (const receipts of [() => [], (results) => results.map((result) => ({ ...result, persisted: false }))]) {
+    const failed = giftRequestTurn(initial, {}, [enableGifts], [], { resolutions: choice, receipts });
+    assert.equal(failed.state.resolutions.some((entry) => entry.leafId === "gifts.bank_details"), false);
+  }
+});
+
+test("a new combination may request banking now and the external list later in the same turn", () => {
+  const choices = [giftRequest("gifts.bank_details"), deferGiftRequest("gifts.external_list")];
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], [], { resolutions: choices });
+  assert.equal(giftStep(chosen.snapshot), "gift_bank_details");
+  assert.deepEqual(buildDesignerAiConversationBrief(chosen.snapshot).deferredLeafIds, ["gifts.external_list"]);
+  const bank = giftRequestTurn(chosen.snapshot, chosen.state, [giftMethod("alias", "SYNTHETIC.ALIAS")]);
+  assert.equal(giftStep(bank.snapshot), "cover");
+  assert.deepEqual(buildDesignerAiConversationBrief(bank.snapshot).deferredLeafIds, ["gifts.external_list"]);
+  const withData = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts, giftMethod("alias", "SYNTHETIC.ALIAS")], [], {
+    resolutions: choices,
+  });
+  assert.equal(giftStep(withData.snapshot), "cover");
+  assert.deepEqual(buildDesignerAiConversationBrief(withData.snapshot).deferredLeafIds, ["gifts.external_list"]);
+});
+
+test("verified activation plus deferred choices replaces the complete previous set", () => {
+  const chosen = giftRequestTurn(giftRequestSnapshot(), {}, [enableGifts], DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
+  const changed = giftRequestTurn(chosen.snapshot, chosen.state, [enableGifts], [], {
+    resolutions: [deferGiftRequest("gifts.bank_details")],
+  });
+  assert.deepEqual(changed.state.resolutions.filter((entry) => DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.includes(entry.leafId))
+    .map((entry) => [entry.leafId, entry.status]), [["gifts.bank_details", "deferred_by_user"]]);
+  assert.equal(giftStep(changed.snapshot), "cover");
+  const failed = giftRequestTurn(chosen.snapshot, chosen.state, [enableGifts], [], {
+    resolutions: [deferGiftRequest("gifts.bank_details")],
+    receipts: (receipts) => receipts.map((receipt) => ({ ...receipt, persisted: false, error: "failed" })),
+  });
+  assert.deepEqual(failed.state.resolutions.filter((entry) => DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.includes(entry.leafId))
+    .map((entry) => [entry.leafId, entry.status]), DESIGNER_AI_GIFT_REQUEST_LEAF_IDS.map((id) => [id, "needs_clarification"]));
+});
 
 function fixture(overrides = {}) {
   const availability = {

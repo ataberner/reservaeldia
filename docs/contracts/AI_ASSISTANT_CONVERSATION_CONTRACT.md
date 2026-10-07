@@ -127,6 +127,14 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
   Si el usuario rechaza por completo la sección, se acompaña esa decisión y se
   continúa. Modalidades, visibilidad y completitud pertenecen a
   `GIFTS_SYSTEM_CONTRACT.md`.
+- Después de elegir “datos bancarios”, se piden los datos que quiera mostrar,
+  indicando que un alias alcanza, sin volver a ofrecer la lista externa ni
+  exigir un campo particular. Después de elegir lista externa, se pide sólo
+  el enlace. La elección sin datos sigue pendiente, pero se conserva al
+  reingresar; no equivale a consentimiento para mostrar ejemplos de plantilla.
+  Si posterga el aporte de datos, se respeta la elección y se continúa sin
+  repetir la pregunta ni desactivar la sección. En una combinación puede dejar
+  sólo una de las vías para después, conservando la otra ya configurada.
 - Si el usuario expresa espontáneamente que todavía no definió un dato o que
   quiere completarlo después, debe respetarlo sin insistir ni volver a ofrecer
   la misma alternativa. El dato conserva estado pendiente y la conversación
@@ -138,6 +146,14 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
   sidebar y conversación; no afirma completitud absoluta.
 - Debe aprovechar datos válidos adelantados por el usuario y no obligarlo a
   repetirlos en el orden de las preguntas.
+- Cuando pregunta el nombre del lugar, una respuesta breve como “friendly” o
+  “Salón Los Robles” puede aportar ese nombre sin una frase introductoria ni
+  dirección. Debe interpretarla en el contexto de la fase pendiente, conservar
+  cualquier dirección ya confirmada y no exigir Google Maps para guardarla.
+  Preguntas, postergaciones y otras intenciones no se convierten en nombres.
+  Una interpretación repetida sin progreso debe pasar por la reparación
+  acotada del service y, si falla, ofrecer recuperación explícita en vez de
+  presentar otra pregunta idéntica como si el turno se hubiera procesado.
 - Un alias visible confirmado alcanza para continuar Regalos, sin pedir los
   demás datos bancarios. Una aclaración antigua no debe devolver la conversación
   desde Galería a Regalos cuando los datos necesarios ya tienen evidencia.

@@ -1,6 +1,7 @@
 import {
   collection,
   getDocs,
+  getDocsFromServer,
   limit as firestoreLimit,
   orderBy,
   query,
@@ -231,19 +232,21 @@ export async function loadUserPublicationSourceRecords({
   enrichHistoryRecord,
   loadActiveSnapshot,
   loadHistorySnapshot,
+  source,
 } = {}) {
   const safeUserUid = typeof userUid === "string" ? userUid.trim() : "";
   if (!safeUserUid) return [];
 
   const safeLimit = normalizePositiveLimit(limit);
+  const readSnapshot = source === "server" ? getDocsFromServer : getDocs;
   const activeLoader =
     typeof loadActiveSnapshot === "function"
       ? loadActiveSnapshot
-      : () => getDocs(createActiveQuery(safeUserUid, safeLimit));
+      : () => readSnapshot(createActiveQuery(safeUserUid, safeLimit));
   const historyLoader =
     typeof loadHistorySnapshot === "function"
       ? loadHistorySnapshot
-      : () => getDocs(createHistoryQuery(safeUserUid, safeLimit));
+      : () => readSnapshot(createHistoryQuery(safeUserUid, safeLimit));
 
   const [activeResult, historyResult] = await Promise.allSettled([
     activeLoader(),

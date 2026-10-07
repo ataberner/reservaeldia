@@ -5,6 +5,21 @@ import {
 } from "../../lib/storage/browserStorageRecovery.js";
 import { classifyBrowserStorageError } from "../../lib/storage/browserStorageErrors.js";
 
+// Older builds persisted an Auth transport failure as an editor issue. It is
+// now owned by automatic startup recovery; unrelated pending reports survive.
+export function isLegacyDashboardAuthNetworkIssue(report) {
+  if (report?.source !== "dashboard.startup" ||
+      !String(report?.message || "").includes("(auth/network-request-failed)")) {
+    return false;
+  }
+  let detail = report.detail;
+  if (typeof detail === "string") {
+    try { detail = JSON.parse(detail); } catch { return false; }
+  }
+  return detail?.module === "useDashboardAuthGate" &&
+    detail?.operation === "profile-status-check";
+}
+
 function normalizeText(value, maxLen = 180) {
   const text = String(value || "").trim();
   return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text;

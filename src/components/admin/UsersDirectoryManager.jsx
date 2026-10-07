@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
+import { formatPublicationVisitMetric } from "@/domain/publications/myInvitationsView";
 
 const USERS_PAGE_SIZE = 100;
 
@@ -218,7 +219,7 @@ function DraftDetailList({ ownerUid, drafts }) {
   );
 }
 
-function PublicationDetailList({ publications }) {
+export function PublicationDetailList({ publications }) {
   if (!Array.isArray(publications) || publications.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
@@ -232,11 +233,12 @@ function PublicationDetailList({ publications }) {
       <div className="divide-y divide-slate-200">
         {publications.map((publication) => {
           const publicUrl = buildPublicInvitationUrl(publication.publicSlug);
+          const visitMetrics = publication.visitMetrics || { status: "error" };
 
           return (
             <div
               key={`${publication.publicSlug}-${publication.status}`}
-              className="flex flex-col gap-3 bg-white px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+              className="min-w-0 space-y-3 bg-white px-4 py-3"
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -246,7 +248,7 @@ function PublicationDetailList({ publications }) {
                   <PublicationStatusBadge status={publication.status} />
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Slug publico: {publication.publicSlug}
+                  Slug publico: <span className="break-all">{publication.publicSlug}</span>
                 </p>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span>Publicada: {formatDateTime(publication.publishedAt)}</span>
@@ -265,6 +267,31 @@ function PublicationDetailList({ publications }) {
                     </a>
                   </p>
                 ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {publication.hasEnabledRsvp === true && (
+                  <>
+                    <MetricPill
+                      label="Confirmaron"
+                      value={publication.responseMetrics?.confirmedResponses ?? "—"}
+                      tone="emerald"
+                    />
+                    <MetricPill
+                      label="No asistirán"
+                      value={publication.responseMetrics?.declinedResponses ?? "—"}
+                      tone="rose"
+                    />
+                  </>
+                )}
+                <MetricPill
+                  label="Visitas únicas"
+                  value={formatPublicationVisitMetric(visitMetrics, "uniqueVisits")}
+                  tone="blue"
+                />
+                <MetricPill
+                  label="Visitas totales"
+                  value={formatPublicationVisitMetric(visitMetrics, "totalVisits")}
+                />
               </div>
             </div>
           );

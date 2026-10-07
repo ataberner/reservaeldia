@@ -154,12 +154,41 @@ dominio Gifts y al contrato de interactividad de preview/publicación.
 
 No existe ni se necesita una action de “modalidad”: lista externa frente a datos
 bancarios es una decisión del recorrido que se materializa con
-`gifts.set_enabled` y uno o más `gifts.set_method`. La misma action permite
+`gifts.set_enabled` y, cuando hay datos, uno o más `gifts.set_method`. La misma action permite
 ocultar un valor sin borrarlo. `gifts.set_intro_text` y
 `gifts.set_button_text` permanecen disponibles ante pedidos explícitos, pero no
 forman parte de la completitud guiada. La semántica de qué campos quedan visibles
 y cuándo el bloque termina pertenece exclusivamente a
 `GIFTS_SYSTEM_CONTRACT.md`.
+
+La elección sin datos se representa exclusivamente en las resoluciones
+existentes: `gifts.bank_details` y/o `gifts.external_list`, con
+`status:needs_clarification` y `rule:null`, o `deferred_by_user` si el usuario
+elige la vía y decide aportar sus datos más adelante. Son solicitudes conversacionales de
+datos, sin action nueva ni enum funcional de modalidad. El schema y el validador
+exigen Gifts disponible y `gifts.set_enabled(true)` en ese lote; la aplicación
+registra la elección sólo tras evidencia efectiva y persistida de esa activación.
+No acepta reglas terminales, controles ni valores financieros inventados para
+esas hojas. Una elección explícita reemplaza el conjunto anterior; la omisión
+conserva el conjunto vigente y ambas hojas expresan una combinación explícita.
+
+Una solicitud de datos ya elegida, vigente y pendiente puede recibir
+`deferred_by_user` con `rule:null`, sin exigir otra activación. No permite
+postergar sin activación una vía que nunca se eligió ni una solicitud ya satisfecha. La hoja
+conserva la elección y deja de bloquear el recorrido, sin cambiar valores ni
+visibilidad. Mientras existan solicitudes vigentes pendientes o postergadas,
+ellas representan el pendiente guiado en lugar de `gifts.enabled`; esto no
+altera el estado de esa hoja en el ledger global ni declara listo el CTA.
+
+Su fingerprint corresponde al estado funcional de Gifts. Reingreso conserva
+una solicitud vigente; una edición manual incompatible la invalida. Sólo
+receipts Gifts verificados permiten renovar el fingerprint de una solicitud que
+era vigente en el snapshot previo a ejecutar el lote. Desactivar Regalos elimina
+las solicitudes. Un dato bancario completo, visible y confirmado satisface la
+solicitud bancaria; un enlace con esas garantías satisface la externa. En una
+combinación, completar una no resuelve la otra. Defaults, datos ocultos y cambios
+sin persistencia no aportan evidencia. La pregunta deriva de esas solicitudes
+y del ledger releído, nunca del texto libre del modelo.
 
 ## 5. Flujo guiado funcional principal
 
@@ -730,9 +759,11 @@ La tool ofrecida al proveedor excluye `resolved_from_user`: ese estado lo deriva
 el reconciliador existente de actions ejecutadas, efectivas y persistidas, con
 evidencia vigente. El validador conserva compatibilidad con respuestas anteriores
 respaldadas por actions y sigue rechazando afirmaciones sin evidencia.
-`deferred_by_user` solo se ofrece para hojas guiadas pendientes elegibles según
-el mismo predicado del validador; datos no mencionados conservan su estado sin
-emitir resolutions. La postergación sigue requiriendo una decisión explícita.
+`deferred_by_user` se ofrece para hojas guiadas pendientes elegibles según
+el mismo predicado del validador. También se ofrece para solicitudes nuevas de
+Regalos, sujetas a la activación válida del mismo lote definida en la sección 4.4.
+Datos no mencionados conservan su estado sin emitir resolutions. La postergación
+sigue requiriendo una decisión explícita.
 El schema aclara que `ceremony`/`event.ceremony.*` identifica cualquier evento
 único, incluso una fiesta; `party` es la segunda fase de `ceremony_party`.
 El único repair existente recibe índices, tipos, fases, hojas y reglas conocidas
@@ -758,7 +789,7 @@ su ISO/validez calculados (`numericDateInterpretation`), sin inferir destino ni
 reemplazar la acción, validación o evidencia de persistencia. Años cortos: 2000–2099.
 
 La arquitectura completa, incluido el límite client-side de tools, está en
-`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.3.0`; el ledger
+`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.4.0`; el ledger
 usa versión `4`, que agrega postergación no terminal en las mismas resolutions.
 Un cliente incompatible conserva el fallback de recarga y no invoca al modelo.
 No hay backfill: los estados previos conservan su evidencia y su marca monotónica

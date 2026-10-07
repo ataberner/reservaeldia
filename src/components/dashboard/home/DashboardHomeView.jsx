@@ -35,30 +35,36 @@ export default function DashboardHomeView({
   onUseTemplate,
   onOpenPublicationResponses,
   onReadyChange,
+  onRecoveryStateChange,
+  startupRecoveryGeneration = 0,
 }) {
   const userUid = usuario?.uid || "";
   const {
     drafts,
     loading: loadingDrafts,
     error: draftsError,
+    recoveryState: draftsRecoveryState,
     removeDraft,
-  } = useDashboardDrafts({ userUid });
+  } = useDashboardDrafts({ userUid, startupRecoveryGeneration });
   const {
     publications,
     loading: loadingPublications,
     error: publicationsError,
+    recoveryState: publicationsRecoveryState,
     applyPublicationTransition,
-  } = useDashboardPublications({ userUid });
+  } = useDashboardPublications({ userUid, startupRecoveryGeneration });
   const {
     templates,
     loading: loadingTemplates,
     error: templatesError,
-  } = useDashboardHomeTemplates({ tipo: tipoInvitacion });
+    recoveryState: templatesRecoveryState,
+  } = useDashboardHomeTemplates({ tipo: tipoInvitacion, startupRecoveryGeneration });
   const {
     config,
     loading: loadingConfig,
     error: configError,
-  } = useDashboardHomeConfig();
+    recoveryState: configRecoveryState,
+  } = useDashboardHomeConfig(startupRecoveryGeneration);
   const {
     sections,
     heroTargetId,
@@ -69,6 +75,12 @@ export default function DashboardHomeView({
     templates,
     config,
   });
+
+  useEffect(() => {
+    const states = [draftsRecoveryState, publicationsRecoveryState, templatesRecoveryState, configRecoveryState];
+    onRecoveryStateChange?.(states.includes("waiting") ? "waiting" :
+      states.includes("retrying") ? "retrying" : "idle");
+  }, [draftsRecoveryState, publicationsRecoveryState, templatesRecoveryState, configRecoveryState, onRecoveryStateChange]);
 
   useEffect(() => {
     const ready = isDashboardHomeContentReady({

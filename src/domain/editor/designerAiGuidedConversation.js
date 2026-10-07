@@ -79,6 +79,8 @@ export function buildDesignerAiGuidedQuestion(snapshot, { clarification } = {}) 
     case "dress_code_enabled": return "¿Quieren incluir Dress Code?";
     case "dress_code_value": return "¿Qué Dress Code quieren indicar?";
     case "rsvp_enabled": return "¿Quieren que los invitados confirmen asistencia desde la invitación?";
+    case "gift_bank_details": return "Pasame los datos bancarios que quieran mostrar. Con un alias alcanza.";
+    case "gift_external_list": return "Pasame el enlace de la lista de regalos.";
     case "gift_method_values": {
       const labels = { alias: "el alias", cbu: "el CBU o CVU", cuit: "el CUIT", holder: "el titular", bank: "el banco o billetera", giftListLink: "el enlace de la lista" };
       return `Pasame ${step.leafIds.map((id) => labels[id.split(".")[2]]).join(" y ")} que quieran mostrar.`;

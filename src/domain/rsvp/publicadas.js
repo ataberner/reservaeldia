@@ -1,4 +1,7 @@
 import { normalizeRsvpConfig } from "./config.js";
+import responseMetrics from "../../../shared/rsvpResponseMetrics.cjs";
+
+const { getLegacyAttendance, resolveRsvpResponseAttendance } = responseMetrics;
 
 const FALLBACK_QUESTION_MAP = Object.freeze({
   full_name: { id: "full_name", label: "Invitado", type: "short_text" },
@@ -41,14 +44,6 @@ function sanitizeText(value) {
   return String(value).trim();
 }
 
-function normalizeAttendanceValue(value) {
-  const raw = sanitizeText(value).toLowerCase();
-  if (!raw) return "unknown";
-  if (["yes", "si", "sí", "true", "1"].includes(raw)) return "yes";
-  if (["no", "false", "0"].includes(raw)) return "no";
-  return "unknown";
-}
-
 function normalizeBoolean(value) {
   if (typeof value === "boolean") return value;
   const raw = sanitizeText(value).toLowerCase();
@@ -70,12 +65,6 @@ export function toDateFromTimestamp(value) {
   if (typeof value === "number") return new Date(value);
   if (typeof value?.seconds === "number") return new Date(value.seconds * 1000);
   return null;
-}
-
-function getLegacyAttendance(record = {}) {
-  if (typeof record.confirma === "boolean") return record.confirma ? "yes" : "no";
-  if (typeof record.confirmado === "boolean") return record.confirmado ? "yes" : "no";
-  return normalizeAttendanceValue(record.asistencia);
 }
 
 function buildLegacyAnswers(record = {}) {
@@ -123,10 +112,7 @@ function normalizeMenuMetricId(value) {
 
 function computeMetrics(record, answers) {
   const metricsRaw = record?.metrics && typeof record.metrics === "object" ? record.metrics : {};
-  const attendance =
-    normalizeAttendanceValue(metricsRaw.attendance) !== "unknown"
-      ? normalizeAttendanceValue(metricsRaw.attendance)
-      : normalizeAttendanceValue(answers.attendance || getLegacyAttendance(record));
+  const attendance = resolveRsvpResponseAttendance(record);
 
   const partySize = normalizeNumber(answers.party_size);
   const confirmedGuestsRaw = normalizeNumber(metricsRaw.confirmedGuests);

@@ -140,9 +140,65 @@ test("phase normalization does not generalize to RSVP, Gifts, Dress Code or Gall
 });
 
 test("the versioned allowlist keeps model and trusted-control actions disjoint", () => {
-  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.3.0");
+  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.4.0");
   assert.equal(new Set([...DESIGNER_AI_MODEL_ACTION_TYPES, ...DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES]).size,
     DESIGNER_AI_MODEL_ACTION_TYPES.length + DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES.length);
+});
+
+test("gift choice resolutions require explicit activation and cannot claim completed data", () => {
+  const ids = ["gifts.bank_details", "gifts.external_list"];
+  const current = sanitizeCapabilitySnapshot({ ...snapshot, ledger: { leaves: ids.map(id => ({ id, status: "not_applicable_by_dependency", provenance: "unknown", fingerprint: id })) } });
+  const actions = [{ type: "gifts.set_enabled", arguments: { enabled: true } }];
+  const resolutions = ids.map(leafId => ({ leafId, status: "needs_clarification", rule: null }));
+  assert.equal(validateDesignerAiResolutionUpdates(resolutions, current, { actions }).ok, true);
+  for (const invalidActions of [[], [{ ...actions[0], arguments: { enabled: false } }],
+    [...actions, { ...actions[0], arguments: { enabled: false } }],
+    [{ ...actions[0], arguments: { enabled: true, extra: true } }]]) {
+    assert.equal(validateDesignerAiResolutionUpdates(resolutions, current, { actions: invalidActions }).ok, false);
+  }
+  for (const status of ["resolved_from_user", "resolved_from_existing_user_data", "resolved_by_rule", "requires_control"]) {
+    assert.equal(validateDesignerAiResolutionUpdates(resolutions.map(r => ({ ...r, status, rule: status === "resolved_by_rule" ? "keep_existing" : null })), current, { actions }).ok, false, status);
+  }
+  assert.equal(validateDesignerAiResolutionUpdates([{ ...resolutions[0], rule: "keep_existing" }], current, { actions }).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates(resolutions, { ...current, availability: { ...current.availability, gifts: false } }, { actions }).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates(resolutions, { ...current, ledger: { leaves: [] } }, { actions }).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates([{ ...resolutions[0], leafId: "gifts.invented_method" }], current, { actions }).ok, false);
+});
+
+test("gift choice request schema offers pending or deferred choices and no completed rule", () => {
+  const ids = ["gifts.bank_details", "gifts.external_list"];
+  const current = sanitizeCapabilitySnapshot({ ...snapshot, ledger: { leaves: ids.map(id => ({ id, status: "pending", fingerprint: id })) } });
+  const schema = contractRuntime.buildDesignerAiTool(current).parameters;
+  for (const id of ids) {
+    const branches = schema.properties.resolutions.items.anyOf.filter(branch => schema.$defs[branch.properties.leafId.$ref.split("/").at(-1)].enum.includes(id));
+    assert.equal(branches.length, 1);
+    assert.deepEqual(branches[0].properties.status.enum, ["needs_clarification", "deferred_by_user"]);
+    assert.deepEqual(branches[0].properties.rule, { type: "null" });
+  }
+  const unavailable = contractRuntime.buildDesignerAiTool({ ...current, availability: { gifts: false } }).parameters;
+  assert.equal(unavailable.properties.resolutions.maxItems, 0);
+});
+
+test("a gift route can be deferred with prior selection or activation, while another route receives data", () => {
+  const ids = ["gifts.bank_details", "gifts.external_list"];
+  const current = sanitizeCapabilitySnapshot({ ...snapshot, values: { gifts: { enabled: true } },
+    ledger: { leaves: ids.map(id => ({ id, status: "needs_clarification", provenance: "user_current_session", rule: null, fingerprint: id })), guidedFlow: { leafIds: ids } } });
+  const resolution = { leafId: "gifts.external_list", status: "deferred_by_user", rule: null };
+  const alias = { type: "gifts.set_method", arguments: { method: "alias", value: "SYNTHETIC.ALIAS", visible: true } };
+  assert.equal(validateDesignerAiResolutionUpdates([resolution], current).ok, true);
+  assert.equal(validateDesignerAiResolutionUpdates([resolution], current, { actions: [alias] }).ok, true);
+  assert.equal(validateDesignerAiResolutionUpdates([{ ...resolution, leafId: "gifts.bank_details" }], current, { actions: [alias] }).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates([resolution], current, { actions: [{ type: "gifts.set_enabled", arguments: { enabled: false } }] }).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates([resolution, resolution], current).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates([resolution, { ...resolution, status: "needs_clarification" }], current, { actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } }] }).ok, false);
+  for (const override of [{ status: "pending" }, { status: "not_applicable_by_dependency" }, { provenance: "template_value" }, { fingerprint: "" }, { rule: "keep_existing" }]) {
+    const invalid = { ...current, ledger: { ...current.ledger, leaves: current.ledger.leaves.map(leaf => ({ ...leaf, ...override })) } };
+    assert.equal(validateDesignerAiResolutionUpdates([resolution], invalid).ok, false, JSON.stringify(override));
+  }
+  assert.equal(validateDesignerAiResolutionUpdates([resolution], { ...current, values: { ...current.values, gifts: { enabled: false } } }).ok, false);
+  const initial = { ...current, ledger: { leaves: current.ledger.leaves.map(leaf => ({ ...leaf, status: "not_applicable_by_dependency", provenance: "unknown" })), guidedFlow: { leafIds: [] } } };
+  assert.equal(validateDesignerAiResolutionUpdates([resolution], initial).ok, false);
+  assert.equal(validateDesignerAiResolutionUpdates([resolution], initial, { actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } }] }).ok, true);
 });
 
 test("calendar validation rejects impossible dates, including non-leap February", () => {

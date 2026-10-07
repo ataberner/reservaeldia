@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, getDocsFromServer, query, where } from "firebase/firestore";
 import { db } from "@/firebase";
 import { normalizeInvitationType } from "@/domain/invitationTypes";
 import {
@@ -24,7 +24,7 @@ function isTemplatePubliclyVisible(template) {
   );
 }
 
-export async function listTemplates({ tipo } = {}) {
+export async function listTemplates({ tipo, source } = {}) {
   const normalizedType = normalizeInvitationType(tipo);
   const templatesQuery = query(
     collection(db, TEMPLATE_CATALOG_COLLECTION),
@@ -32,7 +32,7 @@ export async function listTemplates({ tipo } = {}) {
     where("estado", "==", "active"),
     where("estadoEditorial", "==", "publicada")
   );
-  const snapshot = await getDocs(templatesQuery);
+  const snapshot = await (source === "server" ? getDocsFromServer : getDocs)(templatesQuery);
 
   const items = snapshot.docs
     .map((docSnapshot) => {

@@ -212,6 +212,19 @@ Finalization preserves the last available aggregate in
 Absence of `visitSummary` means that visit metrics were not available for that
 historical snapshot; it is not equivalent to zero.
 
+The superadmin-only `getUserDirectoryDetail` callable also projects invitation
+statistics for the selected owner's publications. Each publication includes
+`hasEnabledRsvp`, `responseMetrics` (`confirmedResponses`, `declinedResponses`)
+and `visitMetrics` (`status`, `totalVisits`, `uniqueVisits`). RSVP counts represent
+affirmative/negative forms, not party size, and are omitted (`null`) when RSVP is
+disabled or its read fails. Active/paused records use RSVP responses and the same
+visit aggregations as the owner dashboard. Expired/history records use only
+`rsvpSummary` and `visitSummary`; missing historical visits return `unavailable`,
+failed active reads return `error`, and neither is represented as zero. The
+callable returns aggregates only, preserves its superadmin guard and owner-scoped
+queries, and does not grant client access to another owner's raw collections.
+Attendance interpretation is shared through `shared/rsvpResponseMetrics.cjs`.
+
 Relationship summary:
 
 - `borradores/{slug}` is the canonical editable source for draft invitations; template editor sessions use template editor documents and must be routed through `editorSessionPersistence`.
@@ -950,6 +963,17 @@ for `media.gallery.{galleryId}.guided_completion`. It does not add a field to th
 `tipo: "galeria"` object. A legacy draft without that resolution leaves the
 Gallery pending in the guided flow regardless of how its `cells[]` differ from a
 template; existing Gallery content remains untouched.
+
+Gifts choices without values use existing `designerAiConversation.resolutions`
+records for `gifts.bank_details` and `gifts.external_list`, with
+`needs_clarification` (or `deferred_by_user` for an explicitly postponed choice),
+`rule:null` and a fingerprint of functional Gifts state.
+They record requested information, not visibility or financial values. No new
+property or exclusive modality is added to the canonical `gifts` render state.
+Reconciliation requires verified activation and retains compatible choices on
+reentry; see the Designer AI capability contract for invalidation and receipt
+requirements. Old normalizers preserve these resolution records; protocol 2.4
+requires clients to reload before using the extended guided flow.
 
 `designerAiConversation.usage.hasStarted` es la señal durable y exclusiva para
 distinguir primer ingreso de reingreso al tab en ese draft. Un documento legacy

@@ -1,5 +1,9 @@
 import { normalizeMusicConfig, resolveMusicResource } from "./music/config";
 import { saveDraftWithMusicHandler } from "./music/draftMusicWrite";
+import {
+  readUserDirectoryPublicationMetrics,
+  type UserDirectoryPublicationMetrics,
+} from "./users/publicationMetrics";
 import { FieldValue } from "firebase-admin/firestore";
 import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
@@ -320,7 +324,7 @@ type UserDirectoryPublicationDetail = {
   status: UserDirectoryPublicationStatus;
   publishedAt: string | null;
   expiresAt: string | null;
-};
+} & UserDirectoryPublicationMetrics;
 
 type UserDirectoryItem = {
   uid: string;
@@ -989,7 +993,8 @@ function resolveUserDirectoryPublicationStatus(
 function buildUserDirectoryPublicationDetail(
   docId: string,
   data: Record<string, unknown>,
-  status: UserDirectoryPublicationStatus
+  status: UserDirectoryPublicationStatus,
+  publicationMetrics: UserDirectoryPublicationMetrics
 ): UserDirectoryPublicationDetail {
   const dates = resolveUserDirectoryPublicationDates(data);
 
@@ -999,6 +1004,7 @@ function buildUserDirectoryPublicationDetail(
     status,
     publishedAt: dates.publishedAt,
     expiresAt: dates.expiresAt,
+    ...publicationMetrics,
   };
 }
 
@@ -1123,8 +1129,29 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
 
   metrics.drafts = drafts.length;
 
-  const publications: UserDirectoryPublicationDetail[] = [];
+  const publicationReads: Promise<UserDirectoryPublicationDetail>[] = [];
   const expiredKeys = new Set<string>();
+  const addPublication = (
+    docSnap: FirebaseFirestore.QueryDocumentSnapshot,
+    data: Record<string, unknown>,
+    status: UserDirectoryPublicationStatus
+  ) => {
+    publicationReads.push(
+      readUserDirectoryPublicationMetrics({
+        data,
+        historical: status === "expired",
+        readResponses: async () => {
+          const snapshot = await docSnap.ref.collection("rsvps")
+            .select("version", "answers.attendance", "metrics.attendance", "confirma", "confirmado", "asistencia")
+            .get();
+          return snapshot.docs.map((response) => response.data());
+        },
+        readVisits: () => readPublicationVisitCounts(docSnap.ref),
+      }).then((publicationMetrics) =>
+        buildUserDirectoryPublicationDetail(docSnap.id, data, status, publicationMetrics)
+      )
+    );
+  };
 
   activePublicationSnapshot.docs.forEach((docSnap) => {
     const data = (docSnap.data() || {}) as Record<string, unknown>;
@@ -1133,13 +1160,13 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
 
     if (status === "active") {
       metrics.publishedActive += 1;
-      publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, status));
+      addPublication(docSnap, data, status);
       return;
     }
 
     if (status === "paused") {
       metrics.publishedPaused += 1;
-      publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, status));
+      addPublication(docSnap, data, status);
       return;
     }
 
@@ -1147,7 +1174,7 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
     if (expiredKeys.has(publicationKey)) return;
     expiredKeys.add(publicationKey);
     metrics.publishedExpired += 1;
-    publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, "expired"));
+    addPublication(docSnap, data, "expired");
   });
 
   historyPublicationSnapshot.docs.forEach((docSnap) => {
@@ -1156,8 +1183,10 @@ async function getUserDirectoryDetailData(uid: string): Promise<{
     if (expiredKeys.has(publicationKey)) return;
     expiredKeys.add(publicationKey);
     metrics.publishedExpired += 1;
-    publications.push(buildUserDirectoryPublicationDetail(docSnap.id, data, "expired"));
+    addPublication(docSnap, data, "expired");
   });
+
+  const publications = await Promise.all(publicationReads);
 
   const analyticsUserData = analyticsUserSnap.exists
     ? ((analyticsUserSnap.data() || {}) as Record<string, unknown>)

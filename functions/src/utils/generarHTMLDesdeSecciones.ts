@@ -621,6 +621,12 @@ export function generarHTMLDesdeSecciones(
   }
 
   function tickOneLegacy(root, parts){
+    // Newly generated v1 markup names units explicitly; old published HTML
+    // keeps its positional four-value adapter.
+    if (root.querySelector("[data-unit]")) {
+      tickDeclaredUnits(root, parts);
+      return;
+    }
     const vals = root.querySelectorAll(".cd-val");
     if (!vals || vals.length < 4) return;
     vals[0].textContent = String(parts.days).padStart(2, "0");
@@ -629,7 +635,7 @@ export function generarHTMLDesdeSecciones(
     vals[3].textContent = pad(parts.seconds);
   }
 
-  function tickOneV2(root, parts){
+  function tickDeclaredUnits(root, parts){
     var units = normalizeUnits(root);
     var tickAnim = root.getAttribute("data-tick-anim") || "none";
     var unitNodes = root.querySelectorAll("[data-unit]");
@@ -669,7 +675,7 @@ export function generarHTMLDesdeSecciones(
         : { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
     if (resolveCountdownContract(root) === "v2") {
-      tickOneV2(root, parts);
+      tickDeclaredUnits(root, parts);
       return;
     }
     tickOneLegacy(root, parts);

@@ -280,7 +280,71 @@ test("transformer visual mode adds the lateral width anchor for one selected tex
   assert.equal(mode.borderEnabled, true);
 });
 
-test("transformer visual mode keeps non-text and multi-selection anchors unchanged", () => {
+test("transformer visual mode gives one map only the bottom-right resize anchor", () => {
+  const mode = resolveTransformerVisualMode({
+    selectedIds: ["map-1"],
+    selectedObjects: [{ id: "map-1", tipo: "mapa-google" }],
+  });
+
+  assert.equal(mode.renderMode, "transformer");
+  assert.equal(mode.shouldUseGenericTransformer, true);
+  assert.deepEqual(mode.enabledAnchors, ["bottom-right"]);
+  assert.equal(mode.rotateEnabled, true);
+  assert.equal(mode.borderEnabled, true);
+});
+
+test("the map corner anchor respects existing interaction locks and drag ownership", () => {
+  const selection = {
+    selectedIds: ["map-1"],
+    selectedObjects: [{ id: "map-1", tipo: "mapa-google" }],
+  };
+  for (const suppressedState of [
+    { interactionLocked: true },
+    { shouldUseLightweightRotateOverlay: true },
+    { effectiveDragging: true },
+    { predragVisualSelectionActive: true },
+    { dragSelectionOverlayVisible: true },
+    { pendingDragSelectionId: "map-1", pendingDragSelectionPhase: "predrag" },
+  ]) {
+    const mode = resolveTransformerVisualMode({ ...selection, ...suppressedState });
+    assert.deepEqual(mode.enabledAnchors, [], JSON.stringify(suppressedState));
+  }
+  const inlineMode = resolveTransformerVisualMode({
+    ...selection, hasActiveInlineEditingSession: true,
+  });
+  assert.equal(inlineMode.renderMode, "none");
+});
+
+test("the map corner anchor remains available during its own active resize", () => {
+  const mode = resolveTransformerVisualMode({
+    selectedIds: ["map-1"],
+    selectedObjects: [{ id: "map-1", tipo: "mapa-google" }],
+    canvasInteractionActive: true,
+    runtimeResizeActive: true,
+    isResizeGestureActive: true,
+    isTransformingResize: true,
+    dragSelectionOverlayVisible: true,
+  });
+
+  assert.equal(mode.renderMode, "transformer");
+  assert.equal(mode.isAttachSuppressed, false);
+  assert.deepEqual(mode.enabledAnchors, ["bottom-right"]);
+});
+
+test("mixed and multiple-map selections retain only the bottom-right resize anchor", () => {
+  for (const otherType of ["mapa-google", "imagen", "texto"]) {
+    const mode = resolveTransformerVisualMode({
+      selectedIds: ["map-1", "obj-2"],
+      selectedObjects: [
+        { id: "map-1", tipo: "mapa-google" },
+        { id: "obj-2", tipo: otherType },
+      ],
+    });
+    assert.deepEqual(mode.enabledAnchors, ["bottom-right"], otherType);
+  }
+});
+
+test("transformer visual mode keeps image and text multi-selection anchors unchanged", () => {
   const imageMode = resolveTransformerVisualMode({
     selectedIds: ["image-1"],
     selectedObjects: [{ id: "image-1", tipo: "imagen" }],

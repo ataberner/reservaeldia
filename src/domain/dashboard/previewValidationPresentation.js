@@ -4,6 +4,12 @@ const PENDING_NOTICE_MESSAGE = "Revisando detalles antes de publicar...";
 const FALLBACK_WARNING_NOTICE = "Hay algo para revisar antes de publicar.";
 const FALLBACK_BLOCKING_NOTICE =
   "Hay algo pendiente que impide publicar por ahora.";
+// These supported formats remain backend diagnostics, without requiring a user action.
+const COMPATIBILITY_ONLY_WARNING_CODES = new Set([
+  "legacy-countdown-schema-v1-frozen",
+  "legacy-icono-svg-frozen",
+  "countdown-target-compat-alias",
+]);
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -40,10 +46,10 @@ function mapValidationIssueText(code, severity) {
       return "La posicion de un elemento puede cambiar un poco al publicar.";
     case "fullbleed-editor-drift":
       return "Esta parte puede verse un poco distinta en la invitacion publicada.";
-    case "legacy-countdown-schema-v1-frozen":
-    case "legacy-icono-svg-frozen":
-    case "countdown-target-compat-alias":
-      return "Este elemento usa una configuracion anterior. Sigue funcionando, pero conviene revisarla.";
+    case "countdown-target-missing":
+      return "Configura la fecha de la cuenta regresiva antes de publicar.";
+    case "countdown-target-invalid":
+      return "Revisa la fecha de la cuenta regresiva: no es una fecha valida.";
     case "image-asset-unresolved":
     case "icon-asset-unresolved":
     case "gallery-media-unresolved":
@@ -253,6 +259,10 @@ export function buildPreviewPublishNoticePresentation({
   });
 
   warnings.forEach((issue) => {
+    if (COMPATIBILITY_ONLY_WARNING_CODES.has(normalizeText(issue?.code).toLowerCase())) {
+      return;
+    }
+
     notices.push({
       severity: "warning",
       text: mapValidationIssueText(issue?.code, "warning"),

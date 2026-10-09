@@ -143,6 +143,7 @@ import {
 } from "@/domain/functionalCtaButtons";
 import { isCountdownVisible } from "@/domain/eventDetails/countdownEventDetails";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
+import { resolveGoogleMapDimensions } from "@/domain/eventDetails/googleMapGeometry";
 import {
   updateBackgroundDecorationTransform,
   updateSectionEdgeDecorationOffset,
@@ -774,6 +775,13 @@ function buildFinalMultiTransformPatch({
         batchPatch.width,
         batchPatch.height
       ),
+    };
+  } else if (objOriginal.tipo === "mapa-google") {
+    finalPatch = {
+      ...finalPatch,
+      ...resolveGoogleMapDimensions({ ...objOriginal, ...batchPatch }),
+      scaleX: 1,
+      scaleY: 1,
     };
   } else if (objOriginal.tipo === "forma" && objOriginal.figura === "circle") {
     finalPatch = {
@@ -11951,7 +11959,7 @@ export default function CanvasStageContent({
                             window._resizeData = { isResizing: false };
 
                             const batchById = new Map();
-                            let hasImage = false;
+                            let needsSynchronousCommit = false;
 
                             newAttrs.batch.forEach((entry) => {
                               const id = entry?.id;
@@ -11961,8 +11969,8 @@ export default function CanvasStageContent({
                               if (!objOriginal) return;
                               if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
 
-                              if (objOriginal.tipo === "imagen") {
-                                hasImage = true;
+                              if (objOriginal.tipo === "imagen" || objOriginal.tipo === "mapa-google") {
+                                needsSynchronousCommit = true;
                               }
 
                               const finalPatch = buildFinalMultiTransformPatch({
@@ -11997,7 +12005,7 @@ export default function CanvasStageContent({
                               });
                             };
 
-                            if (hasImage && typeof flushSync === "function") {
+                            if (needsSynchronousCommit && typeof flushSync === "function") {
                               flushSync(commitBatch);
                             } else {
                               commitBatch();
@@ -12024,11 +12032,12 @@ export default function CanvasStageContent({
                                     isPureRotatePreview &&
                                     elemento?.tipo === "imagen" &&
                                     !elemento?.esFondo;
-                                  // Countdown: durante preview dejamos que Konva escale el nodo
-                                  // sin tocar estado React para evitar desincronizaciÃ³n con Transformer.
+                                  // Keep transient scaling in Konva; changing map dimensions here
+                                  // also replaces its Static Maps URL on every pointer movement.
                                   if (
                                     elemento.tipo === "countdown" ||
                                     elemento.tipo === "imagen" ||
+                                    elemento.tipo === "mapa-google" ||
                                     (
                                       elemento.tipo === "forma" &&
                                       (elemento.figura === "circle" || elemento.figura === "triangle")
@@ -12246,6 +12255,13 @@ export default function CanvasStageContent({
                                       cleanAttrs.height
                                     ),
                                   };
+                                } else if (objOriginal.tipo === "mapa-google") {
+                                  finalAttrs = {
+                                    ...finalAttrs,
+                                    ...resolveGoogleMapDimensions({ ...objOriginal, ...cleanAttrs }),
+                                    scaleX: 1,
+                                    scaleY: 1,
+                                  };
                                 } else if (objOriginal.tipo === "forma" && objOriginal.figura === "circle") {
                                   finalAttrs = {
                                     ...finalAttrs,
@@ -12436,7 +12452,8 @@ export default function CanvasStageContent({
                                 if (
                                   objOriginal.tipo === "countdown" ||
                                   objOriginal.tipo === "texto" ||
-                                  objOriginal.tipo === "imagen"
+                                  objOriginal.tipo === "imagen" ||
+                                  objOriginal.tipo === "mapa-google"
                                 ) {
                                   if (objOriginal.tipo === "texto") {
                                     const commitSnapshot = {
@@ -12500,7 +12517,7 @@ export default function CanvasStageContent({
                                       });
                                     }
                                   }
-                                  if (objOriginal.tipo === "imagen") {
+                                  if (objOriginal.tipo === "imagen" || objOriginal.tipo === "mapa-google") {
                                     flushSync(() => {
                                       actualizarObjeto(objIndex, finalAttrs);
                                     });

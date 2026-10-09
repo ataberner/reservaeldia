@@ -17,6 +17,7 @@ import {
   createRsvpButtonStylePatch,
 } from "@/domain/rsvp/buttonStyles";
 import { resolveCountdownTargetIso } from "../../../../shared/renderContractPolicy.js";
+import { resolveGoogleMapDimensions } from "@/domain/eventDetails/googleMapGeometry";
 
 const CANVAS_WIDTH = 800;
 
@@ -328,8 +329,10 @@ export default function computeInsertDefaults({
       cornerRadius: Number.isFinite(payload.cornerRadius) ? payload.cornerRadius : 8,
     };
   } else if (tipo === "mapa-google") {
-    const width = Math.max(200, incomingWidth ?? 361);
-    const height = Math.max(200, incomingHeight ?? 220);
+    const { width, height } = resolveGoogleMapDimensions({
+      width: incomingWidth,
+      height: incomingHeight,
+    });
     const x = incomingX ?? Math.round((CANVAS_WIDTH - width) / 2);
     const y = incomingY ?? 140;
     next = {

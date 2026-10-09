@@ -4,6 +4,7 @@ import {
   normalizeEventDetailFeature,
 } from "./features.js";
 import { normalizeFunctionalAssociation } from "../../../shared/functionalAssociations.js";
+import { resolveGoogleMapDimensions } from "./googleMapGeometry.js";
 
 export const EVENT_LOCATION_ROLES = Object.freeze({
   VENUE_NAME: "venue_name",
@@ -67,9 +68,6 @@ export const ADDRESS_TEXT_FORMAT_PRESET_OPTIONS = Object.freeze([
 ]);
 
 const MAP_OBJECT_TYPE = "mapa-google";
-const DEFAULT_MAP_WIDTH = 361;
-const DEFAULT_MAP_HEIGHT = 220;
-const MIN_MAP_SIZE = 200;
 const ADDRESS_TEXT_FORMAT_PRESET_SET = new Set(ADDRESS_TEXT_FORMAT_PRESETS);
 
 function normalizeText(value) {
@@ -914,8 +912,7 @@ export function buildEventGoogleMapObjectPatch(location = {}, options = {}) {
   return {
     tipo: MAP_OBJECT_TYPE,
     ...buildEventGoogleMapProjectionPatch(safeLocation, projectionOptions),
-    width: Math.max(MIN_MAP_SIZE, toFiniteNumber(safeLocation.width, DEFAULT_MAP_WIDTH)),
-    height: Math.max(MIN_MAP_SIZE, toFiniteNumber(safeLocation.height, DEFAULT_MAP_HEIGHT)),
+    ...resolveGoogleMapDimensions(safeLocation),
   };
 }
 

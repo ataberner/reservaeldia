@@ -26,8 +26,10 @@ import {
   isFunctionalCtaHidden,
 } from "@/domain/functionalCtaButtons";
 import { isEventGoogleMapVisible } from "@/domain/eventDetails/location";
+import { resolveGoogleMapDimensions } from "@/domain/eventDetails/googleMapGeometry";
 import {
   buildGoogleMapsStaticImageSrc,
+  buildGoogleMapsStaticLocationKey,
   getGoogleMapsStaticApiKey,
 } from "@/domain/eventDetails/googleMapsStatic";
 import {
@@ -46,6 +48,7 @@ import {
   markTemplateDraftRenderLogged,
 } from "@/domain/templates/draftPersonalizationDebug";
 import useSharedImage from "@/hooks/useSharedImage";
+import useGoogleMapImage from "@/hooks/useGoogleMapImage";
 import {
   hasCompleteStorageAssetDescriptor,
   resolveStorageAssetDescriptorFromMetadata,
@@ -546,9 +549,9 @@ export default function ElementoCanvas({
       }) || null
     );
   }, [googleStaticMapApiKey, obj]);
-  const [googleStaticMapImage] = useSharedImage(
+  const googleStaticMapImage = useGoogleMapImage(
     googleStaticMapSrc,
-    "anonymous"
+    obj.tipo === "mapa-google" ? buildGoogleMapsStaticLocationKey(obj) : ""
   );
   const [measuredTextWidth, setMeasuredTextWidth] = useState(null);
   const [debugTextClientRect, setDebugTextClientRect] = useState(null);
@@ -4896,8 +4899,7 @@ export default function ElementoCanvas({
       return null;
     }
 
-    const width = Math.max(200, Number(obj.width) || 361);
-    const height = Math.max(200, Number(obj.height) || 220);
+    const { width, height } = resolveGoogleMapDimensions(obj);
     const hasPlace = String(obj.googlePlaceId || "").trim().length > 0;
     const title = String(
       obj.googleDisplayName ||

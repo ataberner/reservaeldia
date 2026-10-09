@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildGoogleMapsStaticImageSrc,
+  buildGoogleMapsStaticLocationKey,
   getGoogleMapsStaticApiKey,
   resolveGoogleMapsStaticLocation,
 } from "./googleMapsStatic.js";
@@ -53,9 +54,42 @@ test("clamps Google Static Maps size, zoom, and scale to supported limits", () =
     )
   );
 
-  assert.equal(url.searchParams.get("size"), "640x640");
+  assert.equal(url.searchParams.get("size"), "640x480");
   assert.equal(url.searchParams.get("zoom"), "21");
   assert.equal(url.searchParams.get("scale"), "2");
+});
+
+test("static map requests use the effective canvas dimensions even for tiny saved maps", () => {
+  for (const dimensions of [{ width: 1, height: 220 }, { width: 361, height: 1 }, { width: 10, height: 10 }]) {
+    const url = parseStaticMapsUrl(buildGoogleMapsStaticImageSrc({
+      googleLat: -34.6, googleLng: -58.4, ...dimensions,
+    }, { apiKey: "synthetic" }));
+    assert.equal(url.searchParams.get("size"), `${Math.max(200, dimensions.width)}x${Math.max(200, dimensions.height)}`);
+  }
+});
+
+test("static map resolution preserves landscape and portrait proportions within pixel rounding", () => {
+  for (const [width, height] of [[800, 220], [220, 800], [1200, 900], [850.5, 350.25]]) {
+    const url = parseStaticMapsUrl(buildGoogleMapsStaticImageSrc({
+      googleLat: -34.6, googleLng: -58.4, width, height,
+    }, { apiKey: "synthetic" }));
+    const [requestWidth, requestHeight] = url.searchParams.get("size").split("x").map(Number);
+    assert.equal(Math.max(requestWidth, requestHeight), 640);
+    const factor = 640 / Math.max(width, height);
+    assert.ok(Math.abs(requestWidth - width * factor) <= 0.5);
+    assert.ok(Math.abs(requestHeight - height * factor) <= 0.5);
+  }
+});
+
+test("map image identity follows location while ignoring authored size and zoom", () => {
+  const location = { googlePlaceId: "place-a", googleLat: -34.6, googleLng: -58.4 };
+  const key = buildGoogleMapsStaticLocationKey(location);
+  assert.ok(key);
+  assert.equal(buildGoogleMapsStaticLocationKey({ ...location, width: 500, height: 350, googleMapZoom: 18 }), key);
+  assert.notEqual(buildGoogleMapsStaticLocationKey({ ...location, googlePlaceId: "place-b" }), key);
+  assert.notEqual(buildGoogleMapsStaticLocationKey({ ...location, googleLat: -35 }), key);
+  assert.notEqual(buildGoogleMapsStaticLocationKey({ googleFormattedAddress: "Address A" }), buildGoogleMapsStaticLocationKey({ googleFormattedAddress: "Address B" }));
+  assert.equal(buildGoogleMapsStaticLocationKey({ googlePlaceId: "no-location" }), "");
 });
 
 test("returns an empty URL when key or location is missing", () => {

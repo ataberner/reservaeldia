@@ -1,8 +1,7 @@
+import { resolveGoogleMapDimensions } from "./googleMapGeometry.js";
+
 const STATIC_MAPS_BASE_URL = "https://maps.googleapis.com/maps/api/staticmap";
 const STATIC_MAPS_MAX_SIZE = 640;
-const STATIC_MAPS_MIN_SIZE = 1;
-const STATIC_MAPS_DEFAULT_WIDTH = 361;
-const STATIC_MAPS_DEFAULT_HEIGHT = 220;
 const STATIC_MAPS_DEFAULT_ZOOM = 15;
 const STATIC_MAPS_DEFAULT_SCALE = 2;
 
@@ -17,12 +16,6 @@ function toFiniteNumber(value, fallback = null) {
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
-}
-
-function normalizeStaticMapSize(value, fallback) {
-  const numeric = toFiniteNumber(value, fallback);
-  const rounded = Math.round(Math.abs(numeric || fallback));
-  return clampNumber(rounded, STATIC_MAPS_MIN_SIZE, STATIC_MAPS_MAX_SIZE);
 }
 
 function normalizeStaticMapZoom(value) {
@@ -56,6 +49,11 @@ export function resolveGoogleMapsStaticLocation(obj = {}) {
   );
 }
 
+export function buildGoogleMapsStaticLocationKey(obj = {}) {
+  const location = resolveGoogleMapsStaticLocation(obj);
+  return location ? JSON.stringify([normalizeText(obj?.googlePlaceId), location]) : "";
+}
+
 export function buildGoogleMapsStaticImageSrc(obj = {}, options = {}) {
   const apiKey = Object.prototype.hasOwnProperty.call(options, "apiKey")
     ? normalizeText(options.apiKey)
@@ -63,14 +61,17 @@ export function buildGoogleMapsStaticImageSrc(obj = {}, options = {}) {
   const location = resolveGoogleMapsStaticLocation(obj);
   if (!apiKey || !location) return "";
 
-  const width = normalizeStaticMapSize(
-    options.width ?? obj?.width,
-    STATIC_MAPS_DEFAULT_WIDTH
+  const dimensions = resolveGoogleMapDimensions({
+    width: options.width ?? obj?.width,
+    height: options.height ?? obj?.height,
+  });
+  // One resolution factor preserves the displayed map's aspect ratio.
+  const resolutionScale = Math.min(
+    1,
+    STATIC_MAPS_MAX_SIZE / Math.max(dimensions.width, dimensions.height)
   );
-  const height = normalizeStaticMapSize(
-    options.height ?? obj?.height,
-    STATIC_MAPS_DEFAULT_HEIGHT
-  );
+  const width = Math.max(1, Math.round(dimensions.width * resolutionScale));
+  const height = Math.max(1, Math.round(dimensions.height * resolutionScale));
   const zoom = normalizeStaticMapZoom(options.zoom ?? obj?.googleMapZoom);
   const scale = clampNumber(
     Math.round(toFiniteNumber(options.scale, STATIC_MAPS_DEFAULT_SCALE)),

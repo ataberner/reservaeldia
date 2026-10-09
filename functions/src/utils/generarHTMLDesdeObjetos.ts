@@ -1610,15 +1610,13 @@ ${buildTextPaintStyleCss(separatorPaint, "#111")}
 
         // ✅ Escala correcta (respeta pantalla y bleed)
         const sChip = isFullBleed(obj) ? "var(--sx)" : sContenidoVar(obj);
+        const sChipPx = (value: number): string => `calc(${sChip} * ${toCssNumber(value)}px)`;
 
         const containerStyle = `
 ${baseStyle}
 width: ${pxX(obj, effectiveWObj)};
 height: ${pxY(obj, effectiveHObj)};
-display: flex;
-align-items: center;
-justify-content: center;
-gap: calc(${sChip} * ${gap}px);
+display: block;
 font-family: ${fontFamily};
 color: ${textColor};
 background: ${containerBgFinal};
@@ -1626,9 +1624,7 @@ border-radius: calc(${sChip} * ${containerRadius}px);
 letter-spacing: calc(${sChip} * ${letterSpacing}px);
 `.trim();
 
-const chipStyle = `
-width: calc(${sChip} * ${Math.round(chipWTotal)}px);
-height: calc(${sChip} * ${Math.round(legacyLayout.chipH)}px);
+        const chipStyle = `
 padding: calc(${sChip} * ${paddingY}px) calc(${sChip} * ${paddingX}px);
 border: ${isMinimal ? "0" : `calc(${sChip} * 1px) solid ${chipBorderColorFinal}`};
 border-radius: calc(${sChip} * ${chipRadiusFinal}px);
@@ -1682,8 +1678,8 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
           rotation: roundCountdownAuditMetric(obj?.rotation ?? 0),
           tamanoBase: roundCountdownAuditMetric(obj?.tamanoBase ?? 320),
           layoutType: String(obj?.layout || "pills"),
-          distribution: "centered",
-          visibleUnits: [...COUNTDOWN_DEFAULT_VISIBLE_UNITS],
+          distribution: legacyLayout.distribution,
+          visibleUnits: [...legacyLayout.visibleUnits],
           gap: roundCountdownAuditMetric(gap),
           framePadding: 0,
           paddingX: roundCountdownAuditMetric(paddingX),
@@ -1702,9 +1698,28 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
           startX: roundCountdownAuditMetric(legacyLayout.startX),
           startY: roundCountdownAuditMetric(legacyLayout.startY),
           unitLayouts: compactCountdownAuditUnitLayouts(unitLayouts),
-          separatorLayouts: [],
+          separatorLayouts: compactCountdownAuditSeparatorLayouts(legacyLayout.separatorLayouts),
         });
         const labels = obj.labels ?? { dias: "Días", horas: "Horas", min: "Min", seg: "Seg" };
+        const labelKeys: Record<string, string> = {
+          days: "dias", hours: "horas", minutes: "min", seconds: "seg",
+        };
+        // The v1 adapter keeps its paint/labels and mobile contract, while
+        // consuming the same authored geometry as Canvas instead of flex sizing.
+        const unitsHtml = unitLayouts.map((item: {
+          unit: string; x: number; y: number; width: number; height: number;
+        }) => `
+<div class="cd-chip" data-unit="${escapeAttr(item.unit)}" style="position:absolute;left:${sChipPx(item.x)};top:${sChipPx(item.y)};width:${sChipPx(item.width)};height:${sChipPx(item.height)};${chipStyle}">
+  <span class="cd-val" style="${valueStyle}">00</span>
+  ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels[labelKeys[item.unit]])}</span>` : ""}
+</div>`.trim()).join("");
+        const separatorPaint = sanitizeCssPaint(obj.separatorColor ?? obj.colorTexto ?? obj.color, "#111");
+        const separatorStyle = `font-weight:${fontWeight};font-size:${sChipPx(legacyLayout.separatorFontSize)};line-height:1;text-align:center;white-space:pre;${buildTextPaintStyleCss(separatorPaint, "#111")}`;
+        const separatorsHtml = legacyLayout.separatorLayouts.map((item: {
+          x: number; y: number; width: number;
+        }) => `
+<span class="cd-separator" aria-hidden="true" style="position:absolute;left:${sChipPx(item.x)};top:${sChipPx(item.y)};width:${sChipPx(item.width)};z-index:1;pointer-events:none;${separatorStyle}">${escapeAttr(legacyLayout.separatorText)}</span>
+`.trim()).join("");
 
         const htmlCountdown = `
 <div class="objeto"
@@ -1717,25 +1732,12 @@ ${buildTextPaintStyleCss(labelColor, "#6b7280")}
   data-render-contract-status="${escapeAttr(countdownContractStatus)}"
   ${countdownAuditAttrs}
   data-target="${escapeAttr(targetISO)}"
+  data-units="${escapeAttr(legacyLayout.visibleUnits.join(","))}"
   data-preset="${escapeAttr(
           preset
         )}" style="${containerStyle}">
-  <div class="cd-chip" style="${chipStyle}">
-    <span class="cd-val" style="${valueStyle}">00</span>
-    ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.dias)}</span>` : ""}
-  </div>
-  <div class="cd-chip" style="${chipStyle}">
-    <span class="cd-val" style="${valueStyle}">00</span>
-    ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.horas)}</span>` : ""}
-  </div>
-  <div class="cd-chip" style="${chipStyle}">
-    <span class="cd-val" style="${valueStyle}">00</span>
-    ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.min)}</span>` : ""}
-  </div>
-  <div class="cd-chip" style="${chipStyle}">
-    <span class="cd-val" style="${valueStyle}">00</span>
-    ${showLabels ? `<span class="cd-lab" style="${labelStyle}">${escapeAttr(labels.seg)}</span>` : ""}
-  </div>
+  ${unitsHtml}
+  ${separatorsHtml}
 </div>
 `.trim();
         return appendMotionDataAttrs(htmlCountdown, obj);

@@ -2,9 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { getRemainingParts, fmt } from "./countdownUtils";
 import {
   buildTextPaintStyle,
-  normalizeVisibleUnits,
   resolveCountdownLayoutMetrics,
-  resolveCountdownUnitWidth,
   resolvePreviewPaint,
 } from "@/domain/countdownPresets/renderModel";
 import { resolveCountdownContract } from "../../../../shared/renderContractPolicy.js";
@@ -27,6 +25,13 @@ const UNIT_LABELS = Object.freeze({
   seconds: "Seg",
 });
 
+const LEGACY_UNIT_LABELS = Object.freeze({
+  days: { key: "dias", label: "Días" },
+  hours: { key: "horas", label: "Horas" },
+  minutes: { key: "min", label: "Min" },
+  seconds: { key: "seg", label: "Seg" },
+});
+
 function applyLabelTransform(label, mode) {
   const safe = String(label || "");
   if (mode === "uppercase") return safe.toUpperCase();
@@ -35,15 +40,9 @@ function applyLabelTransform(label, mode) {
   return safe;
 }
 
-function toFinite(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 export default function CountdownPreview({
   targetISO,
   preset,
-  size = "sm",
   live = true,
   fitMode = COUNTDOWN_PREVIEW_FIT_MODES.WIDTH,
   telemetryRenderer = "react-countdown-preview",
@@ -56,30 +55,6 @@ export default function CountdownPreview({
     const timer = setInterval(() => setTick((n) => (n + 1) % 60), 1000);
     return () => clearInterval(timer);
   }, [live]);
-
-  const SZ = useMemo(() => {
-    const options = {
-      sm: {
-        valueFs: 15,
-        labelFs: 10,
-        chipMinW: 46,
-        chipPx: 8,
-        chipPy: 6,
-        gap: 8,
-        framePadding: 8,
-      },
-      md: {
-        valueFs: 16,
-        labelFs: 11,
-        chipMinW: 50,
-        chipPx: 10,
-        chipPy: 8,
-        gap: 10,
-        framePadding: 10,
-      },
-    };
-    return options[size] || options.sm;
-  }, [size]);
 
   const state = getRemainingParts(targetISO);
   const wrapperRef = useRef(null);
@@ -111,15 +86,8 @@ export default function CountdownPreview({
       renderer: telemetryRenderer,
     });
   }, [preset, telemetryRenderer]);
-  const legacyParts = [
-    { key: "d", value: fmt(state.d, preset?.padZero), label: "Dias" },
-    { key: "h", value: fmt(state.h, preset?.padZero), label: "Horas" },
-    { key: "m", value: fmt(state.m, preset?.padZero), label: "Min" },
-    { key: "s", value: fmt(state.s, preset?.padZero), label: "Seg" },
-  ];
-
-  const units = normalizeVisibleUnits(preset?.visibleUnits);
-  const v2Parts = units.map((unit) => {
+  const layoutMetrics = resolveCountdownLayoutMetrics(preset);
+  const previewParts = layoutMetrics.visibleUnits.map((unit) => {
     const numeric =
       unit === "days"
         ? state.d
@@ -131,15 +99,15 @@ export default function CountdownPreview({
     return {
       key: unit,
       value: fmt(numeric, preset?.padZero),
-      label: UNIT_LABELS[unit],
+      label: isV2
+        ? UNIT_LABELS[unit]
+        : preset?.labels?.[LEGACY_UNIT_LABELS[unit].key] ?? LEGACY_UNIT_LABELS[unit].label,
     };
   });
 
-  const previewParts = isV2 ? v2Parts : legacyParts;
-
   useLayoutEffect(() => {
     measureScale();
-  }, [measureScale, previewParts.length, SZ, preset]);
+  }, [measureScale, previewParts.length, preset]);
 
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return undefined;
@@ -158,114 +126,25 @@ export default function CountdownPreview({
   }, [measureScale]);
 
   const fontFamily = preset?.fontFamily || "Inter, system-ui, sans-serif";
-  const numberColor = resolvePreviewPaint(preset?.color, "#111");
+  const numberColor = resolvePreviewPaint(
+    isV2 ? preset?.color : preset?.colorTexto ?? preset?.color,
+    "#111"
+  );
   const labelColor = resolvePreviewPaint(preset?.labelColor, "#6b7280");
   const separatorColor = resolvePreviewPaint(
-    preset?.separatorColor ?? preset?.color,
+    isV2
+      ? preset?.separatorColor ?? preset?.color
+      : preset?.separatorColor ?? preset?.colorTexto ?? preset?.color,
     "#111"
   );
   const numberTextPaintStyle = buildTextPaintStyle(numberColor, "#111");
   const labelTextPaintStyle = buildTextPaintStyle(labelColor, "#6b7280");
   const separatorTextPaintStyle = buildTextPaintStyle(separatorColor, "#111");
-  const legacyGap = Math.max(0, toFinite(preset?.gap, SZ.gap));
-  const legacyPaddingX = Math.max(2, toFinite(preset?.paddingX, SZ.chipPx));
-  const legacyPaddingY = Math.max(2, toFinite(preset?.paddingY, SZ.chipPy));
-  const legacyValueSize = Math.max(10, toFinite(preset?.fontSize, SZ.valueFs));
-  const legacyLabelSize = Math.max(8, toFinite(preset?.labelSize, SZ.labelFs - 2));
-  const legacyShowLabels = preset?.showLabels !== false;
-  const legacyChipRadius = Math.max(0, toFinite(preset?.boxRadius, 12));
-  const legacyRequestedChipW = Math.max(
-    36,
-    toFinite(preset?.chipWidth, SZ.chipMinW) + legacyPaddingX * 2
-  );
-  const legacyChipH = Math.max(
-    44,
-    legacyPaddingY * 2 + legacyValueSize + (legacyShowLabels ? legacyLabelSize + 6 : 0)
-  );
-  const legacyChipW = resolveCountdownUnitWidth({
-    width: legacyRequestedChipW,
-    height: legacyChipH,
-    boxRadius: legacyChipRadius,
-  });
-  const legacySeparatorFontSize = Math.max(10, Math.round(legacyValueSize * 0.64));
-
-  if (!isV2) {
-    return (
-      <div ref={wrapperRef} className="flex w-full justify-center overflow-hidden">
-        <div
-          ref={innerRef}
-          className="flex items-center justify-center"
-          style={{
-            fontFamily,
-            gap: legacyGap,
-            transform: `scale(${scale})`,
-            transformOrigin: "center",
-          }}
-        >
-          {legacyParts.map((item, index) => (
-            <div key={item.key} className="relative flex items-center">
-              {preset?.layout === "minimal" ? (
-                <span className="font-bold leading-none" style={{ ...numberTextPaintStyle, fontSize: SZ.valueFs }}>
-                  {item.value}
-                </span>
-              ) : (
-                <div
-                  className="relative flex flex-col items-center justify-center leading-none"
-                  style={{
-                    background: preset?.boxBg || "#fff",
-                    border: `1px solid ${preset?.boxBorder || "#e5e7eb"}`,
-                    borderRadius: legacyChipRadius,
-                    boxShadow: preset?.boxShadow ? "0 2px 6px rgba(0,0,0,0.15)" : "none",
-                    width: legacyChipW,
-                    minWidth: legacyChipW,
-                    height: legacyChipH,
-                    boxSizing: "border-box",
-                    padding: `${legacyPaddingY}px ${legacyPaddingX}px`,
-                  }}
-                >
-                  <span
-                    className="font-bold"
-                    style={{ ...numberTextPaintStyle, fontSize: legacyValueSize }}
-                  >
-                    {item.value}
-                  </span>
-                  {legacyShowLabels ? (
-                    <span
-                      style={{ ...labelTextPaintStyle, fontSize: legacyLabelSize }}
-                    >
-                      {item.label}
-                    </span>
-                  ) : null}
-                  {preset?.layout === "flip" ? (
-                    <span
-                      className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed"
-                      style={{ borderColor: preset?.flipDividerColor || "#e5e7eb" }}
-                    />
-                  ) : null}
-                </div>
-              )}
-
-              {preset?.separator && index < legacyParts.length - 1 ? (
-                <span
-                  className="mx-1 font-bold"
-                  style={{ ...numberTextPaintStyle, fontSize: legacySeparatorFontSize }}
-                >
-                  {preset.separator}
-                </span>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const layoutMetrics = resolveCountdownLayoutMetrics(preset);
   const {
     frameSvgUrl: frameUrl,
     hasFrameConfigured,
-    useSingleFrameLayout,
-    useMultiUnitFrame,
+    useSingleFrameLayout: hasSingleFrameLayout,
+    useMultiUnitFrame: hasMultiUnitFrame,
     frameScale,
     paddingX: chipPx,
     paddingY: chipPy,
@@ -280,6 +159,8 @@ export default function CountdownPreview({
     containerH,
     separatorFontSize,
   } = layoutMetrics;
+  const useSingleFrameLayout = isV2 && hasSingleFrameLayout;
+  const useMultiUnitFrame = isV2 && hasMultiUnitFrame;
   const frameAssetType =
     String(preset?.frameAssetType || "").toLowerCase() === "png"
       ? "png"
@@ -297,12 +178,27 @@ export default function CountdownPreview({
     });
   };
   const labelTransform = String(preset?.labelTransform || "uppercase").toLowerCase();
-  const isMinimal = String(preset?.layout || "pills").toLowerCase() === "minimal";
+  const isMinimal = isV2
+    ? String(preset?.layout || "pills").toLowerCase() === "minimal"
+    : String(preset?.presetId || preset?.layout || "pills").toLowerCase().includes("minimal");
+  const chipBackground = isV2
+    ? preset?.boxBg || "transparent"
+    : preset?.chipBackground ?? preset?.boxBg ?? "rgba(255,255,255,.75)";
+  const chipBorder = isV2
+    ? preset?.boxBorder || "transparent"
+    : preset?.chipBorder ?? preset?.boxBorder ?? "rgba(0,0,0,.08)";
+  const legacyChipRadius = Number.isFinite(preset?.chipRadius)
+    ? preset.chipRadius
+    : Number.isFinite(preset?.boxRadius)
+      ? preset.boxRadius
+      : Number.isFinite(preset?.radius)
+        ? preset.radius
+        : 10;
   const frameScaleStyle = {
     transform: `scale(${frameScale})`,
     transformOrigin: "center",
   };
-  const partsByUnit = new Map(v2Parts.map((item) => [item.key, item]));
+  const partsByUnit = new Map(previewParts.map((item) => [item.key, item]));
   const unitLayouts = layoutMetrics.unitLayouts.map((item) => ({
     ...item,
     ...(partsByUnit.get(item.unit) || {}),
@@ -310,7 +206,7 @@ export default function CountdownPreview({
   const frameVisualBounds = resolveCountdownFrameVisualBounds({
     width: containerW,
     height: containerH,
-    frameScale: hasFrameConfigured ? frameScale : 1,
+    frameScale: isV2 && hasFrameConfigured ? frameScale : 1,
     frameRects: useMultiUnitFrame ? unitLayouts : undefined,
   });
   const separatorLayouts = layoutMetrics.separatorLayouts;
@@ -399,9 +295,9 @@ export default function CountdownPreview({
                 style={{
                   boxSizing: "border-box",
                   padding: `${chipPy}px ${chipPx}px`,
-                  borderRadius: chipRadius,
-                  background: isMinimal ? "transparent" : (preset?.boxBg || "transparent"),
-                  border: isMinimal ? "none" : `1px solid ${preset?.boxBorder || "transparent"}`,
+                  borderRadius: isV2 ? chipRadius : legacyChipRadius,
+                  background: isMinimal ? "transparent" : chipBackground,
+                  border: isMinimal ? "none" : `1px solid ${chipBorder}`,
                   boxShadow: preset?.boxShadow ? "0 2px 6px rgba(0,0,0,0.15)" : "none",
                 }}
               >
@@ -457,8 +353,11 @@ export default function CountdownPreview({
                       ...numberTextPaintStyle,
                       fontFamily,
                       fontSize: valueSize,
-                      lineHeight,
+                      lineHeight: isV2 ? lineHeight : 1,
                       letterSpacing: `${letterSpacing}px`,
+                      ...(!isV2 && Number.isFinite(preset?.fontWeight)
+                        ? { fontWeight: preset.fontWeight }
+                        : {}),
                     }}
                   >
                     {item.value}
@@ -469,15 +368,23 @@ export default function CountdownPreview({
                         ...labelTextPaintStyle,
                         fontFamily,
                         fontSize: unitLabelSize,
-                        lineHeight: 1,
+                        lineHeight: isV2 ? 1 : 1.05,
                         letterSpacing: `${letterSpacing}px`,
-                        marginTop: 4,
+                        marginTop: isV2 ? 4 : 0,
                       }}
                     >
-                      {applyLabelTransform(item.label, labelTransform)}
+                      {isV2 ? applyLabelTransform(item.label, labelTransform) : item.label}
                     </span>
                   ) : null}
                 </div>
+                {/* Preserve the selector's historical flip decoration for v1. */}
+                {!isV2 && !isMinimal && preset?.layout === "flip" ? (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed"
+                    style={{ borderColor: preset?.flipDividerColor || "#e5e7eb" }}
+                  />
+                ) : null}
               </div>
             </div>
           ))}
@@ -494,6 +401,9 @@ export default function CountdownPreview({
                 fontSize: separatorFontSize,
                 lineHeight: 1,
                 letterSpacing: `${letterSpacing}px`,
+                ...(!isV2 && Number.isFinite(preset?.fontWeight)
+                  ? { fontWeight: preset.fontWeight }
+                  : {}),
               }}
             >
               {separator}

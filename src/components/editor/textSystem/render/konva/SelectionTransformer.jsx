@@ -1,5 +1,5 @@
 ﻿// SelectionBounds.jsx
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Transformer, Rect, Group, Text } from "react-konva";
 import SelectionBoundsIndicator from "@/components/editor/textSystem/render/konva/SelectionBoundsIndicator";
 import {
@@ -82,6 +82,12 @@ import {
 import {
   applyGalleryLayoutPresetToRenderObject,
 } from "@/domain/gallery/galleryLayoutPresets";
+import { resolveGoogleMapResizeBounds } from "./googleMapResizeBounds.js";
+import {
+  resolveGoogleMapNodeTransformPatch,
+  syncCommittedGoogleMapGeometry,
+  resolveGoogleMapTransformPatch,
+} from "./googleMapTransform.js";
 
 const DEBUG_SELECTION_BOUNDS = false;
 
@@ -568,6 +574,8 @@ export default function SelectionBounds({
   const esTexto = primerElemento?.tipo === "texto";
   const esCountdown = primerElemento?.tipo === "countdown";
   const esGaleria = selectedElements.length === 1 && primerElemento?.tipo === "galeria";
+  const esMapaSeleccionado =
+    selectedElements.length === 1 && primerElemento?.tipo === "mapa-google";
   const esImagenSeleccionada =
     selectedElements.length === 1 &&
     primerElemento?.tipo === "imagen" &&
@@ -3102,6 +3110,26 @@ export default function SelectionBounds({
     shouldSuppressBeforeFirstDragStart,
   ]);
 
+  // This runs in the Konva reconciler, after map children have their committed
+  // dimensions and before the next canvas draw. Resetting scale in transformend
+  // instead briefly caches the old child bounds in the Transformer.
+  useLayoutEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr || tr.isTransforming()) return;
+
+    let synchronizedMap = false;
+    for (const object of elementosSeleccionadosData) {
+      if (object.tipo !== "mapa-google") continue;
+      const node = elementRefs.current?.[object.id];
+      if (!node) continue;
+      syncCommittedGoogleMapGeometry(node, object);
+      synchronizedMap = true;
+    }
+    if (synchronizedMap) syncTransformerGeometryNow("map-committed-geometry");
+    // Only committed geometry/selection changes may flatten a live map. Gesture
+    // UI ticks can render with the previous model while pointerup is committing.
+  }, [selectionKey, selectedGeomKey]);
+
   useEffect(() => {
     if (!shouldUseGenericTransformer || isTransformerAttachBlocked) return;
     const tr = transformerRef.current;
@@ -4366,6 +4394,7 @@ export default function SelectionBounds({
         }
       }}
       keepRatio={lockAspectCountdown || esGaleria || lockAspectText}
+      ignoreStroke={esMapaSeleccionado}
       centeredScaling={
         lockAspectText && pressedResizeAnchorName !== TEXT_BOX_WIDTH_RESIZE_ANCHOR
       }
@@ -4376,12 +4405,23 @@ export default function SelectionBounds({
       rotateLineVisible={!shouldUseLightweightRotateOverlay}
       rotationSnapTolerance={transformerRotationSnapTolerance}
       boundBoxFunc={(oldBox, newBox) => {
-        const minSize = esTexto ? 20 : 10;
-        const maxSize = 800;
         const activeAnchor =
           typeof transformerRef.current?.getActiveAnchor === "function"
             ? transformerRef.current.getActiveAnchor()
             : null;
+        if (esMapaSeleccionado) {
+          if (transformGestureRef.current?.isRotate) return newBox;
+          const stage = transformerRef.current?.getStage?.();
+          return resolveGoogleMapResizeBounds({
+            oldBox,
+            newBox,
+            activeAnchor,
+            stageWidth: stage?.width?.(),
+            stageHeight: stage?.height?.(),
+          });
+        }
+        const minSize = esTexto ? 20 : 10;
+        const maxSize = 800;
         if (
           isTextBoxWidthResizeGesture({
             activeAnchor,
@@ -4984,6 +5024,10 @@ export default function SelectionBounds({
               const countdownSize = getCountdownScaledSize(node);
               transformData.width = countdownSize.width;
               transformData.height = countdownSize.height;
+            } else if (primerElemento?.tipo === "mapa-google") {
+              const mapSize = resolveGoogleMapTransformPatch(primerElemento, { scaleX, scaleY });
+              transformData.width = mapSize.width;
+              transformData.height = mapSize.height;
             } else if (esTriangulo) {
               const baseRadius = Number.isFinite(primerElemento?.radius)
                 ? primerElemento.radius
@@ -5246,6 +5290,11 @@ export default function SelectionBounds({
                     width: roundNodeMetric(upd.width, 3),
                     height: roundNodeMetric(upd.height, 3),
                   });
+                  return upd;
+                }
+
+                if (obj.tipo === "mapa-google") {
+                  Object.assign(upd, resolveGoogleMapNodeTransformPatch(n, obj));
                   return upd;
                 }
 
@@ -5619,6 +5668,8 @@ export default function SelectionBounds({
               } catch (err) {
                 console.warn("Error aplanando escala de countdown (sync):", err);
               }
+            } else if (primerElemento?.tipo === "mapa-google") {
+              Object.assign(finalData, resolveGoogleMapNodeTransformPatch(node, primerElemento));
             } else if (esTriangulo) {
               const baseRadius = Number.isFinite(primerElemento?.radius)
                 ? primerElemento.radius

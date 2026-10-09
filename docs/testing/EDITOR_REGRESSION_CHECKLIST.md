@@ -535,6 +535,29 @@ Resultado esperado:
 - la geometria final persiste
 - no reaparece escala intermedia
 
+### [ ] Resize del mapa de Google
+
+1. Seleccionar un mapa y comprobar que el unico control de resize es la esquina inferior derecha; cambiar ancho y alto libremente desde esa esquina.
+2. Desde la esquina, llevar un eje por debajo de 200 px y seguir moviendo el otro.
+3. Alcanzar el borde del canvas y continuar redimensionando en el eje disponible.
+4. Soltar y observar el primer paint antes del settle y de la carga de la nueva imagen; repetir con un mapa rotado, zoom CSS del editor y mobile.
+5. Repetir con escala heredada menor que uno; guardar y recargar el borrador.
+
+Resultado esperado:
+
+- solo aparece el control de resize `bottom-right`; permite cambiar la proporcion y conserva el control de rotacion
+- llegar a un limite no congela el otro eje ni exige volver el puntero a la caja
+- el Transformer sigue el contenido sin sumar el borde al tamaño
+- al soltar se conservan la posicion, las medidas normalizadas y escala uno
+- desde el primer paint tras soltar, mapa y Transformer conservan el tamano confirmado sin un frame intermedio con el tamano anterior
+- la imagen se conserva durante el gesto y mientras carga la nueva medida
+
+Regresion automatizada: `MAP_TRANSFORMER_BROWSER=1 node --test src/domain/eventDetails/googleMapTransformer.browser.test.mjs` (Chromium local, sin servicios remotos).
+
+El chequeo del primer paint cubre la secuencia de patch puro, commit React de
+los hijos y sincronizacion del Group y del Transformer en `useLayoutEffect`
+de Konva. Una captura posterior al settle por si sola no verifica esa secuencia.
+
 ### [ ] Imagen comun que cruza entre secciones
 
 1. En desktop, ubicar una imagen comun cerca del borde inferior de una seccion `fijo` y redimensionarla hasta que una parte quede sobre la seccion siguiente.

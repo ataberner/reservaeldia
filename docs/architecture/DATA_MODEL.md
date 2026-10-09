@@ -519,7 +519,7 @@ Campos específicos normalizados del objeto:
 | `googleAddressComponents` | Legacy input | Se acepta al migrar; la metadata moderna pertenece al namespace estructurado. |
 | `googleLat` / `googleLng` | Optional coordinates | Coordenadas del resultado seleccionado; nunca se inventan para ubicación manual. |
 | `mostrarMapa` | Optional boolean | Sólo puede ser `true` con `googlePlaceId`; seleccionar un Place parchea mapas existentes y no inserta otro automáticamente. |
-| `width` / `height` | Render geometry | Se preservan al reemplazar una selección y no pertenecen al modelo conversacional. |
+| `width` / `height` | Render geometry | Se preservan al reemplazar una selección y no pertenecen al modelo conversacional. En Canvas, `googleMapGeometry.js` aplica mínimo 200 px y defaults 361×220; una transformación confirma estas medidas con `scaleX`/`scaleY` en 1, sin guardar estados intermedios del gesto. |
 
 `src/domain/eventDetails/location.js` normaliza el shape y
 `src/domain/eventDetails/locationAuthoring.js` coordina tanto la escritura manual

@@ -197,9 +197,9 @@ Advertencias de publish que no cuentan como mismatch duro en la suite de paridad
 | `icono-svg` legacy | `si` | `soportado` | `soportado` | `soportado` | `alta` | warning `legacy-icono-svg-frozen` | congelar contrato |
 | `galeria` fija | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `gallery-media-unresolved` | usar con restricciones |
 | `galeria` `dynamic_media` | `si` | `soportado` | `soportado` | `parcial` | `parcial` | puede bloquear por `gallery-media-unresolved` | usar con restricciones |
-| `countdown` schema v1 | `si` | `soportado` | `soportado` | `soportado` | `parcial`; conserva compatibilidad congelada y `freezeZero` | warning `legacy-countdown-schema-v1-frozen`; target faltante/invalido bloquea | congelar contrato |
+| `countdown` schema v1 | `si` | `soportado` | `soportado` | `soportado` | adaptador compatible: unidades, posiciones y separadores del layout compartido; conserva estilos v1, aislamiento mobile y `freezeZero` | diagnostico `legacy-countdown-schema-v1-frozen` sin cartel por antiguedad; target faltante/invalido bloquea | conservar snapshots y presets existentes sin conversion forzada |
 | `countdown` schema v2 | `si` | `soportado` | `soportado` | `soportado` | `alta`: contrato compartido para geometria/distribucion/`gap` decimal/separadores, stacking frame-chip-texto, tipografia, SVG fixed/`currentColor`, bytes/transparencia PNG preservados, PNG contenido sin deformacion, seleccion Canvas como union contenido+frame, `frameScale` centrado `0.5..5`, `boxShadow` y distribucion editorial; lifecycle actual `freezeZero` | puede bloquear por `countdown-frame-unresolved`, `countdown-target-missing` o `countdown-target-invalid` | usar con baseline congelado |
-| `mapa-google` | `si` | placeholder | `soportado` | omitido | `alta` en preview/publish, no participa en share image | puede bloquear si falta `placeId` o API key para publish | el iframe real se excluye de `share.jpg` |
+| `mapa-google` | `si` | imagen estatica de Google; placeholder si no esta disponible | `soportado` | omitido | `alta` en preview/publish, no participa en share image | puede bloquear si falta `placeId` o API key para publish | el iframe real se excluye de `share.jpg`; el resize de Canvas confirma medidas al terminar el gesto |
 | metadata dinámica (`templateInput`, `templateAuthoringDraft`, Places y `detachedVisuals`) | `si`, editor-only | no renderiza por sí misma | omitida | omitida | `alta`: sólo las vistas materializadas alcanzan HTML | no bloquea por sí misma | filtrar metadata y recovery; no serializar ni usar como fallback visual |
 | `rsvp-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `enabled` normalizado desde legacy decide visibilidad funcional y `questions[].options` explicitas conservan membresia en preview/publish | warning `functional-cta-link-ignored`; `rsvp-missing-root-config` queda como compatibilidad solo si no puede normalizarse raiz | validar contrato completo |
 | `regalo-boton` | `parcial` | `parcial` | `parcial` | `parcial` | visual alta, funcional parcial; `enabled` normalizado desde legacy decide visibilidad funcional | warning `gift-no-usable-methods`, warning `gift-modal-field-incomplete`, warning `functional-cta-link-ignored`; `gift-missing-root-config` queda como compatibilidad solo si no puede normalizarse raiz | validar contrato completo |
@@ -250,6 +250,76 @@ Advertencias de publish hoy:
 - `fullbleed` no representado de la misma forma en canvas
 - CTA funcional sin config raiz completa o sin metodos de regalo utilizables
 - `enlace` ignorado en CTA funcionales
+
+### Compatibilidad visible de formatos anteriores
+
+Decision aceptada el 2026-10-09: conservar los presets y snapshots Countdown v1
+sin obligar a elegir otro diseno ni migrar documentos por su antiguedad. Canvas,
+selector React y HTML consumen las unidades, posiciones, medidas y separadores
+de `shared/countdownLayoutContract.cjs`. El adaptador HTML v1 conserva sus
+colores, etiquetas compatibles, identidad de contrato y aislamiento mobile;
+los marcos externos y las animaciones modernas siguen perteneciendo a v2. El
+reloj de HTML nuevo identifica cada unidad por `data-unit`, incluidos subconjuntos
+y ordenes distintos; conserva el fallback posicional de cuatro unidades para
+markup anterior. Las fechas compatibles y `freezeZero` no cambian. Renderizar
+no escribe ni cambia `countdownSchemaVersion`, `presetVersion` o la fecha guardada.
+
+La validacion backend conserva `legacy-countdown-schema-v1-frozen`,
+`legacy-icono-svg-frozen` y `countdown-target-compat-alias` como diagnosticos.
+El modal omite exclusivamente esos codigos cuando llegan como `warnings`:
+la version o el nombre anterior de un campo no requieren una accion del usuario.
+Los blockers, incluidos codigos inesperadamente clasificados como bloqueantes,
+y el resto de advertencias accionables permanecen visibles. Fecha faltante o
+invalida mantiene su bloqueo y recibe una indicacion especifica para corregirla.
+
+Regresiones: `functions/countdownLegacyCompatibility.test.mjs`,
+`src/components/editor/countdown/CountdownPreview.test.mjs` y
+`src/domain/dashboard/previewValidationPresentation.test.mjs`. La verificacion
+browser de Countdown es opt-in con `COUNTDOWN_LEGACY_BROWSER=1`, usa fixtures
+sinteticas sin acceso de red y compara geometria desktop/mobile preview/publish.
+
+### Mapa de Google en Canvas
+
+El borrador usa una imagen estatica; preview y publish conservan el iframe
+interactivo. `src/domain/eventDetails/googleMapGeometry.js` normaliza las
+dimensiones del editor (minimo 200 px, defaults 361 x 220) para insercion,
+transformacion, render y solicitud de imagen. La resolucion de Static Maps se
+limita a 640 px por eje mediante un factor uniforme, conservando la proporcion
+salvo el redondeo a pixeles enteros.
+
+Durante resize, Konva mantiene la geometria transitoria sin cambiar el estado
+React ni la URL de la imagen. Al terminar, calcula un patch puro de dimensiones
+y escala sin modificar anticipadamente el nodo. Tras el commit de los hijos,
+un `useLayoutEffect` en el reconciliador de Konva sincroniza la geometria y la
+escala del Group con el modelo confirmado y fuerza la actualizacion del
+Transformer antes del siguiente paint. El cambio debe conservar las medidas
+finales desde el primer paint, sin mostrar brevemente el tamano anterior.
+La carga conserva la ultima imagen valida de la misma ubicacion; un cambio de
+lugar descarta inmediatamente esa imagen.
+No hay migracion del documento al renderizar: las medidas antiguas demasiado
+pequenas se normalizan visualmente y se confirman en la siguiente transformacion.
+
+La seleccion individual de un mapa ofrece un unico control de resize en la
+esquina inferior derecha (`bottom-right`), que permite cambiar ancho y alto
+libremente sin fijar su proporcion; mantiene el control de rotacion.
+El Transformer mide el contenido sin el stroke: los
+limites por eje no deben bloquear el otro eje cuando se alcanza el minimo, el
+maximo o el borde del canvas. Los limites del canvas consideran la rotacion.
+Una escala heredada fuera de rango puede recuperarse progresivamente durante el
+gesto; el commit conserva la normalizacion de medidas y escala indicada arriba.
+
+Regresiones: `googleMapGeometry.test.mjs`, `googleMapsStatic.test.mjs` y
+`googleMapResize.browser.test.mjs` en `src/domain/eventDetails/`,
+`src/hooks/useGoogleMapImage.test.mjs` y
+`src/components/editor/textSystem/render/konva/googleMapTransform.test.mjs`,
+`googleMapResizeBounds.test.mjs` y `selectionVisualModes.test.mjs`.
+`src/domain/eventDetails/googleMapTransformer.browser.test.mjs` prueba arrastres
+reales de mouse y touch sobre el Transformer, incluidos el unico control de
+esquina, cambios de proporcion, limites y zoom CSS. La regresion de release
+observa la geometria del primer paint tras `pointerup`, antes del settle y de
+la respuesta de la nueva imagen; comprobar solo el estado final no detecta un
+salto transitorio al tamano anterior.
+Los browser tests usan imagenes sinteticas y bloquean el acceso de red externo.
 
 ## Reglas practicas
 

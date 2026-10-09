@@ -118,7 +118,7 @@ test("one yes opens Gallery after the verified cover without another consent loo
 test("gift alias confirmation leads to one cover offer, then one gallery offer after declining", async () => {
   const savedDraft = coverDraft({ gallery: true });
   savedDraft.conversation.resolutions = savedDraft.conversation.resolutions.filter(r => !r.leafId.startsWith("gifts."));
-  const run = await mountPanel({ savedDraft, respond: (_, index) => index === 1 ? { assistantMessage: "Pasame el alias que quieran mostrar." } : index === 2 ? {
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft, respond: (_, index) => index === 1 ? { assistantMessage: "Pasame el alias que quieran mostrar." } : index === 2 ? {
     intent: "apply", assistantMessage: "Activo regalos con el alias. ¿Qué foto quieren usar para la portada?",
     actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } },
       { type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.PRUEBA", visible: true } }],
@@ -140,7 +140,7 @@ test("gift alias confirmation leads to one cover offer, then one gallery offer a
 test("cover offers retain verified receipts and scope notices; deferral keeps its receipt too", async () => {
   const savedDraft = coverDraft({ gallery: true });
   savedDraft.conversation.resolutions = savedDraft.conversation.resolutions.filter(r => !r.leafId.startsWith("gifts."));
-  const run = await mountPanel({ savedDraft, respond: (_, index) => index === 1 ? offer : index === 2 ? {
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft, respond: (_, index) => index === 1 ? offer : index === 2 ? {
     intent: "apply", assistantMessage: "Ya cambié todos los colores. ¿Qué foto quieren usar?", notice: "unsupported_request",
     actions: [{ type: "gifts.set_enabled", arguments: { enabled: true } },
       { type: "gifts.set_method", arguments: { method: "alias", value: "ALIAS.PRUEBA", visible: true } }],
@@ -153,7 +153,7 @@ test("cover offers retain verified receipts and scope notices; deferral keeps it
     await run.until(() => run.messages().length === 1);
     await run.send("Activá regalos con el alias ALIAS.PRUEBA y cambiá todos los colores.");
     assert.match(run.messages().at(-1).content, /Regalos activados/);
-    assert.match(run.messages().at(-1).content, /Alias: actualizado/);
+    assert.match(run.messages().at(-1).content, /Alias ALIAS\.PRUEBA/);
     assert.match(run.messages().at(-1).content, /controles del editor/);
     assert.match(run.messages().at(-1).content, /cambiar la foto de portada actual/);
     assert.doesNotMatch(run.messages().at(-1).content, /cambié todos los colores|Qué foto quieren/);
@@ -162,7 +162,7 @@ test("cover offers retain verified receipts and scope notices; deferral keeps it
     const persisted = capabilities.buildDesignerAiCapabilitySnapshot({ renderSnapshot: run.exportPersistedDraft().render });
     assert.equal(persisted.values.gifts.methods.alias.value, "ALIAS.NUEVO");
     assert.equal(run.exportPersistedDraft().coverImage, savedDraft.coverImage);
-    assert.match(run.messages().at(-1).content, /Alias: actualizado/);
+    assert.match(run.messages().at(-1).content, /Alias ALIAS\.NUEVO/);
     assert.match(run.messages().at(-1).content, /Conservamos la portada actual/);
     assert.match(run.messages().at(-1).content, /cambiar las fotos de las galerías/);
     assert.doesNotMatch(run.messages().at(-1).content, /Qué datos bancarios/);

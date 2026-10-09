@@ -228,8 +228,9 @@ function evaluateDesignerAiResolutionRule(resolution, snapshot, { actions = [], 
     case DESIGNER_AI_RESOLUTION_RULES.LEAVE_EMPTY:
       valid = empty && (id === "story.text" || /^event\.(ceremony|party)\.(end_time|venue_name)$/.test(id) || /^media\.gallery\..+\.slot\./.test(id));
       if (/^event\.(ceremony|party)\.place_selection$/.test(id)) {
-        const phase = id.split(".")[1];
-        valid = value === false && validResolutionValue(`event.${phase}.address`, values[phase]?.address);
+        // Choosing manual entry settles the provider choice, not the address.
+        // An absent address retains its own pending leaf and question.
+        valid = value === false;
       }
       break;
     case DESIGNER_AI_RESOLUTION_RULES.PRESERVE_WHILE_INACTIVE: {
@@ -281,8 +282,8 @@ function normalizeDesignerAiConversationState(value) {
     ? namePolicySource.mode
     : "unknown";
   const resolutions = (Array.isArray(source.resolutions) ? source.resolutions : [])
-    .filter((item) => normalizeText(item?.leafId))
     .slice(0, 700)
+    .filter((item) => normalizeText(item?.leafId))
     .map((item) => ({
       leafId: normalizeText(item.leafId).slice(0, 180),
       status: normalizeText(item.status),
@@ -291,8 +292,8 @@ function normalizeDesignerAiConversationState(value) {
       fingerprint: normalizeText(item.fingerprint).slice(0, 120),
     }));
   const baseline = (Array.isArray(source.baseline) ? source.baseline : [])
-    .filter((item) => normalizeText(item?.leafId))
     .slice(0, 700)
+    .filter((item) => normalizeText(item?.leafId))
     .map((item) => ({
       leafId: normalizeText(item.leafId).slice(0, 180),
       fingerprint: normalizeText(item.fingerprint).slice(0, 120),
@@ -949,6 +950,14 @@ function reconcileDesignerAiConversationState({ snapshot, previousSnapshot, prev
     if (GIFT_REQUEST_LEAF_ID_SET.has(leafId)) continue;
     const status = resolution?.status;
     if (status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER && updates.get(leafId)?.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_FROM_USER) continue;
+    // A still-current manual provider choice also survives later text edits.
+    // A redundant model prompt cannot reopen it; an explicit Maps request may
+    // still open the local picker and replace this evidence after selection.
+    const currentLeaf = leafById.get(leafId);
+    if (/^event\.(ceremony|party)\.place_selection$/.test(leafId) &&
+        currentLeaf.status === DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE &&
+        currentLeaf.rule === DESIGNER_AI_RESOLUTION_RULES.LEAVE_EMPTY &&
+        [DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL].includes(status)) continue;
     // A model clarification/control request cannot undo a valid value verified by an
     // effective, persisted receipt. Other leaves may still need clarification.
     if ([DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION, DESIGNER_AI_LEDGER_STATUSES.REQUIRES_CONTROL].includes(status) &&

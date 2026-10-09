@@ -40,6 +40,7 @@ export function dateCasePayload(item) {
   }] };
   return {
     contractVersion: contract.DESIGNER_AI_CONTRACT_VERSION,
+    draftId: "synthetic-date-draft", requestCreatedAt: Date.now(),
     clientMessageId: `date-eval-${item.id}`, entryMode: "continuation",
     message: item.message, recentTurns: item.recentTurns || askedDate,
     capabilitySnapshot: contract.sanitizeCapabilitySnapshot({

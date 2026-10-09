@@ -1049,6 +1049,37 @@ test("manual location resolves only nonempty values and leaves a missing address
   );
 });
 
+for (const phase of ["ceremony", "party"]) {
+  test(`a manual ${phase} choice is independent of its address and survives redundant questions`, () => {
+    const values = fixture().values;
+    values[phase].address = "";
+    const leafId = `event.${phase}.place_selection`;
+    const otherLeafId = `event.${phase === "ceremony" ? "party" : "ceremony"}.place_selection`;
+    const initial = snapshotFor(build({ values }), values);
+    const chosen = reconcileDesignerAiConversationState({ snapshot: initial,
+      resolutions: [{ leafId, status: "resolved_by_rule", rule: "leave_empty" }] });
+    const restored = snapshotFor(build({ values, conversationState: JSON.parse(JSON.stringify(chosen)) }), values);
+    assert.equal(restored.ledger.leaves.find(leaf => leaf.id === leafId).rule, "leave_empty");
+    assert.equal(isTerminalDesignerAiLedgerStatus(restored.ledger.leaves.find(leaf => leaf.id === `event.${phase}.address`).status), false);
+    for (const status of ["needs_clarification", "requires_control"]) {
+      const state = reconcileDesignerAiConversationState({ snapshot: restored, previousState: chosen,
+        resolutions: [leafId, otherLeafId].map(id => ({ leafId: id, status, rule: null })) });
+      assert.equal(state.resolutions.find(leaf => leaf.leafId === leafId).rule, "leave_empty");
+      assert.equal(state.resolutions.find(leaf => leaf.leafId === otherLeafId).status, status);
+    }
+    const selectedValues = { ...values, [phase]: { ...values[phase], placeSelected: true } };
+    const selected = snapshotFor(build({ values: selectedValues, conversationState: chosen }), selectedValues);
+    const selection = reconcileDesignerAiConversationState({ snapshot: selected, previousState: chosen, controlLeafIds: [leafId] });
+    assert.equal(selection.resolutions.find(leaf => leaf.leafId === leafId).status, "resolved_by_control");
+    const staleChoice = reconcileDesignerAiConversationState({ snapshot: selected, previousState: chosen,
+      resolutions: [{ leafId, status: "needs_clarification", rule: null }] });
+    assert.equal(staleChoice.resolutions.find(leaf => leaf.leafId === leafId).status, "needs_clarification", "a changed fingerprint does not retain obsolete manual evidence");
+    const incompatible = reconcileDesignerAiConversationState({ snapshot: selected,
+      resolutions: [{ leafId, status: "resolved_by_rule", rule: "leave_empty" }] });
+    assert.equal(incompatible.resolutions.some(leaf => leaf.leafId === leafId), false, "manual entry cannot discard selected Google data");
+  });
+}
+
 test("trusted control resolution is recorded only against the reread leaf fingerprint", () => {
   const initial = build();
   const changed = build({

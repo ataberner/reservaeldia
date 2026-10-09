@@ -225,6 +225,17 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   antepone una lista que vuelva a repetirla. Los lotes de tres o más cambios,
   fallos parciales y pedidos explícitos de resumen usan feedback estructurado;
   la pregunta posterior se conserva sin repetir las confirmaciones.
+- Al guardar datos bancarios aportados, la confirmación identifica cada campo
+  y su valor efectivo: por ejemplo, `Confirmado: CBU 123456.`. Incluye Alias,
+  Titular, Banco y CUIT cuando corresponda, conservando ceros iniciales y la
+  normalización del owner. La aplicación compone este detalle desde el snapshot
+  releído y receipts vigentes, efectivos, persistidos y sin error, también en
+  modo edición; la prosa del modelo no sustituye esa evidencia. Sólo detalla los
+  campos aportados que siguen visibles en Regalos activo, sin enumerar defaults,
+  datos ocultos o valores de acciones fallidas, obsoletas o de otra sesión.
+  Cambiar sólo visibilidad, borrar o desactivar no acredita un nuevo valor.
+  En lotes parciales detalla únicamente los datos guardados. Confirma el guardado
+  en la invitación, no la validez bancaria ni la titularidad de la cuenta.
 - El nombre automático es un efecto secundario: no se vuelve a escribir si ya
   coincide ni se repite en el feedback normal. Un nombre explícito sí se informa;
   un fallo parcial conserva todos los receipts en su explicación, incluso los
@@ -659,14 +670,17 @@ la redacción accidental de un ejemplo.
 
 ### Dress Code desactivado o activado
 
-- Situación o mensaje del usuario: primero responde que no quiere mostrar Dress
-  Code; en otra variante responde que sí y aporta “Elegante sport”.
+- Situación o mensaje del usuario: responde “no” a “¿Quieren incluir Dress
+  Code?”, o dice que no quiere mostrarlo; en otra variante responde que sí y
+  aporta “Elegante sport”.
 - Estado/evidencia disponible: existe binding de Dress Code.
 - Respuesta recomendada: en la negativa, desactivar y continuar sin otra
   pregunta; en la afirmativa, aplicar el texto y visibilidad y después continuar
   con fotos aplicables.
-- Respuesta que debe evitarse: exigir texto luego de una negativa, borrar el
-  valor oculto o inventar un dress code.
+- Respuesta que debe evitarse: interpretar esa negativa como “lo dejamos para
+  más adelante”, exigir texto, borrar el valor oculto o inventar un dress code.
+  Una postergación explícita (“no sé todavía, lo decidimos después”) sí conserva
+  la configuración vigente y mantiene la decisión pendiente.
 - Regla protegida: dependencia, preservación y orden.
 - Capacidades o owner funcional involucrado: `event.set_dress_code` y Data Model.
 

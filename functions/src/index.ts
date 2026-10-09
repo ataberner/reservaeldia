@@ -13,7 +13,7 @@ import { summarizeErrorForLog } from "./utils/safeErrorLog";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import express, { Request, Response } from "express";
 import {
   requireAdmin,
@@ -172,8 +172,13 @@ import {
   createDesignerAiOpenAiClient,
   interpretDesignerAiChat,
   validateDesignerAiChatPayload,
+  estimateDesignerAiRequestUsage,
+  DESIGNER_AI_MODEL,
 } from "./designerAi/service";
 import { createDesignerAiDeadline } from "./designerAi/deadline";
+import { withDesignerAiRequestBoundary } from "./designerAi/requestBoundary";
+import { calculateDesignerAiCostMicrousd, DesignerAiAdmissionError, requireDesignerAiIdentity } from "./designerAi/admission";
+import { createDesignerAiAdmissionStore, type DesignerAiReservation } from "./designerAi/admissionStore";
 const { normalizeRenderAssetState } = require("../shared/renderAssetContract.cjs");
 const { prepareGroupAwareRenderState } = require("../shared/groupRenderContract.cjs");
 const {
@@ -3063,20 +3068,29 @@ async function readDesignerAiRegisteredFirstName(uid: string): Promise<string | 
   }
 }
 
-export const designerAiChat = onCall(
+const designerAiAdmission = createDesignerAiAdmissionStore(db, {
+  isDraftEditable: (draft) => !draft.templateWorkspace && resolveDraftStateFromData(draft) === DRAFT_STATES.ACTIVE,
+});
+
+export const designerAiChat = withDesignerAiRequestBoundary(onCall(
   {
     region: "us-central1",
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
     secrets: [openAiApiKey],
     timeoutSeconds: 45,
+    maxInstances: 100,
+    enforceAppCheck: true,
   },
   async (request: CallableRequest<unknown>) => {
-    const uid = requireAuth(request);
+    const uid = requireDesignerAiIdentity(request.auth);
     const fallbackTraceId = randomUUID();
     const startedAt = Date.now();
     const deadline = createDesignerAiDeadline({ startedAt });
     let profileReadMs = 0;
     let payloadValidationMs = 0;
+    let reservation: DesignerAiReservation | null = null;
+    let dispatched = false;
+    let settled = false;
 
     try {
       const compatibilityResponse = buildDesignerAiClientCompatibilityResponse(
@@ -3085,7 +3099,7 @@ export const designerAiChat = onCall(
       if (compatibilityResponse) {
         logger.info("designerAiChat solicitó recarga por versión incompatible", {
           uid,
-          contractVersion: compatibilityResponse.contractVersion,
+          reason: "contract_version_mismatch",
           batchId: compatibilityResponse.batchId,
         });
         return compatibilityResponse;
@@ -3093,6 +3107,14 @@ export const designerAiChat = onCall(
       const validationStartedAt = Date.now();
       const payload = validateDesignerAiChatPayload(request.data);
       payloadValidationMs = Math.max(0, Date.now() - validationStartedAt);
+      const opening = buildDesignerAiOpeningResponse(payload) !== null;
+      const usageCeiling = opening ? { maxInputTokens: 0, maxOutputTokens: 0 } : estimateDesignerAiRequestUsage(payload);
+      reservation = await deadline.run(() => designerAiAdmission.reserve({
+        uid, draftId: payload.draftId, clientMessageId: payload.clientMessageId,
+        requestCreatedAt: payload.requestCreatedAt, model: DESIGNER_AI_MODEL,
+        payloadDigest: createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+        ...usageCeiling,
+      }));
       // The profile only personalizes entry greetings. Ordinary turns need no
       // Firestore read, and invalid requests must fail before any profile I/O.
       const profileStartedAt = Date.now();
@@ -3103,6 +3125,8 @@ export const designerAiChat = onCall(
       profileReadMs = Math.max(0, Date.now() - profileStartedAt);
       const openingResponse = buildDesignerAiOpeningResponse(payload, { registeredFirstName });
       if (openingResponse) {
+        await deadline.run(() => designerAiAdmission.settle(reservation!, { outcome: "succeeded", usageComplete: true, actualMicrousd: 0 }));
+        settled = true;
         logger.info("designerAiChat completado", {
           uid,
           traceId: fallbackTraceId,
@@ -3129,12 +3153,20 @@ export const designerAiChat = onCall(
         );
       }
       const client = createDesignerAiOpenAiClient(secretValue);
+      await deadline.run(() => designerAiAdmission.markDispatching(reservation!));
+      dispatched = true;
       const result = await interpretDesignerAiChat({
         payload,
         client,
         userContext: { registeredFirstName },
         deadline,
       });
+      await deadline.run(() => designerAiAdmission.settle(reservation!, {
+        outcome: "succeeded",
+        usageComplete: result.telemetry.usageReportedAttempts === result.telemetry.providerAttempts,
+        actualMicrousd: calculateDesignerAiCostMicrousd(result.telemetry.inputTokens, result.telemetry.outputTokens, reservation!.pricing),
+      }));
+      settled = true;
       const {
         traceId,
         openAiRequestId,
@@ -3162,6 +3194,24 @@ export const designerAiChat = onCall(
       return publicResult;
     } catch (error) {
       const serviceError = error instanceof DesignerAiServiceError ? error : null;
+      if (reservation && !settled) {
+        const telemetry = serviceError?.telemetry;
+        const usageComplete = !dispatched || Boolean(telemetry && telemetry.usageReportedAttempts === telemetry.providerAttempts);
+        // If accounting or the provider outcome is uncertain, retain the
+        // reservation. An expired lease releases concurrency, never spending.
+        try {
+          await deadline.run(() => designerAiAdmission.settle(reservation!, {
+            outcome: usageComplete ? "failed" : "unknown", usageComplete,
+            actualMicrousd: telemetry ? calculateDesignerAiCostMicrousd(telemetry.inputTokens, telemetry.outputTokens, reservation!.pricing) : 0,
+          }), { maxMs: 3000 });
+        } catch {
+          logger.warn("designerAiChat conserva una reserva pendiente", { traceId: fallbackTraceId, category: "accounting_pending" });
+        }
+      }
+      if (error instanceof DesignerAiAdmissionError) {
+        logger.warn("designerAiChat rechazado por admisión", { uid, traceId: fallbackTraceId, reason: error.reason });
+        throw error;
+      }
       const errorDetails = buildDesignerAiErrorDetails(
         serviceError,
         fallbackTraceId
@@ -3196,7 +3246,7 @@ export const designerAiChat = onCall(
       throw new HttpsError("internal", "Diseñador AI no pudo procesar la solicitud.", errorDetails);
     }
   }
-);
+));
 
 /**
  * ================================

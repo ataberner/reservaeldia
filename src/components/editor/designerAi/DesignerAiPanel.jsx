@@ -4,6 +4,9 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
 import DesignerAiLocationControl from "@/components/editor/designerAi/DesignerAiLocationControl";
+import DesignerAiGiftConfirmation from "@/components/editor/designerAi/DesignerAiGiftConfirmation";
+import { createDesignerAiGiftProposal, approveDesignerAiGiftProposal, discardDesignerAiGiftProposal, isDesignerAiGiftProposalCurrent } from "@/domain/editor/designerAiGiftApproval";
+import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 import {
   DESIGNER_AI_ACTION_ORIGINS,
   DESIGNER_AI_AUTO_START_MESSAGE,
@@ -90,11 +93,24 @@ function guidedPresentationEvidence(snapshot, clarification = null) {
 
 function normalizeCallableError(error) {
   const code = String(error?.code || "");
+  const details = error?.details && typeof error.details === "object" ? error.details : {};
+  if (/appcheck|unauthenticated/i.test(code)) {
+    return "No pude verificar tu sesión. Recargá la página y volvé a iniciar sesión si hace falta. Tu mensaje sigue disponible.";
+  }
+  // Admission summaries are fixed, safe server presentations. Use them directly
+  // so a daily stop never suggests an immediate retry and replay never promises
+  // that nothing happened. Raw Firebase/provider error.message is never shown.
+  if (details.category === "assistant_admission" && typeof details.summary === "string" && details.summary.trim()) {
+    const reference = String(details.referenceId || "").trim().slice(0, 80);
+    return `${details.summary.trim().slice(0, 240)}${reference ? ` Referencia: ${reference}` : ""}`;
+  }
   if (code.includes("recovery-conflict") || code.includes("evidence-conflict")) {
     return "El estado cambió y no puedo reanudar ese lote con seguridad. Enviá una nueva solicitud para interpretar los datos actuales.";
   }
   const baseMessage = code.includes("permission-denied")
     ? "Tu sesión ya no tiene permiso para usar esta experiencia."
+    : code.includes("already-exists")
+      ? "Esta solicitud ya fue recibida. Revisá tu invitación antes de enviar otra."
     : code.includes("resource-exhausted")
       ? "No pude responder por el momento. Probá de nuevo en unos minutos."
       : code.includes("deadline-exceeded")
@@ -108,9 +124,6 @@ function normalizeCallableError(error) {
               : code.includes("evidence-missing")
                 ? "El cambio se envió al editor, pero todavía no pude verificarlo en el borrador. Probá nuevamente."
                 : "No pude procesar el mensaje. Probá nuevamente en unos instantes.";
-  const details = error?.details && typeof error.details === "object"
-    ? error.details
-    : {};
   const summary = String(details.summary || "").trim().slice(0, 240);
   const referenceId = String(details.referenceId || "").trim().slice(0, 80);
   const diagnosticParts = [
@@ -360,6 +373,8 @@ export default function DesignerAiPanel({
   const [conversationReady, setConversationReady] = useState(false);
   const [executionPhase, setExecutionPhase] = useState(buildDesignerAiExecutionProgress());
   const [activeControl, setActiveControl] = useState(null);
+  const [giftProposal, setGiftProposal] = useState(null);
+  const pendingGiftRef = useRef(null);
   const [locationDecisions, setLocationDecisions] = useState([]);
   const [liveMessage, setLiveMessage] = useState("");
   const sessionKeyRef = useRef(sessionKey);
@@ -407,6 +422,38 @@ export default function DesignerAiPanel({
   }, [journeyRef]);
   const beginOperation = useEditorDocumentOperation();
 
+  const settleGiftProposal = useCallback((confirmed = false, invalidated = false, displayedProposal = null) => {
+    const pending = pendingGiftRef.current;
+    if (!pending || (displayedProposal && pending.proposal !== displayedProposal)) return;
+    pendingGiftRef.current = null;
+    setGiftProposal(null);
+    let approval = null;
+    let error = null;
+    try {
+      if (invalidated || (confirmed && readSnapshot().revision !== pending.revision)) {
+        throw Object.assign(new Error("La invitación cambió."), { code: "designer-ai/stale-snapshot", details: { retryable: false } });
+      }
+      if (confirmed) approval = approveDesignerAiGiftProposal(pending.proposal, pending.readContext());
+    } catch (failure) { error = failure; }
+    discardDesignerAiGiftProposal(pending.proposal);
+    sendingRef.current = true;
+    setSending(true);
+    pending.resolve({ approval, error, cancelled: !confirmed && !error });
+    messageComposerRef.current?.focus?.();
+  }, [readSnapshot]);
+
+  useEffect(() => {
+    if (!giftProposal) return;
+    const check = () => {
+      const pending = pendingGiftRef.current;
+      if (pending && (readSnapshot().revision !== pending.revision ||
+          !isDesignerAiGiftProposalCurrent(pending.proposal, pending.readContext()))) settleGiftProposal(false, true);
+    };
+    check();
+    const timer = window.setInterval(check, 250);
+    return () => window.clearInterval(timer);
+  }, [giftProposal, contentVersion, readSnapshot, settleGiftProposal]);
+
   const publishGuidedCompletion = useCallback((snapshot) => {
     if (journeyRef.current.editing || !snapshot.ledger.guidedFlow.completion.complete) return false;
     journeyRef.current.editing = true;
@@ -447,9 +494,10 @@ export default function DesignerAiPanel({
   }, [beginOperation]);
 
   useEffect(() => {
+    if (giftProposal) return;
     if (sending) turnTimingRef.current?.markFeedback();
     else turnTimingRef.current?.publish(window);
-  }, [messages, sending]);
+  }, [giftProposal, messages, sending]);
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -475,6 +523,13 @@ export default function DesignerAiPanel({
     controlUserReply = showUserMessage,
   } = {}) => {
     const message = String(rawMessage || "").trim();
+    if (message && pendingGiftRef.current) {
+      const pending = pendingGiftRef.current;
+      pendingGiftRef.current = null;
+      discardDesignerAiGiftProposal(pending.proposal);
+      pending.resolve({ cancelled: true });
+      setGiftProposal(null);
+    }
     if (!message || sendingRef.current) return;
     // Composing is allowed during hydration; interpreting an empty temporary
     // schema as a complete invitation is not.
@@ -529,6 +584,7 @@ export default function DesignerAiPanel({
       }
       if (resume && !operation.isCurrent()) throw Object.assign(new Error("La sesión cambió."), { code: "designer-ai/recovery-conflict" });
       const payload = resume ? null : buildDesignerAiCallablePayload({
+        draftId: readDashboardDocumentNameState(window).documentId,
         clientMessageId: userMessage.id,
         message,
         recentTurns,
@@ -574,6 +630,34 @@ export default function DesignerAiPanel({
         throw Object.assign(new Error([...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" ")), { code: "designer-ai/prevalidation-failed" });
       }
 
+      const giftContext = () => ({ actions: result.actions, snapshot: readSnapshot(),
+        rawGifts: readEditorRenderSnapshot(window)?.gifts, recovery: resume?.recovery || null });
+      const proposal = createDesignerAiGiftProposal(giftContext(), () => operation.isCurrent() &&
+        sessionKeyRef.current === requestSessionKey && requestSequenceRef.current === requestSequence);
+      let giftApproval = null;
+      if (proposal) {
+        const decision = await new Promise(resolve => {
+          pendingGiftRef.current = { proposal, resolve, readContext: giftContext, revision: currentSnapshot.revision };
+          setGiftProposal(proposal);
+          sendingRef.current = false;
+          setSending(false);
+          setLiveMessage("Cambios pendientes de confirmación. Revisá los destinos de Regalos.");
+        });
+        if (!operation.isCurrent() || requestSequenceRef.current !== requestSequence) return;
+        if (decision.error) throw decision.error;
+        if (decision.cancelled) {
+          outcome = "cancelled";
+          recoveryRef.current = null;
+          const text = "Cancelé los cambios pendientes. No apliqué ese conjunto de cambios.";
+          setMessages(current => appendDesignerAiMessageHistory(current, createMessage("assistant", text)));
+          setLiveMessage(text);
+          return;
+        }
+        giftApproval = decision.approval;
+        setSending(true);
+        sendingRef.current = true;
+      }
+
       appliedBatchIdsRef.current.add(result.batchId);
       let actionResults = [];
       if (result.actions.length > 0) {
@@ -585,6 +669,7 @@ export default function DesignerAiPanel({
           isSessionCurrent: () => operation.isCurrent() && sessionKeyRef.current === requestSessionKey,
           waitFrame: () => waitOneEditorFrame(pendingFramesRef.current),
           recovery: resume?.recovery || null,
+          giftApproval,
           onProgress: (_phase, action) => {
             if (!operation.isCurrent()) return;
             const text = buildDesignerAiExecutionProgress(action, currentSnapshot);
@@ -667,6 +752,10 @@ export default function DesignerAiPanel({
       outcome = "success";
     } catch (error) {
       if (!operation.isCurrent() || sessionKeyRef.current !== requestSessionKey) return;
+      if (!executionStarted && showUserMessage && (error?.details?.category === "assistant_admission" ||
+          /appcheck|unauthenticated|resource-exhausted|already-exists/i.test(String(error?.code)))) {
+        setDraftMessage(current => current || message);
+      }
       if (!error.actionResults && execution) {
         error.actionResults = execution.actionResults;
         error.recovery = execution.recovery;
@@ -705,7 +794,7 @@ export default function DesignerAiPanel({
           recoveryBatchId: error.recovery ? result.batchId : null,
       });
       if (!executionStarted && !resume && !verifiedContinuation && error?.details?.retryable !== false &&
-          !/permission-denied|unauthenticated|invalid-argument|failed-precondition/.test(String(error?.code))) {
+          !/appcheck|permission-denied|unauthenticated|already-exists|invalid-argument|failed-precondition/i.test(String(error?.code))) {
         requestRetryRef.current = {
           messageId: errorMessage.id,
           run: () => submitMessageRef.current?.(message, { showUserMessage: false, entryMode, recentTurnsOverride: recentTurns, controlUserReply }),
@@ -854,6 +943,7 @@ export default function DesignerAiPanel({
     autoStartedSessionRef.current = "";
     conversationStateRef.current = normalizeDesignerAiConversationState(null);
     setActiveControl(null);
+    setGiftProposal(null);
     setLocationDecisions([]);
     setSending(false);
     setDraftMessage("");
@@ -865,6 +955,9 @@ export default function DesignerAiPanel({
     }, 0);
     return () => {
       window.clearTimeout(timerId);
+      const pending = pendingGiftRef.current;
+      pendingGiftRef.current = null;
+      if (pending) { discardDesignerAiGiftProposal(pending.proposal); pending.resolve({ cancelled: true }); }
       cancelPendingEditorFrames(pendingFramesRef.current);
       if (sessionKeyRef.current === sessionKey) {
         sessionKeyRef.current = "";
@@ -1180,6 +1273,10 @@ export default function DesignerAiPanel({
       (item) => item.phase !== decision.phase
     ));
     const requestSessionKey = sessionKeyRef.current;
+    const operation = beginOperation();
+    sendingRef.current = true;
+    setSending(true);
+    setExecutionPhase("Guardando…");
     persistConversationState(nextState, {
       onPersisted: () => {
         if (sessionKeyRef.current !== requestSessionKey) return;
@@ -1188,14 +1285,12 @@ export default function DesignerAiPanel({
         });
         if (publishGuidedCompletion(verifiedSnapshot)) return;
         verifiedSnapshot.conversation.mode = journeyRef.current.editing ? "editing" : "guided";
-        void submitMessageRef.current?.(
-          buildControlContinueMessage([resolution.leafId], verifiedSnapshot),
-          {
-            showUserMessage: false,
-            snapshotOverride: verifiedSnapshot,
-            verifiedContinuation: true,
-          }
-        );
+        // The persisted manual choice is already authoritative. Derive the
+        // next question locally so a model continuation cannot reopen Maps.
+        const currentChoice = verifiedSnapshot.ledger.leaves.find(leaf => leaf.id === resolution.leafId);
+        const manualChoiceIsCurrent = currentChoice?.status === "resolved_by_rule" && currentChoice.rule === "leave_empty";
+        continueFromVerifiedSnapshot(verifiedSnapshot, manualChoiceIsCurrent
+          ? "Listo, seguimos con la ubicación manual." : "Sigamos con tu invitación.");
       },
       onPersistenceError: () => {
         if (sessionKeyRef.current !== requestSessionKey) return;
@@ -1212,9 +1307,15 @@ export default function DesignerAiPanel({
         });
         setLiveMessage(safeMessage);
       },
+    }).finally(() => {
+      if (operation.isCurrent() && sessionKeyRef.current === requestSessionKey) {
+        sendingRef.current = false;
+        setSending(false);
+      }
+      operation.cancel();
     });
     return true;
-  }, [journeyRef, persistConversationState, publishGuidedCompletion, readSnapshot]);
+  }, [beginOperation, continueFromVerifiedSnapshot, journeyRef, persistConversationState, publishGuidedCompletion, readSnapshot]);
 
   const closeTrustedControl = useCallback(() => {
     const controlState = activeControlRef.current;
@@ -1308,7 +1409,8 @@ export default function DesignerAiPanel({
         />
       ) : (
         <>
-      <div
+      {giftProposal ? <DesignerAiGiftConfirmation proposal={giftProposal}
+        onConfirm={() => settleGiftProposal(true, false, giftProposal)} onCancel={() => settleGiftProposal(false, false, giftProposal)} /> : <div
         className="flex min-h-0 flex-1 basis-0 flex-col gap-2.5 overflow-y-auto overscroll-contain bg-[#FBF7F9] px-3 py-3.5 [scrollbar-gutter:stable]"
         role="log"
         aria-label="Conversación"
@@ -1381,7 +1483,7 @@ export default function DesignerAiPanel({
           />
         )) : null}
         <div ref={messagesEndRef} />
-      </div>
+      </div>}
       <form onSubmit={handleSubmit} className="shrink-0 border-t border-[#E5E5E5] bg-white px-3 py-2.5">
         <label htmlFor="designer-ai-message" className="sr-only">Mensaje para Tu asistente</label>
         <div className="flex items-end gap-2">

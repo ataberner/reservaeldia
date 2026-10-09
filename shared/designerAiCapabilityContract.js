@@ -1,5 +1,9 @@
 import runtime from "./designerAiCapabilityContract.cjs";
 
+export const DESIGNER_AI_REQUEST_LIMITS = runtime.DESIGNER_AI_REQUEST_LIMITS;
+export const inspectDesignerAiRequestData = runtime.inspectDesignerAiRequestData;
+export const inspectDesignerAiSnapshotShape = runtime.inspectDesignerAiSnapshotShape;
+
 export const DESIGNER_AI_AUTO_START_MESSAGE = runtime.DESIGNER_AI_AUTO_START_MESSAGE;
 export const DESIGNER_AI_CLARIFICATION_KINDS = runtime.DESIGNER_AI_CLARIFICATION_KINDS;
 export const DESIGNER_AI_ACTION_ORIGINS = runtime.DESIGNER_AI_ACTION_ORIGINS;

@@ -90,7 +90,7 @@ for (const repaired of [true, false]) {
   test(`olo fiesta: constrained tool is sent on both attempts; semantic repair ${repaired ? "succeeds" : "still rejects"}`, async () => {
     const requests = [];
     const run = service.interpretDesignerAiChat({
-      payload: { contractVersion: contract.DESIGNER_AI_CONTRACT_VERSION, clientMessageId: "incident-regression", entryMode: "continuation", message: "olo fiesta",
+      payload: { contractVersion: contract.DESIGNER_AI_CONTRACT_VERSION, draftId: "synthetic-draft", requestCreatedAt: Date.now(), clientMessageId: "incident-regression", entryMode: "continuation", message: "olo fiesta",
         recentTurns: [{ role: "assistant", content: "¿Van a tener solo un evento o habrá ceremonia y fiesta por separado?" }], capabilitySnapshot: snapshot },
       client: { responses: { create: async body => { requests.push(body); return providerResponse(requests.length === 2 && repaired ? valid : invalid); } } },
     });
@@ -162,7 +162,7 @@ test("repair describes known action phases and leaves without echoing rejected v
     { type: secret, arguments: { phase: secret, value: secret } },
   ], resolutions: [{ leafId: secret, status: secret, rule: secret }] };
   const result = await service.interpretDesignerAiChat({
-    payload: { contractVersion: contract.DESIGNER_AI_CONTRACT_VERSION, clientMessageId: "repair-minimization", entryMode: "continuation",
+    payload: { contractVersion: contract.DESIGNER_AI_CONTRACT_VERSION, draftId: "synthetic-draft", requestCreatedAt: Date.now(), clientMessageId: "repair-minimization", entryMode: "continuation",
       message: "Solo fiesta a las 20", recentTurns: [], capabilitySnapshot: snapshot },
     client: { responses: { create: async body => { requests.push(body); return providerResponse(requests.length === 1 ? rejected : valid); } } },
   });

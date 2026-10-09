@@ -55,7 +55,7 @@ for (const [group, field, value, userData] of [
   ["external_list", "giftListLink", "https://example.test/lista-elegida", "La lista está en https://example.test/lista-elegida"],
 ]) {
   test(`${group} survives reentry without exposing samples and completes with only ${field}`, async () => {
-    let run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+    let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
       ? { assistantMessage: "Hola." } : choose(group) });
     try {
       await run.until(() => run.messages().length === 1);
@@ -66,7 +66,7 @@ for (const [group, field, value, userData] of [
       const saved = run.exportPersistedDraft();
       assert.deepEqual(selectedGroups(saved), [`gifts.${group}`]);
       await run.close(); run = null;
-      run = await mountPanel({ savedDraft: saved, respond: (_, index) => index === 1
+      run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: (_, index) => index === 1
         ? { assistantMessage: "Seguimos." }
         : { actions: [method(field, value)], assistantMessage: "Guardado." } });
       await run.until(() => run.messages().length === 1);
@@ -87,7 +87,7 @@ for (const [group, field, value, userData] of [
 }
 
 test("an explicit combination waits for the external list after the first complete bank datum", async () => {
-  let run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+  let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
     ? { assistantMessage: "Hola." } : index === 2 ? choose("bank_details", "external_list")
     : { actions: [method("alias", "ALIAS.ELEGIDO")], assistantMessage: "Guardado." } });
   try {
@@ -103,7 +103,7 @@ test("an explicit combination waits for the external list after the first comple
     assert.equal(partial.render.gifts.giftListUrl, sampleUrl);
     assert.deepEqual(selectedGroups(partial), ["gifts.bank_details", "gifts.external_list"]);
     await run.close(); run = null;
-    run = await mountPanel({ savedDraft: partial, respond: (_, index) => index === 1
+    run = await mountPanel({ confirmGiftChanges: true, savedDraft: partial, respond: (_, index) => index === 1
       ? { assistantMessage: "Seguimos." }
       : { actions: [method("giftListLink", "https://example.test/lista-elegida")], assistantMessage: "Guardado." } });
     await run.until(() => run.messages().length === 1);
@@ -120,7 +120,7 @@ test("an explicit combination waits for the external list after the first comple
 
 for (const [first, next] of [["bank_details", "external_list"], ["external_list", "bank_details"]]) {
   test(`switching the pending choice from ${first} to ${next} replaces its durable markers`, async () => {
-    let run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+    let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
       ? { assistantMessage: "Hola." } : choose(index === 2 ? first : next) });
     try {
       await run.until(() => run.messages().length === 1);
@@ -132,7 +132,7 @@ for (const [first, next] of [["bank_details", "external_list"], ["external_list"
       const saved = run.exportPersistedDraft();
       assert.deepEqual(selectedGroups(saved), [`gifts.${next}`]);
       await run.close(); run = null;
-      run = await mountPanel({ savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
+      run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
       await run.until(() => run.messages().length === 1);
       assertQuestion(run, next);
       assert.equal(run.writes.length, 0);
@@ -143,7 +143,7 @@ for (const [first, next] of [["bank_details", "external_list"], ["external_list"
 for (const failure of ["content", "metadata"]) {
   test(`a ${failure} persistence failure cannot confirm the choice and the existing retry saves it once`, async () => {
     let fail = false;
-    const run = await mountPanel({ savedDraft: draft(), failWrite: () => failure === "content" && fail,
+    const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), failWrite: () => failure === "content" && fail,
       failMetadata: () => failure === "metadata" && fail,
       respond: (_, index) => index === 1 ? { assistantMessage: "Hola." } : choose("bank_details") });
     try {
@@ -168,7 +168,7 @@ for (const failure of ["content", "metadata"]) {
 }
 
 test("template values and enabled alone do not infer a bank or external-list choice", async () => {
-  const run = await mountPanel({ savedDraft: draft({ enabled: true }), respond: (_, index) => index === 1
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft({ enabled: true }), respond: (_, index) => index === 1
     ? { assistantMessage: "Hola." } : { actions: [enable], assistantMessage: "Pasame el alias." } });
   try {
     await run.until(() => run.messages().length === 1);
@@ -184,7 +184,7 @@ test("template values and enabled alone do not infer a bank or external-list cho
 for (const failure of ["content", "metadata"]) {
   test(`retrying a bank datum after ${failure} failure retains the previously selected external list`, async () => {
     let fail = false;
-    const run = await mountPanel({ savedDraft: draft(), failWrite: () => failure === "content" && fail,
+    const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), failWrite: () => failure === "content" && fail,
       failMetadata: () => failure === "metadata" && fail,
       respond: (_, index) => index === 1 ? { assistantMessage: "Hola." }
         : index === 2 ? choose("bank_details", "external_list")
@@ -214,7 +214,7 @@ for (const failure of ["content", "metadata"]) {
 }
 
 test("a later Gift action does not revive a choice invalidated by a prior manual edit", async () => {
-  const run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
     ? { assistantMessage: "Hola." } : index === 2 ? choose("bank_details")
     : { actions: [{ type: "gifts.set_intro_text", arguments: { text: "Gracias por acompañarnos." } }], assistantMessage: "Guardado." } });
   try {
@@ -235,7 +235,7 @@ test("a later Gift action does not revive a choice invalidated by a prior manual
 
 for (const group of ["bank_details", "external_list"]) {
   test(`postponing selected ${group} advances without discarding it or changing Gifts, including after reentry`, async () => {
-    let run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+    let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
       ? { assistantMessage: "Hola." } : index === 2 ? choose(group)
       : { resolutions: [{ leafId: `gifts.${group}`, status: "deferred_by_user", rule: null }], assistantMessage: "Lo dejamos para después." } });
     try {
@@ -254,7 +254,7 @@ for (const group of ["bank_details", "external_list"]) {
       assert.equal(saved.conversation.resolutions.find(item => item.leafId === `gifts.${group}`).status, "deferred_by_user");
       assertSamplesConservedAndHidden(run);
       await run.close(); run = null;
-      run = await mountPanel({ savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
+      run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
       await run.until(() => run.messages().length === 1);
       assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextStep.kind, "gallery");
       assert.ok(ledger.buildDesignerAiConversationBrief(run.snapshot()).deferredLeafIds.includes(`gifts.${group}`));
@@ -265,7 +265,7 @@ for (const group of ["bank_details", "external_list"]) {
 }
 
 test("postponing only the external list in a combination preserves the saved alias and resumes after refresh", async () => {
-  let run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+  let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
     ? { assistantMessage: "Hola." } : index === 2 ? choose("bank_details", "external_list")
     : index === 3 ? { actions: [method("alias", "ALIAS.ELEGIDO")], assistantMessage: "Guardado." }
     : { resolutions: [{ leafId: "gifts.external_list", status: "deferred_by_user", rule: null }], assistantMessage: "Lo dejamos para después." } });
@@ -288,7 +288,7 @@ test("postponing only the external list in a combination preserves the saved ali
     assert.equal(saved.render.gifts.visibility.alias, true);
     assert.equal(saved.render.gifts.visibility.giftListLink, false);
     await run.close(); run = null;
-    run = await mountPanel({ savedDraft: saved, respond: (_, index) => index === 1
+    run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: (_, index) => index === 1
       ? { assistantMessage: "Seguimos." }
       : { actions: [method("giftListLink", "https://example.test/lista-elegida")], assistantMessage: "Guardado." } });
     await run.until(() => run.messages().length === 1);
@@ -306,7 +306,7 @@ test("postponing only the external list in a combination preserves the saved ali
 
 for (const groups of [["bank_details"], ["external_list"], ["bank_details", "external_list"]]) {
   test(`choosing and postponing ${groups.join(" and ")} in one turn persists the choice without showing template data`, async () => {
-    let run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+    let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
       ? { assistantMessage: "Hola." }
       : { ...choose(...groups), resolutions: groups.map(group => ({ ...marker(group), status: "deferred_by_user" })) } });
     try {
@@ -324,7 +324,7 @@ for (const groups of [["bank_details"], ["external_list"], ["bank_details", "ext
         assert.ok(ledger.buildDesignerAiConversationBrief(run.snapshot()).deferredLeafIds.includes(`gifts.${group}`));
       }
       await run.close(); run = null;
-      run = await mountPanel({ savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
+      run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
       await run.until(() => run.messages().length === 1);
       assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextStep.kind, "gallery");
       assert.equal(run.writes.length, 0);

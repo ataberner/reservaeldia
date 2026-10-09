@@ -41,7 +41,10 @@ test("year clarification retains the user date in bounded provider input, withou
   assert.equal(service.buildDesignerAiConversationBrief(payload.capabilitySnapshot).nextBlock.id, "event_data");
   const result = await service.interpretDesignerAiChat({ payload, client: { responses: { create: async (body) => {
     assert.equal(body.store, false);
-    assert.deepEqual(body.input.slice(-4), [...item.recentTurns, { role: "user", content: item.message }].slice(-4));
+    assert.equal(body.input.at(-1).content, item.message);
+    assert.equal(body.input.at(-2).role, "user");
+    assert.deepEqual(JSON.parse(body.input.at(-2).content.split("\n").slice(1).join("\n")), item.recentTurns);
+    assert.equal(body.input.some(turn => turn.role === "assistant"), false);
     assert.match(body.input[0].content, /No pidas cuatro dígitos ni repetir una fecha válida/);
     assert.match(body.input[0].content, /día y mes que ya aportó para esa misma fecha en recentTurns/);
     return { output: [{ type: "function_call", name: "submit_designer_ai_result", arguments: JSON.stringify({

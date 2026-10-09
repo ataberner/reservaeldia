@@ -24,7 +24,7 @@ const hasGallery = () => document.body.textContent.includes("Terminé con esta g
 
 for (const leafId of ["gifts.enabled", "gifts.method.alias.visible", "gifts.method.alias.value"]) {
   test(`a redundant requires_control on ${leafId} does not reject the alias batch or survive reentry`, async () => {
-    let run = await mountPanel({ savedDraft: draft({ enabled: false, parentStatus: "pending" }), respond: (_, index) => index === 1
+    let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft({ enabled: false, parentStatus: "pending" }), respond: (_, index) => index === 1
       ? { assistantMessage: "Contame cómo quieren recibir regalos." }
       : { actions: [gift("set_enabled", { enabled: true }), aliasAction],
         resolutions: [{ leafId, status: "requires_control", rule: null }],
@@ -44,7 +44,7 @@ for (const leafId of ["gifts.enabled", "gifts.method.alias.visible", "gifts.meth
       assert.equal(saved.render.gifts.bank.alias, "ALIAS.PRUEBA");
       assert.ok(saved.conversation.resolutions.every(item => item.leafId !== leafId || item.status !== "requires_control"));
       await run.close(); run = null;
-      run = await mountPanel({ savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
+      run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos." }) });
       await run.until(() => run.messages().length === 1);
       assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock.id, "galleries");
       assert.doesNotMatch(run.messages().at(-1).content, /lista externa|datos bancarios|Pasame el alias/);
@@ -54,7 +54,7 @@ for (const leafId of ["gifts.enabled", "gifts.method.alias.visible", "gifts.meth
 }
 
 test("a redundant control resolution cannot make a hidden alias disappear or complete Gifts", async () => {
-  const run = await mountPanel({ savedDraft: draft({ alias: "ALIAS.CONSERVADO", parentStatus: "resolved_from_user" }), respond: (_, index) => index === 1
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft({ alias: "ALIAS.CONSERVADO", parentStatus: "resolved_from_user" }), respond: (_, index) => index === 1
     ? { assistantMessage: "Seguimos." }
     : { actions: [gift("set_method", { method: "alias", value: null, visible: false })],
       resolutions: [{ leafId: "gifts.method.alias.visible", status: "requires_control", rule: null }],
@@ -77,7 +77,7 @@ test("a redundant control resolution cannot make a hidden alias disappear or com
 });
 
 test("a real Gallery control remains available alongside a confirmed gift action", async () => {
-  const run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
     ? { assistantMessage: "Pasame el alias." }
     : index === 2 ? { actions: [aliasAction], assistantMessage: "Agregué el alias." }
     : { actions: [aliasAction], controlRequest: gallery,
@@ -102,7 +102,7 @@ for (const variant of ["without an action", "not covered by the action"]) {
   test(`an unsupported control requirement ${variant} still fails before mutation`, async () => {
     const actions = variant === "without an action" ? [] : [aliasAction];
     const leafId = actions.length ? "gifts.intro_text" : "gifts.method.alias.value";
-    const run = await mountPanel({ savedDraft: draft(), respond: (_, index) => index === 1
+    const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft(), respond: (_, index) => index === 1
       ? { assistantMessage: "Pasame el alias." }
       : { actions, resolutions: [{ leafId, status: "requires_control", rule: null }], assistantMessage: "Listo." } });
     try {
@@ -119,7 +119,7 @@ for (const variant of ["without an action", "not covered by the action"]) {
 for (const variant of ["prior clarification", "same-turn parent clarification", "same-turn alias clarification"]) {
   test(`confirmed alias advances once to Gallery and never returns to Gifts: ${variant}`, async () => {
     const prior = variant === "prior clarification";
-    let run = await mountPanel({ savedDraft: draft({ enabled: prior, parentStatus: prior ? "needs_clarification" : "pending" }), respond: (_, index) => {
+    let run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft({ enabled: prior, parentStatus: prior ? "needs_clarification" : "pending" }), respond: (_, index) => {
       if (index === 1) return { assistantMessage: "Pasame el alias que quieran mostrar." };
       if (index === 2) return {
         actions: [...(prior ? [] : [gift("set_enabled", { enabled: true })]), aliasAction],
@@ -148,7 +148,7 @@ for (const variant of ["prior clarification", "same-turn parent clarification", 
       assert.equal(run.previews(), 1);
       const saved = run.exportPersistedDraft();
       await run.close(); run = null;
-      run = await mountPanel({ savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos ajustando." }) });
+      run = await mountPanel({ confirmGiftChanges: true, savedDraft: saved, respond: () => ({ assistantMessage: "Seguimos ajustando." }) });
       await run.until(() => run.messages().length === 1);
       assert.equal(run.calls[0].capabilitySnapshot.conversation.mode, "editing");
       assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextBlock, null);
@@ -204,7 +204,7 @@ test("empty, unconfirmed and deferred Gifts do not receive false confirmation", 
 });
 
 test("a deliberately selected incomplete method asks only for its missing value", async () => {
-  const run = await mountPanel({ savedDraft: draft({ alias: "ALIAS.PRUEBA" }), respond: (_, index) => index === 1
+  const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft({ alias: "ALIAS.PRUEBA" }), respond: (_, index) => index === 1
     ? { assistantMessage: "Podés seguir ajustando." }
     : { actions: [gift("set_method", { method: "cbu", visible: true, value: "" })], assistantMessage: "Listo." } });
   try {
@@ -220,7 +220,7 @@ for (const variant of ["alias only", "enable and alias with redundant control"])
   test(`failed alias persistence blocks progression until the existing retry confirms it: ${variant}`, async () => {
     let fail = false;
     const aliasOnly = variant === "alias only";
-    const run = await mountPanel({ savedDraft: draft({ enabled: aliasOnly }), failWrite: () => fail, respond: (_, index) => index === 1
+    const run = await mountPanel({ confirmGiftChanges: true, savedDraft: draft({ enabled: aliasOnly }), failWrite: () => fail, respond: (_, index) => index === 1
       ? { assistantMessage: "Pasame el alias." }
       : { actions: aliasOnly ? [aliasAction] : [gift("set_enabled", { enabled: true }), aliasAction],
         resolutions: aliasOnly ? [] : [{ leafId: "gifts.method.alias.value", status: "requires_control", rule: null }],

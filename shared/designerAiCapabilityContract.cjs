@@ -1,7 +1,116 @@
 const conversationLedger = require("./designerAiConversationLedger.cjs");
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
 
-const DESIGNER_AI_CONTRACT_VERSION = "2.4.0";
+const DESIGNER_AI_CONTRACT_VERSION = "2.5.0";
+// One budget for the HTTP boundary, service and browser contract. The transport
+// limit includes the callable envelope and escaped/Unicode message overhead.
+const DESIGNER_AI_REQUEST_LIMITS = Object.freeze({
+  maxBytes: 256 * 1024,
+  maxSnapshotBytes: 160000,
+  maxDepth: 16,
+  maxNodes: 16384,
+  maxArrayItems: 700,
+  maxObjectKeys: 64,
+  maxStringLength: 4000,
+});
+const UNSAFE_REQUEST_KEYS = new Set(["__proto__", "prototype", "constructor", "@type"]);
+
+// Iterative, bounded inspection must precede coercion, Firebase decoding or
+// JSON.stringify. Accessors and exotic prototypes are also rejected for direct
+// service callers; JSON HTTP data never needs either facility.
+function inspectDesignerAiRequestData(value) {
+  const pending = [{ value, depth: 0 }];
+  const seen = new Set();
+  let nodes = 0;
+  let maxDepth = 0;
+  let textUnits = 0;
+  const fail = (reason) => ({ ok: false, reason, nodes, maxDepth });
+  while (pending.length) {
+    const current = pending.pop();
+    nodes += 1;
+    maxDepth = Math.max(maxDepth, current.depth);
+    if (nodes > DESIGNER_AI_REQUEST_LIMITS.maxNodes) return fail("nodes");
+    if (current.depth > DESIGNER_AI_REQUEST_LIMITS.maxDepth) return fail("depth");
+    const entry = current.value;
+    if (entry === null || typeof entry === "boolean") continue;
+    if (typeof entry === "string") {
+      if (entry.length > DESIGNER_AI_REQUEST_LIMITS.maxStringLength) return fail("string");
+      textUnits += entry.length;
+      if (textUnits > DESIGNER_AI_REQUEST_LIMITS.maxBytes) return fail("bytes");
+      continue;
+    }
+    if (typeof entry === "number") {
+      if (!Number.isFinite(entry)) return fail("number");
+      continue;
+    }
+    if (typeof entry !== "object") return fail("type");
+    if (seen.has(entry)) return fail("cycle");
+    seen.add(entry);
+    const array = Array.isArray(entry);
+    const prototype = Object.getPrototypeOf(entry);
+    if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) return fail("prototype");
+    if (array && entry.length > DESIGNER_AI_REQUEST_LIMITS.maxArrayItems) return fail("array");
+    const keys = Reflect.ownKeys(entry);
+    if (!array && keys.length > DESIGNER_AI_REQUEST_LIMITS.maxObjectKeys) return fail("keys");
+    if (array && keys.length !== entry.length + 1) return fail("array-shape");
+    for (const key of keys) {
+      if (typeof key !== "string" || UNSAFE_REQUEST_KEYS.has(key)) return fail("key");
+      if (array && key === "length") continue;
+      if (array && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= entry.length)) return fail("array-shape");
+      if (key.length > 180) return fail("key-length");
+      textUnits += key.length;
+      if (textUnits > DESIGNER_AI_REQUEST_LIMITS.maxBytes) return fail("bytes");
+      const descriptor = Object.getOwnPropertyDescriptor(entry, key);
+      if (!descriptor || !Object.hasOwn(descriptor, "value")) return fail("accessor");
+      if (nodes + pending.length >= DESIGNER_AI_REQUEST_LIMITS.maxNodes) return fail("nodes");
+      pending.push({ value: descriptor.value, depth: current.depth + 1 });
+    }
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify(value)).length;
+  if (bytes > DESIGNER_AI_REQUEST_LIMITS.maxBytes) return fail("bytes");
+  return { ok: true, nodes, maxDepth, bytes };
+}
+
+function inspectDesignerAiSnapshotShape(value) {
+  const budget = inspectDesignerAiRequestData(value);
+  if (!budget.ok) return budget;
+  const list = (maximum, item) => ({ maximum, item });
+  const phase = { date: "string:10", startTime: "string:5", endTime: "string:5", venueName: "string:180", address: "string:240", placeSelected: "boolean" };
+  const method = { value: "string:240", visible: "boolean", configured: "boolean", contentRevision: "string:120" };
+  const schema = {
+    revision: "string:120",
+    availability: Object.fromEntries(SNAPSHOT_AVAILABILITY_KEYS.map((key) => [key, "boolean"])),
+    values: {
+      documentName: "string:120", people: { primaryName: "string:120", secondaryName: "string:120" },
+      eventMode: "string:20", ceremony: phase, party: phase,
+      dressCode: { enabled: "boolean", value: "string:240" }, story: "string:4000",
+      media: { hasCover: "boolean", contentRevision: "string:120" },
+      galleries: list(20, { id: "string:160", slots: list(24, { cellId: "nullable:160", index: "integer", occupied: "boolean", contentRevision: "string:120" }) }),
+      rsvp: { enabled: "boolean", questions: list(20, {
+        id: "string:120", active: "boolean", label: "string:120", type: "string:20", required: "boolean",
+        options: list(20, { id: "string:120", label: "string:80" }),
+      }), modal: { title: "string:80", subtitle: "string:160", submitLabel: "string:30", primaryColor: "string:7" } },
+      gifts: { enabled: "boolean", introText: "string:480", buttonText: "string:80", methods: Object.fromEntries([...GIFT_METHOD_SET].map((key) => [key, method])) },
+    },
+    ledger: { version: "integer", leaves: list(700, { id: "string:180", block: "string:40", status: "string:80", provenance: "string:80", rule: "nullable:80", fingerprint: "string:120" }),
+      guidedFlow: { leafIds: list(700, "string:180") } },
+    conversation: { mode: "string:20", usage: { hasStarted: "boolean" }, namePolicy: { mode: "string:20", lastAutomaticName: "string:120" } },
+  };
+  // Schema recursion has a fixed small depth. Unknown bounded fields retain the
+  // existing projection behavior and never become model capabilities.
+  function matches(entry, definition) {
+    if (typeof definition === "string") {
+      if (definition === "boolean") return typeof entry === "boolean";
+      if (definition === "integer") return Number.isSafeInteger(entry) && entry >= 0;
+      const [kind, maximum] = definition.split(":");
+      return (kind === "nullable" && entry === null) || (typeof entry === "string" && entry.length <= Number(maximum));
+    }
+    if (Object.hasOwn(definition, "maximum")) return Array.isArray(entry) && entry.length <= definition.maximum && entry.every((item) => matches(item, definition.item));
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    return Object.entries(definition).every(([key, child]) => !Object.hasOwn(entry, key) || matches(entry[key], child));
+  }
+  return matches(value, schema) ? budget : { ...budget, ok: false, reason: "snapshot-shape" };
+}
 const GIFT_REQUEST_LEAF_ID_SET = new Set(conversationLedger.DESIGNER_AI_GIFT_REQUEST_LEAF_IDS);
 // Existing internal opening turn. Shared so only this seed can bypass the model;
 // a real user message with an entry mode still follows normal interpretation.
@@ -634,14 +743,17 @@ function sanitizeLedger(value) {
     .filter((leaf) => !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf.status))
     .map((leaf) => leaf.id);
   const availableLeafIds = new Set(availableLeaves.map((leaf) => leaf.id));
+  const seenGuidedLeafIds = new Set();
   const guidedLeafIds = (Array.isArray(source.guidedFlow?.leafIds)
     ? source.guidedFlow.leafIds
     : [])
+    .slice(0, DESIGNER_AI_REQUEST_LIMITS.maxArrayItems)
     .map((leafId) => sanitizeString(leafId, 180))
-    .filter((leafId, index, all) => (
-      availableLeafIds.has(leafId) && all.indexOf(leafId) === index
-    ))
-    .slice(0, 700);
+    .filter((leafId) => {
+      if (!availableLeafIds.has(leafId) || seenGuidedLeafIds.has(leafId)) return false;
+      seenGuidedLeafIds.add(leafId);
+      return true;
+    });
   const guidedUnresolvedLeafIds = guidedLeafIds.filter((leafId) => {
     const leaf = leaves.find((entry) => entry.id === leafId);
     return !conversationLedger.isTerminalDesignerAiLedgerStatus(leaf?.status);
@@ -899,13 +1011,18 @@ function isResolutionRuleCompatible(leafId, rule) {
   }
 }
 
-function containsForbiddenSnapshotData(value, seen = new Set()) {
-  if (!value || typeof value !== "object") return false;
-  if (seen.has(value)) return false;
-  seen.add(value);
-  return Object.entries(value).some(([key, child]) =>
-    FORBIDDEN_SNAPSHOT_KEY.test(key) || containsForbiddenSnapshotData(child, seen)
-  );
+function containsForbiddenSnapshotData(value) {
+  if (!inspectDesignerAiRequestData(value).ok) return true;
+  const pending = [value];
+  while (pending.length) {
+    const entry = pending.pop();
+    if (!entry || typeof entry !== "object") continue;
+    for (const [key, child] of Object.entries(entry)) {
+      if (FORBIDDEN_SNAPSHOT_KEY.test(key)) return true;
+      if (child && typeof child === "object") pending.push(child);
+    }
+  }
+  return false;
 }
 
 function validateDesignerAiControlRequest(controlRequest, snapshot, { actions = [] } = {}) {
@@ -1139,6 +1256,9 @@ function buildDesignerAiTool(snapshot) {
 }
 
 module.exports = {
+  DESIGNER_AI_REQUEST_LIMITS,
+  inspectDesignerAiRequestData,
+  inspectDesignerAiSnapshotShape,
   DESIGNER_AI_AUTO_START_MESSAGE,
   DESIGNER_AI_CLARIFICATION_KINDS,
   DESIGNER_AI_ACTION_ORIGINS,

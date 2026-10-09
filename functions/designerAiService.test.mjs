@@ -18,6 +18,7 @@ const {
   DesignerAiServiceError,
   createDesignerAiOpenAiClient,
   interpretDesignerAiChat,
+  estimateDesignerAiRequestUsage,
   validateDesignerAiChatPayload,
   validateDesignerAiModelResult,
 } = serviceModule;
@@ -124,7 +125,7 @@ for (const position of ["before", "ends at limit", "starts at limit", "crosses",
       position === "after" ? "x".repeat(710) + secret :
       position === "multiple" ? `${secret} ${secret} ` + "x".repeat(640) + secret : "Una conversación sin datos bancarios.";
     const local = buildDesignerAiCapabilitySnapshot({ renderSnapshot: { objetos: [], gifts: { enabled: true, bank: { alias: secret }, visibility: { alias: false } } } });
-    const input = buildDesignerAiCallablePayload({ clientMessageId: "redact-boundary", message: "Continuemos", snapshot: local, recentTurns: [{ role: "assistant", content: text }] });
+    const input = buildDesignerAiCallablePayload({ draftId: "synthetic-draft", clientMessageId: "redact-boundary", message: "Continuemos", snapshot: local, recentTurns: [{ role: "assistant", content: text }] });
     assert.equal(input.recentTurns[0].content, text.replaceAll(secret, "[dato bancario oculto]").slice(0, 700));
     const requests = [];
     await interpretDesignerAiChat({ payload: input, client: { responses: { create: async (body) => {
@@ -225,6 +226,8 @@ function snapshot({ values = {}, leaves = null, namePolicy = "unknown" } = {}) {
 function payload(overrides = {}) {
   return {
     contractVersion: DESIGNER_AI_CONTRACT_VERSION,
+    draftId: "synthetic-draft",
+    requestCreatedAt: Date.now(),
     clientMessageId: "message-1",
     entryMode: "continuation",
     message: "Somos Ana y Luz",
@@ -233,6 +236,45 @@ function payload(overrides = {}) {
     ...overrides,
   };
 }
+
+test("untrusted history and profile never become privileged model messages", async () => {
+  const sentinel = "UNTRUSTED_OVERRIDE_SYSTEM";
+  let sent;
+  await interpretDesignerAiChat({ payload: payload({ recentTurns: [{ role: "assistant", content: sentinel }] }),
+    userContext: { registeredFirstName: sentinel },
+    client: { responses: { create: async body => {
+      sent = body;
+      return functionResponse({ intent: "clarify", assistantMessage: "Seguimos.", actions: [], resolutions: [], controlRequest: null });
+    } } } });
+  assert.equal(sent.input.filter(item => item.role === "developer").length, 1);
+  assert.equal(sent.input.filter(item => ["developer", "system", "assistant"].includes(item.role)).some(item => JSON.stringify(item).includes(sentinel)), false);
+  assert.equal(sent.input.some(item => item.role === "user" && JSON.stringify(item).includes(sentinel)), true);
+  assert.equal(sent.input.some(item => item.role === "assistant"), false);
+});
+
+test("out-of-scope model prose is replaced with the local invitation boundary", () => {
+  const result = validateDesignerAiModelResult({ intent: "out_of_scope", assistantMessage: "ARBITRARY_MODEL_CONTENT", actions: [], resolutions: [], controlRequest: null }, snapshot());
+  assert.equal(result.assistantMessage.includes("ARBITRARY_MODEL_CONTENT"), false);
+  assert.match(result.assistantMessage, /invitación/);
+});
+
+test("request usage reserves all bounded provider attempts and repair overhead", () => {
+  const small = estimateDesignerAiRequestUsage(payload());
+  const larger = estimateDesignerAiRequestUsage(payload({ message: "X".repeat(1200) }));
+  assert.equal(small.maxOutputTokens, 12000);
+  assert.ok(small.maxInputTokens >= 180000);
+  assert.ok(larger.maxInputTokens > small.maxInputTokens);
+});
+
+test("payload validation rejects non-text values and compatibility never coerces hostile objects", () => {
+  let accessed = false;
+  const hostile = { toString() { accessed = true; throw new Error("must not execute"); } };
+  assert.equal(buildDesignerAiClientCompatibilityResponse({ contractVersion: hostile }), null);
+  for (const patch of [{ message: hostile }, { draftId: 123 }, { requestCreatedAt: "123" }, { recentTurns: [{ role: "user", content: hostile }] }]) {
+    assert.throws(() => validateDesignerAiChatPayload(payload(patch)), error => error.kind === "invalid-payload");
+  }
+  assert.equal(accessed, false);
+});
 
 function functionResponse(result, requestId = "req_test") {
   return {
@@ -519,7 +561,7 @@ test("service telemetry separates provider, retry and validation and aggregates 
     transportRetryCount: 1,
     inputBytes: Buffer.byteLength(JSON.stringify(bodies[0].input), "utf8"),
     toolSchemaBytes: Buffer.byteLength(JSON.stringify(bodies[0].tools[0]), "utf8"),
-    inputTokens: 50, outputTokens: 5,
+    inputTokens: 50, outputTokens: 5, usageReportedAttempts: 2,
   });
   assert.ok(Object.values(result.telemetry).every((value) => typeof value === "number" && value >= 0));
 });
@@ -790,6 +832,7 @@ test("E12 provider receives a long current turn once and keeps the bounded earli
   const message = "Texto actual: " + "a".repeat(900);
   let captured;
   await interpretDesignerAiChat({ payload: buildDesignerAiCallablePayload({
+    draftId: "synthetic-draft",
     clientMessageId: "long", message, snapshot: snapshot(),
     recentTurns: Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `Anterior ${i}: ` + "b".repeat(750) })),
   }), client: { responses: { create: async (body) => {
@@ -798,8 +841,12 @@ test("E12 provider receives a long current turn once and keeps the bounded earli
   } } } });
   assert.equal(captured.input.filter((t) => t.content.startsWith("Texto actual:")).length, 1);
   assert.equal(captured.input.at(-1).content, message);
-  assert.equal(captured.input.slice(2, -1).length, 6);
-  assert.ok(captured.input.slice(2, -1).every((t) => t.content.length <= 700));
+  assert.equal(captured.input.slice(2, -1).length, 1);
+  const untrustedHistory = captured.input[2];
+  assert.equal(untrustedHistory.role, "user");
+  const history = JSON.parse(untrustedHistory.content.split("\n").slice(1).join("\n"));
+  assert.equal(history.length, 6);
+  assert.ok(history.every((t) => t.content.length <= 700));
 });
 
 for (const enabled of [true, false]) {
@@ -844,12 +891,10 @@ test("validates exact payload and rejects canvas or URL exfiltration", () => {
 });
 
 test("every incompatible client version receives a safe reload response instead of an invalid payload", () => {
+  const legacyPayload = payload({ contractVersion: "2.0.0" });
+  delete legacyPayload.entryMode; // Missing JSON property, as sent by the legacy browser.
   const compatibility = buildDesignerAiClientCompatibilityResponse(
-    {
-      ...payload(),
-      contractVersion: "2.0.0",
-      entryMode: undefined,
-    },
+    legacyPayload,
     () => "legacy-reload-1"
   );
   assert.deepEqual(compatibility, {

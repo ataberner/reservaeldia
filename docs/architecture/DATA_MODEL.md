@@ -275,6 +275,53 @@ Current backend interpretation rules that matter for this model:
 - effective expiration is currently resolved from `venceAt ?? vigenteHasta`, then `publicationLifecycle.expiresAt`, then derived publication-date inputs when the caller uses that derived path
 - trash purge derivation currently uses `venceAt ?? vigenteHasta`, and if those fields are missing the backend purge path derives the purge input from publication-date inputs rather than from `publicationLifecycle.expiresAt`
 
+<a id="designer-ai-usage"></a>
+
+### Designer AI backend accounting (`designerAiUsage`)
+
+Implemented locally on 2026-10-07 for the authorized Assistant security plan.
+The owner is `functions/src/designerAi/admissionStore.ts`, with policy/types in
+`admission.ts`. This collection is independent of `designerAiConversation` and
+contains no chat, prompts, snapshot values, gift destinations or provider reply.
+All client SDK reads/writes, including administrative users and descendants,
+are denied; it is also excluded from the compatibility fallback. Backend Admin
+SDK authorization and operational activation remain separate from Rules.
+
+| Document | Shape / responsibility |
+| --- | --- |
+| `config` | `schemaVersion:1`, `enabled`, `policyVersion`, `model`, `perUserMinuteLimit`, `perUserDayLimit`, `dailyBudgetMicrousd`, `inputMicrousdPerMillionTokens`, `outputMicrousdPerMillionTokens`. Server-owned policy; absent/disabled/invalid config blocks admission. No commercial defaults are implicit. |
+| `request_{sha256([uid,clientMessageId])}` | `schemaVersion:1`, `payloadDigest`, `draftKey` (SHA-256), `userKey`, `globalKey`, random `ownerToken`, `requestCreatedAt`, `createdAtMs`, `leaseUntilMs`, `policyVersion`, `model`, `reservedMicrousd`, `chargedMicrousd`, `expiresAt`. State progresses from `reserved` to `dispatching` and `settled`; settlement records `outcome` (`succeeded`, `failed`, `unknown`) and `settledAtMs`, dispatch records `dispatchedAtMs`. |
+| `user_{sha256(uid)}` | `schemaVersion:1`, UTC `minute`/`day` window numbers, `minuteCount`, `dayCount`, `activeRequestKey`, `activeUntilMs`, `expiresAt`. One active lease per UID, shared across drafts, tabs and instances. |
+| `global_{UTC-day-number}` | `schemaVersion:1`, `day`, `allocatedMicrousd`, `expiresAt`. Allocated spend includes conservative unresolved reservations. |
+
+The request key prevents another provider dispatch for the same UID/message ID.
+The digest and original request timestamp detect reuse with a changed payload;
+the stored draft hash binds the reservation to the admitted draft. An expired
+lease frees concurrency but does not release uncertain spend or authorize a
+repeat of that request. This is provider-request idempotency, not exactly-once
+application of client-side editor actions. Hashes remain pseudonymous operational
+identifiers and are not an anonymity guarantee.
+
+Amounts are integer **microUSD** (one USD = 1,000,000 microUSD). Rates are
+microUSD per million tokens, rounded up with integer arithmetic. The server
+reserves the upper bound for initial request, transport retry and repair before
+dispatch. Settlement refunds the difference only when every dispatched attempt
+has reliable usage; unknown outcomes retain the full reservation. It is internal
+provider-cost accounting, not a charge imposed on the product user.
+
+Request and counter documents receive `expiresAt` seven days after their write;
+`config` has no expiry. Setting this field is not proof of Firestore TTL being
+enabled or of any cleanup having run. TTL/cleanup activation and remote state
+require separate verification. The accepted request age is ten minutes with one
+minute of future tolerance, shorter than record retention; cleanup must not
+erase a live deduplication/lease record or turn uncertain work into a retry.
+
+Commercial quota values and the daily budget remain **pending user decision**;
+their single decision record, activation requirements and local evidence are in
+[AI Assistant System, 6.4](AI_ASSISTANT_SYSTEM.md#designer-ai-admission) and
+[implementation evidence, 16](AI_ASSISTANT_SYSTEM.md#assistant-security-20261007).
+Access obligations belong to [Security Contract](../contracts/SECURITY_CONTRACT.md).
+
 ## 3. Sections Model
 Sections are stored in the `secciones` array inside the draft document. The editor and the HTML generator both sort sections by `orden`.
 

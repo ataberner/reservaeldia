@@ -8,7 +8,7 @@ const action = (type, args) => ({ type, arguments: args });
 test("production single event reaches the panel, persists mode and makes Party inapplicable without repair", async () => {
   const attempts = [];
   const reply = "Perfecto. Entonces vamos a configurar un único evento. ¿Qué día es?";
-  const run = await mountPanel({ fullFields: true, respond: async (payload) => {
+  const run = await mountPanel({ confirmGiftChanges: true, fullFields: true, respond: async (payload) => {
     let count = 0;
     const result = await service.interpretDesignerAiChat({ payload,
       client: { responses: { create: async () => {
@@ -57,7 +57,7 @@ test("production single event reaches the panel, persists mode and makes Party i
 
 async function acceptanceRun() {
   let planned = [];
-  const run = await mountPanel({ fullFields: true, respond: async (payload) => service.interpretDesignerAiChat({
+  const run = await mountPanel({ confirmGiftChanges: true, fullFields: true, respond: async (payload) => service.interpretDesignerAiChat({
     payload,
     client: { responses: { create: async (body) => {
       assert.equal(body.store, false);

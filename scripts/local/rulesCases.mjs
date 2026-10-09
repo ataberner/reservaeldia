@@ -8,6 +8,7 @@ export const authorities = {
   A4: "docs/architecture/DATA_MODEL.md#countdownpresets (administrative draft; immutable published versions)",
   W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
   W2: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails (backend-only internal notification reservations)",
+  AI1: "docs/contracts/SECURITY_CONTRACT.md (backend-only Designer AI policy and accounting)",
   C1: "firestore.rules / storage.rules (observed, not policy acceptance)",
   C2: "functions/src/auth/adminAuth.ts (observed, not policy acceptance)",
   Q1: "docs/contracts/SECURITY_CONTRACT.md#q1-proposal (proposed; Q1 unresolved)",
@@ -41,7 +42,8 @@ const observed = (id, identity, store, resource, op, expected, extra = {}) =>
 
 // No client identity can read or mutate the ledger, even its own UID or a child.
 for (const [prefix, collection, authority] of [["welcome", "welcomeEmailDeliveries", "W1"],
-  ["new-user-notification", "newUserNotificationDeliveries", "W2"]]) {
+  ["new-user-notification", "newUserNotificationDeliveries", "W2"],
+  ["designer-ai-usage", "designerAiUsage", "AI1"]]) {
   for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "serverSuper"]) {
     for (const op of ["get", "create", "update", "delete"]) {
       add(`${prefix}-${identity}-${op}`, "acceptance", identity, "firestore", `${collection}/{A}`, op, "deny", authority);
@@ -51,6 +53,17 @@ for (const [prefix, collection, authority] of [["welcome", "welcomeEmailDeliveri
     });
     add(`${prefix}-${identity}-nested-write`, "acceptance", identity, "firestore", `${collection}/{A}/unmodeled/{ID}`, "create", "deny", authority);
   }
+}
+
+for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "role", "serverSuper"]) {
+  for (const [suffix, resource] of [["config", "designerAiUsage/config"], ["nested", "designerAiUsage/{A}/private/{ID}"]]) {
+    for (const op of ["get", "create", "update", "delete"]) {
+      add(`designer-ai-usage-${identity}-${suffix}-${op}`, "acceptance", identity, "firestore", resource, op, "deny", "AI1");
+    }
+  }
+  add(`designer-ai-usage-${identity}-nested-list`, "acceptance", identity, "firestore", "designerAiUsage/{A}/private", "list", "deny", "AI1", {
+    fixtures: [{ path: "designerAiUsage/{A}/private/{ID}", data: { marker: "synthetic-ai-accounting" } }],
+  });
 }
 
 // Per-case fixtures include BOTH owners for collection-query cases.

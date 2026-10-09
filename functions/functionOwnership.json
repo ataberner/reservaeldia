@@ -583,7 +583,7 @@
       "secrets": [
         "OPENAI_API_KEY"
       ],
-      "manifestHash": "64331e52e279ffd514fea34f6398c217d08142339823b842a484a409ed45f256"
+      "manifestHash": "f2530b8a5130408b2707386943947b90a14619fa23ab1a0cc2f5fe9241ad89b5"
     },
     {
       "name": "duplicateCountdownPreset",

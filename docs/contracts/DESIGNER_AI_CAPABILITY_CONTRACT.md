@@ -27,8 +27,8 @@ La arquitectura, contexto, auth, persistencia y seguridad pertenecen a
 
 ## 2. Invariante de producto
 
-`Diseñador AI` (tab `Tu asistente`) es un adaptador conversacional para todos los
-usuarios autenticados, sin requisito de rol administrativo, sobre
+`Diseñador AI` (tab `Tu asistente`) es un adaptador conversacional para usuarios
+autenticados elegibles, sin requisito de rol administrativo, sobre
 capacidades ya expuestas por `Asistente`. No es una segunda autoridad del editor
 ni una vía genérica al canvas.
 
@@ -47,7 +47,9 @@ relacionados, pero no idénticos.
 
 Por decisión explícita del usuario del 2026-10-06, se monta en toda sesión
 autenticada, editable, `draft` y no selector. Los templates y vistas read-only
-siguen fuera. El callable exige autenticación; las mutaciones conservan los
+siguen fuera. El callable exige identidad no anónima, verificación de email
+aplicable, App Check y admisión sobre un borrador propio editable; su activación
+y política de consumo pertenecen a `AI_ASSISTANT_SYSTEM.md`. Las mutaciones conservan los
 owners, validaciones y permisos del borrador. El tab manual `Asistente`, su
 apertura automática y su visita guiada quedan reservados a admin y superadmin
 mediante el acceso administrativo existente (`canManageSite` resuelto).
@@ -536,7 +538,7 @@ lote normalizado y lo revalida antes de ejecutar y persistir sus acciones.
 
 ### 8.2 Cuándo se requiere decisión del usuario
 
-No hace falta una confirmación adicional cuando el usuario pidió de forma
+Salvo la revisión de destinos de Regalos de 8.3, no hace falta una confirmación adicional cuando el usuario pidió de forma
 explícita una action no destructiva, aportó todos sus datos y no existe
 ambigüedad. Sí se requiere aclaración o control antes de mutar cuando:
 
@@ -549,6 +551,37 @@ ambigüedad. Sí se requiere aclaración o control antes de mutar cuando:
   dependencia documentada y necesaria.
 
 La forma lingüística de esa aclaración pertenece al contrato conversacional.
+
+### 8.3 Revisión local de destinos sensibles de Regalos
+
+Decisión aceptada por la implementación del plan de seguridad solicitado el
+2026-10-07. Antes de la primera mutación se requiere una confirmación local
+cuando el lote cambia un valor o la exposición de `alias`, `cbu` o
+`giftListLink`, también por efectos derivados de activar/desactivar Regalos o
+de los reducers existentes. Un destino no vacío que se oculta, reemplaza o
+vuelve visible requiere revisión; escribir el dato en el chat no sustituye ese
+control.
+
+`designerAiGiftApproval.js` proyecta las mismas operaciones/normalizadores del
+executor sobre los valores locales completos. `DesignerAiGiftConfirmation.jsx`
+muestra la invitación, valor actual y propuesto, visibilidad y resumen de todas
+las acciones pendientes del lote, incluidos cambios de otros dominios. Para
+lista externa muestra URL completa y host como texto, sin abrirla ni agregarla
+al snapshot enviado al modelo. No valida titularidad bancaria ni reputación del
+destino.
+
+La propuesta suspende el lote completo; ninguna action se ejecuta antes de
+confirmar. Cancelar, cerrar/desmontar, cambiar de documento o editar el estado
+base invalida la propuesta. La aprobación es un objeto efímero de un solo uso
+registrado localmente, ligado a sesión, documento, actions ordenadas, estado
+efectivo y recuperación. No es un booleano que pueda emitir el modelo o incluir
+el callable. El executor relee esos datos y exige la aprobación correspondiente
+antes de su primera mutación.
+
+Tras un fallo parcial, una revisión nueva comprende solamente lo pendiente y
+explica lo ya guardado; conserva receipts y no repite las escrituras confirmadas
+ni promete rollback. Esta protección alcanza las propuestas de Designer AI;
+no cambia los permisos ni los controles manuales del owner de Regalos.
 
 ## 9. Capacidades explícitamente excluidas
 
@@ -727,12 +760,14 @@ La política textual de confirmaciones, errores y negativas está en
 El flujo ejecutable actual es:
 
 1. `DesignerAiPanel.jsx` relee snapshot y ledger.
-2. `designerAiChat` exige usuario autenticado y valida payload.
+2. La frontera de entrada acota el payload antes del decoder; `designerAiChat`
+   verifica identidad/App Check y reserva transaccional de un draft propio editable.
 3. La apertura automática devuelve un saludo determinista; los pedidos del
    usuario pasan por OpenAI, que devuelve una única `submit_designer_ai_result` estricta.
 4. Backend valida resultado; frontend valida revisión, actions, controles y
    resolutions otra vez.
-5. `designerAiActionExecutor.js` delega en owners existentes.
+5. Si corresponde, la UI obtiene la aprobación local de 8.3;
+   `designerAiActionExecutor.js` la verifica y delega en owners existentes.
 6. El panel relee, reconcilia y persiste `designerAiConversation`.
 
 Decisión aceptada por esta auditoría, 2026-10-06: el seed de apertura existente
@@ -789,7 +824,9 @@ su ISO/validez calculados (`numericDateInterpretation`), sin inferir destino ni
 reemplazar la acción, validación o evidencia de persistencia. Años cortos: 2000–2099.
 
 La arquitectura completa, incluido el límite client-side de tools, está en
-`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.4.0`; el ledger
+`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.5.0`: agrega
+`draftId` y `requestCreatedAt` al envelope para ownership y admisión durable;
+no cambia las actions ni persiste nuevas conversaciones. El ledger
 usa versión `4`, que agrega postergación no terminal en las mismas resolutions.
 Un cliente incompatible conserva el fallback de recarga y no invoca al modelo.
 No hay backfill: los estados previos conservan su evidencia y su marca monotónica
@@ -837,6 +874,11 @@ Tests:
 - `src/domain/editor/designerAiActionExecutor.test.mjs`
 - `src/domain/editor/designerAiNamePolicyIntegration.test.mjs`
 - `functions/designerAiService.test.mjs`
+- `shared/designerAiRequestBoundary.test.mjs`
+- `functions/designerAiRequestBoundary.test.mjs`
+- `functions/designerAiAdmission.test.mjs`
+- `src/domain/editor/designerAiGiftApproval.test.mjs`
+- `src/components/editor/designerAi/designerAiGiftConfirmation.test.mjs`
 
 ## 15. Regla de cambio
 

@@ -8,6 +8,8 @@ import * as ledger from "../../../../../shared/designerAiConversationLedger.js";
 import * as capabilities from "../../../../domain/editor/designerAiCapabilities.js";
 import * as history from "../../../../domain/editor/designerAiMessageHistory.js";
 import * as executor from "../../../../domain/editor/designerAiActionExecutor.js";
+import * as giftApproval from "../../../../domain/editor/designerAiGiftApproval.js";
+import * as snapshotAdapter from "../../../../lib/editorSnapshotAdapter.js";
 import * as feedback from "../../../../domain/editor/designerAiExecutionFeedback.js";
 import * as guidedConversation from "../../../../domain/editor/designerAiGuidedConversation.js";
 import * as timing from "../../../../domain/editor/designerAiTiming.js";
@@ -42,7 +44,7 @@ export function loadComponent(path, dependencies) {
 
 // Real panel, validators, ledger, executor and receipts. Only editor I/O and
 // provider transport are synthetic; no Firebase, Maps or OpenAI connection.
-export async function mountPanel({ respond, initialConversation, initialMessages = [], savedDraft, failWrite = () => false, failMetadata = () => false, beforeWrite = async () => {}, beforeMetadata = null, fullFields = false, authoringReady = true, locationControl } = {}) {
+export async function mountPanel({ respond, initialConversation, initialMessages = [], savedDraft, failWrite = () => false, failMetadata = () => false, beforeWrite = async () => {}, beforeMetadata = null, fullFields = false, authoringReady = true, locationControl, confirmGiftChanges = false } = {}) {
   const dom = new JSDOM("<div id='root'></div>", { url: "https://local.test", pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -133,6 +135,9 @@ export async function mountPanel({ respond, initialConversation, initialMessages
     "@/firebase": { functions: {} },
     "@/components/MiniToolbarTabImagen": noop,
     "@/components/editor/designerAi/DesignerAiLocationControl": locationControl || noop,
+    "@/components/editor/designerAi/DesignerAiGiftConfirmation": loadComponent(new URL("../DesignerAiGiftConfirmation.jsx", import.meta.url), {}),
+    "@/domain/editor/designerAiGiftApproval": giftApproval,
+    "@/lib/editorSnapshotAdapter": snapshotAdapter,
     "../../../../shared/designerAiCapabilityContract.js": contract,
     "../../../../shared/designerAiConversationLedger.js": ledger,
     "@/domain/editor/designerAiCapabilities": capabilities,
@@ -156,7 +161,10 @@ export async function mountPanel({ respond, initialConversation, initialMessages
     return visible ? React.createElement(Panel, { sessionKey: "draft:A", contentVersion, messageHistory: items, onMessageHistoryChange: setItems, journeyRef, onPreview: () => { previews++; } }) : null;
   }
   const until = async (predicate) => {
-    for (let i = 0; i < 180 && !predicate(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    for (let i = 0; i < 180 && !predicate(); i++) await act(async () => {
+      if (confirmGiftChanges) [...document.querySelectorAll("button")].find(button => button.textContent === "Confirmar cambios")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
     assert.ok(predicate(), document.body.textContent);
   };
   const click = async (label) => {
@@ -171,7 +179,8 @@ export async function mountPanel({ respond, initialConversation, initialMessages
     const props = input[Object.keys(input).find((key) => key.startsWith("__reactProps"))];
     await act(async () => props.onChange({ target: { value: text } }));
     await act(async () => document.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
-    await until(() => calls.length > before && document.querySelector("section[aria-label='Tu asistente']")?.getAttribute("aria-busy") === "false");
+    await until(() => calls.length > before && document.querySelector("section[aria-label='Tu asistente']")?.getAttribute("aria-busy") === "false" &&
+      (!confirmGiftChanges || !document.getElementById("designer-gift-confirm-title")));
   };
   await act(async () => root.render(React.createElement(Host)));
   return {

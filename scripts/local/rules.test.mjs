@@ -208,6 +208,63 @@ test(`${collection}: Admin SDK bypass and real atomic reservation across concurr
 });
 }
 
+test("Designer AI: real Firestore transactions bound replay, concurrency and the shared budget", { timeout: 120000 }, async () => {
+  const { createDesignerAiAdmissionStore } = require("../../functions/lib/designerAi/admissionStore.js");
+  const { designerAiUsageKey, DESIGNER_AI_ADMISSION_CONFIG_PATH } = require("../../functions/lib/designerAi/admission.js");
+  const { resolveDraftStateFromData, DRAFT_STATES } = require("../../functions/lib/drafts/draftTrashLifecycle.js");
+  const nowMs = Date.UTC(2001, 0, 1);
+  const globalPath = `designerAiUsage/global_${Math.floor(nowMs / 86400000)}`;
+  const cleanupPaths = new Set();
+  const createdConfig = {
+    schemaVersion: 1, enabled: true, policyVersion: "synthetic-emulator-test", model: "synthetic-model",
+    perUserMinuteLimit: 5, perUserDayLimit: 10, dailyBudgetMicrousd: 1080,
+    inputMicrousdPerMillionTokens: 1_000_000, outputMicrousdPerMillionTokens: 2_000_000,
+  };
+  const makeStore = () => createDesignerAiAdmissionStore(adminDb, {
+    now: () => nowMs,
+    isDraftEditable: draft => resolveDraftStateFromData(draft) === DRAFT_STATES.ACTIVE,
+  });
+  const inputs = Array.from({ length: 9 }, (_, index) => ({
+    uid: `${runId}-ai-user-${index}`, draftId: `${runId}-ai-draft-${index}`,
+    clientMessageId: "synthetic-emulator-message", requestCreatedAt: nowMs,
+    payloadDigest: "a".repeat(64), model: "synthetic-model", maxInputTokens: 300, maxOutputTokens: 120,
+  }));
+  try {
+    // Never overwrite an existing policy/window, even in the isolated demo.
+    assert.equal((await adminDb.doc(globalPath).get()).exists, false);
+    await adminDb.doc(DESIGNER_AI_ADMISSION_CONFIG_PATH).create(createdConfig);
+    cleanupPaths.add(DESIGNER_AI_ADMISSION_CONFIG_PATH);
+    cleanupPaths.add(globalPath);
+    for (const input of inputs) {
+      const draftPath = `borradores/${input.draftId}`;
+      await adminDb.doc(draftPath).create({ userId: input.uid, estadoBorrador: DRAFT_STATES.ACTIVE });
+      cleanupPaths.add(draftPath);
+      cleanupPaths.add(`designerAiUsage/user_${designerAiUsageKey(input.uid)}`);
+      cleanupPaths.add(`designerAiUsage/request_${designerAiUsageKey(JSON.stringify([input.uid, input.clientMessageId]))}`);
+    }
+    const replayRace = await Promise.allSettled(Array.from({ length: 8 }, () => makeStore().reserve(inputs[0])));
+    const admitted = replayRace.filter(result => result.status === "fulfilled");
+    assert.equal(admitted.length, 1);
+    assert.ok(replayRace.filter(result => result.status === "rejected").every(result => result.reason.reason === "duplicate_active"));
+    await makeStore().markDispatching(admitted[0].value);
+    await makeStore().settle(admitted[0].value, { outcome: "unknown" });
+    await assert.rejects(makeStore().reserve(inputs[0]), error => error.reason === "duplicate_unknown");
+
+    const globalRace = await Promise.allSettled(inputs.slice(1).map(input => makeStore().reserve(input)));
+    const globalAdmitted = globalRace.filter(result => result.status === "fulfilled");
+    assert.equal(globalAdmitted.length, 1, "Only the remaining 540 microusd may be reserved");
+    assert.ok(globalRace.filter(result => result.status === "rejected").every(result => result.reason.reason === "global_budget"));
+    assert.equal((await adminDb.doc(globalPath).get()).data().allocatedMicrousd, 1080);
+    const acceptedInput = inputs[1 + globalRace.findIndex(result => result.status === "fulfilled")];
+    await assert.rejects(makeStore().reserve({ ...acceptedInput, clientMessageId: "concurrent-new-id" }), error => error.reason === "concurrent_request");
+    assert.equal((await adminDb.doc(`designerAiUsage/${admitted[0].value.requestKey}`).get()).data().outcome, "unknown");
+  } finally {
+    const cleanup = await Promise.allSettled([...cleanupPaths].map(document => adminDb.doc(document).delete()));
+    const failures = cleanup.filter(result => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), "Designer AI synthetic cleanup failed");
+  }
+});
+
 test("music callable: real Auth claims, owner transaction, SDK denial and ordinary preservation", { timeout: 120000 }, async () => {
   const app = initializeApp({ projectId: contract.LOCAL_PROJECT, apiKey: "synthetic-emulator-only" }, `music-callable-${randomUUID()}`);
   const auth = getAuth(app);
@@ -317,7 +374,7 @@ after(async () => {
   } finally {
     if (session) {
       const report = { schemaVersion: 1, runId, checkedAt: new Date().toISOString(), source: manifest,
-        method: "Firebase client SDK mockUserToken; Admin uses exact synthetic fixtures and offline welcome atomic-reservation test",
+        method: "Firebase client SDK mockUserToken; Admin uses exact synthetic fixtures and real emulator transactions for welcome and Designer AI reservations",
         planned: cases.length, executed: results.length, infrastructure,
         summary: Object.fromEntries(["acceptance", "characterization", "proposal"].map(group => {
           const rows = results.filter(r => r.group === group);

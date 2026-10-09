@@ -24,6 +24,7 @@ import { moveGalleryPhotoToSlot } from "../gallery/galleryMutations.js";
 import { normalizeRsvpConfig } from "../rsvp/config.js";
 import configReducers from "../../../shared/designerAiConfigReducers.cjs";
 import actionProjection from "../../../shared/designerAiActionProjection.cjs";
+import { requireDesignerAiGiftApproval } from "./designerAiGiftApproval.js";
 const { applyRsvpAction, applySelectedGiftAction, confirmedGiftMethods: readConfirmedGiftMethods } = configReducers;
 const { orderDesignerAiActions, projectDesignerAiValues } = actionProjection;
 import { normalizeGiftConfig } from "../gifts/config.js";
@@ -307,6 +308,7 @@ export async function executeDesignerAiActionBatch(
     waitFrame,
     evidenceAttempts = 120,
     recovery = null,
+    giftApproval = null,
     onProgress = () => {},
   } = {}
 ) {
@@ -332,9 +334,11 @@ export async function executeDesignerAiActionBatch(
     error.code = "designer-ai/prevalidation-failed";
     throw error;
   }
+  requireDesignerAiGiftApproval({ actions, snapshot: actualSnapshot,
+    rawGifts: readEditorRenderSnapshot(targetWindow)?.gifts, recovery }, giftApproval);
 
   const applied = recovery ? recovery.actionResults.filter((r) => r.persisted && !r.error).map((r) => r.action.type) : [];
-  const confirmedGiftMethods = recovery ? new Set(recovery.confirmedGiftMethods) : readConfirmedGiftMethods(snapshot);
+  const confirmedGiftMethods = recovery ? new Set(recovery.confirmedGiftMethods) : readConfirmedGiftMethods(actualSnapshot);
   const actionResults = recovery ? structuredClone(recovery.actionResults) : ordered.map((action) => ({
     action, requested: true, executed: false, effective: false, persisted: false, error: null,
   }));

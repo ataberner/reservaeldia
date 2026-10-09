@@ -5,6 +5,7 @@ import projection from "../../../shared/designerAiActionProjection.cjs";
 const { validateDesignerAiModelResult } = createRequire(import.meta.url)("../../../functions/lib/designerAi/service.js");
 import { syncEditorSnapshotRenderState } from "../../lib/editorSnapshotAdapter.js";
 import { executeDesignerAiActionBatch as executeBatch } from "./designerAiActionExecutor.js";
+import { createDesignerAiGiftProposal, approveDesignerAiGiftProposal } from "./designerAiGiftApproval.js";
 import { readEditorRenderSnapshot } from "../../lib/editorSnapshotAdapter.js";
 import { publishDashboardDocumentNameState } from "../../lib/dashboardDocumentNameBridge.js";
 
@@ -57,7 +58,14 @@ function installOwners(target) {
 }
 async function executeDesignerAiActionBatch(actions, options) {
   installOwners(options.targetWindow);
-  return executeBatch(actions, { ...options, waitFrame: async () => {}, evidenceAttempts: 2 });
+  return executeBatch(actions, { ...options,
+    ...(options.confirmGiftChanges ? { giftApproval: approveGifts(actions, options.targetWindow, options.recovery) } : {}),
+    waitFrame: async () => {}, evidenceAttempts: 2 });
+}
+function approveGifts(actions, targetWindow, recovery) {
+  const context = { actions, snapshot: readDesignerAiCapabilitySnapshot(targetWindow), rawGifts: readEditorRenderSnapshot(targetWindow)?.gifts, recovery };
+  const proposal = createDesignerAiGiftProposal(context);
+  return proposal ? approveDesignerAiGiftProposal(proposal, context) : null;
 }
 import { sanitizeCapabilitySnapshot } from "../../../shared/designerAiCapabilityContract.js";
 import { reconcileDesignerAiConversationState } from "../../../shared/designerAiConversationLedger.js";
@@ -194,7 +202,7 @@ for (const [label, actions, leafId, rule, valid] of [
   ["datetime fills missing date", [{ type: "event.set_datetime", arguments: { phase: "ceremony", date: "2027-05-10", startTime: null, endTime: null } }, { type: "event.set_datetime", arguments: { phase: "ceremony", date: null, startTime: "18:00", endTime: null } }], "event.ceremony.date", "keep_existing", true],
   ["datetime invalidates omission", [{ type: "event.set_datetime", arguments: { phase: "ceremony", date: null, startTime: null, endTime: "23:00" } }], "event.ceremony.end_time", "optional_end_time_omitted", false],
   ["location supplies manual address", [{ type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "", address: " Calle Real 123 " } }], "event.ceremony.place_selection", "leave_empty", true],
-  ["location clears address", [{ type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "Salon", address: "" } }], "event.ceremony.place_selection", "leave_empty", false],
+  ["manual choice survives clearing the address", [{ type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "Salon", address: "" } }], "event.ceremony.place_selection", "leave_empty", true],
   ["story emptied cannot be kept", [{ type: "story.set_text", arguments: { text: "" } }], "story.text", "keep_existing", false],
   ["story preserves meaningful whitespace", [{ type: "story.set_text", arguments: { text: " Nuestra historia \n Segunda línea " } }], "story.text", "keep_existing", true],
   ["RSVP label canonicalized", [{ type: "rsvp.update_question", arguments: { questionId: "full_name", label: " Tu   nombre ", required: null, questionType: null } }], "rsvp.question.full_name.label", "keep_existing", true],
@@ -226,6 +234,11 @@ for (const [label, actions, leafId, rule, valid] of [
     assert.equal(entry?.rule, rule);
     const reread = readDesignerAiCapabilitySnapshot(target, { conversationState: reconciled });
     assert.equal(reread.ledger.leaves.find((r) => r.id === leafId).rule, rule);
+    if (label === "manual choice survives clearing the address") {
+      assert.equal(reread.values.ceremony.address, "");
+      assert.ok(["pending", "needs_clarification"].includes(reread.ledger.leaves.find((leaf) => leaf.id === "event.ceremony.address").status),
+        "choosing the manual provider never completes an absent address");
+    }
   });
 }
 
@@ -380,7 +393,7 @@ test("H2 a receipt cannot be reused for another action, leaf or document", async
 test("H2 sensitive evidence stores fingerprints and is excluded from provider context", async () => {
   const { target } = createRuntime();
   const secret = "SECRET_ALIAS_TEST_93841";
-  const result = await executeDesignerAiActionBatch([{ type: "gifts.set_method", arguments: { method: "alias", value: secret, visible: false } }], { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target });
+  const result = await executeDesignerAiActionBatch([{ type: "gifts.set_method", arguments: { method: "alias", value: secret, visible: false } }], { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, confirmGiftChanges: true });
   assert.equal(JSON.stringify(result.actionResults[0].evidence).includes(secret), false);
   const snapshot = readDesignerAiCapabilitySnapshot(target);
   const state = reconcileDesignerAiConversationState({ snapshot, actionResults: result.actionResults });
@@ -405,10 +418,12 @@ for (const [method, input, accepted] of [
       written.push(receipt.persistedState);
       return receipt;
     };
-    const result = await executeBatch([
+    const actions = [
       { type: "gifts.set_method", arguments: { method, value: input, visible: true } },
       { type: "gifts.set_intro_text", arguments: { text: "Gracias por compartir" } },
-    ], { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, ...fastEvidence });
+    ];
+    const result = await executeBatch(actions, { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, ...fastEvidence,
+      giftApproval: approveGifts(actions, target) });
     assert.deepEqual(result.actionResults.map((r) => [r.effective, r.persisted]), [[true, true], [true, true]]);
     assert.equal(method === "giftListLink" ? written[0].gifts.giftListUrl : written[0].gifts.bank[method], accepted);
     assert.equal(written[1].gifts.introText, "Gracias por compartir");
@@ -542,7 +557,7 @@ for (const [label, selected] of [
       visibility: Object.fromEntries(methods.map((key) => [key, true])), giftListUrl: "https://example.test/heredada",
     } }, target);
     const actions = [{ type: "gifts.set_enabled", arguments: { enabled: true } }, ...Object.entries(selected).map(([method, value]) => ({ type: "gifts.set_method", arguments: { method, value, visible: true } }))];
-    const execution = await executeDesignerAiActionBatch(actions, { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target });
+    const execution = await executeDesignerAiActionBatch(actions, { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, confirmGiftChanges: true });
     const config = readEditorRenderSnapshot(target).gifts;
     for (const method of methods) assert.equal(config.visibility[method], Object.hasOwn(selected, method));
     assert.equal(config.bank.cbu, "123456");
@@ -559,7 +574,7 @@ for (const [label, selected] of [
 test("Gifts explicitly selected empty method remains pending, hidden data does not", async () => {
   const { target } = createRuntime();
   const actions = [{ type: "gifts.set_enabled", arguments: { enabled: true } }, { type: "gifts.set_method", arguments: { method: "alias", value: null, visible: true } }];
-  const execution = await executeDesignerAiActionBatch(actions, { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target });
+  const execution = await executeDesignerAiActionBatch(actions, { snapshot: readDesignerAiCapabilitySnapshot(target), targetWindow: target, confirmGiftChanges: true });
   const current = readDesignerAiCapabilitySnapshot(target);
   const conversationState = reconcileDesignerAiConversationState({ snapshot: current, actionResults: execution.actionResults });
   const pending = readDesignerAiCapabilitySnapshot(target, { conversationState }).ledger.guidedFlow.completion.unresolvedLeafIds;

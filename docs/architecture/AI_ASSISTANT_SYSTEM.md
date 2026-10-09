@@ -2,8 +2,11 @@
 
 Status: Canonical Architecture Reference.
 
-Mapa actualizado contra implementación local el 2026-10-06. Evidencia de esta
-auditoría, mediciones sintéticas y límites en la sección 15; no acredita despliegue.
+Mapa actualizado contra implementación local el 2026-10-08. La sección 15
+conserva evidencia fechada de cambios anteriores; la sección 16 registra el
+endurecimiento de seguridad actual, su verificación local y activaciones pendientes.
+La sección 17 registra el deploy acotado de ubicación manual y Dress Code,
+sin incluir el rollout de seguridad pendiente.
 
 Hardening P0 revalidado localmente el 2026-09-27. Evidencia y límites:
 [DESIGNER_AI_P0_HARDENING.md](../testing/DESIGNER_AI_P0_HARDENING.md).
@@ -53,7 +56,10 @@ de acceso libre al canvas, Firestore o Storage.
 | Nombre de documento y metadata conversacional | `src/lib/dashboardDocumentNameBridge.js` + `src/components/DashboardHeader.jsx` | El header persiste `designerAiConversation`, incluida `usage.hasStarted`, mediante la autoridad de sesión. |
 | Nombre registrado mínimo | `usuarios/{uid}.nombre`, leído por `designerAiChat` con `extractProfileFromDocData` | Solo el nombre normalizado llega al service; no se envía el perfil completo. |
 | Persistencia del borrador | `src/components/editor/persistence/editorSessionPersistence.js` | Draft: Firestore bajo el usuario; templates no están habilitados para Designer AI. |
-| Autorización backend | `functions/src/auth/adminAuth.ts` | `requireAuth` exige `request.auth.uid`; Designer AI no requiere claims administrativos ni `SUPERADMINS_UIDS`. |
+| Autorización y política de consumo backend | `functions/src/designerAi/admission.ts` + `admissionStore.ts` | Identidad Firebase, cuenta no anónima, verificación de email aplicable, ownership/estado del draft, cuotas, reserva e idempotencia transaccional. Sin bypass administrativo. |
+| Frontera anterior al decoder Firebase | `functions/src/designerAi/requestBoundary.ts` + contrato compartido | Acota envelope/estructura antes del decoder recursivo; conserva metadata, CORS y validaciones SDK. También protege `.run`. |
+| Inicialización web App Check | `src/config/initializeFirebaseAppCheck.js` + `initializeFirebaseServices.js` | reCAPTCHA Enterprise en navegador de producción, renovación automática y caché sobre la app para HMR; omite SSR y emuladores. |
+| Revisión local de destinos de Regalos | `src/domain/editor/designerAiGiftApproval.js` + `DesignerAiGiftConfirmation.jsx` | Proyecta los reducers existentes y exige aprobación local vigente del lote completo antes de su primera mutación cuando cambia un destino sensible. |
 | Autorización de escritura de drafts | `firestore.rules` | El cliente solo actualiza `borradores/{id}` si es owner y no cambia `userId`. |
 | Tests | `shared/designerAi*.test.mjs`, `src/domain/editor/designerAi*.test.mjs`, `src/components/editor/designerAi/DesignerAiPanel.test.mjs`, `functions/designerAi*.test.mjs` | Cobertura estructural/dominio; no evalúan calidad del modelo real. |
 
@@ -65,12 +71,15 @@ DashboardSidebar
   -> Panel espera hidratación de metadata y authoring
   -> deriva first_entry/reentry y persiste usage.hasStarted
   -> relee snapshot mínimo + ledger global/guided después de esa persistencia
-  -> callable designerAiChat valida auth y payload
+  -> frontera HTTP acota estructura antes del decoder Firebase
+  -> callable designerAiChat valida App Check, identidad y payload
+  -> transacción verifica ownership/estado, política, cuotas e idempotencia y reserva consumo
   -> apertura automática: saludo estructurado sin modelo ni propuesta de cambios
      otros mensajes: service arma instrucciones + contexto + últimos turnos
        -> OpenAI devuelve una única function_call submit_designer_ai_result
        -> backend valida salida y devuelve propuesta estructurada
   -> Panel descarta sesión/revisión obsoleta y revalida el lote
+  -> si cambia un destino sensible de Regalos, revisión local y aprobación del lote completo
   -> designerAiActionExecutor delega en owners existentes del editor
   -> Panel relee el borrador, reconcilia ledger y persiste metadata
   -> recién entonces muestra confirmación o fallback seguro
@@ -110,6 +119,10 @@ La alternativa manual también es una decisión confiable de UI: el panel persis
 ledger. No envía un mensaje artificial afirmando que ya existe una dirección. Si
 esa dirección falta, `event_data` continúa pendiente y la siguiente intervención
 la solicita.
+La continuación posterior se compone localmente desde el snapshot persistido,
+sin otra llamada al modelo que pueda reabrir Maps. La decisión manual vigente
+se conserva al aportar después la dirección; no completa datos ausentes ni
+traslada evidencia a otra fase.
 
 Este es el primer uso implementado del patrón **chat orquesta; control
 especializado resuelve la selección precisa**. No existe un framework genérico ni
@@ -122,9 +135,13 @@ escriben el mismo shape; cada superficie conserva solo su presentación.
 ### 4.1 Implementación vigente
 
 `SYSTEM_INSTRUCTIONS` vive inline en `functions/src/designerAi/service.ts`. Para
-mensajes que requieren interpretación, el service agrega un segundo mensaje
-`developer` con snapshot mínimo y prioridad del
-ledger, luego hasta seis turnos recientes y finalmente el mensaje del usuario.
+mensajes que requieren interpretación, conserva un único mensaje `developer`
+con instrucciones estáticas. El snapshot mínimo, prioridad del ledger y contexto
+de ingreso se envían como datos `CONTEXTO_NO_CONFIABLE` en un mensaje `user`.
+Hasta seis turnos recientes se serializan en otro bloque de datos `user`: sus
+etiquetas de rol no se convierten en mensajes `assistant` auténticos. Finalmente
+se envía el mensaje actual del usuario. El contexto de reparación tampoco recibe
+autoridad `developer`.
 La configuración observada es modelo `gpt-5.6-luna`, reasoning effort `none`,
 text verbosity `low`, `max_output_tokens:4000`, `store:false`, una tool forzada y
 sin parallel tool calls ni `previous_response_id`.
@@ -155,6 +172,16 @@ la pregunta de `nextStep`; no incorpora `assistantMessage` libre ni intenta
 separar preguntas por puntuación. En edición mantiene la respuesta libre. El
 texto de los controles también es local. Así un resultado de backend anterior
 sin esos campos sigue siendo utilizable sin cederle el orden de preguntas.
+
+Ante una negativa breve e inequívoca a la pregunta vigente de incluir Dress Code,
+el service exige `event.set_dress_code(false)` y utiliza la reparación semántica
+acotada si el modelo sólo posterga u omite el cambio. La comprobación requiere
+modo guiado, el paso de visibilidad pendiente y la última pregunta compatible;
+no interpreta «no sé» o «después» como exclusión. Desactivar conserva el texto
+normalizado existente, incluso si su procedencia de plantilla lo oculta al
+modelo: se normaliza el argumento de la acción ya validada antes de ejecutarla,
+respetando cambios anteriores del mismo lote. La confirmación visible sigue
+dependiendo del owner, el guardado y sus receipts.
 
 La documentación no se carga dinámicamente ni compila el prompt. Por lo tanto:
 
@@ -269,7 +296,9 @@ prompt nunca crea capacidad por sí solo.
 
 El payload contiene:
 
-- `contractVersion`, `clientMessageId`, `entryMode` y mensaje actual;
+- `contractVersion`, `draftId`, `clientMessageId`, `requestCreatedAt`, `entryMode`
+  y mensaje actual; draft/identificador/fecha se usan para admisión backend, no
+  como instrucciones ni contexto adicional del proveedor;
 - hasta seis turnos anteriores, de hasta 700 caracteres cada uno; el actual se
   envía solo como `message` (máximo 1200), también al reintentar;
 - snapshot saneado con availability, valores funcionales acotados, ledger
@@ -279,7 +308,8 @@ El payload contiene:
   existe. Una continuación no relee el perfil.
 
 Antes del callable el frontend elimina revisiones de media y fingerprints. El
-backend vuelve a sanear, limita el snapshot a 160 KB y elimina del contexto del
+backend aplica primero los presupuestos estructurales de la sección 6.4,
+vuelve a sanear, limita el snapshot a 160.000 bytes y elimina del contexto del
 modelo valores con procedencia `template_value` o `placeholder_or_sample`.
 Los nombres sin confirmación positiva también se redactan, incluyendo legacy
 `unknown`; texto presente no equivale a identidad confirmada. Panel y bridge
@@ -330,11 +360,11 @@ necesarias para la intervención actual.
 | Entrada | Tratamiento actual |
 | --- | --- |
 | Instrucciones del sistema | Mensaje `developer` construido server-side. |
-| Estado mínimo | Segundo mensaje `developer`, pero originado en snapshot enviado por el cliente y saneado/validado por shape. |
+| Estado mínimo | Bloque de datos no confiables con rol `user`, originado en snapshot del cliente y saneado/validado por shape. |
 | `entryMode` | Enum derivado de metadata persistida por el panel y validado por claves exactas; no se infiere de texto o historial. |
 | Nombre registrado | Leído server-side del perfil, pero tratado como dato de usuario no confiable para instrucciones; solo puede usarse como forma de tratamiento. |
 | Mensajes del usuario | Rol `user`; no confiables. |
-| Turnos previos del asistente | Rol `assistant`; contexto conversacional, no autoridad sobre el borrador. |
+| Turnos previos del asistente | Etiquetas dentro de historial declarado no confiable; nunca mensajes `assistant` autenticados por el servidor. |
 | Valores heredados de template/placeholders | Se redactan antes de exponerlos al modelo. |
 | Resultado del modelo | No confiable hasta validación backend y frontend. |
 
@@ -343,10 +373,12 @@ ejecutar código. La garantía fuerte no depende solo de esa frase: el tool sche
 es estricto, el resultado se valida dos veces y el executor solo reconoce actions
 allowlisted.
 
-Límite: el backend solo relee Firestore para el nombre mínimo del perfil; no
-recibe un ID de draft ni relee el borrador para verificar el snapshot. Valida
-estructura y coherencia interna de datos aportados por un cliente autenticado, no
-su correspondencia server-side con un borrador actual.
+El backend relee `borradores/{draftId}` dentro de la transacción de admisión y
+verifica dueño y estado editable. Esto no reconstruye ni certifica los valores,
+capabilities o revisión del snapshot enviado por el cliente. La comparación con
+el estado efectivo del editor y la ejecución siguen perteneciendo al frontend.
+Separar roles y validar shapes reduce la superficie de inyección; no demuestra
+que el modelo nunca siga una instrucción maliciosa incluida en texto libre.
 
 ## 6. Tools, autorización y validación
 
@@ -362,8 +394,10 @@ Las allowlists y shapes exactos viven en
 
 ### 6.2 Garantías implementadas
 
-- El callable exige autenticación mediante `requireAuth` antes de leer el secret o
-  procesar el payload.
+- El callable declara `enforceAppCheck:true` y exige identidad Firebase mediante
+  `requireDesignerAiIdentity`, sin cuentas anónimas ni bypass por rol. Una cuenta
+  con contraseña requiere email verificado salvo la excepción existente de
+  identidad Google vinculada. El estado de activación web se registra en 6.4.
 - Backend valida versión, claves exactas, tamaños, datos prohibidos, actions,
   IDs disponibles, dependencias, controles y resoluciones.
 - Una salida `clarify` que contiene actions o un control ya validados se
@@ -404,8 +438,8 @@ Las allowlists y shapes exactos viven en
 
 - No existe autorización server-side por action ni ejecución server-side de
   tools; la mutación es client-side.
-- El backend no verifica ownership, editabilidad, slug ni revisión real del draft
-  porque no recibe/relee esa identidad.
+- El backend verifica ownership y estado editable del draft; no certifica la
+  revisión ni los valores concretos del snapshot cliente.
 - La atomicidad solo cubre prevalidación. Si un owner falla después de que otro se
   aplicó, no hay rollback transaccional; el error expone `appliedActions` al panel.
 - `designerAiActionEvidence` comprueba el efecto concreto de cada action, con
@@ -420,9 +454,9 @@ Las allowlists y shapes exactos viven en
   y dependencia, validadas por backend y frontend y al reconstruir el ledger.
   Una resolución antigua inválida se reabre; `keep_existing` no acepta vacíos,
   ejemplos, templates ni procedencia desconocida.
-- `batchId` se deduplica en memoria dentro del panel. No existe idempotencia
-  durable backend ni persistida entre remounts.
-- El callable no habilita `enforceAppCheck` de forma explícita.
+- `batchId` se deduplica en memoria dentro del panel. La admisión backend sí
+  deduplica solicitudes de proveedor de forma durable; no convierte las
+  mutaciones del editor en una transacción ni en ejecución exactamente una vez.
 - `gallery_cell_upload` valida `galleryId`, `cellId` e índice. El panel los pasa
   al control simplificado; `MiniToolbarTabImagen` selecciona la Gallery, marca el
   slot exacto, lo desplaza a la vista y mueve el foco a su control. Ese target es
@@ -447,6 +481,95 @@ Las allowlists y shapes exactos viven en
   snapshot posterior, resuelve solo la hoja del target y deriva otra vez el
   primer pendiente real; esa comparación es local.
 
+<a id="designer-ai-admission"></a>
+
+### 6.4 Admisión y frontera de seguridad — 2026-10-07
+
+Decisión aceptada: implementar el plan de seguridad solicitado el 2026-10-07.
+Estado: código local implementado; la activación operativa se separa de las
+pruebas locales y del despliegue en la sección 16.
+
+`DESIGNER_AI_REQUEST_LIMITS`, en el contrato compartido, es el owner de los
+presupuestos técnicos: envelope de 256 KiB, profundidad 16, 16.384 nodos,
+700 elementos por array como máximo global, 64 claves por objeto y 4.000 unidades
+UTF-16 por string. El snapshot normalizado conserva el límite de 160.000 bytes.
+Las colecciones conocidas tienen límites menores: 20 Galleries, 24 slots por
+Gallery, 20 preguntas y 20 opciones por pregunta; hasta 700 leaves/IDs guiados.
+El mensaje actual admite 1.200 caracteres y el historial seis turnos de 700.
+Son defensas técnicas, no cuotas comerciales de uso.
+
+El wrapper inspecciona tamaño bruto y estructura iterativamente antes del
+decoder Firebase. Rechaza claves `__proto__`, `prototype`, `constructor` y
+`@type`; esas palabras como valores no se prohíben. Las llamadas directas al
+servicio también rechazan ciclos, accesores, prototipos ajenos, coerciones y
+tipos incompatibles. Los campos desconocidos acotados del snapshot conservan
+su descarte por la proyección existente. Arrays se acotan antes de procesarse;
+los IDs guiados se deduplican con `Set`. Un envelope rechazado se reemplaza por
+uno vacío para que el SDK produzca su error y CORS habituales sin decodificar
+ni registrar el contenido original. El parser HTTP anterior sigue perteneciendo
+al framework; estas barreras no son una garantía sobre ese parser.
+
+App Check usa el enforcement del callable y **reCAPTCHA Enterprise** en web.
+La preparación remota del 2026-10-07 habilitó las APIs y configuró el proveedor
+Enterprise SCORE, tres dominios de producción, umbral 0,5 y TTL de tokens de
+3.600 segundos. La clave pública restringida vive en
+`src/config/initializeFirebaseAppCheck.js`; no es un secret del modelo.
+La inicialización local está implementada antes de obtener servicios Firebase,
+con renovación automática y caché por app/HMR; omite SSR y emuladores.
+Quedan pendientes el despliegue de este cliente/enforcement y una prueba positiva
+de emisión y aceptación del token en navegador. Configuración remota no equivale
+a esa prueba. App Check complementa identidad, ownership y cuotas; no sustituye
+ninguno ni demuestra que una persona autorizada tenga buenas intenciones.
+
+La reserva de `admissionStore.ts` es una transacción Firestore que lee política,
+draft, petición y contadores. Exige `draft.userId === uid`, excluye el workspace
+legacy de plantilla y exige el estado `ACTIVE` del owner canónico de lifecycle. La política server-side
+`designerAiUsage/config` habilita el servicio y aporta modelo, versión, tasas de
+costo, límites por UID/minuto/día y presupuesto global diario. Una configuración
+ausente, deshabilitada, inválida o de otro modelo impide la llamada al proveedor;
+un fallo contable no abre una vía alternativa. También las aperturas sin modelo
+pasan por ownership, política y cuotas, con reserva monetaria cero.
+
+Cada UID puede tener una solicitud activa. La lease dura 120 segundos; liberarla
+por vencimiento no reintegra costo incierto. Los contadores usan ventanas de
+minuto y día **UTC** calculadas por el servidor, también al reintentar una
+transacción. La solicitud acepta antigüedad máxima de diez minutos y un minuto
+de tolerancia futura; no confía en la fecha del cliente para crear ventanas.
+
+La clave idempotente combina UID y `clientMessageId` mediante SHA-256; el registro
+liga también digest del payload, `requestCreatedAt` y draft. Repetir un ID con
+otra carga es conflicto. Una petición activa, completada o con resultado
+desconocido no vuelve a despacharse automáticamente, incluso tras vencer la
+lease. No se guarda ni reproduce el mensaje del modelo como respuesta cacheada.
+
+Antes del proveedor se reserva un techo calculado server-side para el máximo de
+tres intentos: llamada inicial, un retry de transporte global y una reparación.
+El costo se expresa en microUSD y redondea hacia arriba con enteros; precios y
+modelo pertenecen a la política versionada. Sólo se reduce la reserva cuando
+hay usage válido de **todos** los intentos despachados. Timeout, caída o resultado
+incierto conservan el techo reservado. La liquidación es idempotente y libera
+concurrencia; no devuelve un costo incierto por una expiración. Es contabilidad
+interna de consumo del proveedor, no un cobro nuevo al usuario del producto.
+
+La tarifa de referencia conservadora revisada el 2026-10-07 para `gpt-5.6-luna`
+es USD 0,50 por millón de tokens de entrada y USD 1,80 por millón de salida
+(`500000` y `1800000` microUSD por millón). Cubre los precios publicados de
+contexto largo/escritura de caché; puede sobreestimar la factura real y debe
+revisarse al cambiar modelo o tarifas. Fuente: [precios oficiales](https://developers.openai.com/api/docs/pricing).
+
+**Decisión comercial pendiente:** el usuario debe definir los límites de
+solicitudes por minuto/día y el presupuesto global diario antes de habilitar
+`designerAiUsage/config`. Las alternativas son mantener esta versión sin activar
+hasta fijarlos o aprobar explícitamente una política inicial acotada. Faltan esa
+elección y sus valores; no hay defaults comerciales autorizados. La activación
+queda condicionada a la decisión, precios/modelo vigentes y App Check verificado.
+La propuesta enviada para decidir es USD 10 globales por día, 100 solicitudes
+por usuario/día y 10 por usuario/minuto, con una solicitud activa por usuario.
+No está aplicada. Su payload concreto, validado localmente contra el parser,
+está en `.local-isolation/assistant-security/admission-policy-proposal.json`.
+El schema, unidades y retención viven en [DATA_MODEL](DATA_MODEL.md); la
+denegación del canal cliente pertenece a [Security Contract](../contracts/SECURITY_CONTRACT.md).
+
 ## 7. Streaming, concurrencia, cancelación y obsolescencia
 
 | Tema | Estado actual |
@@ -454,6 +577,7 @@ Las allowlists y shapes exactos viven en
 | Streaming de respuesta | No implementado. `responses.create` retorna completo y el callable responde al final. |
 | Progreso | `Preparando la respuesta…` mientras se espera el resultado; luego `designerAiExecutionFeedback` describe la acción validada que informa el executor (nombres, fecha, horario, ubicación, etc.) durante su aplicación y persistencia. El panel conserva `Guardando…` para la metadata final. El progreso se publica también en live region y no confirma éxito antes del receipt. No hay tokens parciales ni job durable. |
 | Concurrencia por panel | `sendingRef` impide un segundo envío mientras hay uno pendiente; el textarea permite escribir el mensaje siguiente y los reintentos no lo borran. |
+| Concurrencia por UID | Reserva transaccional con una solicitud activa y lease; cubre múltiples pestañas/instancias del servicio. |
 | Cancelación de red | El cliente no conserva un handle de cancelación del callable. El backend aborta intentos OpenAI al vencer su timeout/deadline compartido. |
 | Cambio de sesión | Invalida irreversiblemente operaciones ligadas a documentId/kind y su ciclo de montaje, también A → B → A. Places, uploads y callbacks del header comprueban identidad antes de mutar/publicar. El request backend puede seguir consumiendo recursos. |
 | Cambio de contenido | Antes de aplicar se compara `snapshot.revision`; un cambio produce fallback stale y cero mutación de ese lote. Durante la ejecución se debe detener el resto del lote ante una edición manual incompatible; los receipts conservan únicamente lo efectivamente guardado, sin rollback de escrituras previas. |
@@ -473,7 +597,8 @@ upstream.
 - `DashboardSidebar` conserva en estado React como máximo los treinta mensajes
   visibles más recientes del borrador actual.
 - IDs de mensaje se generan en cliente con rol, timestamp y sufijo aleatorio.
-- El backend valida `clientMessageId`, pero no lo usa como clave idempotente.
+- El backend liga `clientMessageId` al UID y al digest de la solicitud para
+  deduplicar el consumo del proveedor; no es un ID durable de conversación.
 - Desmontar solo el panel al alternar tabs no pierde esos mensajes ni inicia otra
   conversación al volver. Cambiar o cerrar el borrador remonta el sidebar y
   descarta el historial.
@@ -577,6 +702,13 @@ borrador actual y se descarta al cambiar o cerrar ese borrador. La request a
 OpenAI configura `store:false`, pero el repositorio no documenta una política
 adicional del proveedor aplicable a estas requests.
 
+La contabilidad independiente `designerAiUsage` escribe `expiresAt` a siete días
+para solicitudes y contadores; la configuración no expira. Ese campo no borra
+documentos por sí solo: no acredita una política TTL activada ni un proceso de
+limpieza desplegado. Su modelo y límites están en [DATA_MODEL](DATA_MODEL.md).
+No se deben borrar reservas manualmente para permitir repetir una petición de
+resultado desconocido.
+
 ## 9. Secretos, logs y privacidad
 
 - Solo Functions importa `openai` y lee `defineSecret("OPENAI_API_KEY")`.
@@ -593,6 +725,9 @@ adicional del proveedor aplicable a estas requests.
   sin serializar la excepción Firestore.
 - El código actual no registra prompt, mensajes, snapshot, valores funcionales,
   URLs privadas ni secret en esos eventos.
+- `designerAiUsage` conserva hashes, estado, contadores, importes y tiempos,
+  sin prompts, chat, snapshots ni respuestas del modelo. Sus hashes son
+  identificadores seudónimos de operación, no una garantía de anonimato.
 
 Gap: no existe un helper central de redacción para futuros logs del subsistema;
 la seguridad depende de conservar el allowlist de campos de logging actual.
@@ -630,6 +765,8 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   instrucciones contextualizadas por `nextStep`; el guard corta su repetición,
   no certifica que cualquier texto libre sea un lugar.
 - El callable tiene timeout de 45 segundos.
+- Admisión transaccional aplica cuotas por UID y presupuesto global antes del
+  proveedor, con reserva conservadora y bloqueo de duplicados; ver 6.4.
 - Timeout, upstream rate limit, secret ausente, payload inválido y fallo genérico
   se mapean a errores Firebase seguros.
 - El callable adjunta a cada error una categoría segura, indicación de
@@ -642,6 +779,14 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   mismo pedido. Un fallo de metadata inicial también tiene retry explícito.
   Una nueva intención descarta la recuperación previa. Los errores parciales
   usan exclusivamente el lote/receipts P0, con conteo de guardados y pendientes.
+- `designerAiExecutionFeedback` detalla campo y valor bancario guardado desde
+  `snapshot.values.gifts.methods`, únicamente con receipt vigente verificado por
+  `matchesDesignerAiActionEvidence`. El mismo formatter se usa en guiado,
+  edición y resultados parciales; progreso, datos ocultos y cambios sin guardado
+  conservan feedback sin valores. Regresión:
+  `designerAiExecutionFeedback.test.mjs` y `designerAiBankConfirmation.test.mjs`.
+  Implementación local del 2026-10-08, posterior a la release de la sección 17;
+  esta mejora todavía no se declara desplegada.
 - El loader Places comparte un intento por ventana, limita script/import a 12 s,
   espera el callback de Maps para `loading=async` (el evento `load` del script
   no acredita disponibilidad de la API), quita script/listeners/callback ante
@@ -667,11 +812,9 @@ proveedor; este límite debe considerarse al definir la política de privacidad.
   adicional; el resto requiere una acción explícita del usuario.
 - No hay circuit breaker ni cola durable. La espera del único retry de
   transporte está limitada por el deadline compartido.
-- No hay rate limit propio por UID, draft, IP o ventana temporal; solo se mapea el
-  429 del proveedor.
-- No hay presupuesto/cuota del producto ni cálculo de costo. Los logs técnicos
-  cuentan tokens informados por respuestas del proveedor; no hay dashboard de
-  costo ni se atribuye consumo a intentos que no devolvieron usage.
+- No hay un rate limit adicional por IP ni por draft, ni dashboard de costo.
+  Los valores comerciales de la política por UID/global siguen pendientes de
+  decisión y activación; la implementación no habilita cuotas implícitas.
 
 ## 11. Conocimiento funcional y carga por dominio
 
@@ -714,15 +857,16 @@ Clasificación usada aquí:
 | Área | Clasificación | Evidencia o gap |
 | --- | --- | --- |
 | Secret aislado en Functions | Implementado | `defineSecret`, SDK solo backend. |
-| Autorización del callable | Implementado | `requireAuth`, para todos los roles autenticados. |
+| Autorización del callable | Implementado localmente | Identidad no anónima, verificación de email aplicable, ownership/estado y App Check declarado. Activación web pendiente de evidencia; sin bypass administrativo. |
 | Autorización server-side de cada tool | No implementado | Tools se ejecutan en cliente; backend solo valida propuesta. |
 | Validación estructural backend/frontend | Implementado | Contrato compartido y validadores. |
 | Desfase de versión frontend/backend | Implementado y testeado | Antes de validar el payload, cualquier `contractVersion` no vacía distinta de la vigente recibe una respuesta segura que conserva la versión del cliente y solicita recarga; no llega a OpenAI ni se presenta como mensaje inválido. |
-| Validación contra draft server-side | No implementado | Snapshot proviene del cliente; no hay reread backend. |
+| Validación contra draft server-side | Parcial | Transacción relee dueño y lifecycle; valores/capabilities/revisión del snapshot siguen originándose en cliente. |
 | Contexto mínimo sin media/geometría | Implementado y testeado | Sanitizer + payload builder + service tests. |
 | Minimización por necesidad del turno | Parcial | El shape es acotado, pero se envían todos los valores allowlisted del snapshot. |
 | Redacción de texto libre antes de OpenAI | Parcial | Los valores bancarios conocidos ocultos/desactivados se redactan en el historial original antes del límite de longitud. El mensaje actual explícito queda fuera de esa minimización; no hay DLP general. |
-| Separación de contenido no confiable | Parcial | Roles y validación existen; estado de cliente se usa como developer context después de sanear. |
+| Separación de contenido no confiable | Implementada en composición; límite semántico pendiente | Único developer estático; snapshot/historial como datos user, sin roles assistant fabricables. No acredita inmunidad a prompt injection ni clasificación infalible de alcance. |
+| Aprobación de destinos sensibles de Regalos | Implementado localmente | Propuesta local del lote completo, comparación actual/propuesta y aprobación efímera de un uso ligada a sesión/contexto; executor la exige antes de mutar. |
 | Evidencia antes de confirmar | Implementado para actions | Cada action verifica su efecto canónico y el payload confirmado por el writer existente. Receipts locales ligan acción/documento/fingerprints; el ledger rechaza acreditar un valor posterior diferente. Places y media conservan sus controles humanos y owners. |
 | Nunca afirmar ejecución sin evidencia completa | Implementado en el flujo de aplicación | Un fallo corta el lote y bloquea su mensaje de éxito. No equivale a bloquear ediciones posteriores ni otras pestañas. |
 | Chat persistido | No implementado deliberadamente | Hasta treinta mensajes en memoria React por borrador; solo los seis turnos más recientes forman el contexto de cada request. |
@@ -740,12 +884,12 @@ Clasificación usada aquí:
 | Portada y múltiples Galleries por disponibilidad real | Implementado en orquestación/control | Portada conserva evidencia por fingerprint. Cada Gallery con slots aporta una hoja durable, respeta el orden del snapshot y avanza solo por finalización explícita; cambios y cierre del control no completan. |
 | Cierre único + edición + `Ver vista previa` | Implementado y verificado localmente, incluida recarga | Transición verificada, `usage.guidedFlowCompleted` monotónico por documento y callback de preview existente. Reabrir o resolver pendientes después del cierre conserva edición y no repite el cierre. |
 | Retención de `designerAiConversation` | Inferido | Sigue al draft por ubicación del campo, sin política aprobada propia. |
-| Política de retención | Gap documental/producto | No hay plazo, borrado selectivo ni obligación aprobada. |
+| Retención de contabilidad AI | Implementado parcialmente | `expiresAt` técnico de siete días en uso; TTL/limpieza y su activación requieren verificación independiente. No cambia la retención del ledger/chat. |
 | Streaming/cancelación real | No implementado | Respuesta completa y descarte local. |
 | Prevención de respuesta obsoleta | Implementado en cliente | Session sequence + revision check. |
-| Idempotencia durable | No implementado | Sets en memoria por montaje. |
-| Reintentos | Parcial | Un retry de transporte controlado por el service (`maxRetries:0` en SDK), una reparación semántica y continuación verificada. Un lote parcial puede reanudarse en la sesión actual: valida identidad y estado, salta efectos confirmados y reintenta su writer cuando corresponde. No es idempotencia durable; nueva intención y desmontaje invalidan esa recuperación. |
-| Rate limit propio | No implementado | Solo traducción de 429 upstream. |
+| Idempotencia durable del proveedor | Implementado localmente | UID + clientMessageId + digest/fecha; duplicados activos/completados/desconocidos no redespatchan. Batch del editor sigue deduplicado en memoria. |
+| Reintentos | Parcial | Un retry de transporte controlado por el service (`maxRetries:0` en SDK), una reparación semántica y continuación verificada. Un lote parcial puede reanudarse en la sesión actual: valida identidad y estado, salta efectos confirmados y reintenta su writer cuando corresponde. Esa recuperación de mutaciones no es idempotencia durable; nueva intención y desmontaje la invalidan. |
+| Rate limit y presupuesto propios | Implementados localmente, activación pendiente | Transacciones por UID/minuto/día, una lease activa y reserva global diaria; política comercial aún pendiente de valores autorizados. |
 | Redacción de logs | Implementada por allowlist actual | Sin helper/policy automatizada para cambios futuros. |
 | Evaluación conversacional real | No implementada | Tests usan fixtures/mock y assertions de source. |
 | Owner único de instrucciones/copy runtime | Parcial | Interpretación en service; seed compartido; preguntas derivadas en el adaptador guiado; cierre y fallbacks de UI conservan sus owners. No se carga documentación como prompt. |
@@ -967,8 +1111,8 @@ console.log({ warmup: 2, samples: 10, inputBytes: samples[0].inputBytes, toolSch
 '@ | node --input-type=module
 ```
 
-Persisten los límites de secciones anteriores: sin idempotencia durable del
-backend ni cuota propia, sin cancelación del callable desde el cliente y sin
+En la medición del 2026-10-06 persistían estos límites: sin idempotencia durable
+del backend ni cuota propia (implementadas después, sección 16), sin cancelación del callable desde el cliente y sin
 evaluación con modelo real. Detener un lote ante conflicto no es una transacción
 ni revierte escrituras confirmadas; múltiples ventanas y cambios remotos siguen
 requiriendo evidencia de concurrencia adicional.
@@ -1151,3 +1295,147 @@ visible el alias permite resolver las hojas afectadas con evidencia persistida;
 no se infiere esa confirmación automáticamente desde metadata ambigua. Este
 registro se agregó después de congelar las fuentes del backend y se distingue
 del manifiesto de la publicación frontend concurrente en `release-result.json`.
+
+<a id="assistant-security-20261007"></a>
+
+## 16. Seguridad del Asistente — implementación y release parcial del 2026-10-07
+
+Alcance autorizado: endurecer la entrada, admisión/costo, confianza del contexto y
+confirmación de destinos de Regalos. No agrega capacidades del modelo ni un
+cobro al usuario. La versión de protocolo pasa a `2.5.0`; un cliente incompatible
+que supera App Check recibe recarga segura sin consumo de proveedor. Una pestaña
+anterior sin App Check puede ser rechazada antes de esa respuesta y requiere
+recarga manual. El ledger conserva versión 4.
+
+Cambios implementados y owners:
+
+- `requestBoundary.ts` y el contrato compartido cierran el recorrido recursivo
+  sin límites y el procesamiento de arrays antes del recorte. Conservan el
+  protocolo/error/CORS del callable y su metadata de descubrimiento.
+- `admission.ts`/`admissionStore.ts` agregan ownership/estado, elegibilidad de
+  identidad, cuotas configurables, reserva conservadora, lease y deduplicación
+  durable. `firestore.rules` deniega la colección y descendientes al cliente,
+  además de excluirlos del fallback. La política comercial pendiente está en 6.4.
+- `service.ts` mantiene únicamente instrucciones estáticas como `developer` y
+  serializa snapshot/historial como datos no confiables. Una respuesta clasificada
+  `out_of_scope` usa copy determinista sin actions; esto no garantiza una
+  clasificación semántica infalible ni sustituye evaluaciones con modelo real.
+- `designerAiGiftApproval.js` y la UI local muestran efectos sobre destinos
+  sensibles antes de ejecutar el lote. El executor exige una aprobación vigente
+  y de un uso; la regla normativa está en capability contract, sección 8.3.
+- La inicialización Enterprise/App Check está implementada en navegador de
+  producción. La configuración remota del proveedor está preparada según 6.4;
+  enforcement de la nueva función y cliente aún no se declaran desplegados aquí.
+
+Evidencia ejecutada durante esta etapa, sin invocaciones al modelo real:
+
+| Verificación | Resultado y alcance |
+| --- | --- |
+| `node --test shared/designerAiRequestBoundary.test.mjs shared/designerAiCapabilityContract.test.mjs shared/designerAiConversationLedger.test.mjs shared/designerAiResolutionRules.test.mjs shared/designerAiDeferrals.test.mjs` | 119 aprobadas. Incluye 3.000 niveles, arrays sobredimensionados, claves peligrosas, accesores, Unicode y límites de colecciones. |
+| `node --test functions/designerAiRequestBoundary.test.mjs` | 3 aprobadas contra SDK real y HTTP en loopback. Metadata/`.run`, CORS permitido y distinto origen, errores previos al decoder, auth malformado y App Check faltante. No prueba un token Enterprise real. |
+| TypeScript aislado de `requestBoundary.ts`; lint de los siete archivos de esa frontera | Cero diagnósticos TS; cero errores de lint y un warning preexistente por `sanitizeCapabilityIdList`. No equivale a lint completo del proyecto. |
+| `node --test scripts/local/environment.test.mjs src/config/initializeFirebaseAppCheck.test.mjs src/firebaseInitializationContract.test.mjs` | 14 aprobadas; caché/HMR, orden, SSR y emuladores. |
+| `npm --prefix functions run build` | Aprobado durante la integración local; genera copias y compilación, no despliega. |
+| `npm --prefix functions run lint -- --report .local-isolation/assistant-security-lint.json` | 283 archivos; cero errores y 234 advertencias existentes. Sin autofix ni exclusiones nuevas. |
+| Suites `functions/designerAi{Service,Dates,ResolutionSchema,RequestBoundary,Admission}.test.mjs` | 188 aprobadas; proveedor simulado y HTTP del SDK en loopback. Los cuatro casos nuevos de contexto/perfil, alcance, techo y tipos se repitieron y aprobaron. |
+| `functions/designerAiAuthorization.test.mjs` | 14 aprobadas contra el export compilado; admisión anterior al proveedor y errores seguros. |
+| Ownership de Functions | Tres codebases compiladas; 41/41 tests y discovery real del CLI con su límite original de 10 s. Default: 102 endpoints/6,60 s; payments: tres/4,07 s; email: tres/3,30 s. Evidencia: `.local-isolation/assistant-security/ownership-final-yP6q9W/` y `ownership-final-fguzQJ/`. |
+| Reglas y transacciones contra Firestore Emulator real | 101 aprobadas: 99 denegaciones AI1, un control positivo y una prueba de carreras/reserva/replay/presupuesto. Alcance focal; no equivale al runner completo de Rules. Evidencia: `.local-isolation/assistant-security-rules/focal-session/`. |
+| Confirmación de Regalos y regresiones del panel/executor | Suites de dominio, executor y UI aprobadas; la suite final de confirmación aprobó sus ocho casos. Incluyen lote completo, callbacks obsoletos, cambios de revisión, aprobación de un uso y cancelación. |
+| Revisión visual de la confirmación | Fixture SSR del componente final con CSS exportado de producción, navegador CUA en 320×720, 390×844 y 1280×800: sin overflow horizontal y botones de 44 px. Verifica layout; interacción cubierta por las suites. Evidencia: `.local-isolation/assistant-security/gift-confirmation-visual/measurements-cua.json`. |
+| Build/export Next y retención estática | Aprobados; build `dQVl7VR0Mfdo9Rsdxkesn`, tres builds retenidos y 29 assets restaurados. Verificación local: 42 referencias HTML, tres manifests, 102 referencias de manifests y 92 archivos estáticos. No está publicado. |
+
+Preparación remota comprobada: `designerAiUsage.expiresAt` tiene TTL `ACTIVE`;
+los documentos técnicos nuevos asignan siete días y config no contiene expiración.
+El GET de `designerAiUsage/config` devolvió 404: todavía no se habilitó una política.
+El manifest local hace explícito `maxInstances: 100`, conservando el valor observado
+en producción; la firma del registro cambia sólo por esa opción. App Check se
+enforcea en el SDK y no aparece como opción en el wire manifest de esta versión.
+
+Despliegue parcial autorizado: se publicaron únicamente las reglas Firestore.
+La comparación previa confirmó que las reglas remotas coincidían con Git HEAD;
+la comparación posterior confirmó coincidencia con el archivo local nuevo.
+Ruleset `0c9c8245-acd3-4770-a6d9-b2335a709a8a`, actualizado a las
+`2026-10-08T00:08:17.326190Z` (7 de octubre en Argentina); SHA-256 del texto
+normalizado `df9f0b8fc137f5877728700f40408f9d3219c90c400c09fa39706596f63a35d4`.
+Readback: `.local-isolation/assistant-security/rules-release.json`.
+
+Incidencias y límites de la evidencia: el runner completo de Rules agotó su
+espera al iniciar el CLI de emuladores; otro intento quedó sin espacio al copiar
+el workspace. La prueba focal posterior usó el JAR fijado, identidad demo,
+credenciales limpias y red externa bloqueada, y verificó cleanup. No se declara
+aprobado el runner completo. El build Next inicial también falló por espacio;
+pasó después de limpiar únicamente cachés regenerables y copias fallidas propias.
+La primera integración de Functions detectó fuentes cambiantes durante build;
+se repitió una vez finalizadas las ediciones y pasó.
+El último build de backend también aprobó y comprobó sus 72 copias compartidas:
+`.local-isolation/assistant-security/final-backend-build.log`.
+Ownership conservó los timeouts iniciales de JSDOM y del discovery de payments;
+ambos pasaron al repetir sin cambiar fuentes, expectativas ni límites. No se
+demostró la causa exacta de esos timeouts. Las tres discoveries finales y los
+41 tests se ejecutaron con credenciales limpias y red externa bloqueada.
+
+Functions y Hosting de esta etapa todavía no se publicaron. Los límites
+comerciales siguen pendientes de respuesta del usuario, sin valores inferidos.
+También falta la prueba positiva de App Check: dos intentos de navegador aislado
+agotaron su arranque antes de invocar `getToken` (cero solicitudes de token).
+Eso no verifica ni refuta el proveedor configurado. Evidencia:
+`.local-isolation/assistant-security/appcheck-live-verification.json`.
+El rollout restante requiere política aprobada, cliente primero y token real
+verificado antes de activar enforcement del callable. El asistente anterior
+continúa en producción mientras se resuelven estos puntos.
+
+## 17. Ubicación manual y negativa a Dress Code — deploy del 2026-10-08
+
+Despliegue autorizado y verificado de las dos correcciones de conversación:
+la elección manual continúa desde el snapshot persistido y conserva la decisión
+de no usar Maps; una negativa inequívoca a incluir Dress Code exige la acción
+de desactivarlo, en lugar de tratarla como postergación. El texto oculto del
+template se conserva. Los casos ambiguos y las postergaciones explícitas no
+se convierten en negativas.
+
+La release se preparó en una copia aislada de
+`54a822d927d2139cd4b87c7c79a1f6b0987674ba`, con sólo los cambios de runtime en
+`DesignerAiPanel.jsx`, `designerAiConversationLedger.cjs` y `service.ts`, sus
+regresiones y caché de webpack deshabilitada para ese build aislado. Se mantuvo
+el protocolo productivo `2.4.0`. Los cambios pendientes de seguridad, admisión,
+App Check y confirmación de Regalos de la sección 16 quedaron fuera.
+
+Resultado remoto:
+
+- `designerAiChat` ACTIVE en `designeraichat-00044-voy`; selector exclusivo
+  `functions:default:designerAiChat`. Inventario de 108 Functions: sólo cambió
+  esa función. No se desplegaron Rules, pagos ni email.
+- Hosting `TWHaPEncmR1X-Hywb7f-T`, con assets de la versión anterior retenidos.
+  Dashboard verificado, 117 archivos estáticos disponibles con caché inmutable
+  y SHA-256 de los 118 contenidos (dashboard más estáticos) idénticos al build.
+- Configuración propia, binding del secreto y opciones de runtime preservados.
+  El CLI omitió la variable administrada `FUNCTION_SIGNATURE_TYPE=http` que
+  tenía la revisión previa; se compararon ambas revisiones en memoria y todas
+  las demás variables coinciden. El callable nuevo respondió 401
+  `UNAUTHENTICATED` al POST anónimo. No se invocó el modelo real ni se editaron
+  borradores durante la verificación.
+
+Verificaciones locales: build de Functions y sus 72 copias, build/export Next,
+retención y verificación estática aprobados; lint sin errores y 234 advertencias
+existentes. Se verificaron 622 casos del asistente: la primera ejecución tuvo
+621 aprobados y un caso `missing-secret` interceptado por el modo emulador;
+su suite completa pasó 145/145 al usar modo producción con credenciales vacías
+y red externa bloqueada, sin modificar fuentes ni expectativas.
+
+El gate completo de ownership **no se declara aprobado**: tres builds y 41
+tests pasaron; discovery de default (102 endpoints) y payments (tres) pasó.
+Discovery de email agotó su límite original de 10 segundos dos veces; no se
+determinó la causa. Email y su ownership permanecen idénticos al baseline y
+fuera del selector desplegado. La validación del target del asistente quedó
+registrada separadamente. Se conservaron también el primer timeout de default
+y las verificaciones interrumpidas durante una pausa prolongada del entorno.
+
+Evidencia reproducible en
+`.local-isolation/assistant-response-release-20261007/`: `source-manifest.json`,
+`output-manifest.json`, `assistant-tests-summary.json`,
+`ownership-target-result.json`, `revision-environment-comparison.json`,
+`backend-smoke.json`, `hosting-content-verification.json` y `release-result.json`.
+`verify-build.cjs`, `resolve-test-environment.cjs`, `verify-target-ownership.cjs`
+y `verify-backend-after-deploy.cjs` conservan los comandos y guards utilizados;
+`deploy.cjs` registra ambos selectores y rechaza repetir un intento sin revisión.

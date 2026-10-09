@@ -1,6 +1,27 @@
 import { getDesignerAiLocationPhaseLabel } from "./designerAiLocationInteraction.js";
+import { matchesDesignerAiActionEvidence } from "../../../shared/designerAiConversationLedger.js";
 
 const methodNames = { holder: "Titular", bank: "Banco", alias: "Alias", cbu: "CBU", cuit: "CUIT", giftListLink: "Lista de regalos" };
+
+function confirmedBankValue(receipt, snapshot) {
+  const action = receipt?.action;
+  const args = action?.arguments || {};
+  if (action?.type !== "gifts.set_method" || !Object.hasOwn(methodNames, args.method) || args.method === "giftListLink" ||
+      typeof args.value !== "string" || !args.value.trim() || args.visible !== true ||
+      !receipt.requested || !receipt.effective || !receipt.persisted || receipt.error ||
+      snapshot?.values?.gifts?.enabled !== true) return "";
+  const current = snapshot.values.gifts.methods?.[args.method];
+  // Read only the saved, still-current value. A visibility-only action does not
+  // prove a value, and an earlier receipt cannot confirm a later edit.
+  return current?.visible === true && typeof current.value === "string" &&
+    matchesDesignerAiActionEvidence(action, receipt.evidence, snapshot)
+    ? current.value : "";
+}
+
+function describeReceipt(receipt, snapshot) {
+  const value = confirmedBankValue(receipt, snapshot);
+  return value ? `${methodNames[receipt.action.arguments.method]} ${value}` : describeAction(receipt.action, snapshot);
+}
 
 export function buildDesignerAiExecutionProgress(action, snapshot) {
   const args = action?.arguments || {};
@@ -87,14 +108,21 @@ function visibleReceipts(results, snapshot, includeAutomaticName = false) {
       snapshot?.conversation?.namePolicy?.mode !== "automatic"));
 }
 
-function withoutLeadingConfirmation(message, receipts, snapshot) {
+function isBankAcknowledgement(text) {
+  return /^(?:(?:ya|te|lo)\s+)*(?:guardado|confirmado|confirmé|registré|configuré|actualicé|guardé|dejé|anoté|agregué)(?=\s|[,:]|$)/.test(text) ||
+    /^(?:(?:el|los|tu|tus)\s+)?(?:cbu|cvu|cuit|alias|titular|banco|datos|cambio)\b.*\b(?:quedó|quedaron|está|están|fue|fueron)\s+(?:guardad|actualizad|confirmad|registrad|configurad)/.test(text) ||
+    /^(?:cbu|cvu|cuit|alias|titular|banco)\s*:/.test(text);
+}
+
+function withoutLeadingConfirmation(message, receipts, snapshot, bankConfirmation = false) {
   let remainder = String(message).trim();
-  const descriptions = receipts.map((r) => describeAction(r.action, snapshot).toLowerCase());
+  const descriptions = receipts.map((r) => describeReceipt(r, snapshot).toLowerCase());
   while (remainder) {
     const sentence = /^[^¿?]*?(?:[.!](?=\s|$)|$)/.exec(remainder)?.[0];
     if (!sentence) break;
     const text = sentence.replace(/[.!]$/, "").trim().toLowerCase();
-    if (!/^(listo|hecho|perfecto|agregué|activé|desactivé|actualicé|cambié|guardé|configuré|datos actualizados)\b/.test(text) && !descriptions.includes(text)) break;
+    const bankAcknowledgement = bankConfirmation && isBankAcknowledgement(text);
+    if (!bankAcknowledgement && !/^(listo|hecho|perfecto|agregué|activé|desactivé|actualicé|cambié|guardé|configuré|datos actualizados)\b/.test(text) && !descriptions.includes(text)) break;
     remainder = remainder.slice(sentence.length).trim();
   }
   return remainder;
@@ -107,10 +135,10 @@ export function buildDesignerAiExecutionFeedback(results, { partial = false, sna
   if (!requested.length) return "";
   const confirmed = requested.filter((r) => r.effective && r.persisted && !r.error);
   if (!partial && confirmed.length !== requested.length) return "";
-  if (!partial && !structured && confirmed.length === 1) return `Listo. ${describeAction(confirmed[0].action, snapshot)}.`;
+  if (!partial && !structured && confirmed.length === 1) return `${confirmedBankValue(confirmed[0], snapshot) ? "Confirmado:" : "Listo."} ${describeReceipt(confirmed[0], snapshot)}.`;
   const heading = partial ? `Se guardaron ${confirmed.length} de ${requested.length} cambios:` : `Listo, guardé ${confirmed.length} cambios:`;
   return [heading, ...requested.map((r) => confirmed.includes(r)
-    ? `✓ ${describeAction(r.action, snapshot)}`
+    ? `✓ ${describeReceipt(r, snapshot)}`
     : `⚠ ${r.executed ? "No pude confirmar el guardado del cambio" : "Quedó pendiente el cambio"}: ${describeAction(r.action, snapshot)}`)].join("\n");
 }
 
@@ -123,12 +151,15 @@ export function withDesignerAiExecutionFeedback(message, results, snapshot, { us
   const structured = visible.length >= 3 || /qu[eé]\s+(?:cambi[oó]|cambiaste|cambios)|resum[ií]|resumen/i.test(userMessage);
   const summary = buildDesignerAiExecutionFeedback(results, { snapshot, structured });
   if (!summary) return message;
+  const bankConfirmation = visible.some((r) => confirmedBankValue(r, snapshot));
+  const conciseSummary = visible.length === 1 ? summary
+    : `${bankConfirmation ? "Confirmado:" : "Listo."} ${visible.map((r) => describeReceipt(r, snapshot)).join(". ")}.`;
   const generic = /^(listo|hecho|cambios confirmados|datos actualizados|cambios guardados)[.!]?$/i.test(String(message).trim());
-  if (structured) {
+  if (structured || bankConfirmation) {
     // Keep explanations of unsupported parts/recovery as well as questions.
-    const followUp = withoutLeadingConfirmation(message, visible, snapshot);
-    return [summary, followUp].filter(Boolean).join("\n\n");
+    const followUp = withoutLeadingConfirmation(message, visible, snapshot, bankConfirmation);
+    return [structured ? summary : conciseSummary, followUp].filter(Boolean).join("\n\n");
   }
-  if (generic) return visible.length === 1 ? summary : `Listo. ${visible.map((r) => describeAction(r.action, snapshot)).join(". ")}.`;
+  if (generic) return conciseSummary;
   return message;
 }

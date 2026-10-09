@@ -16,16 +16,47 @@ const logs = [];
 for (const level of ["info", "warn", "error"]) mock.method(require("firebase-functions/logger"), level, (...args) => { logs.push({ level, args }); });
 
 const { defineSecret } = require("firebase-functions/params");
-const secret = mock.method(Object.getPrototypeOf(defineSecret("SYNTHETIC_TEST_SECRET")), "value", () => "synthetic-key");
+let secretFailure = null;
+const secret = mock.method(Object.getPrototypeOf(defineSecret("SYNTHETIC_TEST_SECRET")), "value", () => {
+  if (secretFailure) throw secretFailure;
+  return "synthetic-key";
+});
 const service = requireBuiltModule("lib/designerAi/service.js");
+const { DesignerAiAdmissionError } = requireBuiltModule("lib/designerAi/admission.js");
+const admissionModule = requireBuiltModule("lib/designerAi/admissionStore.js");
+let admissionFailure = null;
+let dispatchFailure = null;
+let settlementFailures = [];
+const effects = [];
+const reservation = {
+  requestKey: "request_synthetic", userKey: "user_synthetic", globalKey: "global_synthetic", ownerToken: "synthetic-owner",
+  reservedMicrousd: 1_000_000,
+  pricing: { inputMicrousdPerMillionTokens: 500_000, outputMicrousdPerMillionTokens: 1_800_000 },
+};
+const reserve = mock.fn(async () => {
+  effects.push("reserve");
+  if (admissionFailure) throw admissionFailure;
+  return reservation;
+});
+const markDispatching = mock.fn(async () => {
+  effects.push("dispatch");
+  if (dispatchFailure) throw dispatchFailure;
+});
+const settle = mock.fn(async () => {
+  effects.push("settle");
+  if (settlementFailures.length) throw settlementFailures.shift();
+});
+const admissionFactory = mock.method(admissionModule, "createDesignerAiAdmissionStore", () => ({ reserve, markDispatching, settle }));
 const client = {};
-const createClient = mock.method(service, "createDesignerAiOpenAiClient", () => client);
+const createClient = mock.method(service, "createDesignerAiOpenAiClient", () => { effects.push("client"); return client; });
 let interpretFailure = null;
 const interpret = mock.method(service, "interpretDesignerAiChat", async ({ userContext }) => {
+  effects.push("provider");
   if (interpretFailure) throw interpretFailure;
   return {
   contractVersion: "synthetic", batchId: "batch-1", intent: "clarify", assistantMessage: `Hola, ${userContext.registeredFirstName}.`,
-  actions: [], resolutions: [], controlRequest: null, traceId: "trace", openAiRequestId: "request", latencyMs: 1, repairCount: 0, telemetry: { providerAttempts: 1 },
+  actions: [], resolutions: [], controlRequest: null, traceId: "trace", openAiRequestId: "request", latencyMs: 1, repairCount: 0,
+  telemetry: { providerAttempts: 1, usageReportedAttempts: 1, inputTokens: 200, outputTokens: 10 },
   };
 });
 const { designerAiChat } = requireBuiltModule("lib/index.js");
@@ -43,6 +74,7 @@ mock.method(require("firebase-admin").firestore(), "collection", (collection) =>
 function validPayload(overrides = {}) {
   return {
     contractVersion: DESIGNER_AI_CONTRACT_VERSION,
+    draftId: "synthetic-draft", requestCreatedAt: Date.now(),
     clientMessageId: "synthetic", entryMode: "first_entry", message: "Hola",
     recentTurns: [], capabilitySnapshot: sanitizeCapabilitySnapshot({ revision: "synthetic" }),
     ...overrides,
@@ -56,6 +88,7 @@ test("designerAiChat rejects unauthenticated callers before profile, secret or p
   assert.equal(secret.mock.callCount(), 0);
   assert.equal(createClient.mock.callCount(), 0);
   assert.equal(interpret.mock.callCount(), 0);
+  assert.equal(reserve.mock.callCount(), 0);
   assert.deepEqual(profileReads, []);
 });
 
@@ -90,8 +123,22 @@ test("designerAiChat validates requests before profile, secret and provider acce
   assert.deepEqual([profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()], before);
 });
 
+test("exported callable bounds adversarial bodies before admission, recursive SDK decoding or provider work", async () => {
+  let deep = { marker: "synthetic" };
+  for (let index = 0; index < 3000; index++) deep = { nested: deep };
+  const before = [reserve.mock.callCount(), profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()];
+  for (const capabilitySnapshot of [deep, { oversized: Array(14_000).fill("x") },
+    JSON.parse('{"__proto__":{"polluted":true}}'),
+    { "@type": "type.googleapis.com/google.protobuf.Int64Value", value: "1" }]) {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ capabilitySnapshot }) }), error => error.code === "invalid-argument");
+  }
+  assert.deepEqual([reserve.mock.callCount(), profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()], before);
+  assert.equal({}.polluted, undefined);
+});
+
 test("opening greeting uses the authenticated profile without reading secret or invoking OpenAI", async () => {
   const before = [secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()];
+  const dispatchesBefore = markDispatching.mock.callCount();
   for (const entryMode of ["first_entry", "reentry"]) {
     const result = await designerAiChat.run({ auth: { uid: "opening-user" }, data: validPayload({ entryMode, message: DESIGNER_AI_AUTO_START_MESSAGE }) });
     assert.match(result.assistantMessage, /^¡Hola, Ana!/);
@@ -102,8 +149,104 @@ test("opening greeting uses the authenticated profile without reading secret or 
     assert.equal(profileReads.at(-1), "opening-user");
     assert.equal(logs.at(-1).args[1].responseKind, "opening");
     assert.equal(logs.at(-1).args[1].providerAttempts, 0);
+    assert.equal(reserve.mock.calls.at(-1).arguments[0].maxInputTokens, 0);
+    assert.equal(reserve.mock.calls.at(-1).arguments[0].maxOutputTokens, 0);
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "succeeded", usageComplete: true, actualMicrousd: 0 });
   }
   assert.deepEqual([secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()], before);
+  assert.equal(markDispatching.mock.callCount(), dispatchesBefore);
+});
+
+test("password verification and anonymous authentication are enforced before any admission or paid work", async () => {
+  const before = [reserve.mock.callCount(), profileReads.length, secret.mock.callCount(), interpret.mock.callCount()];
+  for (const token of [
+    { email_verified: false, firebase: { sign_in_provider: "password" } },
+    { firebase: { sign_in_provider: "anonymous" } },
+    { email_verified: false, firebase: { sign_in_provider: "custom", identities: { email: ["synthetic@invalid.example"] } } },
+  ]) {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-unverified", token }, data: validPayload() }), error => error.code === "permission-denied");
+  }
+  assert.deepEqual([reserve.mock.callCount(), profileReads.length, secret.mock.callCount(), interpret.mock.callCount()], before);
+  for (const token of [
+    { email_verified: true, firebase: { sign_in_provider: "password" } },
+    { firebase: { sign_in_provider: "google.com" } },
+    { email_verified: false, firebase: { sign_in_provider: "password", identities: { "google.com": ["synthetic-google-id"] } } },
+  ]) {
+    await designerAiChat.run({ auth: { uid: "synthetic-verified", token }, data: validPayload({ entryMode: "continuation" }) });
+  }
+});
+
+test("draft, rate, duplicate and configuration admission failures cannot touch profile, secret or provider", async () => {
+  const before = [profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()];
+  for (const reason of ["draft_unavailable", "minute_quota", "daily_quota", "concurrent_request", "global_budget",
+    "duplicate_active", "duplicate_completed", "duplicate_unknown", "request_conflict", "disabled", "configuration_invalid", "accounting_unavailable"]) {
+    admissionFailure = new DesignerAiAdmissionError(reason);
+    try {
+      await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload() }), error => error === admissionFailure);
+    } finally { admissionFailure = null; }
+  }
+  assert.deepEqual([profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()], before);
+});
+
+test("callable supplies canonical lifecycle policy and server-calculated identity, digest and attempt budget", async () => {
+  const { isDraftEditable } = admissionFactory.mock.calls[0].arguments[1];
+  assert.equal(isDraftEditable({ estadoBorrador: "borrador_activo" }), true);
+  assert.equal(isDraftEditable({}), true); // Canonical active legacy draft.
+  assert.equal(isDraftEditable({ estadoBorrador: "borrador_papelera" }), false);
+  assert.equal(isDraftEditable({ enPapeleraAt: new Date() }), false);
+  const payload = validPayload({ entryMode: "continuation" });
+  const effectStart = effects.length;
+  await designerAiChat.run({ auth: { uid: "verified-caller" }, data: payload });
+  const admitted = reserve.mock.calls.at(-1).arguments[0];
+  assert.equal(admitted.uid, "verified-caller");
+  assert.equal(admitted.draftId, payload.draftId);
+  assert.equal(admitted.clientMessageId, payload.clientMessageId);
+  assert.equal(admitted.requestCreatedAt, payload.requestCreatedAt);
+  assert.equal(admitted.model, service.DESIGNER_AI_MODEL);
+  assert.match(admitted.payloadDigest, /^[a-f0-9]{64}$/);
+  assert.ok(admitted.maxInputTokens > 0);
+  assert.equal(admitted.maxOutputTokens, 12_000);
+  assert.deepEqual(effects.slice(effectStart), ["reserve", "client", "dispatch", "provider", "settle"]);
+  assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "succeeded", usageComplete: true, actualMicrousd: 118 });
+});
+
+test("failure before provider dispatch reconciles zero paid usage and does not invoke the provider", async () => {
+  const before = interpret.mock.callCount();
+  secretFailure = new Error("SYNTHETIC_PRIVATE_SECRET_FAILURE");
+  try {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }), error => error.code === "failed-precondition");
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "failed", usageComplete: true, actualMicrousd: 0 });
+  } finally { secretFailure = null; }
+  dispatchFailure = new DesignerAiAdmissionError("reservation_invalid");
+  try {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }), error => error.reason === "reservation_invalid");
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "failed", usageComplete: true, actualMicrousd: 0 });
+  } finally { dispatchFailure = null; }
+  assert.equal(interpret.mock.callCount(), before);
+  assert.equal(JSON.stringify(logs).includes("SYNTHETIC_PRIVATE_SECRET_FAILURE"), false);
+});
+
+test("provider timeout without complete usage retains unknown spending, known failed usage is reconciled", async () => {
+  for (const complete of [false, true]) {
+    interpretFailure = new service.DesignerAiServiceError(complete ? "malformed-output" : "timeout", "Synthetic provider error");
+    interpretFailure.telemetry = { providerAttempts: complete ? 1 : 2, usageReportedAttempts: 1, inputTokens: 200, outputTokens: 10 };
+    try {
+      await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }));
+      assert.deepEqual(settle.mock.calls.at(-1).arguments[1], {
+        outcome: complete ? "failed" : "unknown", usageComplete: complete, actualMicrousd: 118,
+      });
+    } finally { interpretFailure = null; }
+  }
+});
+
+test("unconfirmed accounting after provider success returns no result and never retries the model", async () => {
+  const callsBefore = interpret.mock.callCount();
+  settlementFailures = [new DesignerAiAdmissionError("accounting_unavailable")];
+  try {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }), error => error.reason === "accounting_unavailable");
+    assert.equal(interpret.mock.callCount(), callsBefore + 1);
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "unknown", usageComplete: false, actualMicrousd: 0 });
+  } finally { settlementFailures = []; }
 });
 
 test("continuation skips the profile read and keeps stage diagnostics server-side", async () => {

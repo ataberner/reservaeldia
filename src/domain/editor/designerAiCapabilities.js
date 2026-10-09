@@ -370,7 +370,9 @@ export function readDesignerAiCapabilitySnapshot(targetWindow, options = {}) {
 }
 
 export function buildDesignerAiCallablePayload({
+  draftId,
   clientMessageId,
+  requestCreatedAt = Date.now(),
   message,
   recentTurns = [],
   snapshot,
@@ -402,7 +404,9 @@ export function buildDesignerAiCallablePayload({
   };
   return {
     contractVersion: DESIGNER_AI_CONTRACT_VERSION,
+    draftId: normalizeText(draftId),
     clientMessageId: normalizeText(clientMessageId),
+    requestCreatedAt,
     entryMode: ["first_entry", "reentry", "continuation"].includes(entryMode)
       ? entryMode
       : "continuation",

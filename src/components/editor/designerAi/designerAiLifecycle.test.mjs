@@ -13,6 +13,8 @@ import * as ledger from "../../../../shared/designerAiConversationLedger.js";
 import * as capabilities from "../../../domain/editor/designerAiCapabilities.js";
 import * as history from "../../../domain/editor/designerAiMessageHistory.js";
 import * as executor from "../../../domain/editor/designerAiActionExecutor.js";
+import * as giftApproval from "../../../domain/editor/designerAiGiftApproval.js";
+import * as snapshotAdapter from "../../../lib/editorSnapshotAdapter.js";
 import * as feedback from "../../../domain/editor/designerAiExecutionFeedback.js";
 import * as guidedConversation from "../../../domain/editor/designerAiGuidedConversation.js";
 import * as timing from "../../../domain/editor/designerAiTiming.js";
@@ -65,6 +67,9 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     "@/firebase": { functions: {} },
     "@/components/MiniToolbarTabImagen": noop,
     "@/components/editor/designerAi/DesignerAiLocationControl": noop,
+    "@/components/editor/designerAi/DesignerAiGiftConfirmation": loadHook("./DesignerAiGiftConfirmation.jsx", {}),
+    "@/domain/editor/designerAiGiftApproval": giftApproval,
+    "@/lib/editorSnapshotAdapter": snapshotAdapter,
     "../../../../shared/designerAiCapabilityContract.js": capabilityContract,
     "../../../../shared/designerAiConversationLedger.js": ledger,
     "@/domain/editor/designerAiCapabilities": capabilities,

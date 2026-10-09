@@ -1,3 +1,5 @@
+import { initializeFirebaseAppCheck } from "./initializeFirebaseAppCheck.js";
+
 // SDK injection lets tests verify actual ordering and repeat initialization.
 export function initializeFirebaseServices(sdk, environment) {
   // Existing consumers call getAuth()/getStorage() without passing an app.
@@ -9,6 +11,7 @@ export function initializeFirebaseServices(sdk, environment) {
     }
   }
   const app = existing || sdk.initializeApp(environment.config, appName);
+  initializeFirebaseAppCheck(sdk, app, environment);
   // Kept on the SDK app: survives Next HMR without reconnecting used instances.
   const cacheKey = Symbol.for("reservaeldia.firebase.services");
   if (app[cacheKey]) {

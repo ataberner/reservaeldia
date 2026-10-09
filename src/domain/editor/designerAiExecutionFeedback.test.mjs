@@ -1,9 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildDesignerAiExecutionFeedback, buildDesignerAiExecutionProgress, withDesignerAiExecutionFeedback } from "./designerAiExecutionFeedback.js";
+import { buildDesignerAiCapabilitySnapshot } from "./designerAiCapabilities.js";
+import { captureDesignerAiActionEvidence } from "../../../shared/designerAiConversationLedger.js";
 
 const receipt = (type, args, overrides = {}) => ({ action: { type, arguments: args }, requested: true, executed: true, effective: true, persisted: true, error: null, ...overrides });
 const enable = receipt("rsvp.set_enabled", { enabled: true });
+
+function bankFixture(method = "cbu", value = "123456", { visible = true, enabled = true } = {}) {
+  const snapshot = buildDesignerAiCapabilitySnapshot({ documentNameState: { documentId: "synthetic-bank-draft" },
+    renderSnapshot: { gifts: { enabled, bank: { [method]: value }, visibility: { [method]: visible } } } });
+  const saved = receipt("gifts.set_method", { method, value, visible });
+  saved.evidence = captureDesignerAiActionEvidence(saved.action, snapshot);
+  return { snapshot, saved };
+}
 
 test("progress distinguishes date and time changes without using private values", () => {
   const progress = (args) => buildDesignerAiExecutionProgress({ type: "event.set_datetime", arguments: args });
@@ -32,7 +42,7 @@ test("execution feedback never treats executed or optimistic effects as saved", 
   }
 });
 
-test("feedback summarizes single, multiple and partial confirmed changes without sensitive gift values", () => {
+test("feedback summarizes confirmed changes without exposing gift values that lack current evidence", () => {
   assert.equal(withDesignerAiExecutionFeedback("Listo.", [enable]), "Listo. RSVP activado.");
   const results = [receipt("event.set_datetime", { phase: "ceremony", date: "2027-12-12", startTime: null, endTime: null }), enable,
     receipt("rsvp.set_question_active", { questionId: "dietary_notes", active: true })];
@@ -79,4 +89,61 @@ test("explicit summaries and complex batches retain evidence without duplicate p
   assert.match(withDesignerAiExecutionFeedback("Listo, actualicé los datos. El tamaño de letra se cambia desde el editor. ¿Quieren regalos?", results), /El tamaño de letra se cambia desde el editor/);
   assert.match(withDesignerAiExecutionFeedback("RSVP activado.", [enable], null, { userMessage: "¿Qué cambiaste?" }), /✓ RSVP activado/);
   assert.doesNotMatch(withDesignerAiExecutionFeedback("Activé RSVP.", [{ ...enable, persisted: false }]), /^Activé RSVP/);
+});
+
+test("bank confirmation names the field and exact saved value, including leading zeros and owner normalization", () => {
+  for (const [method, input, expected] of [["cbu", "123456", "CBU 123456"], ["cbu", "  00123456  ", "CBU 00123456"],
+    ["alias", "BODA.PRUEBA", "Alias BODA.PRUEBA"], ["holder", " Ana   Prueba ", "Titular Ana Prueba"],
+    ["bank", "Banco de Prueba", "Banco Banco de Prueba"], ["cuit", "CUIT-PRUEBA", "CUIT CUIT-PRUEBA"]]) {
+    const { snapshot, saved } = bankFixture(method, input);
+    assert.equal(buildDesignerAiExecutionFeedback([saved], { snapshot }), `Confirmado: ${expected}.`);
+    assert.equal(withDesignerAiExecutionFeedback("Listo.", [saved], snapshot), `Confirmado: ${expected}.`);
+  }
+});
+
+test("editing replaces a generic or model-written bank acknowledgement and retains the follow-up once", () => {
+  const { snapshot, saved } = bankFixture();
+  for (const message of ["Guardado. ¿Querés cambiar la foto?", "Confirmado: CBU 999999. ¿Querés cambiar la foto?",
+    "El CBU quedó guardado. ¿Querés cambiar la foto?", "Listo, actualicé los datos. ¿Querés cambiar la foto?",
+    "Ya guardé el CBU 999999. ¿Querés cambiar la foto?", "Te guardé el CBU 999999. ¿Querés cambiar la foto?",
+    "Dejé el CBU 999999 configurado. ¿Querés cambiar la foto?", "CBU: 999999. ¿Querés cambiar la foto?"]) {
+    assert.equal(withDesignerAiExecutionFeedback(message, [saved], snapshot), "Confirmado: CBU 123456.\n\n¿Querés cambiar la foto?");
+  }
+  assert.equal(withDesignerAiExecutionFeedback("Listo. El banco no se puede validar desde acá. ¿Querés cambiar la foto?", [saved], snapshot),
+    "Confirmado: CBU 123456.\n\nEl banco no se puede validar desde acá. ¿Querés cambiar la foto?");
+});
+
+test("bank details require a current successful receipt and a visible enabled field with supplied data", () => {
+  for (const overrides of [{ effective: false }, { persisted: false }, { error: "synthetic-failure" },
+    { requested: false }, { evidence: undefined }]) {
+    const { snapshot, saved } = bankFixture();
+    assert.doesNotMatch(buildDesignerAiExecutionFeedback([{ ...saved, ...overrides }], { snapshot, partial: true }), /123456/);
+  }
+  for (const options of [{ visible: false }, { enabled: false }]) {
+    const { snapshot, saved } = bankFixture("cbu", "123456", options);
+    assert.doesNotMatch(buildDesignerAiExecutionFeedback([saved], { snapshot }), /123456/);
+  }
+  const { snapshot, saved } = bankFixture();
+  for (const value of [null, ""]) {
+    const action = { ...saved.action, arguments: { ...saved.action.arguments, value } };
+    const changed = { ...saved, action, evidence: captureDesignerAiActionEvidence(action, snapshot) };
+    assert.doesNotMatch(buildDesignerAiExecutionFeedback([changed], { snapshot }), /123456/);
+  }
+  const stale = structuredClone(snapshot);
+  stale.documentIdentity = "another-synthetic-draft";
+  assert.doesNotMatch(buildDesignerAiExecutionFeedback([saved], { snapshot: stale }), /123456/);
+  const later = bankFixture("cbu", "00009999").snapshot;
+  assert.doesNotMatch(buildDesignerAiExecutionFeedback([saved], { snapshot: later }), /123456|00009999/);
+});
+
+test("partial feedback details only saved bank receipts and never attributes failed or superseded values", () => {
+  const { snapshot, saved } = bankFixture();
+  const failed = receipt("gifts.set_method", { method: "alias", value: "ALIAS.NO.GUARDADO", visible: true }, { persisted: false, error: "synthetic-failure" });
+  const text = buildDesignerAiExecutionFeedback([saved, failed], { snapshot, partial: true });
+  assert.match(text, /✓ CBU 123456/);
+  assert.doesNotMatch(text, /ALIAS.NO.GUARDADO/);
+  assert.match(text, /⚠/);
+  const previous = bankFixture("cbu", "00001111").saved;
+  assert.doesNotMatch(buildDesignerAiExecutionFeedback([previous, saved], { snapshot }), /00001111/);
+  assert.equal(buildDesignerAiExecutionFeedback([previous, saved], { snapshot }).match(/123456/g)?.length, 1);
 });

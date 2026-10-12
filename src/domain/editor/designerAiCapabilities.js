@@ -15,8 +15,6 @@ import {
 } from "../../../shared/countdownEventDetails.js";
 import {
   collectEventPersonNameFields,
-  EVENT_PERSON_NAME_ROLES,
-  getEventPersonNameFieldKey,
   resolveEventPersonNameBindingsFromAuthoring,
 } from "../eventDetails/personNames.js";
 import { EVENT_DETAIL_FEATURES } from "../eventDetails/features.js";
@@ -102,6 +100,8 @@ function resolvePhaseState({ authoringSnapshot, objects, feature }) {
   });
   const timeFields = collectEventTimeFields(fieldsSchema);
   const locationFields = collectEventLocationFields(fieldsSchema);
+  const datetimeField = normalizeText(dateBinding.field?.type).toLowerCase() === "datetime";
+  const startTimeKey = times.fieldKeys.startTime || (datetimeField ? dateBinding.fieldKey : "");
 
   return {
     values: {
@@ -121,6 +121,18 @@ function resolvePhaseState({ authoringSnapshot, objects, feature }) {
         resolveEventLocationFieldFeature,
         feature
       ),
+    },
+    fieldKeysByLeaf: {
+      [`event.${feature}.date`]: dateBinding.fieldKey,
+      [`event.${feature}.start_time`]: startTimeKey,
+      [`event.${feature}.end_time`]: times.fieldKeys.endTime,
+      [`event.${feature}.venue_name`]: location.fieldKeys.venueName,
+      [`event.${feature}.address`]: location.fieldKeys.address,
+    },
+    fieldAvailability: {
+      [`event.${feature}.date`]: Boolean(dateBinding.fieldKey),
+      [`event.${feature}.start_time`]: Boolean(startTimeKey),
+      [`event.${feature}.end_time`]: Boolean(times.fieldKeys.endTime),
     },
   };
 }
@@ -143,6 +155,7 @@ function buildRsvpSnapshot(rawConfig) {
   const config = normalizeRsvpConfig(rawConfig, { forceEnabled: false });
   return {
     enabled: config.enabled === true,
+    limits: { ...config.limits },
     questions: config.questions.map((question) => ({
       id: question.id,
       active: question.active === true,
@@ -285,41 +298,23 @@ export function buildDesignerAiCapabilitySnapshot({
       authoringFieldKeys: fieldsSchema.map((field) => normalizeText(field?.key)).filter(Boolean),
       changedKeys: Array.isArray(liveTemplateInput.changedKeys) ? liveTemplateInput.changedKeys : [] }
     : sourceContext;
-  // The shared ledger consumes semantic field keys. Resolve aliases from the
-  // same binding that supplied each value, including a combined names field;
-  // an unrelated/stale view must not confirm names read from another source.
-  const rawChangedKeys = asRecord(authoringSourceContext).changedKeys;
-  const actualChangedKeys = new Set(
-    Array.isArray(rawChangedKeys) ? rawChangedKeys.map(normalizeText) : []
-  );
-  const declaredFieldKeys = new Set(
-    fieldsSchema.map((field) => normalizeText(field?.key)).filter(Boolean)
-  );
-  const changedKeys = new Set(actualChangedKeys);
-  const rawAuthoringFieldKeys = asRecord(authoringSourceContext).authoringFieldKeys;
-  const authoringFieldKeys = new Set(
-    Array.isArray(rawAuthoringFieldKeys)
-      ? rawAuthoringFieldKeys.map(normalizeText)
-      : declaredFieldKeys
-  );
-  for (const [name, role] of [
-    ["primaryName", EVENT_PERSON_NAME_ROLES.PRIMARY],
-    ["secondaryName", EVENT_PERSON_NAME_ROLES.SECONDARY],
-  ]) {
-    const semanticKey = getEventPersonNameFieldKey(role);
-    const actualKey = personBindings.fieldKeys[name];
-    changedKeys.delete(semanticKey);
-    authoringFieldKeys.delete(semanticKey);
-    if (actualChangedKeys.has(actualKey)) changedKeys.add(semanticKey);
-    if (declaredFieldKeys.has(actualKey)) authoringFieldKeys.add(semanticKey);
-  }
+  // Provenance follows the actual value binding, including role-bound custom
+  // keys and combined names. Stale canonical keys cannot confirm another field.
   const currentSourceContext = {
     ...asRecord(authoringSourceContext),
-    changedKeys: [...changedKeys],
-    authoringFieldKeys: [...authoringFieldKeys],
+    authoringFieldKeys: fieldsSchema.map((field) => normalizeText(field?.key)).filter(Boolean),
+    fieldKeysByLeaf: {
+      "event.people.primary_name": personBindings.fieldKeys.primaryName,
+      "event.people.secondary_name": personBindings.fieldKeys.secondaryName,
+      ...ceremony.fieldKeysByLeaf,
+      ...party.fieldKeysByLeaf,
+      "event.dress_code.value": dressCode.fieldKey,
+      "story.text": story.fieldKey,
+    },
   };
   const ledger = buildDesignerAiLedger({
     availability,
+    fieldAvailability: { ...ceremony.fieldAvailability, ...party.fieldAvailability },
     values,
     conversationState: normalizedConversationState,
     sourceContext: currentSourceContext,

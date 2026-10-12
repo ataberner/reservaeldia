@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  DESIGNER_AI_CONTRACT_VERSION,
   DESIGNER_AI_REQUEST_LIMITS,
   containsForbiddenSnapshotData,
   inspectDesignerAiRequestData,
@@ -64,7 +65,7 @@ test("maximum canonical collection counts fit the envelope and snapshot shape", 
     ledger: { leaves: Array.from({ length: 700 }, (_, i) => ({ id: `leaf${i}` })), guidedFlow: { leafIds: Array.from({ length: 700 }, (_, i) => `leaf${i}`) } },
   });
   assert.equal(inspectDesignerAiSnapshotShape(snapshot).ok, true);
-  const envelope = { data: { contractVersion: "2.5.0", clientMessageId: "m", draftId: "d", requestCreatedAt: 1,
+  const envelope = { data: { contractVersion: DESIGNER_AI_CONTRACT_VERSION, clientMessageId: "m", draftId: "d", requestCreatedAt: 1,
     entryMode: "continuation", message: "á".repeat(1200), recentTurns: Array.from({ length: 6 }, () => ({ role: "user", content: "\n".repeat(700) })), capabilitySnapshot: snapshot } };
   const result = inspectDesignerAiRequestData(envelope);
   assert.equal(result.ok, true, JSON.stringify(result));

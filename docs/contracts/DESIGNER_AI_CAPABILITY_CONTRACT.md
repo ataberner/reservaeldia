@@ -279,9 +279,21 @@ capacidad existente `event.set_datetime`; los valores guardados se conservan.
   Modalidad, visibilidad, tratamiento de defaults y completitud continúan según
   `GIFTS_SYSTEM_CONTRACT.md`; intro y texto del botón son capabilities reactivas,
   no pendientes del recorrido.
-- **Dress Code:** se consulta si se desea mostrar. Una negativa conserva el valor
+- **Dress Code:** la pregunta inicial agrupa si se desea mostrar y qué texto
+  indicar («¿Quieren incluir Dress Code? Si es así, ¿cuál?»), por decisión del
+  usuario del 2026-10-09. Un texto directo responde ambas decisiones. Una negativa conserva el valor
   normalizado oculto y continúa. Una afirmativa requiere el texto real y el
-  field disponible; no requiere una vista materializada.
+  field disponible; no requiere una vista materializada. Si acepta incluirlo sin
+  aportar texto, se registra `event.dress_code.value:needs_clarification` con
+  `rule:null` en el ledger existente y se pregunta qué texto indicar. Esa elección
+  pendiente no cambia visibilidad ni contenido, no resuelve `.enabled` y no toma
+  el ejemplo de plantilla como texto confirmado. La resolución vigente, con
+  procedencia `user_current_session`, selecciona el paso de texto también después
+  de recargar. Si posterga ese texto, `deferred_by_user` conserva la elección y
+  permite continuar; desactivar mediante una acción confirmada aplica la
+  dependencia normal. Al aportar el texto real, `event.set_dress_code` guarda
+  texto y visibilidad juntos; `enabled:true` con texto vacío no es una acción
+  válida. Sólo los receipts de persistencia confirman esos datos.
 - **RSVP:** el recorrido incluye `rsvp.enabled`. Sí/no usa `rsvp.set_enabled`
   con el formulario normalizado existente. No se pregunta proactivamente por
   cada label, color, orden u opción. Personalizar las preguntas sigue usando las
@@ -538,7 +550,7 @@ lote normalizado y lo revalida antes de ejecutar y persistir sus acciones.
 
 ### 8.2 Cuándo se requiere decisión del usuario
 
-Salvo la revisión de destinos de Regalos de 8.3, no hace falta una confirmación adicional cuando el usuario pidió de forma
+Salvo la revisión de listas externas de Regalos de 8.3, no hace falta una confirmación adicional cuando el usuario pidió de forma
 explícita una action no destructiva, aportó todos sus datos y no existe
 ambigüedad. Sí se requiere aclaración o control antes de mutar cuando:
 
@@ -552,20 +564,40 @@ ambigüedad. Sí se requiere aclaración o control antes de mutar cuando:
 
 La forma lingüística de esa aclaración pertenece al contrato conversacional.
 
-### 8.3 Revisión local de destinos sensibles de Regalos
+### 8.3 Datos bancarios por chat y revisión local de listas externas
 
-Decisión aceptada por la implementación del plan de seguridad solicitado el
-2026-10-07. Antes de la primera mutación se requiere una confirmación local
-cuando el lote cambia un valor o la exposición de `alias`, `cbu` o
-`giftListLink`, también por efectos derivados de activar/desactivar Regalos o
-de los reducers existentes. Un destino no vacío que se oculta, reemplaza o
-vuelve visible requiere revisión; escribir el dato en el chat no sustituye ese
-control.
+Decisión aceptada explícitamente por el usuario, 2026-10-09: los datos bancarios
+aportados se guardan sin panel de revisión ni confirmación adicional. Sustituye
+para Alias, CBU/CVU, Titular, Banco y CUIT la revisión local aceptada el
+2026-10-07 y su extensión posterior a valores heredados. La aplicación confirma
+campo y valor efectivo en el chat sólo después de verificar persistencia,
+conforme al contrato conversacional. Ocultar, borrar o volver a mostrar un dato
+bancario ya confirmado tampoco requiere ese panel.
+
+La falta de panel no autoriza adoptar defaults: seleccionar un método bancario
+no confirmado conservando su valor mediante `value:null` requiere pedir el dato
+por chat antes de aplicarlo, sin enumerar ni mostrar el valor heredado. El
+executor mantiene esta guarda si un caller intenta omitir la aclaración. Se
+conservan las demás acciones válidas y las dependencias del owner de Regalos.
+
+Para `giftListLink` se conserva la decisión anterior: antes de la primera
+mutación se requiere confirmación local cuando cambia su valor o exposición,
+también por activar/desactivar Regalos o los reducers existentes. Una URL no
+vacía que se oculta, reemplaza o vuelve visible requiere revisión; escribirla
+en el chat no sustituye ese control. El reintento de un efecto aún no persistido
+vuelve a exigir revisión.
+
+La excepción necesaria para el recorrido bancario es el ocultamiento implícito
+de una URL de plantilla/no confirmada al activar Regalos o aplicar un método
+bancario. Si su valor no cambia y el lote no contiene una acción explícita sobre
+`giftListLink`, ese saneamiento del reducer no abre revisión, tampoco al
+reintentarlo. Se conservan las revisiones de URLs confirmadas y de acciones
+explícitas sobre la lista externa.
 
 `designerAiGiftApproval.js` proyecta las mismas operaciones/normalizadores del
 executor sobre los valores locales completos. `DesignerAiGiftConfirmation.jsx`
-muestra la invitación, valor actual y propuesto, visibilidad y resumen de todas
-las acciones pendientes del lote, incluidos cambios de otros dominios. Para
+muestra la invitación, URL actual y propuesta, visibilidad y resumen del lote.
+No presenta datos bancarios actuales/heredados como parte de esa revisión. Para
 lista externa muestra URL completa y host como texto, sin abrirla ni agregarla
 al snapshot enviado al modelo. No valida titularidad bancaria ni reputación del
 destino.
@@ -607,6 +639,13 @@ mapa ausente.
 ## 10. Ledger, procedencia y completitud
 
 ### 10.1 Estados
+
+Fecha, hora de inicio y hora de fin se consideran disponibles individualmente
+según sus bindings reales. Un campo `datetime` puede aportar fecha e inicio;
+tener sólo un campo de hora no habilita fecha. Las dependencias no convierten
+una hoja `unavailable` en disponible y el validador rechaza acciones dirigidas
+a esos campos ausentes. Los límites de preguntas RSVP proceden de su owner,
+se incluyen en el snapshot y se comprueban en el orden efectivo del lote.
 
 | Estado | Semántica | Terminal |
 | --- | --- | --- |
@@ -674,8 +713,11 @@ El snapshot consulta `templateInput.changedKeys` **vivo** del owner de authoring
 calculado con el mismo normalizador de persistencia. La metadata de hidratación
 del Header es fallback para adapters legacy. Esta comparación autoritativa evita
 que restaurar un default por edición/undo lo convierta en dato confirmado por
-una mera diferencia respecto del baseline. Sólo se aplica a claves declaradas
-por el schema; Dress Code reconoce `event_dress_code` y el alias legacy válido.
+una mera diferencia respecto del baseline. Se aplica a las claves declaradas
+por el schema y asociadas por los owners a cada rol, incluidas las personalizadas
+y los aliases legacy válidos; una clave canónica ajena no confirma otro binding.
+La detección de muestras clasifica contenido inicial sin confirmar: no invalida
+un texto legítimo con receipt efectivo, persistido y fingerprint vigente.
 Un baseline conserva procedencia de usuario únicamente para el mismo fingerprint
 no vacío. Un fingerprint vacío legacy no demuestra una edición posterior.
 
@@ -690,6 +732,19 @@ acredita nombres. `guidedFlowCompleted` ya persistido conserva modo editing en
 documentos legacy, aunque el ledger muestre nombres con procedencia desconocida.
 La regla automática del nombre del documento exige ambos nombres confirmados o
 una acción `event.set_people` válida del mismo lote.
+
+Para las fechas, la mera presencia de texto o una diferencia contra un baseline
+sin evidencia de usuario tampoco acredita confirmación. Debe existir evidencia
+positiva del binding vigente, un receipt/resolución durable válido o un baseline
+de procedencia confiable con el mismo fingerprint; las reglas seguras válidas
+conservan su alcance. Una fecha heredada se preserva y sigue pendiente antes de
+la hora de inicio. Fechas confirmadas, aportadas por adelantado y postergaciones
+explícitas conservan su comportamiento. Esta guarda no crea campos ausentes ni
+cambia la disponibilidad del owner de fechas.
+Al reingresar, una comparación viva autoritativa que identifica el default
+prevalece sobre una clasificación histórica `existing_user_data`; una
+confirmación explícita `user_current_session` ligada al fingerprint vigente
+sigue siendo válida aunque el usuario haya elegido exactamente ese default.
 
 La primera entrada espera también la hidratación del owner de authoring. El
 snapshot transitorio anterior no puede declarar los fields de nombres ausentes
@@ -821,14 +876,22 @@ La normalización numérica y validación de calendario viven en
 `shared/authoringValueNormalization.cjs`, consumido también por el service. Si el
 mensaje actual es íntegramente una fecha numérica, el contexto del modelo lleva
 su ISO/validez calculados (`numericDateInterpretation`), sin inferir destino ni
-reemplazar la acción, validación o evidencia de persistencia. Años cortos: 2000–2099.
+reemplazar la acción o evidencia de persistencia. El service exige coherencia
+con ese resultado: una acción contradictoria o que transforma una fecha imposible
+en otra válida consume la reparación acotada existente y, si persiste, se rechaza.
+Mensajes mixtos conservan la interpretación contextual. Años cortos: 2000–2099.
 
 La arquitectura completa, incluido el límite client-side de tools, está en
-`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.5.0`: agrega
-`draftId` y `requestCreatedAt` al envelope para ownership y admisión durable;
+`AI_ASSISTANT_SYSTEM.md`. La versión actual del protocolo es `2.6.0`: requiere
+clientes con feedback verificado también en edición, disponibilidad por campo
+en el ledger y límites RSVP normalizados en `values.rsvp.limits`. Conserva
+`draftId` y `requestCreatedAt` del envelope 2.5 para ownership y admisión durable;
 no cambia las actions ni persiste nuevas conversaciones. El ledger
 usa versión `4`, que agrega postergación no terminal en las mismas resolutions.
-Un cliente incompatible conserva el fallback de recarga y no invoca al modelo.
+Un cliente incompatible recibe `assistant_admission/client_update_required`,
+sin retry automático, antes de reservar cuota o invocar al modelo. El aviso usa
+el canal de errores seguro que también muestran los clientes 2.5: una respuesta
+conversacional con prosa de recarga podía quedar oculta por su compositor guiado.
 No hay backfill: los estados previos conservan su evidencia y su marca monotónica
 de cierre. La versión 3 agregó una finalización durable por Gallery dentro
 de `designerAiConversation.resolutions`. Un draft legacy sin esa resolución

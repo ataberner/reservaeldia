@@ -55,3 +55,78 @@ test("year clarification retains the user date in bounded provider input, withou
   } } } });
   assertDateInterpretation(item, result);
 });
+
+const dateProposal = (date, phase = "ceremony") => ({
+  intent: "apply", assistantMessage: "Seguimos.",
+  actions: [{ type: "event.set_datetime", arguments: { phase, date, startTime: null, endTime: null } }],
+  controlRequest: null, resolutions: [], clarification: null,
+});
+const dateClarification = (kind) => ({
+  intent: "clarify", assistantMessage: "Necesito precisar esa fecha.", actions: [], controlRequest: null,
+  resolutions: [{ leafId: "event.ceremony.date", status: "needs_clarification", rule: null }],
+  clarification: { leafId: "event.ceremony.date", kind },
+});
+const responseFor = (result) => ({ output: [{ type: "function_call", name: "submit_designer_ai_result", arguments: JSON.stringify(result) }] });
+
+for (const [message, wrong, corrected] of [
+  ["03/04/26", dateProposal("2026-03-04"), dateProposal("2026-04-03")],
+  ["03/04/26", dateClarification("missing_year"), dateProposal("2026-04-03")],
+  ["29/02/28", dateClarification("invalid_date"), dateProposal("2028-02-29")],
+  ["31/02/26", dateProposal("2026-03-03"), dateClarification("invalid_date")],
+]) {
+  test(`numeric date semantics repair ${message} without accepting a contradictory proposal`, async () => {
+    let calls = 0;
+    const result = await service.interpretDesignerAiChat({ payload: dateCasePayload({ id: "repair-date", message }), client: { responses: { create: async (body) => {
+      calls += 1;
+      if (calls === 2) assert.match(body.input.at(-1).content, /numericDateInterpretation/);
+      return responseFor(calls === 1 ? wrong : corrected);
+    } } } });
+    assert.equal(calls, 2);
+    assert.equal(result.repairCount, 1);
+    assert.deepEqual(result.actions, corrected.actions);
+    assert.deepEqual(result.clarification, corrected.clarification);
+  });
+}
+
+test("repeated numeric date contradiction fails closed after the bounded repair", async () => {
+  let calls = 0;
+  await assert.rejects(service.interpretDesignerAiChat({ payload: dateCasePayload({ id: "persistent-contradiction", message: "03/04/26" }),
+    client: { responses: { create: async () => { calls += 1; return responseFor(dateProposal("2026-03-04")); } } },
+  }), (error) => error.kind === "malformed-output" && error.validationCode === "numeric_date_inconsistent");
+  assert.equal(calls, 2);
+});
+
+test("date semantic guard preserves correct dates and does not infer mixed-message intent or target phase", async () => {
+  for (const [message, proposal] of [
+    ["03/04/26", dateProposal("2026-04-03")],
+    ["31/02/26", dateClarification("invalid_date")],
+    ["03/04/26, no, el 5 de abril", dateProposal("2026-04-05")],
+    ["03/04/26", dateClarification("missing_value")],
+  ]) {
+    let calls = 0;
+    const result = await service.interpretDesignerAiChat({ payload: dateCasePayload({ id: "preserved-date", message }),
+      client: { responses: { create: async () => { calls += 1; return responseFor(proposal); } } },
+    });
+    assert.equal(calls, 1);
+    assert.equal(result.repairCount, 0);
+    assert.deepEqual(result.actions, proposal.actions);
+    assert.deepEqual(result.clarification, proposal.clarification);
+  }
+});
+
+test("a complete valid numeric date can clarify its phase without questioning its calendar value", async () => {
+  const input = dateCasePayload({ id: "missing-phase", message: "03/04/26" });
+  input.capabilitySnapshot.values.eventMode = "ceremony_party";
+  input.capabilitySnapshot.availability.partyDatetime = true;
+  input.capabilitySnapshot.ledger.leaves.find((leaf) => leaf.id === "event.party.date").status = "pending";
+  input.capabilitySnapshot.conversation.mode = "editing";
+  const proposal = dateClarification("missing_phase");
+  let calls = 0;
+  const result = await service.interpretDesignerAiChat({ payload: input, client: { responses: { create: async () => {
+    calls += 1;
+    return responseFor(proposal);
+  } } } });
+  assert.equal(calls, 1);
+  assert.deepEqual(result.clarification, proposal.clarification);
+  assert.deepEqual(result.actions, []);
+});

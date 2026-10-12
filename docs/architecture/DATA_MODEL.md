@@ -316,10 +316,13 @@ require separate verification. The accepted request age is ten minutes with one
 minute of future tolerance, shorter than record retention; cleanup must not
 erase a live deduplication/lease record or turn uncertain work into a retry.
 
-Commercial quota values and the daily budget remain **pending user decision**;
-their single decision record, activation requirements and local evidence are in
-[AI Assistant System, 6.4](AI_ASSISTANT_SYSTEM.md#designer-ai-admission) and
-[implementation evidence, 16](AI_ASSISTANT_SYSTEM.md#assistant-security-20261007).
+Commercial quota values and the daily budget were **accepted by the user on
+2026-10-09**. Their single decision record is in
+[AI Assistant System, 6.4](AI_ASSISTANT_SYSTEM.md#designer-ai-admission);
+[operational evidence, 18](AI_ASSISTANT_SYSTEM.md#assistant-activation-20261009)
+records activation status and verification limits. The
+[implementation evidence, 16](AI_ASSISTANT_SYSTEM.md#assistant-security-20261007)
+retains the earlier local and partial-release baseline.
 Access obligations belong to [Security Contract](../contracts/SECURITY_CONTRACT.md).
 
 ## 3. Sections Model
@@ -1021,6 +1024,15 @@ Reconciliation requires verified activation and retains compatible choices on
 reentry; see the Designer AI capability contract for invalidation and receipt
 requirements. Old normalizers preserve these resolution records; protocol 2.4
 requires clients to reload before using the extended guided flow.
+
+Dress Code inclusion without text reuses the existing resolution record for
+`event.dress_code.value`: `needs_clarification`, `rule:null`, current value
+fingerprint and `user_current_session` provenance. It selects the pending text
+step without resolving visibility or changing invitation content. Explicitly
+postponing that text uses `deferred_by_user` and preserves the choice on reload.
+Confirmed disabling and changed value fingerprints invalidate that pending
+choice through the existing dependency/reconciliation rules. No render-state
+property or new metadata version is introduced.
 
 `designerAiConversation.usage.hasStarted` es la señal durable y exclusiva para
 distinguir primer ingreso de reingreso al tab en ese draft. Un documento legacy

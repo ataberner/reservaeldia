@@ -71,7 +71,7 @@ test("repeated venue answer exposes the final interpretation error and retries o
     assert.equal(run.snapshot().values.ceremony.venueName, "friendly");
     assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === "event.ceremony.venue_name").status, "resolved_from_user");
     assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextStep.kind, "location_method");
-    assert.match(run.messages().at(-1).content, /Ubicación del evento actualizada/);
+    assert.match(run.messages().at(-1).content, /^Listo, actualizado\./);
     assert.doesNotMatch(run.messages().at(-1).content, /Cómo se llama el lugar/);
     const saved = run.exportPersistedDraft();
     assert.equal(saved.authoring.defaults.event_ceremony_venue_name, "friendly");
@@ -143,7 +143,7 @@ test("a repeated venue reply repaired by the service applies once and advances t
     assert.equal(run.exportPersistedDraft().authoring.defaults.event_ceremony_venue_name, "friendly");
     assert.equal(run.snapshot().ledger.leaves.find(leaf => leaf.id === "event.ceremony.venue_name").status, "resolved_from_user");
     assert.equal(ledger.buildDesignerAiConversationBrief(run.snapshot()).nextStep.kind, "location_method");
-    assert.match(run.messages().at(-1).content, /Ubicación del evento actualizada/);
+    assert.match(run.messages().at(-1).content, /^Listo, actualizado\./);
     assert.doesNotMatch(run.messages().at(-1).content, /Cómo se llama el lugar/);
   } finally { await run.close(); }
 });

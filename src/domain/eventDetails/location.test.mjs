@@ -28,6 +28,20 @@ import {
   updateEventAddressTextFormatInSchema,
 } from "./location.js";
 
+test("role-bound custom location values round-trip through the owner's actual fields", () => {
+  const fieldsSchema = [
+    { key: "custom_venue", type: "text", eventDetailsRole: "ceremony_venue_name" },
+    { key: "custom_address", type: "text", eventDetailsRole: "ceremony_venue_address" },
+  ];
+  const defaults = buildEventLocationDefaults({ fieldsSchema,
+    defaults: { event_ceremony_venue_name: "Stale venue", event_ceremony_venue_address: "Stale address" },
+    location: { venueName: "Bodega Borgoña", address: "Calle 321" } });
+  const current = resolveEventLocationFromAuthoring({ fieldsSchema, defaults, values: defaults });
+  assert.equal(current.venueName, "Bodega Borgoña");
+  assert.equal(current.address, "Calle 321");
+  assert.deepEqual(current.fieldKeys, { venueName: "custom_venue", address: "custom_address" });
+});
+
 test("concurrent event-details metadata patches preserve the other event phase", () => {
   const ceremony = {
     source: "google_places",

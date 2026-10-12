@@ -43,6 +43,25 @@ test("one confirmed name asks only for the remaining person", () => {
     "¿Cómo se llama la otra persona que se casa?");
 });
 
+test("Dress Code asks for the choice and its value together, then only the missing value", () => {
+  const current = snapshot();
+  assert.equal(buildDesignerAiGuidedQuestion(current, { step: { kind: "dress_code_enabled", leafIds: ["event.dress_code.enabled"] } }),
+    "¿Quieren incluir Dress Code? Si es así, ¿cuál?");
+  assert.equal(buildDesignerAiGuidedQuestion(current, { step: { kind: "dress_code_value", leafIds: ["event.dress_code.value"] } }),
+    "¿Qué Dress Code quieren indicar?");
+});
+
+test("a local requested-field clarification takes precedence without trusting provider prose", () => {
+  for (const mode of ["guided", "editing"]) {
+    const current = snapshot({ mode });
+    const question = "Pasame el alias que quieran mostrar.";
+    assert.equal(withDesignerAiGuidedContinuation("El alias heredado quedó guardado.", {
+      previousSnapshot: current, snapshot: current, result: { intent: "clarify", assistantMessage: "guardado" },
+      trustedClarification: question,
+    }), question);
+  }
+});
+
 test("completed journeys stay in editing on entry even if data now needs attention", () => {
   const current = snapshot({ mode: "editing", conversationState: { usage: { hasStarted: true, guidedFlowCompleted: true } } });
   assert.equal(withDesignerAiGuidedContinuation("Hola, Mica. ¿Qué querés ajustar?", {
@@ -127,11 +146,70 @@ test("fresh state supersedes model clarification after a saved action or manual 
   }), "Listo. Fecha actualizada. ¿A qué hora empieza el evento?");
 });
 
-test("editing stays flexible and local verified continuation cannot retain old prose", () => {
+test("editing stays reactive and never retains unverified model prose", () => {
   const current = snapshot({ mode: "editing" });
   const message = "¿Qué dirección querés usar?";
-  assert.equal(withDesignerAiGuidedContinuation(message, { previousSnapshot: current, snapshot: current, result: {} }), message);
-  assert.equal(withDesignerAiGuidedContinuation(message, { previousSnapshot: current, snapshot: current, result: {}, verifiedContinuation: true }), "Listo.");
+  assert.equal(withDesignerAiGuidedContinuation(message, { previousSnapshot: current, snapshot: current, result: {} }), "¿Qué dato querés ajustar y qué valor querés usar?");
+  assert.equal(withDesignerAiGuidedContinuation(message, { previousSnapshot: current, snapshot: current, result: {}, verifiedContinuation: true }), "Listo, actualizado.");
+});
+
+test("editing renders structured clarification of the requested field without resuming guided questions", () => {
+  const current = eventSnapshot({ mode: "editing" });
+  for (const [field, kind, expected] of [["date", "missing_year", "¿De qué año es la fecha del evento?"],
+    ["date", "invalid_date", "Necesito confirmar la fecha. ¿Qué día, mes y año es el evento?"],
+    ["address", "missing_value", "¿Cuál es la dirección del evento?"]]) {
+    const result = { clarification: { leafId: `event.ceremony.${field}`, kind } };
+    assert.equal(withDesignerAiGuidedContinuation("El horario quedó guardado: 18:00.", {
+      previousSnapshot: current, snapshot: current, result,
+    }), expected);
+  }
+  assert.equal(withDesignerAiGuidedContinuation("Guardé las 18:00.", {
+    previousSnapshot: current, snapshot: current, result: { intent: "apply" }, executionFeedback: "Listo. Evento · Hora: 20:00.",
+  }), "Listo. Evento · Hora: 20:00.");
+  assert.match(withDesignerAiGuidedContinuation("La portada ya fue cambiada.", {
+    previousSnapshot: current, snapshot: current, result: { controlRequest: { type: "cover_upload" } },
+  }), /^Podés cargar la nueva foto/);
+  assert.match(withDesignerAiGuidedContinuation("Ya cambié la tipografía.", {
+    previousSnapshot: current, snapshot: current, result: { intent: "out_of_scope" },
+  }), /^Para esos ajustes, usá los controles del editor/);
+});
+
+test("editing asks which event phase without adopting the model's representative target", () => {
+  for (const phase of ["ceremony", "party"]) {
+    const current = eventSnapshot({ phase, mode: "editing" });
+    current.values.eventMode = "ceremony_party";
+    for (const field of ["date", "start_time", "venue_name", "address", "place_selection"]) {
+      const rendered = withDesignerAiGuidedContinuation("Ya cambié la ceremonia.", {
+        previousSnapshot: current, snapshot: current,
+        result: { clarification: { leafId: `event.${phase}.${field}`, kind: "missing_phase" } },
+      });
+      assert.match(rendered, /de la ceremonia o de la fiesta\?/);
+      assert.doesNotMatch(rendered, /Ya cambié/);
+    }
+  }
+});
+
+test("guided phase clarification only changes wording for the actual next step", () => {
+  const current = eventSnapshot({ phase: "party" });
+  assert.equal(buildDesignerAiGuidedQuestion(current, {
+    clarification: { leafId: "event.party.date", kind: "missing_phase" },
+  }), "¿Querés cambiar la fecha de la ceremonia o de la fiesta? Indicame también el nuevo dato.");
+  assert.equal(buildDesignerAiGuidedQuestion(current, {
+    clarification: { leafId: "event.party.start_time", kind: "missing_phase" },
+  }), "¿Qué día es la fiesta?");
+  assert.equal(buildDesignerAiGuidedQuestion(snapshot(), {
+    clarification: { leafId: "event.ceremony.start_time", kind: "missing_phase" },
+  }), "¿Me compartís los nombres de quienes se casan?");
+});
+
+test("editing missing names identifies the requested person", () => {
+  const current = snapshot({ mode: "editing" });
+  for (const [leafId, person] of [["event.people.primary_name", "primera"], ["event.people.secondary_name", "segunda"]]) {
+    assert.equal(withDesignerAiGuidedContinuation("¿Cómo se llama la otra persona?", {
+      previousSnapshot: current, snapshot: current,
+      result: { clarification: { leafId, kind: "missing_value" } },
+    }), `¿Cuál es el nombre de la ${person} persona que se casa?`);
+  }
 });
 
 test("partial unsupported requests keep verified feedback and local scope notice", () => {

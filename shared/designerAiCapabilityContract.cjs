@@ -1,7 +1,9 @@
 const conversationLedger = require("./designerAiConversationLedger.cjs");
 const { projectDesignerAiValues } = require("./designerAiActionProjection.cjs");
+const { RSVP_LIMITS, isCustomQuestionId } = require("./rsvpCatalog.cjs");
+const { normalizeRsvpConfig } = require("./rsvpConfig.cjs");
 
-const DESIGNER_AI_CONTRACT_VERSION = "2.5.0";
+const DESIGNER_AI_CONTRACT_VERSION = "2.6.0";
 // One budget for the HTTP boundary, service and browser contract. The transport
 // limit includes the callable envelope and escaped/Unicode message overhead.
 const DESIGNER_AI_REQUEST_LIMITS = Object.freeze({
@@ -86,7 +88,7 @@ function inspectDesignerAiSnapshotShape(value) {
       dressCode: { enabled: "boolean", value: "string:240" }, story: "string:4000",
       media: { hasCover: "boolean", contentRevision: "string:120" },
       galleries: list(20, { id: "string:160", slots: list(24, { cellId: "nullable:160", index: "integer", occupied: "boolean", contentRevision: "string:120" }) }),
-      rsvp: { enabled: "boolean", questions: list(20, {
+      rsvp: { enabled: "boolean", limits: { maxQuestions: "integer", maxCustomQuestions: "integer" }, questions: list(20, {
         id: "string:120", active: "boolean", label: "string:120", type: "string:20", required: "boolean",
         options: list(20, { id: "string:120", label: "string:80" }),
       }), modal: { title: "string:80", subtitle: "string:160", submitLabel: "string:30", primaryColor: "string:7" } },
@@ -288,9 +290,10 @@ function validateActionShape(action) {
     case "event.set_dress_code":
       return hasExactKeys(args, ["enabled", "value"]) &&
         isBoolean(args.enabled) &&
-        isString(args.value, 240)
+        isString(args.value, 240) &&
+        (!args.enabled || isNonEmptyString(args.value, 240))
         ? null
-        : "event.set_dress_code requiere enabled y value.";
+        : "event.set_dress_code requiere enabled y value; habilitarlo requiere texto real no vacio. Si falta, pedi aclaracion sin emitir esta accion.";
     case "story.set_text":
       return hasExactKeys(args, ["text"]) && isString(args.text, 4000)
         ? null
@@ -459,6 +462,14 @@ function validateActionAgainstSnapshot(action, snapshot) {
     return `La capacidad ${capabilityByAction || action.type} no está disponible en este borrador.`;
   }
 
+  // Aggregate capabilities can be present on partial templates. The ledger
+  // carries the availability of each actual owner binding; inactive supported
+  // fields use dependency status and may be activated earlier in this batch.
+  const unavailableLeaf = conversationLedger.mapDesignerAiActionToLeafIds(action).find((leafId) =>
+    snapshot?.ledger?.leaves?.some((leaf) => leaf.id === leafId && leaf.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE)
+  );
+  if (unavailableLeaf) return "Uno de los campos solicitados no existe en este borrador.";
+
   if (["gallery.move_photo", "media.set_gallery_cell"].includes(action.type)) {
     if (!ids.galleryIds.has(args.galleryId)) return "La Gallery indicada no existe en el snapshot vigente.";
     const knownCells = ids.galleryCells.get(args.galleryId) || new Set();
@@ -568,6 +579,7 @@ function validateDesignerAiActionBatch(actions, { origin, snapshot } = {}) {
       (Array.isArray(snapshot?.values?.rsvp?.questions) ? snapshot.values.rsvp.questions : [])
         .map((question) => [question?.id, {
           type: question?.type,
+          active: question?.active === true,
           optionIds: new Set(
             (Array.isArray(question?.options) ? question.options : [])
               .map((option) => option?.id)
@@ -576,11 +588,22 @@ function validateDesignerAiActionBatch(actions, { origin, snapshot } = {}) {
           optionCount: Array.isArray(question?.options) ? question.options.length : 0,
         }])
     );
+    const rsvpLimits = normalizeRsvpConfig({ limits: snapshot?.values?.rsvp?.limits }, { forceEnabled: false }).limits;
     actions.forEach((action, index) => {
       const args = action?.arguments || {};
       const question = rsvpQuestions.get(args.questionId);
       if (!question) return;
-      if (action.type === "rsvp.update_question" && args.questionType !== null) {
+      if (action.type === "rsvp.set_question_active") {
+        const activeQuestions = [...rsvpQuestions].filter(([, entry]) => entry.active);
+        if (args.active === true && question.active !== true && activeQuestions.length >= rsvpLimits.maxQuestions) {
+          errors.push(`Acción ${index}: RSVP admite hasta ${rsvpLimits.maxQuestions} preguntas activas; desactivá otra antes de activar una nueva.`);
+        } else if (args.active === true && question.active !== true && isCustomQuestionId(args.questionId) &&
+            activeQuestions.filter(([id]) => isCustomQuestionId(id)).length >= rsvpLimits.maxCustomQuestions) {
+          errors.push(`Acción ${index}: se alcanzó el límite de preguntas personalizadas de este formulario.`);
+        } else {
+          question.active = args.active === true;
+        }
+      } else if (action.type === "rsvp.update_question" && args.questionType !== null) {
         question.type = args.questionType;
       } else if (action.type === "rsvp.add_option") {
         if (question.type !== "single_select") {
@@ -686,6 +709,7 @@ function sanitizeCapabilitySnapshot(input) {
       galleries,
       rsvp: {
         enabled: rsvpSource.enabled === true,
+        limits: normalizeRsvpConfig({ limits: rsvpSource.limits }, { forceEnabled: false }).limits,
         questions: rsvpQuestions,
         modal: {
           title: sanitizeString(rsvpSource.modal?.title, 80),
@@ -1098,11 +1122,11 @@ const DESIGNER_AI_MODEL_ACTION_SCHEMA = {
     actionSchema("event.set_mode", { mode: { type: "string", enum: [...EVENT_MODE_SET] } }),
     actionSchema("event.set_datetime", { phase: EVENT_PHASE_SCHEMA, date: { ...NULLABLE_STRING(10), description: "Fecha ISO solo si fue aportada completa; null conserva la existente." }, startTime: { ...NULLABLE_STRING(5), description: "Hora HH:mm aportada; null si no se pidió cambiarla." }, endTime: { ...NULLABLE_STRING(5), description: "Hora final HH:mm aportada; null si no se pidió cambiarla." } }),
     actionSchema("event.set_location_text", { phase: EVENT_PHASE_SCHEMA, venueName: STRING(180), address: STRING(240) }),
-    actionSchema("event.set_dress_code", { enabled: BOOLEAN, value: STRING(240) }),
+    actionSchema("event.set_dress_code", { enabled: BOOLEAN, value: { ...STRING(240), description: "Texto real del Dress Code. enabled:true requiere texto no vacio aportado o confirmado por el usuario. Si solo acepta incluirlo, no emitas esta action: pedi el texto con clarification missing_value y resolution needs_clarification para event.dress_code.value." } }),
     actionSchema("story.set_text", { text: STRING(4000) }),
     actionSchema("gallery.move_photo", { galleryId: STRING(160), sourceCellId: NULLABLE_STRING(160), sourceIndex: INTEGER, targetCellId: NULLABLE_STRING(160), targetIndex: INTEGER }),
     actionSchema("rsvp.set_enabled", { enabled: BOOLEAN }),
-    actionSchema("rsvp.set_question_active", { questionId: STRING(120), active: BOOLEAN }),
+    actionSchema("rsvp.set_question_active", { questionId: STRING(120), active: { ...BOOLEAN, description: `RSVP admite hasta ${RSVP_LIMITS.maxQuestions} preguntas activas. Si ya está completo, aclarar cuál desactivar; no elegir una sin pedido. Una desactivación explícita debe preceder a la nueva activación en el lote.` } }),
     actionSchema("rsvp.update_question", { questionId: STRING(120), label: NULLABLE_STRING(120), questionType: { anyOf: [{ type: "string", enum: [...RSVP_QUESTION_TYPE_SET] }, { type: "null" }] }, required: NULLABLE_BOOLEAN }),
     actionSchema("rsvp.move_question", { questionId: STRING(120), targetQuestionId: STRING(120), placement: { type: "string", enum: ["before", "after"] } }),
     actionSchema("rsvp.add_option", { questionId: STRING(120), label: STRING(80) }),
@@ -1136,7 +1160,7 @@ const DESIGNER_AI_RESOLUTION_SCHEMA = {
   required: ["leafId", "status", "rule"],
 };
 
-const DESIGNER_AI_CLARIFICATION_KINDS = Object.freeze(["missing_year", "invalid_date", "missing_value"]);
+const DESIGNER_AI_CLARIFICATION_KINDS = Object.freeze(["missing_year", "invalid_date", "missing_value", "missing_phase"]);
 const DESIGNER_AI_CLARIFICATION_SCHEMA = {
   anyOf: [
     { type: "null" },
@@ -1153,7 +1177,7 @@ const DESIGNER_AI_CLARIFICATION_SCHEMA = {
 
 // Interpretation describes an ambiguity, never the proactive question. The UI
 // also checks membership in the real nextStep after actions and metadata persist.
-function validateDesignerAiClarification(clarification, snapshot, { resolutions = [] } = {}) {
+function validateDesignerAiClarification(clarification, snapshot, { resolutions = [], actions = [], controlRequest = null } = {}) {
   if (clarification == null) return { ok: true, errors: [] };
   const record = asRecord(clarification);
   if (!record || !hasExactKeys(record, ["leafId", "kind"]) ||
@@ -1164,8 +1188,23 @@ function validateDesignerAiClarification(clarification, snapshot, { resolutions 
   if (!leaf || leaf.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) {
     return { ok: false, errors: ["La aclaracion requiere una hoja disponible."] };
   }
-  if (record.kind !== "missing_value" && !/^event\.(ceremony|party)\.date$/.test(record.leafId)) {
+  if (["missing_year", "invalid_date"].includes(record.kind) && !/^event\.(ceremony|party)\.date$/.test(record.leafId)) {
     return { ok: false, errors: ["La aclaracion de fecha requiere una hoja de fecha."] };
+  }
+  if (record.kind === "missing_phase") {
+    const phaseField = /^event\.(ceremony|party)\.(date|start_time|end_time|venue_name|address|place_selection)$/.exec(record.leafId)?.[2];
+    if (!phaseField || snapshot?.values?.eventMode !== "ceremony_party" ||
+        !["ceremony", "party"].every((phase) => snapshot?.ledger?.leaves?.some((entry) =>
+          entry.id === `event.${phase}.${phaseField}` && entry.status !== conversationLedger.DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE))) {
+      return { ok: false, errors: ["missing_phase requiere el mismo campo disponible en ceremonia y fiesta activas."] };
+    }
+    if (actions.some((action) => conversationLedger.mapDesignerAiActionToLeafIds(action)
+      .some((id) => id === `event.ceremony.${phaseField}` || id === `event.party.${phaseField}`))) {
+      return { ok: false, errors: ["No se puede modificar el dato cuya fase necesita aclaracion."] };
+    }
+    if (["venue_name", "address", "place_selection"].includes(phaseField) && controlRequest?.type === "google_place_picker") {
+      return { ok: false, errors: ["No se puede abrir un selector de lugar cuya fase necesita aclaracion."] };
+    }
   }
   if (!resolutions.some((entry) => entry?.leafId === record.leafId &&
       entry.status === conversationLedger.DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION && entry.rule === null)) {
@@ -1184,11 +1223,11 @@ const DESIGNER_AI_TOOL = Object.freeze({
     additionalProperties: false,
     properties: {
       intent: { type: "string", enum: ["apply", "clarify", "out_of_scope"] },
-      assistantMessage: { ...STRING(700), description: "En modo guided, explicacion breve sin proponer la siguiente pregunta; la aplicacion la compone desde nextStep. En editing responde al pedido actual." },
+      assistantMessage: { ...STRING(700), description: "Explicacion breve. La aplicacion compone las confirmaciones con resultados verificados y las preguntas con clarification/controlRequest, tambien en editing; nunca dependas de esta prosa para pedir un dato." },
       actions: { type: "array", maxItems: 19, items: DESIGNER_AI_MODEL_ACTION_SCHEMA },
       controlRequest: DESIGNER_AI_CONTROL_REQUEST_SCHEMA,
       resolutions: { type: "array", maxItems: 120, items: DESIGNER_AI_RESOLUTION_SCHEMA },
-      clarification: { ...DESIGNER_AI_CLARIFICATION_SCHEMA, description: "Normalmente null. Solo una ambiguedad del mensaje actual con resolution needs_clarification para la misma hoja. missing_year e invalid_date son exclusivos de fechas; missing_value pide el dato del paso. Nunca elige el siguiente pendiente: la UI solo la usa cuando coincide con nextStep despues de aplicar los cambios." },
+      clarification: { ...DESIGNER_AI_CLARIFICATION_SCHEMA, description: "Normalmente null. Solo una ambiguedad del mensaje actual con resolution needs_clarification para la misma hoja. missing_year e invalid_date son exclusivos de fechas; missing_value pide el valor solicitado que falta. missing_phase pregunta si se refiere a ceremonia o fiesta cuando ambas tienen ese campo y el modo es ceremony_party: leafId identifica el tipo de dato sin elegir su fase, y no se emite una action sobre ese dato. Tambien aplica en editing. Nunca elige el siguiente pendiente: en guided la UI solo la usa cuando coincide con nextStep despues de aplicar los cambios; en editing aclara el pedido actual." },
       notice: { type: ["string", "null"], enum: ["unsupported_request", null], description: "unsupported_request si todo o parte del pedido excede las capabilities; conserva las acciones validas del mismo mensaje. En otro caso null." },
     },
     required: ["intent", "assistantMessage", "actions", "controlRequest", "resolutions", "clarification", "notice"],

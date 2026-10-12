@@ -54,6 +54,7 @@ test("buildEventTimeDefaults and resolveEventTimesFromAuthoring keep event times
       startTime: "19:00",
       endTime: "23:30",
       fields: fieldsSchema,
+      fieldKeys: { startTime: "event_ceremony_start_time", endTime: "event_ceremony_end_time" },
     }
   );
 });
@@ -98,6 +99,20 @@ test("hydrated ceremony and party time defaults remain independent", () => {
   assert.equal(nextPartyDefaults.event_party_start_time, "00:15");
 });
 
+test("role-bound custom time values round-trip through the same keys used by the owner", () => {
+  const fieldsSchema = [
+    { key: "custom_start", type: "time", eventDetailsRole: "ceremony_start_time" },
+    { key: "custom_end", type: "time", eventDetailsRole: "ceremony_end_time" },
+  ];
+  const defaults = buildEventTimeDefaults({ fieldsSchema,
+    defaults: { event_ceremony_start_time: "05:00", event_ceremony_end_time: "06:00" },
+    times: { startTime: "18 hs", endTime: "23:30" } });
+  const current = resolveEventTimesFromAuthoring({ fieldsSchema, defaults });
+  assert.equal(current.startTime, "18:00");
+  assert.equal(current.endTime, "23:30");
+  assert.deepEqual(current.fieldKeys, { startTime: "custom_start", endTime: "custom_end" });
+});
+
 test("resolveEventTimesState uses a fresh payload before a stale bridge", () => {
   const { fieldsSchema } = ensureEventTimeFields({ fieldsSchema: [] });
   const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME);
@@ -112,6 +127,7 @@ test("resolveEventTimesState uses a fresh payload before a stale bridge", () => 
       startTime: "",
       endTime: "",
       fields: fieldsSchema,
+      fieldKeys: { startTime: "event_ceremony_start_time", endTime: "event_ceremony_end_time" },
     }
   );
   assert.deepEqual(
@@ -126,6 +142,7 @@ test("resolveEventTimesState uses a fresh payload before a stale bridge", () => 
       startTime: "19:00",
       endTime: "23:30",
       fields: fieldsSchema,
+      fieldKeys: { startTime: "event_ceremony_start_time", endTime: "event_ceremony_end_time" },
     }
   );
 });
@@ -150,6 +167,7 @@ test("resolveEventTimesState keeps start time fallback available", () => {
       startTime: "19:30",
       endTime: "23:00",
       fields: fieldsSchema,
+      fieldKeys: { startTime: "event_ceremony_start_time", endTime: "event_ceremony_end_time" },
     }
   );
 });

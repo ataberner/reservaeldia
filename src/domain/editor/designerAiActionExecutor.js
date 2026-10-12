@@ -7,7 +7,7 @@ import { normalizeEventDetailsConfig } from "../../../shared/eventDetailsConfig.
 import {
   buildCountdownTargetIsoFromLocalParts,
 } from "../../../shared/countdownEventDetails.js";
-import { persistDashboardDocumentUpdate } from "../../lib/dashboardDocumentNameBridge.js";
+import { persistDashboardDocumentUpdate, readDashboardDocumentNameState } from "../../lib/dashboardDocumentNameBridge.js";
 import { buildDesignerAiCapabilitySnapshot } from "./designerAiCapabilities.js";
 import { confirmDesignerAiPersistence, isDesignerAiActionEffective, readDesignerAiActionEvidence, waitForDesignerAiEffect } from "./designerAiActionEvidence.js";
 import { EDITOR_BRIDGE_EVENTS } from "../../lib/editorBridgeContracts.js";
@@ -335,7 +335,8 @@ export async function executeDesignerAiActionBatch(
     throw error;
   }
   requireDesignerAiGiftApproval({ actions, snapshot: actualSnapshot,
-    rawGifts: readEditorRenderSnapshot(targetWindow)?.gifts, recovery }, giftApproval);
+    rawGifts: readEditorRenderSnapshot(targetWindow)?.gifts, recovery,
+    conversationState: readDashboardDocumentNameState(targetWindow).designerAiConversation }, giftApproval);
 
   const applied = recovery ? recovery.actionResults.filter((r) => r.persisted && !r.error).map((r) => r.action.type) : [];
   const confirmedGiftMethods = recovery ? new Set(recovery.confirmedGiftMethods) : readConfirmedGiftMethods(actualSnapshot);

@@ -47,7 +47,7 @@ test("production single event reaches the panel, persists mode and makes Party i
     assert.ok(party.every((leaf) => leaf.status === "not_applicable_by_dependency"));
     assert.equal(after.ledger.guidedFlow.leafIds.some((id) => id.startsWith("event.party.")), false);
     assert.equal(run.exportPersistedDraft().render.eventDetails.mode, "single");
-    assert.match(run.messages().at(-1).content, /Evento único configurado/);
+    assert.match(run.messages().at(-1).content, /^Listo, actualizado\./);
     assert.match(run.messages().at(-1).content, /nombres de quienes se casan/);
     assert.doesNotMatch(run.messages().at(-1).content, /Qué día/);
     assert.equal(run.messages().some((message) => message.intent === "error"), false);

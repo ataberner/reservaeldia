@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import contractRuntime from "./designerAiCapabilityContract.cjs";
+import { createDefaultRsvpConfig, normalizeRsvpConfig } from "./rsvpConfig.cjs";
 import {
   DESIGNER_AI_ACTION_ORIGINS,
   DESIGNER_AI_CONTRACT_VERSION,
@@ -140,9 +141,23 @@ test("phase normalization does not generalize to RSVP, Gifts, Dress Code or Gall
 });
 
 test("the versioned allowlist keeps model and trusted-control actions disjoint", () => {
-  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.5.0");
+  assert.equal(DESIGNER_AI_CONTRACT_VERSION, "2.6.0");
   assert.equal(new Set([...DESIGNER_AI_MODEL_ACTION_TYPES, ...DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES]).size,
     DESIGNER_AI_MODEL_ACTION_TYPES.length + DESIGNER_AI_TRUSTED_CONTROL_ACTION_TYPES.length);
+});
+
+test("Dress Code activation requires real text while hiding preserves optional content", () => {
+  const current = structuredClone(snapshot);
+  const original = structuredClone(current);
+  for (const value of ["", " ", "\t\n", "Elegante sport", "Cocktail"]) {
+    for (const enabled of [true, false]) {
+      const result = validateDesignerAiActionBatch([
+        { type: "event.set_dress_code", arguments: { enabled, value } },
+      ], { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot: current });
+      assert.equal(result.ok, !enabled || value.trim().length > 0, JSON.stringify({ enabled, value }));
+    }
+  }
+  assert.deepEqual(current, original, "rejecting empty text cannot alter inherited content");
 });
 
 test("gift choice resolutions require explicit activation and cannot claim completed data", () => {
@@ -235,6 +250,98 @@ test("accepts a valid multi-action model batch against the current snapshot", ()
   ], { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot });
 
   assert.deepEqual(result, { ok: true, errors: [] });
+});
+
+test("partial templates only accept requested datetime leaves with a real binding", () => {
+  const partial = sanitizeCapabilitySnapshot({ ...snapshot, ledger: { leaves: [
+    { id: "event.ceremony.date", status: "unavailable" },
+    { id: "event.ceremony.start_time", status: "pending" },
+    { id: "event.ceremony.end_time", status: "unavailable" },
+    { id: "event.party.date", status: "unavailable" },
+    { id: "event.party.start_time", status: "not_applicable_by_dependency", rule: "parent_inactive" },
+  ] } });
+  const datetime = (phase, patch) => ({ type: "event.set_datetime", arguments: { phase, date: null, startTime: null, endTime: null, ...patch } });
+  const validate = (actions) => validateDesignerAiActionBatch(actions, { origin: "model", snapshot: partial });
+  assert.equal(validate([datetime("ceremony", { startTime: "18:00" })]).ok, true);
+  assert.equal(validate([datetime("ceremony", { date: "2027-10-09" })]).ok, false);
+  assert.equal(validate([datetime("ceremony", { startTime: "18:00", endTime: "23:00" })]).ok, false);
+  const activateParty = { type: "event.set_mode", arguments: { mode: "ceremony_party" } };
+  assert.equal(validate([activateParty, datetime("party", { startTime: "20:00" })]).ok, true);
+  assert.equal(validate([activateParty, datetime("party", { date: "2027-10-09" })]).ok, false);
+});
+
+test("missing_phase requires two supported active phase targets and preserves the unresolved decision", () => {
+  const fields = ["date", "start_time", "end_time", "venue_name", "address", "place_selection"];
+  const current = sanitizeCapabilitySnapshot({ ...snapshot, values: { eventMode: "ceremony_party" }, ledger: { leaves:
+    ["ceremony", "party"].flatMap((phase) => fields.map((field) => ({ id: `event.${phase}.${field}`, status: "pending" }))),
+  } });
+  for (const field of fields) {
+    for (const phase of ["ceremony", "party"]) {
+      const clarification = { leafId: `event.${phase}.${field}`, kind: "missing_phase" };
+      const resolutions = [{ leafId: clarification.leafId, status: "needs_clarification", rule: null }];
+      const validate = (input = current, context = { resolutions }) => contractRuntime.validateDesignerAiClarification(clarification, input, context);
+      assert.equal(validate().ok, true, clarification.leafId);
+      assert.equal(validate(current, { resolutions: [] }).ok, false);
+      assert.equal(validate({ ...current, values: { ...current.values, eventMode: "single" } }).ok, false);
+      const unavailable = structuredClone(current);
+      unavailable.ledger.leaves.find((leaf) => leaf.id === `event.${phase === "ceremony" ? "party" : "ceremony"}.${field}`).status = "unavailable";
+      assert.equal(validate(unavailable).ok, false);
+    }
+  }
+  const clarification = { leafId: "event.ceremony.start_time", kind: "missing_phase" };
+  const resolutions = [{ leafId: clarification.leafId, status: "needs_clarification", rule: null }];
+  for (const phase of ["ceremony", "party"]) {
+    assert.equal(contractRuntime.validateDesignerAiClarification(clarification, current, { resolutions,
+      actions: [{ type: "event.set_datetime", arguments: { phase, date: null, startTime: "20:00", endTime: null } }],
+    }).ok, false);
+  }
+  assert.equal(contractRuntime.validateDesignerAiClarification(clarification, current, { resolutions,
+    actions: [{ type: "document.set_name", arguments: { name: "Nueva invitación" } }],
+  }).ok, true);
+  const unrelated = { ...clarification, leafId: "event.people.primary_name" };
+  const withName = { ...current, ledger: { ...current.ledger, leaves: [...current.ledger.leaves, { id: unrelated.leafId, status: "pending" }] } };
+  assert.equal(contractRuntime.validateDesignerAiClarification(unrelated, withName, { resolutions: [{ ...resolutions[0], leafId: unrelated.leafId }] }).ok, false);
+  for (const field of ["venue_name", "address", "place_selection"]) {
+    const location = { leafId: `event.ceremony.${field}`, kind: "missing_phase" };
+    const context = { resolutions: [{ leafId: location.leafId, status: "needs_clarification", rule: null }] };
+    for (const phase of ["ceremony", "party"]) {
+      assert.equal(contractRuntime.validateDesignerAiClarification(location, current, { ...context,
+        controlRequest: { type: "google_place_picker", phase },
+      }).ok, false);
+    }
+    for (const controlRequest of [{ type: "cover_upload" }, { type: "gallery_cell_upload", galleryId: "gallery-1", cellId: "cell-b", cellIndex: 1 }]) {
+      assert.equal(contractRuntime.validateDesignerAiClarification(location, current, { ...context, controlRequest }).ok, true);
+    }
+  }
+  assert.ok(contractRuntime.buildDesignerAiTool(current).parameters.properties.clarification.anyOf[1].properties.kind.enum.includes("missing_phase"));
+});
+
+test("RSVP activation validates sequential capacity without choosing a question to remove", () => {
+  const current = sanitizeCapabilitySnapshot({ ...snapshot, values: { rsvp: createDefaultRsvpConfig("wedding_complete") } });
+  const setActive = (questionId, active) => ({ type: "rsvp.set_question_active", arguments: { questionId, active } });
+  const validate = (actions) => validateDesignerAiActionBatch(actions, { origin: "model", snapshot: current });
+  const disable = setActive(current.values.rsvp.questions.find((question) => question.active).id, false);
+  const activate = setActive("custom_1", true);
+  assert.equal(current.values.rsvp.questions.filter((question) => question.active).length, 12);
+  assert.equal(validate([activate]).ok, false);
+  assert.equal(validate([activate, disable]).ok, false);
+  assert.equal(validate([disable, activate]).ok, true);
+  assert.equal(validate([disable, activate, setActive("custom_2", true)]).ok, false);
+  assert.equal(validate([setActive(current.values.rsvp.questions.find((question) => question.active).id, true)]).ok, true);
+  assert.equal(current.values.rsvp.questions.find((question) => question.id === "custom_1").active, false);
+});
+
+test("RSVP snapshot preserves owner limits, including stricter configured capacities", () => {
+  const config = normalizeRsvpConfig({ ...createDefaultRsvpConfig("basic"), limits: { maxQuestions: 3, maxCustomQuestions: 0 } });
+  const current = sanitizeCapabilitySnapshot({ ...snapshot, values: { rsvp: config } });
+  assert.deepEqual(current.values.rsvp.limits, config.limits);
+  assert.equal(contractRuntime.inspectDesignerAiSnapshotShape(current).ok, true);
+  const setActive = (questionId, active) => ({ type: "rsvp.set_question_active", arguments: { questionId, active } });
+  const validate = (actions) => validateDesignerAiActionBatch(actions, { origin: "model", snapshot: current });
+  assert.equal(validate([setActive("event_scope", true)]).ok, false);
+  assert.equal(validate([setActive("attendance", false), setActive("event_scope", true)]).ok, true);
+  assert.equal(validate([setActive("attendance", false), setActive("custom_1", true)]).ok, false);
+  assert.deepEqual(sanitizeCapabilitySnapshot({}).values.rsvp.limits, { maxQuestions: 12, maxCustomQuestions: 2 });
 });
 
 test("rejects generic canvas mutation, unknown IDs and trusted controls from the model", () => {

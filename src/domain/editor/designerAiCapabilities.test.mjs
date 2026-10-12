@@ -4,11 +4,78 @@ import {
   buildDesignerAiCallablePayload,
   buildDesignerAiCapabilitySnapshot,
 } from "./designerAiCapabilities.js";
-import { containsForbiddenSnapshotData } from "../../../shared/designerAiCapabilityContract.js";
+import { containsForbiddenSnapshotData, validateDesignerAiActionBatch } from "../../../shared/designerAiCapabilityContract.js";
 import ledgerRuntime from "../../../shared/designerAiConversationLedger.js";
 import { setEventLocationProviderMetadata } from "../eventDetails/location.js";
 
 const { buildDesignerAiConversationBrief, reconcileDesignerAiConversationState } = ledgerRuntime;
+
+test("a time-only template never asks for or accepts an absent date field", () => {
+  const authoringSnapshot = { fieldsSchema: [
+    { key: "event_ceremony_start_time", type: "time", eventDetailsRole: "ceremony_start_time", applyTargets: [] },
+  ], values: { event_ceremony_start_time: "18:00" }, templateInput: { changedKeys: ["event_ceremony_start_time"] } };
+  const initial = buildDesignerAiCapabilitySnapshot({ authoringSnapshot });
+  const mode = initial.ledger.leaves.find((leaf) => leaf.id === "event.mode");
+  const snapshot = buildDesignerAiCapabilitySnapshot({ authoringSnapshot, conversationState: { resolutions: [
+    { leafId: mode.id, status: "resolved_from_user", provenance: "user_current_session", fingerprint: mode.fingerprint, rule: null },
+  ] } });
+  assert.equal(snapshot.availability.ceremonyDatetime, true);
+  assert.equal(snapshot.ledger.leaves.find((leaf) => leaf.id === "event.ceremony.date").status, "unavailable");
+  assert.equal(snapshot.ledger.leaves.find((leaf) => leaf.id === "event.ceremony.end_time").status, "unavailable");
+  assert.equal(snapshot.ledger.leaves.find((leaf) => leaf.id === "event.ceremony.start_time").status, "resolved_from_existing_user_data");
+  assert.equal(buildDesignerAiConversationBrief(snapshot).nextStep.kind, "rsvp_enabled");
+  const payload = buildDesignerAiCallablePayload({ snapshot, message: "3 de abril", clientMessageId: "partial-date" });
+  const result = validateDesignerAiActionBatch([
+    { type: "event.set_datetime", arguments: { phase: "ceremony", date: "2027-04-03", startTime: null, endTime: null } },
+  ], { origin: "model", snapshot: payload.capabilitySnapshot });
+  assert.equal(result.ok, false);
+});
+
+test("datetime bindings support start time while date-only and inactive absent Party fields remain unavailable", () => {
+  for (const type of ["date", "datetime"]) {
+    const authoringSnapshot = { fieldsSchema: [
+      { key: "custom_date", type, eventDetailsRole: "ceremony_date", applyTargets: [] },
+    ], values: { custom_date: type === "date" ? "2027-04-03" : "2027-04-03T18:30" } };
+    const initial = buildDesignerAiCapabilitySnapshot({ authoringSnapshot });
+    const mode = initial.ledger.leaves.find((leaf) => leaf.id === "event.mode");
+    const snapshot = buildDesignerAiCapabilitySnapshot({ authoringSnapshot, conversationState: { resolutions: [
+      { leafId: mode.id, status: "resolved_from_user", provenance: "user_current_session", fingerprint: mode.fingerprint, rule: null },
+    ] } });
+    assert.equal(snapshot.ledger.leaves.find((leaf) => leaf.id === "event.ceremony.start_time").status === "unavailable", type === "date");
+    assert.equal(snapshot.ledger.leaves.find((leaf) => leaf.id === "event.party.date").status, "unavailable");
+  }
+});
+
+test("custom role-bound fields use live provenance and restoring template values reopens them", () => {
+  const definitions = [
+    ["ceremony_date", "date", "event.ceremony.date", "2027-10-09", "2026-12-24"],
+    ["ceremony_start_time", "time", "event.ceremony.start_time", "18:30", "19:00"],
+    ["ceremony_end_time", "time", "event.ceremony.end_time", "23:30", "23:00"],
+    ["ceremony_venue_name", "text", "event.ceremony.venue_name", "Bodega Borgoña", "Salón plantilla"],
+    ["ceremony_venue_address", "text", "event.ceremony.address", "Calle 321", "Calle 123"],
+    ["party_date", "date", "event.party.date", "2027-10-10", "2026-12-25"],
+    ["party_start_time", "time", "event.party.start_time", "21:30", "22:00"],
+    ["party_end_time", "time", "event.party.end_time", "04:30", "03:00"],
+    ["party_venue_name", "text", "event.party.venue_name", "Club Encuentro", "Club plantilla"],
+    ["party_venue_address", "text", "event.party.address", "Ruta 321", "Ruta 123"],
+    ["dress_code", "text", "event.dress_code.value", "Cocktail", "Formal"],
+  ];
+  const fields = definitions.map(([role, type]) => ({ key: `custom_${role}`, eventDetailsRole: role, type, applyTargets: [] }));
+  const build = (column, changedKeys, conversationState = {}) => buildDesignerAiCapabilitySnapshot({
+    authoringSnapshot: { fieldsSchema: fields, values: Object.fromEntries(definitions.map(([role, , , userValue, templateValue]) =>
+      [`custom_${role}`, column === "user" ? userValue : templateValue])), templateInput: { changedKeys } },
+    renderSnapshot: { eventDetails: { mode: "ceremony_party" } }, conversationState,
+  });
+  const current = build("user", fields.map((field) => field.key));
+  const state = reconcileDesignerAiConversationState({ snapshot: current });
+  const restored = build("template", [], state);
+  const staleCanonical = build("user", definitions.map(([role]) => `event_${role}`));
+  for (const [, , id] of definitions) {
+    assert.equal(current.ledger.leaves.find((leaf) => leaf.id === id).status, "resolved_from_existing_user_data", id);
+    assert.equal(restored.ledger.leaves.find((leaf) => leaf.id === id).status, "pending", id);
+    assert.equal(staleCanonical.ledger.leaves.find((leaf) => leaf.id === id).status, "pending", id);
+  }
+});
 
 const customPersonFields = [
   { key: "custom_first", type: "text", eventDetailsRole: "primary_person_name", applyTargets: [{ scope: "objeto", id: "first", path: "texto" }] },

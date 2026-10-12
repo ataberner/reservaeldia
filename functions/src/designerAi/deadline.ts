@@ -1,6 +1,7 @@
 // The callable keeps its existing 45s limit. All I/O shares 40s, leaving 5s
 // for validation, safe logs, serialization and delivery of a controlled error.
 export const DESIGNER_AI_OPERATION_BUDGET_MS = 40_000;
+export const DESIGNER_AI_SETTLEMENT_BUDGET_MS = 3_000;
 export const DESIGNER_AI_ATTEMPT_TIMEOUT_MS = 25_000;
 export const DESIGNER_AI_MIN_ATTEMPT_MS = 1_000;
 
@@ -11,8 +12,9 @@ export class DesignerAiDeadlineError extends Error {
 export function createDesignerAiDeadline({
   now = () => Date.now(),
   startedAt = now(),
-}: { now?: () => number; startedAt?: number } = {}) {
-  const remainingMs = () => Math.max(0, startedAt + DESIGNER_AI_OPERATION_BUDGET_MS - now());
+  budgetMs = DESIGNER_AI_OPERATION_BUDGET_MS,
+}: { now?: () => number; startedAt?: number; budgetMs?: number } = {}) {
+  const remainingMs = () => Math.max(0, startedAt + budgetMs - now());
   return {
     remainingMs,
     async run<T>(work: (signal: AbortSignal, timeoutMs: number) => Promise<T>, {

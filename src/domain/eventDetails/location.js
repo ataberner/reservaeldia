@@ -747,8 +747,6 @@ export function resolveEventLocationFromAuthoring({
   const safeDefaults = asObject(defaults);
   const safeValues = asObject(values);
   const safeFeature = normalizeEventDetailFeature(feature);
-  const nameKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME, safeFeature);
-  const addressKey = getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS, safeFeature);
   const mapObjects = collectEventGoogleMapObjects(objetos, safeFeature);
   const mapObject = mapObjects[0] || null;
   const fields = collectEventLocationFields(fieldsSchema).filter(
@@ -760,6 +758,15 @@ export function resolveEventLocationFromAuthoring({
         normalizeEventLocationRole(field.eventDetailsRole) ===
         EVENT_LOCATION_ROLES.VENUE_ADDRESS
     ) || null;
+  const nameField = fields.find((field) =>
+    normalizeEventLocationRole(field.eventDetailsRole) === EVENT_LOCATION_ROLES.VENUE_NAME
+  );
+  const fieldKeys = {
+    venueName: normalizeText(nameField?.key),
+    address: normalizeText(addressField?.key),
+  };
+  const nameKey = fieldKeys.venueName || getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_NAME, safeFeature);
+  const addressKey = fieldKeys.address || getEventLocationFieldKey(EVENT_LOCATION_ROLES.VENUE_ADDRESS, safeFeature);
   const addressTextFormatPreset = resolveEventAddressTextFormatPreset(addressField);
   const hasStructuredMetadata = hasEventLocationProviderMetadataEntry(
     safeValues,
@@ -820,6 +827,7 @@ export function resolveEventLocationFromAuthoring({
       .filter(Boolean),
     addressTextFormatPreset,
     fields,
+    fieldKeys,
   };
 }
 

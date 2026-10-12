@@ -174,8 +174,9 @@ import {
   validateDesignerAiChatPayload,
   estimateDesignerAiRequestUsage,
   DESIGNER_AI_MODEL,
+  type DesignerAiServiceTelemetry,
 } from "./designerAi/service";
-import { createDesignerAiDeadline } from "./designerAi/deadline";
+import { createDesignerAiDeadline, DesignerAiDeadlineError, DESIGNER_AI_OPERATION_BUDGET_MS, DESIGNER_AI_SETTLEMENT_BUDGET_MS } from "./designerAi/deadline";
 import { withDesignerAiRequestBoundary } from "./designerAi/requestBoundary";
 import { calculateDesignerAiCostMicrousd, DesignerAiAdmissionError, requireDesignerAiIdentity } from "./designerAi/admission";
 import { createDesignerAiAdmissionStore, type DesignerAiReservation } from "./designerAi/admissionStore";
@@ -3085,12 +3086,18 @@ export const designerAiChat = withDesignerAiRequestBoundary(onCall(
     const uid = requireDesignerAiIdentity(request.auth);
     const fallbackTraceId = randomUUID();
     const startedAt = Date.now();
-    const deadline = createDesignerAiDeadline({ startedAt });
+    // Reserve a bounded part of the same operation window for accounting,
+    // including when the provider consumes its entire work deadline.
+    const deadline = createDesignerAiDeadline({ startedAt,
+      budgetMs: DESIGNER_AI_OPERATION_BUDGET_MS - DESIGNER_AI_SETTLEMENT_BUDGET_MS });
+    const settlementDeadline = createDesignerAiDeadline({ startedAt });
+    const settlementOptions = { maxMs: DESIGNER_AI_SETTLEMENT_BUDGET_MS, minimumMs: 1 };
     let profileReadMs = 0;
     let payloadValidationMs = 0;
     let reservation: DesignerAiReservation | null = null;
     let dispatched = false;
     let settled = false;
+    let knownTelemetry: DesignerAiServiceTelemetry | undefined;
 
     try {
       const compatibilityResponse = buildDesignerAiClientCompatibilityResponse(
@@ -3102,7 +3109,10 @@ export const designerAiChat = withDesignerAiRequestBoundary(onCall(
           reason: "contract_version_mismatch",
           batchId: compatibilityResponse.batchId,
         });
-        return compatibilityResponse;
+        // Older guided clients discard free model prose, including a reload
+        // message. Their existing admission-error path preserves and displays
+        // this fixed summary without reserving usage or executing a proposal.
+        throw new DesignerAiAdmissionError("client_update_required");
       }
       const validationStartedAt = Date.now();
       const payload = validateDesignerAiChatPayload(request.data);
@@ -3125,7 +3135,7 @@ export const designerAiChat = withDesignerAiRequestBoundary(onCall(
       profileReadMs = Math.max(0, Date.now() - profileStartedAt);
       const openingResponse = buildDesignerAiOpeningResponse(payload, { registeredFirstName });
       if (openingResponse) {
-        await deadline.run(() => designerAiAdmission.settle(reservation!, { outcome: "succeeded", usageComplete: true, actualMicrousd: 0 }));
+        await settlementDeadline.run(() => designerAiAdmission.settle(reservation!, { outcome: "succeeded", usageComplete: true, actualMicrousd: 0 }), settlementOptions);
         settled = true;
         logger.info("designerAiChat completado", {
           uid,
@@ -3161,11 +3171,12 @@ export const designerAiChat = withDesignerAiRequestBoundary(onCall(
         userContext: { registeredFirstName },
         deadline,
       });
-      await deadline.run(() => designerAiAdmission.settle(reservation!, {
+      knownTelemetry = result.telemetry;
+      await settlementDeadline.run(() => designerAiAdmission.settle(reservation!, {
         outcome: "succeeded",
         usageComplete: result.telemetry.usageReportedAttempts === result.telemetry.providerAttempts,
         actualMicrousd: calculateDesignerAiCostMicrousd(result.telemetry.inputTokens, result.telemetry.outputTokens, reservation!.pricing),
-      }));
+      }), settlementOptions);
       settled = true;
       const {
         traceId,
@@ -3193,17 +3204,18 @@ export const designerAiChat = withDesignerAiRequestBoundary(onCall(
       });
       return publicResult;
     } catch (error) {
-      const serviceError = error instanceof DesignerAiServiceError ? error : null;
+      const serviceError = error instanceof DesignerAiServiceError ? error :
+        error instanceof DesignerAiDeadlineError ? new DesignerAiServiceError("timeout", error.message) : null;
+      const telemetry = knownTelemetry || serviceError?.telemetry;
       if (reservation && !settled) {
-        const telemetry = serviceError?.telemetry;
         const usageComplete = !dispatched || Boolean(telemetry && telemetry.usageReportedAttempts === telemetry.providerAttempts);
         // If accounting or the provider outcome is uncertain, retain the
         // reservation. An expired lease releases concurrency, never spending.
         try {
-          await deadline.run(() => designerAiAdmission.settle(reservation!, {
+          await settlementDeadline.run(() => designerAiAdmission.settle(reservation!, {
             outcome: usageComplete ? "failed" : "unknown", usageComplete,
             actualMicrousd: telemetry ? calculateDesignerAiCostMicrousd(telemetry.inputTokens, telemetry.outputTokens, reservation!.pricing) : 0,
-          }), { maxMs: 3000 });
+          }), settlementOptions);
         } catch {
           logger.warn("designerAiChat conserva una reserva pendiente", { traceId: fallbackTraceId, category: "accounting_pending" });
         }
@@ -3222,11 +3234,12 @@ export const designerAiChat = withDesignerAiRequestBoundary(onCall(
         latencyMs: Math.max(0, Date.now() - startedAt),
         profileReadMs,
         payloadValidationMs,
-        telemetry: serviceError?.telemetry || null,
+        telemetry: telemetry || null,
         result: serviceError?.kind || "unknown",
         // Validator diagnostics can contain dynamic leaf IDs supplied by the
         // client. Log the fixed presentation, never the internal diagnostic.
         failureReason: errorDetails.summary,
+        validationCode: serviceError?.validationCode || null,
         referenceId: errorDetails.referenceId,
         openAiRequestId: serviceError?.openAiRequestId || null,
       });

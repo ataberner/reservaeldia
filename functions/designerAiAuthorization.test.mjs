@@ -123,6 +123,21 @@ test("designerAiChat validates requests before profile, secret and provider acce
   assert.deepEqual([profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()], before);
 });
 
+test("old clients receive a visible nonretryable update notice before quota or paid work", async () => {
+  const before = [reserve.mock.callCount(), profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()];
+  for (const contractVersion of ["2.4.0", "2.5.0"]) {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ contractVersion }) }), error => {
+      assert.equal(error.code, "failed-precondition");
+      assert.equal(error.details.category, "assistant_admission");
+      assert.equal(error.details.reason, "client_update_required");
+      assert.equal(error.details.retryable, false);
+      assert.match(error.details.summary, /Recargá la página/);
+      return true;
+    });
+  }
+  assert.deepEqual([reserve.mock.callCount(), profileReads.length, secret.mock.callCount(), createClient.mock.callCount(), interpret.mock.callCount()], before);
+});
+
 test("exported callable bounds adversarial bodies before admission, recursive SDK decoding or provider work", async () => {
   let deep = { marker: "synthetic" };
   for (let index = 0; index < 3000; index++) deep = { nested: deep };
@@ -245,8 +260,85 @@ test("unconfirmed accounting after provider success returns no result and never 
   try {
     await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }), error => error.reason === "accounting_unavailable");
     assert.equal(interpret.mock.callCount(), callsBefore + 1);
-    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "unknown", usageComplete: false, actualMicrousd: 0 });
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "failed", usageComplete: true, actualMicrousd: 118 });
   } finally { settlementFailures = []; }
+});
+
+test("late valid responses still settle known usage within the accounting window", async () => {
+  let clock = Date.now();
+  const startedAt = clock;
+  const time = mock.method(Date, "now", () => clock);
+  const callsBefore = settle.mock.callCount();
+  const provider = mock.method(service, "interpretDesignerAiChat", async ({ deadline }) => {
+    assert.equal(deadline.remainingMs(), 37_000, "three seconds remain reserved for settlement");
+    clock = startedAt + 39_500;
+    return {
+      contractVersion: DESIGNER_AI_CONTRACT_VERSION, batchId: "late-valid", intent: "clarify",
+      assistantMessage: "¿Qué Dress Code quieren indicar?", actions: [], resolutions: [], controlRequest: null,
+      traceId: "synthetic-trace", openAiRequestId: "synthetic-request", latencyMs: 39_500, repairCount: 1,
+      telemetry: { providerAttempts: 2, usageReportedAttempts: 2, inputTokens: 1000, outputTokens: 100 },
+    };
+  });
+  try {
+    const result = await designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) });
+    assert.equal(result.batchId, "late-valid");
+    assert.equal(settle.mock.callCount(), callsBefore + 1);
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "succeeded", usageComplete: true, actualMicrousd: 680 });
+  } finally { provider.mock.restore(); time.mock.restore(); }
+});
+
+test("provider work deadline leaves time to release concurrency while retaining uncertain cost", async () => {
+  let clock = Date.now();
+  const startedAt = clock;
+  const time = mock.method(Date, "now", () => clock);
+  const provider = mock.method(service, "interpretDesignerAiChat", async () => {
+    clock = startedAt + 37_000;
+    const error = new service.DesignerAiServiceError("timeout", "Synthetic timeout");
+    error.telemetry = { providerAttempts: 2, usageReportedAttempts: 1, inputTokens: 200, outputTokens: 10 };
+    throw error;
+  });
+  try {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }), error => error.code === "deadline-exceeded");
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "unknown", usageComplete: false, actualMicrousd: 118 });
+  } finally { provider.mock.restore(); time.mock.restore(); }
+});
+
+test("raw admission and settlement deadlines use the timeout category and preserve known telemetry", async () => {
+  const { DesignerAiDeadlineError } = requireBuiltModule("lib/designerAi/deadline.js");
+  const request = () => designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) });
+  const timeout = error => {
+    assert.equal(error.code, "deadline-exceeded");
+    assert.equal(error.details.category, "provider_timeout");
+    return true;
+  };
+  admissionFailure = new DesignerAiDeadlineError();
+  try { await assert.rejects(request(), timeout); } finally { admissionFailure = null; }
+  settlementFailures = [new DesignerAiDeadlineError()];
+  try {
+    await assert.rejects(request(), timeout);
+    assert.deepEqual(settle.mock.calls.at(-1).arguments[1], { outcome: "failed", usageComplete: true, actualMicrousd: 118 });
+    assert.equal(logs.at(-1).args[1].telemetry.inputTokens, 200);
+    assert.equal(logs.at(-1).args[1].telemetry.outputTokens, 10);
+  } finally { settlementFailures = []; }
+});
+
+test("accounting never extends the overall operation deadline", async () => {
+  let clock = Date.now();
+  const startedAt = clock;
+  const time = mock.method(Date, "now", () => clock);
+  const callsBefore = settle.mock.callCount();
+  const provider = mock.method(service, "interpretDesignerAiChat", async () => {
+    clock = startedAt + 40_000;
+    const error = new service.DesignerAiServiceError("timeout", "Synthetic timeout");
+    error.telemetry = { providerAttempts: 1, usageReportedAttempts: 1, inputTokens: 200, outputTokens: 10 };
+    throw error;
+  });
+  try {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "synthetic-user" }, data: validPayload({ entryMode: "continuation" }) }), error => error.code === "deadline-exceeded");
+    assert.equal(settle.mock.callCount(), callsBefore);
+    assert.equal(logs.at(-1).args[1].telemetry.inputTokens, 200);
+    assert.ok(logs.some(entry => entry.args[1].category === "accounting_pending"));
+  } finally { provider.mock.restore(); time.mock.restore(); }
 });
 
 test("continuation skips the profile read and keeps stage diagnostics server-side", async () => {
@@ -295,5 +387,21 @@ test("internal validator diagnostics containing dynamic IDs never enter callable
     });
     assert.equal(JSON.stringify(logs).includes(sentinel), false);
     assert.equal(logs.at(-1).args[1].failureReason, "La respuesta del modelo no cumplió el formato o las validaciones esperadas.");
+    assert.equal(logs.at(-1).args[1].validationCode, "resolution_invalid");
+  } finally { interpretFailure = null; }
+});
+
+test("callable logs accept only a fixed validation code, without exposing it to the user", async () => {
+  const sentinel = "PRIVATE_UNTRUSTED_DIAGNOSTIC";
+  interpretFailure = new service.DesignerAiServiceError("malformed-output", sentinel, null, null, sentinel);
+  try {
+    await assert.rejects(designerAiChat.run({ auth: { uid: "user-1" }, data: validPayload({ entryMode: "continuation" }) }), error => {
+      assert.equal(error.code, "internal");
+      assert.equal(JSON.stringify(error).includes(sentinel), false);
+      assert.equal("validationCode" in error.details, false);
+      return true;
+    });
+    assert.equal(logs.at(-1).args[1].validationCode, "output_shape_invalid");
+    assert.equal(JSON.stringify(logs).includes(sentinel), false);
   } finally { interpretFailure = null; }
 });

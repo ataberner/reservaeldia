@@ -6,7 +6,7 @@ import { executeDesignerAiActionBatch } from "../../../domain/editor/designerAiA
 import { publishDashboardDocumentNameState } from "../../../lib/dashboardDocumentNameBridge.js";
 
 const gifts = [{ type: "gifts.set_enabled", arguments: { enabled: true } },
-  { type: "gifts.set_method", arguments: { method: "alias", value: "DESTINO.SINTETICO", visible: true } }];
+  { type: "gifts.set_method", arguments: { method: "giftListLink", value: "https://destino.sintetico.test/lista", visible: true } }];
 const mixed = [{ type: "story.set_text", arguments: { text: "Historia nueva" } }, ...gifts];
 const response = actions => ({ intent: "apply", assistantMessage: "Listo.", actions });
 const mount = options => mountPanel({ fullFields: true, respond: (_, index) => index === 1
@@ -14,7 +14,7 @@ const mount = options => mountPanel({ fullFields: true, respond: (_, index) => i
 const ready = run => run.until(() => run.messages().length === 1);
 const idle = run => run.until(() => document.querySelector("section[aria-label='Tu asistente']").getAttribute("aria-busy") === "false");
 
-test("unrequested gift action pauses the entire mixed batch; explicit double click applies once", async () => {
+test("an external list pauses the entire mixed batch; explicit double click applies once", async () => {
   const run = await mount();
   try {
     await ready(run); await run.send("La ceremonia empieza a las 18:00");
@@ -22,14 +22,14 @@ test("unrequested gift action pauses the entire mixed batch; explicit double cli
     assert.equal(run.authoring.defaults.texto_historia, undefined);
     assert.ok(document.getElementById("designer-gift-confirm-title"));
     assert.equal(document.activeElement.id, "designer-gift-confirm-title");
-    assert.match(document.body.textContent, /DESTINO.SINTETICO/);
+    assert.match(document.body.textContent, /destino\.sintetico\.test/);
     assert.match(document.body.textContent, /Actualizar el texto de la historia/);
     const button = [...document.querySelectorAll("button")].find(b => b.textContent === "Confirmar cambios");
     await act(async () => { button.click(); button.click(); });
     await idle(run);
     assert.equal(run.writes.length, 3);
     assert.equal(run.authoring.defaults.texto_historia, "Historia nueva");
-    assert.equal(run.snapshot().values.gifts.methods.alias.value, "DESTINO.SINTETICO");
+    assert.equal(run.exportPersistedDraft().render.gifts.giftListUrl, "https://destino.sintetico.test/lista");
   } finally { await run.close(); }
 });
 
@@ -130,6 +130,6 @@ test("partial persistence retries need a fresh click and never replay saved acti
     assert.match(document.body.textContent, /Ya se guardaron 2 cambios/);
     await run.click("Confirmar cambios"); await idle(run);
     assert.equal(run.writes.length, 4);
-    assert.equal(run.snapshot().values.gifts.methods.alias.value, "DESTINO.SINTETICO");
+    assert.equal(run.exportPersistedDraft().render.gifts.giftListUrl, "https://destino.sintetico.test/lista");
   } finally { await run.close(); }
 });

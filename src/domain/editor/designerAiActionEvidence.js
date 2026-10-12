@@ -27,7 +27,13 @@ export function isDesignerAiActionEffective(action, snapshot, render, expectedRe
     case "story.set_text": return v.story === normalizeStoryTextValue(a.text);
     case "gallery.move_photo": return equal(render.objetos?.find((o) => o.id === a.galleryId), expectedRender.gallery);
     case "rsvp.set_enabled": return v.rsvp.enabled === a.enabled && ctaReflected(render, "rsvp-boton", a.enabled);
-    case "rsvp.set_question_active":
+    case "rsvp.set_question_active": {
+      const config = normalizeRsvpConfig(render.rsvp, { forceEnabled: false });
+      // Normalization can reject an activation at the question limit. Matching
+      // the reducer output alone does not prove the user's requested effect.
+      return config.questions.find((question) => question.id === a.questionId)?.active === a.active &&
+        equal(config, expectedRender.rsvp);
+    }
     case "rsvp.update_question":
     case "rsvp.move_question":
     case "rsvp.remove_option":

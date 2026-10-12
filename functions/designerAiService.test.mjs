@@ -80,6 +80,49 @@ test("clarification cannot carry free prose, unknown targets, incompatible kinds
   assert.throws(() => validateDesignerAiModelResult(base, unavailable), /hoja disponible/);
 });
 
+test("editing phase ambiguity survives validation without choosing or changing a phase", async () => {
+  const current = snapshot({ values: { eventMode: "ceremony_party" }, leaves: [
+    leaf("event.ceremony.start_time", "event_data"), leaf("event.party.start_time", "event_data"),
+  ] });
+  current.conversation.mode = "editing";
+  const clarification = { leafId: "event.ceremony.start_time", kind: "missing_phase" };
+  const result = { intent: "clarify", assistantMessage: "Precisemos el evento.", actions: [], controlRequest: null,
+    resolutions: [{ leafId: clarification.leafId, status: "needs_clarification", rule: null }], clarification, notice: null };
+  let calls = 0;
+  const interpreted = await interpretDesignerAiChat({ payload: payload({ message: "Cambiá el horario", capabilitySnapshot: current }),
+    client: { responses: { create: async (body) => {
+      calls += 1;
+      assert.match(body.input[0].content, /missing_phase/);
+      return functionResponse(result);
+    } } },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(interpreted.clarification, clarification);
+  assert.deepEqual(interpreted.actions, []);
+  assert.deepEqual(interpreted.resolutions, result.resolutions);
+  const single = { ...current, values: { ...current.values, eventMode: "single" } };
+  assert.throws(() => validateDesignerAiModelResult(result, single), (error) => error.validationCode === "clarification_invalid");
+  const conflicting = { ...result, actions: [{ type: "event.set_datetime", arguments: { phase: "party", date: null, startTime: "20:00", endTime: null } }] };
+  assert.throws(() => validateDesignerAiModelResult(conflicting, current), (error) => error.validationCode === "clarification_invalid");
+});
+
+test("an ambiguous location phase cannot open a guessed Maps picker but keeps independent media controls", () => {
+  const current = snapshot({ values: { eventMode: "ceremony_party" }, leaves: [
+    leaf("event.ceremony.address", "event_data"), leaf("event.party.address", "event_data"), leaf("media.cover", "cover"),
+  ] });
+  const clarification = { leafId: "event.ceremony.address", kind: "missing_phase" };
+  const result = { intent: "clarify", assistantMessage: "Precisemos el evento.", actions: [], controlRequest: null,
+    resolutions: [{ leafId: clarification.leafId, status: "needs_clarification", rule: null }], clarification, notice: null };
+  for (const phase of ["ceremony", "party"]) {
+    assert.throws(() => validateDesignerAiModelResult({ ...result, controlRequest: { type: "google_place_picker", phase } }, current),
+      (error) => error.validationCode === "clarification_invalid");
+  }
+  const controlRequest = { type: "cover_upload" };
+  const accepted = validateDesignerAiModelResult({ ...result, controlRequest }, current);
+  assert.deepEqual(accepted.controlRequest, controlRequest);
+  assert.deepEqual(accepted.clarification, clarification);
+});
+
 test("an inactive phase discards its clarification together with redundant resolution", () => {
   const current = snapshot({ leaves: [leaf("event.mode", "event_structure"), leaf("event.ceremony.date", "event_data"), leaf("event.party.date", "event_data")] });
   const result = validateDesignerAiModelResult({ intent: "apply", assistantMessage: "Un único evento.",
@@ -142,7 +185,9 @@ for (const position of ["before", "ends at limit", "starts at limit", "crosses",
   });
 }
 
-for (const [primaryName, provenance, valid] of [["Ana", "existing_user_data", true], ["Ana", "user_current_session", true], ["", "user_current_session", false], ["Ana", "template_value", false], ["Nombre de la novia", "user_current_session", false], ["Ana", "unknown", false]]) {
+// A sample-like string can be explicitly confirmed by its owner; heuristics
+// must still reject the same text when inherited or lacking user evidence.
+for (const [primaryName, provenance, valid] of [["Ana", "existing_user_data", true], ["Ana", "user_current_session", true], ["", "user_current_session", false], ["Ana", "template_value", false], ["Nombre de la novia", "user_current_session", true], ["Nombre de la novia", "template_value", false], ["Nombre de la novia", "unknown", false], ["Ana", "unknown", false]]) {
   test(`backend enforces keep_existing: ${primaryName || "empty"}/${provenance}`, () => {
     const input = snapshot({ values: { people: { primaryName, secondaryName: "" } }, leaves: [leaf("event.people.primary_name", "names", "pending", provenance)] });
     const result = { intent: "apply", assistantMessage: "Conservamos el nombre.", actions: [], controlRequest: null, resolutions: [{ leafId: "event.people.primary_name", status: "resolved_by_rule", rule: "keep_existing" }] };
@@ -923,6 +968,13 @@ test("every incompatible client version receives a safe reload response instead 
       () => "legacy-reload-3"
     )?.contractVersion,
     "1.0.0"
+  );
+  assert.equal(
+    buildDesignerAiClientCompatibilityResponse(
+      { ...payload(), contractVersion: "2.5.0" },
+      () => "prior-snapshot-reload"
+    )?.contractVersion,
+    "2.5.0"
   );
   assert.equal(
     buildDesignerAiClientCompatibilityResponse(
@@ -1729,6 +1781,36 @@ test("returns safe error context and a reference without exposing raw payloads",
   });
   assert.doesNotMatch(JSON.stringify(details), /clarify no puede/);
 });
+
+test("validation diagnostic codes are allowlisted independently of private messages", () => {
+  const sentinel = "PRIVATE_VALIDATION_DETAILS";
+  const error = new DesignerAiServiceError("malformed-output", sentinel, null, null, "clarification_invalid");
+  assert.equal(error.validationCode, "clarification_invalid");
+  assert.equal(JSON.stringify(buildDesignerAiErrorDetails(error, "safe-reference")).includes(sentinel), false);
+  assert.equal(new DesignerAiServiceError("malformed-output", sentinel, null, null, sentinel).validationCode, "output_shape_invalid");
+  assert.equal(new DesignerAiServiceError("upstream", sentinel, null, null, "action_invalid").validationCode, null);
+});
+
+for (const [code, output] of [
+  ["function_call_invalid", [{ type: "function_call", name: "invalid_tool", arguments: "{}" }]],
+  ["function_arguments_invalid", [{ type: "function_call", name: "submit_designer_ai_result", arguments: "PRIVATE_INVALID_JSON" }]],
+]) {
+  test(`a repeated provider protocol failure retains the safe code ${code}`, async () => {
+    let calls = 0;
+    await assert.rejects(interpretDesignerAiChat({ payload: payload(), client: { responses: { create: async () => {
+      calls++;
+      return { output, _request_id: "synthetic-provider-request" };
+    } } } }), error => {
+      assert.equal(error.kind, "malformed-output");
+      assert.equal(error.validationCode, code);
+      assert.equal(error.openAiRequestId, "synthetic-provider-request");
+      assert.equal(error.telemetry.providerAttempts, 2);
+      assert.equal(error.message.includes("PRIVATE_INVALID_JSON"), false);
+      return true;
+    });
+    assert.equal(calls, 2);
+  });
+}
 
 test("preserve_while_inactive is valid only when the effective owner is disabled", () => {
   const activeSnapshot = snapshot({

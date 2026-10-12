@@ -40,7 +40,7 @@ function projectDesignerAiValues(snapshot, actions) {
         if (action.type.startsWith("rsvp.")) {
           const config = normalizeRsvpConfig({ ...values.rsvp, questions: values.rsvp.questions.map((q, order) => ({ ...q, order })) }, { forceEnabled: false });
           const next = applyRsvpAction(config, action);
-          values.rsvp = { enabled: next.enabled, modal: next.modal, questions: next.questions.map((q) => ({ id: q.id, active: q.active, label: q.label, type: q.type, required: q.required, options: (q.options || []).map((o) => ({ id: o.id, label: o.label })) })) };
+          values.rsvp = { enabled: next.enabled, limits: next.limits, modal: next.modal, questions: next.questions.map((q) => ({ id: q.id, active: q.active, label: q.label, type: q.type, required: q.required, options: (q.options || []).map((o) => ({ id: o.id, label: o.label })) })) };
         } else if (action.type.startsWith("gifts.")) {
           const methods = values.gifts.methods || {};
           const config = normalizeGiftConfig({ enabled: values.gifts.enabled, introText: values.gifts.introText,

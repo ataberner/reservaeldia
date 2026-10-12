@@ -8,7 +8,7 @@ const availability = { people: true, eventMode: true, ceremonyDatetime: true, ce
 const locationIds = ["venue_name", "address", "place_selection"].map((field) => `event.ceremony.${field}`);
 const deferred = (leafId) => ({ leafId, status: "deferred_by_user", rule: null });
 function snapshot(state = {}, nextValues = values) {
-  return { values: nextValues, availability, conversation: { mode: "guided" }, ledger: ledger.buildDesignerAiLedger({ values: nextValues, availability, conversationState: state, sourceContext: { changedKeys: ["event_primary_person_name", "event_secondary_person_name"] } }) };
+  return { values: nextValues, availability, conversation: { mode: "guided" }, ledger: ledger.buildDesignerAiLedger({ values: nextValues, availability, conversationState: state, sourceContext: { changedKeys: ["event_primary_person_name", "event_secondary_person_name", "event_ceremony_date"] } }) };
 }
 
 test("a postponed location stays unresolved while Dress Code, RSVP and Gifts advance deterministically", () => {

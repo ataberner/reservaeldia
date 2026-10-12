@@ -102,10 +102,14 @@ de forma explícita en la sección 2; no deben inferirse desde los ejemplos.
   acotado, nunca como una pregunta libre: sólo se muestran cuando pertenecen al
   paso efectivo posterior a los cambios. `missing_year` pide sólo el año;
   `invalid_date` pide corregir la fecha y `missing_value` usa la pregunta del paso.
+  `missing_phase` pide elegir ceremonia o fiesta para el dato solicitado; no
+  autoriza elegir una fase ni mutar ese dato antes de aclararla. En modo guiado
+  sólo se muestra cuando corresponde al paso vigente.
   Datos válidos adelantados se aplican en el mismo lote. Una ambigüedad de un
   bloque posterior se conserva en sus resolutions y se pregunta al alcanzarlo;
-  no autoriza saltar los pendientes anteriores. El modo edición conserva la
-  respuesta libre al pedido explícito.
+  no autoriza saltar los pendientes anteriores. El modo edición responde al
+  pedido explícito con receipts y aclaraciones estructuradas del campo solicitado,
+  sin reiniciar el recorrido ni mostrar afirmaciones libres de guardado del modelo.
 - No debe enumerar innecesariamente todas sus capacidades ni descargar una lista
   extensa de pendientes. La conducción por defecto es progresiva: un primer
   pendiente, o una agrupación funcional breve cuando pedirla junta reduzca
@@ -212,6 +216,10 @@ mensajes, placeholders y contenido completado no participan de la decisión.
 - El asistente solo puede afirmar que una modificación se realizó cuando el
   runtime devolvió un resultado válido, la ejecución no falló y el borrador
   releído aporta evidencia del cambio.
+- La evidencia debe satisfacer el efecto solicitado, además de coincidir con
+  la configuración normalizada. Si un límite descarta una activación RSVP, no
+  se confirma ni se registra como decisión resuelta. Esta regla y el feedback
+  derivado de receipts se aplican también en modo edición.
 - Una propuesta del modelo, una action incluida en una respuesta o la apertura
   de un control local no prueban ejecución.
 - Si una ejecución fue parcial, la respuesta debe diferenciar lo reflejado de lo
@@ -221,12 +229,15 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   usa el lote P0 y no vuelve a ejecutar acciones confirmadas. Antes de aplicar,
   un error recuperable ofrece `Reintentar` con el pedido original; una nueva
   intención invalida el reintento anterior.
-- Para una o pocas acciones, se conserva una confirmación natural única. No se
-  antepone una lista que vuelva a repetirla. Los lotes de tres o más cambios,
-  fallos parciales y pedidos explícitos de resumen usan feedback estructurado;
-  la pregunta posterior se conserva sin repetir las confirmaciones.
+- Decisión aceptada por el usuario, 2026-10-09: el feedback habitual no repite
+  los valores no bancarios recién aportados, tampoco en lotes de tres o más
+  cambios. Continúa con la siguiente pregunta o usa un reconocimiento breve;
+  en edición puede decir «Listo, actualizado.». Un resumen solicitado o una
+  aclaración necesaria puede detallar valores. Los fallos parciales distinguen
+  lo guardado de lo fallido sin agregar ecos innecesarios. La evidencia interna
+  de ejecución y persistencia se conserva aunque no se enumere en el chat.
 - Al guardar datos bancarios aportados, la confirmación identifica cada campo
-  y su valor efectivo: por ejemplo, `Confirmado: CBU 123456.`. Incluye Alias,
+  y su valor efectivo: por ejemplo, `Alias: nuestro.casamiento configurado.`. Incluye Alias,
   Titular, Banco y CUIT cuando corresponda, conservando ceros iniciales y la
   normalización del owner. La aplicación compone este detalle desde el snapshot
   releído y receipts vigentes, efectivos, persistidos y sin error, también en
@@ -236,6 +247,12 @@ mensajes, placeholders y contenido completado no participan de la decisión.
   Cambiar sólo visibilidad, borrar o desactivar no acredita un nuevo valor.
   En lotes parciales detalla únicamente los datos guardados. Confirma el guardado
   en la invitación, no la validez bancaria ni la titularidad de la cuenta.
+  Por decisión aceptada del usuario del 2026-10-09, aportar un dato bancario
+  inequívoco autoriza su guardado sin panel de valores actuales ni confirmación
+  adicional. La confirmación se muestra en la conversación después de persistir.
+  Si falta un valor, se pide por chat; nunca se adopta un ejemplo de plantilla
+  ni se abre un panel para confirmarlo. La revisión de listas externas conserva
+  el alcance específico de la sección 8.3 del capability contract.
 - El nombre automático es un efecto secundario: no se vuelve a escribir si ya
   coincide ni se repite en el feedback normal. Un nombre explícito sí se informa;
   un fallo parcial conserva todos los receipts en su explicación, incluso los
@@ -671,12 +688,17 @@ la redacción accidental de un ejemplo.
 ### Dress Code desactivado o activado
 
 - Situación o mensaje del usuario: responde “no” a “¿Quieren incluir Dress
-  Code?”, o dice que no quiere mostrarlo; en otra variante responde que sí y
-  aporta “Elegante sport”.
+  Code? Si es así, ¿cuál?”, o dice que no quiere mostrarlo; en otra variante responde que sí y
+  aporta “Elegante sport”, o responde únicamente “Sí”.
 - Estado/evidencia disponible: existe binding de Dress Code.
 - Respuesta recomendada: en la negativa, desactivar y continuar sin otra
   pregunta; en la afirmativa, aplicar el texto y visibilidad y después continuar
-  con fotos aplicables.
+  con el siguiente bloque pendiente sin repetir ese texto. La pregunta inicial
+  agrupa inclusión y contenido por decisión aceptada del usuario del 2026-10-09.
+  Una respuesta como «Elegante sport» aporta ambas decisiones. Si sólo acepta incluirlo, preguntar
+  “¿Qué Dress Code quieren indicar?” y conservar visibilidad y contenido hasta
+  recibir el texto. Esa aclaración pendiente se conserva al recargar mediante
+  el ledger existente, conforme al capability contract.
 - Respuesta que debe evitarse: interpretar esa negativa como “lo dejamos para
   más adelante”, exigir texto, borrar el valor oculto o inventar un dress code.
   Una postergación explícita (“no sé todavía, lo decidimos después”) sí conserva
@@ -834,8 +856,9 @@ la redacción accidental de un ejemplo.
 - Situación o mensaje del usuario: cambia una hora inequívoca.
 - Estado/evidencia disponible: lote válido, owner ejecutado y snapshot releído
   con la nueva hora.
-- Respuesta recomendada: confirmar la hora efectiva, sin mencionar el type de la
-  action.
+- Respuesta recomendada: reconocer el cambio brevemente sin repetir el horario
+  ni mencionar el type de la action; detallar el valor sólo si se pide un resumen
+  o se necesita aclaración.
 - Respuesta que debe evitarse: una confirmación previa al reread o un reporte de
   IDs internos.
 - Regla protegida: evidencia real y abstracción del detalle técnico.
@@ -857,7 +880,8 @@ la redacción accidental de un ejemplo.
 
 - Situación o mensaje del usuario: corrige un horario ya resuelto.
 - Estado/evidencia disponible: target vigente y nueva instrucción inequívoca.
-- Respuesta recomendada: aplicar solo la corrección y confirmar el nuevo valor.
+- Respuesta recomendada: aplicar solo la corrección y reconocerla brevemente,
+  sin repetir el nuevo valor no bancario.
 - Respuesta que debe evitarse: preservar el valor anterior por confiar más en el
   historial que en la corrección.
 - Regla protegida: autoridad de la corrección explícita.

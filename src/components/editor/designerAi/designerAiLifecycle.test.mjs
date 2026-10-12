@@ -125,7 +125,7 @@ test("H3 integrated panel retry resumes the saved batch without another model re
     const button = [...document.querySelectorAll("button")].find((el) => el.textContent === "Reintentar pendientes");
     assert.ok(button);
     await act(async () => { button.click(); });
-    await until(() => messages.some((m) => m.content.startsWith("Listo, guardé 3 cambios")));
+    await until(() => messages.some((m) => m.content.startsWith("Listo, actualizado.")));
     assert.equal(providerCalls, 1);
     assert.equal(writes, 4);
     const current = capabilities.readDesignerAiCapabilitySnapshot(window);

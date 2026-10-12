@@ -26,7 +26,9 @@ for (const provenance of ["user_current_session", "existing_user_data", "templat
     const valid = ["user_current_session", "existing_user_data"].includes(provenance);
     assert.equal(validateDesignerAiResolutionUpdates([resolution(id, "keep_existing")], snapshot(id, provenance)).ok, valid);
     for (const primaryName of ["", "Nombre de la novia"]) {
-      assert.equal(validateDesignerAiResolutionUpdates([resolution(id, "keep_existing")], snapshot(id, provenance, { people: { primaryName } })).ok, false);
+      // A heuristic sample string does not override explicit positive provenance;
+      // inherited samples and empty values still cannot be retained as confirmed.
+      assert.equal(validateDesignerAiResolutionUpdates([resolution(id, "keep_existing")], snapshot(id, provenance, { people: { primaryName } })).ok, valid && Boolean(primaryName));
     }
   });
 }

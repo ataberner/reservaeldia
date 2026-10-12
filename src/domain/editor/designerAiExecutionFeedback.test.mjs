@@ -43,11 +43,12 @@ test("execution feedback never treats executed or optimistic effects as saved", 
 });
 
 test("feedback summarizes confirmed changes without exposing gift values that lack current evidence", () => {
-  assert.equal(withDesignerAiExecutionFeedback("Listo.", [enable]), "Listo. RSVP activado.");
+  assert.equal(withDesignerAiExecutionFeedback("Listo.", [enable]), "Listo, actualizado.");
   const results = [receipt("event.set_datetime", { phase: "ceremony", date: "2027-12-12", startTime: null, endTime: null }), enable,
     receipt("rsvp.set_question_active", { questionId: "dietary_notes", active: true })];
   const snapshot = { values: { rsvp: { questions: [{ id: "dietary_notes", label: "Restricciones alimentarias" }] } } };
-  const multi = buildDesignerAiExecutionFeedback(results, { snapshot });
+  assert.equal(buildDesignerAiExecutionFeedback(results, { snapshot }), "Listo, actualizado.");
+  const multi = buildDesignerAiExecutionFeedback(results, { snapshot, structured: true });
   assert.match(multi, /^Listo, guardé 3 cambios:/);
   assert.match(multi, /Fecha: 12 de diciembre/);
   assert.match(multi, /✓ RSVP activado/);
@@ -60,57 +61,75 @@ test("feedback summarizes confirmed changes without exposing gift values that la
   assert.doesNotMatch(buildDesignerAiExecutionFeedback([receipt("gifts.set_method", { method: "alias", value: "SYNTHETIC.PRIVATE", visible: true })]), /SYNTHETIC/);
 });
 
-test("feedback preserves a meaningful single-action answer and a multi-action follow-up question", () => {
-  assert.equal(withDesignerAiExecutionFeedback("Activé RSVP. ¿Qué pregunta querés agregar?", [enable]), "Activé RSVP. ¿Qué pregunta querés agregar?");
-  assert.match(withDesignerAiExecutionFeedback("¿Qué horario prefieren?", [enable, receipt("gifts.set_enabled", { enabled: false })]), /¿Qué horario prefieren\?$/);
+test("feedback is generated only from receipts, independently of model prose", () => {
+  assert.equal(withDesignerAiExecutionFeedback("Activé RSVP. ¿Qué pregunta querés agregar?", [enable]), "Listo, actualizado.");
+  assert.equal(withDesignerAiExecutionFeedback("El horario quedó guardado: 18:00.", []), "");
+  assert.equal(withDesignerAiExecutionFeedback("El horario quedó guardado: 18:00.", [receipt("event.set_datetime", { phase: "ceremony", date: null, startTime: "20:00", endTime: null })], { values: { eventMode: "single" } }), "Listo, actualizado.");
+  assert.equal(withDesignerAiExecutionFeedback("¿Qué horario prefieren?", [enable, receipt("gifts.set_enabled", { enabled: false })]), "Listo, actualizado.");
 });
 
 test("automatic name receipts stay internal and simple feedback is not duplicated", () => {
   const snapshot = { values: { eventMode: "single" }, conversation: { namePolicy: { mode: "automatic" } } };
   const results = [receipt("document.set_name", { name: "Casamiento Ana y Luz" }), receipt("event.set_dress_code", { enabled: true, value: "Cocktail" })];
   const message = "Listo, agregué Dress Code “Cocktail”. ¿Quieren confirmar asistencia?";
-  assert.equal(withDesignerAiExecutionFeedback(message, results, snapshot), message);
+  assert.equal(withDesignerAiExecutionFeedback(message, results, snapshot), "Listo, actualizado.");
   assert.equal(results.length, 2);
   assert.ok(results.every((r) => r.persisted && r.effective));
   assert.doesNotMatch(buildDesignerAiExecutionFeedback(results, { snapshot }), /Nombre de la invitación|2 cambios/);
   assert.match(buildDesignerAiExecutionFeedback(results, { snapshot, partial: true }), /Nombre de la invitación/);
   const date = receipt("event.set_datetime", { phase: "ceremony", date: "2026-12-24", startTime: "20:00" });
-  assert.match(buildDesignerAiExecutionFeedback([date], { snapshot }), /Evento · Fecha/);
+  assert.equal(buildDesignerAiExecutionFeedback([date], { snapshot }), "Listo, actualizado.");
   assert.doesNotMatch(buildDesignerAiExecutionFeedback([date], { snapshot }), /Ceremonia/);
 });
 
-test("explicit summaries and complex batches retain evidence without duplicate prose", () => {
+test("only explicit summaries expand successful batches without duplicate prose", () => {
   const results = [enable, receipt("event.set_dress_code", { enabled: true, value: "Cocktail" }), receipt("rsvp.set_question_active", { questionId: "dietary_notes", active: true })];
   const message = "Perfecto, activé RSVP y Dress Code. ¿Quieren regalos?";
-  const summary = withDesignerAiExecutionFeedback(message, results);
+  assert.equal(withDesignerAiExecutionFeedback(message, results), "Listo, actualizado.");
+  const summary = withDesignerAiExecutionFeedback(message, results, null, { userMessage: "Resumí los cambios" });
   assert.match(summary, /guardé 3 cambios/);
   assert.doesNotMatch(summary, /Perfecto, activé/);
-  assert.match(summary, /¿Quieren regalos\?/);
-  assert.match(withDesignerAiExecutionFeedback("Listo, actualicé los datos. El tamaño de letra se cambia desde el editor. ¿Quieren regalos?", results), /El tamaño de letra se cambia desde el editor/);
+  assert.doesNotMatch(summary, /¿Quieren regalos\?/);
+  assert.doesNotMatch(withDesignerAiExecutionFeedback("Listo, actualicé los datos. El tamaño de letra se cambia desde el editor. ¿Quieren regalos?", results), /El tamaño de letra/);
   assert.match(withDesignerAiExecutionFeedback("RSVP activado.", [enable], null, { userMessage: "¿Qué cambiaste?" }), /✓ RSVP activado/);
   assert.doesNotMatch(withDesignerAiExecutionFeedback("Activé RSVP.", [{ ...enable, persisted: false }]), /^Activé RSVP/);
 });
 
+test("ordinary acknowledgements omit nonbank values even in mixed batches and partial errors identify fields", () => {
+  const results = [receipt("event.set_people", { primaryName: "Persona Primera", secondaryName: "Persona Segunda" }),
+    receipt("event.set_datetime", { phase: "ceremony", date: "2027-12-12", startTime: "20:00", endTime: null }),
+    receipt("event.set_dress_code", { enabled: true, value: "Formal" })];
+  assert.equal(withDesignerAiExecutionFeedback("Confirmé Persona Primera y Formal.", results), "Listo, actualizado.");
+  const { snapshot, saved } = bankFixture("alias", "nuestro.casamiento");
+  assert.equal(withDesignerAiExecutionFeedback("Listo.", [...results, saved], snapshot), "Alias: nuestro.casamiento configurado.");
+  const partial = buildDesignerAiExecutionFeedback([...results, { ...enable, persisted: false }], { partial: true });
+  assert.match(partial, /Nombres actualizados/);
+  assert.match(partial, /Fecha actualizada.*Horario de inicio actualizado/);
+  assert.match(partial, /Dress Code actualizado/);
+  assert.match(partial, /⚠.*RSVP/);
+  assert.doesNotMatch(partial, /Persona Primera|Persona Segunda|20:00|Formal|12 de diciembre/);
+});
+
 test("bank confirmation names the field and exact saved value, including leading zeros and owner normalization", () => {
-  for (const [method, input, expected] of [["cbu", "123456", "CBU 123456"], ["cbu", "  00123456  ", "CBU 00123456"],
-    ["alias", "BODA.PRUEBA", "Alias BODA.PRUEBA"], ["holder", " Ana   Prueba ", "Titular Ana Prueba"],
-    ["bank", "Banco de Prueba", "Banco Banco de Prueba"], ["cuit", "CUIT-PRUEBA", "CUIT CUIT-PRUEBA"]]) {
+  for (const [method, input, expected] of [["cbu", "123456", "CBU: 123456"], ["cbu", "  00123456  ", "CBU: 00123456"],
+    ["alias", "nuestro.casamiento", "Alias: nuestro.casamiento"], ["holder", " Ana   Prueba ", "Titular: Ana Prueba"],
+    ["bank", "Banco de Prueba", "Banco: Banco de Prueba"], ["cuit", "CUIT-PRUEBA", "CUIT: CUIT-PRUEBA"]]) {
     const { snapshot, saved } = bankFixture(method, input);
-    assert.equal(buildDesignerAiExecutionFeedback([saved], { snapshot }), `Confirmado: ${expected}.`);
-    assert.equal(withDesignerAiExecutionFeedback("Listo.", [saved], snapshot), `Confirmado: ${expected}.`);
+    assert.equal(buildDesignerAiExecutionFeedback([saved], { snapshot }), `${expected} configurado.`);
+    assert.equal(withDesignerAiExecutionFeedback("Listo.", [saved], snapshot), `${expected} configurado.`);
   }
 });
 
-test("editing replaces a generic or model-written bank acknowledgement and retains the follow-up once", () => {
+test("editing replaces model-written bank acknowledgement with verified values only", () => {
   const { snapshot, saved } = bankFixture();
   for (const message of ["Guardado. ¿Querés cambiar la foto?", "Confirmado: CBU 999999. ¿Querés cambiar la foto?",
     "El CBU quedó guardado. ¿Querés cambiar la foto?", "Listo, actualicé los datos. ¿Querés cambiar la foto?",
     "Ya guardé el CBU 999999. ¿Querés cambiar la foto?", "Te guardé el CBU 999999. ¿Querés cambiar la foto?",
     "Dejé el CBU 999999 configurado. ¿Querés cambiar la foto?", "CBU: 999999. ¿Querés cambiar la foto?"]) {
-    assert.equal(withDesignerAiExecutionFeedback(message, [saved], snapshot), "Confirmado: CBU 123456.\n\n¿Querés cambiar la foto?");
+    assert.equal(withDesignerAiExecutionFeedback(message, [saved], snapshot), "CBU: 123456 configurado.");
   }
   assert.equal(withDesignerAiExecutionFeedback("Listo. El banco no se puede validar desde acá. ¿Querés cambiar la foto?", [saved], snapshot),
-    "Confirmado: CBU 123456.\n\nEl banco no se puede validar desde acá. ¿Querés cambiar la foto?");
+    "CBU: 123456 configurado.");
 });
 
 test("bank details require a current successful receipt and a visible enabled field with supplied data", () => {
@@ -140,7 +159,7 @@ test("partial feedback details only saved bank receipts and never attributes fai
   const { snapshot, saved } = bankFixture();
   const failed = receipt("gifts.set_method", { method: "alias", value: "ALIAS.NO.GUARDADO", visible: true }, { persisted: false, error: "synthetic-failure" });
   const text = buildDesignerAiExecutionFeedback([saved, failed], { snapshot, partial: true });
-  assert.match(text, /✓ CBU 123456/);
+  assert.match(text, /✓ CBU: 123456 configurado/);
   assert.doesNotMatch(text, /ALIAS.NO.GUARDADO/);
   assert.match(text, /⚠/);
   const previous = bankFixture("cbu", "00001111").saved;

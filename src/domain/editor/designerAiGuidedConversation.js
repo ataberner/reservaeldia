@@ -54,9 +54,18 @@ export function resolveDesignerAiGalleryHelp({ result, snapshot, decision = {}, 
 
 // The ledger chooses both the block and the concrete datum. This adapter owns
 // only its wording; neither model prose nor template text can choose a question.
-export function buildDesignerAiGuidedQuestion(snapshot, { clarification } = {}) {
-  const step = buildDesignerAiConversationBrief(snapshot).nextStep;
+function buildMissingPhaseQuestion(snapshot, clarification) {
+  const event = /^event\.(ceremony|party)\.(date|start_time|end_time|venue_name|address|place_selection)$/.exec(clarification?.leafId || "");
+  if (!event || clarification.kind !== "missing_phase" || snapshot.values.eventMode !== "ceremony_party") return "";
+  const field = { date: "la fecha", start_time: "el horario de inicio", end_time: "el horario de fin",
+    venue_name: "el nombre del lugar", address: "la dirección", place_selection: "la ubicación" }[event[2]];
+  return `¿Querés cambiar ${field} de la ceremonia o de la fiesta? Indicame también el nuevo dato.`;
+}
+
+export function buildDesignerAiGuidedQuestion(snapshot, { clarification, step = buildDesignerAiConversationBrief(snapshot).nextStep } = {}) {
   if (!step) return "";
+  const phaseQuestion = step.leafIds.includes(clarification?.leafId) && buildMissingPhaseQuestion(snapshot, clarification);
+  if (phaseQuestion) return phaseQuestion;
   const label = getDesignerAiLocationPhaseLabel(step.phase, snapshot.values.eventMode);
   const event = label === "evento" ? "el evento" : `la ${label}`;
   const eventOwner = label === "evento" ? "del evento" : `de la ${label}`;
@@ -76,7 +85,7 @@ export function buildDesignerAiGuidedQuestion(snapshot, { clarification } = {}) 
     case "location_method": return "¿Querés buscar el lugar en Google Maps o cargar la dirección manualmente?";
     case "address": return `¿Cuál es la dirección ${eventOwner}?`;
     case "place_selection": return "¿Querés verificar la ubicación en Google Maps o conservar los datos manuales?";
-    case "dress_code_enabled": return "¿Quieren incluir Dress Code?";
+    case "dress_code_enabled": return "¿Quieren incluir Dress Code? Si es así, ¿cuál?";
     case "dress_code_value": return "¿Qué Dress Code quieren indicar?";
     case "rsvp_enabled": return "¿Quieren que los invitados confirmen asistencia desde la invitación?";
     case "gift_bank_details": return "Pasame los datos bancarios que quieran mostrar. Con un alias alcanza.";
@@ -153,7 +162,32 @@ export function buildDesignerAiScopeNotice(result) {
     ? "Para esos ajustes, usá los controles del editor. Desde acá puedo ayudarte con los datos y las funciones disponibles de la invitación." : "";
 }
 
-export function withDesignerAiGuidedContinuation(message, { previousSnapshot, snapshot, result, verifiedContinuation = false, entryMode = "continuation", executionFeedback = "", trustedAcknowledgement = "", userMessage = "" } = {}) {
+function buildEditingClarification(snapshot, result) {
+  const clarification = result?.clarification;
+  const leaf = snapshot.ledger.leaves.find((item) => item.id === clarification?.leafId);
+  if (!leaf || !["pending", "needs_clarification"].includes(leaf.status)) return "";
+  const event = /^event\.(ceremony|party)\.(date|start_time|end_time|venue_name|address|place_selection)$/.exec(leaf.id);
+  const phaseQuestion = buildMissingPhaseQuestion(snapshot, clarification);
+  if (phaseQuestion) return phaseQuestion;
+  if (event?.[2] === "end_time") {
+    const phase = getDesignerAiLocationPhaseLabel(event[1], snapshot.values.eventMode);
+    return `¿A qué hora termina ${phase === "evento" ? "el evento" : `la ${phase}`}?`;
+  }
+  if (["event.people.primary_name", "event.people.secondary_name"].includes(leaf.id)) {
+    return `¿Cuál es el nombre de la ${leaf.id === "event.people.primary_name" ? "primera" : "segunda"} persona que se casa?`;
+  }
+  const kind = event?.[2] || ({
+    "event.mode": "event_structure",
+    "event.dress_code.enabled": "dress_code_enabled", "event.dress_code.value": "dress_code_value",
+    "rsvp.enabled": "rsvp_enabled", "gifts.enabled": "gifts_choice",
+    "gifts.bank_details": "gift_bank_details", "gifts.external_list": "gift_external_list",
+  })[leaf.id] || (/^gifts\.method\..+\.value$/.test(leaf.id) ? "gift_method_values" : "");
+  if (!kind) return "Necesito que me indiques el dato que querés cambiar y su nuevo valor.";
+  return buildDesignerAiGuidedQuestion(snapshot, { clarification,
+    step: { kind, phase: event?.[1], leafIds: [leaf.id] } });
+}
+
+export function withDesignerAiGuidedContinuation(message, { previousSnapshot, snapshot, result, verifiedContinuation = false, entryMode = "continuation", executionFeedback = "", trustedAcknowledgement = "", trustedClarification = "", userMessage = "" } = {}) {
   // An entry response is a safe greeting supplied by the backend. The ledger,
   // not the model or old chat history, chooses the first pending question. This
   // branch is only used for the panel's automatic entry request, never for a
@@ -167,11 +201,10 @@ export function withDesignerAiGuidedContinuation(message, { previousSnapshot, sn
     return [resolveDesignerAiEntryGreeting(result), buildDesignerAiGuidedQuestion(snapshot)].filter(Boolean).join(" ");
   }
   const editing = previousSnapshot?.conversation?.mode === "editing";
-  if (editing && !verifiedContinuation) return message;
   const deferred = result?.resolutions?.some((resolution) => resolution.status === "deferred_by_user" &&
     snapshot.ledger.leaves.some((leaf) => leaf.id === resolution.leafId && leaf.status === "deferred_by_user"));
   const acknowledgement = [...new Set([executionFeedback, trustedAcknowledgement].filter(Boolean))].join(" ") ||
-    (verifiedContinuation ? "Listo." : deferred ? "Lo dejamos para más adelante." : "");
+    (verifiedContinuation ? "Listo, actualizado." : deferred ? "Lo dejamos para más adelante." : "");
   const notice = buildDesignerAiScopeNotice(result);
   const controlCopy = {
     google_place_picker: "Buscá y seleccioná el lugar en Google Maps desde este panel.",
@@ -180,9 +213,13 @@ export function withDesignerAiGuidedContinuation(message, { previousSnapshot, sn
   }[result?.controlRequest?.type];
   // Never concatenate model prose with a local question: punctuation and intent
   // labels cannot prove what that prose asks or whether its claimed change saved.
-  const question = editing ? "" : controlCopy || buildReactiveEndTimeQuestion(snapshot, result, userMessage) ||
-    buildDesignerAiGuidedQuestion(snapshot, { clarification: result?.clarification });
-  return [acknowledgement, notice, question].filter(Boolean).join(" ") || "Sigamos ajustando tu invitación.";
+  // Only local control decisions can supply this override. It is not part of
+  // the provider result and never grants a write or confirmation receipt.
+  const question = trustedClarification || (editing ? (verifiedContinuation ? "" : controlCopy || buildEditingClarification(snapshot, result))
+    : controlCopy || buildReactiveEndTimeQuestion(snapshot, result, userMessage) ||
+    buildDesignerAiGuidedQuestion(snapshot, { clarification: result?.clarification }));
+  return [acknowledgement, notice, question].filter(Boolean).join(" ") ||
+    (editing ? "¿Qué dato querés ajustar y qué valor querés usar?" : "Sigamos ajustando tu invitación.");
 }
 
 export function buildDesignerAiCompletionMessage(snapshot) {

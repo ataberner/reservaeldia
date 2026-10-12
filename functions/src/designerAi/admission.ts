@@ -15,7 +15,7 @@ export type DesignerAiAdmissionReason =
   | "invalid_request" | "request_expired" | "disabled" | "configuration_invalid"
   | "draft_unavailable" | "minute_quota" | "daily_quota" | "concurrent_request"
   | "global_budget" | "duplicate_active" | "duplicate_completed" | "duplicate_unknown"
-  | "request_conflict" | "reservation_invalid" | "accounting_unavailable";
+  | "request_conflict" | "reservation_invalid" | "accounting_unavailable" | "client_update_required";
 
 const ERROR_PRESENTATIONS: Record<DesignerAiAdmissionReason, {
   code: ConstructorParameters<typeof HttpsError>[0]; message: string; retryable: boolean;
@@ -38,6 +38,7 @@ const ERROR_PRESENTATIONS: Record<DesignerAiAdmissionReason, {
   request_conflict: { code: "invalid-argument", message: "El identificador de la solicitud ya fue utilizado.", retryable: false },
   reservation_invalid: { code: "failed-precondition", message: "La solicitud del asistente ya no está activa.", retryable: false },
   accounting_unavailable: { code: "unavailable", message: "No pudimos verificar el uso del asistente. Intentá de nuevo más tarde.", retryable: true },
+  client_update_required: { code: "failed-precondition", message: "Actualizamos tu asistente. Recargá la página para continuar; tu mensaje sigue disponible.", retryable: false },
 };
 
 export class DesignerAiAdmissionError extends HttpsError {

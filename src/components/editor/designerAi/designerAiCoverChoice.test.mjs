@@ -152,8 +152,8 @@ test("cover offers retain verified receipts and scope notices; deferral keeps it
   try {
     await run.until(() => run.messages().length === 1);
     await run.send("Activá regalos con el alias ALIAS.PRUEBA y cambiá todos los colores.");
-    assert.match(run.messages().at(-1).content, /Regalos activados/);
-    assert.match(run.messages().at(-1).content, /Alias ALIAS\.PRUEBA/);
+    assert.doesNotMatch(run.messages().at(-1).content, /Regalos activados/);
+    assert.match(run.messages().at(-1).content, /Alias: ALIAS\.PRUEBA configurado/);
     assert.match(run.messages().at(-1).content, /controles del editor/);
     assert.match(run.messages().at(-1).content, /cambiar la foto de portada actual/);
     assert.doesNotMatch(run.messages().at(-1).content, /cambié todos los colores|Qué foto quieren/);
@@ -162,7 +162,7 @@ test("cover offers retain verified receipts and scope notices; deferral keeps it
     const persisted = capabilities.buildDesignerAiCapabilitySnapshot({ renderSnapshot: run.exportPersistedDraft().render });
     assert.equal(persisted.values.gifts.methods.alias.value, "ALIAS.NUEVO");
     assert.equal(run.exportPersistedDraft().coverImage, savedDraft.coverImage);
-    assert.match(run.messages().at(-1).content, /Alias ALIAS\.NUEVO/);
+    assert.match(run.messages().at(-1).content, /Alias: ALIAS\.NUEVO configurado/);
     assert.match(run.messages().at(-1).content, /Conservamos la portada actual/);
     assert.match(run.messages().at(-1).content, /cambiar las fotos de las galerías/);
     assert.doesNotMatch(run.messages().at(-1).content, /Qué datos bancarios/);

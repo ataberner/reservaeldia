@@ -5,7 +5,7 @@ import { functions } from "@/firebase";
 import MiniToolbarTabImagen from "@/components/MiniToolbarTabImagen";
 import DesignerAiLocationControl from "@/components/editor/designerAi/DesignerAiLocationControl";
 import DesignerAiGiftConfirmation from "@/components/editor/designerAi/DesignerAiGiftConfirmation";
-import { createDesignerAiGiftProposal, approveDesignerAiGiftProposal, discardDesignerAiGiftProposal, isDesignerAiGiftProposalCurrent } from "@/domain/editor/designerAiGiftApproval";
+import { createDesignerAiGiftProposal, approveDesignerAiGiftProposal, discardDesignerAiGiftProposal, isDesignerAiGiftProposalCurrent, resolveDesignerAiBankInput } from "@/domain/editor/designerAiGiftApproval";
 import { readEditorRenderSnapshot } from "@/lib/editorSnapshotAdapter";
 import {
   DESIGNER_AI_ACTION_ORIGINS,
@@ -574,6 +574,7 @@ export default function DesignerAiPanel({
     setLiveMessage(initialProgress);
 
     let result = resume?.result || null;
+    let pendingBankActions = resume?.pendingBankActions || [];
     let execution = null;
     let executionStarted = false;
     let outcome = "error";
@@ -615,6 +616,18 @@ export default function DesignerAiPanel({
       const currentSnapshot = readSnapshot();
       if (currentSnapshot.revision !== initialSnapshot.revision) throw Object.assign(new Error("El borrador cambió."), { code: "designer-ai/stale-snapshot" });
       previousSnapshot = resume?.previousSnapshot || currentSnapshot;
+      // Keep missing bank requests with this recoverable batch, outside the
+      // provider result. Re-evaluate them against current evidence on retry;
+      // filtered actions are never added back to the executable batch.
+      const bankActions = [...result.actions, ...pendingBankActions];
+      const bankInput = resolveDesignerAiBankInput({ actions: bankActions, snapshot: currentSnapshot,
+        conversationState: conversationStateRef.current, recovery: resume?.recovery });
+      pendingBankActions = bankInput.missingMethods.map(method => bankActions.find(action =>
+        action.type === "gifts.set_method" && action.arguments.method === method &&
+        action.arguments.value === null && action.arguments.visible));
+      if (!resume && bankInput.blockedMethods.length) result = { ...result, actions: bankInput.actions,
+        resolutions: result.resolutions.filter(resolution => !bankInput.blockedMethods.some(method =>
+          resolution.leafId.startsWith(`gifts.method.${method}.`))) };
       const remainingActions = resume ? resume.recovery.actionResults.filter((r) => !r.effective).map((r) => r.action) : result.actions;
       const actionValidation = validateDesignerAiActionBatch(remainingActions, { origin: DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot: currentSnapshot });
       const controlValidation = validateDesignerAiControlRequest(result.controlRequest, currentSnapshot, { actions: remainingActions });
@@ -705,11 +718,11 @@ export default function DesignerAiPanel({
       }
       const coverHelp = resolveDesignerAiCoverHelp({ result, snapshot: finalSnapshot,
         decision: journeyRef.current.coverHelp, userReply: resume?.controlUserReply ?? controlUserReply });
-      journeyRef.current.coverHelp = coverHelp.decision;
+      if (!bankInput.clarification) journeyRef.current.coverHelp = coverHelp.decision;
       const galleryHelp = resolveDesignerAiGalleryHelp({ result: { ...result, controlRequest: coverHelp.controlRequest }, snapshot: finalSnapshot,
         decision: journeyRef.current.galleryHelp, userReply: resume?.controlUserReply ?? controlUserReply });
-      journeyRef.current.galleryHelp = galleryHelp.decision;
-      const proposedControlRequest = coverHelp.offer ? null : galleryHelp.controlRequest || null;
+      if (!bankInput.clarification) journeyRef.current.galleryHelp = galleryHelp.decision;
+      const proposedControlRequest = bankInput.clarification || coverHelp.offer ? null : galleryHelp.controlRequest || null;
       // Automatic continuation cannot reinterpret a Maps choice or open a
       // picker ahead of the fresh step. Explicit human requests remain reactive.
       const controlRequest = finalSnapshot.conversation.mode !== "editing" &&
@@ -724,7 +737,7 @@ export default function DesignerAiPanel({
       setLocationDecisions(
         controlState ? [] : resolveDesignerAiLocationDecisions(continuationResult, finalSnapshot)
       );
-      const helpQuestion = coverHelp.offer ? DESIGNER_AI_COVER_HELP_QUESTION : galleryHelp.offer ? DESIGNER_AI_GALLERY_HELP_QUESTION : "";
+      const helpQuestion = bankInput.clarification ? "" : coverHelp.offer ? DESIGNER_AI_COVER_HELP_QUESTION : galleryHelp.offer ? DESIGNER_AI_GALLERY_HELP_QUESTION : "";
       const helpNotice = coverHelp.deferred ? DESIGNER_AI_COVER_HELP_LATER : galleryHelp.deferred ? DESIGNER_AI_GALLERY_HELP_LATER : "";
       const executionFeedback = buildDesignerAiExecutionFeedback(actionResults, { snapshot: finalSnapshot })
         ? withDesignerAiExecutionFeedback("Listo.", actionResults, finalSnapshot, { userMessage: message }) : "";
@@ -735,20 +748,21 @@ export default function DesignerAiPanel({
           withDesignerAiExecutionFeedback(helpNotice || result.assistantMessage, actionResults, finalSnapshot, { userMessage: message }),
           { previousSnapshot: currentSnapshot, snapshot: finalSnapshot, result: continuationResult, verifiedContinuation,
             executionFeedback, trustedAcknowledgement: helpNotice || (verifiedContinuation ? "El cambio quedó guardado." : ""),
+            trustedClarification: bankInput.clarification,
             userMessage: message,
             entryMode: message === AUTO_START_MESSAGE ? entryMode : "continuation" }
         );
       setMessages((current) => {
         const next = appendDesignerAiMessageHistory(current, createMessage("assistant", assistantMessage, {
           intent: result.intent,
-          ...(!controlState && (!helpQuestion || helpQuestion === buildDesignerAiGuidedQuestion(finalSnapshot))
+          ...(!bankInput.clarification && !controlState && (!helpQuestion || helpQuestion === buildDesignerAiGuidedQuestion(finalSnapshot))
             ? guidedPresentationEvidence(finalSnapshot, result.clarification) : {}),
         }));
         messagesRef.current = next;
         return next;
       });
       setLiveMessage(assistantMessage);
-      publishGuidedCompletion(finalSnapshot);
+      if (!bankInput.clarification) publishGuidedCompletion(finalSnapshot);
       outcome = "success";
     } catch (error) {
       if (!operation.isCurrent() || sessionKeyRef.current !== requestSessionKey) return;
@@ -760,7 +774,7 @@ export default function DesignerAiPanel({
         error.actionResults = execution.actionResults;
         error.recovery = execution.recovery;
       }
-      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation, previousSnapshot,
+      recoveryRef.current = error.recovery ? { result, recovery: error.recovery, operation, previousSnapshot, pendingBankActions,
         controlUserReply: resume?.controlUserReply ?? controlUserReply } : null;
       if (error.actionResults?.length) {
         const partialState = reconcileDesignerAiConversationState({

@@ -192,8 +192,18 @@ export function resolveEventTimesFromAuthoring({
 } = {}) {
   const safeDefaults = asObject(defaults);
   const safeFeature = normalizeEventDetailFeature(feature);
-  const startKey = getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, safeFeature);
-  const endKey = getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME, safeFeature);
+  const fields = collectEventTimeFields(fieldsSchema).filter(
+    (field) => resolveEventTimeFieldFeature(field) === safeFeature
+  );
+  const fieldKey = (role) => normalizeText(fields.find(
+    (field) => normalizeEventTimeRole(field.eventDetailsRole) === role
+  )?.key);
+  const fieldKeys = {
+    startTime: fieldKey(EVENT_TIME_ROLES.START_TIME),
+    endTime: fieldKey(EVENT_TIME_ROLES.END_TIME),
+  };
+  const startKey = fieldKeys.startTime || getEventTimeFieldKey(EVENT_TIME_ROLES.START_TIME, safeFeature);
+  const endKey = fieldKeys.endTime || getEventTimeFieldKey(EVENT_TIME_ROLES.END_TIME, safeFeature);
   const hasStartValue = Object.prototype.hasOwnProperty.call(safeDefaults, startKey);
 
   return {
@@ -201,9 +211,8 @@ export function resolveEventTimesFromAuthoring({
       ? normalizeEventTimeValue(safeDefaults[startKey])
       : normalizeEventTimeValue(fallbackStartTime),
     endTime: normalizeEventTimeValue(safeDefaults[endKey]),
-    fields: collectEventTimeFields(fieldsSchema).filter(
-      (field) => resolveEventTimeFieldFeature(field) === safeFeature
-    ),
+    fields,
+    fieldKeys,
   };
 }
 

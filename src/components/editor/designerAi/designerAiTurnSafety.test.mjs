@@ -68,7 +68,7 @@ test("double submit is ignored while a turn runs; typed next intent survives and
     await type("Mi próxima intención privada"); await submit(); await submit();
     assert.equal(run.calls.length, 2);
     release({ assistantMessage: "Listo.", intent: "apply", actions: [{ type: "rsvp.set_enabled", arguments: { enabled: true } }] });
-    await run.until(() => run.messages().some(m => m.content.startsWith("Listo.")));
+    await run.until(() => run.messages().some(m => m.content.startsWith("Listo, actualizado.")));
     assert.equal(run.writes.length, 1);
     assert.equal(document.querySelector("textarea").value, "Mi próxima intención privada");
     assert.equal(events.length, 1);

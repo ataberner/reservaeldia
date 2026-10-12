@@ -528,6 +528,28 @@ test("template changedKeys provide evidence for existing user data", () => {
   assert.equal(ledger.leaves.find((leaf) => leaf.id === "event.people.secondary_name").status, "pending");
 });
 
+test("a verified saved venue matching a sample heuristic stays resolved after reload", () => {
+  const values = { ...fixture().values, ceremony: { ...fixture().values.ceremony, venueName: "Bodega Borgoña" } };
+  const initial = snapshotFor(build({ values }), values);
+  const leafId = "event.ceremony.venue_name";
+  assert.equal(initial.ledger.leaves.find((leaf) => leaf.id === leafId).status, "pending");
+  const action = { type: "event.set_location_text", arguments: { phase: "ceremony", venueName: "Bodega Borgoña", address: values.ceremony.address } };
+  const receipt = { action, executed: true, effective: true, persisted: true,
+    evidence: captureDesignerAiActionEvidence(action, initial) };
+  const state = reconcileDesignerAiConversationState({ snapshot: initial, actionResults: [receipt] });
+  const reloaded = build({ values, conversationState: JSON.parse(JSON.stringify(state)) });
+  assert.equal(reloaded.leaves.find((leaf) => leaf.id === leafId).status, "resolved_from_user");
+  assert.equal(reloaded.leaves.find((leaf) => leaf.id === leafId).provenance, "user_current_session");
+  for (const invalid of [ { ...receipt, persisted: false }, { ...receipt, effective: false },
+    { ...receipt, evidence: { ...receipt.evidence, leaves: [] } } ]) {
+    const unconfirmed = reconcileDesignerAiConversationState({ snapshot: initial, actionResults: [invalid] });
+    assert.notEqual(build({ values, conversationState: unconfirmed }).leaves.find((leaf) => leaf.id === leafId).status, "resolved_from_user");
+  }
+  const changed = build({ values: { ...values, ceremony: { ...values.ceremony, venueName: "Salón de ejemplo" } }, conversationState: state,
+    sourceContext: { templateDerived: true, changedKeysAuthoritative: true, changedKeys: [], authoringFieldKeys: ["event_ceremony_venue_name"] } });
+  assert.equal(changed.leaves.find((leaf) => leaf.id === leafId).status, "pending");
+});
+
 test("entry baseline preserves proven names on reentry without repeating source metadata", () => {
   const initial = build({ sourceContext: { templateDerived: true,
     changedKeys: ["event_primary_person_name", "event_secondary_person_name"] } });
@@ -830,6 +852,98 @@ test("guided priority is names, structure, data, Dress Code, RSVP, Gifts, cover 
   const mediaBrief = buildDesignerAiConversationBrief({ ledger: coverDone });
   assert.equal(mediaBrief.nextBlock.id, "galleries");
   assert.deepEqual(mediaBrief.nextBlock.leafIds, ["media.gallery.gallery-1.guided_completion"]);
+});
+
+function dressCodeSnapshot({ values = fixture().values, state = {}, available = true, changedKeys = [] } = {}) {
+  const availability = Object.fromEntries(Object.keys(fixture().availability)
+    .map((key) => [key, key === "rsvp" || (key === "dressCode" && available)]));
+  return { values, availability, documentIdentity: "draft:dress-choice", conversation: { mode: "guided" },
+    ledger: buildDesignerAiLedger({ values, availability, conversationState: state,
+      sourceContext: { templateDerived: true, changedKeys } }) };
+}
+
+const dressTextRequest = { leafId: "event.dress_code.value", status: "needs_clarification", rule: null };
+const dressLeaf = (snapshot, suffix) => snapshot.ledger.leaves.find((leaf) => leaf.id === `event.dress_code.${suffix}`);
+const dressStep = (snapshot) => buildDesignerAiConversationBrief(snapshot).nextStep?.kind;
+
+test("a Dress Code text request survives reload without enabling or confirming inherited text", () => {
+  for (const enabled of [false, true]) {
+    for (const changedKeys of [[], ["event_dress_code"]]) {
+      const values = { ...fixture().values, dressCode: { enabled, value: "Elegante sport" } };
+      const before = dressCodeSnapshot({ values, changedKeys });
+      assert.equal(dressStep(before), "dress_code_enabled");
+      const state = reconcileDesignerAiConversationState({ snapshot: before,
+        previousState: {}, resolutions: [dressTextRequest] });
+      const restored = dressCodeSnapshot({ values, changedKeys, state: JSON.parse(JSON.stringify(state)) });
+      assert.equal(dressStep(restored), "dress_code_value");
+      assert.deepEqual(restored.values.dressCode, before.values.dressCode);
+      assert.equal(dressLeaf(restored, "enabled").status, "pending");
+      assert.equal(dressLeaf(restored, "value").status, "needs_clarification");
+      assert.ok(restored.ledger.completion.unresolvedLeafIds.includes("event.dress_code.enabled"));
+      assert.deepEqual(restored.ledger.guidedFlow.leafIds.filter((id) => id.startsWith("event.dress_code.")), ["event.dress_code.value"]);
+    }
+  }
+});
+
+test("only current explicit Dress Code requests replace the visibility question", () => {
+  const before = dressCodeSnapshot();
+  const state = reconcileDesignerAiConversationState({ snapshot: before,
+    previousState: {}, resolutions: [dressTextRequest] });
+  for (const patch of [{ fingerprint: "stale" }, { provenance: "unknown" }, { provenance: "template_value" }, { rule: "keep_existing" }]) {
+    const invalid = { ...state, resolutions: state.resolutions.map((entry) => entry.leafId === dressTextRequest.leafId ? { ...entry, ...patch } : entry) };
+    assert.equal(dressStep(dressCodeSnapshot({ state: invalid })), "dress_code_enabled", JSON.stringify(patch));
+  }
+  const manuallyEdited = { ...before.values, dressCode: { ...before.values.dressCode, value: "Cocktail" } };
+  assert.equal(dressStep(dressCodeSnapshot({ values: manuallyEdited, state })), "dress_code_enabled");
+  assert.equal(dressStep(dressCodeSnapshot({ state, available: false })), "rsvp_enabled");
+  const disabledState = { ...state, resolutions: [...state.resolutions,
+    { leafId: "event.dress_code.enabled", status: "resolved_from_user", provenance: "user_current_session", rule: null,
+      fingerprint: dressLeaf(before, "enabled").fingerprint }] };
+  const disabled = dressCodeSnapshot({ state: disabledState });
+  assert.equal(dressLeaf(disabled, "value").status, "not_applicable_by_dependency");
+  assert.equal(dressStep(disabled), "rsvp_enabled", "confirmed disabling outranks a text request with the same fingerprint");
+});
+
+test("deferring the requested Dress Code text preserves the choice and both unresolved facts", () => {
+  const before = dressCodeSnapshot();
+  const chosen = reconcileDesignerAiConversationState({ snapshot: before,
+    previousState: {}, resolutions: [dressTextRequest] });
+  const pending = dressCodeSnapshot({ state: chosen });
+  const deferredState = reconcileDesignerAiConversationState({ snapshot: pending,
+    previousState: chosen, resolutions: [{ ...dressTextRequest, status: "deferred_by_user" }] });
+  const deferred = dressCodeSnapshot({ state: JSON.parse(JSON.stringify(deferredState)) });
+  assert.equal(dressStep(deferred), "rsvp_enabled");
+  assert.deepEqual(deferred.values.dressCode, before.values.dressCode);
+  assert.equal(dressLeaf(deferred, "enabled").status, "pending");
+  assert.equal(dressLeaf(deferred, "value").status, "deferred_by_user");
+  assert.deepEqual(buildDesignerAiConversationBrief(deferred).deferredLeafIds, ["event.dress_code.value"]);
+  const resumedState = reconcileDesignerAiConversationState({ snapshot: deferred,
+    previousState: deferredState, resolutions: [dressTextRequest] });
+  assert.equal(dressStep(dressCodeSnapshot({ state: resumedState })), "dress_code_value");
+});
+
+test("saved Dress Code actions supersede the pending text choice; failed writes do not confirm it", () => {
+  const before = dressCodeSnapshot();
+  const chosen = reconcileDesignerAiConversationState({ snapshot: before,
+    previousState: {}, resolutions: [dressTextRequest] });
+  for (const enabled of [false, true]) {
+    const action = { type: "event.set_dress_code", arguments: { enabled, value: enabled ? "Cocktail" : before.values.dressCode.value } };
+    const values = projectDesignerAiValues(before, [action]);
+    const reflected = dressCodeSnapshot({ values, state: chosen });
+    const receipt = { action, executed: true, effective: true, persisted: true,
+      evidence: captureDesignerAiActionEvidence(action, reflected) };
+    const state = reconcileDesignerAiConversationState({ snapshot: reflected, previousState: chosen,
+      actionResults: [receipt] });
+    const saved = dressCodeSnapshot({ values, state: JSON.parse(JSON.stringify(state)) });
+    assert.equal(dressStep(saved), "rsvp_enabled");
+    assert.equal(dressLeaf(saved, "enabled").status, "resolved_from_user");
+    assert.equal(dressLeaf(saved, "value").status, enabled ? "resolved_from_user" : "not_applicable_by_dependency");
+    const failedState = reconcileDesignerAiConversationState({ snapshot: reflected, previousState: chosen,
+      actionResults: [{ ...receipt, persisted: false, error: "synthetic-failure" }] });
+    const failed = dressCodeSnapshot({ values, state: failedState });
+    assert.notEqual(dressStep(failed), "rsvp_enabled", "a failed write cannot advance the Dress Code block");
+    assert.notEqual(dressLeaf(failed, "enabled").status, "resolved_from_user");
+  }
 });
 
 test("single mode never adds party data to guided flow", () => {
@@ -1139,6 +1253,8 @@ function buildCeremonyPartyLocationProgress({
     terminalResolution(byId.get("event.mode")),
     terminalResolution(byId.get("event.people.primary_name")),
     terminalResolution(byId.get("event.people.secondary_name")),
+    terminalResolution(byId.get("event.ceremony.date")),
+    terminalResolution(byId.get("event.party.date")),
     {
       ...terminalResolution(byId.get("event.ceremony.end_time"), DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE),
       rule: DESIGNER_AI_RESOLUTION_RULES.OPTIONAL_END_TIME_OMITTED,

@@ -197,7 +197,9 @@ function validResolutionValue(id, value) {
   if (id === "event.mode") return ["single", "ceremony_party"].includes(value);
   if (id === "media.cover" || id.endsWith(".place_selection") || id.includes(".slot.") || id === "gifts.method.giftListLink.value") return value === true;
   if (typeof value === "boolean") return true; // Explicit false is a valid decision.
-  return hasMeaningfulValue(value) && !isLikelyPlaceholder(value);
+  // Sample detection classifies unconfirmed initial content; it is not a value
+  // constraint. A verified user receipt may confirm real text matching a sample.
+  return hasMeaningfulValue(value);
 }
 
 // Every terminal rule fails closed. Value and provenance have distinct roles:
@@ -346,11 +348,7 @@ function baselineForLeaf(conversationState, leafId) {
   return conversationState.baseline.find((item) => item.leafId === leafId) || null;
 }
 
-function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversationState }) {
-  if (!hasMeaningfulValue(value)) return false;
-  const valueFingerprint = fingerprint(value);
-  const baseline = baselineForLeaf(conversationState, leafId);
-  const changedKeys = new Set(Array.isArray(sourceContext.changedKeys) ? sourceContext.changedKeys : []);
+function sourceFieldKeysForLeaf(leafId, sourceContext) {
   const dynamicKeyByLeaf = {
     "event.people.primary_name": "event_primary_person_name",
     "event.people.secondary_name": "event_secondary_person_name",
@@ -368,19 +366,41 @@ function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversati
     "story.text": "texto_historia",
   };
   // The owner still accepts legacy role-bound Dress Code fields named dress_code.
-  const fieldKeys = leafId === "event.dress_code.value"
-    ? [dynamicKeyByLeaf[leafId], "dress_code"] : [dynamicKeyByLeaf[leafId]].filter(Boolean);
+  const boundKeys = asRecord(sourceContext.fieldKeysByLeaf);
+  return Object.hasOwn(boundKeys, leafId)
+    ? [normalizeText(boundKeys[leafId])].filter(Boolean)
+    : leafId === "event.dress_code.value"
+      ? [dynamicKeyByLeaf[leafId], "dress_code"] : [dynamicKeyByLeaf[leafId]].filter(Boolean);
+}
+
+function isAuthoritativeTemplateDefault(leafId, sourceContext) {
+  const fieldKeys = sourceFieldKeysForLeaf(leafId, sourceContext);
+  return sourceContext.changedKeysAuthoritative === true && sourceContext.templateDerived === true &&
+    fieldKeys.some((key) => !Array.isArray(sourceContext.authoringFieldKeys) || sourceContext.authoringFieldKeys.includes(key)) &&
+    !fieldKeys.some((key) => sourceContext.changedKeys?.includes(key));
+}
+
+function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversationState }) {
+  if (!hasMeaningfulValue(value)) return false;
+  const valueFingerprint = fingerprint(value);
+  const baseline = baselineForLeaf(conversationState, leafId);
+  const changedKeys = new Set(Array.isArray(sourceContext.changedKeys) ? sourceContext.changedKeys : []);
+  const fieldKeys = sourceFieldKeysForLeaf(leafId, sourceContext);
   if (fieldKeys.some((key) => changedKeys.has(key))) return true;
+  const isDate = /^event\.(ceremony|party)\.date$/.test(leafId);
+  const unchangedTemplateField = isAuthoritativeTemplateDefault(leafId, sourceContext);
   // The entry baseline is durable evidence only for its captured value. Preserve
   // an already established user value when source metadata is not available on
   // reentry; an empty legacy fingerprint cannot prove a later manual change.
   if (baseline?.fingerprint === valueFingerprint &&
-      [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(baseline.provenance)) return true;
+      [DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(baseline.provenance) &&
+      !(isDate && unchangedTemplateField && baseline.provenance === DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA)) return true;
+  // A valid-looking date or a different value after hydration does not prove
+  // the user chose it. Dates require the binding's change evidence above or a
+  // durable confirmation for this exact value, including on legacy drafts.
+  if (isDate) return false;
   // A live comparison with the template defaults is stronger than the heuristic
   // "different from entry". Restoring a default after opening must not confirm it.
-  const unchangedTemplateField = sourceContext.changedKeysAuthoritative === true &&
-    sourceContext.templateDerived === true && fieldKeys.some((key) =>
-      !Array.isArray(sourceContext.authoringFieldKeys) || sourceContext.authoringFieldKeys.includes(key));
   if (baseline?.fingerprint && baseline.fingerprint !== valueFingerprint && !unchangedTemplateField) return true;
   // Names require positive provenance, including on legacy drafts. Text alone
   // cannot distinguish a real couple from arbitrary template/demo names. Durable
@@ -391,11 +411,11 @@ function hasDemonstrableExistingValue({ leafId, value, sourceContext, conversati
 }
 
 function provenanceForInitialValue({ leafId, value, sourceContext, conversationState, systemDefault = false }) {
-  if (isLikelyPlaceholder(value)) return DESIGNER_AI_PROVENANCE.PLACEHOLDER_OR_SAMPLE;
   if (systemDefault) return DESIGNER_AI_PROVENANCE.SYSTEM_DEFAULT;
   if (hasDemonstrableExistingValue({ leafId, value, sourceContext, conversationState })) {
     return DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA;
   }
+  if (isLikelyPlaceholder(value)) return DESIGNER_AI_PROVENANCE.PLACEHOLDER_OR_SAMPLE;
   if (sourceContext.templateDerived === true && normalizeText(value)) {
     return DESIGNER_AI_PROVENANCE.TEMPLATE_VALUE;
   }
@@ -418,7 +438,12 @@ function createLeaf({
     return { id, block, status: DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE, provenance: DESIGNER_AI_PROVENANCE.UNKNOWN, rule: null, fingerprint: valueFingerprint };
   }
   const persisted = resolutionForLeaf(conversationState, id, valueFingerprint);
-  if (persisted && !(id.startsWith("event.people.") &&
+  const unconfirmedStoredDate = persisted && /^event\.(ceremony|party)\.date$/.test(id) &&
+    isTerminalDesignerAiLedgerStatus(persisted.status) && (
+      (persisted.provenance === DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA && isAuthoritativeTemplateDefault(id, sourceContext)) ||
+      (persisted.status !== DESIGNER_AI_LEDGER_STATUSES.RESOLVED_BY_RULE &&
+        ![DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION, DESIGNER_AI_PROVENANCE.EXISTING_USER_DATA].includes(persisted.provenance)));
+  if (persisted && !unconfirmedStoredDate && !(id.startsWith("event.people.") &&
       isTerminalDesignerAiLedgerStatus(persisted.status) &&
       !isConfirmedDesignerAiPersonName({ ...persisted, id }))) {
     return { id, block, status: persisted.status, provenance: persisted.provenance, rule: persisted.rule, fingerprint: valueFingerprint };
@@ -438,6 +463,7 @@ function createLeaf({
 }
 
 function applyDependency(leaf, dependencyResolved, applicable) {
+  if (leaf.status === DESIGNER_AI_LEDGER_STATUSES.UNAVAILABLE) return leaf;
   if (!dependencyResolved) return leaf;
   if (applicable) {
     return leaf.status === DESIGNER_AI_LEDGER_STATUSES.NOT_APPLICABLE_BY_DEPENDENCY
@@ -504,11 +530,21 @@ function buildDesignerAiGuidedFlow({ leaves, values }) {
     }
   }
 
-  include("event.dress_code.enabled");
   const dressEnabledLeaf = byId.get("event.dress_code.enabled");
+  const dressValueLeaf = byId.get("event.dress_code.value");
+  // An explicit yes can request the text without enabling the feature or
+  // adopting its template value. The current resolution owns that question
+  // (and its deferral); the global enabled leaf keeps its actual readiness.
+  // createLeaf already checked the fingerprint and the dependency pass above
+  // suppresses this request when a confirmed decision disables Dress Code.
+  const dressTextRequested = [DESIGNER_AI_LEDGER_STATUSES.NEEDS_CLARIFICATION,
+    DESIGNER_AI_LEDGER_STATUSES.DEFERRED_BY_USER].includes(dressValueLeaf?.status) &&
+    dressValueLeaf.provenance === DESIGNER_AI_PROVENANCE.USER_CURRENT_SESSION &&
+    dressValueLeaf.rule === null;
+  if (!dressTextRequested) include("event.dress_code.enabled");
   if (
-    values.dressCode?.enabled === true &&
-    isTerminalDesignerAiLedgerStatus(dressEnabledLeaf?.status)
+    dressTextRequested || (values.dressCode?.enabled === true &&
+    isTerminalDesignerAiLedgerStatus(dressEnabledLeaf?.status))
   ) {
     include("event.dress_code.value");
   }
@@ -561,16 +597,20 @@ function hasConfirmedGiftMethod(gifts, byId, matchesMethod = () => true) {
   ));
 }
 
-function buildDesignerAiLedger({ availability = {}, values = {}, conversationState = {}, sourceContext = {} } = {}) {
+function buildDesignerAiLedger({ availability = {}, fieldAvailability = {}, values = {}, conversationState = {}, sourceContext = {} } = {}) {
   const state = normalizeDesignerAiConversationState(conversationState);
   const source = {
     templateDerived: sourceContext?.templateDerived === true,
     changedKeys: Array.isArray(sourceContext?.changedKeys) ? sourceContext.changedKeys.map(normalizeText) : [],
     changedKeysAuthoritative: sourceContext?.changedKeysAuthoritative === true,
     authoringFieldKeys: Array.isArray(sourceContext?.authoringFieldKeys) ? sourceContext.authoringFieldKeys.map(normalizeText) : null,
+    fieldKeysByLeaf: asRecord(sourceContext?.fieldKeysByLeaf),
   };
   const leaves = [];
-  const add = (input) => leaves.push(createLeaf({ ...input, sourceContext: source, conversationState: state }));
+  const add = (input) => leaves.push(createLeaf({ ...input,
+    available: Object.hasOwn(fieldAvailability, input.id)
+      ? input.available !== false && fieldAvailability[input.id] === true : input.available,
+    sourceContext: source, conversationState: state }));
   const people = asRecord(values.people);
   const ceremony = asRecord(values.ceremony);
   const party = asRecord(values.party);

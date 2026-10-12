@@ -272,7 +272,7 @@ test("verified continuation suppresses stale questions without losing ordinary d
   const result = { intent: "clarify", actions: [], resolutions: [], clarification: { leafId: "event.ceremony.date", kind: "missing_year" } };
   assert.equal(withDesignerAiGuidedContinuation("¿De qué año?", { previousSnapshot: snapshot, snapshot, result }), "¿De qué año es la fecha del evento?");
   const editing = { ...snapshot, conversation: { mode: "editing" } };
-  assert.equal(withDesignerAiGuidedContinuation("¿Querés indicarme la dirección manualmente?", { previousSnapshot: editing, snapshot: editing, result, verifiedContinuation: true }), "Listo.");
+  assert.equal(withDesignerAiGuidedContinuation("¿Querés indicarme la dirección manualmente?", { previousSnapshot: editing, snapshot: editing, result, verifiedContinuation: true }), "Listo, actualizado.");
 });
 
 for (const choice of ["button", "chat"]) {

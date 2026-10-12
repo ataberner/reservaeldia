@@ -47,7 +47,7 @@ const capabilityContract = require("../../shared/designerAiCapabilityContract.cj
   minimizeDesignerAiGiftValues(value: unknown): Record<string, unknown>;
   minimizeDesignerAiRecentTurns(turns: unknown, gifts: unknown): Array<{ role: string; content: string }>;
   validateDesignerAiActionBatch(actions: unknown, options: { origin: "model"; snapshot: DesignerAiCapabilitySnapshot }): { ok: boolean; errors: string[] };
-  validateDesignerAiClarification(clarification: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { resolutions: unknown[] }): { ok: boolean; errors: string[] };
+  validateDesignerAiClarification(clarification: unknown, snapshot: DesignerAiCapabilitySnapshot, context: { resolutions: unknown[]; actions?: DesignerAiAction[]; controlRequest?: unknown }): { ok: boolean; errors: string[] };
   validateDesignerAiControlRequest(request: unknown, snapshot: DesignerAiCapabilitySnapshot, context?: { actions: DesignerAiAction[] }): { ok: boolean; errors: string[] };
   validateDesignerAiResolutionUpdates(resolutions: unknown, snapshot: DesignerAiCapabilitySnapshot, context?: { actions: DesignerAiAction[] }): { ok: boolean; errors: string[] };
 };
@@ -92,17 +92,18 @@ Planificación obligatoria:
 4. La aplicación elige la siguiente pregunta proactiva mediante nextStep (hojas y phase), derivado del ledger después de persistir los cambios. No elijas otra pregunta ni intentes adelantarla en assistantMessage. Ante una postergación explícita (todavía no sé, después, dejalo pendiente), emití deferred_by_user con rule null exclusivamente para las hojas a las que se refiere esa frase: conserva el pendiente y el sistema lo excluye de los bloqueantes. Lugar desconocido posterga venue_name, address y place_selection de esa phase; no posterga date, start_time ni end_time, aunque falten. No uses needs_clarification para postergar ni postergues sin que el usuario lo pida. La hora de fin no mencionada no está postergada. Fecha sin año necesita aclaración; no inventes el año.
 5. La interfaz comunica una sola vez la transición del recorrido a completo. No redactes ese cierre ni reemplaces por él la respuesta al pedido actual. La completitud global es diagnóstica y no gobierna el cierre.
 6. Usá intent apply si devolvés al menos una action o controlRequest, aunque también necesites preguntar por otro dato faltante. Reservá clarify para respuestas sin acciones ni controles.
-7. En modo guided, assistantMessage contiene solo una explicación breve, sin preguntas ni instrucciones para aportar el siguiente dato. La UI compone la pregunta, las confirmaciones y los avisos con evidencia local; no reutiliza esa prosa. Las reglas de preguntar o aclarar que siguen describen la necesidad funcional, no autorizan preguntas libres. Si hay una ambigüedad del mensaje actual, declarala con needs_clarification y clarification {leafId,kind}: missing_year si el usuario aportó día/mes sin año, invalid_date si la fecha aportada es imposible, missing_value para otra aclaración del dato. No uses clarification para un dato simplemente no mencionado. La UI solo presenta esa aclaración si corresponde a nextStep después de los cambios; las ambigüedades de otros pasos quedan pendientes. Por defecto clarification es null. En editing conservá la respuesta natural al pedido actual.
+7. assistantMessage contiene solo una explicación breve, sin preguntas ni instrucciones para aportar el siguiente dato. La UI compone las preguntas, las confirmaciones y los avisos con evidencia local, también en editing; no depende de esa prosa. Las reglas de preguntar o aclarar que siguen describen la necesidad funcional, no autorizan preguntas libres. Si hay una ambigüedad del mensaje actual, declarala con needs_clarification y clarification {leafId,kind}: missing_year si el usuario aportó día/mes sin año, invalid_date si la fecha aportada es imposible, missing_value para otra aclaración del dato. No uses clarification para un dato simplemente no mencionado. En guided la UI solo presenta esa aclaración si corresponde a nextStep después de los cambios; las ambigüedades de otros pasos quedan pendientes. En editing respondé solo al pedido actual: si falta su valor, emití clarification missing_value y su resolution needs_clarification para que la UI lo pida; nunca lo solicites únicamente en assistantMessage. Por defecto clarification es null.
 8. Si alguna parte del pedido excede las capabilities, emití notice unsupported_request incluso si otra parte admite actions. En los demás casos notice es null. Nunca descartes datos válidos adelantados por estar fuera del paso actual: aplicalos en el mismo lote y conservá las ambigüedades sin inventar valores.
 
 Reglas seguras:
 - Interpretá fechas numéricas como día/mes/año (dd/mm/aa o dd/mm/aaaa), también con separadores . o |. Un año de dos dígitos ya está informado: 00–99 equivale a 2000–2099, igual que en el editor. Por ejemplo, 24/12/26 es 2026-12-24 y 03/04/26 es 2026-04-03. No pidas cuatro dígitos ni repetir una fecha válida por ese motivo; proponé event.set_datetime con fecha ISO YYYY-MM-DD. Validá el calendario: una fecha imposible necesita aclaración, nunca la corrijas silenciosamente.
 - Si falta realmente el año, preguntá solo el año. Si el usuario responde solo 2026, completá el día y mes que ya aportó para esa misma fecha en recentTurns; no se los vuelvas a pedir. Los mensajes del usuario son la evidencia, no los ejemplos de la plantilla ni una fecha inventada por el asistente. Sin día/mes previos inequívocos, o si hay varias fechas posibles, aclaralo sin adivinar. Interpretar el valor no cambia la presentación del template.
-- numericDateInterpretation es el resultado del parser compartido con el editor para un mensaje compuesto solo por una fecha numérica: dateISO ya valida día/mes/año y calendario (incluidos bisiestos). Si valid es true, no recalcules el año ni declares esa fecha inválida, incompleta o needs_clarification; usá dateISO en la action de la fecha solicitada. Si valid es false, pedí corregir esa fecha imposible. No cambia la intención ni el destino del usuario y no confirma persistencia.
+- numericDateInterpretation es el resultado del parser compartido con el editor para un mensaje compuesto solo por una fecha numérica: dateISO ya valida día/mes/año y calendario (incluidos bisiestos). Si valid es true, no recalcules el año ni declares esa fecha inválida o incompleta; usá dateISO en la action de la fecha solicitada. Si lo único ambiguo es ceremonia o fiesta, pedí missing_phase sin cuestionar el valor de la fecha. Si valid es false, pedí corregir esa fecha imposible. No cambia la intención ni el destino del usuario y no confirma persistencia.
 - Dos nombres válidos permiten el nombre automático Casamiento {Nombre 1} y {Nombre 2}; el backend lo agrega si corresponde. Un nombre pedido explícitamente es autoritativo.
 - Los valores con procedencia template_value o placeholder_or_sample son ejemplos de diseño, no datos de la pareja. Tratálos como vacíos: no los cites, no preguntes si se conservan y no los uses para inferir ninguna respuesta.
 - Nunca preguntes por el nombre visible del borrador cuando faltan los nombres de la pareja. Al recibir ambos nombres reales, el backend reemplaza el título heredado por Casamiento {Nombre 1} y {Nombre 2} sin pedir confirmación.
 - Inferí ceremony_party si el relato distingue ceremonia y fiesta. Inferí single solo ante un único evento inequívoco.
+- Si el modo es ceremony_party y no se sabe a qué fase se refiere un pedido de fecha, hora o lugar (por ejemplo, «cambiá el horario»), emití clarification kind missing_phase y resolution needs_clarification para una hoja del dato solicitado disponible en ambas fases. Ese leafId identifica el dato, no elige ceremonia o fiesta. No inventes el destino ni emitas acciones sobre ese dato hasta conocerlo. missing_value pide un valor; no reemplaza missing_phase ni debe pedir directamente la hora de una fase elegida por vos. Si la fase ya quedó clara por el pedido o contexto, usala sin volver a preguntar.
 - Cuando el modo efectivo sea single, no generes resolutions para Party: el sistema marca automáticamente esas hojas como no aplicables. Si el lugar del evento único queda para después, emití deferred_by_user para event.ceremony.venue_name, event.ceremony.address y event.ceremony.place_selection. No omitas esa postergación porque el mensaje también aporte la estructura u otro dato.
 - Party usa la fecha de Ceremony únicamente si “después”, “ese mismo día” o equivalente lo hace inequívoco.
 - No preguntes proactivamente por la hora de finalización, ni la agregues a una pregunta sobre fecha, inicio o lugar. end_time está fuera del recorrido guiado: su ausencia no bloquea el avance ni el cierre y no requiere resolverla o postergarla. Si el usuario aporta o pide cambiar la hora de fin, usá event.set_datetime con endTime y conservá la validación y evidencia habituales; aclarala únicamente si ese pedido explícito es ambiguo. No borres ni reemplaces una hora de fin existente sin pedido. optional_end_time_omitted sigue disponible para una omisión explícita compatible. El nombre opcional del lugar vacío usa optional_venue_name_omitted cuando hay dirección suficiente.
@@ -112,7 +113,7 @@ Reglas seguras:
 - Solicitá google_place_picker únicamente cuando el usuario haya pedido o aceptado explícitamente buscar en Google Maps. La selección final siempre pertenece al control local; nunca elijas un resultado ni inventes metadata.
 - Si el usuario rechaza Google Maps, resolvé place_selection mediante leave_empty y conservá la ubicación manual. Si falta la dirección, pedí solamente esa dirección y no marques address como resuelta. En modo single, la phase técnica sigue siendo ceremony aunque conversacionalmente se llame evento.
 - En ceremony_party, Ceremony y Party tienen hojas de ubicación independientes. Una action, una resolución o un control de una phase nunca aporta evidencia para la otra. Después de un control local, confirmá únicamente la phase incluida en las hojas verificadas y releé nextBlock: si event_data todavía contiene hojas de ubicación, continuá por la primera phase pendiente y no avances a Regalos.
-- Dress Code: una negativa a incluirlo, incluso un «no» breve ante esa pregunta, requiere event.set_dress_code con enabled:false y el value vigente de values.dressCode, aunque sea heredado: se oculta sin borrar su texto. No uses deferred_by_user para una negativa a mostrar Dress Code ni la describas como postergación. Reservá deferred_by_user para una decisión explícitamente pendiente («no sé todavía», «lo decidimos después»). Una afirmativa con texto real usa enabled:true y ese texto; sin texto real, pedí aclararlo sin mostrar un ejemplo de plantilla como elección del usuario.
+- Dress Code: la pregunta local es «¿Quieren incluir Dress Code? Si es así, ¿cuál?». Una negativa a incluirlo, incluso un «no» breve ante esa pregunta, requiere event.set_dress_code con enabled:false y el value vigente de values.dressCode, aunque sea heredado: se oculta sin borrar su texto. No uses deferred_by_user para una negativa a mostrar Dress Code ni la describas como postergación. Reservá deferred_by_user para una decisión explícitamente pendiente («no sé todavía», «lo decidimos después»). Una afirmativa con texto real («Sí, Formal») o el valor directo («Formal») usa enabled:true y ese texto en el mismo turno; no vuelvas a pedir permiso ni repitas el valor al confirmar. Si responde que sí sin aportar texto real, no emitas event.set_dress_code ni habilites o borres valores: emití la resolution {leafId:"event.dress_code.value",status:"needs_clarification",rule:null} y clarification {leafId:"event.dress_code.value",kind:"missing_value"}. Nunca uses «Sí» como texto de vestimenta. El ledger pedirá el texto y conservará la decisión pendiente hasta recibirlo. No uses el ejemplo de plantilla como elección del usuario ni marques enabled como resuelto sin una action persistida. Una respuesta posterior con el texto real aplica enabled:true y ese texto juntos.
 - RSVP forma parte de nextBlock: preguntá si quieren confirmar asistencia desde la invitación. Sí/no usa rsvp.set_enabled y conserva el formulario existente. No interrogues por cada label, color, orden u opción; ajustá las preguntas existentes cuando lo pidan. No afirmes que preguntas heredadas fueron elegidas por el usuario.
 - Cuando el usuario pide un conjunto RSVP recomendado, resolvé activación/inactivación exhaustiva, orden, label, tipo, required, opciones y modal; usá catalog_defaults o system_default.
 - Si se mantiene RSVP o Regalos apagado sin configurarlos, registrá cada hoja interna con preserve_while_inactive. No las ocultes.
@@ -151,7 +152,7 @@ type DesignerAiEntryMode = "first_entry" | "reentry" | "continuation";
 type DesignerAiUserContext = { registeredFirstName?: string | null };
 export type DesignerAiChatPayload = { contractVersion: string; draftId: string; clientMessageId: string; requestCreatedAt: number; entryMode: DesignerAiEntryMode; message: string; recentTurns: DesignerAiTurn[]; capabilitySnapshot: DesignerAiCapabilitySnapshot };
 type DesignerAiResolution = { leafId: string; status: string; rule: string | null };
-type DesignerAiClarification = { leafId: string; kind: "missing_year" | "invalid_date" | "missing_value" };
+type DesignerAiClarification = { leafId: string; kind: "missing_year" | "invalid_date" | "missing_value" | "missing_phase" };
 type DesignerAiAction = { type: string; arguments: Record<string, any> };
 export type DesignerAiPublicResult = {
   contractVersion: string;
@@ -183,17 +184,31 @@ export type DesignerAiServiceTelemetry = {
 };
 export type DesignerAiServiceResult = DesignerAiPublicResult & { traceId: string; openAiRequestId: string | null; latencyMs: number; repairCount: number; telemetry: DesignerAiServiceTelemetry };
 
+// Fixed diagnostic categories only. Internal validator messages may contain
+// client-supplied identifiers and must never become log fields or public copy.
+const DESIGNER_AI_VALIDATION_CODES = [
+  "output_shape_invalid", "function_call_invalid", "function_arguments_invalid",
+  "clarification_invalid", "action_invalid", "control_invalid", "resolution_invalid",
+  "resolution_evidence_missing", "empty_apply", "dress_code_refusal_unapplied",
+  "venue_reply_uninterpreted", "numeric_date_inconsistent",
+] as const;
+type DesignerAiValidationCode = typeof DESIGNER_AI_VALIDATION_CODES[number];
+
 export class DesignerAiServiceError extends Error {
   readonly kind: "invalid-payload" | "missing-secret" | "timeout" | "rate-limit" | "malformed-output" | "upstream";
   readonly openAiRequestId: string | null;
   readonly reason: "repeated_venue_answer_uninterpreted" | "dress_code_refusal_unapplied" | null;
+  readonly validationCode: DesignerAiValidationCode | null;
   telemetry?: DesignerAiServiceTelemetry;
-  constructor(kind: DesignerAiServiceError["kind"], message: string, openAiRequestId: string | null = null, reason: DesignerAiServiceError["reason"] = null) {
+  constructor(kind: DesignerAiServiceError["kind"], message: string, openAiRequestId: string | null = null, reason: DesignerAiServiceError["reason"] = null, validationCode: DesignerAiValidationCode = "output_shape_invalid") {
     super(message);
     this.name = "DesignerAiServiceError";
     this.kind = kind;
     this.openAiRequestId = openAiRequestId;
     this.reason = reason;
+    this.validationCode = kind === "malformed-output"
+      ? DESIGNER_AI_VALIDATION_CODES.includes(validationCode) ? validationCode : "output_shape_invalid"
+      : null;
   }
 }
 
@@ -210,7 +225,7 @@ const DESIGNER_AI_ERROR_PRESENTATION = Object.freeze({
   },
   timeout: {
     category: "provider_timeout",
-    summary: "El proveedor de IA tardó más que el límite permitido.",
+    summary: "El asistente excedió el tiempo disponible para completar la solicitud.",
     retryable: true,
   },
   "rate-limit": {
@@ -536,13 +551,13 @@ export function estimateDesignerAiRequestUsage(payload: DesignerAiChatPayload): 
 
 function readFunctionCall(response: any): Record<string, unknown> {
   const calls = (Array.isArray(response?.output) ? response.output : []).filter((item: any) => item?.type === "function_call");
-  if (calls.length !== 1 || calls[0]?.name !== "submit_designer_ai_result" || typeof calls[0]?.arguments !== "string") throw new DesignerAiServiceError("malformed-output", "OpenAI no devolvió una única función válida.");
+  if (calls.length !== 1 || calls[0]?.name !== "submit_designer_ai_result" || typeof calls[0]?.arguments !== "string") throw new DesignerAiServiceError("malformed-output", "OpenAI no devolvió una única función válida.", null, null, "function_call_invalid");
   try {
     const record = asRecord(JSON.parse(calls[0].arguments));
     if (!record) throw new Error("not-object");
     return record;
   } catch {
-    throw new DesignerAiServiceError("malformed-output", "Los argumentos de OpenAI no son JSON válido.");
+    throw new DesignerAiServiceError("malformed-output", "Los argumentos de OpenAI no son JSON válido.", null, null, "function_arguments_invalid");
   }
 }
 
@@ -612,6 +627,25 @@ function validateResolutionSemantics(
   return errors;
 }
 
+function assertDesignerAiNumericDateInterpretation(
+  result: Omit<DesignerAiPublicResult, "contractVersion" | "batchId">,
+  payload: DesignerAiChatPayload
+): void {
+  // Only a complete numeric turn has a deterministic interpretation. Do not
+  // infer the phase, reconstruct dates from history or rewrite a mixed request.
+  const dateISO = normalizeNumericEventDateValue(payload.message, { allowTrailingText: false });
+  if (dateISO === null) return;
+  const dateActions = result.actions.filter((action) => action.type === "event.set_datetime" && action.arguments.date !== null);
+  const dateClarification = result.clarification && /^event\.(ceremony|party)\.date$/.test(result.clarification.leafId);
+  if (dateISO) {
+    if (dateActions.some((action) => action.arguments.date !== dateISO) || (dateClarification && ["missing_year", "invalid_date"].includes(result.clarification?.kind || ""))) {
+      throw new DesignerAiServiceError("malformed-output", "La fecha propuesta o su aclaración contradice numericDateInterpretation: usá la fecha ISO válida sin reinterpretar día, mes o año.", null, null, "numeric_date_inconsistent");
+    }
+  } else if (dateActions.length || (dateClarification && result.clarification?.kind !== "invalid_date")) {
+    throw new DesignerAiServiceError("malformed-output", "numericDateInterpretation indica una fecha imposible: no la corrijas ni guardes otra fecha; pedí aclaración con invalid_date.", null, null, "numeric_date_inconsistent");
+  }
+}
+
 export function discardModelResolutionsForControlVerifiedLeaves(
   resolutions: unknown,
   snapshot: DesignerAiCapabilitySnapshot
@@ -630,6 +664,29 @@ export function discardModelResolutionsForControlVerifiedLeaves(
   });
 }
 
+function completePendingDressCodeClarification(
+  result: { intent: unknown; actions: unknown[]; controlRequest: unknown; clarification: unknown; resolutions: unknown[] },
+  snapshot: DesignerAiCapabilitySnapshot
+): unknown[] {
+  const leafId = "event.dress_code.value";
+  const clarification = asRecord(result.clarification);
+  if (snapshot.conversation.mode !== "guided" || snapshot.availability.dressCode !== true ||
+      result.intent !== "clarify" || result.actions.length !== 0 || result.controlRequest !== null ||
+      clarification?.leafId !== leafId || clarification.kind !== "missing_value" ||
+      result.resolutions.length >= 120 ||
+      result.resolutions.some((resolution) => asRecord(resolution)?.leafId === leafId)) return result.resolutions;
+  const leaf = snapshot.ledger.leaves.find((entry) => entry.id === leafId);
+  const step = buildDesignerAiConversationBrief(snapshot).nextStep;
+  if (!leaf || !["pending", "needs_clarification"].includes(leaf.status) ||
+      !["dress_code_enabled", "dress_code_value"].includes(step?.kind || "")) return result.resolutions;
+  // The model already requested this exact pending clarification. Complete its
+  // redundant metadata only; never infer an affirmative, mutate the invitation,
+  // override a conflicting resolution or grant terminal evidence.
+  const resolutions = [...result.resolutions, { leafId, status: "needs_clarification", rule: null }];
+  if (!capabilityContract.validateDesignerAiClarification(clarification, snapshot, { resolutions }).ok) return result.resolutions;
+  return resolutions;
+}
+
 export function validateDesignerAiModelResult(value: unknown, snapshot: DesignerAiCapabilitySnapshot): Omit<DesignerAiPublicResult, "contractVersion" | "batchId"> {
   const result = asRecord(value);
   if (!result) throw new DesignerAiServiceError("malformed-output", "La salida estructurada es inválida.");
@@ -643,8 +700,12 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   const assistantMessage = normalizeText(result.assistantMessage);
   if (!(["apply", "clarify", "out_of_scope"].includes(intent)) || !assistantMessage || assistantMessage.length > 700 || !Array.isArray(result.actions) || !Array.isArray(result.resolutions)) throw new DesignerAiServiceError("malformed-output", "La salida estructurada está incompleta.");
   if (hasNotice && result.notice !== null && result.notice !== "unsupported_request") throw new DesignerAiServiceError("malformed-output", "El aviso estructurado es inválido.");
-  const clarificationValidation = capabilityContract.validateDesignerAiClarification(result.clarification, snapshot, { resolutions: result.resolutions });
-  if (!clarificationValidation.ok) throw new DesignerAiServiceError("malformed-output", clarificationValidation.errors.join(" "));
+  const resolutions = completePendingDressCodeClarification({
+    intent: result.intent, actions: result.actions, controlRequest: result.controlRequest,
+    clarification: result.clarification, resolutions: result.resolutions,
+  }, snapshot);
+  const clarificationValidation = capabilityContract.validateDesignerAiClarification(result.clarification, snapshot, { resolutions, actions: result.actions, controlRequest: result.controlRequest });
+  if (!clarificationValidation.ok) throw new DesignerAiServiceError("malformed-output", clarificationValidation.errors.join(" "), null, null, "clarification_invalid");
   if (intent === "out_of_scope" && (result.actions.length > 0 || result.controlRequest !== null || result.resolutions.length > 0)) throw new DesignerAiServiceError("malformed-output", "out_of_scope no puede mutar ni resolver hojas.");
   const actionValidation = capabilityContract.validateDesignerAiActionBatch(result.actions, { origin: capabilityContract.DESIGNER_AI_ACTION_ORIGINS.MODEL, snapshot });
   // Hiding Dress Code preserves its text, including template values withheld
@@ -659,7 +720,7 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
     }
     return { ...action, arguments: { ...action.arguments, value: dressCodeValue } };
   }) : result.actions;
-  const applicableResolutions = capabilityContract.discardInactiveDesignerAiPhaseResolutions(result.resolutions, snapshot, { actions });
+  const applicableResolutions = capabilityContract.discardInactiveDesignerAiPhaseResolutions(resolutions, snapshot, { actions });
   // Preserve valid mutations when legacy/provider output redundantly asks for a
   // nonexistent control on the same action-covered leaf. The shared boundary
   // leaves every malformed, unrelated or real-control proposal for validation.
@@ -678,7 +739,8 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   }) ? result.clarification as DesignerAiClarification : null;
   const controlValidation = capabilityContract.validateDesignerAiControlRequest(result.controlRequest, snapshot, { actions });
   const resolutionValidation = capabilityContract.validateDesignerAiResolutionUpdates(safeResolutions, snapshot, { actions });
-  if (!actionValidation.ok || !controlValidation.ok || !resolutionValidation.ok) throw new DesignerAiServiceError("malformed-output", [...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" "));
+  if (!actionValidation.ok || !controlValidation.ok || !resolutionValidation.ok) throw new DesignerAiServiceError("malformed-output", [...actionValidation.errors, ...controlValidation.errors, ...resolutionValidation.errors].join(" "), null, null,
+    !actionValidation.ok ? "action_invalid" : !controlValidation.ok ? "control_invalid" : "resolution_invalid");
   // Filtering an already verified control must not turn a valid acknowledgement
   // into an empty-apply failure. Truly empty or otherwise invalid results still fail.
   const redundantOnly = intent === "apply" && result.actions.length === 0 && result.controlRequest === null &&
@@ -686,7 +748,7 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   const normalizedIntent = redundantOnly ? "clarify" : intent === "clarify" && (
     result.actions.length > 0 || result.controlRequest !== null
   ) ? "apply" : intent;
-  if (normalizedIntent === "apply" && result.actions.length === 0 && result.controlRequest === null && safeResolutions.length === 0) throw new DesignerAiServiceError("malformed-output", "apply requiere acciones, una decisión o un control local.");
+  if (normalizedIntent === "apply" && result.actions.length === 0 && result.controlRequest === null && safeResolutions.length === 0) throw new DesignerAiServiceError("malformed-output", "apply requiere acciones, una decisión o un control local.", null, null, "empty_apply");
   const augmented = augmentAutomaticEventName({ intent: normalizedIntent as DesignerAiPublicResult["intent"], assistantMessage: normalizedIntent === "out_of_scope" ? OUT_OF_SCOPE_MESSAGE : assistantMessage, actions: actions as DesignerAiAction[], controlRequest: result.controlRequest as Record<string, unknown> | null, resolutions: safeResolutions as DesignerAiResolution[],
     ...(hasClarification ? { clarification } : {}), ...(hasNotice ? { notice: result.notice as "unsupported_request" | null } : {}),
   }, snapshot);
@@ -703,7 +765,9 @@ export function validateDesignerAiModelResult(value: unknown, snapshot: Designer
   if (!augmentedActions.ok || !augmentedResolutions.ok || semanticErrors.length > 0) {
     throw new DesignerAiServiceError(
       "malformed-output",
-      [...augmentedActions.errors, ...augmentedResolutions.errors, ...semanticErrors].join(" ")
+      [...augmentedActions.errors, ...augmentedResolutions.errors, ...semanticErrors].join(" "),
+      null, null,
+      !augmentedActions.ok ? "action_invalid" : !augmentedResolutions.ok ? "resolution_invalid" : "resolution_evidence_missing"
     );
   }
   return augmented;
@@ -721,21 +785,38 @@ const DRESS_CODE_REFUSALS = new Set([
   "no quiero mostrar dress code", "no queremos mostrar dress code", "sin dress code",
 ]);
 
+function isPendingDressCodeChoiceReply(payload: DesignerAiChatPayload): boolean {
+  const snapshot = payload.capabilitySnapshot;
+  if (payload.entryMode !== "continuation" || snapshot.conversation.mode !== "guided" ||
+      snapshot.availability.dressCode !== true ||
+      buildDesignerAiConversationBrief(snapshot).nextStep?.kind !== "dress_code_enabled") return false;
+  const lastTurn = payload.recentTurns[payload.recentTurns.length - 1];
+  return lastTurn?.role === "assistant" &&
+    /(?:^|¿)(?:quieren|quer[eé]s)\s+(?:incluir|mostrar)\s+(?:el\s+)?dress\s+code\?(?:\s+si es as[ií],\s*¿cu[aá]l\?)?\s*$/iu.test(lastTurn.content);
+}
+
+function buildContextualDressCodeAffirmation(payload: DesignerAiChatPayload): Omit<DesignerAiPublicResult, "contractVersion" | "batchId"> | null {
+  if (!isPendingDressCodeChoiceReply(payload) || /[?¿]/.test(payload.message)) return null;
+  const reply = payload.message.toLocaleLowerCase("es").replace(/[.,!¡]/g, " ").replace(/\s+/g, " ").trim();
+  if (!["si", "sí", "si gracias", "sí gracias", "si por favor", "sí por favor"].includes(reply)) return null;
+  const leafId = "event.dress_code.value";
+  const leaf = payload.capabilitySnapshot.ledger.leaves.find((entry) => entry.id === leafId);
+  if (!leaf || leaf.status === "unavailable") return null;
+  // A bare affirmative answers visibility, never supplies garment text. This
+  // safe clarification cannot mutate the draft or adopt a template value.
+  return { intent: "clarify", assistantMessage: "¿Qué Dress Code quieren indicar?", actions: [], controlRequest: null,
+    resolutions: [{ leafId, status: "needs_clarification", rule: null }],
+    clarification: { leafId, kind: "missing_value" }, notice: null };
+}
+
 function assertDesignerAiDressCodeRefusal(
   result: Omit<DesignerAiPublicResult, "contractVersion" | "batchId">,
   payload: DesignerAiChatPayload
 ): void {
   const snapshot = payload.capabilitySnapshot;
-  if (payload.entryMode !== "continuation" || snapshot.conversation.mode !== "guided" ||
-      snapshot.availability.dressCode !== true || /[?¿]/.test(payload.message) ||
-      buildDesignerAiConversationBrief(snapshot).nextStep?.kind !== "dress_code_enabled") return;
+  if (!isPendingDressCodeChoiceReply(payload) || /[?¿]/.test(payload.message)) return;
   const reply = payload.message.toLocaleLowerCase("es").replace(/[.,!¡]/g, " ").replace(/\s+/g, " ").trim();
   if (!DRESS_CODE_REFUSALS.has(reply)) return;
-  const lastTurn = payload.recentTurns[payload.recentTurns.length - 1];
-  // The pending step alone does not prove what a brief "no" answered. Require
-  // the latest conversational question to ask this visibility decision too.
-  if (lastTurn?.role !== "assistant" ||
-      !/(?:^|¿)(?:quieren|quer[eé]s)\s+(?:incluir|mostrar)\s+(?:el\s+)?dress\s+code\?\s*$/iu.test(lastTurn.content)) return;
   const dressActions = result.actions.filter((action) => action.type === "event.set_dress_code");
   if (dressActions.length && dressActions.every((action) => action.arguments.enabled === false &&
       action.arguments.value === snapshot.values.dressCode?.value)) return;
@@ -745,6 +826,7 @@ function assertDesignerAiDressCodeRefusal(
     "malformed-output",
     "El usuario respondió una negativa a incluir Dress Code, no una postergación. Proponé event.set_dress_code con enabled:false y conservá exactamente values.dressCode.value; no borres el texto ni uses deferred_by_user para esta decisión.",
     null,
+    "dress_code_refusal_unapplied",
     "dress_code_refusal_unapplied"
   );
 }
@@ -779,7 +861,8 @@ function assertDesignerAiVenueReplyProgress(
     "malformed-output",
     `La respuesta dejó ${leafId} sin interpretar después de que el usuario repitió el mismo mensaje. Reinterpretá el turno y su contexto: conservá preguntas, ambigüedades, postergaciones y otras intenciones; proponé una action sólo si corresponde. No repitas una salida vacía ni inventes un nombre.`,
     null,
-    "repeated_venue_answer_uninterpreted"
+    "repeated_venue_answer_uninterpreted",
+    "venue_reply_uninterpreted"
   );
 }
 
@@ -885,9 +968,10 @@ export async function interpretDesignerAiChat({
       const resultStartedAt = now();
       try {
         const result = validateDesignerAiModelResult(
-          readFunctionCall(response),
+          buildContextualDressCodeAffirmation(validatedPayload) || readFunctionCall(response),
           validatedPayload.capabilitySnapshot
         );
+        assertDesignerAiNumericDateInterpretation(result, validatedPayload);
         assertDesignerAiDressCodeRefusal(result, validatedPayload);
         assertDesignerAiVenueReplyProgress(result, validatedPayload);
         return result;
@@ -897,7 +981,8 @@ export async function interpretDesignerAiChat({
             error.kind,
             error.message,
             normalizeText(response?._request_id) || null,
-            error.reason
+            error.reason,
+            error.validationCode || undefined
           );
         }
         throw error;

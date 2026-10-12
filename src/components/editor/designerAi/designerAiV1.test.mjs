@@ -111,7 +111,7 @@ test("execution progress stays generic before the response and withholds confirm
     assert.match(document.body.textContent, /Actualizando la confirmación de asistencia…/);
     assert.equal(run.messages().at(-1).role, "user");
     release();
-    await run.until(() => run.messages().some((m) => m.content.startsWith("Listo. RSVP activado.")));
+    await run.until(() => run.messages().some((m) => m.content.startsWith("Listo, actualizado.")));
     assert.equal(run.snapshot().values.rsvp.enabled, true);
   } finally { respond({ assistantMessage: "Seguimos." }); release(); await run.close(); }
 });
@@ -197,7 +197,9 @@ test("E8 guided -> complete -> editing: one closure, preview, sidebar reentry an
     assert.ok(run.snapshot().ledger.guidedFlow.completion.unresolvedLeafIds.includes("event.ceremony.address"));
     assert.equal(run.journeyRef.current.editing, true);
     assert.equal(run.messages().filter((m) => m.guidedCompletion).length, 1);
-    assert.equal(run.messages().at(-1).content, responses.at(-1).assistantMessage);
+    assert.equal(run.snapshot().values.ceremony.address, "");
+    assert.equal(run.exportPersistedDraft().authoring.defaults.event_ceremony_venue_address, "");
+    assert.equal(run.messages().at(-1).content, "Listo, actualizado.");
     for (const payload of run.calls.slice(2)) assert.equal(payload.capabilitySnapshot.conversation.mode, "editing");
     const editingSnapshot = { ...run.snapshot(), conversation: { ...run.snapshot().conversation, mode: "editing" } };
     assert.equal(ledger.buildDesignerAiConversationBrief(editingSnapshot).nextBlock, null);

@@ -1,9 +1,9 @@
 import {
-  buildSelectionFramePolygon,
   getSelectionFramePaddingForSelection,
   getSelectionFrameStrokeWidth,
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 import {
+  resolveAuthoritativeTextGeometry,
   resolveAuthoritativeTextRect,
 } from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
 import {
@@ -268,12 +268,10 @@ function resolveLineSelectionRect(object, node) {
   }
 
   const points = Array.isArray(object?.points) ? object.points : [0, 0, 100, 0];
-  const cleanPoints = [
-    parseFloat(points[0]) || 0,
-    parseFloat(points[1]) || 0,
-    parseFloat(points[2]) || 100,
-    parseFloat(points[3]) || 0,
-  ];
+  const cleanPoints = [0, 0, 100, 0].map((fallback, index) => {
+    const parsed = parseFloat(points[index]);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  });
   const nodeX = typeof node?.x === "function" ? node.x() : toFiniteNumber(node?.attrs?.x, 0) || 0;
   const nodeY = typeof node?.y === "function" ? node.y() : toFiniteNumber(node?.attrs?.y, 0) || 0;
   const linePadding = 5;
@@ -379,6 +377,9 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
   if (debugMeta?.relativeTo) {
     rectOptions.relativeTo = debugMeta.relativeTo;
   }
+  if (object?.tipo === "texto" && !Object.prototype.hasOwnProperty.call(debugMeta || {}, "relativeTo")) {
+    rectOptions.relativeTo = node.getStage?.();
+  }
   const rect = node.getClientRect(rectOptions);
   if (
     !rect ||
@@ -396,6 +397,9 @@ export function resolveNodeSelectionRect(object, node, debugMeta = null) {
     object?.tipo === "texto" && debugMeta?.allowTextClientRectFallback === true;
   const authoritativeTextRect = resolveAuthoritativeTextRect(node, object, {
     fallbackRect: rect,
+    ...(Object.prototype.hasOwnProperty.call(debugMeta || {}, "relativeTo")
+      ? { relativeTo: debugMeta.relativeTo }
+      : {}),
   });
   if (authoritativeTextRect) {
     if (object?.tipo === "texto") {
@@ -546,16 +550,17 @@ function hasFiniteSelectionPolygonPoints(points) {
   );
 }
 
-function hasMeaningfulSelectionRotation(node, object) {
-  const rawRotation =
-    typeof node?.rotation === "function"
-      ? Number(node.rotation() || 0)
-      : Number(object?.rotation || 0);
-
-  if (!Number.isFinite(rawRotation)) return false;
-
-  const normalizedRotation = Math.abs(rawRotation % 360);
-  return normalizedRotation > 0.01 && Math.abs(normalizedRotation - 360) > 0.01;
+export function resolveTransformedTextSelectionPolygon(node, object, padding = 0) {
+  if (object?.tipo !== "texto" || !node) return null;
+  const geometry = resolveAuthoritativeTextGeometry(node, object, { padding });
+  const matrix = geometry?.transform;
+  const hasTransformedAxes = matrix && (
+    Math.abs(matrix[1]) > 0.0001 || Math.abs(matrix[2]) > 0.0001 ||
+    matrix[0] < 0 || matrix[3] < 0
+  );
+  return hasTransformedAxes && hasFiniteSelectionPolygonPoints(geometry.points)
+    ? geometry.points
+    : null;
 }
 
 export function resolveSingleTextSelectionVisualBounds({
@@ -574,17 +579,14 @@ export function resolveSingleTextSelectionVisualBounds({
     : 0;
   const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
 
-  if (hasMeaningfulSelectionRotation(node, object)) {
-    const rotatedPoints = buildSelectionFramePolygon(node, padding);
-
-    if (hasFiniteSelectionPolygonPoints(rotatedPoints)) {
-      return {
-        kind: "polygon",
-        points: rotatedPoints,
-        strokeWidth,
-        padding,
-      };
-    }
+  const rotatedPoints = resolveTransformedTextSelectionPolygon(node, object, padding);
+  if (rotatedPoints) {
+    return {
+      kind: "polygon",
+      points: rotatedPoints,
+      strokeWidth,
+      padding,
+    };
   }
 
   const rect = resolveNodeSelectionRect(object, node, {

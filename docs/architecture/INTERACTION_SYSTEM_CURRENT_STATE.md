@@ -2,7 +2,7 @@
 
 > Status: Current Implementation Map.
 >
-> Updated from code inspection on 2026-08-12.
+> Updated from code inspection on 2026-08-12; drag finalization and guide geometry reviewed on 2026-10-12; GEO03/SNAP01 geometry and cache follow-up on 2026-10-14.
 >
 > Documentation routing corrected on 2026-05-19.
 >
@@ -399,6 +399,24 @@ Current move behavior:
 
 Current end behavior:
 
+Before settling, `applyCanonicalDragFinalization(...)` delegates to
+`canvasEditor/dragPositionFinalization.js`. The existing positioning authority
+accepts or rejects the drop; the adapter immediately projects that accepted
+object back to the live node with `resolveObjectStageY(...)` and the existing
+text-origin offsets. If the pose changes, the active selection's controlled
+overlay is refreshed through `recordSelectionDragMoveSummary(...)` before its
+settling snapshot is frozen. Gallery and Countdown perform this step before
+their React state updater and personalized end callback. Unchanged accepted
+poses do not request a correction draw; no global React-Konva strict mode is used.
+
+Group commit suppression is scoped to the completed gesture: `dragGrupal.js`
+stores `__completedGroupDragSessionId` on each committed node, and the individual
+and Gallery end adapters consult `shouldSuppressIndividualDragEnd(...)`.
+A new individual start clears only that member's completed marker and residual
+skip guard; it cannot clear an active group's protection. Repeated follower
+ends do not consume a one-shot flag or create additional individual commits.
+These markers remain transient Konva attributes, not persisted object fields.
+
 1. drag end enters a settling phase
 2. the composer stores a drag settle session snapshot
 3. deferred selection repair can run if the drag started from an unselected object
@@ -555,6 +573,23 @@ Current guide computation:
 - an accepted section or element candidate applies its complete axis delta; guide lines are published only from the post-snap live geometry when the relation is within the explicit alignment tolerance
 - section center, center-to-center, edge-to-edge, and center-to-edge relations travel in the existing guide-line shape; `CanvasGuideLayer` maps them to solid, dashed, dotted, and dash-dot treatments respectively
 - activation/release radii and guide stroke/dash metrics are converted from perceptual screen pixels by the current visual scale; all snap calculations remain in canvas coordinates
+- Gallery geometry uses the shared `resolveNodeSelectionRect(...)` / `resolveGallerySelectionRect(...)` path for both the dragged object and reference candidates. The live `.gallery-transform-frame` takes precedence over persisted layout dimensions and cell overlays.
+- `resolveLineSelectionRect(...)`, also consumed by selection unions and drag bounds, preserves finite zero endpoints. Missing or non-finite endpoints use the existing per-coordinate defaults `[0, 0, 100, 0]`; this does not introduce a new rotated-line geometry model.
+
+GEO03/SNAP01 follow-up (2026-10-14):
+
+- Text anchors come from the stage-space AABB of the shared transformed text geometry described in Section 7.3. Snap deltas are expressed in stage coordinates; `applyStageSnapDelta(...)` maps the vector into the parent's local coordinates before mutating the node, including transformed parents.
+- The target cache belongs to the current session, stage and dragged object. Each entry retains the live node identity, its relevant live geometry inputs and its last resolved bounds. A new session or guide cleanup discards those entries.
+- Each sample checks target membership, refs, stage attachment and effective node visibility. Cheap geometry-input comparisons include live dimensions, transforms and ancestors; automatic text dimensions can therefore invalidate an entry after font measurement without replacing `objetos`. Composite targets include descendant geometry; Gallery uses its `.gallery-transform-frame` and ancestors rather than scanning cell contents when that frame exists.
+- Only new or changed entries call the existing live bounds resolver. Unchanged entries reuse their boxes. There is no geometry observer, extra event listener or deferred RAF; the existing drag sample performs validation before candidate/lock resolution.
+- A missing, hidden, detached or section-removed target loses its locks immediately. A replaced node releases that target's locks. When the same node's measured bounds change, each axis compares its concrete locked target anchor: only moved or invalid anchors release their lock. Unchanged anchors, including the other axis of a resized target, retain hysteresis; visual-only updates do not cause an anchor switch. Visible non-editable references retain their existing eligibility.
+- The input comparison is cache validation, not another geometry authority. It does not derive alternative snap bounds or write persisted object fields.
+
+Activation remains 10 screen pixels for elements and 6 for section centers;
+release remains 18/14 pixels, expanded by 1.75 for the first 120 ms. Section
+priority bias, tie-breaking, exact snap deltas, Alt/Option bypass and touch
+eligibility are unchanged. Cache-reuse tests establish avoided bounds reads,
+not an FPS improvement or a measured drag-latency reduction.
 
 Current execution flow:
 
@@ -620,6 +655,7 @@ Important geometry/projection helpers in active use:
 - `resolveSelectionUnionRect(...)`
 - `resolveNodeSelectionRect(...)`
 - `resolveSingleTextSelectionVisualBounds(...)`
+- `resolveAuthoritativeTextGeometry(...)` / `resolveAuthoritativeTextRect(...)`
 - `resolveSelectionFrameRect(...)`
 - `resolveInlineStageViewportMetrics(...)`
 - `projectInlineRectToViewport(...)`
@@ -629,8 +665,23 @@ Important geometry/projection helpers in active use:
 
 Current text rule:
 
-- text consumers prefer `resolveAuthoritativeTextRect(...)` when available
-- if unavailable, some callers fall back to generic client-rect geometry
+- `konvaAuthoritativeBounds.js` owns the measured local Text box and its projection. `resolveAuthoritativeTextGeometry(...)` returns `localRect`, the six-value `transform` matrix, transformed corner `points`, and their axis-aligned enclosing `rect` (AABB). Rotation, signed scales, offsets and inherited transforms participate in that projection. This is the measured layout box (including configured width), not a tight glyph-ink boundary or a shadow/stroke envelope. A measured zero dimension, such as empty text during inline editing, retains its matrix; missing, negative or non-finite dimensions do not acquire a fallback local box.
+- Canvas consumers default to coordinates relative to `node.getStage()`. `resolveAuthoritativeTextRect(...)` is the compatibility wrapper returning that geometry's `rect`; it no longer treats a rotated box as an untranslated width/height pair.
+- Text selection polygons consume the same authority through `buildSelectionFramePolygon(...)`. `resolveTransformedTextSelectionPolygon(...)` supplies the shared transformed-axis decision to hover and `SelectionBoundsIndicator.resolveSelectionBounds(...)`, including inherited rotation with zero local rotation; unions and snap anchors use the AABB. If live text authority is unavailable during drag, consumers fail closed instead of silently substituting a generic client rect.
+- DOM projection requests `relativeTo: null`, which includes native Stage transforms. `inlineGeometry.js` applies the container/CSS viewport conversion once to this geometry and exposes the corresponding viewport transform. The semantic backend uses local dimensions plus that matrix for rotated, scaled, skewed or reflected text and for any native Stage transform; it does not rotate the already enlarged AABB again. Native Stage translation also takes the existing transformed/native-caret path because synthetic decorations only invert CSS projection. Ordinary text at CSS zoom retains its existing projected-box path.
+- Explicit object-data fallback remains governed by phase and source-purity rules below. These changes do not alter persisted text positions, dimensions or rotation fields.
+
+Verification anchors for GEO03/SNAP01 are
+`src/components/editor/canvasEditor/konvaAuthoritativeBounds.test.mjs`,
+`src/components/editor/canvasEditor/textGeometryConsumers.test.mjs`,
+`src/hooks/useGuiasCentrado.cache.test.mjs` and the optional Phase 2 cases in
+`src/drag/dragPhase1.browser.test.mjs`; commands and limits belong to the
+[editor regression checklist](../testing/EDITOR_REGRESSION_CHECKLIST.md).
+Pure tests use real Konva matrices with supplied dimensions and a single-render
+hook lifecycle adapter. The offline browser scene adds real React/Konva Text
+measurement, local-font remeasurement and Gallery rendering. It does not certify
+the full editor's font-loading lifecycle, inline focus/caret, or selected/drag/
+settling handoff; those remain interaction checks in the real editor.
 
 Current selection union rules:
 
@@ -645,7 +696,7 @@ Current selection union rules:
 Current hover rules:
 
 - text uses text-specific visual bounds
-- gallery uses object size plus absolute group position
+- gallery prefers the live frame through `resolveNodeSelectionRect(...)`; object size plus absolute group position is only its explicit hover fallback
 - countdown can use `.countdown-hitbox`
 - rotated image/shape/CTA paths can use polygons
 
@@ -732,15 +783,15 @@ Timing-sensitive boundaries:
 Current guide evaluation order is:
 
 1. drag sample stores latest guide payload
-2. `scheduleGuideEvaluation(...)` requests RAF
-3. RAF callback flushes pending payload
+2. `scheduleGuideEvaluation(...)` invokes the flush synchronously
+3. the flush consumes the payload within that drag sample
 4. `mostrarGuias(...)` computes guide lines and may snap the live node
 5. `guide-post-snap-sync` updates drag-overlay bounds if the session still matches
 6. `CanvasGuideLayer` reflects the latest guide lines
 
 Timing-sensitive boundary:
 
-- guide output is intentionally deferred behind RAF, so guide visuals and snapped overlay sync do not happen in the same micro-step as the raw drag sample
+- evaluation, snap, post-snap reread and overlay resync share the drag sample; adding a guide-only RAF would violate the current interaction contract. The guide layer still has its own React/Konva rendering lifecycle.
 
 ## 9. Session and Identity Model
 
@@ -754,7 +805,7 @@ Timing-sensitive boundary:
 | Hover identity | Hovered element id only | Selection UI hover path | No session guard exists; stale hover cleanup depends on imperative clears. |
 | Inline mount session | `id`, `sessionId`, `token`, `mounted`, `swapCommitted`, `renderAuthority`, phase metadata | `useInlineSessionRuntime.js` | Strongest identity model in the subsystem, but late acks still need to be ignored correctly. |
 | Inline swap ack | Mirrors session/token/phase for swap coordination | `useInlineSessionRuntime.js` | Late or mismatched acks can target an old overlay session. |
-| Guide evaluation request | Latest payload + RAF pending state; not a durable public session id | Composer guide scheduler | Late guide flush can target a superseded drag unless the overlay session check rejects it. |
+| Guide evaluation request and target cache | Request carries drag-session identity; cache is scoped to session/stage/dragged node and validates target identity and live inputs | Composer request builder and `useGuiasCentrado.js` | New geometry must invalidate affected entries/locks before the synchronous sample; overlay resync still checks the active drag session. |
 
 Current fallback identity logic:
 
@@ -796,9 +847,9 @@ This mismatch is one of the main reasons selection-box behavior remains timing-s
 | `delayed teardown` | Drag-overlay and transformer teardown are intentionally delayed by settle and handoff guards. |
 | `startup desync` | First visible drag-overlay frame correctness depends on `controlled-sync` winning over seed/replay/fallback paths. |
 | `session resurrection` | Late settle/cleanup/swap work can target a no-longer-current drag or inline session if identity checks regress. |
-| `guide / snap lag` | Guide evaluation is RAF-coalesced and can mutate live nodes after the drag sample that triggered it. |
+| `guide / snap lag` | Evaluation and post-snap resync are synchronous; handler cost and the guide layer's rendering still require browser measurement. There is no current guide-only RAF delay. |
 | `overlay / canvas mismatch` | DOM inline projection depends on stage viewport metrics and authority timing, while canvas visuals depend on live Konva geometry and suppression rules. |
-| `text bounds mismatch` | Text consumers prefer authoritative text rects, but generic rect fallbacks still exist. |
+| `text bounds mismatch` | Canvas AABBs, selection polygons and DOM projection must consume the same transformed text geometry in their declared coordinate spaces; generic client-rect fallback is not a drag-time substitute. |
 
 ## 13. Risk and Fragility Analysis
 

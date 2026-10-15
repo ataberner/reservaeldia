@@ -58,25 +58,6 @@ function readNodeAttr(node, key, fallback = null) {
   return fallback;
 }
 
-function buildCssMatrix(node, stageMetrics) {
-  if (!node || !stageMetrics?.stageRect) return null;
-  let matrix = null;
-  try {
-    matrix = node.getAbsoluteTransform?.()?.getMatrix?.() || null;
-  } catch {
-    matrix = null;
-  }
-  if (!Array.isArray(matrix) || matrix.length < 6) return null;
-
-  const [a, b, c, d, e, f] = matrix;
-  const scaleX = Number(stageMetrics.totalScaleX || 1);
-  const scaleY = Number(stageMetrics.totalScaleY || 1);
-  const translateX = Number(stageMetrics.stageRect.left || 0) + Number(e || 0) * scaleX;
-  const translateY = Number(stageMetrics.stageRect.top || 0) + Number(f || 0) * scaleY;
-
-  return `matrix(${a * scaleX}, ${b * scaleY}, ${c * scaleX}, ${d * scaleY}, ${translateX}, ${translateY})`;
-}
-
 function toPositiveNumber(value, fallback = 1) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
@@ -312,9 +293,14 @@ function HiddenSemanticTextBackend({
       const previousStageRect = previous?.stageRect || null;
       const stageRectUnchanged =
         areProjectionRectsEqual(nextStageRect, previousStageRect);
+      const transformUnchanged =
+        JSON.stringify(nextProjection?.konvaTextViewportTransform) ===
+        JSON.stringify(previous?.konvaTextViewportTransform);
       if (
         areProjectionRectsEqual(nextRect, previousRect) &&
         stageRectUnchanged &&
+        transformUnchanged &&
+        nextProjection?.canUseProjectedBoxLayout === previous?.canUseProjectedBoxLayout &&
         Math.abs(
           Number(nextProjection?.totalScaleX || 0) -
             Number(previous?.totalScaleX || 0)
@@ -331,6 +317,8 @@ function HiddenSemanticTextBackend({
         stageRect: nextStageRect,
         totalScaleX: Number(nextProjection?.totalScaleX || 1),
         totalScaleY: Number(nextProjection?.totalScaleY || 1),
+        konvaTextViewportTransform: nextProjection.konvaTextViewportTransform,
+        canUseProjectedBoxLayout: nextProjection.canUseProjectedBoxLayout,
       };
     });
   }, [
@@ -356,9 +344,7 @@ function HiddenSemanticTextBackend({
   );
   const useProjectedBoxLayout =
     projectedRect &&
-    Math.abs(Number(nodeProps.rotation || 0)) < 0.01 &&
-    Math.abs(Number(nodeProps.scaleX || 1) - 1) < 0.01 &&
-    Math.abs(Number(nodeProps.scaleY || 1) - 1) < 0.01;
+    effectiveKonvaProjection?.canUseProjectedBoxLayout === true;
   const usesTransformedBackendLayout = !useProjectedBoxLayout;
   const hiddenSemanticVisualMode = useMemo(
     () =>
@@ -700,7 +686,8 @@ function HiddenSemanticTextBackend({
     }
     return 0;
   })();
-  const cssTransform = buildCssMatrix(textNode, stageMetrics);
+  const viewportTransform = effectiveKonvaProjection?.konvaTextViewportTransform;
+  const cssTransform = viewportTransform ? `matrix(${viewportTransform.join(", ")})` : null;
 
   useLayoutEffect(() => {
     if (!hasRenderableBackend || typeof controller?.syncDecorations !== "function") {

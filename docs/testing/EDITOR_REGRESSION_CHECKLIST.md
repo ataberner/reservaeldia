@@ -117,6 +117,39 @@ Resultado esperado:
 - se preservan las distancias relativas
 - la multiseleccion sigue coherente al terminar el drag
 
+### [ ] Regresiones P1 de drag y geometria
+
+1. Mover una multiseleccion, seleccionar solo su lider y moverlo de inmediato; repetir con un seguidor, Gallery y Countdown, y despues de esperar mas de 400 ms. Deshacer y rehacer ambos movimientos.
+2. Desde una seccion editable `fijo` y otra `pantalla`, soltar un objeto sobre una seccion bloqueada. Incluir una seccion previa y texto con offsets; repetir con Gallery y Countdown.
+3. Alinear una Gallery como objeto movido y como referencia en layouts `one_by_n`, `two_by_n` y `three_by_n`, con escala 1 y 0.6.
+4. Alinear lineas verticales, horizontales e invertidas cuyos endpoints incluyan cero.
+
+Resultado esperado:
+
+- cada movimiento individual valido produce un commit; finales repetidos de seguidores no agregan commits ni consumen el siguiente gesto
+- un drop rechazado restaura nodo, estado y dato persistible a la pose aceptada; el overlay muestra esa pose antes del settle y el transformer vuelve a la misma seleccion
+- Gallery usa su frame visual, sin sumar overlays de celdas ni usar una altura persistida obsoleta
+- un endpoint cero conserva su valor; no se convierte en el default 100
+
+Regresiones automatizadas (Node 20, sin servicios externos):
+
+```powershell
+node --test src/drag/dragGrupal.test.mjs src/components/editor/canvasEditor/dragPositionFinalization.test.mjs src/hooks/useGuiasCentrado.geometry.test.mjs
+```
+
+El probe optativo `src/drag/dragPhase1.browser.test.mjs` monta React-Konva y los
+handlers reales en una pagina sintetica offline. Se habilita con
+`DRAG_PHASE1_BROWSER=1`; `CHROME_EXECUTABLE_PATH` permite usar un Chromium local
+en lugar del cache del repositorio. No descarga herramientas ni conecta Firebase.
+Su alcance no incluye el montaje completo del composer ni el handoff real del
+overlay/transformer, que requieren el recorrido manual anterior.
+
+Mantener separada la falla conocida de `src/domain/editor/canvasObjectPositioning.test.mjs`
+(`uses yNorm as the screen-section visual authority`): su fixture declara altura 100
+para una seccion `pantalla` con `ALTURA_PANTALLA_EDITOR=500`. No modificar su
+expectativa para ocultar la inconsistencia; la correccion de ese fixture/contrato
+queda fuera de esta fase.
+
 ### [ ] Select-and-drag en el mismo gesto
 
 1. Tomar un objeto no seleccionado.
@@ -178,6 +211,52 @@ Resultado esperado:
 - grosor, dash y radio magnetico conservan una percepcion aproximadamente constante al cambiar la escala, sin cambiar las coordenadas legales del snap
 - Alt/Option elimina snap y guia mientras esta presionado y los reactiva al liberarse; touch conserva su algoritmo compartido y el scroll vertical
 - drag end, cancelacion, geometria/target invalido, error y nueva sesion no dejan guias ni locks stale
+
+### [ ] GEO03/SNAP01: texto transformado y cache de referencias (2026-10-14)
+
+1. Usar texto con rotaciones 0, 45, 90, 180 y negativas, alineacion izquierda/centro/derecha, offsets y escalas distintas. Alinear el texto arrastrado y usarlo como referencia; comparar centro/bordes del frame medido, guias, seleccion y pose final. Repetir con CSS zoom 1 y 0.6; incluir transformacion heredada cuando el fixture la permita, incluso rotacion local cero bajo un padre rotado.
+2. Seleccionar, iniciar drag, soltar alineado, deshacer/rehacer y abrir/cerrar inline. Confirmar que la caja de seleccion y el overlay DOM usan la misma geometria sin aplicar dos veces la rotacion o el zoom; revisar caret, focus y handoff en el editor completo. Borrar todo el texto y volver a escribir: una medida cero conserva la matriz y el origen de insercion. Un Stage con transformacion nativa utiliza el backend transformado existente, sin reenviar su traslacion a decoraciones sinteticas.
+3. Con candidatos precalculados, mover una referencia de X100 a X300 sin reemplazar `objetos`; repetir con cambio de tamano, rotacion, escala, reemplazo del nodo y una nueva sesion. La guia anterior debe desaparecer y la nueva referencia participar en la siguiente muestra valida.
+4. Cambiar las dimensiones medidas de un texto por carga tardia de fuente y el layout interno de una Gallery durante la sesion. Confirmar que se usa la nueva caja, aunque siga existiendo el mismo nodo raiz. Repetir la carga de fuente por el lifecycle real `fonts-loaded`, ademas del probe sintetico.
+5. Ocultar/eliminar una referencia, moverla a otra seccion o desacoplar su nodo. No debe quedar una guia o lock stale. Una referencia visible bloqueada conserva su papel de referencia sin adquirir permiso de edicion.
+6. Mantener una alineacion y modificar otro target o un eje independiente del mismo target. Confirmar que solo se libera el lock cuya ancla quedo invalidada; cambios visuales sin cambio geometrico no causan saltos. Repetir Alt/Option, cancelacion y nueva sesion.
+
+Resultado esperado:
+
+- la autoridad comun proyecta el rectangulo local del texto con su matriz real; sus esquinas, AABB, guias y proyeccion DOM coinciden en el espacio de coordenadas correspondiente
+- el snap transforma su delta de stage a coordenadas locales del padre antes de mover el nodo
+- entradas de cache estables reutilizan sus bounds; cambios relevantes actualizan solo las referencias afectadas, sin recalcular todos los bounding boxes por muestra
+- no se incorporan RAF ni listeners de geometria adicionales; se preservan radios 10/6 px, liberacion 18/14 px, expansion inicial por 1.75 durante 120 ms, prioridades y bypass Alt
+
+Regresiones automatizadas de Fase 2 (Node 20):
+
+```powershell
+node --test src/components/editor/canvasEditor/konvaAuthoritativeBounds.test.mjs src/components/editor/canvasEditor/textGeometryConsumers.test.mjs src/hooks/useGuiasCentrado.cache.test.mjs src/hooks/useGuiasCentrado.geometry.test.mjs src/lib/editorAlignmentGuides.test.mjs src/components/editor/canvasEditor/editorAlignmentGuidesIntegration.test.mjs
+```
+
+Los tests de autoridad usan matrices Konva reales con dimensiones de texto
+suministradas. El test de cache ejecuta hook, resolvers y snapping reales con un
+adapter de lifecycle React de una sola renderizacion; comprueba reuso contando
+lecturas de bounds. `editorAlignmentGuidesIntegration.test.mjs` sigue siendo
+verificacion estatica de source y no sustituye una interaccion montada.
+
+El mismo probe offline de Fase 1 incorpora las pruebas de Fase 2 con otro flag:
+
+```powershell
+$env:DRAG_PHASE2_BROWSER = "1"
+node --test src/drag/dragPhase1.browser.test.mjs
+Remove-Item Env:DRAG_PHASE2_BROWSER
+```
+
+Requiere Chromium local; `CHROME_EXECUTABLE_PATH` permite elegirlo. Escribe bundle,
+capturas y `evidence.json` en `.local-isolation/drag-phase2-browser`, bloquea trafico
+externo y no monta Firebase. Incluye Text/React-Konva reales, mutacion de target
+durante mouse drag, remeasurement de fuente local y cambio de layout Gallery.
+La remeasurement del probe no certifica el lifecycle de carga de fuentes del
+editor completo. Tampoco cubre su composer completo, autosave remoto ni handoff
+inline/seleccion/settling. Esos limites requieren las interacciones manuales
+anteriores. Registrar resultados y versiones al ejecutarlo; estos checks no
+constituyen mediciones de FPS ni prueban una mejora de rendimiento.
 
 ### [ ] Re-seleccion despues del drag
 

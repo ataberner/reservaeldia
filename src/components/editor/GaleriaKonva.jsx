@@ -36,6 +36,7 @@ import {
 import {
   endDragGrupal,
   previewDragGrupal,
+  shouldSuppressIndividualDragEnd,
   startDragGrupalLider,
 } from "@/drag/dragGrupal";
 import { buildIndividualDragModifierState } from "@/drag/dragIndividual";
@@ -731,6 +732,10 @@ export default function GaleriaKonva({
           };
           e.target.draggable(false);
           cleanupGlobal();
+          return;
+        }
+
+        if (shouldSuppressIndividualDragEnd(obj.id, e.currentTarget || e.target)) {
           return;
         }
 

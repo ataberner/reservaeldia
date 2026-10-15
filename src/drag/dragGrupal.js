@@ -41,6 +41,7 @@ function buildGroupDragSessionId(leaderId) {
 const MANUAL_GROUP_DRAG_MOVE_THRESHOLD_POINTER = 4;
 const MANUAL_GROUP_DRAG_MOVE_THRESHOLD_TOUCH = 6;
 const MANUAL_GROUP_FINAL_PREVIEW_SYNC_EPSILON = 0.01;
+const COMPLETED_GROUP_DRAG_SESSION_ATTR = "__completedGroupDragSessionId";
 
 function buildGroupDragResult(overrides = {}) {
   return {
@@ -129,6 +130,29 @@ export function shouldSuppressIndividualDragForElement(elementId) {
     Array.isArray(recentGuard.elementIds) &&
     recentGuard.elementIds.includes(elementId)
   );
+}
+
+export function shouldSuppressIndividualDragEnd(elementId, node = null) {
+  const memberNode = node || resolveSessionMemberNode(elementId);
+  return shouldSuppressIndividualDragForElement(elementId) || Boolean(
+    memberNode?.getAttr?.(COMPLETED_GROUP_DRAG_SESSION_ATTR)
+  );
+}
+
+export function clearCompletedGroupDragForElement(elementId, node = null) {
+  const session = getAnyGroupDragSession();
+  if (session?.active && session.elementIds?.includes(elementId)) return;
+
+  // A new individual start supersedes only this member's completed group gesture.
+  // Late ends remain suppressed until that start, rather than consuming a one-shot flag.
+  const memberNode = node || resolveSessionMemberNode(elementId);
+  memberNode?.setAttr?.(COMPLETED_GROUP_DRAG_SESSION_ATTR, null);
+  if (typeof window === "undefined") return;
+  window._skipIndividualEnd?.delete?.(elementId);
+  const recentGuard = getRecentGroupDragGuard();
+  if (recentGuard?.elementIds?.includes(elementId)) {
+    recentGuard.elementIds = recentGuard.elementIds.filter((id) => id !== elementId);
+  }
 }
 
 function syncLegacyGroupGlobalsFromSession(session) {
@@ -970,7 +994,7 @@ function commitGroupDragChanges(session, deltaData, fallbackObj, onChange) {
     const committedY = Number.isFinite(canonicalPose?.y) ? canonicalPose.y : nuevaY;
 
     try {
-      node?.setAttr?.("_muteNextEnd", true);
+      node?.setAttr?.(COMPLETED_GROUP_DRAG_SESSION_ATTR, session.sessionId);
     } catch {}
 
     onChange(elementId, {
@@ -1607,6 +1631,7 @@ export function startDragGrupalLider(e, obj) {
   }
 
   if (!shouldStartGroupDrag(obj?.id, selectedIds)) {
+    clearCompletedGroupDragForElement(obj?.id, e?.currentTarget || e?.target || null);
     return buildGroupDragResult({
       handled: false,
       role: "none",

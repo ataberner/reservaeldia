@@ -47,6 +47,80 @@ function getGuidePerfNow() {
     return Date.now();
 }
 
+function sameGuideGeometrySample(left, right) {
+    return Boolean(left && right) && left.length === right.length &&
+        left.every((value, index) => Object.is(value, right[index]));
+}
+
+// These are cheap live inputs, not a second bounds authority. Only changed
+// targets are remeasured by getNodeBox; unchanged targets keep their cached rect.
+function readGuideTargetGeometrySample(node, stage, object) {
+    const sample = [object?.tipo, object?.figura, object?.canonicalPoseMode];
+    const appendValue = (value) => {
+        if (Array.isArray(value)) {
+            sample.push(value.length);
+            value.forEach(appendValue);
+        } else {
+            sample.push(value);
+        }
+    };
+    const appendNode = (current, includeChildren = false) => {
+        if (!current) return;
+        sample.push(current);
+        const attrs = current.getAttrs?.() || current.attrs || {};
+        for (const key of Object.keys(attrs)) {
+            sample.push(key);
+            appendValue(attrs[key]);
+        }
+        // Text's automatic dimensions can change after font measurement without
+        // an object-array update, or even without an explicit width/height attr.
+        for (const key of ["x", "y", "width", "height", "rotation", "scaleX", "scaleY", "offsetX", "offsetY", "skewX", "skewY", "visible"]) {
+            sample.push(typeof current[key] === "function" ? current[key]() : attrs[key]);
+        }
+        if (includeChildren) {
+            const children = current.getChildren?.() || [];
+            sample.push(children.length);
+            children.forEach((child) => appendNode(child, true));
+        }
+    };
+
+    const galleryFrame = object?.tipo === "galeria"
+        ? node.findOne?.(".gallery-transform-frame")
+        : null;
+    const geometryNode = galleryFrame || node;
+    appendNode(geometryNode, !galleryFrame);
+    // Parent transforms/visibility affect stage-space geometry; the Stage's own
+    // transform is excluded because guide coordinates are relative to it.
+    let parent = geometryNode.getParent?.();
+    while (parent && parent !== stage) {
+        appendNode(parent);
+        parent = parent.getParent?.();
+    }
+    // Simple adapters can expose a frame without its Konva parent relationship.
+    if (galleryFrame && !galleryFrame.getParent) appendNode(node);
+    if (object?.tipo === "forma" && object?.figura === "line") {
+        appendValue(object.points);
+    }
+    return sample;
+}
+
+function applyStageSnapDelta(node, stage, axis, delta) {
+    if (!Number.isFinite(delta)) return false;
+    let movement = { x: axis === "x" ? delta : 0, y: axis === "y" ? delta : 0 };
+    const parent = node.getParent?.();
+    if (parent && parent !== stage) {
+        const inverse = parent.getAbsoluteTransform?.(stage)?.copy?.().invert();
+        if (!inverse) return false;
+        const origin = inverse.point({ x: 0, y: 0 });
+        const destination = inverse.point(movement);
+        movement = { x: destination.x - origin.x, y: destination.y - origin.y };
+    }
+    if (!Number.isFinite(movement.x) || !Number.isFinite(movement.y)) return false;
+    if (movement.x !== 0) node.x(node.x() + movement.x);
+    if (movement.y !== 0) node.y(node.y() + movement.y);
+    return true;
+}
+
 function buildGuideLinesSignature(lines = []) {
     return lines.map((line) => [
         line?.type || "",
@@ -260,6 +334,7 @@ export default function useGuiasCentrado({
     const lastGuideSignatureRef = useRef("");
     const objectCacheRef = useRef({
         source: null,
+        membership: [],
         byId: new Map(),
         bySection: new Map(),
     });
@@ -268,9 +343,10 @@ export default function useGuiasCentrado({
         byId: new Map(),
     });
     const sectionGuideTargetsCacheRef = useRef({
-        source: null,
         stage: null,
         selfId: null,
+        sessionId: null,
+        entries: new Map(),
         targets: [],
     });
     const snapLockRef = useRef({
@@ -359,6 +435,9 @@ export default function useGuiasCentrado({
 
     const clearGuideLines = useCallback(() => {
         resetSnapLocks();
+        sectionGuideTargetsCacheRef.current = {
+            stage: null, selfId: null, sessionId: null, entries: new Map(), targets: [],
+        };
         guideDebugContextRef.current = {
             sessionId: null,
             interactionEpoch: null,
@@ -378,12 +457,18 @@ export default function useGuiasCentrado({
 
     useEffect(() => () => {
         resetSnapLocks();
+        sectionGuideTargetsCacheRef.current.entries.clear();
+        sectionGuideTargetsCacheRef.current.targets = [];
         lastGuideSignatureRef.current = "";
         publishGuideLines([]);
     }, [publishGuideLines, resetSnapLocks]);
 
     const getObjectCache = useCallback((objetos = []) => {
-        if (objectCacheRef.current.source === objetos) {
+        const membership = objetos.flatMap((obj) => [obj, obj?.id, obj?.seccionId]);
+        if (
+            objectCacheRef.current.source === objetos &&
+            sameGuideGeometrySample(objectCacheRef.current.membership, membership)
+        ) {
             return objectCacheRef.current;
         }
 
@@ -407,6 +492,7 @@ export default function useGuiasCentrado({
 
         objectCacheRef.current = {
             source: objetos,
+            membership,
             byId,
             bySection,
         };
@@ -487,55 +573,11 @@ export default function useGuiasCentrado({
 
         let baseRect = null;
 
-        if (
-            obj?.tipo === "galeria" &&
-            Number.isFinite(Number(obj?.width)) &&
-            Number.isFinite(Number(obj?.height))
-        ) {
-            const xFromNode = typeof node.x === "function" ? node.x() : null;
-            const yFromNode = typeof node.y === "function" ? node.y() : null;
-            const absPos =
-                typeof node.getAbsolutePosition === "function"
-                    ? node.getAbsolutePosition(stage)
-                    : null;
-            const x =
-                Number.isFinite(xFromNode)
-                    ? xFromNode
-                    : Number.isFinite(absPos?.x)
-                    ? absPos.x
-                    : (typeof node.x === "function" ? node.x() : 0);
-            const y =
-                Number.isFinite(yFromNode)
-                    ? yFromNode
-                    : Number.isFinite(absPos?.y)
-                    ? absPos.y
-                    : (typeof node.y === "function" ? node.y() : 0);
-
-            baseRect = {
-                x,
-                y,
-                width: Number(obj.width),
-                height: Number(obj.height),
-            };
-        } else if (obj?.tipo === "galeria" && typeof node.findOne === "function") {
-            // La galeria usa overlays por celda; medir su frame base evita offsets falsos.
-            const galleryFrame = node.findOne(".gallery-transform-frame");
-            if (galleryFrame && typeof galleryFrame.getClientRect === "function") {
-                try {
-                    baseRect = galleryFrame.getClientRect({
-                        relativeTo: stage,
-                        skipShadow: true,
-                        skipStroke: true,
-                    });
-                } catch {
-                    // fallback al rect completo
-                }
-            }
-        }
-
         let geometryFamily = null;
 
         if (!baseRect) {
+            // Gallery shares the live frame resolver with selection; persisted
+            // dimensions may describe an older layout and cell overlays are not bounds.
             baseRect = resolveNodeSelectionRect(obj, node, {
                 phase: "drag",
                 surface: "guide-geometry",
@@ -661,69 +703,89 @@ export default function useGuiasCentrado({
             : shiftedRect;
     };
 
-    const getSectionGuideTargets = useCallback((stage, objetosSeccion, elementRefs, idSelf, objById) => {
-        if (!stage || !Array.isArray(objetosSeccion) || objetosSeccion.length === 0) {
-            return {
-                targets: [],
-                cacheHit: false,
-            };
-        }
-
+    const getSectionGuideTargets = useCallback((stage, objetosSeccion, elementRefs, idSelf, objById, sessionId) => {
         const cached = sectionGuideTargetsCacheRef.current;
-        if (
-            cached.source === objetosSeccion &&
+        const sameSession =
             cached.stage === stage &&
-            cached.selfId === idSelf
-        ) {
-            trackCanvasDragPerf("guides:targets-cache-hit", {
-                elementId: idSelf,
-                sectionCandidates: objetosSeccion.length,
-                targets: cached.targets.length,
-            }, {
-                throttleMs: 180,
-                throttleKey: `guides:targets-cache-hit:${idSelf}`,
-            });
-            return {
-                targets: cached.targets,
-                cacheHit: true,
-            };
-        }
-
-        const targets = objetosSeccion
-            .filter((obj) => obj?.id && obj.id !== idSelf)
-            .map((obj) => {
-                const node = elementRefs.current?.[obj.id];
-                if (!node) return null;
-                const box = getNodeBox(node, stage, objById.get(obj.id) || obj || null);
-                if (!box) return null;
-                return {
-                    id: obj.id,
-                    box,
-                    centerX: box.x + box.width / 2,
-                    centerY: box.y + box.height / 2,
-                };
-            })
-            .filter(Boolean);
-
-        sectionGuideTargetsCacheRef.current = {
-            source: objetosSeccion,
-            stage,
-            selfId: idSelf,
-            targets,
+            cached.selfId === idSelf &&
+            cached.sessionId === sessionId;
+        const entries = new Map();
+        const targets = [];
+        let cacheHit = sameSession;
+        const invalidateTargetLock = (id, previousBox = null, nextBox = null) => {
+            for (const axis of ["x", "y"]) {
+                const lock = snapLockRef.current[axis];
+                if (lock?.targetId !== id) continue;
+                const previousAnchor = getGuideAxisAnchors(previousBox, axis).find(
+                    (anchor) => anchor.kind === lock.targetAnchorKind
+                );
+                const nextAnchor = getGuideAxisAnchors(nextBox, axis).find(
+                    (anchor) => anchor.kind === lock.targetAnchorKind
+                );
+                // A resize can move X anchors without invalidating the locked Y
+                // anchor (or leave a start edge unchanged on the resized axis).
+                if (previousAnchor && nextAnchor && previousAnchor.value === nextAnchor.value) continue;
+                snapLockRef.current[axis] = null;
+            }
         };
 
-        trackCanvasDragPerf("guides:targets-cache-build", {
+        for (const obj of objetosSeccion || []) {
+            if (!obj?.id || obj.id === idSelf) continue;
+            const node = elementRefs.current?.[obj.id];
+            if (!node || node.isVisible?.() === false ||
+                (node.getStage && node.getStage() !== stage)) continue;
+            const object = objById.get(obj.id) || obj;
+            const sample = readGuideTargetGeometrySample(node, stage, object);
+            const previous = sameSession ? cached.entries.get(obj.id) : null;
+            if (previous && sameGuideGeometrySample(previous.sample, sample)) {
+                entries.set(obj.id, previous);
+                targets.push(previous.target);
+                continue;
+            }
+
+            cacheHit = false;
+            const box = getNodeBox(node, stage, object);
+            if (!box || ![box.x, box.y, box.width, box.height].every(Number.isFinite)) {
+                invalidateTargetLock(obj.id);
+                continue;
+            }
+            if (!previous || previous.node !== node) {
+                invalidateTargetLock(obj.id);
+            } else {
+                invalidateTargetLock(obj.id, previous.target.box, box);
+            }
+            const target = {
+                id: obj.id, box,
+                centerX: box.x + box.width / 2,
+                centerY: box.y + box.height / 2,
+            };
+            entries.set(obj.id, { node, sample, target });
+            targets.push(target);
+        }
+        for (const id of cached.entries.keys()) {
+            if (!entries.has(id)) {
+                cacheHit = false;
+                invalidateTargetLock(id);
+            }
+        }
+
+        sectionGuideTargetsCacheRef.current = {
+            stage, selfId: idSelf, sessionId, entries,
+            targets: cacheHit ? cached.targets : targets,
+        };
+
+        trackCanvasDragPerf(cacheHit ? "guides:targets-cache-hit" : "guides:targets-cache-build", {
             elementId: idSelf,
             sectionCandidates: objetosSeccion.length,
             targets: targets.length,
         }, {
             throttleMs: 180,
-            throttleKey: `guides:targets-cache-build:${idSelf}`,
+            throttleKey: `guides:targets-cache-${cacheHit ? "hit" : "build"}:${idSelf}`,
         });
 
         return {
-            targets,
-            cacheHit: false,
+            targets: sectionGuideTargetsCacheRef.current.targets,
+            cacheHit,
         };
     }, []);
 
@@ -953,7 +1015,8 @@ export default function useGuiasCentrado({
                 sectionItems,
                 elementRefs,
                 idActual,
-                objById
+                objById,
+                guideSessionId
             );
             capturePerfPhase("targetsLookupMs");
 
@@ -1254,13 +1317,9 @@ export default function useGuiasCentrado({
                         targetCenter
                     );
 
-                    if (axis === "x") {
-                        node.x(node.x() + delta);
-                    } else {
-                        node.y(node.y() + delta);
-                    }
+                    const snapped = applyStageSnapDelta(node, stage, axis, delta);
                     return {
-                        snapped: true,
+                        snapped,
                         source: "seccion",
                         axis,
                         deltaApplied: roundGuideMetric(delta),
@@ -1284,10 +1343,9 @@ export default function useGuiasCentrado({
                         nearType: null,
                     };
                 }
-                if (axis === "x") node.x(node.x() + delta);
-                else node.y(node.y() + delta);
+                const snapped = applyStageSnapDelta(node, stage, axis, delta);
                 return {
-                    snapped: true,
+                    snapped,
                     source: "elemento",
                     axis,
                     deltaApplied: roundGuideMetric(delta),
@@ -1825,7 +1883,8 @@ export default function useGuiasCentrado({
                 sectionItems,
                 elementRefs,
                 idActual,
-                objById
+                objById,
+                guideRequest.sessionId || idActual
             );
 
             trackCanvasDragPerf("guides:prewarm", {

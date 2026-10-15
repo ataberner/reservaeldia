@@ -8,7 +8,11 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
-import { shouldSuppressIndividualDragForElement } from "@/drag/dragGrupal";
+import {
+  clearCompletedGroupDragForElement,
+  shouldSuppressIndividualDragEnd,
+  shouldSuppressIndividualDragForElement,
+} from "@/drag/dragGrupal";
 import {
   isTouchLikePointerType,
   resolvePointerTypeFromNativeEvent,
@@ -38,6 +42,7 @@ export function buildIndividualDragModifierState(nativeEvent = null) {
 export function startDragIndividual(e, dragStartPos) {
   const node = e?.currentTarget || e?.target || null;
   const nodeId = resolveNodeId(node);
+  clearCompletedGroupDragForElement(nodeId, node);
   if (shouldSuppressIndividualDragForElement(nodeId)) {
     return;
   }
@@ -99,26 +104,13 @@ export function endDragIndividual(
   dragMeta = null
 ) {
   const elementId = obj?.id || resolveNodeId(node);
-  if (shouldSuppressIndividualDragForElement(elementId)) {
+  if (shouldSuppressIndividualDragEnd(elementId, node)) {
     resetCanvasInteractionLogSample(buildPreviewSampleKey(elementId));
     setTimeout(() => { hasDragged.current = false; }, 30);
     return;
   }
   const previewSampleKey = buildPreviewSampleKey(elementId);
   try { document.body.style.cursor = "default"; } catch {}
-
-  if (node?.getAttr && node.getAttr("_muteNextEnd")) {
-    logSelectedDragDebug("drag:individual:end-muted", {
-      elementId,
-      node: getKonvaNodeDebugInfo(node),
-      selection: getCanvasSelectionDebugInfo(),
-    });
-    try { node.setAttr("_muteNextEnd", false); } catch {}
-    resetCanvasInteractionLogSample(previewSampleKey);
-    if (onDragEndPersonalizado) onDragEndPersonalizado(obj.id, dragMeta);
-    setTimeout(() => { hasDragged.current = false; }, 30);
-    return;
-  }
 
   const ahora =
     typeof performance !== "undefined" && performance.now

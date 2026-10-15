@@ -55,9 +55,9 @@ import {
   canMutateSection,
 } from "@/domain/editor/protectedSections";
 import {
-  canonicalizeFinalizedDragPatch,
   clampNormalizedPosition,
 } from "@/domain/editor/canvasObjectPositioning";
+import { finalizeDragPosition } from "@/components/editor/canvasEditor/dragPositionFinalization";
 import {
   applyObjectUpdateById,
 } from "@/components/editor/canvasEditor/objectUpdateUtils";
@@ -10447,7 +10447,7 @@ export default function CanvasStageContent({
   ]);
 
   const applyCanonicalDragFinalization = useCallback((objOriginal, dragPatch) => (
-    canonicalizeFinalizedDragPatch({
+    finalizeDragPosition({
       objOriginal,
       dragPatch,
       seccionesOrdenadas,
@@ -10455,6 +10455,20 @@ export default function CanvasStageContent({
       convertirAbsARel,
       esSeccionPantallaById,
       ALTURA_PANTALLA_EDITOR,
+      node: elementRefs.current?.[objOriginal.id],
+      resolveObjectStageY,
+      onPositionReconciled: () => {
+        const session = dragOverlayBoxFlowSessionRef.current;
+        if (session?.phase !== "drag") return;
+        const selectedIds = readActiveDragOverlaySelectionIds(session.dragId, []);
+        if (!selectedIds.includes(objOriginal.id)) return;
+        const node = elementRefs.current?.[objOriginal.id];
+        recordSelectionDragMoveSummary(session.dragId, objOriginal.tipo, node?.position?.(), {
+          selectedIds,
+          pipeline: selectedIds.length > 1 ? "group" : "individual",
+          source: "drag-finalization",
+        });
+      },
     })
   ), [
     ALTURA_PANTALLA_EDITOR,
@@ -10462,6 +10476,10 @@ export default function CanvasStageContent({
     determinarNuevaSeccion,
     esSeccionPantallaById,
     seccionesOrdenadas,
+    elementRefs,
+    resolveObjectStageY,
+    readActiveDragOverlaySelectionIds,
+    recordSelectionDragMoveSummary,
   ]);
 
   const renderCanvasObject = (obj) => {
@@ -10636,6 +10654,13 @@ export default function CanvasStageContent({
           }}
           onChange={(id, nuevo) => {
             if (!objectEditable) return;
+            const objOriginal = objetos.find((object) => object.id === id);
+            if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
+            // Reconcile before onDragEndPersonalizado starts settling, not in a
+            // deferred React updater (which must remain free of node mutations).
+            const finalizedPatch = nuevo.finalizoDrag
+              ? applyCanonicalDragFinalization(objOriginal, nuevo)
+              : null;
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
@@ -10645,7 +10670,7 @@ export default function CanvasStageContent({
               updated[index] = nuevo.finalizoDrag
                 ? {
                     ...updated[index],
-                    ...applyCanonicalDragFinalization(objOriginal, nuevo),
+                    ...finalizedPatch,
                   }
                 : { ...updated[index], ...nuevo };
               if (nuevo.finalizoDrag) {
@@ -10864,6 +10889,11 @@ export default function CanvasStageContent({
           hasDragged={hasDragged}
           onChange={(id, cambios) => {
             if (!objectEditable) return;
+            const objOriginal = objetos.find((object) => object.id === id);
+            if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
+            const finalizedPatch = cambios.finalizoDrag
+              ? applyCanonicalDragFinalization(objOriginal, cambios)
+              : null;
             setObjetos((prev) => {
               const index = prev.findIndex((o) => o.id === id);
               if (index === -1) return prev;
@@ -10880,7 +10910,7 @@ export default function CanvasStageContent({
               const updated = [...prev];
               updated[index] = {
                 ...updated[index],
-                ...applyCanonicalDragFinalization(objOriginal, cambios),
+                ...finalizedPatch,
               };
               const sanitized = sanitizeMovedGroupFunctionalAssociation({
                 secciones: seccionesOrdenadas,

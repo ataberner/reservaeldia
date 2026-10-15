@@ -3,6 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { buildPersistableRenderState } from "../components/editor/persistence/borradorSyncRenderState.js";
+import {
+  evaluateEditorHistoryCapture,
+  planRedoHistoryTransition,
+  planUndoHistoryTransition,
+} from "../components/editor/history/historyState.js";
 
 function toDataUrl(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -88,14 +93,35 @@ async function loadDragGrupalModule() {
     )
     .replace('"@/lib/editorBridgeContracts"', JSON.stringify(bridgeStub));
 
-  return import(toDataUrl(transformedSource));
+  const groupModuleUrl = toDataUrl(transformedSource);
+  const individualSource = await readFile(new URL("./dragIndividual.js", import.meta.url), "utf8");
+  const touchModuleUrl = new URL("../lib/editorTouchDragIntent.js", import.meta.url).href;
+  const individualModuleUrl = toDataUrl(individualSource
+    .replace('"@/drag/dragGrupal"', JSON.stringify(groupModuleUrl))
+    .replace('"@/components/editor/canvasEditor/selectedDragDebug"', JSON.stringify(debugStub))
+    .replace('"@/components/editor/canvasEditor/konvaCanonicalPose"', JSON.stringify(canonicalPoseStub))
+    .replace('"@/lib/editorTouchDragIntent"', JSON.stringify(touchModuleUrl)));
+
+  return {
+    ...await import(groupModuleUrl),
+    ...await import(individualModuleUrl),
+  };
 }
 
 const {
+  activateManualGroupDragSession,
+  armManualGroupDragSession,
+  buildIndividualDragModifierState,
+  endDragIndividual,
   endDragGrupal,
+  finishManualGroupDragSession,
   getActiveGroupDragSession,
+  previewDragIndividual,
   previewDragGrupal,
+  shouldSuppressIndividualDragEnd,
+  startDragIndividual,
   startDragGrupalLider,
+  updateManualGroupDragSession,
 } = await loadDragGrupalModule();
 
 class TestCustomEvent {
@@ -114,6 +140,11 @@ function createStage() {
     },
     getStage() {
       return this;
+    },
+    setPointersPositions(event) {
+      if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
+        pointer = { x: event.clientX, y: event.clientY };
+      }
     },
     setPointer(nextPointer) {
       pointer = { ...nextPointer };
@@ -239,6 +270,8 @@ function createScenario(sourceObjects, selectedIds) {
     drag,
     nodes,
     objects,
+    onChange,
+    stage,
     select(ids) {
       window._elementosSeleccionados = [...ids];
     },
@@ -449,4 +482,184 @@ test("GaleriaKonva delegates multi-selection drags to the existing group owner a
   assert.match(gallerySource, /pipeline: "individual"/);
   assert.match(galleryComposerBranch, /meta\?\.pipeline === "group"/);
   assert.match(galleryComposerBranch, /isGroupPipeline \? "group" : "individual"/);
+});
+
+function dragEvent(node, point = { x: 0, y: 0 }) {
+  return {
+    currentTarget: node,
+    target: node,
+    evt: { pointerId: 1, pointerType: "mouse", clientX: point.x, clientY: point.y },
+  };
+}
+
+function completeGroupGesture(scenario, engine) {
+  if (engine === "native") {
+    return scenario.drag("leader", [{ x: 30, y: 40 }]);
+  }
+  const object = scenario.objects.find(({ id }) => id === "leader");
+  const event = dragEvent(scenario.nodes.leader);
+  const armed = armManualGroupDragSession(event, object);
+  assert.equal(armed.mode, "armed");
+  activateManualGroupDragSession(armed.session, event.evt);
+  const release = dragEvent(scenario.nodes.leader, { x: 30, y: 40 }).evt;
+  updateManualGroupDragSession(release);
+  const result = finishManualGroupDragSession(release, { obj: object, onChange: scenario.onChange });
+  assert.equal(result.mode, "completed");
+  return result;
+}
+
+function captureHistory(objects, previousSignature = "") {
+  const result = evaluateEditorHistoryCapture({
+    cargado: true,
+    objetos: structuredClone(objects),
+    secciones: window._seccionesOrdenadas,
+    lastSignature: previousSignature,
+  });
+  assert.equal(result.shouldCapture, true);
+  return result;
+}
+
+for (const engine of ["native", "manual-pointer"]) {
+  for (const individualId of ["leader", "follower"]) {
+    test(`${engine} group -> immediate individual ${individualId} commits once, persists and remains undoable`, () => {
+      const scenario = createScenario([
+        baseObject("leader", "texto", 10, 20),
+        baseObject("follower", "countdown", 100, 140),
+      ], ["leader", "follower"]);
+      const initial = captureHistory(scenario.objects);
+      completeGroupGesture(scenario, engine);
+      const grouped = captureHistory(scenario.objects, initial.nextBaselineSignature);
+      assert.equal(scenario.changes.length, 2);
+
+      scenario.select([individualId]);
+      const node = scenario.nodes[individualId];
+      const object = scenario.objects.find(({ id }) => id === individualId);
+      const event = dragEvent(node);
+      assert.equal(startDragGrupalLider(event, object).mode, "not-eligible");
+      startDragIndividual(event, { current: null });
+      node.position({ x: 190, y: 200 });
+      const previews = [];
+      previewDragIndividual(event, object, (...args) => previews.push(args));
+      const ends = [];
+      endDragIndividual(object, node, scenario.onChange, (...args) => ends.push(args), { current: true });
+
+      assert.equal(previews.length, 1);
+      assert.equal(ends.length, 1);
+      assert.equal(scenario.changes.length, 3, "one new commit for the next gesture");
+      assert.equal(scenario.changes.at(-1).patch.causa, "drag-individual");
+      const persistible = buildPersistableRenderState({
+        objetos: scenario.objects,
+        secciones: window._seccionesOrdenadas,
+        validarPuntosLinea: (points) => points,
+        ALTURA_PANTALLA_EDITOR: 500,
+      });
+      const persisted = persistible.objetos.find(({ id }) => id === individualId);
+      assert.deepEqual({ x: persisted.x, y: persisted.y }, node.position());
+      const individual = captureHistory(scenario.objects, grouped.nextBaselineSignature);
+      const history = [initial.comparable, grouped.comparable, individual.comparable];
+      const undo = planUndoHistoryTransition({ history });
+      assert.deepEqual(undo.targetSnapshot, grouped.comparable);
+      const redo = planRedoHistoryTransition(undo);
+      assert.deepEqual(redo.targetSnapshot, individual.comparable);
+    });
+  }
+
+  test(`${engine} repeated group dragends never commit through the individual finalizer`, async () => {
+    const scenario = createScenario([
+      baseObject("leader", "texto", 10, 20),
+      baseObject("follower", "countdown", 100, 140),
+    ], ["leader", "follower"]);
+    completeGroupGesture(scenario, engine);
+    // Expire the existing time-based guards before delivering repeated late ends.
+    await new Promise((resolve) => setTimeout(resolve, 470));
+    for (let repeat = 0; repeat < 2; repeat += 1) {
+      for (const object of [...scenario.objects]) {
+        const node = scenario.nodes[object.id];
+        const result = endDragGrupal(dragEvent(node), object, scenario.onChange, null);
+        if (!result.handled) {
+          endDragIndividual(object, node, scenario.onChange, null, { current: true });
+        }
+      }
+    }
+    assert.equal(scenario.changes.length, 2, "only the original group commits survive");
+  });
+}
+
+test("the Gallery specialized finalizer ignores repeated group ends and accepts a new individual start", async () => {
+  const source = await readFile(new URL("../components/editor/GaleriaKonva.jsx", import.meta.url), "utf8");
+  const handlerStart = source.indexOf("onDragEnd={isPassiveRender ? undefined : (e) => {");
+  const handlerEnd = source.indexOf("\n      }}", handlerStart);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  const body = source.slice(source.indexOf("=> {", handlerStart) + 4, handlerEnd);
+  const scenario = createScenario([
+    baseObject("leader", "texto", 10, 20),
+    baseObject("follower", "galeria", 100, 140),
+  ], ["leader", "follower"]);
+  const object = scenario.objects[1];
+  const lifecycle = { current: { mode: "individual" } };
+  const dependencies = {
+    obj: object,
+    dragLifecycleRef: lifecycle,
+    endDragGrupal,
+    shouldSuppressIndividualDragEnd,
+    buildIndividualDragModifierState,
+    onChange: scenario.onChange,
+    onDragMovePersonalizado: null,
+    onDragEndPersonalizado: null,
+    notePostDragSelectionGuard() {},
+    cleanupGlobal() {},
+    pressRef: { current: {} },
+    EDITOR_BRIDGE_EVENTS: { DRAGGING_END: "dragging-end" },
+    buildEditorDragLifecycleDetail: (detail) => detail,
+  };
+  const handler = new Function(...Object.keys(dependencies), `return (e) => { ${body} };`)(...Object.values(dependencies));
+  completeGroupGesture(scenario, "native");
+  // A follower need not have received dragstart; its local lifecycle can be idle.
+  lifecycle.current = { mode: "idle" };
+  const event = dragEvent(scenario.nodes.follower);
+  handler(event);
+  handler(event);
+  assert.equal(scenario.changes.length, 2);
+
+  scenario.select([object.id]);
+  assert.equal(startDragGrupalLider(event, object).mode, "not-eligible");
+  lifecycle.current = { mode: "individual" };
+  scenario.nodes.follower.position({ x: 190, y: 200 });
+  handler(event);
+  assert.equal(scenario.changes.length, 3);
+  assert.deepEqual(scenario.nodes.follower.position(), { x: scenario.objects[1].x, y: scenario.objects[1].y });
+});
+
+test("a later individual start supersedes only its member after the group timer guards expire", async () => {
+  const scenario = createScenario([
+    baseObject("leader", "texto", 10, 20),
+    baseObject("follower", "countdown", 100, 140),
+  ], ["leader", "follower"]);
+  completeGroupGesture(scenario, "native");
+  await new Promise((resolve) => setTimeout(resolve, 470));
+  scenario.select(["leader"]);
+  startDragIndividual(dragEvent(scenario.nodes.leader), { current: null });
+  scenario.nodes.leader.position({ x: 190, y: 200 });
+  assert.equal(shouldSuppressIndividualDragEnd("leader", scenario.nodes.leader), false);
+  assert.equal(shouldSuppressIndividualDragEnd("follower", scenario.nodes.follower), true);
+  endDragIndividual(scenario.objects[0], scenario.nodes.leader, scenario.onChange, null, { current: true });
+  endDragIndividual(scenario.objects[1], scenario.nodes.follower, scenario.onChange, null, { current: true });
+  assert.equal(scenario.changes.length, 3);
+  assert.deepEqual(scenario.nodes.leader.position(), { x: scenario.objects[0].x, y: scenario.objects[0].y });
+});
+
+test("an individual callback during an active group cannot release the follower guard", () => {
+  const scenario = createScenario([
+    baseObject("leader", "texto", 10, 20),
+    baseObject("follower", "countdown", 100, 140),
+  ], ["leader", "follower"]);
+  const leaderEvent = dragEvent(scenario.nodes.leader);
+  assert.equal(startDragGrupalLider(leaderEvent, scenario.objects[0]).mode, "started");
+  startDragIndividual(dragEvent(scenario.nodes.follower), { current: null });
+  endDragIndividual(scenario.objects[1], scenario.nodes.follower, scenario.onChange, null, { current: true });
+  assert.equal(scenario.changes.length, 0);
+  scenario.nodes.leader.position({ x: 40, y: 60 });
+  previewDragGrupal(leaderEvent, scenario.objects[0], scenario.onChange);
+  endDragGrupal(leaderEvent, scenario.objects[0], scenario.onChange, null);
+  assert.equal(scenario.changes.length, 2);
 });

@@ -1,4 +1,4 @@
-import { resolveAuthoritativeTextRect } from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
+import { resolveAuthoritativeTextGeometry } from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
 import {
   buildTextGeometryContractRect,
   evaluateTextGeometryContractRectAlignment,
@@ -102,8 +102,10 @@ export function resolveInlineStageViewportMetrics(stage, { scaleVisual = 1 } = {
   const stageScaleY = toFiniteNumber(readNodeProp(stage, "scaleY"), 1) || 1;
   const visualScale = toFiniteNumber(scaleVisual, 1) || 1;
 
-  const fallbackScaleX = visualScale * stageScaleX;
-  const fallbackScaleY = visualScale * stageScaleY;
+  // Native stage transforms are already part of the absolute Konva matrix.
+  // These metrics project canvas pixels through CSS zoom only.
+  const fallbackScaleX = visualScale;
+  const fallbackScaleY = visualScale;
 
   const measuredScaleX =
     stageRect && Number.isFinite(stageWidth) && stageWidth > 0
@@ -174,6 +176,8 @@ export function getInlineKonvaProjectedRectViewport(
       konvaProjectedRectViewport: null,
       konvaProjectionGeometrySource: null,
       authoritativeTextRectAvailable: false,
+      konvaTextViewportTransform: null,
+      canUseProjectedBoxLayout: false,
       ...stageMetrics,
     };
   }
@@ -197,19 +201,18 @@ export function getInlineKonvaProjectedRectViewport(
 
   const inferredElementId =
     readInlineNodeId(textNode, readInlineNodeId(node, null)) || null;
-  const authoritativeTextRect = resolveAuthoritativeTextRect(
-    textNode,
-    options?.objectMeta ||
+  const objectMeta = options?.objectMeta ||
       (textNode?.getClassName?.() === "Text"
         ? {
             id: inferredElementId,
             tipo: "texto",
           }
-        : null),
-    {
-      fallbackRect: renderedLocalRect,
-    }
+        : null);
+  const textGeometry = resolveAuthoritativeTextGeometry(textNode, objectMeta);
+  const viewportGeometry = resolveAuthoritativeTextGeometry(
+    textNode, objectMeta, { relativeTo: null }
   );
+  const authoritativeTextRect = textGeometry?.rect || null;
   const projectionLocalRect = authoritativeTextRect || renderedLocalRect || null;
   const projectionGeometrySource = authoritativeTextRect
     ? "authoritative-text-rect"
@@ -219,10 +222,33 @@ export function getInlineKonvaProjectedRectViewport(
   const konvaTextClientRect = rectToPayload(renderedLocalRect);
   const konvaAuthoritativeTextRect = rectToPayload(authoritativeTextRect);
   const konvaProjectionLocalRect = rectToPayload(projectionLocalRect);
-  const konvaProjectedRectViewport = projectInlineRectToViewport(
-    projectionLocalRect,
-    stageMetrics
+  let viewportCanvasRect = viewportGeometry?.rect || null;
+  if (!viewportCanvasRect && renderedLocalRect) {
+    try {
+      viewportCanvasRect = textNode.getClientRect({ skipShadow: true, skipStroke: true });
+    } catch {}
+  }
+  const konvaProjectedRectViewport = projectInlineRectToViewport(viewportCanvasRect, stageMetrics);
+  const matrix = viewportGeometry?.transform;
+  const cssScaleX = Number(stageMetrics.totalScaleX);
+  const cssScaleY = Number(stageMetrics.totalScaleY);
+  const konvaTextViewportTransform = matrix && stageMetrics.stageRect
+    ? [
+        matrix[0] * cssScaleX, matrix[1] * cssScaleY,
+        matrix[2] * cssScaleX, matrix[3] * cssScaleY,
+        Number(stageMetrics.stageRect.left) + matrix[4] * cssScaleX,
+        Number(stageMetrics.stageRect.top) + matrix[5] * cssScaleY,
+      ]
+    : null;
+  // A transformed ancestor requires local layout plus the full CSS matrix,
+  // even when the Text node's own rotation and scale are unchanged. Native
+  // Stage transforms also use that path: synthetic decorations only invert CSS.
+  const hasNativeStageTransform = matrix && textGeometry?.transform.some(
+    (value, index) => Math.abs(value - matrix[index]) > 0.0001
   );
+  const canUseProjectedBoxLayout = Boolean(matrix && !hasNativeStageTransform &&
+    Math.abs(matrix[0] - 1) < 0.0001 && Math.abs(matrix[1]) < 0.0001 &&
+    Math.abs(matrix[2]) < 0.0001 && Math.abs(matrix[3] - 1) < 0.0001);
   const projectionCheck = evaluateTextGeometryContractRectAlignment(
     authoritativeTextRect,
     projectionLocalRect,
@@ -296,6 +322,8 @@ export function getInlineKonvaProjectedRectViewport(
     konvaProjectedRectViewport,
     konvaProjectionGeometrySource: projectionGeometrySource,
     authoritativeTextRectAvailable: Boolean(authoritativeTextRect),
+    konvaTextViewportTransform,
+    canUseProjectedBoxLayout,
     ...stageMetrics,
   };
 }

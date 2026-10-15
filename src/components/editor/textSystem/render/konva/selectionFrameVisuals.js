@@ -1,3 +1,8 @@
+import {
+  resolveAuthoritativeTextGeometry,
+  shouldUseTextAuthorityBounds,
+} from "@/components/editor/canvasEditor/konvaAuthoritativeBounds";
+
 export const SELECTION_FRAME_STROKE = "#9333EA";
 export const SELECTION_FRAME_ACTIVE_STROKE = "#A855F7";
 
@@ -34,6 +39,11 @@ export function getSelectionFrameStrokeWidth(isMobile = false) {
 }
 
 export function buildSelectionFramePolygon(node, padding = 0) {
+  const textMeta = node?.getClassName?.() === "Text" ? { tipo: "texto" } : null;
+  if (shouldUseTextAuthorityBounds(node, textMeta)) {
+    return resolveAuthoritativeTextGeometry(node, textMeta, { padding })?.points || null;
+  }
+
   if (
     !node ||
     typeof node.getClientRect !== "function" ||

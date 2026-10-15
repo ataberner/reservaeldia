@@ -17,6 +17,7 @@ import {
 } from "@/components/editor/textSystem/render/konva/selectionFrameVisuals";
 import {
   resolveSelectionFrameRect,
+  resolveTransformedTextSelectionPolygon,
 } from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 import {
   getKonvaNodeDebugInfo,
@@ -589,21 +590,19 @@ export function resolveSelectionBounds({
   const strokeWidth = getSelectionFrameStrokeWidth(isMobile);
   const selectedObject = elementosData[0] || null;
   const selectedNode = selectedObject ? elementRefs.current?.[selectedObject.id] : null;
-  const shouldUseRotatedFrame = shouldUseRotatedSelectionBounds(
-    elementosData,
-    selectedNode
-  );
+  const isSingleText = elementosData.length === 1 && selectedObject?.tipo === "texto";
+  const rotatedPoints = isSingleText
+    ? resolveTransformedTextSelectionPolygon(selectedNode, selectedObject, padding)
+    : shouldUseRotatedSelectionBounds(elementosData, selectedNode)
+      ? buildSelectionFramePolygon(selectedNode, padding)
+      : null;
 
-  if (shouldUseRotatedFrame) {
-    const rotatedPoints = buildSelectionFramePolygon(selectedNode, padding);
-
-    if (hasFinitePolygonPoints(rotatedPoints)) {
-      return {
-        kind: "polygon",
-        points: rotatedPoints,
-        strokeWidth,
-      };
-    }
+  if (hasFinitePolygonPoints(rotatedPoints)) {
+    return {
+      kind: "polygon",
+      points: rotatedPoints,
+      strokeWidth,
+    };
   }
   const rectBounds = resolveSelectionFrameRect({
     selectedElements,

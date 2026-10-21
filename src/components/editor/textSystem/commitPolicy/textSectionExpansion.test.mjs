@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 import { expandSectionsForTextChanges } from "../../../../domain/sections/textContentExpansion.js";
 import { canEditObject } from "../../../../domain/editor/protectedSections.js";
 import { shouldPreserveTextCenterPosition } from "../../../../lib/textCenteringPolicy.js";
+import { functionalScenePatchToBase } from "../../canvasEditor/functionalRenderPose.js";
+import { planEventLayoutAuthoringRenderState } from "../../templateAuthoring/eventLayoutAuthoringState.js";
+import { normalizeEventDetailsConfig } from "../../../../../shared/eventDetailsConfig.js";
 import {
   normalizeInlineEditableDomText,
   normalizeInlineEditableText,
@@ -23,6 +26,7 @@ function makeHandlers(params) {
     clearCurrentInlineEditingIdIfMatches: () => {},
     getCurrentInlineEditingId: () => null,
     shouldPreserveTextCenterPosition,
+    functionalScenePatchToBase,
     canEditObject,
     normalizeDynamicInlineFieldValue: ({ value }) => value,
   };
@@ -73,6 +77,22 @@ test("inline Pantalla commit preserves section height", () => {
   assert.equal(snapshot().objects[0].texto, params.editing.value);
 });
 
+test("inline center preservation converts the visual center without initializing manual layout", () => {
+  const { params, snapshot } = fixture();
+  params.objetos[0].__autoWidth = true;
+  params.objetos[0].x = 240;
+  params.renderObjects = [{ ...params.objetos[0], __functionalRenderOffsetX: 110 }];
+  params.inlineEditPreviewRef.current = { id: "story", centerX: 450 };
+  params.calcularXTextoCentrado = () => 330;
+  const setObjects = params.setObjetos;
+  let metadata;
+  params.setObjetos = (next, options) => { metadata = options; setObjects(next); };
+  makeHandlers(params).onInlineFinish();
+  assert.equal(snapshot().objects[0].x, 220, "render adds110 to preserve visual x330");
+  assert.equal(snapshot().objects[0].texto, params.editing.value);
+  assert.deepEqual(metadata, { reason: "text-center-preservation" });
+});
+
 test("linked inline delegates to the panel owner without a second height mutation", () => {
   const { params, snapshot } = fixture();
   const calls = [];
@@ -102,6 +122,9 @@ test("authoring publishes and persists the same expanded sections under existing
     useCallback: (callback) => callback,
     latestAuthoringStateRef,
     hydrateSnapshot: (snapshot) => snapshot,
+    onReplaceCanvasState: undefined,
+    rsvpConfig: undefined, giftsConfig: undefined,
+    planEventLayoutAuthoringRenderState, normalizeEventDetailsConfig,
     setError: () => {}, setSnapshot: () => {}, onSnapshotChange: () => {},
     onReplaceObjects: (objects) => updates.push(["objects", objects]),
     onReplaceSections: (sections) => updates.push(["sections", sections]),

@@ -40,6 +40,8 @@ import {
 import resolveInlineCanvasVisibility from "@/components/editor/textSystem/adapters/konvaDom/resolveInlineCanvasVisibility";
 import { resolveKonvaImageCrop } from "@/components/editor/textSystem/render/konva/imageCropUtils";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import { functionalScenePatchToBase, functionalPositionMutationOptions, getFunctionalRenderOffsetX } from "@/components/editor/canvasEditor/functionalRenderPose";
+import { EVENT_LAYOUT_MANAGED_FIELD } from "../../../../../../shared/eventLayoutState.js";
 import GaleriaKonva from "@/components/editor/GaleriaKonva";
 import CountdownKonva from "@/components/editor/countdown/CountdownKonva";
 import {
@@ -59,9 +61,6 @@ import {
   computeIconContainRect,
   normalizeIconRenderable,
 } from "../../../../../../shared/iconRenderableContract.js";
-import {
-  FUNCTIONAL_RENDER_OFFSET_X_FIELD,
-} from "../../../../../../shared/functionalAssociations.js";
 import {
   buildCanvasDragPerfDiff,
   endCanvasDragPerfSession,
@@ -3564,7 +3563,7 @@ export default function ElementoCanvas({
   const manualGroupPreviewPose = getManualGroupDragPreviewPose(obj.id);
   const manualGroupPreviewSignature = manualGroupPreviewPose?.signature || "";
   const visualRenderObject = obj.tipo === "imagen" ? renderImageObject : obj;
-  const functionalRenderOffsetX = Number(visualRenderObject?.[FUNCTIONAL_RENDER_OFFSET_X_FIELD] || 0);
+  const functionalRenderOffsetX = getFunctionalRenderOffsetX(visualRenderObject);
   const hasFunctionalRenderOffsetX =
     Number.isFinite(functionalRenderOffsetX) && Math.abs(functionalRenderOffsetX) > 0.001;
 
@@ -3576,7 +3575,7 @@ export default function ElementoCanvas({
     rotation: visualRenderObject.rotation || 0,
     scaleX: visualRenderObject.scaleX || 1,
     scaleY: visualRenderObject.scaleY || 1,
-    draggable: hasFunctionalRenderOffsetX ? false : resolveInteractionDraggableEnabled(),
+    draggable: resolveInteractionDraggableEnabled(),
     listening: resolveInteractionListeningEnabled(),
 
     onMouseDown: !hasPointerEvents
@@ -4228,6 +4227,7 @@ export default function ElementoCanvas({
 
   const recalcGroupAlign = useCallback(() => {
     if (obj.tipo !== "texto") return;
+    if (obj[EVENT_LAYOUT_MANAGED_FIELD] === true) return;
     if (!obj.__groupAlign || !obj.__groupId) return;
     if (typeof window === "undefined" || typeof onChange !== "function") return;
 
@@ -4256,9 +4256,9 @@ export default function ElementoCanvas({
     }
 
     if (Math.abs((obj.x || 0) - targetX) > 0.5) {
-      onChange(obj.id, { x: targetX });
+      onChange(obj.id, { x: targetX }, { reason: "legacy-group-align" });
     }
-  }, [obj.id, obj.x, obj.tipo, obj.__groupAlign, obj.__groupId, obj.__groupOriginX, onChange]);
+  }, [obj.id, obj.x, obj.tipo, obj.__groupAlign, obj.__groupId, obj.__groupOriginX, obj[EVENT_LAYOUT_MANAGED_FIELD], onChange]);
 
 
 
@@ -5349,7 +5349,7 @@ export default function ElementoCanvas({
             scaleY: 1,
             isFinal: true,
           };
-          onChange?.(obj.id, patch);
+          onChange?.(obj.id, functionalScenePatchToBase(obj, patch), functionalPositionMutationOptions(obj, patch, "manual-transform"));
         }}
       >
         <Rect

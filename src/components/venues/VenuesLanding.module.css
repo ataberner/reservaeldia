@@ -1,0 +1,789 @@
+.root {
+  --venues-purple: #692b9a;
+  --venues-ink: #262626;
+  --venues-muted: #79738d;
+  --venues-border: #e8e3ee;
+  width: 100%;
+  min-height: 100vh;
+  background: #fff;
+  color: var(--venues-ink);
+  font-family: "DM Sans", sans-serif;
+  text-align: left;
+}
+
+/* The preview owns its typography and spacing despite legacy global elements. */
+.root *,
+.root *::before,
+.root *::after {
+  box-sizing: border-box;
+  text-shadow: none;
+}
+
+.root button {
+  font-family: "DM Sans", sans-serif;
+}
+
+.root button:disabled {
+  cursor: default;
+}
+
+.root a:focus-visible {
+  outline: 3px solid var(--venues-purple);
+  outline-offset: 4px;
+}
+
+.main {
+  padding-bottom: 38px;
+}
+
+.searchSection {
+  margin: 0 auto;
+  padding: 27px 0 20px;
+  border-bottom: 1px solid #eeeaf3;
+  background: #fff;
+}
+
+.searchContent {
+  width: min(1360px, calc(100% - 80px));
+  margin: 0 auto;
+}
+
+.pageTitle {
+  margin: 0;
+  color: #202020;
+  font-family: "DM Sans", sans-serif;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -1.15px;
+  line-height: 45px;
+}
+
+.gradientText {
+  background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%);
+  background-clip: text;
+  color: transparent;
+  -webkit-background-clip: text;
+}
+
+.pageDescription {
+  margin: 4px 0 16px;
+  color: var(--venues-muted);
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 28px;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1.3fr 0.9fr 1fr 1.15fr 0.85fr 1.15fr;
+  gap: 9px;
+  min-width: 0;
+}
+
+.filterButton,
+.searchButton {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  min-width: 0;
+  min-height: 55px;
+  padding: 12px 18px;
+  border: 1px solid var(--venues-border);
+  border-radius: 7px;
+  background: #fff;
+  color: #5e586e;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.filterIcon {
+  flex-shrink: 0;
+  color: #8e5cae;
+}
+
+.filterChevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #80768f;
+}
+
+.searchButton {
+  justify-content: center;
+  gap: 12px;
+  border-color: transparent;
+  background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  opacity: 0.87;
+}
+
+.searchButton svg {
+  flex-shrink: 0;
+}
+
+.resultsLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  align-items: start;
+  gap: 27px;
+  width: min(1450px, calc(100% - 80px));
+  margin: 23px auto 0;
+}
+
+.results {
+  min-width: 0;
+  padding: 0;
+  background: #fff;
+}
+
+.resultsHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 54px;
+  margin-bottom: 17px;
+}
+
+.resultsTitle {
+  margin: 0;
+  color: #202020;
+  font-family: "DM Sans", sans-serif;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.65px;
+  line-height: 32px;
+}
+
+.resultsDescription {
+  margin: 1px 0 0;
+  color: var(--venues-muted);
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 23px;
+}
+
+.sortPreview {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.sortLabel {
+  color: var(--venues-muted);
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 23px;
+  min-height: 37px;
+  padding: 8px 12px;
+  border: 1px solid var(--venues-border);
+  border-radius: 7px;
+  background: #fff;
+  color: #70677d;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.venueGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 25px 18px;
+}
+
+.venueCard {
+  min-width: 0;
+}
+
+.venueMedia {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1.8;
+  border-radius: 5px;
+  background: #eee9e3;
+}
+
+.venuePhoto {
+  width: 100%;
+  height: 100%;
+  background-image: url("/assets/lugares/venue-contact-sheet.png");
+  background-repeat: no-repeat;
+  /* Preserve each 3:2 photo while cropping the contact sheet to wider cards. */
+  background-size: 200% auto;
+}
+
+.photoEstancia {
+  background-position: left top;
+}
+
+.photoQuinta {
+  background-position: right top;
+}
+
+.photoLago {
+  background-position: left bottom;
+}
+
+.photoJardin {
+  background-position: right bottom;
+}
+
+.favoriteButton {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 10%);
+  color: #fff;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 20%));
+}
+
+.venueTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.venueName {
+  min-width: 0;
+  margin: 0;
+  color: #202020;
+  font-family: "DM Sans", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  line-height: 25px;
+}
+
+.featuredName {
+  color: var(--venues-purple);
+}
+
+.venueType {
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: 5px;
+  background: #f5f3f8;
+  color: #635b73;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.venueMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 17px;
+  margin-top: 7px;
+}
+
+.venueDetail {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--venues-muted);
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.venueDetail svg {
+  flex-shrink: 0;
+}
+
+.mapFigure {
+  min-width: 0;
+  margin: 0;
+}
+
+.mapCanvas {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 0.97;
+  min-height: 550px;
+  border-radius: 10px;
+  background: #eeedeb;
+}
+
+.mapDrawing {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mapPlaceLabels {
+  fill: #424051;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 17px;
+}
+
+.mapSecondaryPlace {
+  fill: #716b7c;
+  font-size: 13px;
+}
+
+.mapCapital {
+  font-size: 23px;
+}
+
+.mapWaterLabel {
+  fill: #438fbd;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.mapRoadLabels rect {
+  fill: #fff;
+  stroke: #8e8798;
+  stroke-width: 1px;
+}
+
+.mapRoadLabels text {
+  fill: #5e566c;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.mapSearchButton {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 39px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 2px 9px rgb(54 43 74 / 10%);
+  color: #6a6078;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.mapSearchButton svg {
+  color: #9463b0;
+}
+
+.mapPins {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mapPin {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 51%;
+  margin: 0;
+  padding: 0;
+}
+
+.mapPinLabel {
+  display: block;
+  padding: 7px 10px;
+  border: 1px solid #9e66bd;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(58 32 76 / 7%);
+  color: var(--venues-purple);
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.mapPinFeatured {
+  border-color: var(--venues-purple);
+  background: var(--venues-purple);
+  color: #fff;
+}
+
+.mapPinDot {
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--venues-purple);
+  box-shadow: 0 1px 3px rgb(58 32 76 / 12%);
+}
+
+.pinPilar {
+  top: 25%;
+  left: 8%;
+}
+
+.pinEscobar {
+  top: 18%;
+  left: 37%;
+}
+
+.pinTigre {
+  top: 31%;
+  left: 69%;
+}
+
+.pinSanIsidro {
+  top: 53%;
+  left: 68%;
+}
+
+.mapZoom {
+  position: absolute;
+  right: 13px;
+  bottom: 86px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 9px rgb(54 43 74 / 14%);
+}
+
+.mapZoom button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: #fff;
+  color: #7e748b;
+}
+
+.mapZoom button + button {
+  border-top: 1px solid #eeeaf3;
+}
+
+.mapCaption {
+  margin-top: 10px;
+  color: var(--venues-muted);
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
+}
+
+/* Scoped composition breakpoints follow Tailwind's desktop/tablet boundaries. */
+@media (max-width: 1279px) {
+
+  .searchContent,
+  .resultsLayout {
+    width: calc(100% - 56px);
+  }
+
+  .filterButton,
+  .searchButton {
+    gap: 10px;
+    padding-right: 12px;
+    padding-left: 12px;
+    font-size: 13px;
+  }
+
+  .resultsLayout {
+    gap: 22px;
+  }
+
+  .resultsHeading {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .resultsTitle {
+    font-size: 23px;
+    line-height: 30px;
+  }
+
+  .venueGrid {
+    gap: 23px 14px;
+  }
+
+  .venueName {
+    font-size: 16px;
+    line-height: 23px;
+  }
+
+  .venueType {
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 11px;
+  }
+
+  .venueMeta {
+    gap: 2px 12px;
+  }
+
+  .venueDetail {
+    font-size: 12px;
+  }
+
+  .mapPinLabel {
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 11px;
+  }
+
+  .pinTigre,
+  .pinSanIsidro {
+    left: 65%;
+  }
+}
+
+@media (max-width: 1023px) {
+
+  .pageTitle {
+    font-size: 32px;
+    line-height: 40px;
+  }
+
+  .filters {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 1px 1px 8px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #d9cce5 transparent;
+  }
+
+  .filterButton {
+    flex: 0 0 auto;
+    min-width: 159px;
+    gap: 13px;
+    padding: 12px 15px;
+    font-size: 14px;
+  }
+
+  .locationFilter {
+    flex-basis: 205px;
+  }
+
+  .searchButton {
+    flex: 0 0 180px;
+    font-size: 15px;
+  }
+
+  .resultsLayout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .resultsHeading {
+    flex-wrap: nowrap;
+  }
+
+  .venueGrid {
+    gap: 25px 18px;
+  }
+
+  .venueName {
+    font-size: 18px;
+    line-height: 25px;
+  }
+
+  .venueDetail {
+    font-size: 13px;
+  }
+
+  .mapCanvas {
+    max-height: 600px;
+    min-height: 0;
+    aspect-ratio: 1.2;
+  }
+
+  .mapDrawing {
+    object-fit: cover;
+  }
+
+  .mapPinLabel {
+    font-size: 12px;
+  }
+
+  .pinTigre,
+  .pinSanIsidro {
+    left: 69%;
+  }
+}
+
+@media (max-width: 767px) {
+
+  .main {
+    padding-bottom: 24px;
+  }
+
+  .searchSection {
+    padding: 22px 0 10px;
+  }
+
+  .searchContent,
+  .resultsLayout {
+    width: calc(100% - 40px);
+  }
+
+  .pageTitle {
+    max-width: 470px;
+    font-size: 28px;
+    letter-spacing: -0.7px;
+    line-height: 34px;
+  }
+
+  .pageDescription {
+    margin: 8px 0 16px;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .filterButton,
+  .searchButton {
+    min-height: 49px;
+  }
+
+  .resultsLayout {
+    margin-top: 21px;
+  }
+
+  .resultsHeading {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .resultsTitle {
+    font-size: 24px;
+    letter-spacing: -0.5px;
+    line-height: 31px;
+  }
+
+  .sortPreview {
+    gap: 9px;
+  }
+
+  .sortButton {
+    min-height: 34px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .venueGrid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .venueMedia {
+    aspect-ratio: 1.72;
+    border-radius: 6px;
+  }
+
+  .venueName {
+    font-size: 19px;
+    line-height: 27px;
+  }
+
+  .venueType {
+    padding: 4px 11px;
+    font-size: 12px;
+  }
+
+  .venueMeta {
+    gap: 3px 15px;
+    margin-top: 5px;
+  }
+
+  .mapCanvas {
+    min-height: 420px;
+    max-height: none;
+    aspect-ratio: 0.85;
+  }
+
+  .mapPinLabel {
+    padding: 6px 7px;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 16px;
+  }
+
+  .mapPin {
+    gap: 4px;
+  }
+
+  .pinPilar {
+    left: 5%;
+  }
+
+  .pinEscobar {
+    left: 35%;
+  }
+
+  .pinTigre,
+  .pinSanIsidro {
+    left: 65%;
+  }
+
+  .mapZoom {
+    bottom: 54px;
+  }
+
+  .mapCaption {
+    font-size: 11px;
+    line-height: 17px;
+  }
+}
+
+@media (max-width: 374px) {
+
+  .searchContent,
+  .resultsLayout {
+    width: calc(100% - 28px);
+  }
+
+  .venueName {
+    font-size: 17px;
+  }
+
+  .venueDetail {
+    font-size: 12px;
+  }
+
+  .pinTigre,
+  .pinSanIsidro {
+    left: 62%;
+  }
+}

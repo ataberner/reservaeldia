@@ -18,10 +18,14 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 | `/i/{slug}/share.jpg` | No | `X-Robots-Tag: noindex` | N/A | No | N/A | None | High |
 | `/dashboard/`, `/dashboard/**` | No | `noindex, noarchive` | Omitted | No | None | None | High |
 | `/admin/*` | No | `noindex, noarchive` | Omitted | No | None | None | High |
+| `/profesionales/`, `/profesionales/**` | No | `Disallow: /profesionales`; `noindex, nofollow, noarchive` for direct fetches | Omitted | No | None | None | High |
+| `/assets/profesionales/**` | No | `Disallow: /assets/profesionales/`; `X-Robots-Tag: noindex, nofollow, noarchive` | N/A | No | None | None | High |
+| `/lugares/`, `/lugares/**` | No | `Disallow: /lugares`; `noindex, nofollow, noarchive` for direct fetches | Omitted | No | None | None | High |
+| `/assets/lugares/**` | No | `Disallow: /assets/lugares/`; `X-Robots-Tag: noindex, nofollow, noarchive` | N/A | No | None | None | High |
 | `/boda/*` | No | `noindex, noarchive` | Omitted | No | None | None | High |
 | `/para-diseño/` | No | `noindex, noarchive` | Omitted | No | None | None | Medium |
 | `/404/`, `404.html` | No | `noindex` | Omitted | No | None | None | Medium |
-| `/robots.txt` | N/A | Allows crawling | N/A | No | None | None | High |
+| `/robots.txt` | N/A | Allows crawling except the professionals/venues design previews and their assets | N/A | No | None | None | High |
 | `/sitemap.xml` | N/A | Accessible | N/A | No | None | None | High |
 | `/_next/**`, `/assets/**`, `/icons/**`, `/favicon_io/**` | Not pages | No sitemap; public PDFs use `noindex` | N/A | No | None | None | Medium |
 
@@ -36,6 +40,34 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
   `noindex` directive on private invitations.
 - Public invitations use `noindex, noarchive` only. Do not add `nofollow` or
   `nosnippet` unless a concrete technical reason is documented here first.
+- Professionals preview exception, accepted by the user's 2026-10-15 request:
+  `/profesionales/` is a design-only secondary page; `/` remains unchanged.
+  Search crawling is explicitly disallowed for `/profesionales` (including the
+  exact path and descendants) and `/assets/profesionales/`. The page and Hosting
+  headers also emit `noindex, nofollow, noarchive` for direct fetches. Compliant
+  crawlers blocked by `robots.txt` cannot observe those directives; neither
+  mechanism is access control or guarantees removal of a previously indexed URL.
+  This narrow exception does not change invitation crawling or other route policy.
+- The preview reuses `useAdminAccess` / `getAdminAccess` and mounts the design only
+  after the current user is confirmed as `isSuperAdmin`; no provider data service,
+  provider templates or marketplace actions are part of this phase. Production
+  uses static export: its shell, JavaScript and assets are still publicly
+  deliverable, so the client guard does not provide HTTP-level confidentiality.
+  Examples must not contain private provider data. Status: implemented and
+  verified locally on 2026-10-15; deployment remains pending. No backend
+  or administrative identity-policy change is authorized by this preview.
+- Venues preview exception, accepted by the user's 2026-10-16 request:
+  `/lugares/` follows the same internal design-preview policy. Its exact route,
+  descendants and `/assets/lugares/**` receive Hosting
+  `noindex, nofollow, noarchive`; `robots.txt` disallows `/lugares` and
+  `/assets/lugares/`. It has no sitemap entry, canonical, social metadata or
+  structured data. The current-user `useAdminAccess` / `getAdminAccess` authority
+  restricts the rendered preview to superadmins. Venue examples and the
+  illustrative map do not call provider, mapping or search services. This adds
+  no backend or identity-policy change. Static HTML, JavaScript and artwork
+  remain publicly deliverable; neither the client guard nor robots directives
+  provide HTTP-level confidentiality. Local verification is recorded below;
+  deployment and effective remote behavior remain unverified.
 - Future SEO pages such as `/plantillas/`, `/funcionalidades/*`, guides, or blog
   posts must be added to this inventory before implementation.
 - AEO policy is tracked in [AEO_ROUTE_INVENTORY.md](AEO_ROUTE_INVENTORY.md).
@@ -44,6 +76,44 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 
 ## Verification Anchors
 
+- Venues preview, verified locally on 2026-10-16:
+  `node --test src/pages/lugares.test.mjs src/pages/profesionales.test.mjs src/hooks/dashboardStartupReaders.test.mjs functions/seoStaticFiles.test.mjs`
+  passed 28/28. An isolated Next production build/export (16 routes) and the
+  local static-release verifier passed. Exported `/lugares/index.html` contains
+  robots/googlebot directives but no venue design or artwork references.
+  Ten browser cases passed with synthetic demo Auth identities and intercepted
+  `getAdminAccess`: anonymous, ordinary user, ordinary admin, permission error,
+  pending permission, and superadmin at 1440/1024/768/390/320px. Checks cover
+  absent design/artwork before permission, disabled actions, the single filter
+  row (internal scrolling on small screens), loaded photos, gradient title,
+  no hero and no clipped page/map labels. A tablet filter-width failure found
+  during the first run was corrected before the final complete rerun.
+  Hash comparison against the prior professionals snapshot confirms 13 existing
+  page/shared-style/auth files unchanged. External browser requests were blocked
+  or served from the existing public font/CSS cache; no backend or production
+  service was contacted. Evidence/reproduction (ignored local files):
+  `.local-isolation/venues-build.cjs`, `.local-isolation/venues-browser.cjs`,
+  `.local-isolation/venues-it92jt/venues-browser-report.json` and
+  `.local-isolation/venues-it92jt/unchanged-surfaces.json`.
+  No production identities, deployed headers, crawler behavior or HTTP-level
+  file protection were verified. No deployment was performed. Lint was not run;
+  the build retained the existing outdated Browserslist data warning. The
+  disposable build disabled persistent webpack caching after an initial
+  insufficient-disk-space failure; production configuration is unchanged.
+- Professionals preview: `node --test src/pages/profesionales.test.mjs src/hooks/dashboardStartupReaders.test.mjs functions/seoStaticFiles.test.mjs`
+  passed 23/23 on 2026-10-15. An isolated Next production build/export and the
+  local static-release verifier also passed. Exported `/profesionales/index.html`
+  contains robots directives and no marketplace content. Eight browser scenarios
+  passed with synthetic demo Auth sessions and intercepted `getAdminAccess`
+  responses: anonymous, regular user, ordinary admin, permission error, and
+  superadmin at 1440/768/390/320px. Pending permissions do not mount the design or
+  request its artwork; viewport checks cover clipping, image visibility and
+  disabled marketplace controls. No production identity, deployed headers,
+  crawler behavior or HTTP-level file protection was verified. Lint was not run;
+  the build retained the existing outdated Browserslist data warning.
+  Local reproduction/evidence: `.local-isolation/professionals-build.cjs`,
+  `.local-isolation/professionals-browser.cjs` and
+  `.local-isolation/professionals-KUvo5E/browser-report.json` (ignored local files).
 - `functions/seoStaticFiles.test.mjs`
 - `src/domain/seo/faqMetadata.test.mjs`
 - `src/pages/preguntas-frecuentes.test.mjs`

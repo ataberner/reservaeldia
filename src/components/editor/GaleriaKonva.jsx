@@ -40,6 +40,8 @@ import {
   startDragGrupalLider,
 } from "@/drag/dragGrupal";
 import { buildIndividualDragModifierState } from "@/drag/dragIndividual";
+import { resetNativeDragPositionCache } from "@/drag/konvaDragSession";
+import { getFunctionalRenderOffsetX } from "@/components/editor/canvasEditor/functionalRenderPose";
 import { calcularOffsetY } from "@/utils/layout";
 import { resolveGalleryCellMediaUrl } from "../../../shared/renderAssetContract.js";
 import { resolveGalleryRenderLayout } from "../../../shared/templates/galleryDynamicLayout.js";
@@ -565,7 +567,7 @@ export default function GaleriaKonva({
 
   return (
     <Group
-      x={toNum(obj.x, 0)}
+      x={toNum(obj.x, 0) + getFunctionalRenderOffsetX(obj)}
       y={stageY}
       id={obj.id}
       clipX={0}
@@ -634,6 +636,7 @@ export default function GaleriaKonva({
           sessionId: null,
           leaderId: null,
         };
+        resetNativeDragPositionCache(e.currentTarget || e.target);
         window._isDragging = true;
         if (typeof window !== "undefined") {
           window.dispatchEvent(

@@ -1,5 +1,6 @@
 import { canonicalizeFinalizedDragPatch } from "../../../domain/editor/canvasObjectPositioning.js";
 import { resolveCanonicalNodePose } from "./konvaCanonicalPose.js";
+import { functionalScenePatchToBase, getFunctionalRenderOffsetX } from "./functionalRenderPose.js";
 
 // React-Konva does not reapply unchanged position props after an imperative drag.
 // Reconcile the accepted pose before the caller freezes the drag overlay for settling.
@@ -9,7 +10,10 @@ export function finalizeDragPosition({
   onPositionReconciled,
   ...canonicalization
 }) {
-  const patch = canonicalizeFinalizedDragPatch(canonicalization);
+  const patch = canonicalizeFinalizedDragPatch({
+    ...canonicalization,
+    dragPatch: functionalScenePatchToBase(canonicalization.objOriginal, canonicalization.dragPatch),
+  });
   if (!node || typeof node.position !== "function") return patch;
 
   const acceptedObject = { ...canonicalization.objOriginal, ...patch };
@@ -19,7 +23,7 @@ export function finalizeDragPosition({
   if (!Number.isFinite(x) || !Number.isFinite(stageY)) return patch;
 
   const position = {
-    x: x + (livePose.usesOriginOffset ? livePose.rawOffsetX : 0),
+    x: x + getFunctionalRenderOffsetX(acceptedObject) + (livePose.usesOriginOffset ? livePose.rawOffsetX : 0),
     y: stageY + (livePose.usesOriginOffset ? livePose.rawOffsetY : 0),
   };
   if (position.x === livePose.rawX && position.y === livePose.rawY) return patch;

@@ -56,9 +56,35 @@ families), with these group-local differences:
 - Full-document collectors must recurse into `children[]` whenever they collect render
   capabilities or document-level dependencies from objects. This includes Google Fonts,
   countdown runtime activation, gallery lightbox activation, and functional CTA presence.
-- Functional visibility is derived before editor/preview/publish render from `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode`, and `eventDetails.dressCode.enabled`. In a shared section, inactive functional owners are omitted; if only one associated functionality remains visible among the section's functional owners, the renderer applies a reversible horizontal offset to all visible owners for that functionality based on their joint bounding box. This offset is not persisted as object or group `x`.
+- Functional visibility is derived before editor/preview/publish render from `rsvp.enabled`, `gifts.enabled`, `eventDetails.mode`, and `eventDetails.dressCode.enabled`. In a shared section, inactive functional owners are omitted. In legacy sections without initialized `eventLayout`, if only one associated functionality remains visible among the section's functional owners, the renderer applies a reversible horizontal offset to all visible owners for that functionality based on their joint bounding box. This derived legacy offset is not persisted as object or group `x`.
 - Standalone RSVP/Gifts/Ceremony/Party/Dress Code roots participate independently in that joint-centering calculation. They keep their root identity and normal render contract; the derived offset neither creates a wrapper nor changes their persisted geometry.
 - Admin group assignment keeps RSVP/Gifts singleton per section and allows multiple Ceremony/Party/Dress Code groups per section. Standalone assignment may associate multiple independently editable roots with any supported value. Group children must not carry `functionalAssociation`.
+
+### Independent Event Modality Positions
+
+Eligible sections may carry `eventLayout.version: 1` as defined by
+[DATA_MODEL.md](DATA_MODEL.md#event-layout-positions). The active modality uses
+canonical root `x/y/yNorm`; only the inactive modality has a position checkpoint.
+Initial maps support an explicit reset of the active modality without reverting
+content. Initialization is lazy on accepted manual movement or geometry transform, modality change,
+or reset; opening an existing document does not migrate it.
+
+Group wrappers participate as roots, including shared and hidden wrappers.
+Their children, local coordinates, dimensions, styles, and semantic values stay
+shared between modalities. A modality switch does not clone groups or dynamic
+targets. Initialized sections use the resolved root pose and suppress repeated
+functional centering and legacy text-group alignment in editor/preview/publish.
+
+When grouping removes roots, or ungrouping removes a wrapper, structural
+authoring prunes those departed root IDs from both inactive checkpoints and
+initial maps. Newly exposed roots use their current pose rather than reviving
+an old snapshot. Section transfer follows the same rule; undo restores its own
+atomic objects/sections/modality snapshot. New duplicate/paste identities have
+no inherited position checkpoint.
+
+The render resolver does not change `mobileLayoutMode`: automatic mobile layout
+still treats the wrapper as one unit; `preserve` retains the authored composition
+with normal viewport scaling. A missing `eventLayout` retains legacy output.
 
 ### Dynamic View Detachment
 

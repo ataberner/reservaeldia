@@ -12,6 +12,7 @@ import {
   getCurrentInlineEditingId,
 } from "@/components/editor/textSystem/bridges/window/inlineWindowBridge";
 import { shouldPreserveTextCenterPosition } from "@/lib/textCenteringPolicy";
+import { functionalScenePatchToBase } from "@/components/editor/canvasEditor/functionalRenderPose";
 import { canEditObject } from "@/domain/editor/protectedSections";
 import { normalizeDynamicInlineFieldValue } from "@/domain/templates/dynamicFieldTargets";
 
@@ -20,6 +21,7 @@ export default function useCanvasEditorInlineCommitHandlers({
   captureInlineSnapshot,
   updateEdit,
   objetos,
+  renderObjects = objetos,
   secciones,
   inlineEditPreviewRef,
   inlineCommitDebugRef,
@@ -350,7 +352,11 @@ export default function useCanvasEditorInlineCommitHandlers({
         : null;
 
     if (shouldKeepCenterX) {
-      const nextX = calcularXTextoCentrado(objeto, textoNuevoRaw, lockedCenterX);
+      const centeredX = calcularXTextoCentrado(objeto, textoNuevoRaw, lockedCenterX);
+      const renderObject = renderObjects.find((object) => object.id === finishId) || objeto;
+      const nextX = Number.isFinite(lockedCenterX)
+        ? functionalScenePatchToBase(renderObject, { x: centeredX }).x
+        : centeredX;
       const currentX = Number.isFinite(objeto?.x) ? objeto.x : 0;
       if (Number.isFinite(nextX) && Math.abs(nextX - currentX) > 0.01) {
         patch.x = nextX;
@@ -383,7 +389,7 @@ export default function useCanvasEditorInlineCommitHandlers({
       sections: secciones,
     });
     flushSync(() => {
-      setObjetos(actualizado);
+      setObjetos(actualizado, { reason: "text-center-preservation" });
       if (nextSections && nextSections !== secciones) setSecciones(nextSections);
     });
     captureInlineSnapshot("finish: after-flush", {

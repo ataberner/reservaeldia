@@ -51,6 +51,8 @@ export default function useEditorWindowBridge({
   updateTemplateAuthoringEventTimes,
   eventDetailsConfig,
   updateEventDetailsConfig,
+  resetEventLayout,
+  canResetEventLayout = false,
   repairTemplateAuthoringState,
   ensureInlineEditSettledBeforeCriticalAction,
   flushPersistenceNow,
@@ -64,6 +66,7 @@ export default function useEditorWindowBridge({
     "secciones",
   ];
   const templateAuthoringBridgeReadyNotifiedRef = useRef(false);
+  const eventLayoutAvailabilityRef = useRef(null);
 
   const mergeCanvasEditor = (patch = {}) => {
     if (typeof window === "undefined") return;
@@ -371,6 +374,10 @@ export default function useEditorWindowBridge({
         typeof updateEventDetailsConfig === "function"
           ? updateEventDetailsConfig
           : undefined,
+      resetEventLayout:
+        typeof resetEventLayout === "function" ? resetEventLayout : undefined,
+      canResetEventLayout: () =>
+        canResetEventLayout === true && typeof resetEventLayout === "function",
       getTemplateAuthoringStatus:
         typeof getTemplateAuthoringStatus === "function"
           ? getTemplateAuthoringStatus
@@ -393,18 +400,26 @@ export default function useEditorWindowBridge({
           : undefined,
     });
 
+    const resetAvailable =
+      canResetEventLayout === true && typeof resetEventLayout === "function";
+    const layoutAvailabilityChanged =
+      eventLayoutAvailabilityRef.current !== resetAvailable;
+    eventLayoutAvailabilityRef.current = resetAvailable;
     if (!templateAuthoringSnapshotReader) {
       templateAuthoringBridgeReadyNotifiedRef.current = false;
       return;
     }
 
-    if (templateAuthoringBridgeReadyNotifiedRef.current) return;
+    if (templateAuthoringBridgeReadyNotifiedRef.current && !layoutAvailabilityChanged) return;
+    const reason = templateAuthoringBridgeReadyNotifiedRef.current
+      ? "event-layout-availability-change"
+      : "bridge-ready";
     templateAuthoringBridgeReadyNotifiedRef.current = true;
 
-    let authoringDetail = { reason: "bridge-ready" };
+    let authoringDetail = { reason };
     try {
       authoringDetail = {
-        reason: "bridge-ready",
+        reason,
         ...(templateAuthoringSnapshotReader() || {}),
       };
     } catch {
@@ -444,6 +459,8 @@ export default function useEditorWindowBridge({
     updateTemplateAuthoringEventTimes,
     eventDetailsConfig,
     updateEventDetailsConfig,
+    resetEventLayout,
+    canResetEventLayout,
     repairTemplateAuthoringState,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow,

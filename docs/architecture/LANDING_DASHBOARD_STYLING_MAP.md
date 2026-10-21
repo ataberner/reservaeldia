@@ -236,6 +236,74 @@ Assumptions:
 | Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `AppHeader.jsx`, `CanvasEditorHeader.jsx`, `DashboardSidebar.jsx` | Tailwind shell classes, `AppHeader.module.css` for non-editor dashboard header visuals, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. `DashboardHeader.jsx` owns the runtime shell; `AppHeader.jsx` owns non-editor dashboard header visuals; `CanvasEditorHeader.jsx` owns only editor header content. |
 | Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `AuthModal.module.css` for Login/Register; `styles/styles.css` plus Bootstrap button/modal classes for ProfileCompletion; small inline styles where present | Login/Register have scoped auth ownership. ProfileCompletion remains the legacy global/auth Bootstrap exception and should be migrated separately. |
 
+### Professionals design preview (2026-10-15)
+
+`/profesionales/` is a secondary, design-only marketplace preview. Presentation
+belongs to `src/components/professionals/ProfessionalsLanding.jsx` and its
+colocated `ProfessionalsLanding.module.css`. Body composition has scoped CSS,
+including protection against legacy element selectors. The footer logo retains
+`logoLink` and `brandText` from `AppHeader.module.css`.
+
+Both marketplace previews share
+`src/components/marketplace/MarketplaceHeader.jsx`, which adapts the existing
+`AppHeader` with `variant="dashboard"` and `placement="embedded"`. Shared header
+visuals, account presentation and responsive menus remain owned by
+`AppHeader.jsx` / `AppHeader.module.css`; the adapter supplies contextual links
+for Profesionales, Lugares and Invitaciones digitales, plus the already-authorized
+Firebase user's identity and navigation to Mis invitaciones. It renders before
+each preview's scoped body root so local button and focus rules do not override
+the shared header. It adds no session observer, profile query, logout action or
+editor shell hook. The `/` landing, dashboard, shared header implementation and
+global styles remain unchanged. The previous Soy proveedor control is removed.
+
+The collage and example cards use the generated static asset
+`public/assets/profesionales/wedding-triptych.png`; the invitations section
+reuses `public/assets/img/Hero.webp`. Provider names and locations are static
+design examples, with no provider catalogue reads. The service catalog contains
+five categories (Fotografía y video, Catering, Ambientación, Música y shows,
+Wedding planners) and two provider cards (Luz de Abril, Olivia Deco); venue
+categories and cards belong to `/lugares/`. Search, categories and provider
+actions remain disabled; the shared header and invitation links navigate to
+existing pages.
+Access coordination remains in `src/pages/profesionales.jsx`, which consumes
+the existing `src/hooks/useAdminAccess.js` result and only mounts the preview for
+`isSuperAdmin === true`, passing that session user to the presentation component.
+This presentation component owns no authorization or
+backend behavior. Crawl/indexing controls and static-delivery limitations belong
+to [SEO_ROUTE_INVENTORY.md](SEO_ROUTE_INVENTORY.md).
+
+### Venues design preview (2026-10-16)
+
+`/lugares/` is a secondary design preview without a hero. Presentation belongs
+to `src/components/venues/VenuesLanding.jsx`, its scoped
+`VenuesLanding.module.css` and `VenuesMap.jsx`. Its header uses the common
+`MarketplaceHeader` adapter described above. The body retains the
+purple-to-orange accent, with compact filters above a two-column
+photo list and an illustrative map. Venue details and map markers are design
+examples; the surface has no provider, map, search or persistence service.
+Access coordination belongs to `src/pages/lugares.jsx`, using the existing
+current-user `useAdminAccess` authority to mount the design only for superadmins
+and pass the authorized user to the header. The presentation components do not
+own authorization. Header reuse synchronizes the two preview routes without
+changing `/`, dashboard, shared header implementation or global styles.
+Crawl/indexing policy and the
+public deliverability of static files are recorded in
+[SEO_ROUTE_INVENTORY.md](SEO_ROUTE_INVENTORY.md).
+
+Shared-header verification (2026-10-16): the isolated production build/export
+and static release check passed. The route, dashboard-startup and SEO test suite
+passed 28 tests (`node --test src/pages/lugares.test.mjs
+src/pages/profesionales.test.mjs src/hooks/dashboardStartupReaders.test.mjs
+functions/seoStaticFiles.test.mjs`). An isolated browser run passed 18 scenarios
+with simulated authorization: both routes reject anonymous, regular-user,
+ordinary-admin, pending and failed-permission states; superadmin previews were
+checked at 1440, 768, 390 and 320 pixels. Header geometry and styles match between
+the previews, mobile/account menus work, and neither page overflows horizontally.
+Public fonts and Bootstrap were supplied from cached assets, other external
+requests were blocked, and no production session or service was used. Local
+evidence is in `.local-isolation/venues-zfebVz/marketplace-headers-browser-report.json`
+and its adjacent screenshots. This verification does not assert deployment.
+
 ## 5. Component Ownership
 
 | Component/file | Current role | Styling ownership | Redesign note |

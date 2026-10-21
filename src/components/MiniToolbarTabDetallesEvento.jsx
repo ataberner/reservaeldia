@@ -501,6 +501,57 @@ function updateLinkedEventDetailsConfig(patch) {
     });
 }
 
+function readCanResetEventLayoutState(targetWindow) {
+  const canReset = readCanvasEditorMethod("canResetEventLayout", targetWindow);
+  return typeof canReset === "function" && canReset() === true;
+}
+
+function resetLinkedEventLayout() {
+  if (!readCanResetEventLayoutState()) return Promise.resolve(false);
+  const reset = readCanvasEditorMethod("resetEventLayout");
+  if (typeof reset !== "function") return Promise.resolve(false);
+  return Promise.resolve()
+    .then(() => reset())
+    .then((result) => result !== false && result?.ok !== false);
+}
+
+function EventLayoutResetControl({ canReset, onReset }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleReset = async () => {
+    if (!canReset || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      if ((await onReset()) === false) {
+        setError("No se pudo restablecer la distribución. Inténtalo nuevamente.");
+      }
+    } catch {
+      setError("No se pudo restablecer la distribución. Inténtalo nuevamente.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={handleReset}
+        disabled={!canReset || pending}
+        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {pending ? "Restableciendo..." : "Restablecer distribución de esta modalidad"}
+      </button>
+      <p className="mt-1 text-xs text-slate-500">
+        Solo en la modalidad actual; puedes deshacerlo.
+      </p>
+      {error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 function buildEventPersonNamesSignature(names) {
   return JSON.stringify({
     primaryName: String(names?.primaryName || ""),
@@ -716,6 +767,9 @@ export default function MiniToolbarTabDetallesEvento({
   );
   const [eventDetailsConfig, setEventDetailsConfig] = useState(
     readInitialEventDetailsConfigState
+  );
+  const [canResetEventLayout, setCanResetEventLayout] = useState(
+    readCanResetEventLayoutState
   );
   const [countdownUi, setCountdownUi] = useState(readInitialCountdownUiState);
   const [partyCountdownUi, setPartyCountdownUi] = useState(() =>
@@ -971,6 +1025,7 @@ export default function MiniToolbarTabDetallesEvento({
 
   const syncEventDetailsConfigState = useCallback(() => {
     setEventDetailsConfig(readEventDetailsUiConfigState(window));
+    setCanResetEventLayout(readCanResetEventLayoutState(window));
   }, []);
 
   const handleEventDetailsModeChange = (event) => {
@@ -2757,6 +2812,10 @@ export default function MiniToolbarTabDetallesEvento({
             <option value={EVENT_DETAILS_MODES[0]}>Un solo evento</option>
             <option value={EVENT_DETAILS_MODES[1]}>Ceremonia y fiesta</option>
           </select>
+          <EventLayoutResetControl
+            canReset={canResetEventLayout}
+            onReset={resetLinkedEventLayout}
+          />
         </section>
       )}
 

@@ -21,6 +21,7 @@ import {
 } from "@/components/editor/textSystem/render/konva/selectionBoundsGeometry";
 import {
   getKonvaNodeDebugInfo,
+  isSelectedDragDebugEnabled,
   logSelectedDragDebug,
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
@@ -893,6 +894,8 @@ const SelectionBoundsIndicator = forwardRef(function SelectionBoundsIndicator({
   }, [notifyControlledMountCandidateChanged]);
 
   const maybeLogOverlayTextMismatch = useCallback((nextBounds, meta = {}) => {
+    // Everything below measures/logs mismatch diagnostics, not overlay bounds.
+    if (!isSelectedDragDebugEnabled()) return;
     const currentInputs = latestInputsRef.current || {};
     const currentDebugSource =
       meta.debugSource ||

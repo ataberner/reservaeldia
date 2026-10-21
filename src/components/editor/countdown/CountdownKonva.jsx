@@ -5,6 +5,7 @@ import { Group, Image as KonvaImage, Rect, Text } from "react-konva";
 import useImage from "use-image";
 import { getRemainingParts, fmt } from "./countdownUtils";
 import { calcularOffsetY } from "@/utils/layout";
+import { getFunctionalRenderOffsetX } from "@/components/editor/canvasEditor/functionalRenderPose";
 import {
   normalizeVisibleUnits,
   resolveCanvasPaint,
@@ -2006,7 +2007,7 @@ export default function CountdownKonva({
     typeof liveRenderNode?.x === "function" &&
     Number.isFinite(Number(liveRenderNode.x()))
       ? Number(liveRenderNode.x())
-      : (obj.x ?? 0);
+      : (obj.x ?? 0) + getFunctionalRenderOffsetX(obj);
   const renderedY =
     shouldRenderLiveDragPose &&
     typeof liveRenderNode?.y === "function" &&

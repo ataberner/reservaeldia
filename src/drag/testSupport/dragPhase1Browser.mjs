@@ -46,15 +46,19 @@ function DragPhase1Probe() {
       (isPantalla(object.seccionId) && Number.isFinite(object.yNorm) ? object.yNorm * 500 : object.y || 0);
   };
   const change = (id, patch) => {
-    const original = window._objetosActuales.find((object) => object.id === id);
-    const accepted = patch.finalizoDrag ? finalizeDragPosition({
-      objOriginal: original, dragPatch: patch, seccionesOrdenadas: scene.sections,
-      determinarNuevaSeccion, convertirAbsARel, esSeccionPantallaById: isPantalla,
-      ALTURA_PANTALLA_EDITOR: 500, node: refs.current[id], resolveObjectStageY: stageY,
-    }) : patch;
-    commits.current.push({ id, patch: accepted });
+    const changes = patch.isBatchUpdateFinal ? patch.changes : [{ id, patch }];
+    const acceptedById = new Map(changes.map(({ id, patch }) => {
+      const original = window._objetosActuales.find((object) => object.id === id);
+      const accepted = patch.finalizoDrag ? finalizeDragPosition({
+        objOriginal: original, dragPatch: patch, seccionesOrdenadas: scene.sections,
+        determinarNuevaSeccion, convertirAbsARel, esSeccionPantallaById: isPantalla,
+        ALTURA_PANTALLA_EDITOR: 500, node: refs.current[id], resolveObjectStageY: stageY,
+      }) : patch;
+      commits.current.push({ id, patch: accepted });
+      return [id, accepted];
+    }));
     flushSync(() => setScene((previous) => ({
-      ...previous, objects: previous.objects.map((object) => object.id === id ? { ...object, ...accepted } : object),
+      ...previous, objects: previous.objects.map((object) => acceptedById.has(object.id) ? { ...object, ...acceptedById.get(object.id) } : object),
     })));
   };
   const prepare = (id, _event, meta = {}) => {

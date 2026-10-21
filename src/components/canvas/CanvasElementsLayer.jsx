@@ -3,6 +3,7 @@ import React, { forwardRef, useEffect, useRef } from "react";
 import { Layer } from "react-konva";
 import { trackCanvasDragPerf } from "@/components/editor/canvasEditor/canvasDragPerf";
 import { recordImageRotationLayerDraw } from "@/components/editor/canvasEditor/imageRotationDebug";
+import { createKonvaLayerHitDraw } from "@/components/editor/canvasEditor/konvaLayerHitDraw";
 import { dashboardExportExcludeProps } from "@/utils/dashboardCanvasExport";
 
 function getCanvasElementsLayerPerfNow() {
@@ -80,17 +81,18 @@ const CanvasElementsLayer = forwardRef(function CanvasElementsLayer(
     }
 
     if (originalDrawHit) {
+      const drawHit = createKonvaLayerHitDraw(layer, originalDrawHit);
       layer.drawHit = function patchedCanvasElementsLayerDrawHit(...args) {
         const activeSession =
           typeof window !== "undefined" ? window.__CANVAS_DRAG_PERF_ACTIVE_SESSION : null;
         const hasImageRotationSession =
           typeof window !== "undefined" && Boolean(window.__IMAGE_ROTATION_DEBUG_ACTIVE_SESSION);
         if (!activeSession && !hasImageRotationSession) {
-          return originalDrawHit.apply(this, args);
+          return drawHit.apply(this, args);
         }
 
         const startedAt = getCanvasElementsLayerPerfNow();
-        const result = originalDrawHit.apply(this, args);
+        const result = drawHit.apply(this, args);
         const durationMs = getCanvasElementsLayerPerfNow() - startedAt;
 
         const hitPayload = {

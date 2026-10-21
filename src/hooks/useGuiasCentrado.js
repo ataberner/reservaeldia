@@ -925,6 +925,9 @@ export default function useGuiasCentrado({
             const guideSessionId = guideRequest.sessionId || idActual;
             const interactionEpoch = guideRequest.interactionEpoch ?? null;
             const isTextElement = objActual?.tipo === "texto";
+            // Keep diagnostic measurements and snapshot allocation behind the
+            // same policy for this sample. Functional pre/post-snap reads stay live.
+            const textDiagnosticsEnabled = isTextElement && isSelectedDragDebugEnabled();
 
             guideDebugContextRef.current = {
                 sessionId: guideSessionId,
@@ -969,13 +972,13 @@ export default function useGuiasCentrado({
             }
             capturePerfPhase("selfBoxResolveMs");
 
-            const preSnapTextDiagnostics = readTextGuideGeometryDiagnostics({
+            const preSnapTextDiagnostics = textDiagnosticsEnabled ? readTextGuideGeometryDiagnostics({
                 stage,
                 node,
                 objActual,
                 authoritativeBox: initialBox,
                 inputPosition: normalizedInputPosition,
-            });
+            }) : null;
             const forcePreSnapTextLog =
                 shouldForceGuideGeometryLog({
                     delta: preSnapTextDiagnostics?.guideVsAuthoritativeDelta,
@@ -1163,7 +1166,7 @@ export default function useGuiasCentrado({
                 force: decisionChanged || rapidFlip || forcePreSnapTextLog,
             });
 
-            if (isTextElement) {
+            if (textDiagnosticsEnabled) {
                 const preSnapAuthorityCheck = evaluateTextGeometryContractRectAlignment(
                     preSnapTextDiagnostics?.authoritativeTextBox,
                     dragSnapshot.selfBox,
@@ -1436,12 +1439,12 @@ export default function useGuiasCentrado({
                 finishPerf?.({ reason: "missing-self-box-after" });
                 return null;
             }
-            const postSnapTextDiagnostics = readTextGuideGeometryDiagnostics({
+            const postSnapTextDiagnostics = textDiagnosticsEnabled ? readTextGuideGeometryDiagnostics({
                 stage,
                 node,
                 objActual,
                 authoritativeBox: postSnapBox,
-            });
+            }) : null;
             const selfCxAfter = postSnapBox.x + postSnapBox.width / 2;
             const selfCyAfter = postSnapBox.y + postSnapBox.height / 2;
             const computeSnapAfterDistance = (axis, snapRes) => {
@@ -1635,7 +1638,7 @@ export default function useGuiasCentrado({
                     snapResY.source === "seccion",
             });
 
-            if (isTextElement) {
+            if (textDiagnosticsEnabled) {
                 const postSnapAuthorityCheck = evaluateTextGeometryContractRectAlignment(
                     postSnapTextDiagnostics?.authoritativeTextBox,
                     postSnapBox,

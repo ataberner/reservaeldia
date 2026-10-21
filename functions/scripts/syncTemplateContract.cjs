@@ -3,6 +3,11 @@ const fs = require("fs");
 const path = require("path");
 
 const artifacts = [
+  ...["eventLayoutState.cjs", "eventLayoutState.js", "eventLayout.cjs", "eventLayout.js"].map((file) => ({
+    label: `Distribucion por modalidad de evento: ${file}`,
+    sourcePath: path.resolve(__dirname, `../../shared/${file}`),
+    targetPaths: [path.resolve(__dirname, `../shared/${file}`), path.resolve(__dirname, `../lib/shared/${file}`)],
+  })),
   ...["musicAccess", "musicConfig", "musicCatalog", "giftsConfig", "rsvpCatalog", "rsvpConfig", "rsvpEditorOps", "rsvpResponseMetrics", "authoringValueNormalization", "gallerySlotOrder", "designerAiConfigReducers", "designerAiActionProjection"].map((name) => ({
     label: `Dominio puro compartido: ${name}`,
     sourcePath: path.resolve(__dirname, `../../shared/${name}.cjs`),

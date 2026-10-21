@@ -8,6 +8,7 @@ import { clampNormalizedPosition } from "../../../../../domain/editor/canvasObje
 import { buildLoadedEditorRenderState, buildPersistableRenderState } from "../../../persistence/borradorSyncRenderState.js";
 import { resolveGoogleMapNodeTransformPatch, resolveGoogleMapTransformPatch, syncCommittedGoogleMapGeometry } from "./googleMapTransform.js";
 import { resolveGoogleMapResizeBounds } from "./googleMapResizeBounds.js";
+import { functionalScenePatchToBase, functionalPositionMutationOptions, getFunctionalRenderOffsetX } from "../../../canvasEditor/functionalRenderPose.js";
 
 const require = createRequire(import.meta.url);
 const ts = require("../../../../../../functions/node_modules/typescript");
@@ -47,8 +48,9 @@ const multiPatchDeclarations = ["toFiniteMetric", "withDefinedMetrics", "buildFi
   .join("\n");
 const buildFinalMultiTransformPatch = new Function(
   "resolveGoogleMapDimensions", "clampNormalizedPosition",
+  "functionalScenePatchToBase", "getFunctionalRenderOffsetX",
   `${multiPatchDeclarations}\nreturn buildFinalMultiTransformPatch;`
-)(resolveGoogleMapDimensions, clampNormalizedPosition);
+)(resolveGoogleMapDimensions, clampNormalizedPosition, functionalScenePatchToBase, getFunctionalRenderOffsetX);
 
 function mapObject(overrides = {}) {
   return {
@@ -96,6 +98,9 @@ function createComposerHarness(objects) {
     normalizarMedidasGaleria: () => { throw new Error("Unexpected Gallery mutation"); },
     resolveGoogleMapDimensions,
     buildFinalMultiTransformPatch,
+    functionalScenePatchToBase,
+    functionalPositionMutationOptions,
+    getFunctionalRenderOffsetX,
   };
   harness.onTransform = compileExpression(callbackSource(composer, "onTransform"), bindings);
   return harness;
@@ -197,6 +202,19 @@ test("resized map geometry and place survive the draft persistence roundtrip", (
   assert.deepEqual(reloaded.objetos[0], expected);
   assert.equal(reloaded.objetos[0].scaleX, 1);
   assert.equal(reloaded.objetos[0].scaleY, 1);
+});
+
+test("single and multi transform commits convert legacy visual x exactly once", () => {
+  for (const multi of [false, true]) {
+    const object = mapObject({ x: 240, __functionalRenderOffsetX: 110 });
+    const harness = createComposerHarness([object]);
+    const patch = { id: object.id, x: 410, y: 150, width: 380, height: 240, rotation: 0 };
+    harness.onTransform(multi ? { isFinal: true, batch: [patch] } : { ...patch, isFinal: true });
+    assert.equal(harness.objects[0].x, 300);
+    assert.equal(harness.objects[0].y, 50);
+    assert.equal(harness.objects[0].width, 380);
+    assert.equal(harness.objects[0].height, 240);
+  }
 });
 
 test("the actual Transformer clamps each map dimension independently and keeps other minimums", () => {

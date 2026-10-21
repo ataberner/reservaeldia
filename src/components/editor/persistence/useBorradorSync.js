@@ -60,6 +60,7 @@ export default function useBorradorSync({
   setGifts,
   setMusic,
   setEventDetails,
+  replaceCanvasState = null,
   setCargado,
   setSeccionActivaId,
   onDraftLoaded,
@@ -387,8 +388,16 @@ export default function useBorradorSync({
         if (cancelled) return;
 
         if (loadResult.exists) {
-          setObjetos(loadResult.hydratedObjetos);
-          setSecciones(loadResult.hydratedSecciones);
+          if (typeof replaceCanvasState === "function") {
+            replaceCanvasState({
+              objetos: loadResult.hydratedObjetos,
+              secciones: loadResult.hydratedSecciones,
+              eventDetails: loadResult.eventDetailsForSetter,
+            });
+          } else {
+            setObjetos(loadResult.hydratedObjetos);
+            setSecciones(loadResult.hydratedSecciones);
+          }
           if (loadResult.countdownAudit) {
             recordCountdownAuditSnapshot(loadResult.countdownAudit);
           }
@@ -414,7 +423,7 @@ export default function useBorradorSync({
           if (typeof setMusic === "function") {
             setMusic(loadResult.musicForSetter);
           }
-          if (typeof setEventDetails === "function") {
+          if (typeof replaceCanvasState !== "function" && typeof setEventDetails === "function") {
             setEventDetails(loadResult.eventDetailsForSetter);
           }
           if (typeof onDraftLoaded === "function") {

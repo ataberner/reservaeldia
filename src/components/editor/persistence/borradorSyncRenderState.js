@@ -8,6 +8,7 @@ import {
 } from "../../../domain/sections/backgrounds.js";
 import { normalizeRenderAssetState } from "../../../../shared/renderAssetContract.js";
 import { normalizeEventDetailsConfig } from "../../../../shared/eventDetailsConfig.js";
+import { stripEventLayoutTransientFields } from "../../../../shared/eventLayoutState.js";
 
 function normalizeCountdownObjectGeometry(obj) {
   if (!obj || obj.tipo !== "countdown") return obj;
@@ -92,7 +93,7 @@ function normalizePersistableObject(obj, { validarPuntosLinea, isGroupChild = fa
     return obj;
   }
 
-  let next = { ...obj };
+  let next = stripEventLayoutTransientFields({ ...obj });
 
   if (next.tipo === "grupo" && Array.isArray(next.children)) {
     next = {

@@ -50,6 +50,7 @@ export default function useEditorHandlers({
   setMostrarPanelZ,
   onRequestDelete = null,
   restoreDynamicVisualState = null,
+  restoreCanvasState = null,
 }) {
   const onDeshacer = useCallback(() => ejecutarDeshacer({
     historial,
@@ -62,9 +63,10 @@ export default function useEditorHandlers({
     setFuturos,
     ignoreNextUpdateRef,
     restoreDynamicVisualState,
+    restoreCanvasState,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [historial, futuros, objetos, restoreDynamicVisualState, secciones]);
+  }), [historial, futuros, objetos, restoreDynamicVisualState, restoreCanvasState, secciones]);
 
   const onRehacer = useCallback(() => ejecutarRehacer({
     historial,
@@ -77,9 +79,10 @@ export default function useEditorHandlers({
     setSecciones,
     ignoreNextUpdateRef,
     restoreDynamicVisualState,
+    restoreCanvasState,
     setElementosSeleccionados,
     setMostrarPanelZ
-  }), [futuros, historial, objetos, restoreDynamicVisualState, secciones]);
+  }), [futuros, historial, objetos, restoreDynamicVisualState, restoreCanvasState, secciones]);
 
   const onDuplicar = useCallback(() => duplicarElemento({
     objetos,

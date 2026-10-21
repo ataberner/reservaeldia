@@ -7,6 +7,7 @@ import {
 import {
   stripFunctionalAssociationFromClonedObject,
 } from "../../shared/functionalAssociations.js";
+import { transitionEventLayoutMode } from "../../shared/eventLayout.js";
 import {
   buildProtectedSectionObjectSanitizer,
   buildProtectedSectionStateSanitizer,
@@ -20,6 +21,17 @@ import {
   planUndoHistoryTransition,
 } from "../components/editor/history/historyState.js";
 
+function reconcileHistoryEventLayout(objetos, secciones, eventMode) {
+  if (eventMode !== "single" && eventMode !== "ceremony_party") return { objetos, secciones };
+  return transitionEventLayoutMode({
+    objetos,
+    secciones,
+    eventDetails: { mode: eventMode },
+    nextMode: eventMode,
+    initializeMissing: false,
+  });
+}
+
 export function ejecutarDeshacer({
   historial,
   futuros,
@@ -31,6 +43,7 @@ export function ejecutarDeshacer({
   setFuturos,
   ignoreNextUpdateRef,
   restoreDynamicVisualState,
+  restoreCanvasState,
   setElementosSeleccionados,
   setMostrarPanelZ
 }) {
@@ -52,24 +65,34 @@ export function ejecutarDeshacer({
     });
 
 
-    const nextSecciones = sanitizeSecciones(
-      transition.targetSnapshot?.secciones || []
-    );
-    const sanitizedObjects = sanitizeObjetos(
-      transition.targetSnapshot?.objetos || []
+    // Locked-section sanitizers may preserve a checkpoint from the current
+    // mode. Reconcile before either persistence or React receives the restore.
+    const { objetos: sanitizedObjects, secciones: nextSecciones } = reconcileHistoryEventLayout(
+      sanitizeObjetos(transition.targetSnapshot?.objetos || []),
+      sanitizeSecciones(transition.targetSnapshot?.secciones || []),
+      transition.targetSnapshot?.eventMode
     );
     const nextObjetos =
       typeof restoreDynamicVisualState === "function"
         ? restoreDynamicVisualState(
             transition.targetSnapshot?.dynamicVisualState,
             sanitizedObjects,
-            nextSecciones
+            nextSecciones,
+            transition.targetSnapshot?.eventMode
           )
         : sanitizedObjects;
     setHistorial(transition.history);
     setFuturos(transition.future);
-    setObjetos(nextObjetos);
-    setSecciones(nextSecciones);
+    if (typeof restoreCanvasState === "function") {
+      restoreCanvasState({
+        objetos: nextObjetos,
+        secciones: nextSecciones,
+        eventMode: transition.targetSnapshot?.eventMode,
+      });
+    } else {
+      setObjetos(nextObjetos);
+      setSecciones(nextSecciones);
+    }
 
     return true;
   }
@@ -87,6 +110,7 @@ export function ejecutarRehacer({
   setSecciones,
   ignoreNextUpdateRef,
   restoreDynamicVisualState,
+  restoreCanvasState,
   setElementosSeleccionados,
   setMostrarPanelZ
 }) {
@@ -107,22 +131,30 @@ export function ejecutarRehacer({
       currentSecciones: secciones,
     });
 
-    const nextSecciones = sanitizeSecciones(
-      transition.targetSnapshot?.secciones || []
-    );
-    const sanitizedObjects = sanitizeObjetos(
-      transition.targetSnapshot?.objetos || []
+    const { objetos: sanitizedObjects, secciones: nextSecciones } = reconcileHistoryEventLayout(
+      sanitizeObjetos(transition.targetSnapshot?.objetos || []),
+      sanitizeSecciones(transition.targetSnapshot?.secciones || []),
+      transition.targetSnapshot?.eventMode
     );
     const nextObjetos =
       typeof restoreDynamicVisualState === "function"
         ? restoreDynamicVisualState(
             transition.targetSnapshot?.dynamicVisualState,
             sanitizedObjects,
-            nextSecciones
+            nextSecciones,
+            transition.targetSnapshot?.eventMode
           )
         : sanitizedObjects;
-    setObjetos(nextObjetos);
-    setSecciones(nextSecciones);
+    if (typeof restoreCanvasState === "function") {
+      restoreCanvasState({
+        objetos: nextObjetos,
+        secciones: nextSecciones,
+        eventMode: transition.targetSnapshot?.eventMode,
+      });
+    } else {
+      setObjetos(nextObjetos);
+      setSecciones(nextSecciones);
+    }
 
     setFuturos(transition.future);
     setHistorial(transition.history);

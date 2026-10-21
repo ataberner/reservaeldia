@@ -1,3 +1,5 @@
+import { EVENT_DETAILS_MODES } from "../../../../shared/eventDetailsConfig.js";
+
 export const DYNAMIC_VISUAL_HISTORY_STATE_VERSION = 1;
 
 function asRecord(value) {
@@ -141,6 +143,7 @@ export function evaluateEditorHistoryCapture({
   objetos = [],
   secciones = [],
   dynamicVisualState = null,
+  eventMode,
 } = {}) {
   if (!cargado) {
     return {
@@ -159,7 +162,12 @@ export function evaluateEditorHistoryCapture({
     };
   }
 
-  const comparable = { objetos, secciones, dynamicVisualState };
+  const comparable = {
+    objetos,
+    secciones,
+    dynamicVisualState,
+    ...(EVENT_DETAILS_MODES.includes(eventMode) ? { eventMode } : {}),
+  };
   const signature = serializeComparable(comparable);
   if (signature === null) {
     return {

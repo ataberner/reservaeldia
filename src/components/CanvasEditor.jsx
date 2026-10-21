@@ -27,6 +27,8 @@ import useSectionsManager from "./editor/sections/useSectionsManager";
 import useEditorEvents from "./editor/events/useEditorEvents";
 import useEditorWindowBridge from "./editor/window/useEditorWindowBridge";
 import useHistoryManager from "./editor/history/useHistoryManager";
+import useEventLayoutState from "./editor/canvasEditor/useEventLayoutState";
+import { functionalScenePatchToBase } from "./editor/canvasEditor/functionalRenderPose";
 import useCanvasScaleLayout, {
   MOBILE_PORTRAIT_WRAPPER_BASE_WIDTH_ZOOM_08,
 } from "@/components/editor/mobile/useCanvasScaleLayout";
@@ -334,9 +336,15 @@ export default function CanvasEditor({
     openPanel: openEditorPanel,
     closePanel: closeEditorPanel,
   } = useEditorPanelCoordinator();
-  const [objetos, setObjetos] = useState([]);
+  const [rsvpConfig, setRsvpConfig] = useState(null);
+  const [giftsConfig, setGiftsConfig] = useState(null);
+  const {
+    objetos, secciones, eventDetails: eventDetailsConfig,
+    setObjetos, setSecciones, setEventDetails: setEventDetailsConfig,
+    replaceCanvasState, restoreCanvasState, replaceObjects, replaceEventDetails,
+    resetEventLayout: resetEventLayoutState,
+  } = useEventLayoutState({ rsvp: rsvpConfig, gifts: giftsConfig });
   const [celdaGaleriaActiva, setCeldaGaleriaActiva] = useState(null);
-  const [secciones, setSecciones] = useState([]);
   const [historial, setHistorial] = useState([]);
   const [futuros, setFuturos] = useState([]);
   const [elementosSeleccionados, setElementosSeleccionados] = useState([]);
@@ -467,12 +475,7 @@ export default function CanvasEditor({
     fieldLabels: [],
   });
   const [mobileSectionActionsOpen, setMobileSectionActionsOpen] = useState(false);
-  const [rsvpConfig, setRsvpConfig] = useState(null);
-  const [giftsConfig, setGiftsConfig] = useState(null);
   const [musicConfig, setMusicConfig] = useState(null);
-  const [eventDetailsConfig, setEventDetailsConfig] = useState(() =>
-    normalizeEventDetailsConfig(null)
-  );
   const [sectionDecorationEdit, setSectionDecorationEdit] = useState(null);
   const {
     registerPersistenceBridge,
@@ -767,6 +770,7 @@ export default function CanvasEditor({
     setGifts: setGiftsConfig,
     setMusic: setMusicConfig,
     setEventDetails: setEventDetailsConfig,
+    replaceCanvasState,
     setCargado,
     setSeccionActivaId,
     onDraftLoaded: handleDraftLoaded,
@@ -997,11 +1001,14 @@ export default function CanvasEditor({
     secciones,
     selectedElement: objetoSeleccionado,
     draftMeta,
-    onReplaceObjects: setObjetos,
+    onReplaceObjects: replaceObjects,
     onReplaceSections: setSecciones,
+    onReplaceCanvasState: replaceCanvasState,
+    rsvpConfig,
+    giftsConfig,
     resolveSectionsAfterTextChange,
     eventDetailsConfig,
-    onReplaceEventDetails: setEventDetailsConfig,
+    onReplaceEventDetails: replaceEventDetails,
     onSnapshotChange: (nextSnapshot) => {
       templateAuthoringSnapshotRef.current = nextSnapshot;
     },
@@ -1701,6 +1708,7 @@ export default function CanvasEditor({
     setSecciones,
     ignoreNextUpdateRef: ignoreNextHistoryUpdateRef,
     restoreDynamicVisualState: templateAuthoring.restoreDynamicVisualHistoryState,
+    restoreCanvasState,
     setMostrarPanelZ,
     onRequestDelete: requestCanvasObjectDelete,
   });
@@ -1713,6 +1721,7 @@ export default function CanvasEditor({
     objetos,
     secciones,
     dynamicVisualState: dynamicVisualHistoryState,
+    eventMode: eventDetailsConfig.mode,
     setHistorial,
     setFuturos,
     ignoreNextUpdateRef: ignoreNextHistoryUpdateRef,
@@ -1777,21 +1786,22 @@ export default function CanvasEditor({
 
 
 
-  const actualizarObjeto = (index, nuevo) => {
+  const actualizarObjeto = (index, nuevo, options) => {
     setObjetos((prev) =>
       canEditObject(prev[index], { secciones })
         ? applyObjectUpdateAtIndex(prev, index, nuevo)
-        : prev
+        : prev,
+      options
     );
   };
 
-  const actualizarObjetoPorId = (id, cambios) => {
+  const actualizarObjetoPorId = (id, cambios, options) => {
     setObjetos((prev) => {
       const index = prev.findIndex((o) => o.id === id);
       if (index === -1) return console.warn("? No se encontrÃ³ el objeto con ID:", id), prev;
       if (!canEditObject(prev[index], { secciones })) return prev;
       return applyObjectUpdateById(prev, id, cambios);
-    });
+    }, options);
   };
 
   const normalizarMedidasGaleria = useCallback((galeria, widthCandidate, xCandidate) => {
@@ -1837,11 +1847,15 @@ export default function CanvasEditor({
       );
       if (!positioned) return null;
 
-      const nextX = Number(positioned.x);
+      const positionedBase = functionalScenePatchToBase(
+        renderObjetos.find(object => object.id === objTexto.id) || objTexto,
+        positioned
+      );
+      const nextX = Number(positionedBase.x);
       const nextYAbs = Number(positioned.y);
       const nextY =
         Number.isFinite(nextYAbs) && objTexto.seccionId
-          ? convertirAbsARel(nextYAbs, objTexto.seccionId, seccionesOrdenadas)
+          ? convertirAbsARel(nextYAbs, objTexto.seccionId, renderSeccionesOrdenadas)
           : null;
 
       return {
@@ -1853,7 +1867,7 @@ export default function CanvasEditor({
           : (Number.isFinite(objTexto.y) ? objTexto.y : 0),
       };
     },
-    [calcularPosTextoDesdeCentro, convertirAbsARel, seccionesOrdenadas]
+    [calcularPosTextoDesdeCentro, convertirAbsARel, renderObjetos, renderSeccionesOrdenadas]
   );
 
   useCanvasEditorOptionPanelOutsideClose({
@@ -2142,6 +2156,7 @@ export default function CanvasEditor({
       captureInlineSnapshot: runtime.captureInlineSnapshot,
       updateEdit,
       objetos,
+      renderObjects: renderObjetos,
       secciones,
       elementRefs,
       inlineEditPreviewRef,
@@ -2234,7 +2249,15 @@ export default function CanvasEditor({
         ...(patch && typeof patch === "object" ? patch : {}),
       })
     );
-  }, []);
+  }, [setEventDetailsConfig]);
+
+  const canResetEventLayout = !readOnly && secciones.some(section =>
+    section?.eventLayout?.version === 1 && section.bloqueada !== true
+  );
+  const resetEventLayout = useCallback(() => {
+    if (readOnly) return;
+    resetEventLayoutState(secciones.filter(section => section?.bloqueada !== true).map(section => section.id));
+  }, [readOnly, resetEventLayoutState, secciones]);
 
   useEditorWindowBridge({
     seccionesOrdenadas: renderSeccionesOrdenadas,
@@ -2273,6 +2296,8 @@ export default function CanvasEditor({
     updateTemplateAuthoringEventTimes: templateAuthoring.updateEventTimes,
     eventDetailsConfig,
     updateEventDetailsConfig,
+    resetEventLayout,
+    canResetEventLayout,
     repairTemplateAuthoringState: templateAuthoring.repairSnapshot,
     ensureInlineEditSettledBeforeCriticalAction,
     flushPersistenceNow: flushEditorPersistence,

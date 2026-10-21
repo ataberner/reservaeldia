@@ -5,6 +5,10 @@ const {
 const {
   isCountdownVisible,
 } = require("./countdownEventDetails.cjs");
+const {
+  getSectionEventLayout,
+  resolveEventLayoutRenderObjects,
+} = require("./eventLayoutState.cjs");
 
 const FUNCTIONAL_ASSOCIATION_VALUES = Object.freeze(["rsvp", "gifts", "ceremony", "party", "dress_code"]);
 const FUNCTIONAL_ASSOCIATION_SET = new Set(FUNCTIONAL_ASSOCIATION_VALUES);
@@ -564,7 +568,12 @@ function applyFunctionalAssociationsToRenderState({
   materializeOffsets = true,
 } = {}) {
   const safeSecciones = Array.isArray(secciones) ? secciones.map((section) => deepClone(section)) : [];
-  const sourceObjetos = Array.isArray(objetos) ? objetos.map((object) => deepClone(object)) : [];
+  const sourceObjetos = resolveEventLayoutRenderObjects({
+    objetos: Array.isArray(objetos) ? objetos.map((object) => deepClone(object)) : [],
+    secciones: safeSecciones,
+    eventDetails,
+    markManaged: materializeOffsets === false,
+  });
   const enabled = resolveFunctionalEnabledState({ objetos: sourceObjetos, rsvp, gifts, eventDetails });
   const sectionLookup = buildSectionLookup(safeSecciones);
   const hiddenSectionIds = new Set();
@@ -626,6 +635,7 @@ function applyFunctionalAssociationsToRenderState({
   centerableOwnersBySection.forEach((ownerSet, sectionId) => {
     if (hiddenSectionIds.has(sectionId)) return;
     const section = sectionLookup.get(sectionId);
+    if (getSectionEventLayout(section)) return;
     const sectionAssociation = normalizeSectionFunctionalAssociation(section?.[FUNCTIONAL_ASSOCIATION_FIELD]);
     if (sectionAssociation) return;
 

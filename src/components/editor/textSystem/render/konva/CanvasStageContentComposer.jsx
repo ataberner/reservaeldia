@@ -58,6 +58,7 @@ import {
   clampNormalizedPosition,
 } from "@/domain/editor/canvasObjectPositioning";
 import { finalizeDragPosition } from "@/components/editor/canvasEditor/dragPositionFinalization";
+import { functionalScenePatchToBase, functionalPositionMutationOptions, getFunctionalRenderOffsetX } from "@/components/editor/canvasEditor/functionalRenderPose";
 import {
   applyObjectUpdateById,
 } from "@/components/editor/canvasEditor/objectUpdateUtils";
@@ -741,7 +742,7 @@ function buildFinalMultiTransformPatch({
 }) {
   if (!objOriginal || !batchPatch) return null;
 
-  const safeX = toFiniteMetric(batchPatch.x, toFiniteMetric(objOriginal.x, 0));
+  const safeX = toFiniteMetric(batchPatch.x, toFiniteMetric(objOriginal.x, 0) + getFunctionalRenderOffsetX(objOriginal));
   const safeRotation = toFiniteMetric(
     batchPatch.rotation,
     toFiniteMetric(objOriginal.rotation, 0)
@@ -858,7 +859,7 @@ function buildFinalMultiTransformPatch({
     delete finalPatch.yNorm;
   }
 
-  return finalPatch;
+  return functionalScenePatchToBase(objOriginal, finalPatch);
 }
 
 function isInlineIntentDebugEnabled() {
@@ -1328,6 +1329,9 @@ export default function CanvasStageContent({
       }
     );
   }, [
+    // Deferred cleanup can empty the auxiliary ids before the overlay session
+    // retires. Publish that retirement too, or the runtime keeps its last owner.
+    dragOverlayBoxFlowSession,
     dragVisualSelectionIds,
     readActiveDragOverlaySelectionIds,
     isPredragVisualSelectionActive,
@@ -10273,7 +10277,7 @@ export default function CanvasStageContent({
       const next = [...prev];
       const nextObject = buildImageCropObjectState({
         current,
-        cropAttrs,
+        cropAttrs: functionalScenePatchToBase(objetos.find((obj) => obj.id === selectedId), cropAttrs),
         seccionesOrdenadas,
         convertirAbsARel,
         esSeccionPantallaById,
@@ -10281,7 +10285,7 @@ export default function CanvasStageContent({
       });
       next[objIndex] = nextObject;
       return next;
-    });
+    }, functionalPositionMutationOptions(objetos.find((obj) => obj.id === selectedId), cropAttrs, "manual-transform"));
 
     requestAnimationFrame(() => {
       if (typeof actualizarPosicionBotonOpciones === "function") {
@@ -10294,6 +10298,7 @@ export default function CanvasStageContent({
     convertirAbsARel,
     esSeccionPantallaById,
     elementosSeleccionados,
+    objetos,
     seccionesOrdenadas,
     setObjetos,
   ]);
@@ -10312,7 +10317,7 @@ export default function CanvasStageContent({
       const next = [...prev];
       const nextObject = buildImageCropObjectState({
         current,
-        cropAttrs,
+        cropAttrs: functionalScenePatchToBase(objetos.find((obj) => obj.id === selectedId), cropAttrs),
         seccionesOrdenadas,
         convertirAbsARel,
         esSeccionPantallaById,
@@ -10320,7 +10325,7 @@ export default function CanvasStageContent({
       });
       next[objIndex] = nextObject;
       return next;
-    });
+    }, functionalPositionMutationOptions(objetos.find((obj) => obj.id === selectedId), cropAttrs, "manual-transform"));
 
     requestAnimationFrame(() => {
       if (typeof actualizarPosicionBotonOpciones === "function") {
@@ -10333,6 +10338,7 @@ export default function CanvasStageContent({
     convertirAbsARel,
     esSeccionPantallaById,
     elementosSeleccionados,
+    objetos,
     seccionesOrdenadas,
     setObjetos,
   ]);
@@ -10481,6 +10487,34 @@ export default function CanvasStageContent({
     readActiveDragOverlaySelectionIds,
     recordSelectionDragMoveSummary,
   ]);
+
+  const applyCanonicalGroupDragFinalization = useCallback((changes) => {
+    const commits = changes.flatMap(({ id, patch }) => {
+      const original = objetos.find((object) => object.id === id);
+      if (!original || !canEditObject(original, { secciones: seccionesOrdenadas })) return [];
+      return [{ id, original, patch: applyCanonicalDragFinalization(original, patch) }];
+    });
+    if (!commits.length) return;
+    const patches = new Map(commits.map((commit) => [commit.id, commit.patch]));
+    setObjetos((previous) => {
+      let next = previous.map((object) => {
+        const patch = patches.get(object.id);
+        return patch && canEditObject(object, { secciones: seccionesOrdenadas })
+          ? { ...object, ...patch }
+          : object;
+      });
+      for (const commit of commits) {
+        const sanitized = sanitizeMovedGroupFunctionalAssociation({
+          secciones: seccionesOrdenadas,
+          objetos: next,
+          groupId: commit.id,
+          previousSectionId: commit.original.seccionId,
+        });
+        if (sanitized.changed) next = sanitized.objetos;
+      }
+      return next;
+    }, { functionalPositionOffsets: Object.fromEntries(commits.map(({ id, original }) => [id, getFunctionalRenderOffsetX(original)])) });
+  }, [objetos, seccionesOrdenadas, applyCanonicalDragFinalization, setObjetos]);
 
   const renderCanvasObject = (obj) => {
     if (isFunctionalCtaHidden(obj)) {
@@ -10654,6 +10688,10 @@ export default function CanvasStageContent({
           }}
           onChange={(id, nuevo) => {
             if (!objectEditable) return;
+            if (nuevo.isBatchUpdateFinal && Array.isArray(nuevo.changes)) {
+              applyCanonicalGroupDragFinalization(nuevo.changes);
+              return;
+            }
             const objOriginal = objetos.find((object) => object.id === id);
             if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
             // Reconcile before onDragEndPersonalizado starts settling, not in a
@@ -10683,7 +10721,7 @@ export default function CanvasStageContent({
                 return sanitized.changed ? sanitized.objetos : updated;
               }
               return updated;
-            });
+            }, functionalPositionMutationOptions(objOriginal, finalizedPatch));
           }}
         />
       );
@@ -10889,6 +10927,10 @@ export default function CanvasStageContent({
           hasDragged={hasDragged}
           onChange={(id, cambios) => {
             if (!objectEditable) return;
+            if (cambios.isBatchUpdateFinal && Array.isArray(cambios.changes)) {
+              applyCanonicalGroupDragFinalization(cambios.changes);
+              return;
+            }
             const objOriginal = objetos.find((object) => object.id === id);
             if (!canEditObject(objOriginal, { secciones: seccionesOrdenadas })) return;
             const finalizedPatch = cambios.finalizoDrag
@@ -10919,7 +10961,7 @@ export default function CanvasStageContent({
                 previousSectionId: objOriginal.seccionId,
               });
               return sanitized.changed ? sanitized.objetos : updated;
-            });
+            }, functionalPositionMutationOptions(objOriginal, finalizedPatch));
           }}
         />
       );
@@ -10954,7 +10996,9 @@ export default function CanvasStageContent({
               lockedCenterX
             );
             if (Number.isFinite(previewX)) {
-              previewObj.x = previewX;
+              previewObj.x = Number.isFinite(lockedCenterX)
+                ? functionalScenePatchToBase(obj, { x: previewX }).x
+                : previewX;
             }
           }
 
@@ -10990,8 +11034,12 @@ export default function CanvasStageContent({
         onPredragVisualSelectionStart={objectEditable ? beginPredragVisualSelection : null}
         onPredragVisualSelectionCancel={objectEditable ? clearDragVisualSelection : null}
         onSelect={isInEditMode || !objectEditable ? null : handleElementSelectIntent}
-        onChange={(id, nuevo) => {
+        onChange={(id, nuevo, mutationMeta) => {
           if (!objectEditable) return;
+          if (nuevo.isBatchUpdateFinal && Array.isArray(nuevo.changes)) {
+            applyCanonicalGroupDragFinalization(nuevo.changes);
+            return;
+          }
           if (nuevo?.imageSourceMigration) {
             const childId = String(
               nuevo.imageSourceMigration.childId || ""
@@ -11068,8 +11116,10 @@ export default function CanvasStageContent({
                   });
                   return {
                     ...objeto,
-                    x: canonicalPose.x,
-                    y: canonicalPose.y,
+                    ...functionalScenePatchToBase(
+                      objetos.find((candidate) => candidate.id === objeto.id) || objeto,
+                      { x: canonicalPose.x, y: canonicalPose.y }
+                    ),
                   };
                 }
                 return objeto;
@@ -11103,7 +11153,7 @@ export default function CanvasStageContent({
                 previousSectionId: objOriginal.seccionId,
               });
               return sanitized.changed ? sanitized.objetos : updated;
-            });
+            }, functionalPositionMutationOptions(objOriginal, coordenadasFinales));
 
             return;
           }
@@ -11133,7 +11183,7 @@ export default function CanvasStageContent({
             const updated = [...prev];
             updated[index] = { ...updated[index], ...nuevo };
             return updated;
-          });
+          }, mutationMeta);
         }}
         onDragStartPersonalizado={isInEditMode || !objectEditable ? null : (dragId = obj.id, _event = null, meta = null) => {
           const isGroupPipeline = meta?.pipeline === "group";
@@ -11989,6 +12039,7 @@ export default function CanvasStageContent({
                             window._resizeData = { isResizing: false };
 
                             const batchById = new Map();
+                            const functionalPositionOffsets = {};
                             let needsSynchronousCommit = false;
 
                             newAttrs.batch.forEach((entry) => {
@@ -12014,6 +12065,7 @@ export default function CanvasStageContent({
                               });
                               if (finalPatch) {
                                 batchById.set(id, finalPatch);
+                                functionalPositionOffsets[id] = getFunctionalRenderOffsetX(objOriginal);
                               }
                             });
 
@@ -12032,7 +12084,7 @@ export default function CanvasStageContent({
                                   return { ...obj, ...patch };
                                 });
                                 return changed ? next : prev;
-                              });
+                              }, { functionalPositionOffsets, reason: "manual-transform" });
                             };
 
                             if (needsSynchronousCommit && typeof flushSync === "function") {
@@ -12112,7 +12164,10 @@ export default function CanvasStageContent({
                                     updatedElement.width = galleryMetrics.width;
                                     updatedElement.height = galleryMetrics.height;
                                     updatedElement.widthPct = galleryMetrics.widthPct;
-                                    updatedElement.x = galleryMetrics.x;
+                                    updatedElement.x = functionalScenePatchToBase(
+                                      objetos[objIndex],
+                                      { x: galleryMetrics.x }
+                                    ).x;
                                     if (galleryMetrics.galleryLayoutBlueprint) {
                                       updatedElement.galleryLayoutBlueprint =
                                         galleryMetrics.galleryLayoutBlueprint;
@@ -12130,7 +12185,9 @@ export default function CanvasStageContent({
 
                                   nuevos[objIndex] = updatedElement;
                                   return nuevos;
-                                });
+                                }, objetos[objIndex]?.tipo === "galeria"
+                                  ? functionalPositionMutationOptions(objetos[objIndex], newAttrs, "manual-transform")
+                                  : { reason: "manual-transform" });
 
                                 // ?? ACTUALIZAR POSICIÃ“N DEL BOTÃ“N DURANTE TRANSFORM
                                 if (!activeTransformInteractionRef.current?.isRotate) {
@@ -12339,6 +12396,15 @@ export default function CanvasStageContent({
                                     scaleY: 1,
                                   };
                                 }
+
+                                if (Number.isFinite(cleanAttrs.x) || Number.isFinite(cleanAttrs.textCenterX)) {
+                                  finalAttrs = functionalScenePatchToBase(objOriginal, finalAttrs);
+                                }
+                                const functionalMutationOptions = functionalPositionMutationOptions(
+                                  objOriginal,
+                                  Number.isFinite(cleanAttrs.x) || Number.isFinite(cleanAttrs.textCenterX) ? finalAttrs : null,
+                                  "manual-transform"
+                                );
 
                                 const finalSectionId = finalAttrs.seccionId || objOriginal.seccionId;
                                 const finalSectionUsesYNorm = esSeccionPantallaById(finalSectionId);
@@ -12549,10 +12615,10 @@ export default function CanvasStageContent({
                                   }
                                   if (objOriginal.tipo === "imagen" || objOriginal.tipo === "mapa-google") {
                                     flushSync(() => {
-                                      actualizarObjeto(objIndex, finalAttrs);
+                                      actualizarObjeto(objIndex, finalAttrs, functionalMutationOptions);
                                     });
                                   } else {
-                                    actualizarObjeto(objIndex, finalAttrs);
+                                    actualizarObjeto(objIndex, finalAttrs, functionalMutationOptions);
                                   }
                                   finalizeImageRotationDebugAfterCommit?.();
 
@@ -12604,7 +12670,7 @@ export default function CanvasStageContent({
                                   }
                                 } else {
                                   requestAnimationFrame(() => {
-                                    actualizarObjeto(objIndex, finalAttrs);
+                                    actualizarObjeto(objIndex, finalAttrs, functionalMutationOptions);
                                     finalizeImageRotationDebugAfterCommit?.();
                                   });
                                 }

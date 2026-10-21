@@ -6,6 +6,7 @@ import { canonicalizeFinalizedDragPatch } from "../../../domain/editor/canvasObj
 import { canEditObject } from "../../../domain/editor/protectedSections.js";
 import { resolveCanonicalNodePose } from "./konvaCanonicalPose.js";
 import { finalizeDragPosition } from "./dragPositionFinalization.js";
+import { functionalPositionMutationOptions } from "./functionalRenderPose.js";
 import { createEditorSessionPersistence } from "../persistence/editorSessionPersistenceCore.js";
 
 const require = createRequire(import.meta.url);
@@ -48,7 +49,7 @@ function makeNode(x, y, text = false) {
 function makeFinalizer(object, node) {
   const source = readFileSync(new URL("../textSystem/render/konva/CanvasStageContentComposer.jsx", import.meta.url), "utf8");
   const start = source.indexOf("  const applyCanonicalDragFinalization = useCallback(");
-  const end = source.indexOf("  const renderCanvasObject =", start);
+  const end = source.indexOf("  const applyCanonicalGroupDragFinalization =", start);
   assert.ok(start >= 0 && end > start);
   const overlaySamples = [];
   const bindings = {
@@ -104,6 +105,43 @@ test("accepted section crossing preserves stage pose and does not add a correcti
   assert.equal(overlaySamples.length, 0);
 });
 
+for (const tipo of ["forma", "texto", "imagen", "grupo", "galeria", "countdown", "mapa-google"]) {
+  test(`${tipo}: a functional visual offset is removed once from the drag commit`, () => {
+    const original = { id: "dragged", tipo, seccionId: "fixed", x: 240, y: 30,
+      __functionalRenderOffsetX: 110 };
+    const node = makeNode(410 + (tipo === "texto" ? 80 : 0), 180 + (tipo === "texto" ? 4 : 0), tipo === "texto");
+    const { finalize } = makeFinalizer(original, node);
+    const pose = resolveCanonicalNodePose(node, original);
+    const patch = finalize(original, { x: pose.x, y: pose.y, finalizoDrag: true });
+    assert.equal(patch.x, 300, "manual delta is expressed in the previous base frame");
+    assert.equal(patch.y, 80);
+    assert.equal(resolveCanonicalNodePose(node, original).x, 410, "live scene pose remains visual");
+    assert.equal(node.getDraws(), 0, "accepted offset drag does not jump before materialization");
+  });
+}
+
+test("rejected legacy offset text restores visual pose and origin independently", () => {
+  const original = { id: "dragged", tipo: "texto", seccionId: "fixed", x: 240, y: 30,
+    __functionalRenderOffsetX: 110 };
+  const node = makeNode(490, 854, true);
+  const { finalize } = makeFinalizer(original, node);
+  const patch = finalize(original, { x: 410, y: 850, finalizoDrag: true });
+  assert.equal(patch.x, 240);
+  assert.equal(node.x(), 430, "base240 + functional110 + origin80");
+  assert.equal(node.y(), 134);
+  assert.equal(node.getDraws(), 1);
+});
+
+test("managed object coordinates remain authoritative even with stale legacy offset metadata", () => {
+  const original = { id: "dragged", tipo: "forma", seccionId: "fixed", x: 350, y: 30,
+    __functionalRenderOffsetX: 110, __eventLayoutManaged: true };
+  const node = makeNode(410, 180);
+  const { finalize } = makeFinalizer(original, node);
+  assert.equal(finalize(original, { x: 410, y: 180, finalizoDrag: true }).x, 410);
+  assert.equal(node.x(), 410);
+  assert.equal(node.getDraws(), 0);
+});
+
 for (const [component, tipo] of [["GaleriaKonva", "galeria"], ["CountdownKonva", "countdown"]]) {
   test(`${component} restores a rejected drop before React runs its state updater`, () => {
     const source = readFileSync(new URL("../textSystem/render/konva/CanvasStageContentComposer.jsx", import.meta.url), "utf8");
@@ -126,6 +164,7 @@ for (const [component, tipo] of [["GaleriaKonva", "galeria"], ["CountdownKonva",
       objectEditable: true, objetos: [original], canEditObject,
       seccionesOrdenadas: sections, applyCanonicalDragFinalization: finalize,
       setObjetos: (updater) => { queuedUpdater = updater; },
+      functionalPositionMutationOptions,
       sanitizeMovedGroupFunctionalAssociation: () => ({ changed: false }),
     };
     const onChange = new Function(...Object.keys(bindings), `return (${handler});`)(...Object.values(bindings));

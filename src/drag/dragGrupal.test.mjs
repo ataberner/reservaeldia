@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 import { buildPersistableRenderState } from "../components/editor/persistence/borradorSyncRenderState.js";
@@ -8,6 +9,10 @@ import {
   planRedoHistoryTransition,
   planUndoHistoryTransition,
 } from "../components/editor/history/historyState.js";
+
+const require = createRequire(import.meta.url);
+const { Node: KonvaNode } = require("konva/lib/Node.js");
+const { DD: KonvaDD } = require("konva/lib/DragAndDrop.js");
 
 function toDataUrl(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -82,6 +87,7 @@ async function loadDragGrupalModule() {
   `);
 
   const transformedSource = source
+    .replace('"@/drag/konvaDragSession"', JSON.stringify(new URL("./konvaDragSession.js", import.meta.url).href))
     .replace('"@/utils/layout"', JSON.stringify(layoutStub))
     .replace(
       '"@/components/editor/canvasEditor/selectedDragDebug"',
@@ -97,6 +103,7 @@ async function loadDragGrupalModule() {
   const individualSource = await readFile(new URL("./dragIndividual.js", import.meta.url), "utf8");
   const touchModuleUrl = new URL("../lib/editorTouchDragIntent.js", import.meta.url).href;
   const individualModuleUrl = toDataUrl(individualSource
+    .replace('"@/drag/konvaDragSession"', JSON.stringify(new URL("./konvaDragSession.js", import.meta.url).href))
     .replace('"@/drag/dragGrupal"', JSON.stringify(groupModuleUrl))
     .replace('"@/components/editor/canvasEditor/selectedDragDebug"', JSON.stringify(debugStub))
     .replace('"@/components/editor/canvasEditor/konvaCanonicalPose"', JSON.stringify(canonicalPoseStub))
@@ -236,12 +243,21 @@ function createScenario(sourceObjects, selectedIds) {
     dispatchEvent() {},
   };
 
-  const onChange = (id, patch) => {
+  const emissions = [];
+  const applyPatch = (id, patch) => {
     const index = objects.findIndex((object) => object.id === id);
     assert.notEqual(index, -1, `missing object ${id}`);
     objects[index] = { ...objects[index], ...patch };
     window._objetosActuales = objects;
     changes.push({ id, patch: { ...patch } });
+  };
+  const onChange = (id, patch) => {
+    emissions.push({ id, patch });
+    if (patch.isBatchUpdateFinal) {
+      for (const change of patch.changes) applyPatch(change.id, change.patch);
+    } else {
+      applyPatch(id, patch);
+    }
   };
 
   const drag = (leaderId, deltas, pointerType = "mouse") => {
@@ -267,6 +283,7 @@ function createScenario(sourceObjects, selectedIds) {
 
   return {
     changes,
+    emissions,
     drag,
     nodes,
     objects,
@@ -300,6 +317,9 @@ test("group drag applies one absolute delta to normal objects and persists final
   const result = scenario.drag("text-a", [{ x: 3, y: 5 }, { x: 12, y: -7 }]);
 
   assert.equal(result.endResult.mode, "completed");
+  assert.equal(scenario.emissions.length, 1, "one group gesture is one atomic mutation");
+  assert.equal(scenario.emissions[0].id, "BATCH_UPDATE_GROUP_FINAL");
+  assert.equal(scenario.emissions[0].patch.changes.length, 2);
   assert.deepEqual(scenario.nodes["text-a"].position(), { x: 22, y: 13 });
   assert.deepEqual(scenario.nodes["image-b"].position(), { x: 112, y: 133 });
   assert.deepEqual(
@@ -518,6 +538,179 @@ function captureHistory(objects, previousSignature = "") {
   assert.equal(result.shouldCapture, true);
   return result;
 }
+
+for (const scale of [1, 0.6]) {
+  for (const altKey of [false, true]) {
+    test(`manual group first move previews and immediate release commits the whole delta (zoom ${scale}, Alt ${altKey})`, () => {
+      const scenario = createScenario([
+        baseObject("leader", "texto", 240, 120),
+        baseObject("follower", "galeria", 100, 300),
+      ], ["leader", "follower"]);
+      // Konva converts client coordinates to logical stage units before the owner reads them.
+      scenario.stage.setPointersPositions = (event) => {
+        scenario.stage.setPointer({ x: event.clientX / scale, y: event.clientY / scale });
+      };
+      const nativeEvent = (x, y) => ({
+        pointerId: 1, pointerType: "mouse", clientX: x * scale, clientY: y * scale, altKey,
+      });
+      const node = scenario.nodes.leader;
+      const object = scenario.objects[0];
+      const down = nativeEvent(260, 140);
+      const initialHistory = captureHistory(scenario.objects);
+      const armed = armManualGroupDragSession({ target: node, currentTarget: node, evt: down }, object);
+      assert.equal(armed.mode, "armed");
+      const move = nativeEvent(380, 140);
+
+      const update = updateManualGroupDragSession(move);
+      assert.deepEqual(node.position(), { x: 360, y: 120 }, "the activation sample must move the leader");
+      assert.deepEqual(scenario.nodes.follower.position(), { x: 220, y: 300 });
+      assert.equal(update.mode, "preview", "the existing renderer must forward this sample to the overlay");
+      assert.equal(update.activatedNow, true, "the renderer must start the group lifecycle exactly once");
+      assert.equal(update.session.hasPreviewSinceActivation, true);
+      assert.deepEqual(update.session.lastPreviewDelta, { deltaX: 120, deltaY: 0 });
+      assert.equal(scenario.changes.length, 0, "preview does not persist");
+
+      const result = finishManualGroupDragSession(move, { obj: object, onChange: scenario.onChange });
+      assert.equal(result.mode, "completed");
+      assert.deepEqual(node.position(), { x: 360, y: 120 });
+      assert.deepEqual(scenario.nodes.follower.position(), { x: 220, y: 300 });
+      assert.deepEqual(scenario.changes.map(({ id, patch }) => ({ id, x: patch.x, y: patch.y })), [
+        { id: "leader", x: 360, y: 120 }, { id: "follower", x: 220, y: 300 },
+      ]);
+      assert.equal(finishManualGroupDragSession(move, { obj: object, onChange: scenario.onChange }).handled, false);
+      assert.equal(scenario.changes.length, 2, "a repeated release cannot duplicate either commit");
+      assert.equal(getActiveGroupDragSession(), null);
+      assert.equal(node.draggable(), true);
+      assert.equal(scenario.nodes.follower.draggable(), true);
+      assert.equal(scenario.nodes.follower.listening(), true);
+
+      const persisted = buildPersistableRenderState({
+        objetos: scenario.objects, secciones: window._seccionesOrdenadas,
+        validarPuntosLinea: (points) => points, ALTURA_PANTALLA_EDITOR: 500,
+      });
+      for (const member of persisted.objetos) {
+        assert.deepEqual({ x: member.x, y: member.y }, scenario.nodes[member.id].position());
+      }
+      const movedHistory = captureHistory(scenario.objects, initialHistory.nextBaselineSignature);
+      const undo = planUndoHistoryTransition({ history: [initialHistory.comparable, movedHistory.comparable] });
+      assert.deepEqual(undo.targetSnapshot, initialHistory.comparable);
+      assert.deepEqual(planRedoHistoryTransition(undo).targetSnapshot, movedHistory.comparable);
+    });
+  }
+}
+
+test("manual group subsequent moves and release retain the pointer-down origin", () => {
+  const scenario = createScenario([
+    baseObject("leader", "forma", 10, 20), baseObject("follower", "countdown", 100, 140),
+  ], ["leader", "follower"]);
+  const node = scenario.nodes.leader;
+  const object = scenario.objects[0];
+  armManualGroupDragSession(dragEvent(node, { x: 30, y: 40 }), object);
+  const first = updateManualGroupDragSession(dragEvent(node, { x: 50, y: 70 }).evt);
+  assert.deepEqual(node.position(), { x: 30, y: 50 });
+  assert.equal(first.activatedNow, true);
+  const reverse = updateManualGroupDragSession(dragEvent(node, { x: 20, y: 35 }).evt);
+  assert.equal(reverse.activatedNow, false);
+  assert.deepEqual(node.position(), { x: 0, y: 15 });
+  // Release can carry a newer position than the final move; it uses the same origin.
+  finishManualGroupDragSession(dragEvent(node, { x: 25, y: 30 }).evt, { obj: object, onChange: scenario.onChange });
+  assert.deepEqual(node.position(), { x: 5, y: 10 });
+  assert.deepEqual(scenario.nodes.follower.position(), { x: 95, y: 130 });
+  assert.equal(scenario.changes.length, 2);
+});
+
+for (const [pointerType, threshold] of [["mouse", 4], ["touch", 6]]) {
+  test(`manual ${pointerType} group retains its activation threshold and does not commit a pending release`, () => {
+    const scenario = createScenario([
+      baseObject("leader", "forma", 10, 20), baseObject("follower", "imagen", 100, 140),
+    ], ["leader", "follower"]);
+    const node = scenario.nodes.leader;
+    const object = scenario.objects[0];
+    const event = (x, pointerId = 1) => ({ pointerType, pointerId, clientX: x, clientY: 0 });
+    armManualGroupDragSession({ target: node, currentTarget: node, evt: event(0) }, object);
+    assert.equal(updateManualGroupDragSession(event(100, 2)).mode, "pointer-mismatch");
+    assert.equal(updateManualGroupDragSession(event(threshold - 0.1)).mode, "armed-waiting-threshold");
+    assert.deepEqual(node.position(), { x: 10, y: 20 });
+    assert.equal(finishManualGroupDragSession(event(threshold - 0.1), { obj: object, onChange: scenario.onChange }).mode, "cancelled");
+    assert.equal(scenario.changes.length, 0);
+    assert.equal(getActiveGroupDragSession(), null);
+    assert.equal(node.draggable(), true);
+    assert.equal(scenario.nodes.follower.listening(), true);
+
+    // The renderer still owns the shared touch-intent gate; this checks the already-approved adapter path.
+    armManualGroupDragSession({ target: node, currentTarget: node, evt: event(0) }, object);
+    assert.equal(updateManualGroupDragSession(event(threshold)).activatedNow, true);
+    assert.deepEqual(node.position(), { x: 10 + threshold, y: 20 });
+    finishManualGroupDragSession(event(threshold), { obj: object, onChange: scenario.onChange });
+    assert.equal(scenario.changes.length, 2);
+  });
+}
+
+test("accepted native group start repeats the same destination after undo using installed Konva", (t) => {
+  const scenario = createScenario([
+    baseObject("leader", "galeria", 240, 120), baseObject("follower", "countdown", 100, 300),
+  ], ["leader", "follower"]);
+  const initial = structuredClone(scenario.objects);
+  const stage = scenario.stage;
+  stage._getPointerById = () => ({ ...stage.getPointerPosition(), id: 1 });
+  Object.defineProperty(stage, "_changedPointerPositions", { get: () => [stage._getPointerById()] });
+  for (const object of scenario.objects) {
+    const node = new KonvaNode({ id: object.id, x: object.x, y: object.y });
+    node.getStage = () => stage;
+    scenario.nodes[object.id] = node;
+    node.on("dragstart", (event) => startDragGrupalLider(event, object));
+    node.on("dragmove", (event) => previewDragGrupal(event, object, scenario.onChange));
+    node.on("dragend", (event) => endDragGrupal(event, object, scenario.onChange, null));
+  }
+  const node = scenario.nodes.leader;
+  t.after(() => {
+    for (const member of Object.values(scenario.nodes)) KonvaDD._dragElements.delete(member._id);
+  });
+  const gesture = () => {
+    stage.setPointer({ x: node.x() + 20, y: node.y() + 20 });
+    node._createDragElement({ pointerId: 1 });
+    KonvaDD._drag({ pointerId: 1, clientX: 340, clientY: 140 });
+    assert.deepEqual(node.position(), { x: 320, y: 120 });
+    assert.deepEqual(scenario.nodes.follower.position(), { x: 180, y: 300 });
+    // Duplicate and follower starts belong to this gesture; neither may erase its native cache.
+    const lastPosition = node._lastPos;
+    assert.equal(startDragGrupalLider(dragEvent(node), scenario.objects[0]).mode, "duplicate-leader-ignored");
+    assert.equal(node._lastPos, lastPosition);
+    assert.equal(startDragGrupalLider(dragEvent(scenario.nodes.follower), scenario.objects[1]).mode, "follower-ignored");
+    assert.equal(node._lastPos, lastPosition);
+    KonvaDD._dragElements.get(node._id).dragStatus = "stopped";
+    KonvaDD._endDragAfter({});
+  };
+  gesture();
+  assert.equal(scenario.changes.length, 2);
+  for (const object of initial) {
+    scenario.nodes[object.id].position({ x: object.x, y: object.y });
+    Object.assign(scenario.objects.find(({ id }) => id === object.id), object);
+  }
+  assert.deepEqual(node._lastPos, { x: 320, y: 120 }, "native cache survives history's accepted pose restoration");
+  gesture();
+  assert.equal(scenario.changes.length, 4, "two commits per gesture, including the repeated destination");
+  assert.deepEqual(scenario.changes.slice(2), scenario.changes.slice(0, 2));
+});
+
+test("manual arming and suppressed follower starts preserve a native position cache", () => {
+  const scenario = createScenario([
+    baseObject("leader", "texto", 10, 20), baseObject("follower", "countdown", 100, 140),
+  ], ["leader", "follower"]);
+  const cache = { x: 200, y: 250 };
+  scenario.nodes.leader._lastPos = cache;
+  scenario.nodes.follower._lastPos = cache;
+  const event = dragEvent(scenario.nodes.leader);
+  const armed = armManualGroupDragSession(event, scenario.objects[0]);
+  assert.equal(armed.mode, "armed");
+  assert.equal(scenario.nodes.leader._lastPos, cache, "manual arming is not an accepted native dragstart");
+  startDragIndividual(dragEvent(scenario.nodes.follower), { current: null });
+  assert.equal(scenario.nodes.follower._lastPos, cache);
+  assert.equal(startDragGrupalLider(dragEvent(scenario.nodes.follower), scenario.objects[1]).mode, "follower-ignored");
+  assert.equal(scenario.nodes.follower._lastPos, cache);
+  finishManualGroupDragSession(event.evt, { obj: scenario.objects[0], onChange: scenario.onChange });
+  assert.equal(scenario.changes.length, 0);
+});
 
 for (const engine of ["native", "manual-pointer"]) {
   for (const individualId of ["leader", "follower"]) {

@@ -15,6 +15,7 @@ export default function useHistoryManager({
     objetos,
     secciones,
     dynamicVisualState = null,
+    eventMode,
     authoringHydrated = true,
 
     setHistorial,
@@ -46,6 +47,7 @@ export default function useHistoryManager({
             objetos,
             secciones,
             dynamicVisualState,
+            eventMode,
         });
         lastSnapshotRef.current = decision.nextBaselineSignature;
 
@@ -72,6 +74,7 @@ export default function useHistoryManager({
         objetos,
         secciones,
         dynamicVisualState,
+        eventMode,
         authoringHydrated,
         cargado,
         setHistorial,

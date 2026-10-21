@@ -8,6 +8,7 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import { resetNativeDragPositionCache } from "@/drag/konvaDragSession";
 import {
   clearCompletedGroupDragForElement,
   shouldSuppressIndividualDragEnd,
@@ -46,6 +47,7 @@ export function startDragIndividual(e, dragStartPos) {
   if (shouldSuppressIndividualDragForElement(nodeId)) {
     return;
   }
+  resetNativeDragPositionCache(node);
   const pointerPosition = e?.target?.getStage?.()?.getPointerPosition?.() || null;
   dragStartPos.current = pointerPosition;
   resetCanvasInteractionLogSample(buildPreviewSampleKey(nodeId));

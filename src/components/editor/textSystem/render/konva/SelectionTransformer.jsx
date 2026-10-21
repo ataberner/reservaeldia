@@ -477,6 +477,7 @@ export default function SelectionBounds({
   selectionRuntime = null,
 }) {
   const transformerRef = useRef(null);
+  const lineIndicatorRef = useRef(null);
   const lastKnownTransformerRef = useRef(null);
   const latestDetachTransformerRef = useRef(null);
   const renderCountRef = useRef(0);
@@ -488,6 +489,11 @@ export default function SelectionBounds({
     selectedGeomKey: "",
   });
   const [transformTick, setTransformTick] = useState(0);
+  const handleGroupIndicatorVisualReadyChange = useCallback(() => {
+    // Auto bounds can become available after the parent's first effect. Reuse
+    // its existing readiness gate when the mounted indicator reports a change.
+    setTransformTick((tick) => tick + 1);
+  }, []);
   const [isImageRotateGestureActive, setIsImageRotateGestureActive] = useState(false);
   const circleAnchorRef = useRef(null);
   const textTransformAnchorRef = useRef(null);
@@ -3296,24 +3302,33 @@ export default function SelectionBounds({
 
   useEffect(() => {
     const lifecycleNode = getLifecycleTransformerNode();
-    const attachedNodes =
-      typeof lifecycleNode?.nodes === "function" ? lifecycleNode.nodes() || [] : [];
+    const isGroupIndicator = Boolean(
+      hasPreservedGroupSelection && transformerVisualMode.renderMode === "line-indicator"
+    );
+    const attachedNodes = isGroupIndicator
+      ? selectedElements.map((id) => elementRefs.current?.[id]).filter(Boolean)
+      : (typeof lifecycleNode?.nodes === "function" ? lifecycleNode.nodes() || [] : []);
+    const destinationMounted = isGroupIndicator
+      ? Boolean(
+          !isTransformerAttachBlocked &&
+          attachedNodes.length === selectedElements.length &&
+          lineIndicatorRef.current?.isControlledMountReady?.()
+        )
+      : shouldUseGenericTransformer && transformerVisualMode.renderMode !== "line-indicator";
     const attachedNodeIds = buildAttachedNodeIdsDigest(attachedNodes);
     const nextVisible = Boolean(
       selectedElements.length > 0 &&
       attachedNodes.length > 0 &&
-      shouldUseGenericTransformer &&
+      destinationMounted &&
       transformerVisualMode.renderMode !== "none" &&
-      transformerVisualMode.renderMode !== "line-indicator" &&
       !shouldSuppressTransformerVisualsForDragOverlay
     );
     const nextReadyProbeActive = Boolean(
       !nextVisible &&
         selectedElements.length > 0 &&
         attachedNodes.length > 0 &&
-        shouldUseGenericTransformer &&
+        destinationMounted &&
         transformerVisualMode.renderMode !== "none" &&
-        transformerVisualMode.renderMode !== "line-indicator" &&
         shouldProbeSelectedPhaseReadinessUnderOverlay
     );
     const nextSnapshot = {
@@ -3325,11 +3340,15 @@ export default function SelectionBounds({
       attachedNodeIds,
       bounds:
         nextVisible || nextReadyProbeActive
-          ? resolveSelectedPhaseBoundsDigest({
-              transformerNode: lifecycleNode,
-              attachedNodes,
-              preferAttachedNodeBounds: nextReadyProbeActive,
-            })
+          ? (isGroupIndicator
+              // Read the mounted renderer's applied geometry, never a second
+              // group box or a suppressed transformer's empty shell.
+              ? lineIndicatorRef.current?.getAppliedBoundsDigest?.() || null
+              : resolveSelectedPhaseBoundsDigest({
+                  transformerNode: lifecycleNode,
+                  attachedNodes,
+                  preferAttachedNodeBounds: nextReadyProbeActive,
+                }))
           : null,
     };
     const previousSnapshot = transformerBoxFlowSnapshotRef.current;
@@ -3471,6 +3490,9 @@ export default function SelectionBounds({
     selectedGeomKey,
     selectionKey,
     hasDragOverlayVisualOwnership,
+    hasPreservedGroupSelection,
+    isTransformerAttachBlocked,
+    shouldProbeSelectedPhaseReadinessUnderOverlay,
     shouldSuppressTransformerVisualsForDragOverlay,
     shouldUseGenericTransformer,
     transformTick,
@@ -4087,16 +4109,21 @@ export default function SelectionBounds({
   if (selectedElements.length === 0) return null;
 
   if (transformerVisualMode.renderMode === "line-indicator") {
+    const groupReadinessProbe = Boolean(
+      hasPreservedGroupSelection && shouldProbeSelectedPhaseReadinessUnderOverlay
+    );
     if (
       isTransformerAttachBlocked ||
-      hasDragOverlayVisualOwnership ||
-      shouldSuppressTransformerVisualsForDragOverlay
+      ((hasDragOverlayVisualOwnership || shouldSuppressTransformerVisualsForDragOverlay) &&
+        !groupReadinessProbe)
     ) {
       return null;
     }
 
-    return (
+    const indicator = (
       <SelectionBoundsIndicator
+        ref={hasPreservedGroupSelection ? lineIndicatorRef : undefined}
+        onVisualReadyChange={hasPreservedGroupSelection ? handleGroupIndicatorVisualReadyChange : null}
         selectedElements={selectedElements}
         elementRefs={elementRefs}
         objetos={objetos}
@@ -4106,6 +4133,11 @@ export default function SelectionBounds({
         boxFlowSessionIdentity={boxFlowSessionIdentity || null}
       />
     );
+    // A preserved group has no Transformer. Mount its selected renderer under
+    // the overlay so the existing bounds/post-paint gate can finish handoff.
+    return hasPreservedGroupSelection
+      ? <Group listening={false} visible={!groupReadinessProbe}>{indicator}</Group>
+      : indicator;
   }
 
   const isResizeHintVisible =

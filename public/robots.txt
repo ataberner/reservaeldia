@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /profesionales
+Disallow: /assets/profesionales/
+Disallow: /lugares
+Disallow: /assets/lugares/
 
 Sitemap: https://reservaeldia.com.ar/sitemap.xml

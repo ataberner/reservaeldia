@@ -258,6 +258,538 @@ inline/seleccion/settling. Esos limites requieren las interacciones manuales
 anteriores. Registrar resultados y versiones al ejecutarlo; estos checks no
 constituyen mediciones de FPS ni prueban una mejora de rendimiento.
 
+### [ ] PERF01/PERF02/UX01: medicion del drag (2026-10-15)
+
+Antes de comparar, registrar versiones de Node/navegador, sistema, CPU, DPR,
+viewport, escala CSS efectiva, modo React/Next, rasterizador e instrumentacion.
+Usar Node 20. No comparar tiempos de desarrollo con produccion ni pasadas
+instrumentadas con pasadas de timing. Ejecutar un solo benchmark a la vez,
+sin builds, emuladores arrancando u otras suites en paralelo.
+
+1. Repetir 1, 10, 50 y 100 elementos, normal y Alt, con un calentamiento separado
+   y al menos cinco repeticiones por caso. Conservar timestamps y resultados por
+   gesto; no reemplazarlos por un unico promedio. Confirmar que el gesto realmente
+   mueve/commitea, termina sin guias residuales y conserva la pose aceptada.
+2. Cubrir texto, texto rotado, imagen, forma, Gallery, grupo, multiseleccion y
+   secciones. El laboratorio admite zoom 1/0.6; en el editor real registrar la
+   escala disponible sin inyectar un control o cambiar CSS para simularla.
+3. Separar trayectoria horizontal/vertical/diagonal, microajustes, inversion,
+   movimiento rapido, gestos consecutivos y release inmediato. Registrar que las
+   entradas son mouse sintetico enviado mediante CDP, no mouse/trackpad fisicos.
+4. Timing: flags de debugging apagados, RAF pasivo y metricas CDP. Los intervalos
+   RAF y su frecuencia describen callbacks headless, no frames presentados ni
+   latencia fisica de pantalla. Informar presupuestos 16.67/8.33 ms sin deducir la
+   frecuencia de un monitor que no fue medida. Paint queda no disponible si no
+   se tomo una traza que lo permita.
+5. Diagnostico separado: spans de calculo, aplicacion de snap, publicacion y
+   dibujo; bounds, DOM reads, cache, React Profiler y scene/hit Konva. Los spans
+   anidados son inclusivos: no sumarlos como CPU exclusiva. Una lectura DOM por
+   si sola no acredita layout forzado. Los wrappers se aplican solamente al
+   bundle/copia de laboratorio y no al codigo que ejecuta el usuario.
+6. Para PERF01, ejecutar las regresiones con debugging apagado y encendido:
+   apagado no debe proyectar geometria de mismatch ni escribir snapshots de
+   texto; encendido debe seguir diagnosticando. La trayectoria y guias deben
+   coincidir. Conservar las relecturas funcionales pre/post snap.
+7. Para PERF02, medir por separado el sync post-snap y el resumen normal en el
+   composer real, incluyendo primer movimiento, release, siguiente gesto y
+   handoff. La escena offline no acredita por si sola ese lifecycle.
+8. Cache: medir referencias elegibles, hits/misses y costo de validacion;
+   repetir las invalidaciones GEO03/SNAP01. Reducir lecturas no permite retener
+   cajas o locks obsoletos.
+9. UX: distinguir liberacion del lock anterior de adquisicion de otro. Repetir
+   microajustes, inversion y cruces diagonales a ambos lados de 120 ms; medir
+   desplazamiento en pixeles de pantalla. No cambiar tolerancias en esta fase.
+
+Entradas reproducibles (artefactos ignorados en `.local-isolation/drag-performance`):
+
+```powershell
+node --test src/hooks/useGuiasCentrado.diagnostics.test.mjs src/components/editor/canvasEditor/selectionOverlayDiagnostics.test.mjs
+node src/hooks/testSupport/guideUxProbe.mjs
+$env:DRAG_PERF_BROWSER = "1"
+$env:DRAG_PERF_LABEL = "baseline"
+$env:DRAG_PERF_MATRIX = "core"
+$env:DRAG_PERF_REPETITIONS = "5"
+$env:DRAG_PERF_DURATION_MS = "1000"
+$env:DRAG_PERF_MODE = "timing"
+node --test src/drag/dragPerformance.browser.test.mjs
+$env:DRAG_PERF_MODE = "diagnostic"
+node --test src/drag/dragPerformance.browser.test.mjs
+```
+
+El runner offline usa Chromium ya instalado (`CHROME_EXECUTABLE_PATH` opcional),
+bloquea red externa y no incluye Firebase. `DRAG_PERF_MATRIX=smoke` cubre las ocho
+familias; `ux` agrega trayectorias dirigidas; `full` extiende cantidades. El
+manifest describe cobertura, fuente y SHA-256 del bundle. `DRAG_PERF_BUILD_ONLY=1`
+congela un bundle sin medir y `DRAG_PERF_USE_FROZEN=1` permite repetirlo sin
+recompilar; quitar ambos flags para construir la version posterior al cambio.
+`DRAG_PERF_FAMILIES=text,shape` y `DRAG_PERF_COUNTS=100` permiten repetir un
+subconjunto del mismo protocolo sin cambiar el bundle. Conservar tambien una
+familia no afectada como control de variabilidad, no atribuir toda diferencia
+temporal al cambio y no sobrescribir las carpetas del baseline.
+
+El resumen reproducible de los registros excluye warmups, agrupa por escenario
+y conserva separados los spans inclusivos y cada scope de Profiler:
+
+```powershell
+node src/drag/testSupport/summarizeDragPerformance.mjs .local-isolation/drag-performance/baseline-timing-core/results.json .local-isolation/drag-performance/after-perf01-timing-core/results.json
+```
+
+Con cinco gestos, usar mediana y rango para tiempos por gesto; percentiles de
+frames/handlers agrupan sus muestras. El JSON puede existir tras una ejecucion
+interrumpida: comprobar tambien el resultado TAP y la cantidad de escenarios.
+
+Para el editor completo, preparar e iniciar una sesion con el
+[procedimiento local aislado](../operations/DEVELOPMENT_WORKFLOW.md), luego usar
+`DRAG_PERF_LOCAL=1`, `DRAG_PERF_LOCAL_SESSION=<raiz de la sesion activa>` y
+`node --test src/drag/dragPerformance.local.test.mjs`. Este runner valida proyecto
+demo, destinos loopback y entorno de la sesion; usa datos sinteticos y comprueba
+autosave contra el emulador. No iniciar Next directamente desde el repositorio
+principal ni reutilizar un perfil de navegador personal. Al terminar, limpiar
+los flags `DRAG_PERF_*` de la shell y detener la sesion por su supervisor.
+El dashboard alterna zoom logico 0.8/1; `useViewportScale` aplica un boost de
+1.15 al primero, por lo que su escala CSS efectiva es 0.92 en desktop. No
+etiquetarlo como una medicion a escala 1 ni inyectar estado para simular 0.6.
+El runner real conserva hashes vivos de fuentes y del protocolo: una copia
+efimera instrumentada no queda descrita por su manifest inicial de sesion.
+Confirmar seleccion, ausencia de edicion inline, `draggable` y escala nativa
+antes de medir. Un click de preparacion puede activar inline; un gesto que no
+mueve realmente el nodo no es una muestra rapida valida. Comparar la pose con
+`resolveCanonicalNodePose` y el offset de seccion despues de release y settling,
+ademas de comprobar Firestore=modelo. El helper espera dos RAF despues de soltar;
+no describirlo como regrab en el mismo frame.
+
+Evidencia ejecutada en esta pasada: 290/290 tests relacionados, 11/11 Chromium
+de Fases 1/2 y siete pasadas offline (1008 gestos, 840 medidos, 168 warmups).
+El smoke real previo al cambio cubrio cuatro gestos de texto/N10, pero los
+intentos posteriores no completaron una comparacion real repetible. PERF02,
+handoff/undo-redo real y estudio de dispositivos quedan pendientes. La falla
+conocida `canvasObjectPositioning.test.mjs` sigue separada (6 pass, 1 fail).
+No usar estos resultados para declarar un incremento de FPS: las corridas
+temporales y su control sin cambios muestran variabilidad importante.
+
+Los resultados y decisiones de esta pasada pertenecen a
+[Interaction System Current State, seccion 5.8](../architecture/INTERACTION_SYSTEM_CURRENT_STATE.md#58-drag-performance-follow-up-2026-10-15).
+Mantener separada la falla conocida de `canvasObjectPositioning.test.mjs`
+(`0.1` frente a `0.502`); no modificar su expectativa para cerrar esta bateria.
+
+### [ ] Fase 3B: editor real, comparabilidad y handoff (2026-10-15)
+
+Esta ampliacion conserva la evidencia anterior de la seccion 5.8 como historica.
+El estado verificado y la decision PERF02 B estan en
+[Current State 5.9](../architecture/INTERACTION_SYSTEM_CURRENT_STATE.md#59-phase-3b-real-editor-measurement-and-partial-functional-validation-2026-10-15).
+No interpretar los checks de pose/persistencia como aprobacion del contrato
+completo de interaccion.
+
+1. Preparar exclusivamente la copia y los emuladores del procedimiento local
+   aislado. Registrar hashes vivos de fuentes y de todos los helpers del
+   protocolo, version de navegador/Node, viewport, rasterizador y flags. Comprobar
+   espacio libre y salud de la sesion antes de nuevas capturas; una falla de disco
+   no autoriza reconstruir resultados como si hubieran terminado.
+2. Registrar la preparacion real de seleccion, ausencia de inline y de overlays
+   DOM que intercepten el punto. Refs Konva presentes no bastan para declarar UI
+   lista. Cambios posteriores en preparacion conservan otro hash de protocolo;
+   no usarlos como una comparacion temporal equivalente. El harness funcional
+   valida `elementFromPoint` y la ancestry del hit Konva, registra intentos y
+   elige un punto interior expuesto de la root esperada, sin controles Transformer.
+   Galeria/countdown usan su frame existente; no se modifica el producto para
+   alcanzar un punto. Un intento sin movimiento valido no completa el batch.
+3. La copia 3B declara un prop inicial de zoom solo para pruebas, consumido por
+   `useViewportScale`: comprobar escala efectiva 1/0.6 y Stage nativo 1. No es un
+   control nuevo del producto ni un cambio CSS/Stage. Mantener las mismas fuentes
+   de fixture/configuracion en cada par; conservar el boost existente.
+4. Separar timing sin instrumentacion privada del diagnostico del composer real.
+   Descartar warmups y exigir cinco repeticiones por celda. Para RAF distinguir
+   antes de mouseup, intervalo que cruza release y trabajo posterior; ScriptDuration
+   CDP conserva su ventana completa. No inferir FPS presentado, paint ni layout
+   forzado a partir de RAF o lecturas DOM.
+5. Comparar por caso solamente cuando ambos segmentos tienen la misma identidad,
+   repeticiones, iniciales y reset undo visual/modelo/persistido. Conservar
+   `completed:false`, timeout, `unknown_endcollection` y hashes originales. La
+   comparacion text-only de A3 con B2 admite cuatro casos comunes/ocho celdas;
+   no cambia sus matrices ni transforma B-shape en evidencia A/B.
+6. PERF01: comprobar dos llamadas de diagnostico de texto por muestra Normal
+   antes y cero despues con cobertura real del probe. El callback de mismatch
+   sigue invocado y retorna antes de proyectar; preservar los dos bounds reads
+   funcionales, deltas y sync. DOM global no es una atribucion exclusiva al guard.
+7. PERF02: guardar muestras, contexto y spans exactos de la segunda resolucion;
+   reportar p95, costo absoluto y union de intervalos como porcentaje del callback.
+   No sumar spans inclusivos ni sustituir un poligono por el AABB de guias.
+   Decision B actual: diferir reutilizacion; p95 residual 0.2 ms y 1.05–3.54% del
+   callback de texto instrumentado no justifican alterar tokens/handoff.
+8. Cache: distinguir preparacion, hits y validacion de entradas. B Normal observa
+   0/9/49/99 fingerprints por muestra y dos bounds reads del activo; una cache hit
+   sigue validando. El costo instrumentado de N100 no acredita el mismo porcentaje
+   de CPU en produccion ni permite eliminar invalidacion.
+   Completar PERF02 con el sync entero: B texto/N100/escala1/Normal, cinco gestos,
+   dos llamadas/muestra, p95 0.3 ms/llamada y union p95 0.6 ms (10.38% del callback
+   instrumentado); `mostrarGuias` inclusivo p95 4.8 ms. Referencia:
+   `overlay-snap-focus-summary.json`, proyeccion de datos existentes. No sumar con
+   bounds/cache ni presentarlo como ahorro realizable. Long tasks de ventana
+   completa: medianas seis/709 ms por gesto; incluyen otras fases, no solo drag
+   activo. Decision B se conserva por costo absoluto, alcance y riesgo funcional.
+9. React: usar los root commit callbacks disponibles, sin llamarlos renders de
+   componentes. Konva: los wrappers por instancia pueden eludir el wrapper del
+   prototipo; usar tambien los contadores existentes por capa, sin sumarlos.
+   Ausencias y listas top-five no equivalen a cero. Referencia B texto/N100:
+   root commits medianos 53 Normal / 31 Alt; overlay sync 2/1 llamadas por
+   muestra; capa `objects-main` 61/61 scene/hit y `drag-overlay` 139/139 Normal,
+   121/121 Alt por sesion. Son contadores de metodos, no frames presentados.
+10. Handoff funcional: por familia/escala/Normal-Alt, conservar cinco gestos
+    consecutivos sin reseed, alternar direccion y terminar con release inmediato.
+    Comprobar pose canonical, estabilidad release/settle, una seleccion visible,
+    persistencia de TODAS las roots y children locales de grupos. Al final exigir
+    undo/redo por teclado y reload sin reseed. History debe vaciar seleccion y
+    frames, conservando las poses restauradas; no exigir la seleccion anterior.
+11. Immediate Normal individual debe corregir un miss deliberado de 2 px de
+    pantalla y conservar la pose del ultimo move hasta release. Registrar el
+    numero real de lineas: cero no invalida la mutacion imperativa ni prueba
+    presentacion de guias. Una prueba pausada separada debe mostrar una linea
+    vertical exactamente en el centro y capturas durante/despues.
+12. Mantener `strictInteractionCheck` separado: `dragVisualSelection` residual
+    sigue siendo fallo del contrato aunque pose, autosave y frame visible sean
+    correctos. No convertir el defecto en expectativa aceptada. Repetir despues
+    de una correccion autorizada regrab, cancelacion, nuevo gesto e historial.
+13. En capturas dedicadas separar pointerdown/pointerup, release hasta stop del
+    probe y observacion adicional. Verificar el offset pagina/traza con EventTiming
+    y red con requestId; no restar relojes sin ancla. El perfil completo incluye
+    preparacion anterior al gesto. Conservar self/idle/unknown, timeDeltas reales,
+    categorias sin evidencia como `null` y scopes inclusivos sin sumarlos.
+14. Para atribuir exportacion exigir stacks y fuente, no una etiqueta por
+    coincidencia parcial del nombre. `ElementoCanvas` no es `toCanvas`.
+    Requests de thumbnail posteriores no prueban que todo release sea exportacion.
+    Excluir estas capturas con overhead y observacion extra de timing A/B y de
+    aceptacion de handoff inmediato. No inferir forced layout ni presentacion.
+
+Checkpoint verificado: timing por casos 160 gestos medidos/variante, con 21/160
+endpoints diferentes (todos Normal; Alt 80/80 iguales). El control A sin cambios
+tiene 15/40 endpoints diferentes y variacion temporal importante. Diagnostico
+texto: 40 medidos/variante, Normal 15/20 endpoints iguales y Alt 20/20. No declarar
+una mejora causal de FPS/CPU a partir de estos deltas. `A-diag-core-v2` quedo
+excluido enteramente por ENOSPC/results vacio; el B conservado mantiene su hash.
+
+Handoff aceptado por batch: **32 batches/160 gestos**, 64 undo/redo y 32 reloads.
+Cada familia completa tiene 20 gestos, 8 operaciones history y 4 reloads:
+shape/text (V3, 40), rotated/image/gallery (V8, 60), countdown (V9, 20) y
+group/multisection (V11, 40). V3/V8/V9 conservan `completed:false`; solo V11
+termino completo. Las fuentes son iguales entre los cuatro; sus hashes de
+runner distintos se preservan y no constituyen comparacion timing.
+
+Excluir countdown4 de V8 y group5 de V9: el primero no probo movimiento final
+nuevo porque ya estaba centrado; el segundo fallo la comparacion de reload al
+agregarse defaults canonicos de estilo de texto. El harness mantuvo las
+aserciones y ajusto solo trayectoria (Y40 cuando el centro ya coincide, aun con
+un unico evento) y fixture de grupo (normalizador persistente existente antes
+del seed). No atribuir esos ajustes a un cambio del producto.
+
+Los 160 checks estrictos de gesto y 64 de historial fallan por estado transitorio
+residual, sin checks ausentes: no hay PASS integral. Hay 14 correcciones inmediatas
+individuales de 2 px y 14 ejemplos pausados/28 PNGs. Immediate registra 3 nodos de
+guia en galeria, 1/3 en countdown y 0 en las otras familias individuales; conservar
+esa observacion sin equipararla a presentacion. Grupo tiene expectativas separadas.
+
+Multiseleccion sigue sin batch completo: cuatro intentos de un unico movimiento y
+release inmediato fallan (V10 Normal/1 y tres celdas V12 restantes). Los 16 sweeps
+previos movieron y persistieron ambas roots, pero fallaron strict cleanup y no
+cuentan como batches completos. No hay validacion de persistencia/history/reload
+del quinto gesto; "must commit" en el assert no prueba cuantos commits hubo.
+
+Tres V12 muestran pointer-down `(260,140)`, activacion `(380,140)`, preview delta
+`(0,0)` y `hasPreviewSinceActivation:false`. El motor manual rebasa el origen al
+primer move que supera el umbral, retorna sin preview y el release en ese punto
+calcula delta cero. En V10 el resultado esta observado y la ruta del motor es
+inferida de fuente. Tambien falla con Alt: snapping no es requisito del fallo.
+Conservar estos casos y caracterizar armed/update/finish sin activacion artificial;
+decidir el comportamiento esperado del primer sample antes de corregirlo. Los
+contratos inspeccionados no exigen descartarlo. Faltan 20 gestos aceptados; esta
+trayectoria sintetica no demuestra su frecuencia con dispositivos fisicos.
+
+La captura dedicada `B-trace-postrelease-v1-real-timing-core` completo 8 gestos,
+con una traza/perfil Normal por shape/text N100/escala1. Gesto activo observado:
+1624.583/1654.965 ms; release hasta stop del probe: 570.257/417.659 ms;
+observacion extra: 1509.400/1508.800 ms. Scripting por union de intervalos en
+release: 541.486/396.747 ms; self React en esa ventana: 396.239/281.547 ms,
+con trabajo React development entre los frames importantes. Clonacion Konva
+9.805/8.780 ms y raster/export 29.464/27.761 ms inclusivos aparecen en la
+observacion extra, no explican todo release y no se suman a categorias self.
+Source y red respaldan export/thumbnail posterior (Storage POST HTTP200,
+76.531/41.538 ms request-to-finished); no es un perfil de produccion ni A/B.
+
+La sesion nueva conserva fuentes B exactas (1282 hashes, cero AST privado) y el
+aislamiento canonico. `restart-closure-20261015.json` y
+`restart-ready-20261015.json` documentan cierre, puertos libres y servicios nuevos.
+No mezclar su estado frio/coleccion con la sesion del core anterior ni convertir
+el reinicio o un ajuste de preparacion del harness en una correccion productiva.
+
+Artefactos bajo `.local-isolation/drag-phase3b/` (ignorados; conservarlos junto
+con hashes y logs, no asumir su presencia en otro checkout):
+
+- `final-metrics-table.md/.json`: tabla compacta con timing y diagnostico separados.
+- `core-case-comparison.json` y `control-comparison.json`: casos completos y control
+  sin cambios; incluyen paridad y limites del A interrumpido.
+- `diagnostic-case-comparison.json` y `diagnostic-case-endpoint-parity.json`:
+  comparacion de casos comunes de texto y discrepancias de endpoints.
+- `functional-handoff-v3-coverage.json`: solo los 40 gestos funcionales aceptados;
+  no incorpora intentos sin evidencia util.
+- `functional-handoff-complete-160-coverage.json` y
+  `functional-handoff-complete-160-summary.json`: 32 batches completos con 64
+  history, 32 reloads, checks estrictos fallidos y procedencia de V3/V8/V9/V11;
+  conservan los originales incompletos y excluyen sus batches no terminados.
+- `multiselect-activation-report.json`: cuatro fallos inmediatos, 16 sweeps
+  previos, mecanismo observado en tres V12, limite de inferencia en V10 y hashes
+  de los readbacks. No usar `handoff-last-observation` de repeat3 como evidencia
+  del quinto gesto fallido.
+- `real-ux-case-coverage.json`, `real-ux-case-summary.json` y
+  `real-ux-residual-table.md`: agregado parcial de 12/14 casos UX, con fuentes,
+  resets, indices, residuos y los casos immediate excluidos.
+- `dedicated-capture-findings.md` y
+  `runs/B-trace-postrelease-v1-real-timing-core/dedicated-capture-summary.json`:
+  dos capturas dedicadas con ventanas, stacks, red, hashes y limites.
+
+Reprocesamiento local sin servicios ni nuevas mediciones (Node 20):
+
+```powershell
+node .local-isolation/drag-phase3b/summarizeDiagnosticFocus.mjs --case-scope-text .local-isolation/drag-phase3b/runs/A-diag-text-v3-real-diagnostic-core/results.json .local-isolation/drag-phase3b/runs/B-diag-core-v2-real-diagnostic-core/results.json --out .local-isolation/drag-phase3b/diagnostic-case-comparison
+node .local-isolation/drag-phase3b/aggregateFunctionalHandoff.mjs .local-isolation/drag-phase3b/runs/B-handoff-v3-real-timing-handoff/results.json --out .local-isolation/drag-phase3b/functional-handoff-v3-coverage.json
+node .local-isolation/drag-phase3b/aggregateFunctionalHandoff.mjs .local-isolation/drag-phase3b/runs/B-handoff-v3-real-timing-handoff/results.json .local-isolation/drag-phase3b/runs/B-handoff-special-v8-real-timing-handoff/results.json .local-isolation/drag-phase3b/runs/B-handoff-tail-v9-real-timing-handoff/results.json .local-isolation/drag-phase3b/runs/B-handoff-group-sections-v11-real-timing-handoff/results.json --out .local-isolation/drag-phase3b/functional-handoff-complete-160-coverage.json
+node .local-isolation/drag-phase3b/writeFinalMetricsTable.mjs
+node .local-isolation/drag-phase3b/summarizeDedicatedCapture.mjs .local-isolation/drag-phase3b/runs/B-trace-postrelease-v1-real-timing-core
+```
+
+Ultima verificacion de analizadores locales: **33/33 PASS** en ocho archivos
+(agregadores funcional/de casos, traza, CPU, UX, resumen diagnostico y tabla de
+comparacion), incluyendo los cinco tests CPU, cuatro del agregador UX y cuatro
+del analizador UX. Cubre nombres completos de raster/export y collector instalado
+sin fuente instrumentada. Reemplaza los checkpoints anteriores sin sumar suites
+repetidas. Son tests de evidencia y no sustituyen los
+gestos pendientes. El resumen general del editor real permanece en
+`src/drag/testSupport/summarizeRealDragPerformance.mjs`; los helpers de muestras,
+observacion e instrumentacion son de pruebas, sin import productivo. Para una
+captura futura, `analyzeCpuProfile.mjs` y `analyzeCdpTrace.mjs` separan self/idle,
+intervalos inclusivos y datos faltantes. Las dos capturas actuales aportan
+evidencia de exportacion posterior y eventos Paint, nunca de layout forzado o
+frames presentados. UX real con observadores diagnosticos conserva aceptacion
+parcial, separada de timing A/B y de los tests de reloj controlado.
+
+UX utiliza observadores diagnosticos sobre fuentes B sin AST privado. El primer
+run conserva un caso horizontal/escala1 completo (12 gestos, dos warmups), luego
+falla el timeout del overlay local esperado durante preparacion de otro caso.
+El ajuste de setup a 10 s y el filtro de trayectorias no cambian producto ni el
+gesto medido. El rerun horizontal/escala0.6 completo sus 12 gestos; las trayectorias
+restantes completaron diez casos mas antes del fallo immediate/escala1/Alt.
+El agregado conserva **12/14 casos completos, 120 medidos y 24 warmups excluidos**;
+fuentes/sesion iguales, protocolo del primer run distinto y originales incompletos
+sin elevar a `completed:true`. Los 60 pares Normal/Alt tienen secuencia espacial
+cliente igual; se emparejaron 6240 muestras sin mismatch de coordenadas. Ultimo
+motion y nodo final coinciden en los 120 gestos; strict cleanup falla 120/120.
+
+Residuos de ancla local frente desplazamiento cliente: tabla firmada X/Y y p95/max
+de magnitud por trayectoria/escala en `real-ux-residual-table.md` y Current State5.9.
+No interpretarlos como AABB, latencia o frames presentados; no comparar magnitud
+XY con umbrales por eje. Los offsets Alt pequenos/estables no prueban lag fisico.
+No se observan pasos de eje opuestos al cursor por encima de epsilon0.5px, lo que
+no descarta jitter perceptual ni identifica locks.
+
+El collector `realSamples.version:1` puede estar instalado con `samples:[]` y
+fuentes `privateInstrumentation:false`: callbacks/outcomes y lock identity/age
+deben quedar `null`, nunca cero. No usar timestamps de input como adquisicion de
+lock. La decision de histeresis sigue apoyandose en clockprobe separado y requiere
+validacion de usuarios/dispositivos.
+
+Immediate1 conserva solo dos warmups y un Normal medido fuera de casos completos;
+el cambio Y de ese Normal no valida el X solicitado. El Alt siguiente falla
+movimiento real. Immediate0.6 reproduce esa secuencia parcial en
+`B-ux-immediate06-lastpos-v1-real-diagnostic-ux`; ambos casos se conservan como
+incompletos, sin incorporarlos a la tabla ni presentar el Y-snap como exito X.
+
+Defecto nativo confirmado a0.6: mismo nodeId31, primer Alt `(240,120)->(320,120)`;
+undo devuelve `(240,120)` pero `_lastPos` conserva `(320,120)`. Otro unico move al
+mismo destino encuentra la cache igual y `Konva.Node._setDragPosition` omite
+`setAbsolutePosition`, pese a la pose actual distinta. Normal solo cambia Y a112;
+Alt siguiente no cambia pose. El fallo1 reproduce el resultado pero no captura
+esos campos internos. No confundir esta cache nativa con SNAP01 ni con el origen
+de activacion del motor manual multiseleccion. Mantener la regresion fallida y
+corregir su ciclo drag/undo en alcance productivo separado; no agregar un move
+de activacion para ocultarla.
+
+El browser observa nodo/cache/resultado; no traza la rama interna. La
+caracterizacion separada del metodo instalado Konva9.3.20 pasa **3/3**: reproduce
+el destino repetido omitido tras reset normal y controla destino diferente/nodo
+nuevo. Root y copia B tienen `Node.js` identico. Evidencia:
+`native-last-position-after-undo-report.json`, SHA256
+`6c03a44b67de0e3821376072cf2405461ad7ed7a67c53ffb2486f6cec73265a0`.
+Reproducible sin browser: `node --test .local-isolation/drag-phase3b/konva-last-position-characterization.test.mjs`.
+Son tres caracterizaciones adicionales a los 33 analizadores, no una correccion
+productiva ni PASS de los dos casos immediate excluidos.
+
+Preparacion seed: deduplicar el preseed inicial por familia/N. Si el PATCH falla
+con `TimeoutError`/`AbortError`, `verifySeedAfterTimeout.mjs` permite una unica
+GET autenticada con limite de 5 s, nunca reintenta el write. Aceptar solo owner y
+sesion exactos y `isDeepStrictEqual` de TODOS los campos REST esperados, incluidos
+tipos escalares y strings timestamp. No aceptar normalizacion equivalente,
+campos faltantes/extra ni respuestas parciales; si la lectura o comparacion falla,
+conservar el error original. Registrar aceptaciones en
+`manifest.seedResponseReconciliations` y version de helper/runner. Esto sucede
+fuera de medicion y no corrige la persistencia productiva.
+
+El helper de seed tiene **14/14 PASS** propios, separados de los 33 tests de
+analizadores, incluidos negativos y preservacion del error original. Reproducible
+sin servicios: `node --test src/drag/testSupport/verifySeedAfterTimeout.test.mjs`.
+No ejecutar durante otra captura para no introducir carga externa.
+
+Agregar solamente casos completos con cinco Normal/cinco Alt,
+warmups y todos los resets verificados; preservar `completed:false`, hashes y
+casos omitidos. Comparar desviaciones Normal/Alt solo si coincide la secuencia
+real de desplazamiento del cursor; no sumar esta poblacion a la comparacion
+temporal A/B ni interpretar edades de evento como locks de 120 ms.
+
+Reprocesamiento del agregado parcial (Node20, sin servicios):
+
+```powershell
+node .local-isolation/drag-phase3b/aggregateRealDragUx.mjs .local-isolation/drag-phase3b/runs/B-ux-real-v1-real-diagnostic-ux/results.json .local-isolation/drag-phase3b/runs/B-ux-horizontal06-v3-real-diagnostic-ux/results.json .local-isolation/drag-phase3b/runs/B-ux-remaining-v1-real-diagnostic-ux/results.json .local-isolation/drag-phase3b/runs/B-ux-immediate06-lastpos-v1-real-diagnostic-ux/results.json --out .local-isolation/drag-phase3b/real-ux-case-coverage.json
+node .local-isolation/drag-phase3b/writeUxCaseSummary.mjs .local-isolation/drag-phase3b/real-ux-case-coverage.json
+```
+
+Clockprobe repetido en artefacto NUEVO
+`ux/guide-ux-evidence-phase3b-20261015.json`: 15 hashes, 12 fronteras, 16
+trayectorias por repeticion y cinco repeticiones identicas. Confirma activacion
+10/6px, liberacion18/14px y multiplicador1.75 hasta120ms inclusive (31.5/24.5px).
+No sobrescribe la evidencia Phase3, ni suma esas repeticiones como tests de FPS
+independientes. Usar el export `runGuideUxProbe()` para guardar otra ruta; su CLI
+historico escribe en Phase3. El nuevo probe no cambia valores ni selecciona una
+calibracion UX. El conjunto final de analizadores cuenta33 tests distintos, no
+la suma de las corridas28/8/33.
+
+Cierre operativo: conservar el fallo del wrapper canonico (exit3, no confirmo
+detencion del arbol propio) y su marker original. La verificacion independiente
+`closure-poststop-verification-20261015.json` encuentra 13 PIDs propios ausentes,
+ocho puertos libres y cero Chrome propios; no reetiqueta ese fallo como PASS.
+`closure-isolated-config-provenance.json` confirma configuracion/source congelados
+B en runtime, distintos de cambios concurrentes posteriores de raiz que se
+preservaron. No tratar esa evidencia de hashes como traza de acceso del sistema.
+
+### [ ] Fase 3C: destino repetido, limpieza y release inmediato
+
+Ejecutar con Node20 las suites `src/drag/konvaDragSession.test.mjs`,
+`src/drag/dragGrupal.test.mjs` y
+`src/components/editor/textSystem/render/konva/dragVisualSelectionLifecycle.test.mjs`,
+junto a `src/components/editor/textSystem/render/konva/preservedGroupHandoff.test.mjs`,
+ademas de las regresiones de Fases1/2, geometria, seleccion, overlay, touch intent,
+historial y persistencia. No cambiar la expectativa conocida de
+`canvasObjectPositioning.test.mjs` (`0.1 !== 0.502`).
+
+En el editor real aislado, con Normal/Alt y zoom1/0.6:
+
+1. Arrastrar texto a un destino, deshacer, repetir exactamente ese destino con
+   un solo movimiento y soltar inmediatamente. Verificar el destino X completo,
+   pose visual/canonica/persistida y mismo nodo; un cambio Y por snapping no
+   demuestra que X haya sido aplicado. No insertar un movimiento de activacion
+   para ocultar la omision nativa.
+2. Arrastrar una multiseleccion desde armed: al primer movimiento que supera el
+   umbral ambos nodos deben moverse. Soltar en ese mismo punto debe persistir
+   ambos desplazamientos una vez. Verificar tambien subumbral/cancelacion,
+   cambio de direccion, pointer ajeno y touch con intencion de scroll.
+3. Durante settling conservar los IDs de drag hasta completar el handoff. Al
+   retirarse overlay, exigir `dragVisualSelection` con `ids:[]`,
+   `predragActive:false`, `sessionKey:null`, `dragId:null`; `pendingDragSelection`
+   vacio, guias/overlay ausentes y seleccion/transformer coherentes.
+4. Repetir gestos consecutivos, undo/redo y recarga del borrador emulado con
+   texto rotado, imagen, Gallery, Countdown, grupo persistido y varias secciones.
+   El teardown de una sesion anterior no debe borrar la identidad de la nueva.
+5. Al actualizar Konva, comprobar la regresion con los metodos nativos instalados
+   y revisar si sigue siendo necesario el adapter privado `_lastPos`. No ampliar
+   ese reset a cada movimiento ni modificar la dependencia/prototipo global.
+6. Para el grupo persistido, distinguir por identidad de nodo el overlay y el
+   indicador seleccionado. Un unico marco visible no prueba que hubo handoff:
+   el overlay anterior debe dejar de pintar y el indicador seleccionado asumir
+   la representacion. Durante el probe, el indicador debe estar montado pero
+   oculto; bounds invalidos, miembros faltantes o una sesion reemplazada no
+   deben confirmar readiness. Conservar la politica de fallback propia del
+   renderer seleccionado, sin crear otra autoridad geometrica.
+
+Conservar los fallos de Fase3B y generar resultados nuevos bajo
+`.local-isolation/drag-phase3c/`; la escena offline no reemplaza el editor real.
+El runner real requiere `DRAG_PERF_EVIDENCE_PHASE=drag-phase3c` y
+`DRAG_PERF_STRICT_HANDOFF=1` para esta aceptacion, junto al opt-in local y la
+sesion canonica validada. No sobrescribir un manifest existente. El detector de
+instrumentacion debe ignorar sus propios strings/comentarios, pero rechazar
+declaraciones inyectadas reales en JS/JSX; no excluir archivos del inventario de
+hashes para resolver falsos positivos. La regresion inmediata de grupo exige el
+delta completo del lider antes/despues de release, con tolerancia de redondeo
+CDP, y la traslacion final de ambos miembros; no sumar un segundo movimiento.
+Estas pruebas validan correccion funcional, no mejora de FPS, latencia fisica ni
+calibracion UX. Mantener PERF-02 y tolerancias/histeresis fuera de esta correccion.
+
+Para agregar la evidencia local, `analyzePhase3cAcceptance.mjs` requiere rutas
+explicitas de `runs/.../results.json` y `--out` a un archivo nuevo. Comprueba el
+protocolo archivado, fuentes identicas, `completed:true`, poses, historial,
+recargas y limpieza estricta. La matriz completa exige nueve familias, dos
+zooms y Normal/Alt: 180 gestos consecutivos, 72 checks de historial y 36
+recargas, mas 20 destinos inmediatos repetidos tras undo y cuatro calentamientos.
+No aceptar un run parcial aunque todos sus gestos capturados hayan pasado.
+Conservar aparte el timeout inicial V2 (45 gestos aprobados antes de bloquearse
+la siguiente apertura del dashboard); su causa no fue establecida ni corregida
+por el pase posterior de esa apertura. Las tandas nuevas completas usan el mismo
+protocolo, sin ampliar timeout ni editar datos o resultados fallidos.
+
+Resultado final 2026-10-15: `acceptance-final-v2.json` aprueba esa matriz completa,
+sin errores ni celdas faltantes. Usar exclusivamente las nueve tandas
+`phase3c-{family}-v2-real-timing-handoff` y
+`phase3c-immediate-v3-real-timing-ux`; excluir `families-v2` parcial y V1.
+`final-browser-runtime-evidence-v2.json` verifica las 391 fuentes, nueve hashes
+de protocolo y seis archivos productivos identicos. Los 319 tests relacionados,
+76 de infraestructura (mas un opt-in omitido), 16 del analizador y 11 Chromium
+offline pasan con Node20. La suite conocida de posicionamiento conserva su
+unica falla separada. Ver alcance y limites en el estado actual, seccion5.10.
+
+### [ ] Latencia cursor-elemento: entrada y dibujo separados (2026-10-16)
+
+1. Partir del editor real aislado con diez objetos y repetir texto, forma e
+   imagen lejos de guias, Normal/Alt desde el press, zoom1/0.6. Registrar backend
+   grafico, modo dev/produccion y procedencia fisica/CDP; no comparar poblaciones
+   distintas como si fueran una optimizacion.
+2. Separar press, espera del umbral, preparacion/predrag, primer native y
+   movimiento continuo. Conservar LongTasks previos y pausas tardias aunque
+   el p95 del handler sea bajo. Captura→nodo y eventos scene no acreditan
+   presentacion fisica. Corregir el offset de agarre una sola vez.
+3. El observer de capas debe preservar wrappers instalados por imagen y freeze:
+   V2 usa eventos publicos, sin reemplazar `drawScene`. Excluir tiempos de imagen
+   V1; una posicion cuantizada repetida no requiere un dibujo nuevo.
+4. Evidencia de esta investigacion: 72/72 gestos de produccion local con GPU
+   deshabilitada y seis del control con backend grafico habilitado. En el control
+   desaparecen cinco LongTasks iniciales de imagen sin cambiar producto; esto
+   no resuelve el sintoma de un dispositivo fisico ni demuestra mejora de FPS.
+5. Ejecutar la prueba manual preparada en
+   `.local-isolation/drag-latency-20261016/manual-real-input.md` en el dispositivo
+   afectado. El snippet fue validado sin input; el gesto fisico sigue pendiente.
+   Conservar datos y percepcion por separado, y detener la sesion demo propia.
+
+Ver metodologia, tabla, limites y decision sin cambio productivo en
+[Interaction System Current State, seccion 5.11](../architecture/INTERACTION_SYSTEM_CURRENT_STATE.md#511-cursor-following-latency-investigation-2026-10-16).
+
+### [ ] Canvas alto y reutilizacion del hit bitmap vacio (2026-10-16)
+
+1. Repetir 30 objetos identicos con una y ocho secciones, texto e imagen,
+   Normal/Alt, conservando zoom, DPR, backend GPU y posiciones. Separar los
+   tiempos de entrada, callbacks RAF y rasterizacion nativa diferida.
+2. Conservar la primera limpieza de los hits anteriores al drag. Mientras Konva
+   no dibuja hits, omitir solamente clears repetidos de un bitmap probado vacio.
+   Al soltar, comprobar `getIntersection` en la nueva posicion y ausencia del
+   hit anterior; repetir seleccion, drag, undo/redo y release inmediato.
+3. Cubrir resize/reemplazo del canvas, hijos que vuelven a ser interactivos,
+   clip/cache del layer, `drawHit` personalizado, argumentos de export/cache,
+   excepciones, freeze/thaw y lift/restauracion de imagen. No cambiar listening
+   para conseguir una mejora ni confundir bitmap vacio con geometria obsoleta.
+4. Ejecutar `konvaLayerHitDraw.test.mjs` y el opt-in
+   `KONVA_HIT_DRAW_BROWSER=1` de `konvaLayerHitDraw.browser.test.mjs`; este ultimo
+   valida pixeles Konva reales sin Firebase. Complementar con el editor completo,
+   grupos, Gallery, Countdown, texto rotado y persistencia aislada.
+5. Comparar tambien una repeticion original sin cambios: A1/guard/A2 mostro
+   variabilidad importante. La eliminacion medida de trabajo nativo no acredita
+   por si sola una mejora de FPS o que el trackpad fisico siga al cursor sin atraso.
+
+Ver evidencia y limites en
+[Interaction System Current State, seccion 5.12](../architecture/INTERACTION_SYSTEM_CURRENT_STATE.md#512-long-invitation-canvas-cost-2026-10-16).
+
 ### [ ] Re-seleccion despues del drag
 
 1. Mover un objeto o grupo.
@@ -317,6 +849,48 @@ Resultado esperado:
 - antes de confirmar drag se conserva el scroll nativo; no se observa bloqueo causado por `preventDefault` o `touch-action: none` prematuros
 - los anchors y controles conservan resize, rotacion y seleccion sin iniciar drag del objeto subyacente; el canvas vacio conserva scroll y tap sin marquee accidental
 - release, cancelacion, perdida de foco y unmount limpian listeners, seleccion diferida, lease de Konva, draggable temporal, touch action, predrag, hover y overlay
+
+### [ ] Ceremonia/Fiesta: composiciones independientes por modalidad
+
+1. Abrir un documento legado sin editar: no crear `seccion.eventLayout` ni escribir
+   una migración por apertura. Mantener la presentación inicial.
+2. En `single`, mover una raíz de Ceremonia con otras raíces asociadas visibles:
+   nodo final, coordenada canónica y guardado coinciden; los compañeros conservan
+   su posición visible. Repetir con texto legado `__groupAlign`, forma, Gallery y
+   Countdown, Normal/Alt y zoom 1/0,6.
+3. Hacer multiselección y soltar después de un desplazamiento: una actualización
+   conjunta conserva todos los miembros. Repetir un drag individual inmediatamente.
+4. Cambiar `ceremony_party → single`, mover, volver a ambos, mover y regresar a
+   `single`: recuperar cada composición sin desplazamientos acumulativos. Party
+   oculto conserva datos y su posición de la modalidad correspondiente.
+5. Deshacer/rehacer movimiento, modalidad y reset. No revertir valores semánticos
+   editados en el sidebar. Verificar el payload persistido además de React/Konva.
+6. Usar «Restablecer distribución de esta modalidad»: recuperar sólo las posiciones
+   iniciales de la modalidad activa, respetar secciones bloqueadas y permitir undo.
+7. Guardar/recargar y repetir la alternancia. Un checkpoint existente desalineado
+   con `eventDetails.mode` debe materializarse en memoria sin inicializar secciones
+   legadas. Repetir undo de modalidad con una sección bloqueada y luego desbloquear.
+8. Agrupar, mover, desagrupar, trasladar entre secciones, duplicar y eliminar:
+   no recuperar checkpoints de IDs que dejaron de ser raíces de esa sección.
+   Undo restaura el snapshot completo; nuevos IDs usan su posición actual.
+9. Resize/rotación manual sin cambio inicial de `x/y`: congelar la composición y
+   conservar el ancla. Previews y release encolados desde el mismo render legado
+   no aplican dos veces la inversa del offset. Rechazos no modifican objetos.
+10. Editar texto y cambiar medidas: conservar el comportamiento de auto-width y
+    centro visual; no convertir mediciones automáticas en una edición de layout.
+11. Verificar el HTML preparado para ambos modos con mobile `auto` y `preserve`;
+    documentar por separado el generador local y el flujo completo de preview.
+
+Anclas ejecutables: `shared/eventLayout*.test.mjs`,
+`canvasEditor/eventLayoutEditorState.test.mjs`,
+`canvasEditor/eventLayoutMutationBoundaries.test.mjs`,
+`history/historyEventMode.test.mjs`, `window/eventLayoutReset.test.mjs`,
+`persistence/eventLayoutPersistence.test.mjs` y
+`templateAuthoring/eventLayoutAuthoringState.test.mjs` bajo `src/components/editor/`.
+Ejecutar con Node 20. Evidencia local:
+`.local-isolation/event-layout-implementation-20261016/`.
+La falla preexistente `0.1 !== 0.502` en `canvasObjectPositioning.test.mjs`
+permanece separada; no cambiar su expectativa para aprobar esta batería.
 
 ## 2. Texto inline
 

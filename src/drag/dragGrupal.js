@@ -9,6 +9,7 @@ import {
   sampleCanvasInteractionLog,
 } from "@/components/editor/canvasEditor/selectedDragDebug";
 import { resolveCanonicalNodePose } from "@/components/editor/canvasEditor/konvaCanonicalPose";
+import { resetNativeDragPositionCache } from "@/drag/konvaDragSession";
 import {
   EDITOR_BRIDGE_EVENTS,
   buildEditorDragLifecycleDetail,
@@ -956,6 +957,7 @@ function syncFinalPreviewToCommitDelta(session, stage, deltaData) {
 
 function commitGroupDragChanges(session, deltaData, fallbackObj, onChange) {
   const appliedChanges = [];
+  const changes = [];
   if (!deltaData?.isValid || !session?.dragInicial || typeof onChange !== "function") {
     return appliedChanges;
   }
@@ -997,13 +999,13 @@ function commitGroupDragChanges(session, deltaData, fallbackObj, onChange) {
       node?.setAttr?.(COMPLETED_GROUP_DRAG_SESSION_ATTR, session.sessionId);
     } catch {}
 
-    onChange(elementId, {
+    changes.push({ id: elementId, patch: {
       x: committedX,
       y: committedY,
       ...(nuevaSeccion ? { seccionId: nuevaSeccion } : {}),
       finalizoDrag: true,
       causa: "drag-grupal",
-    });
+    } });
 
     appliedChanges.push({
       elementId,
@@ -1017,6 +1019,11 @@ function commitGroupDragChanges(session, deltaData, fallbackObj, onChange) {
     });
   });
 
+  // Keep all members in the same pre-commit coordinate frame. Lazy layout
+  // materialization must not run between commits of two group members.
+  if (changes.length) {
+    onChange("BATCH_UPDATE_GROUP_FINAL", { isBatchUpdateFinal: true, changes });
+  }
   return appliedChanges;
 }
 
@@ -1341,6 +1348,7 @@ export function updateManualGroupDragSession(nativeEvent) {
   const pointerDownDeltaX = pointerStage.x - pointerDownStage.x;
   const pointerDownDeltaY = pointerStage.y - pointerDownStage.y;
   const threshold = getPointerMoveThreshold(session.pointerType);
+  let activatedNow = false;
 
   if (session.phase === "armed") {
     const distance = Math.hypot(pointerDownDeltaX, pointerDownDeltaY);
@@ -1361,19 +1369,12 @@ export function updateManualGroupDragSession(nativeEvent) {
       activationDistance: distance,
       activationDeltaX: pointerDownDeltaX,
       activationDeltaY: pointerDownDeltaY,
-      activationPointerStage: pointerStage,
+      // Activation authorizes movement; it must not discard the distance already travelled.
+      activationPointerStage: pointerDownStage,
       previewBasePose: activationBasePose,
       commitBasePose: activationBasePose,
     });
-    return buildGroupDragResult({
-      handled: true,
-      role: "leader",
-      mode: "activated",
-      sessionId: session.sessionId,
-      leaderId: session.leaderId,
-      session,
-      activatedNow: true,
-    });
+    activatedNow = true;
   }
 
   const motionStartPointer = resolveManualMotionStartPointer(session);
@@ -1429,7 +1430,7 @@ export function updateManualGroupDragSession(nativeEvent) {
     sessionId: session.sessionId,
     leaderId: session.leaderId,
     session,
-    activatedNow: false,
+    activatedNow,
   });
 }
 
@@ -1643,6 +1644,7 @@ export function startDragGrupalLider(e, obj) {
   const followerIds = selectedIds.filter((id) => id !== obj.id);
   const dragInicial = captureGroupDragInicial(selectedIds);
   const leaderNode = window._elementRefs?.[obj.id] || e?.currentTarget || e?.target || null;
+  resetNativeDragPositionCache(leaderNode);
   const leaderPose = resolveRawNodePose(leaderNode, obj);
   const session = setActiveGroupDragSession({
     sessionId: buildGroupDragSessionId(obj.id),

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { planEventLayoutAuthoringRenderState, restoreEventMode } from "./eventLayoutAuthoringState.js";
 import {
   ensureDefaultsForSchema,
   ensureValuesForSchema,
@@ -306,6 +307,9 @@ export default function useTemplateFieldAuthoring({
   onPatchObject = null,
   onReplaceObjects = null,
   onReplaceSections = null,
+  onReplaceCanvasState = null,
+  rsvpConfig = null,
+  giftsConfig = null,
   resolveSectionsAfterTextChange = null,
   eventDetailsConfig = null,
   onReplaceEventDetails = null,
@@ -573,14 +577,29 @@ export default function useTemplateFieldAuthoring({
 
   const commitSnapshot = useCallback(
     async (nextPartial, options = {}) => {
-      const nextObjects = Array.isArray(options.nextObjects)
-        ? options.nextObjects
-        : latestAuthoringStateRef.current.objetos;
-      const nextSections = Array.isArray(options.nextSections)
-        ? options.nextSections
-        : latestAuthoringStateRef.current.secciones;
-      const nextEventDetails = options.nextEventDetails ||
-        latestAuthoringStateRef.current.eventDetails;
+      const nextRenderState = planEventLayoutAuthoringRenderState({
+        previousState: latestAuthoringStateRef.current,
+        ...options,
+        rsvp: rsvpConfig,
+        gifts: giftsConfig,
+      });
+      const { objetos: nextObjects, secciones: nextSections, eventDetails: nextEventDetails } = nextRenderState;
+      const modeChanged = normalizeEventDetailsConfig(latestAuthoringStateRef.current.eventDetails).mode !== nextEventDetails.mode;
+      const changesRenderState = Array.isArray(options.nextObjects) ||
+        Array.isArray(options.nextSections) || Boolean(options.nextEventDetails);
+      const persistOptions = { ...options, nextObjects, nextSections, nextEventDetails,
+        coalesceValueWrite: options.coalesceValueWrite === true && !modeChanged };
+      const publishRenderState = () => {
+        if (!changesRenderState) return;
+        if (options.excludeFromHistory === true && !modeChanged) suppressNextHistoryCapture?.();
+        if (typeof onReplaceCanvasState === "function") {
+          onReplaceCanvasState(nextRenderState);
+        } else {
+          onReplaceObjects?.(nextObjects);
+          onReplaceSections?.(nextSections);
+          onReplaceEventDetails?.(nextEventDetails);
+        }
+      };
       const nextSnapshot = hydrateSnapshot(nextPartial, nextObjects);
       setError("");
       if (options.pessimistic !== true) {
@@ -592,14 +611,9 @@ export default function useTemplateFieldAuthoring({
         };
         onSnapshotChange?.(nextSnapshot);
         setSnapshot(nextSnapshot);
-        if (Array.isArray(options.nextObjects)) {
-          if (options.excludeFromHistory === true) suppressNextHistoryCapture?.();
-          onReplaceObjects?.(options.nextObjects);
-        }
-        if (Array.isArray(options.nextSections)) onReplaceSections?.(nextSections);
-        if (options.nextEventDetails) onReplaceEventDetails?.(options.nextEventDetails);
+        publishRenderState();
       }
-      await persistSnapshot(nextSnapshot, options);
+      await persistSnapshot(nextSnapshot, persistOptions);
       if (options.pessimistic === true) {
         latestAuthoringStateRef.current = {
           snapshot: nextSnapshot,
@@ -609,12 +623,7 @@ export default function useTemplateFieldAuthoring({
         };
         onSnapshotChange?.(nextSnapshot);
         setSnapshot(nextSnapshot);
-        if (Array.isArray(options.nextObjects)) {
-          if (options.excludeFromHistory === true) suppressNextHistoryCapture?.();
-          onReplaceObjects?.(options.nextObjects);
-        }
-        if (Array.isArray(options.nextSections)) onReplaceSections?.(nextSections);
-        if (options.nextEventDetails) onReplaceEventDetails?.(options.nextEventDetails);
+        publishRenderState();
       }
       return nextSnapshot;
     },
@@ -623,6 +632,9 @@ export default function useTemplateFieldAuthoring({
       onReplaceEventDetails,
       onReplaceObjects,
       onReplaceSections,
+      onReplaceCanvasState,
+      rsvpConfig,
+      giftsConfig,
       onSnapshotChange,
       persistSnapshot,
       suppressNextHistoryCapture,
@@ -2314,8 +2326,9 @@ export default function useTemplateFieldAuthoring({
   );
 
   const restoreDynamicVisualHistoryState = useCallback(
-    (dynamicVisualState, nextObjects, nextSections = safeSecciones) => {
+    (dynamicVisualState, nextObjects, nextSections = safeSecciones, eventMode) => {
       const liveState = latestAuthoringStateRef.current;
+      const restoredEventDetails = restoreEventMode(liveState.eventDetails, eventMode);
       const baseSnapshot = asObject(liveState.snapshot);
       const baseFieldsSchema = Array.isArray(baseSnapshot.fieldsSchema)
         ? baseSnapshot.fieldsSchema
@@ -2404,13 +2417,14 @@ export default function useTemplateFieldAuthoring({
         snapshot: nextSnapshot,
         objetos: projectedObjects,
         secciones: nextSections,
-        eventDetails: liveState.eventDetails,
+        eventDetails: restoredEventDetails,
       };
       onSnapshotChange?.(nextSnapshot);
       setSnapshot(nextSnapshot);
       void persistSnapshot(nextSnapshot, {
         nextObjects: projectedObjects,
         nextSections,
+        nextEventDetails: restoredEventDetails,
         reason: "dynamic-visual-history-restore",
       }).catch(() => {});
       return projectedObjects;

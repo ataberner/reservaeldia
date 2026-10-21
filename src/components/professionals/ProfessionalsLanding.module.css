@@ -1,0 +1,802 @@
+.root {
+  --professionals-purple: #692b9a;
+  --professionals-ink: #262626;
+  --professionals-muted: #737078;
+  --professionals-gradient: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%);
+  width: 100%;
+  min-height: 100vh;
+  background: #fff;
+  color: var(--professionals-ink);
+  font-family: "DM Sans", sans-serif;
+  text-align: left;
+}
+
+/* Keep this new surface independent of legacy element and Bootstrap styles. */
+.root *,
+.root *::before,
+.root *::after {
+  box-sizing: border-box;
+  text-shadow: none;
+}
+
+.root button,
+.root a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.root button:disabled {
+  cursor: default;
+}
+
+.root a:focus-visible,
+.root button:focus-visible {
+  outline: 3px solid var(--professionals-purple);
+  outline-offset: 5px;
+}
+
+.contentWidth {
+  width: min(1160px, calc(100% - 64px));
+  margin: 0 auto;
+}
+
+.root .brandLink {
+  flex: 0 0 auto;
+}
+
+.footerLink:hover {
+  color: var(--professionals-purple);
+}
+
+.hero {
+  position: relative;
+  display: grid;
+  min-height: 650px;
+  place-items: center;
+  overflow: hidden;
+  padding: 58px 24px 76px;
+  background: #fff;
+  isolation: isolate;
+}
+
+.heroCollage {
+  position: absolute;
+  z-index: -1;
+  inset: 38px -32px 28px;
+  display: grid;
+  grid-template-columns: 0.85fr 1fr 1.1fr 1fr 0.85fr;
+  align-items: center;
+  gap: 20px;
+}
+
+.heroPanel {
+  height: 84%;
+  border-radius: 9px;
+  background-image: url("/assets/profesionales/wedding-triptych.png");
+  background-repeat: no-repeat;
+  /* The triptych stays proportional; the minimum covers the tallest panel. */
+  background-size: max(300%, 900px) auto;
+  filter: saturate(0.85);
+}
+
+.heroPanelOne,
+.heroPanelFive {
+  height: 73%;
+}
+
+.heroPanelThree {
+  height: 100%;
+}
+
+.heroPanelFour {
+  align-self: end;
+  height: 87%;
+}
+
+.photoVenue {
+  background-position: left center;
+}
+
+.photoCouple {
+  background-position: center center;
+}
+
+.photoFlowers {
+  background-position: right center;
+}
+
+.heroCard {
+  width: min(820px, 100%);
+  padding: 49px 38px 42px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 50px rgb(42 17 58 / 5%);
+  text-align: center;
+}
+
+.heroEyebrow,
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--professionals-purple);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.7px;
+  line-height: 20px;
+}
+
+.heroTitle {
+  margin: 16px 0 19px;
+  color: var(--professionals-ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 48px;
+  font-weight: 500;
+  letter-spacing: -1.8px;
+  line-height: 1.13;
+}
+
+.gradientText {
+  background: var(--professionals-gradient);
+  background-clip: text;
+  color: transparent;
+  -webkit-background-clip: text;
+}
+
+.heroDescription {
+  margin: 0 auto 30px;
+  color: #625b66;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 28px;
+}
+
+.searchPreview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #e6dfe9;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 20px rgb(65 35 82 / 4%);
+}
+
+.searchField {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 5px 14px;
+  border: 0;
+  background: transparent;
+  color: #928b97;
+  text-align: left;
+}
+
+.searchField + .searchField {
+  border-left: 1px solid #eee8f0;
+}
+
+.searchField > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchField > svg {
+  flex-shrink: 0;
+}
+
+.fieldLabel,
+.fieldValue {
+  display: block;
+  white-space: nowrap;
+}
+
+.fieldLabel {
+  color: #77717c;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 21px;
+}
+
+.fieldValue {
+  color: #938b99;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.searchButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 12px 25px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--professionals-gradient);
+  color: #fff;
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.78;
+}
+
+.categories {
+  padding: 49px 0 68px;
+  background: #fff;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--professionals-ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  line-height: 38px;
+}
+
+.sectionDescription {
+  margin: 10px 0 0;
+  color: var(--professionals-muted);
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 26px;
+}
+
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 34px;
+}
+
+.categoryItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #706775;
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
+}
+
+.categoryIcon {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border: 1px solid #eee3f4;
+  border-radius: 50%;
+  background: #faf5ff;
+  color: #8b619e;
+}
+
+.providers {
+  padding: 58px 0 75px;
+  background: #fff;
+}
+
+.sectionHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+
+.allProviders {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8b619e;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.providerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.providerCard {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #ece5ee;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgb(52 30 65 / 3%);
+}
+
+.providerMedia {
+  position: relative;
+  height: 230px;
+  overflow: hidden;
+  background: #eee6ee;
+}
+
+.providerPhoto {
+  width: 100%;
+  height: 100%;
+  background-image: url("/assets/profesionales/wedding-triptych.png");
+  background-repeat: no-repeat;
+  background-size: 300% auto;
+}
+
+.providerPhoto.photoCouple {
+  background-position: center 24%;
+}
+
+.providerCategory {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--professionals-purple);
+  font-family: "DM Sans", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.favoriteButton {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 93%);
+  color: #9b8da1;
+}
+
+.providerDetails {
+  padding: 23px 22px 21px;
+}
+
+.providerName {
+  margin: 0 0 8px;
+  color: var(--professionals-ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 26px;
+}
+
+.providerLocation {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: #817786;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.providerLocation svg {
+  flex-shrink: 0;
+}
+
+.invitations {
+  padding: 65px 0;
+  background: #faf5ff;
+}
+
+.invitationInner {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  align-items: center;
+  gap: 64px;
+}
+
+.invitationTitle {
+  margin: 16px 0;
+  color: var(--professionals-ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+  line-height: 42px;
+}
+
+.invitationDescription {
+  max-width: 385px;
+  margin: 0 0 25px;
+  color: #746b79;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 27px;
+}
+
+.invitationButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  min-height: 46px;
+  padding: 13px 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--professionals-gradient);
+  color: #fff;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.invitationButton:hover {
+  background: #582280;
+  color: #fff;
+}
+
+.invitationPreview {
+  position: relative;
+  min-width: 0;
+  padding: 24px 0 37px;
+}
+
+.invitationImage {
+  display: block;
+  width: 100%;
+  height: 285px;
+  object-fit: cover;
+  object-position: center;
+  mix-blend-mode: multiply;
+}
+
+.invitationCaption {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: 1px solid #eee3f4;
+  border-radius: 999px;
+  background: #fff;
+  color: #8e609c;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  line-height: 21px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.footer {
+  margin: 0;
+  padding: 38px 0 22px;
+  border-top: 0;
+  background: #fff;
+  color: #817786;
+  text-align: left;
+}
+
+.footerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+}
+
+.footerTagline {
+  margin: 6px 0 0;
+  color: #817786;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+.footerNavigation {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.footerLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: #746b79;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  text-decoration: none;
+}
+
+.footerBottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 19px;
+  border-top: 1px solid #f0eaf2;
+  color: #9b919f;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* Tailwind-equivalent tablet and mobile breakpoints for this composition. */
+@media (max-width: 1023px) {
+
+  .hero {
+    min-height: 610px;
+  }
+
+  .heroCard {
+    width: min(740px, 100%);
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+
+  .heroCollage {
+    gap: 14px;
+  }
+
+  .sectionHeadingRow {
+    align-items: flex-start;
+  }
+
+  .allProviders {
+    max-width: 155px;
+    text-align: left;
+  }
+
+  .providerGrid {
+    gap: 16px;
+  }
+
+  .providerMedia {
+    height: 190px;
+  }
+
+  .providerDetails {
+    padding: 20px 16px;
+  }
+
+  .providerName {
+    font-size: 17px;
+  }
+
+  .invitationInner {
+    gap: 30px;
+  }
+
+  .invitationTitle {
+    font-size: 30px;
+    line-height: 37px;
+  }
+}
+
+@media (max-width: 767px) {
+
+  .contentWidth {
+    width: calc(100% - 40px);
+  }
+
+  .hero {
+    min-height: 590px;
+    padding: 36px 20px 50px;
+  }
+
+  .heroCollage {
+    inset: 18px -110px 20px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .heroPanelOne,
+  .heroPanelFive {
+    display: none;
+  }
+
+  .heroCard {
+    max-width: 520px;
+    padding: 30px 22px 21px;
+  }
+
+  .heroEyebrow {
+    font-size: 10px;
+    letter-spacing: 1.2px;
+  }
+
+  .heroTitle {
+    margin: 15px 0 17px;
+    font-size: 36px;
+    letter-spacing: -1px;
+    line-height: 41px;
+  }
+
+  .heroDescription {
+    max-width: 320px;
+    margin-bottom: 24px;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .searchPreview {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 5px 10px 10px;
+    border-radius: 12px;
+    text-align: left;
+  }
+
+  .searchField {
+    min-height: 59px;
+    padding: 6px 5px;
+  }
+
+  .searchField + .searchField {
+    border-top: 1px solid #eee8f0;
+    border-left: 0;
+  }
+
+  .searchButton {
+    min-height: 42px;
+    margin-top: 5px;
+    padding: 10px 20px;
+    border-radius: 8px;
+  }
+
+  .categories {
+    padding: 34px 0 44px;
+  }
+
+  .sectionTitle {
+    font-size: 25px;
+    line-height: 32px;
+  }
+
+  .sectionDescription {
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .categoryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 25px 12px;
+    margin-top: 28px;
+  }
+
+  .categoryItem {
+    gap: 10px;
+    font-size: 12px;
+    line-height: 17px;
+  }
+
+  .categoryIcon {
+    width: 65px;
+    height: 65px;
+  }
+
+  .providers {
+    padding: 42px 0;
+  }
+
+  .sectionHeadingRow {
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+
+  .allProviders {
+    max-width: none;
+    min-height: 33px;
+  }
+
+  .providerGrid {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .providerMedia {
+    height: auto;
+    aspect-ratio: 1.62;
+  }
+
+  .providerDetails {
+    padding: 20px 22px;
+  }
+
+  .providerName {
+    font-size: 20px;
+    line-height: 27px;
+  }
+
+  .invitations {
+    padding: 43px 0 38px;
+  }
+
+  .invitationInner {
+    grid-template-columns: 1fr;
+    gap: 21px;
+  }
+
+  .invitationTitle {
+    font-size: 30px;
+    line-height: 37px;
+  }
+
+  .invitationDescription {
+    max-width: 440px;
+  }
+
+  .invitationPreview {
+    padding-top: 12px;
+  }
+
+  .invitationImage {
+    height: 230px;
+  }
+
+  .footer {
+    padding-top: 29px;
+  }
+
+  .footerInner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .footerNavigation {
+    flex-wrap: wrap;
+    gap: 5px 24px;
+  }
+
+  .footerBottom {
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 18px;
+    padding-top: 15px;
+  }
+}
+
+@media (max-width: 374px) {
+
+  .hero {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .heroCard {
+    padding-right: 15px;
+    padding-left: 15px;
+  }
+
+  .heroTitle {
+    font-size: 31px;
+    line-height: 36px;
+  }
+}

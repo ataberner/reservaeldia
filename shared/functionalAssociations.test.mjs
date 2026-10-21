@@ -19,6 +19,31 @@ const sections = [
   { id: "gifts", orden: 2, altura: 400 },
 ];
 
+test("initialized event layout preserves manual roots and uses the inactive-mode checkpoint only as fallback", () => {
+  const secciones = [{ id: "event", eventLayout: {
+    version: 1,
+    materializedMode: "single",
+    positionsByMode: { ceremony_party: { ceremony: { x: 80, y: 40 }, party: { x: 560, y: 40 } } },
+    initialPositionsByMode: {
+      single: { ceremony: { x: 350, y: 40 }, party: { x: 560, y: 40 } },
+      ceremony_party: { ceremony: { x: 80, y: 40 }, party: { x: 560, y: 40 } },
+    },
+  } }];
+  const objetos = [
+    { id: "ceremony", seccionId: "event", tipo: "texto", x: 420, y: 40, width: 100, height: 30, functionalAssociation: "ceremony" },
+    { id: "party", seccionId: "event", tipo: "texto", x: 560, y: 40, width: 100, height: 30, functionalAssociation: "party" },
+  ];
+  const source = structuredClone({ secciones, objetos });
+  const single = applyFunctionalAssociationsToRenderState({ secciones, objetos, eventDetails: { mode: "single" }, materializeOffsets: false });
+  assert.equal(single.objetos[0].x, 420);
+  assert.deepEqual(single.centeredObjectDeltas, {});
+  assert.equal(single.objetos[0].__eventLayoutManaged, true);
+  const both = applyFunctionalAssociationsToRenderState({ secciones, objetos, eventDetails: { mode: "ceremony_party" } });
+  assert.equal(both.objetos[0].x, 80);
+  assert.equal(both.objetos[0].__eventLayoutManaged, undefined);
+  assert.deepEqual({ secciones, objetos }, source);
+});
+
 function group({
   id,
   seccionId = "shared",

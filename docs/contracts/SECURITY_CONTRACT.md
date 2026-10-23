@@ -33,10 +33,11 @@ las decisiones faltantes, sin reemplazar los contratos de dominio.
 | W1 | `welcomeEmailDeliveries` y sus descendientes son exclusivamente backend. Ningún cliente puede leer, crear, actualizar ni borrar, incluido el propio UID y los administradores. | Pedido explícito de Fase 2B.1; [contrato del procesador](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1). Adaptador validado en sandbox el 26/09; sandbox/disabled omiten envíos. |
 | W2 | `newUserNotificationDeliveries` y sus descendientes son exclusivamente backend, incluso para el propio UID y administradores. No comparten estado con la bienvenida. | Habilitación productiva preparada localmente el 27/09; [dos efectos independientes](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails), sin deploy. |
 | AI1 | `designerAiUsage`, su configuración, contadores, reservas y descendientes son exclusivamente backend. Ningún SDK cliente puede leer, listar, crear, actualizar ni borrar, incluso con claims administrativos. | Plan de seguridad del Asistente autorizado el 2026-10-07; [AI Assistant System](../architecture/AI_ASSISTANT_SYSTEM.md#designer-ai-admission) y [modelo de datos](../architecture/DATA_MODEL.md#designer-ai-usage). Implementación local; activación/despliegue requieren evidencia separada. |
+| GM1 | `giftLinkMetadataUsage` y todos sus descendientes son exclusivamente backend; se deniega todo acceso SDK, incluso administrativo. | Autocompletado de enlaces autorizado el 2026-10-21; [Gifts](GIFTS_SYSTEM_CONTRACT.md#autocompletado-de-enlaces) define sesión, App Check y cuota previa a la consulta externa. El despliegue de la callable requiere aplicar antes estas Rules. |
 
 **Observado** significa comprobado en código o en la línea base; no significa
 aprobado por producto. **Propuesto / pendiente** necesita aceptación antes de
-convertirse en permiso. Los casos `acceptance` evalúan A1–A4, W1–W2 y AI1; `characterization`
+convertirse en permiso. Los casos `acceptance` evalúan A1–A4, W1–W2, AI1 y GM1; `characterization`
 evalúa implementación actual; `proposal` mide diferencias con Q1 sin aprobarla.
 La [línea base por caso](../testing/SECURITY_RULES_BASELINE_4B1.md) registra los
 resultados y los límites del experimento.
@@ -73,7 +74,7 @@ Reglas actuales, abreviadas:
   `plantillas_catalog`, `plantillas_tags`, `site_settings`, `app_config`,
   `publication_checkout_sessions`, `public_slug_reservations`,
   `publication_discount_codes`, `publication_discount_code_usage`,
-  `proveedores`, `categorias_proveedores`, `welcomeEmailDeliveries`, `newUserNotificationDeliveries`, `designerAiUsage`. Ninguna nueva colección queda
+  `proveedores`, `categorias_proveedores`, `welcomeEmailDeliveries`, `newUserNotificationDeliveries`, `designerAiUsage`, `giftLinkMetadataUsage`. Ninguna nueva colección queda
   protegida por defecto. Los matches específicos no se heredan a subcolecciones.
   Compatibilidad explícita conserva los descendientes no modelados indicados
   en la matriz; no vuelve a conceder los subárboles corregidos por OR.
@@ -82,6 +83,7 @@ Reglas actuales, abreviadas:
 
 | Recurso / responsable | Actores y operaciones por canal; consumidor real | Rules actual | Obligación y destino propuesto; estado |
 | --- | --- | --- | --- |
+| `giftLinkMetadataUsage/{sha256(uid)}`; cuota de metadata de regalos | B reserva 30/minuto y 200/día con transacción antes de consultar el enlace. Sin consumidor SDK. | SDK glcud denegado recursivamente, excluido de F. | GM1: reserva sólo con sesión y App Check; errores de cuota impiden la consulta. Implementación y Rules locales requieren despliegue coordinado; no prueba estado remoto. |
 | `welcomeEmailDeliveries/{uid}` y descendientes; reserva backend de bienvenida | B c mediante create atómico, u del resultado; adaptador Auth validado en sandbox, sin consumidor cliente. [Store](../../functions/src/emails/welcomeDeliveryStore.ts). | SDK glcud denegado a todos, recursivo; excluido de F. Admin SDK omite Rules. | W1 aceptado. Preservar registros para impedir nuevos intentos automáticos por UID; no TTL ni limpieza para reenvío. |
 | `newUserNotificationDeliveries/{uid}` y descendientes; reserva de notificación interna | B c/u, store atómico compartido, colección independiente. [Store](../../functions/src/emails/registrationDeliveryStore.ts). | SDK glcud denegado a todos, recursivo; excluido de F. Admin SDK omite Rules. | W2 aceptado; implementación local pendiente de deploy de Rules y trigger. |
 | `designerAiUsage/{id}` y descendientes, incluido `config`; política/contabilidad del Asistente | B lee política y draft; transacciones de reserva, dispatch y liquidación en [admissionStore](../../functions/src/designerAi/admissionStore.ts). Sin consumidor cliente directo. | SDK glcud denegado a todos, recursivo; excluido de F. Admin SDK omite Rules. | AI1 aceptado e implementado localmente. No autoriza un panel cliente para editar cuotas ni supone IAM/TTL desplegados. Casos AI1 en `scripts/local/rulesCases.mjs`; evidencia operativa vigente en AI Assistant System. |

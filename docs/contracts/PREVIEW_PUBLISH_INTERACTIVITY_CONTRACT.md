@@ -67,6 +67,15 @@ Strict rule:
 - A CTA rendered as `unavailable` may still be visible, but it is not behaviorally correct.
 - A preview or publish result that shows the CTA but cannot activate it does not satisfy parity.
 
+Gifts V2 preserves this readiness rule across the ARS account, USD account,
+legacy external list and individual gift cards. A complete visible USD field or
+gift card is sufficient without ARS fields. Both render paths group bank data by
+currency and render visible links as cards with title/domain and an optional
+HTTPS image. A missing/failed image falls back without disabling the link;
+hidden values must not be serialized into modal markup. Each copied bank value
+must come from the account on that row. External destinations retain
+`target="_blank"` and `rel="noopener noreferrer"`.
+
 ## 3. Group Interaction Contract
 
 Groups may own layout, but they must not remove child function.

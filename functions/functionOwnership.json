@@ -666,6 +666,16 @@
       "manifestHash": "78fb3d87512af391620054010e9c32bcd68ffbaa7d73b0bf63cef44a9f000ded"
     },
     {
+      "name": "getGiftLinkMetadata",
+      "domain": "editor",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "064325f035e6ef9605f2bf94a62f7ebdb02dc40dd6685b67d54cad30d3c686ca"
+    },
+    {
       "name": "getMyProfileStatus",
       "domain": "identity-support",
       "codebase": "default",

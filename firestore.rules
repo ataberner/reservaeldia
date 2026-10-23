@@ -192,6 +192,9 @@ service cloud.firestore {
     match /designerAiUsage/{document=**} {
       allow read, write: if false; // Backend-only assistant policy, quotas and request reservations.
     }
+    match /giftLinkMetadataUsage/{document=**} {
+      allow read, write: if false; // Backend-only gift-link metadata quota accounting.
+    }
 
     // A1/A2 scope and unresolved operations: SECURITY_CONTRACT.md, phase-4b2a.
     match /usuarios/{uid} {
@@ -396,6 +399,7 @@ service cloud.firestore {
         collection != "welcomeEmailDeliveries" &&
         collection != "newUserNotificationDeliveries" &&
         collection != "designerAiUsage" &&
+        collection != "giftLinkMetadataUsage" &&
         collection != "usuarios" &&
         collection != "publicadas" &&
         collection != "publicadas_historial" &&

@@ -3,7 +3,7 @@ import {
   type DraftRenderState,
 } from "../drafts/sourceOfTruth";
 import { resolveMusicResource } from "../music/config";
-import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
+import { getGiftAccounts, normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
 import {
   recordBackendCountdownError,
   recordBackendCountdownTelemetry,
@@ -196,13 +196,15 @@ function getIncompleteGiftModalFields(
   const normalized = normalizeGiftConfig(gifts, { forceEnabled: false });
   const incompleteFields: Array<{ fieldPath: string; label: string }> = [];
 
-  Object.entries(GIFT_BANK_FIELD_LABELS).forEach(([fieldKey, label]) => {
-    if (!normalized.visibility[fieldKey as keyof GiftsConfig["visibility"]]) return;
-    if (getString(normalized.bank[fieldKey as keyof GiftsConfig["bank"]])) return;
+  getGiftAccounts(normalized).forEach((account) => {
+    Object.entries(GIFT_BANK_FIELD_LABELS).forEach(([fieldKey, label]) => {
+      const key = fieldKey as keyof GiftsConfig["bank"];
+      if (!account.visibility[key] || getString(account.bank[key])) return;
 
-    incompleteFields.push({
-      fieldPath: `gifts.bank.${fieldKey}`,
-      label,
+      incompleteFields.push({
+        fieldPath: `gifts.${account.id === "usd" ? "bankUsd" : "bank"}.${fieldKey}`,
+        label: `${account.id === "usd" && key === "cbu" ? "CBU" : label} (${account.currency})`,
+      });
     });
   });
 
@@ -212,6 +214,14 @@ function getIncompleteGiftModalFields(
       label: "Lista externa",
     });
   }
+
+  normalized.giftLinks.forEach((link, index) => {
+    if (!link.visible || getString(link.url)) return;
+    incompleteFields.push({
+      fieldPath: `gifts.giftLinks[${index}].url`,
+      label: `Enlace de regalo ${index + 1}`,
+    });
+  });
 
   return incompleteFields;
 }

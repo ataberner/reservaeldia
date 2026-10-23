@@ -32,9 +32,13 @@ configuración de Regalos.
 
 | Responsabilidad | Owner actual |
 | --- | --- |
-| Normalización cliente | `src/domain/gifts/config.js` |
-| Normalización server | `functions/src/gifts/config.ts` |
+| Reglas puras y normalización canónica | `shared/giftsConfig.cjs` |
+| Adapter de normalización cliente | `src/domain/gifts/config.js` |
+| Adapter tipado server | `functions/src/gifts/config.ts` |
 | Control de editor/Asistente | `src/components/MiniToolbarTabRegalos.jsx` |
+| Borrador local y consultas de metadata | `src/components/editor/gifts/useGiftLinkMetadata.js` y `giftLinkMetadataState.js` |
+| Transporte cliente de metadata | `src/domain/gifts/service.js` |
+| Admisión, cuota, consulta y extracción de metadata | `functions/src/gifts/linkMetadataHandler.ts`, `linkMetadataUsage.ts`, `linkMetadataFetch.ts` y `linkMetadata.ts` |
 | Bridge hacia el estado del canvas | `src/components/editor/canvasEditor/useCanvasEditorGiftBridge.js` |
 | Sincronización del CTA | `src/domain/functionalCtaButtons.js` y eventos del editor |
 | Readiness de CTA | `functions/src/utils/functionalCtaContract.ts` |
@@ -51,19 +55,87 @@ su representación visual y el disparador de apertura.
 Regalos no persiste un enum de modalidad excluyente. La experiencia soporta
 combinaciones de estos medios:
 
-1. **Datos bancarios**, con los campos reales `holder` (Titular), `bank`
-   (Banco o billetera), `alias`, `cbu` (presentado como CBU / CVU) y `cuit`.
+1. **Cuentas en pesos (ARS) y dólares (USD)**, cada una con sus propios campos
+   `holder` (Titular), `bank` (Banco o billetera), `alias`, `cbu` (CBU / CVU en
+   pesos y CBU en dólares) y `cuit`.
 2. **Lista externa**, representada por `giftListUrl` y controlada por
    `visibility.giftListLink`.
-3. **Combinación de ambos**, porque cada dato bancario y el enlace externo tienen
-   visibilidad independiente.
+3. **Lista de regalos con varios enlaces**, representada por `giftLinks`: cada
+   tarjeta tiene nombre editable, URL, imagen HTTPS opcional y visibilidad.
+4. **Combinación de cuentas y enlaces**, con visibilidad independiente.
 
-No existe hoy un campo separado para CVU, número de cuenta, moneda, SWIFT, IBAN,
-mensaje por método ni proveedor de lista. No deben inventarse campos o
-modalidades desde el prompt. Una ampliación comienza en el modelo/normalizador
-del dominio y recién después alcanza a Designer AI.
+Las monedas se derivan de los dos owners fijos: `bank` es ARS y `bankUsd` es USD.
+No existe un campo separado para CVU, número de cuenta, SWIFT, IBAN, mensaje por
+método ni proveedor de lista. No deben inventarse modalidades desde el prompt.
+La ampliación manual V2 no amplía las actions de Designer AI.
 
-### 3.1 Decisión proactiva del recorrido guiado
+### 3.1 Cuentas y tarjetas V2
+
+Decisión aceptada: implementación del boceto aprobada por el usuario el
+2026-10-21. El editor agrupa los campos por cuenta en la pestaña **Cuentas
+bancarias** y los enlaces en **Lista de regalos**. Las pestañas organizan la
+edición; no son modalidades excluyentes. Guardar confirma los cambios del
+modal; Cancelar o cerrar descarta su edición pendiente.
+
+Los borradores V1 conservan su cuenta actual como ARS y su `giftListUrl`; no hay
+migración remota ni reescritura de HTML ya publicado. Al normalizar/guardar se
+incorporan los defaults V2: cuenta USD vacía y oculta, lista adicional vacía.
+La URL externa heredada sigue siendo una autoridad separada por compatibilidad
+con Designer AI y no se duplica en la lista nueva.
+
+Cada enlace nuevo se presenta como tarjeta con nombre, dominio e imagen
+opcional. Al agregarlo, el editor intenta completar nombre e imagen desde la
+metadata pública del destino; ambos campos siguen siendo editables. Sin imagen o
+ante un error de carga se conserva una tarjeta legible con acceso al enlace. No se
+incorporan precios/stock en vivo, compras dentro del modal ni reservas.
+
+#### Autocompletado de enlaces
+
+Decisión aceptada: pedido del usuario del 2026-10-21. La consulta ocurre al
+agregar un enlace o al elegir **Completar desde el enlace**, no en cada tecla.
+La callable `getGiftLinkMetadata` pertenece a `default`, dominio `editor`, según
+el registro canónico de Functions. Exige sesión y App Check; devuelve solamente
+`{ title, imageUrl, status }`, con status `found`, `empty` o `unavailable`.
+Consulta metadata Open Graph, Twitter o Product JSON-LD sin ejecutar scripts,
+enviar cookies, evadir verificaciones del sitio ni inferir el producto del slug.
+
+La consulta externa acepta sólo destinos públicos HTTP/HTTPS y puertos estándar;
+valida y fija la resolución DNS en cada salto, rechaza redes privadas/especiales
+y limita redirecciones, tiempo y tamaño. Nunca devuelve HTML crudo al cliente.
+La cuota por usuario se mantiene exclusivamente en backend en
+`giftLinkMetadataUsage` (30 consultas/minuto y 200/día); si no puede reservarse,
+no consulta el destino. No almacena enlaces, imágenes ni nombres en ese registro.
+
+El borrador local del modal conserva la autoridad de edición: una respuesta
+tardía no reemplaza cambios manuales, no repone un regalo eliminado y no se
+aplica si cambió su URL o se cerró el modal. Guardar confirma los valores
+presentes; Cancelar los descarta. La consulta no bloquea la edición y el fallo
+ofrece completar los datos manualmente. Los estados de búsqueda y procedencia
+son transitorios, no forman parte de `gifts`. La invitación publicada consume
+los mismos campos V2 guardados y no consulta el sitio del producto al abrirse.
+
+El enlace de Mercado Libre aportado devolvió una pantalla de verificación en
+la consulta pública del 2026-10-21, sin metadata del producto. Ese caso conserva
+el ingreso manual; no constituye evidencia de extracción exitosa de ese enlace.
+
+Verificación local del 2026-10-21: pruebas de extracción/admisión/transporte,
+carreras de edición y navegador (desktop, 390 y 320 px), casos de permisos GM1,
+gate de ownership y build de producción ejecutados. La consulta real de una
+página pública de producto de Apple devolvió título e imagen usando el mismo
+fetch/parser. Esto no certifica disponibilidad o latencia de cada tienda.
+
+Despliegue autorizado y verificado el 2026-10-21: se publicaron primero las Rules
+de la cuota, luego `default:getGiftLinkMetadata` y el frontend. La función figura
+`ACTIVE` con revisión `getgiftlinkmetadata-00001-loy`; las Rules remotas coinciden
+con las verificadas y Hosting sirve el build `UA7gGkJ3LSUu3nejDr5hl` con sus 91
+archivos estáticos comprobados. La callable rechaza una consulta sin sesión/App
+Check (`401 UNAUTHENTICATED`) y admite el origen del sitio. No se ejecutó el
+recorrido autenticado completo en producción. No requirió migrar invitaciones
+ni desplegar Payments/Email. Evidencia local:
+`.local-isolation/gift-metadata-deploy-after.json` y
+`.local-isolation/gift-link-metadata-verification.json`.
+
+### 3.2 Decisión proactiva del recorrido guiado
 
 Cuando `guidedFlow` llega a Regalos, la primera decisión funcional debe distinguir
 entre estas dos vías principales:
@@ -131,6 +203,8 @@ Para **datos bancarios**:
 | CBU / CVU | `gifts.bank.cbu` | `gifts.visibility.cbu` |
 | CUIT | `gifts.bank.cuit` | `gifts.visibility.cuit` |
 | Lista externa | `gifts.giftListUrl` | `gifts.visibility.giftListLink` |
+| Datos en dólares | `gifts.bankUsd.<campo>` | `gifts.visibilityUsd.<campo>` |
+| Tarjeta de regalo | `gifts.giftLinks[]` | `visible` de cada tarjeta |
 
 Reglas normativas:
 
@@ -144,9 +218,9 @@ Reglas normativas:
 - `enabled:false` conserva los valores normalizados, pero desactiva el CTA y las
   asociaciones funcionales de Regalos.
 
-El control actual del editor activa automáticamente la visibilidad al ingresar
-un valor desde esa UI, y `Quitar de datos visibles` conserva el valor. Designer
-AI dispone de una action que recibe valor y visibilidad juntos, por lo que debe
+El editor permite elegir la visibilidad por dato bancario y por enlace; ocultar
+conserva su valor. Eliminar una tarjeta es una acción distinta de ocultarla. Designer
+AI dispone de una action sobre los campos heredados que recibe valor y visibilidad juntos, por lo que debe
 respetar explícitamente pedidos como conservar CBU/CUIT ocultos mientras muestra
 Alias, Banco y Titular.
 
@@ -224,17 +298,21 @@ valor heredado visible no sustituye la decisión del usuario.
 
 ## 6. Controles y comportamiento visible
 
-`MiniToolbarTabRegalos.jsx` expone actualmente:
+`MiniToolbarTabRegalos.jsx` compone los controles manuales de Regalos:
 
 - el switch `Mostrar opciones de regalos`;
-- la lista de datos visibles, con estado completo/incompleto;
-- alta, edición y ocultamiento independiente de medios;
+- resumen por cuenta y tarjetas de regalos;
+- modal con pestañas de cuentas ARS/USD y enlaces, edición y visibilidad independiente;
+- autocompletado de nombre/imagen al agregar enlaces y reintento explícito, siempre con edición manual;
 - ajustes del texto introductorio y del texto del botón;
 - creación/visibilidad del CTA y vista previa local del modal.
 
-Preview y publicación muestran solo los métodos visibles completos. Los datos
-bancarios se presentan con acción de copiar y la lista externa abre un enlace en
-otra pestaña con aislamiento `noopener noreferrer`.
+Preview y publicación muestran solo los métodos visibles completos, agrupados
+en cuentas identificadas por moneda y tarjetas de enlaces. Los datos bancarios
+se presentan con acción de copiar y los enlaces abren otra pestaña con
+aislamiento `noopener noreferrer`. Las imágenes omiten el referrer y disponen
+de fallback. La disponibilidad del CTA también contempla una cuenta USD sola
+o una tarjeta sola.
 
 La visibilidad funcional de secciones, grupos o roots independientes asociados a
 Regalos deriva de `gifts.enabled`; no se agrega otro switch en secciones, CTA o
@@ -252,6 +330,16 @@ Designer AI puede, si el snapshot vigente declara disponible Regalos:
 No puede inventar datos, verificar titularidad bancaria, crear otro tipo de
 modal, agregar campos, cambiar estilos/layout del CTA ni eludir la sanitización
 de URL. El inventario exacto y la validación pertenecen al capability contract.
+
+Las actions existentes siguen editando ARS y la lista externa heredada. Preservan
+la cuenta USD y `giftLinks` configurados manualmente. Al activar/desactivar
+Regalos, la revisión local de destinos externos también incluye las tarjetas
+visibles afectadas, sin enviar sus URLs ni datos USD al snapshot del modelo.
+USD todavía no tiene hojas de procedencia en Designer AI: reactivar por chat un
+root desactivado que conserva datos USD visibles exige revisarlos y activar la
+sección desde el control manual. El guard no expone los valores ni los borra;
+evita adoptar automáticamente datos de plantilla. Desactivar y las ediciones
+heredadas no afectadas siguen disponibles.
 
 En el recorrido guiado principal, Regalos se consulta después de los datos del
 evento. La primera pregunta presenta la decisión lista externa/datos bancarios.
@@ -271,9 +359,9 @@ bridge, el asistente debe mantener el bloque pendiente y no afirmar éxito.
 Desactivar Regalos no equivale a borrar sus valores. Reactivarlo reabre las
 decisiones internas que el ledger haya preservado mientras estaba inactivo.
 
-### 8.1 Estado de implementación verificado al 2026-08-28
+### 8.1 Baseline histórico al 2026-08-28 (anterior a V2)
 
-Implementado actualmente:
+Implementado en ese baseline:
 
 - shape y normalización V1, cinco campos bancarios y lista externa;
 - flags de visibilidad independientes y conservación de valores ocultos;
@@ -326,7 +414,15 @@ literales que el modelo deba repetir.
 
 Anclas actuales:
 
+- `shared/giftsConfig.test.cjs`
 - `src/domain/gifts/config.test.mjs`
+- `src/domain/gifts/persistence.test.mjs`
+- `src/components/editor/gifts/giftEditorDraft.test.mjs`
+- `src/components/editor/gifts/giftLinkMetadataState.test.mjs`
+- `src/components/editor/gifts/GiftDataModal.browser.test.mjs` (opt-in, fixtures locales)
+- `functions/giftsModal.test.mjs`
+- `functions/giftLinkMetadata.test.mjs` (admisión, cuota, extracción y transporte con fixtures sin red)
+- `scripts/local/rules.test.mjs` y casos `GM1` de `rulesCases.mjs` (cuota inaccesible por SDK)
 - `src/domain/functionalCtaButtons.test.mjs`
 - `functions/publicationPublishValidation.test.mjs`
 - `functions/renderContractCompatibility.test.mjs`

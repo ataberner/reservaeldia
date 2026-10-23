@@ -244,14 +244,25 @@ These iframe mutations are preview-shell behavior. They must minimize layout dis
 
 Scaled mockups use CSS `zoom` on the logical iframe wrapper. `ModalVistaPrevia`
 keeps its fixed logical viewport sizes. `TemplatePreviewModal` keeps the same
-fixed logical widths and desktop/mobile layout heights. On tablet hosts from
-`640px` through `1024px`, it derives the iframe viewing height from the measured
-stage height and the existing width-owned scale, so the scaled wrapper occupies
-the full available modal height without changing modal or invitation width. The
-taller tablet iframe is only a viewing/scroll window: the
-generated desktop layout and `pantalla` sections remain anchored to the
-canonical `820px` logical height, so viewport-relative section geometry does
-not grow with the shell. They do not use `transform: scale(...)`: transform scaling
+fixed logical widths and desktop/mobile layout heights. On every host size,
+it derives the iframe viewing height from the measured stage height and the
+width-owned scale. The scaled wrapper fills the available height in portrait,
+landscape, and desktop windows; narrow hosts may reduce that scale to fit their
+actual width. The iframe remains only a viewing/scroll window: generated layout
+and `pantalla` sections stay anchored to the canonical `820px` desktop or `844px`
+mobile logical height. Changing only the viewing height does not replace `srcDoc`
+or reload the invitation.
+
+`TemplatePreviewModal` reserves a separate footer for its existing title and
+actions, outside the preview/personalization split. The footer can scroll on
+short hosts, and the preview area has no fixed minimum height. The final
+invitation content therefore remains reachable without an overlay or an injected
+blank scroll spacer. This shell is shared by the landing catalogue and dashboard
+template selection. Regression anchors are
+`src/components/preview/templatePreviewModalLayout.test.mjs` and the opt-in local
+browser test `src/components/preview/templatePreviewModal.browser.test.mjs`.
+
+Neither modal uses `transform: scale(...)`: transform scaling
 makes Chromium resample the already-painted iframe surface and can
 independently antialias two contiguous
 section edges against the white document at fractional scale or

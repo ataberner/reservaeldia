@@ -9,6 +9,7 @@ export const authorities = {
   W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
   W2: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails (backend-only internal notification reservations)",
   AI1: "docs/contracts/SECURITY_CONTRACT.md (backend-only Designer AI policy and accounting)",
+  GM1: "docs/contracts/GIFTS_SYSTEM_CONTRACT.md (backend-only gift-link metadata quota accounting)",
   C1: "firestore.rules / storage.rules (observed, not policy acceptance)",
   C2: "functions/src/auth/adminAuth.ts (observed, not policy acceptance)",
   Q1: "docs/contracts/SECURITY_CONTRACT.md#q1-proposal (proposed; Q1 unresolved)",
@@ -64,6 +65,25 @@ for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "role", "s
   add(`designer-ai-usage-${identity}-nested-list`, "acceptance", identity, "firestore", "designerAiUsage/{A}/private", "list", "deny", "AI1", {
     fixtures: [{ path: "designerAiUsage/{A}/private/{ID}", data: { marker: "synthetic-ai-accounting" } }],
   });
+}
+
+// Quotas cannot be inspected or reset through a client, even by the matching
+// hashed UID or an administrative claim. Descendants must not inherit fallback.
+for (const identity of Object.keys(identities)) {
+  for (const [level, collectionPath] of [
+    ["root", "giftLinkMetadataUsage"],
+    ["nested", "giftLinkMetadataUsage/{HASH_A}/private"],
+    ["deep", "giftLinkMetadataUsage/{HASH_A}/private/{ID}/windows"],
+  ]) {
+    const resource = `${collectionPath}/${level === "root" ? "{HASH_A}" : "{ID}"}`;
+    const data = { minuteCount: 30, dayCount: 200, marker: "synthetic-gift-link-quota" };
+    for (const operation of ["get", "create", "update", "delete"]) {
+      add(`gift-link-metadata-usage-${identity}-${level}-${operation}`, "acceptance", identity,
+        "firestore", resource, operation, "deny", "GM1", { data });
+    }
+    add(`gift-link-metadata-usage-${identity}-${level}-list`, "acceptance", identity,
+      "firestore", collectionPath, "list", "deny", "GM1", { fixtures: [{ path: resource, data }] });
+  }
 }
 
 // Per-case fixtures include BOTH owners for collection-query cases.

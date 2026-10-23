@@ -1,17 +1,14 @@
-import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
+import {
+  getGiftAccounts,
+  getGiftLinks,
+  hasVisibleGiftMethods,
+  normalizeGiftConfig,
+  type GiftsConfig,
+} from "../gifts/config";
 
 type GiftModalRuntimeOptions = {
   previewMode?: boolean;
 };
-
-function serializeForInlineScript(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
 
 function escapeAttr(value: unknown): string {
   return String(value ?? "")
@@ -31,11 +28,11 @@ function escapeHtml(value: unknown): string {
 }
 
 const BANK_FIELD_META = [
-  { key: "holder", label: "Titular", copyLabel: "Titular" },
-  { key: "bank", label: "Banco", copyLabel: "Banco" },
-  { key: "alias", label: "Alias", copyLabel: "Alias" },
-  { key: "cbu", label: "CBU / CVU", copyLabel: "CBU" },
-  { key: "cuit", label: "CUIT", copyLabel: "CUIT" },
+  { key: "holder", label: "Titular" },
+  { key: "bank", label: "Banco" },
+  { key: "alias", label: "Alias" },
+  { key: "cbu", label: "CBU / CVU" },
+  { key: "cuit", label: "CUIT" },
 ] as const;
 
 export function generarModalRegalosHTML(
@@ -44,71 +41,89 @@ export function generarModalRegalosHTML(
 ): string {
   const normalized = normalizeGiftConfig(cfg);
 
-  const visibleBankFields = BANK_FIELD_META.filter(({ key }) => {
-    const value = String(normalized.bank[key] || "").trim();
-    return normalized.visibility[key] && value.length > 0;
-  });
-  const showGiftList = Boolean(normalized.visibility.giftListLink && normalized.giftListUrl);
-  const hasVisibleMethods = visibleBankFields.length > 0 || showGiftList;
-
-  if (!normalized.enabled || !hasVisibleMethods) {
+  if (!normalized.enabled || !hasVisibleGiftMethods(normalized)) {
     return "";
   }
 
-  const bankRowsHtml = visibleBankFields
-    .map(
-      (field) => `
-        <article class="gift-card">
-          <div class="gift-card-copy">
-            <div class="gift-card-body">
-              <div class="gift-card-label">${escapeHtml(field.label)}</div>
-              <div class="gift-card-value">${escapeHtml(normalized.bank[field.key])}</div>
-            </div>
-            <button
-              type="button"
-              class="gift-copy-button"
-              data-gift-copy="1"
-              data-copy-value="${escapeAttr(normalized.bank[field.key])}"
-              data-copy-default="Copiar"
-              data-copy-success="Copiado"
-            >
-              Copiar
-            </button>
+  const bankAccountsHtml = getGiftAccounts(normalized)
+    .map((account) => {
+      const visibleFields = BANK_FIELD_META.filter(({ key }) => (
+        account.visibility[key] && account.bank[key].length > 0
+      ));
+      if (!visibleFields.length) return "";
+
+      const accountTitle = account.id === "usd" ? "Cuenta en dólares" : "Cuenta en pesos";
+      const rows = visibleFields.map((field) => {
+        const fieldLabel = account.id === "usd" && field.key === "cbu" ? "CBU" : field.label;
+        return `
+        <div class="gift-card-copy">
+          <div class="gift-card-body">
+            <div class="gift-card-label">${escapeHtml(fieldLabel)}</div>
+            <div class="gift-card-value">${escapeHtml(account.bank[field.key])}</div>
           </div>
+          <button
+            type="button"
+            class="gift-copy-button"
+            aria-label="Copiar ${escapeAttr(fieldLabel)} de ${escapeAttr(accountTitle.toLowerCase())}"
+            data-gift-copy="1"
+            data-copy-value="${escapeAttr(account.bank[field.key])}"
+            data-copy-default="Copiar"
+            data-copy-success="Copiado"
+          >Copiar</button>
+        </div>
+      `.trim();
+      }).join("");
+
+      return `
+        <article class="gift-card gift-account" data-gift-account="${account.id}">
+          <div class="gift-account-heading">
+            <span class="gift-currency">${account.currency}</span>
+            <h3>${accountTitle}</h3>
+          </div>
+          ${rows}
         </article>
-      `.trim()
-    )
+      `.trim();
+    })
     .join("");
 
-  const giftListHtml = showGiftList
-    ? `
-      <a
-        class="gift-link-button"
-        href="${escapeAttr(normalized.giftListUrl)}"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Ver lista de regalos
-      </a>
-    `.trim()
+  const giftLinkCardsHtml = getGiftLinks(normalized)
+    .filter((link) => link.visible && link.url)
+    .map((link) => {
+      const domain = new URL(link.url).hostname.replace(/^www\./i, "");
+      const title = link.title || domain;
+      const image = link.imageUrl
+        ? `<img data-gift-image="1" src="${escapeAttr(link.imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+        : "";
+      return `
+        <article class="gift-card gift-link-card" data-gift-link-id="${escapeAttr(link.id)}">
+          <div class="gift-link-preview" aria-hidden="true">
+            <span class="gift-link-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 8h18v4H3zM5 12v9h14v-9M12 8v13M12 8H7.5a2.5 2.5 0 1 1 2.4-3.2L12 8Zm0 0h4.5a2.5 2.5 0 1 0-2.4-3.2L12 8Z"/></svg>
+            </span>
+            ${image}
+          </div>
+          <div class="gift-link-copy">
+            <h4>${escapeHtml(title)}</h4>
+            <span class="gift-link-domain">${escapeHtml(domain)}</span>
+            <a class="gift-link-button" href="${escapeAttr(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeAttr(`Ver ${title} (abre en otra pestaña)`)}">
+              ${link.id === "legacy" ? "Ver lista de regalos" : "Ver regalo"} <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </article>
+      `.trim();
+    })
+    .join("");
+
+  const giftListHtml = giftLinkCardsHtml
+    ? `<section class="gift-list" aria-labelledby="gift-list-title"><h3 id="gift-list-title" class="gift-section-title">Lista de regalos</h3><div class="gift-link-list">${giftLinkCardsHtml}</div></section>`
     : "";
-
-  const emptyStateHtml = hasVisibleMethods
-    ? ""
-    : `
-      <div class="gift-empty-state">
-        Pueden acompanarnos con un detalle cuando quieran. Cuando agreguen alias, CBU o una lista externa, apareceran aqui.
-      </div>
-    `.trim();
-
-  const serializedConfig = serializeForInlineScript({
-    introText: normalized.introText,
-    hasVisibleMethods,
-  });
 
   return `
 <style>
   #modal-regalos {
+    --gift-accent: #692b9a;
+    --gift-soft: #faf5ff;
+    --gift-line: #e8e1eb;
     position: fixed;
     inset: 0;
     display: none;
@@ -122,7 +137,12 @@ export function generarModalRegalosHTML(
 
   #modal-regalos * {
     box-sizing: border-box;
-    font-family: "Cormorant Garamond", "Montserrat", "Segoe UI", sans-serif;
+    font-family: "Montserrat", "Segoe UI", sans-serif;
+  }
+
+  #modal-regalos :focus-visible {
+    outline: 3px solid #a16ac7;
+    outline-offset: 3px;
   }
 
   #modal-regalos .gift-shell {
@@ -130,28 +150,28 @@ export function generarModalRegalosHTML(
     width: 100%;
     max-width: 548px;
     overflow: hidden;
-    border-radius: 30px;
-    border: 1px solid rgba(251, 191, 204, 0.68);
-    background:
-      radial-gradient(circle at top, rgba(255,255,255,0.96), transparent 56%),
-      linear-gradient(180deg, #fffaf7 0%, #fff7f3 100%);
+    border-radius: 22px;
+    border: 1px solid var(--gift-line);
+    background: #ffffff;
     box-shadow: 0 36px 90px rgba(15, 23, 42, 0.26);
-  }
-
-  #modal-regalos .gift-shell::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 92px;
-    background: linear-gradient(135deg, rgba(254, 205, 211, 0.82), rgba(255, 244, 246, 0.72) 52%, rgba(254, 249, 195, 0.56));
-    pointer-events: none;
   }
 
   #modal-regalos .gift-content {
     position: relative;
-    max-height: 84vh;
+    max-height: calc(84vh - 64px);
+    max-height: min(calc(84dvh - 64px), 816px);
     overflow-y: auto;
-    padding: 32px 24px 24px;
+    overscroll-behavior: contain;
+    padding: 4px 24px 24px;
+  }
+
+  #modal-regalos .gift-toolbar {
+    position: relative;
+    display: flex;
+    height: 64px;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 64px;
   }
 
   #modal-regalos .gift-hero {
@@ -167,15 +187,14 @@ export function generarModalRegalosHTML(
     align-items: center;
     gap: 6px;
     border-radius: 9999px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    background: rgba(255, 255, 255, 0.84);
+    border: 1px solid var(--gift-line);
+    background: var(--gift-soft);
     padding: 7px 14px;
-    color: #be185d;
+    color: var(--gift-accent);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    box-shadow: 0 8px 24px rgba(244, 114, 182, 0.12);
   }
 
   #modal-regalos .gift-chip-heart {
@@ -189,18 +208,17 @@ export function generarModalRegalosHTML(
     right: 14px;
     z-index: 2;
     display: inline-flex;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--gift-line);
     border-radius: 9999px;
     background: rgba(255, 255, 255, 0.9);
     color: #64748b;
     font-size: 20px;
     line-height: 1;
     cursor: pointer;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
     transition: transform 0.15s ease, background-color 0.15s ease;
   }
 
@@ -212,20 +230,23 @@ export function generarModalRegalosHTML(
   #modal-regalos .gift-title {
     margin: 20px 0 0;
     max-width: 430px;
-    font-size: 40px;
-    line-height: 0.96;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.25;
     color: #111827;
     letter-spacing: -0.02em;
   }
 
   #modal-regalos .gift-intro {
-    margin: 20px auto 0;
+    margin: 14px auto 0;
     max-width: 442px;
     font-family: "Montserrat", "Segoe UI", sans-serif;
-    font-size: 15px;
-    line-height: 1.85;
+    font-size: 14px;
+    line-height: 1.75;
     color: #64748b;
     text-align: center;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
   }
 
   #modal-regalos .gift-divider {
@@ -233,7 +254,7 @@ export function generarModalRegalosHTML(
     max-width: 456px;
     height: 1px;
     margin: 24px auto 0;
-    background: linear-gradient(90deg, transparent, rgba(251, 191, 204, 0.85), transparent);
+    background: var(--gift-line);
   }
 
   #modal-regalos .gift-methods {
@@ -244,11 +265,39 @@ export function generarModalRegalosHTML(
   }
 
   #modal-regalos .gift-card {
-    border-radius: 22px;
-    border: 1px solid rgba(251, 191, 204, 0.52);
-    background: rgba(255, 253, 251, 0.96);
+    border-radius: 14px;
+    border: 1px solid var(--gift-line);
+    background: #ffffff;
     padding: 16px;
-    box-shadow: 0 16px 38px rgba(244, 63, 94, 0.08);
+  }
+
+  #modal-regalos .gift-account-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  #modal-regalos .gift-account-heading h3,
+  #modal-regalos .gift-section-title {
+    margin: 0;
+    color: #262626;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  #modal-regalos .gift-currency {
+    display: inline-flex;
+    min-width: 42px;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: var(--gift-soft);
+    color: var(--gift-accent);
+    font-size: 12px;
+    font-weight: 600;
   }
 
   #modal-regalos .gift-card-copy {
@@ -256,6 +305,8 @@ export function generarModalRegalosHTML(
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    padding: 10px 0;
+    border-top: 1px solid var(--gift-line);
   }
 
   #modal-regalos .gift-card-body {
@@ -264,33 +315,31 @@ export function generarModalRegalosHTML(
   }
 
   #modal-regalos .gift-card-label {
-    color: #f43f5e;
+    color: #6d6572;
     font-family: "Montserrat", "Segoe UI", sans-serif;
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
+    font-weight: 400;
   }
 
   #modal-regalos .gift-card-value {
-    margin-top: 8px;
+    margin-top: 3px;
     color: #111827;
     font-family: "Montserrat", "Segoe UI", sans-serif;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 1.55;
-    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   #modal-regalos .gift-copy-button,
   #modal-regalos .gift-link-button,
   #modal-regalos .gift-footer-close {
     display: inline-flex;
-    min-height: 46px;
+    min-height: 44px;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
-    padding: 12px 18px;
+    border-radius: 9px;
+    padding: 10px 14px;
     font-family: "Montserrat", "Segoe UI", sans-serif;
     font-size: 13px;
     font-weight: 600;
@@ -301,10 +350,11 @@ export function generarModalRegalosHTML(
 
   #modal-regalos .gift-copy-button {
     flex-shrink: 0;
-    border: 1px solid #fecdd3;
-    background: rgba(255, 241, 242, 0.92);
-    color: #be185d;
-    min-width: 126px;
+    border: 1px solid var(--gift-line);
+    background: var(--gift-soft);
+    color: var(--gift-accent);
+    min-width: 80px;
+    font-size: 12px;
   }
 
   #modal-regalos .gift-copy-button.is-copied {
@@ -320,23 +370,101 @@ export function generarModalRegalosHTML(
   }
 
   #modal-regalos .gift-link-button {
-    width: 100%;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    background: linear-gradient(135deg, #111827, #1f2937);
-    color: #ffffff;
-    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+    gap: 6px;
+    margin-top: 3px;
+    padding: 6px 0;
+    color: var(--gift-accent);
+    background: transparent;
+    font-size: 12px;
+    line-height: 1.4;
   }
 
-  #modal-regalos .gift-empty-state {
-    border-radius: 22px;
-    border: 1px dashed rgba(251, 191, 204, 0.72);
-    background: rgba(255, 253, 251, 0.96);
-    padding: 18px 16px;
-    color: #64748b;
-    font-family: "Montserrat", "Segoe UI", sans-serif;
-    font-size: 13px;
-    line-height: 1.8;
-    text-align: center;
+  #modal-regalos .gift-list {
+    margin-top: 6px;
+  }
+
+  #modal-regalos .gift-link-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  #modal-regalos .gift-link-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  #modal-regalos .gift-link-preview {
+    position: relative;
+    flex-shrink: 0;
+    width: 76px;
+    height: 80px;
+    overflow: hidden;
+    border-radius: 9px;
+    background: var(--gift-soft);
+  }
+
+  #modal-regalos .gift-link-placeholder,
+  #modal-regalos .gift-link-preview img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #modal-regalos .gift-link-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9770b0;
+  }
+
+  #modal-regalos .gift-link-placeholder svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  #modal-regalos .gift-link-preview img {
+    object-fit: cover;
+  }
+
+  #modal-regalos .gift-link-preview img[hidden] {
+    display: none;
+  }
+
+  #modal-regalos .gift-link-copy {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+
+  #modal-regalos .gift-link-copy h4 {
+    margin: 0;
+    color: #262626;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  #modal-regalos .gift-link-domain {
+    display: block;
+    margin-top: 3px;
+    color: #6d6572;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  #modal-regalos .gift-copy-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   #modal-regalos .gift-actions {
@@ -345,8 +473,8 @@ export function generarModalRegalosHTML(
 
   #modal-regalos .gift-footer-close {
     width: 100%;
-    border: 1px solid rgba(251, 207, 232, 0.78);
-    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--gift-line);
+    background: #ffffff;
     color: #475569;
   }
 
@@ -356,7 +484,7 @@ export function generarModalRegalosHTML(
     }
 
     #modal-regalos .gift-content {
-      padding: 30px 18px 18px;
+      padding: 4px 16px 16px;
     }
 
     #modal-regalos .gift-hero {
@@ -365,11 +493,11 @@ export function generarModalRegalosHTML(
 
     #modal-regalos .gift-title {
       margin-top: 18px;
-      font-size: 33px;
+      font-size: 23px;
     }
 
     #modal-regalos .gift-intro {
-      margin-top: 18px;
+      margin-top: 14px;
       font-size: 14px;
       line-height: 1.8;
     }
@@ -379,64 +507,79 @@ export function generarModalRegalosHTML(
     }
 
     #modal-regalos .gift-card {
-      padding: 16px;
+      padding: 14px;
     }
 
     #modal-regalos .gift-card-copy {
-      flex-direction: column;
-      align-items: stretch;
+      gap: 10px;
     }
 
     #modal-regalos .gift-copy-button {
-      width: 100%;
-      min-width: 0;
+      min-width: 68px;
+      padding: 8px 10px;
+    }
+
+    #modal-regalos .gift-link-card {
+      padding: 10px;
+    }
+
+    #modal-regalos .gift-link-preview {
+      width: 60px;
+      height: 68px;
     }
   }
 </style>
 
-<div id="modal-regalos">
+<div id="modal-regalos" aria-hidden="true">
   <div class="gift-shell" role="dialog" aria-modal="true" aria-labelledby="gift-title" aria-describedby="gift-intro">
-    <button id="gift-close" class="gift-close" type="button" aria-label="Cerrar">×</button>
+    <div class="gift-toolbar">
+      <div class="gift-chip">
+        <span class="gift-chip-heart" aria-hidden="true">♥</span>
+        Regalos
+      </div>
+      <button id="gift-close" class="gift-close" type="button" aria-label="Cerrar">×</button>
+    </div>
 
     <div class="gift-content">
       <div class="gift-hero">
-        <div class="gift-chip">
-          <span class="gift-chip-heart" aria-hidden="true">♥</span>
-          Regalos
-        </div>
-
-        <h2 id="gift-title" class="gift-title">Un gesto con amor</h2>
+        <h2 id="gift-title" class="gift-title">Un regalo con mucho amor</h2>
       </div>
 
       <p id="gift-intro" class="gift-intro">${escapeHtml(normalized.introText)}</p>
       <div class="gift-divider" aria-hidden="true"></div>
 
       <div class="gift-methods">
-        ${bankRowsHtml}
+        ${bankAccountsHtml}
         ${giftListHtml}
-        ${emptyStateHtml}
       </div>
 
       <div class="gift-actions">
         <button id="gift-cancel" class="gift-footer-close" type="button">Cerrar</button>
       </div>
+      <p class="gift-copy-status" role="status" aria-live="polite"></p>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  var GIFT_CONFIG = ${serializedConfig};
   var modal = document.getElementById("modal-regalos");
-  if (!modal || !GIFT_CONFIG) return;
+  if (!modal) return;
 
   var dialog = modal.querySelector(".gift-shell");
   var closeButton = document.getElementById("gift-close");
   var cancelButton = document.getElementById("gift-cancel");
+  var copyStatus = modal.querySelector(".gift-copy-status");
   var body = document.body;
   var previousOverflow = "";
   var lastFocused = null;
   var copyTimers = new Map();
+
+  Array.prototype.forEach.call(modal.querySelectorAll("[data-gift-image]"), function(image){
+    function showFallback(){ image.hidden = true; }
+    image.addEventListener("error", showFallback);
+    if (image.complete && image.naturalWidth === 0) showFallback();
+  });
 
   function isOpen(){
     return modal.style.display === "flex";
@@ -458,6 +601,7 @@ export function generarModalRegalosHTML(
   }
 
   function resetCopyButtons(){
+    if (copyStatus) copyStatus.textContent = "";
     if (copyTimers.size) {
       copyTimers.forEach(function(timerId){
         window.clearTimeout(timerId);
@@ -473,17 +617,11 @@ export function generarModalRegalosHTML(
     );
   }
 
-  function copyValue(value){
-    var text = String(value || "");
-    if (!text) return Promise.resolve(false);
-
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      return navigator.clipboard.writeText(text).then(function(){ return true; }).catch(function(){ return false; });
-    }
-
+  function fallbackCopy(text){
     return new Promise(function(resolve){
+      var textarea = document.createElement("textarea");
+      var activeElement = document.activeElement;
       try {
-        var textarea = document.createElement("textarea");
         textarea.value = text;
         textarea.setAttribute("readonly", "");
         textarea.style.position = "fixed";
@@ -492,12 +630,26 @@ export function generarModalRegalosHTML(
         body.appendChild(textarea);
         textarea.select();
         var ok = document.execCommand("copy");
-        body.removeChild(textarea);
         resolve(Boolean(ok));
       } catch (_error) {
         resolve(false);
+      } finally {
+        textarea.remove();
+        if (activeElement && typeof activeElement.focus === "function") activeElement.focus();
       }
     });
+  }
+
+  function copyValue(value){
+    var text = String(value || "");
+    if (!text) return Promise.resolve(false);
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return Promise.resolve().then(function(){
+        return navigator.clipboard.writeText(text);
+      }).then(function(){ return true; }).catch(function(){ return fallbackCopy(text); });
+    }
+    return fallbackCopy(text);
   }
 
   function openModal(trigger){
@@ -505,9 +657,10 @@ export function generarModalRegalosHTML(
     previousOverflow = body.style.overflow;
     lastFocused = trigger || document.activeElement;
     modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
     body.style.overflow = "hidden";
     window.requestAnimationFrame(function(){
-      if (closeButton && typeof closeButton.focus === "function") {
+      if (isOpen() && closeButton && typeof closeButton.focus === "function") {
         closeButton.focus();
       }
     });
@@ -516,6 +669,7 @@ export function generarModalRegalosHTML(
   function closeModal(){
     if (!isOpen()) return;
     modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
     body.style.overflow = previousOverflow || "";
     resetCopyButtons();
     if (lastFocused && typeof lastFocused.focus === "function") {
@@ -555,7 +709,10 @@ export function generarModalRegalosHTML(
     var last = focusable[focusable.length - 1];
     var active = document.activeElement;
 
-    if (event.shiftKey && active === first) {
+    if (!dialog.contains(active)) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && active === first) {
       event.preventDefault();
       last.focus();
     } else if (!event.shiftKey && active === last) {
@@ -578,6 +735,8 @@ export function generarModalRegalosHTML(
 
     var copyValueRaw = copyButton.getAttribute("data-copy-value") || "";
     copyValue(copyValueRaw).then(function(ok){
+      if (!isOpen()) return;
+      if (copyStatus) copyStatus.textContent = ok ? "Dato copiado." : "No se pudo copiar. Podés seleccionar el dato y copiarlo manualmente.";
       if (!ok) return;
       setCopyButtonState(copyButton, true);
 

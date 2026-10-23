@@ -325,6 +325,22 @@ records activation status and verification limits. The
 retains the earlier local and partial-release baseline.
 Access obligations belong to [Security Contract](../contracts/SECURITY_CONTRACT.md).
 
+### Gift link metadata quota (`giftLinkMetadataUsage`)
+
+`giftLinkMetadataUsage/{sha256(uid)}` is a backend-only admission counter for
+`getGiftLinkMetadata`, independent of persisted invitation content. One document
+per authenticated UID holds `{ schemaVersion:1, minute, minuteCount, day,
+dayCount, updatedAtMs }`, using UTC minute/day window numbers. Limits
+are 30 requests per minute and 200 per UTC day; a Firestore transaction reserves
+capacity before the external request. Unavailable accounting blocks fetching.
+The hash is pseudonymous, not anonymous. This collection contains no raw UID,
+gift URL, product name, image URL or fetched HTML. All SDK access, including
+administrative users and descendants, is denied and excluded from fallback.
+No TTL, cleanup job or remote migration is introduced.
+The [Gifts contract](../contracts/GIFTS_SYSTEM_CONTRACT.md#autocompletado-de-enlaces)
+owns the authoring behavior. Local implementation does not certify deployment
+of the callable or its required Firestore Rules.
+
 ## 3. Sections Model
 Sections are stored in the `secciones` array inside the draft document. The editor and the HTML generator both sort sections by `orden`.
 
@@ -1037,11 +1053,13 @@ Stored public RSVP records include both:
 - legacy mirrors: `nombre`, `asistencia`, `confirma`, `cantidad`, `mensaje`
 
 ### Root Config: `gifts`
-Current normalized gifts config shape is:
+Current normalized gifts config shape is V2. V1 inputs are normalized without
+discarding their values or visibility: the existing bank is the ARS account and
+the existing external list remains independently editable.
 
 | Field | Status | Notes |
 | --- | --- | --- |
-| `version` | Required after normalization | Current version is `1`. |
+| `version` | Required after normalization | Current version is `2`. |
 | `enabled` | Required after normalization | Boolean toggle. |
 | `introText` | Required after normalization | Introductory text. |
 | `bank.holder` | Required after normalization | Bank holder name, may be empty. |
@@ -1056,6 +1074,30 @@ Current normalized gifts config shape is:
 | `visibility.cuit` | Required after normalization | Visibility flag. |
 | `visibility.giftListLink` | Required after normalization | Visibility flag. |
 | `giftListUrl` | Required after normalization | Sanitized external URL, may be empty. |
+| `bankUsd` | Required after normalization | USD account, with the same `holder`, `bank`, `alias`, `cbu`, `cuit` string fields as `bank`. Empty by default. |
+| `visibilityUsd` | Required after normalization | Independent booleans for the five USD fields; all false by default. |
+| `giftLinks` | Required after normalization | Ordered array of up to 30 additional gift cards; empty by default. Each item has stable `id`, `url`, `title`, `imageUrl`, and boolean `visible`. |
+
+`bank` / `visibility` remain the authority for the ARS account and legacy list;
+`bankUsd` / `visibilityUsd` own the USD account. Currency is derived from those
+two fixed owners, not inferred from bank names, aliases or numbers. Both
+accounts may coexist with the list. No third/international account shape or
+SWIFT/IBAN fields are introduced.
+
+`giftListUrl` is not copied into `giftLinks`. `getGiftLinks` is a read projection
+that combines the legacy external list (reserved id `legacy`) with the new
+cards. The pure canonical rules live in `shared/giftsConfig.cjs`; client and
+TypeScript server wrappers consume them, and the shared-copy map distributes
+the runtime. Gift links allow HTTP/HTTPS; optional images require HTTPS. Unsafe
+schemes and URL credentials are rejected. Titles and URLs are bounded; duplicate
+destinations/identities are normalized deterministically.
+
+Cards contain editable names and optional image URLs, which the editor may
+prefill from public link metadata through `getGiftLinkMetadata`. Fetch status,
+requests and field provenance stay in the modal session; no product price,
+stock, payment state or reservation is persisted. A missing or failed image
+has a visual fallback and does not invalidate the link.
+Hidden values are retained; public HTML includes only complete visible methods.
 
 `enabled` is the single Gifts functional switch. It controls the gifts CTA visibility and any section/group/standalone-root render derivation that uses `functionalAssociation: "gifts"`.
 

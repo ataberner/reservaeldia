@@ -17,7 +17,8 @@ const contract = require("../../shared/firebaseEnvironment.cjs");
 const { listAvailableMusicTracks } = require("../../shared/musicCatalog.cjs");
 const runId = `rules-${randomUUID()}`;
 const replacements = { A: `${runId}-a`, B: `${runId}-b`, ADMIN: `${runId}-admin`, SUPER: `${runId}-server-super` };
-const expand = (value, id) => JSON.parse(JSON.stringify(value).replace(/\{(A|B|ADMIN|SUPER|ID)\}/g,
+replacements.HASH_A = createHash("sha256").update(replacements.A).digest("hex");
+const expand = (value, id) => JSON.parse(JSON.stringify(value).replace(/\{(A|B|ADMIN|SUPER|HASH_A|ID)\}/g,
   (_, key) => key === "ID" ? `${runId}-${id}` : replacements[key]));
 const clients = new Map();
 const results = [];

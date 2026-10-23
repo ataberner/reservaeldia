@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 
 function GiftValue({ value, method }) {
   let host = "";
-  if (method === "giftListLink" && value) {
+  if ((method === "giftListLink" || method.startsWith("giftLink:")) && value) {
     try { host = new URL(value).host; } catch { /* Normalized by the gift owner. */ }
   }
   return <span className="block min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">

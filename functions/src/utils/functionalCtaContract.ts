@@ -1,4 +1,4 @@
-import { normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
+import { hasVisibleGiftMethods, normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
 import { normalizeRsvpConfig, type RSVPConfig } from "../rsvp/config";
 
 export type FunctionalCtaObjectType = "rsvp-boton" | "regalo-boton";
@@ -69,17 +69,6 @@ function hasButtonOfType(
     : false;
 }
 
-function hasUsableGiftMethods(config: GiftsConfig): boolean {
-  if (!config.enabled) return false;
-
-  const hasVisibleBankField = Object.entries(config.bank).some(([fieldKey, value]) => {
-    if (!config.visibility[fieldKey as keyof GiftsConfig["visibility"]]) return false;
-    return String(value || "").trim().length > 0;
-  });
-
-  return hasVisibleBankField || Boolean(config.visibility.giftListLink && config.giftListUrl);
-}
-
 export function normalizeFunctionalCtaObjectType(
   value: unknown
 ): FunctionalCtaObjectType | null {
@@ -106,7 +95,7 @@ export function resolveFunctionalCtaContract(params: {
   const giftRootPresent = isRecord(params.giftsConfig);
   const giftConfig = giftRootPresent ? normalizeGiftConfig(params.giftsConfig) : null;
   const giftEnabled = giftConfig ? giftConfig.enabled === true : null;
-  const giftHasUsableMethods = giftConfig ? hasUsableGiftMethods(giftConfig) : false;
+  const giftHasUsableMethods = giftConfig ? hasVisibleGiftMethods(giftConfig) : false;
 
   const rsvp: ResolvedRsvpCtaContract = !rsvpButtonPresent
     ? {

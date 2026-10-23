@@ -21,10 +21,6 @@ import { resolveTemplatePreviewViewportLayout } from "@/components/preview/templ
 import PreviewLoadingPresentation from "@/components/preview/PreviewLoadingPresentation";
 import { CHUNK_LOAD_RECOVERY_ACTION } from "@/domain/runtime/chunkLoadRecovery";
 
-const TEMPLATE_PREVIEW_ACTION_PANEL_BOTTOM_GAP = 20;
-const TEMPLATE_PREVIEW_ACTION_PANEL_SCROLL_BUFFER = 24;
-const TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT = 116;
-const TEMPLATE_PREVIEW_SCROLL_SPACER_ID = "template-preview-modal-scroll-spacer";
 const SITE_PRIMARY_BUTTON_CLASS =
   "inline-flex h-10 min-w-[132px] items-center justify-center rounded-[33px] border border-transparent bg-gradient-to-r from-[#692B9A] to-[#F39F5F] px-5 text-sm font-semibold text-white shadow-none transition-all duration-200 hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F39F5F]/40 disabled:cursor-not-allowed disabled:opacity-70";
 
@@ -38,41 +34,6 @@ function readHostViewportWidth() {
   return window.innerWidth || document.documentElement?.clientWidth || 0;
 }
 
-function applyTemplatePreviewScrollSpacer(iframe, insetPixels) {
-  const frameDocument = iframe?.contentDocument;
-  const safeInset = Math.max(0, Math.ceil(Number(insetPixels) || 0));
-  if (!frameDocument?.body || safeInset <= 0) return;
-
-  const invitationRoot = frameDocument.querySelector(".inv") || frameDocument.body;
-  let spacer = frameDocument.getElementById(TEMPLATE_PREVIEW_SCROLL_SPACER_ID);
-  if (!spacer) {
-    spacer = frameDocument.createElement("div");
-    spacer.id = TEMPLATE_PREVIEW_SCROLL_SPACER_ID;
-    spacer.setAttribute("aria-hidden", "true");
-  }
-
-  if (spacer.parentNode !== invitationRoot) {
-    invitationRoot.appendChild(spacer);
-  }
-
-  spacer.style.cssText = [
-    "display: block",
-    "width: 100%",
-    `height: ${safeInset}px`,
-    "min-height: 0",
-    "flex: 0 0 auto",
-    "position: relative",
-    "left: auto",
-    "top: auto",
-    "transform: none",
-    "background: transparent",
-    "pointer-events: none",
-    "visibility: hidden",
-  ].join(";");
-  frameDocument.documentElement.style.scrollPaddingBottom = `${safeInset}px`;
-  frameDocument.body.style.scrollPaddingBottom = `${safeInset}px`;
-}
-
 function TemplatePreviewViewport({
   iframeRef,
   src,
@@ -81,7 +42,6 @@ function TemplatePreviewViewport({
   title,
   onError,
   onLoad,
-  overlayHeight = 0,
 }) {
   const stageRef = useRef(null);
   const readinessCleanupRef = useRef(null);
@@ -138,16 +98,6 @@ function TemplatePreviewViewport({
     stageHeight,
     hostViewportWidth,
   });
-  const overlayHeightForScroll =
-    overlayHeight > 0
-      ? overlayHeight
-      : TEMPLATE_PREVIEW_ACTION_PANEL_FALLBACK_HEIGHT;
-  const bottomScrollInset = Math.ceil(
-    (overlayHeightForScroll +
-      TEMPLATE_PREVIEW_ACTION_PANEL_BOTTOM_GAP +
-      TEMPLATE_PREVIEW_ACTION_PANEL_SCROLL_BUFFER) /
-      scale
-  );
   const resolvedSrcDoc = useMemo(
     () =>
       srcDoc
@@ -190,15 +140,16 @@ function TemplatePreviewViewport({
         dispatchMobileScrollEvent: false,
       }
     );
-    applyTemplatePreviewScrollSpacer(iframe, bottomScrollInset);
-  }, [bottomScrollInset, iframeRef, previewLayoutMode, previewViewport, scale]);
+  }, [iframeRef, previewLayoutMode, previewViewport, scale]);
 
   return (
     <div
       ref={stageRef}
+      data-template-preview-stage="true"
       className="flex h-full w-full items-start justify-center overflow-hidden"
     >
       <div
+        data-template-preview-viewport="true"
         className="relative overflow-hidden bg-white"
         aria-busy={!frameReady ? "true" : undefined}
         style={{ width: scaledWidth, height: scaledHeight }}
@@ -236,7 +187,6 @@ function TemplatePreviewViewport({
                     dispatchMobileScrollEvent: false,
                   }
                 );
-                applyTemplatePreviewScrollSpacer(iframe, bottomScrollInset);
                 onLoad?.({
                   event,
                   scale,
@@ -300,11 +250,9 @@ export default function TemplatePreviewModal({
   const modalPanelRef = useRef(null);
   const closeButtonRef = useRef(null);
   const previewFrameRef = useRef(null);
-  const previewActionPanelRef = useRef(null);
   const formRef = useRef(null);
   const inputPatchTimersRef = useRef({});
   const [mode, setMode] = useState("collapsed");
-  const [previewActionPanelHeight, setPreviewActionPanelHeight] = useState(0);
   const errorMessage = toText(
     previewStatus?.error,
     "No se pudo cargar la vista previa de esta plantilla."
@@ -346,27 +294,6 @@ export default function TemplatePreviewModal({
     },
     []
   );
-
-  useEffect(() => {
-    if (!visible || typeof window === "undefined") return undefined;
-    const node = previewActionPanelRef.current;
-    if (!node) return undefined;
-
-    const measure = () => {
-      setPreviewActionPanelHeight(Math.ceil(node.getBoundingClientRect().height || 0));
-    };
-
-    measure();
-
-    if (typeof ResizeObserver === "function") {
-      const observer = new ResizeObserver(measure);
-      observer.observe(node);
-      return () => observer.disconnect();
-    }
-
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [visible, title, canCustomizeEvent, isLandingMode, isExpanded]);
 
   useEffect(() => {
     if (!visible || typeof document === "undefined" || typeof window === "undefined") return undefined;
@@ -538,133 +465,137 @@ export default function TemplatePreviewModal({
           </button>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div
-              className="relative min-h-[280px] overflow-hidden bg-white transition-[flex-basis] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:min-h-[320px]"
-              style={{ flexBasis: isExpanded ? "50%" : "100%" }}
-            >
-              <div className="absolute inset-0 bg-white">
-                {shouldShowPreviewFrame ? (
-                  <TemplatePreviewViewport
-                    srcDoc={shouldShowGeneratedPreview ? previewHtml : null}
-                    sandbox="allow-scripts allow-same-origin"
-                    title={`Vista previa de ${title}`}
-                    iframeRef={previewFrameRef}
-                    overlayHeight={previewActionPanelHeight}
-                    onLoad={({ scale, previewViewport }) => {
-                      if (!previewHtml) return;
-                      const auditViewport = previewViewport || "desktop";
-                      captureCountdownAuditFromHtmlString(previewHtml, {
-                        stage: `template-preview-${auditViewport}`,
-                        renderer: "dom-generated",
-                        sourceDocument: "template-preview-modal",
-                        viewport: auditViewport,
-                        wrapperScale: scale,
-                        usesRasterThumbnail: false,
-                      });
-                    }}
-                  />
-                ) : null}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div
+                className="relative min-h-0 overflow-hidden bg-white transition-[flex-basis] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                style={{ flexBasis: isExpanded ? "50%" : "100%" }}
+              >
+                <div className="absolute inset-0 bg-white">
+                  {shouldShowPreviewFrame ? (
+                    <TemplatePreviewViewport
+                      srcDoc={shouldShowGeneratedPreview ? previewHtml : null}
+                      sandbox="allow-scripts allow-same-origin"
+                      title={`Vista previa de ${title}`}
+                      iframeRef={previewFrameRef}
+                      onLoad={({ scale, previewViewport }) => {
+                        if (!previewHtml) return;
+                        const auditViewport = previewViewport || "desktop";
+                        captureCountdownAuditFromHtmlString(previewHtml, {
+                          stage: `template-preview-${auditViewport}`,
+                          renderer: "dom-generated",
+                          sourceDocument: "template-preview-modal",
+                          viewport: auditViewport,
+                          wrapperScale: scale,
+                          usesRasterThumbnail: false,
+                        });
+                      }}
+                    />
+                  ) : null}
 
-                {previewRuntime.shouldShowErrorState && (
-                  <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#fcfbff] px-6 text-center">
-                    <p className="max-w-xl text-sm text-rose-600">{errorMessage}</p>
-                    {shouldShowChunkRecovery ? (
-                      <button
-                        type="button"
-                        onClick={onRecoverStaleChunks}
-                        className={SITE_PRIMARY_BUTTON_CLASS}
-                      >
-                        Actualizar aplicación
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-
-                {previewRuntime.shouldShowMissingPreviewState ? (
-                  <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
-                    <p className="max-w-xl text-sm text-rose-600">
-                      No se pudo cargar la vista previa de esta plantilla.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#120822]/24 via-transparent to-transparent sm:h-28" />
-
-              <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 px-4 sm:bottom-5 sm:px-6">
-                <div
-                  ref={previewActionPanelRef}
-                  className="pointer-events-auto relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-2.5 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-3"
-                >
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.42),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),transparent_55%)]" />
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/55" />
-                  <div className="flex flex-col items-center justify-center gap-2 lg:flex-row lg:items-center lg:justify-center">
-                    <div className="relative min-w-0">
-                      <div className="flex flex-wrap items-center justify-center gap-2">
-                        <p className="text-center text-sm font-semibold text-slate-900 sm:text-base">{title}</p>
-                      </div>
-                    </div>
-
-                    <div className="relative flex flex-wrap justify-center gap-2">
-                      {isLandingMode ? (
+                  {previewRuntime.shouldShowErrorState && (
+                    <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#fcfbff] px-6 text-center">
+                      <p className="max-w-xl text-sm text-rose-600">{errorMessage}</p>
+                      {shouldShowChunkRecovery ? (
                         <button
                           type="button"
-                          onClick={handleLandingUseTemplate}
+                          onClick={onRecoverStaleChunks}
+                          className={SITE_PRIMARY_BUTTON_CLASS}
+                        >
+                          Actualizar aplicación
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {previewRuntime.shouldShowMissingPreviewState ? (
+                    <div className="flex h-full items-center justify-center bg-[#fcfbff] px-6 text-center">
+                      <p className="max-w-xl text-sm text-rose-600">
+                        No se pudo cargar la vista previa de esta plantilla.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#120822]/24 via-transparent to-transparent sm:h-28" />
+              </div>
+
+              {canCustomizeEvent ? (
+                <div
+                  className={`relative overflow-hidden bg-[#f7f1ff] ${
+                    isExpanded ? "min-h-0 flex-1" : "basis-0"
+                  }`}
+                >
+                  <TemplateEventForm
+                    ref={formRef}
+                    template={template}
+                    formState={formState}
+                    onFormStateChange={onFormStateChange}
+                    onLiveFieldUpdate={handleLiveFieldUpdate}
+                    onSaveAndOpen={handleSaveAndOpenWithPreview}
+                    openingEditor={openingEditor}
+                    mode={mode}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              data-template-preview-actions="true"
+              className="relative z-20 min-h-0 max-h-[40%] shrink-0 overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,#fbf8ff_0%,#f4eeff_100%)] px-[16px] py-[10px] sm:px-[24px]"
+              style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}
+            >
+              <div
+                className="pointer-events-auto relative overflow-hidden rounded-[22px] border border-white/28 bg-[linear-gradient(135deg,rgba(255,255,255,0.34)_0%,rgba(255,255,255,0.14)_52%,rgba(255,255,255,0.08)_100%)] p-2.5 shadow-[0_24px_54px_rgba(15,23,42,0.18)] backdrop-blur-[18px] sm:p-3"
+              >
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.42),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),transparent_55%)]" />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/55" />
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <div className="relative min-w-0">
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <p className="break-words text-center text-sm font-semibold text-slate-900 [overflow-wrap:anywhere] sm:text-base">{title}</p>
+                    </div>
+                  </div>
+
+                  <div className="relative flex flex-wrap justify-center gap-2">
+                    {isLandingMode ? (
+                      <button
+                        type="button"
+                        onClick={handleLandingUseTemplate}
+                        disabled={openingEditor}
+                        className={SITE_PRIMARY_BUTTON_CLASS}
+                      >
+                        {useTemplateLabel}
+                      </button>
+                    ) : (
+                      <>
+                        {canCustomizeEvent ? (
+                          <button
+                            type="button"
+                            onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
+                            disabled={openingEditor}
+                            className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={handlePrimaryAction}
                           disabled={openingEditor}
                           className={SITE_PRIMARY_BUTTON_CLASS}
                         >
-                          {useTemplateLabel}
+                          {openingEditor
+                            ? "Creando borrador..."
+                            : isExpanded
+                              ? "Crear invitacion"
+                              : useTemplateLabel}
                         </button>
-                      ) : (
-                        <>
-                          {canCustomizeEvent ? (
-                            <button
-                              type="button"
-                              onClick={() => setMode(isExpanded ? "collapsed" : "expanded")}
-                              disabled={openingEditor}
-                              className="inline-flex min-h-9 items-center justify-center rounded-lg border border-white/40 bg-white/18 px-3.5 py-2 text-[13px] font-semibold text-[#5f3596] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isExpanded ? "Ocultar personalizacion" : "Personalizar datos del evento"}
-                            </button>
-                          ) : null}
-
-                          <button
-                            type="button"
-                            onClick={handlePrimaryAction}
-                            disabled={openingEditor}
-                            className={SITE_PRIMARY_BUTTON_CLASS}
-                          >
-                            {openingEditor
-                              ? "Creando borrador..."
-                              : isExpanded
-                                ? "Crear invitacion"
-                                : useTemplateLabel}
-                          </button>
-                        </>
-                      )}
-                    </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-
-            {canCustomizeEvent ? (
-              <div
-                className={`relative overflow-hidden bg-[#f7f1ff] ${
-                  isExpanded ? "min-h-0 flex-1" : "basis-0"
-                }`}
-              >
-                <TemplateEventForm
-                  ref={formRef}
-                  template={template}
-                  formState={formState}
-                  onFormStateChange={onFormStateChange}
-                  onLiveFieldUpdate={handleLiveFieldUpdate}
-                  onSaveAndOpen={handleSaveAndOpenWithPreview}
-                  openingEditor={openingEditor}
-                  mode={mode}
-                />
-              </div>
-            ) : null}
           </div>
         </div>
       </div>

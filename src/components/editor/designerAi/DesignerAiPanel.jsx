@@ -107,6 +107,9 @@ function normalizeCallableError(error) {
   if (code.includes("recovery-conflict") || code.includes("evidence-conflict")) {
     return "El estado cambió y no puedo reanudar ese lote con seguridad. Enviá una nueva solicitud para interpretar los datos actuales.";
   }
+  if (code === "designer-ai/gift-manual-activation-required") {
+    return "Revisá la cuenta en dólares y activá Regalos desde su pestaña antes de continuar por chat.";
+  }
   const baseMessage = code.includes("permission-denied")
     ? "Tu sesión ya no tiene permiso para usar esta experiencia."
     : code.includes("already-exists")

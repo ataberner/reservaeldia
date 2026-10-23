@@ -105,6 +105,46 @@ test("ordinary copy and empty gift activation need no confirmation", () => {
   }
 });
 
+test("global gift activation reviews visible V2 link destinations without exposing bank data", () => {
+  for (const active of [false, true]) {
+    const ctx = context([enabled(!active)], {
+      enabled: active, bankUsd: { alias: "USD.PRIVADO" }, visibilityUsd: { alias: false },
+      giftLinks: [
+        { id: "coffee", url: "https://regalos.test/cafe", title: "Cafetera", visible: true },
+        { id: "hidden", url: "https://regalos.test/oculto", title: "Oculto", visible: false },
+      ],
+    });
+    const proposal = createDesignerAiGiftProposal(ctx);
+    assert.ok(proposal);
+    assert.deepEqual(proposal.steps.flatMap(step => step.rows).map(row => row.method), ["giftLink:coffee"]);
+    assert.doesNotMatch(JSON.stringify(proposal), /USD.PRIVADO|regalos.test\/oculto/);
+    assert.throws(() => requireDesignerAiGiftApproval(ctx, null), { code: "designer-ai/gift-approval-required" });
+    requireDesignerAiGiftApproval(ctx, approveDesignerAiGiftProposal(proposal, ctx));
+  }
+});
+
+test("V2 link exposure approval binds destinations and is required after an unpersisted toggle", () => {
+  const raw = { enabled: false, giftLinks: [{ id: "coffee", url: "https://regalos.test/cafe", title: "Café", visible: true }] };
+  const ctx = context([enabled(true)], raw);
+  const proposal = createDesignerAiGiftProposal(ctx);
+  ctx.rawGifts.giftLinks[0].url = "https://otro.test/destino";
+  assert.throws(() => approveDesignerAiGiftProposal(proposal, ctx), { code: "designer-ai/stale-snapshot" });
+  const retry = context([enabled(false)], raw);
+  retry.recovery = { confirmedGiftMethods: [], actionResults: [{ action: enabled(false), effective: true, persisted: false, error: "write-failed" }] };
+  assert.ok(createDesignerAiGiftProposal(retry));
+  assert.throws(() => requireDesignerAiGiftApproval(retry, null), { code: "designer-ai/gift-approval-required" });
+});
+
+test("AI cannot reexpose retained dollar values without their manual owner review", () => {
+  const raw = { enabled: false, bankUsd: { alias: "USD.HEREDADO" }, visibilityUsd: { alias: true } };
+  const ctx = context([enabled(true)], raw);
+  assert.throws(() => createDesignerAiGiftProposal(ctx), error =>
+    error.code === "designer-ai/gift-manual-activation-required" && !error.message.includes("USD.HEREDADO"));
+  assert.throws(() => requireDesignerAiGiftApproval(ctx, null), { code: "designer-ai/gift-manual-activation-required" });
+  assert.equal(createDesignerAiGiftProposal(context([enabled(false)], { ...raw, enabled: true })), null);
+  assert.equal(createDesignerAiGiftProposal(context([enabled(true)], { ...raw, visibilityUsd: { alias: false } })), null);
+});
+
 for (const name of ["holder", "bank", "cuit", "alias", "cbu"]) {
   test(`inherited ${name} is requested in chat and cannot be adopted by a direct executor`, () => {
     const ctx = context([enabled(true), method(name, null)], { enabled: false,

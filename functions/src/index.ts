@@ -2350,6 +2350,22 @@ export const saveDraftWithMusicV1 = onCall(
   async (request) => saveDraftWithMusicHandler(request, db)
 );
 
+export const getGiftLinkMetadata = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: true,
+    timeoutSeconds: 20,
+    memory: "512MiB",
+    maxInstances: 3,
+    concurrency: 1,
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"],
+  },
+  async (request) => {
+    const { getGiftLinkMetadataHandler } = await import("./gifts/linkMetadataHandler");
+    return getGiftLinkMetadataHandler(request, db);
+  }
+);
+
 export const getAdminAccess = onCall(
   {
     region: "us-central1",

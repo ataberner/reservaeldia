@@ -133,3 +133,33 @@ test("partial persistence retries need a fresh click and never replay saved acti
     assert.equal(run.exportPersistedDraft().render.gifts.giftListUrl, "https://destino.sintetico.test/lista");
   } finally { await run.close(); }
 });
+
+test("global activation reviews the destinations of manual gift cards", async () => {
+  const run = await mount({ respond: (_, index) => index === 1 ? { assistantMessage: "Hola" } : response([gifts[0]]) });
+  try {
+    await ready(run);
+    run.update({ gifts: { enabled: false, giftLinks: [{ id: "coffee", title: "Cafetera", url: "https://regalos.example.test/cafetera", visible: true }] } });
+    await run.send("Activar regalos");
+    const region = document.querySelector("section[aria-labelledby='designer-gift-confirm-title']");
+    assert.ok(region);
+    assert.match(region.textContent, /Cafetera/);
+    assert.match(region.textContent, /regalos\.example\.test/);
+    assert.equal(run.writes.length, 0);
+    await run.click("Confirmar cambios"); await idle(run);
+    const saved = run.exportPersistedDraft().render.gifts;
+    assert.equal(saved.enabled, true);
+    assert.equal(saved.giftLinks[0].url, "https://regalos.example.test/cafetera");
+  } finally { await run.close(); }
+});
+
+test("a retained dollar account explains the manual activation step without exposing its values", async () => {
+  const run = await mount({ respond: (_, index) => index === 1 ? { assistantMessage: "Hola" } : response([gifts[0]]) });
+  try {
+    await ready(run);
+    run.update({ gifts: { enabled: false, bankUsd: { alias: "USD.PRIVADO.FIXTURE" }, visibilityUsd: { alias: true } } });
+    await run.send("Activar regalos"); await idle(run);
+    assert.equal(run.writes.length, 0);
+    assert.match(run.messages().at(-1).content, /Revisá la cuenta en dólares y activá Regalos desde su pestaña/);
+    assert.doesNotMatch(document.body.textContent, /USD\.PRIVADO\.FIXTURE/);
+  } finally { await run.close(); }
+});

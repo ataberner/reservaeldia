@@ -587,6 +587,20 @@ vacía que se oculta, reemplaza o vuelve visible requiere revisión; escribirla
 en el chat no sustituye ese control. El reintento de un efecto aún no persistido
 vuelve a exigir revisión.
 
+La ampliación manual Gifts V2 conserva estas actions sobre los campos heredados;
+no permite al modelo editar la cuenta USD ni `giftLinks`. Los reducers deben
+preservarlos. El switch global sí cambia la exposición de las tarjetas visibles:
+su URL completa se incluye en la misma revisión local cuando se activa/desactiva
+Regalos, también al reintentar una mutación sin persistir. Esas URLs permanecen
+fuera del snapshot del modelo. La aprobación sigue ligada al estado completo,
+por lo que editar una tarjeta invalida una revisión pendiente.
+
+La cuenta USD no tiene hojas de procedencia ni actions en este schema. Si el
+root está desactivado y conserva datos USD seleccionados, `gifts.set_enabled(true)`
+se bloquea con una indicación de revisar/activar desde la pestaña manual. No se
+enumera el valor heredado ni se transforma su presencia en consentimiento. El
+guard no impide desactivar Regalos ni modifica los datos USD guardados.
+
 La excepción necesaria para el recorrido bancario es el ocultamiento implícito
 de una URL de plantilla/no confirmada al activar Regalos o aplicar un método
 bancario. Si su valor no cambia y el lote no contiene una acción explícita sobre

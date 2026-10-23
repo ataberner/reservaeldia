@@ -13,7 +13,7 @@ import {
 } from "@/domain/rsvp/config";
 import {
   createDefaultGiftConfig,
-  isGiftConfigV1,
+  isGiftConfig,
   normalizeGiftConfig,
 } from "@/domain/gifts/config";
 import {
@@ -361,7 +361,7 @@ export default function useEditorEvents({
       }
 
       if (nuevoConSeccion?.tipo === "regalo-boton" && !existingGiftId && typeof setGiftsConfig === "function") {
-        const hasConfig = isGiftConfigV1(giftsConfig);
+        const hasConfig = isGiftConfig(giftsConfig);
         const baseConfig = hasConfig
           ? normalizeGiftConfig(giftsConfig, { forceEnabled: false })
           : createDefaultGiftConfig();

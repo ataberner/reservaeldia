@@ -78,3 +78,26 @@
 .activationSwitchOn .activationSwitchThumb {
   transform: translateX(16px);
 }
+
+.summaryRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 54px;
+  padding: 10px;
+  border: 1px solid #a7d9bd;
+  border-radius: 9px;
+  background: #fff;
+  color: #345542;
+  text-align: left;
+}
+
+.summaryRow:hover { background: #f6fcf8; }
+.summaryRow:focus-visible { outline: 3px solid #692b9a; outline-offset: 2px; }
+.summaryRow > svg { flex-shrink: 0; }
+.summaryCurrency { font-size: 10px; border: 1px solid #d1e7da; border-radius: 6px; padding: 4px; }
+.summaryCopy { flex: 1; min-width: 0; }
+.summaryCopy strong, .summaryCopy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summaryCopy strong { font-size: 12px; font-weight: 500; color: #262626; }
+.summaryCopy small { font-size: 11px; margin-top: 3px; }

@@ -47,7 +47,7 @@ test("template preview does not mediate iframe gestures and cleans its measureme
     modalSource,
     /(?:scrollTop\s*=|scrollTo\(|scrollBy\()/
   );
-  assert.match(modalSource, /observer\.disconnect\(\)/);
+  assert.match(modalSource, /observer\?\.disconnect\(\)/);
   assert.match(modalSource, /window\.removeEventListener\("resize", measure\)/);
 });
 

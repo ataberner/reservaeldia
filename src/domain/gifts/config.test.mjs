@@ -30,6 +30,23 @@ function toComparable(value) {
 
 const REPRESENTATIVE_CASES = [
   {
+    name: "version 2 accounts and multiple safe gift cards",
+    input: {
+      version: 2,
+      enabled: true,
+      bank: { alias: "pesos.fixture" },
+      bankUsd: { alias: "dolares.fixture", holder: "Pareja de prueba" },
+      visibilityUsd: { alias: true, holder: false },
+      giftListUrl: "https://example.com/lista",
+      visibility: { alias: true, giftListLink: true },
+      giftLinks: [
+        { id: "producto", url: "https://example.com/producto", title: "Cafetera", imageUrl: "https://images.example.com/cafetera.jpg", visible: true },
+        { id: "oculto", url: "https://example.com/otro", title: "Otro regalo", visible: false },
+        { id: "inseguro", url: "javascript:alert(1)", imageUrl: "http://example.com/insecure.jpg", visible: true },
+      ],
+    },
+  },
+  {
     name: "legacy-like visibility values and external list url",
     input: {
       introText: "  Si desean hacernos un regalo, aqui van los datos.  ",

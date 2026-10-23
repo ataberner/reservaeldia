@@ -74,6 +74,13 @@ export function describeDesignerAiProposedAction(action) {
 export function createDesignerAiGiftProposal(context, isSessionCurrent = () => true) {
   const { actions, snapshot, rawGifts, recovery } = context;
   let config = normalizeGiftConfig(rawGifts, { forceEnabled: false });
+  // USD values are edited manually and have no AI provenance leaves. A global
+  // activation cannot turn retained/template values into confirmed bank data.
+  if (!config.enabled && actions.some(action => action.type === "gifts.set_enabled" && action.arguments.enabled) &&
+    bankMethods.some(method => config.visibilityUsd[method] && config.bankUsd[method])) {
+    throw fail("designer-ai/gift-manual-activation-required",
+      "Revisá la cuenta en dólares y activá Regalos desde su pestaña antes de continuar por chat.");
+  }
   const confirmed = new Set(recovery?.confirmedGiftMethods || confirmedGiftMethods(snapshot));
   const explicitlyChangesList = actions.some(action => action.type === "gifts.set_method" && action.arguments.method === "giftListLink");
   const steps = [];
@@ -104,6 +111,18 @@ export function createDesignerAiGiftProposal(context, isSessionCurrent = () => t
       .map(method => ({ method, label: labels[method], before: valueOf(config, method), after: valueOf(next, method),
         beforeVisible: config.enabled && config.visibility[method], afterVisible: next.enabled && next.visibility[method],
         beforeSelected: config.visibility[method], afterSelected: next.visibility[method] }));
+    // The manual list is outside AI field editing, but the global switch still
+    // changes its exposure. Review those destinations through the same gate.
+    if (action.type === "gifts.set_enabled" && (config.enabled !== next.enabled || receipt?.effective)) {
+      const linkRows = next.giftLinks.filter(link => link.visible && link.url).map(link => ({
+        method: `giftLink:${link.id}`, label: link.title || "Regalo con enlace",
+        before: link.url, after: link.url,
+        beforeVisible: config.enabled && link.visible, afterVisible: next.enabled && link.visible,
+        beforeSelected: link.visible, afterSelected: link.visible,
+      }));
+      rows.push(...linkRows);
+      if (linkRows.length) required = true;
+    }
     if (rows.some(row => sensitiveMethods.includes(row.method) && (row.before || row.after || retryMethods))) required = true;
     if (rows.length || config.enabled !== next.enabled) steps.push({ label: action.type === "gifts.set_method" && bankMethods.includes(action.arguments.method)
       ? "Actualizar la visibilidad de la lista externa" : describeDesignerAiProposedAction(action), rows,

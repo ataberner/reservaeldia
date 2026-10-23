@@ -37,13 +37,13 @@ export function resolveTemplatePreviewViewportLayout({
   const baseViewportHeight = isMobileHost
     ? TEMPLATE_PREVIEW_MOBILE_VIEWPORT_HEIGHT
     : TEMPLATE_PREVIEW_DESKTOP_VIEWPORT_HEIGHT;
-  const widthBudget = Math.max(measuredStageWidth, 240);
-  const scale = isMobileHost
-    ? clamp(widthBudget / viewportWidth, 0.42, 1)
-    : clamp(widthBudget / viewportWidth, 0.16, 1);
+  const widthBudget = measuredStageWidth || 240;
+  const scale = clamp(widthBudget / viewportWidth, 0, 1);
   const scaledWidth = Math.round(viewportWidth * scale);
 
-  if (isTabletHost && measuredStageHeight > 0) {
+  // The iframe is a viewing window. Its height follows the host, while section
+  // layout keeps the canonical viewport height regardless of host proportions.
+  if (measuredStageHeight > 0) {
     const scaledHeight = Math.max(1, Math.floor(measuredStageHeight));
     return {
       isMobileHost,

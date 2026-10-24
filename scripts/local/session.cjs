@@ -75,8 +75,17 @@ async function assertPortsFree(ports) {
   }
 }
 
+function assertNodeRuntime(version = process.versions.node) {
+  const minimum = fs.readFileSync(path.join(ROOT, ".node-version"), "utf8").trim();
+  if (!/^22\.\d+\.\d+$/.test(minimum)) throw new Error("Pin Node inválido en .node-version.");
+  const actual = version.split(".").map(Number), expected = minimum.split(".").map(Number);
+  if (!/^22\.\d+\.\d+$/.test(version) || actual[1] < expected[1] || (actual[1] === expected[1] && actual[2] < expected[2])) {
+    throw new Error(`Usar Node ${minimum} o una revisión posterior de Node 22 para este recorrido.`);
+  }
+}
+
 function checkRequirements() {
-  if (!['20', '22'].includes(process.versions.node.split('.')[0])) throw new Error("Usar Node 20 o 22 para este recorrido.");
+  assertNodeRuntime();
   for (const relative of ["node_modules/next/dist/bin/next", "node_modules/firebase/package.json", "functions/node_modules/typescript/bin/tsc",
     "functions/node_modules/eslint/lib/api.js", "functions/node_modules/@typescript-eslint/parser/package.json", "functions/node_modules/@typescript-eslint/eslint-plugin/package.json"]) {
     if (!fs.existsSync(path.join(ROOT, relative))) throw new Error(`Falta dependencia instalada: ${relative}`);
@@ -148,7 +157,7 @@ function copyWorkspace(workspace) {
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     copySourceTree(source, destination);
   }
-  for (const name of ["package.json", "package-lock.json", "next.config.mjs", "jsconfig.json", "postcss.config.cjs", "postcss.config.js", "postcss.config.mjs", "tailwind.config.js", "tailwind.config.mjs", "firestore.rules", "firestore.indexes.json", "storage.rules", "functions/package.json", "functions/package-lock.json", "functions/tsconfig.json", "scripts/runNextDev.cjs"]) {
+  for (const name of [".node-version", "package.json", "package-lock.json", "next.config.mjs", "jsconfig.json", "postcss.config.cjs", "postcss.config.js", "postcss.config.mjs", "tailwind.config.js", "tailwind.config.mjs", "firestore.rules", "firestore.indexes.json", "storage.rules", "functions/package.json", "functions/package-lock.json", "functions/tsconfig.json", "scripts/runNextDev.cjs", "scripts/retainNextStaticAssets.cjs", "scripts/verifyNextStaticRelease.cjs"]) {
     if (fs.existsSync(path.join(ROOT, name))) { fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true }); fs.copyFileSync(path.join(ROOT, name), path.join(workspace, name)); }
   }
   // Ownership tests inspect production metadata separately from firebase.local.json
@@ -193,7 +202,7 @@ function createSession(requirements) {
   for (const directory of [env.HOME, env.APPDATA, env.LOCALAPPDATA, env.XDG_CONFIG_HOME, env.CLOUDSDK_CONFIG, env.TEMP, env.FIREBASE_EMULATORS_PATH]) fs.mkdirSync(directory, { recursive: true });
   for (const name of requirements.jars) fs.copyFileSync(path.join(requirements.cache, name), path.join(env.FIREBASE_EMULATORS_PATH, name));
   const config = {
-    functions: [{ source: "functions", codebase: "default", runtime: "nodejs20" }],
+    functions: [{ source: "functions", codebase: "default", runtime: require("../../firebase.json").functions.find(entry => entry.codebase === "default").runtime }],
     firestore: { rules: "firestore.rules", indexes: "firestore.indexes.json" }, storage: { rules: "storage.rules" },
     emulators: { ...Object.fromEntries(Object.entries(contract.EMULATORS).map(([name, port]) => [name, { host: contract.HOST, port }])),
       hub: { host: contract.HOST, port: 14400 }, logging: { host: contract.HOST, port: 14500 }, ui: { enabled: false }, singleProjectMode: true },
@@ -236,4 +245,4 @@ function removeSession(target) {
   fs.rmdirSync(absolute);
 }
 
-module.exports = { ROOT, cleanEnvironment, createSocketEnvironment, findFirebaseCli, assertPortsFree, checkRequirements, validateInheritedDestinations, copyWorkspace, createSession, removeSession };
+module.exports = { ROOT, cleanEnvironment, createSocketEnvironment, findFirebaseCli, assertPortsFree, assertNodeRuntime, checkRequirements, validateInheritedDestinations, copyWorkspace, createSession, removeSession };

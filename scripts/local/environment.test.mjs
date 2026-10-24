@@ -7,7 +7,32 @@ import path from "node:path";
 import { initializeFirebaseServices } from "../../src/config/initializeFirebaseServices.js";
 const require = createRequire(import.meta.url);
 const contract = require("../../shared/firebaseEnvironment.cjs");
-const { ROOT, cleanEnvironment, validateInheritedDestinations, removeSession } = require("./session.cjs");
+const { ROOT, cleanEnvironment, validateInheritedDestinations, removeSession, assertNodeRuntime } = require("./session.cjs");
+
+test("local runtime rejects unsupported majors, old Node 22 patches and prereleases", () => {
+  const minimum = fs.readFileSync(path.join(ROOT, ".node-version"), "utf8").trim();
+  assert.equal(minimum, "22.23.4");
+  for (const version of [minimum, "22.23.5", "22.24.0"]) assert.doesNotThrow(() => assertNodeRuntime(version));
+  for (const version of ["20.19.5", "22.13.1", "22.23.3", "24.0.0", "22.23.4-rc.1", "invalid"]) {
+    assert.throws(() => assertNodeRuntime(version), /Usar Node/);
+  }
+});
+
+test("all deploy sources, rollback configs and lock metadata agree on Node 22", () => {
+  const read = file => JSON.parse(fs.readFileSync(path.join(ROOT, file), "utf8"));
+  for (const source of ["", "functions", "functions-payments", "functions-email", "scripts/local/tools"]) {
+    const pkg = read(path.join(source, "package.json")), lock = read(path.join(source, "package-lock.json"));
+    assert.equal(pkg.engines.node, "22", source || "root");
+    assert.deepEqual(lock.packages[""].engines, pkg.engines, source || "root");
+  }
+  for (const file of ["firebase.json", "firebase.payments-rollback.json", "firebase.email-rollback.json"]) {
+    for (const entry of read(file).functions) {
+      assert.equal(entry.runtime, "nodejs22", `${file}/${entry.source}`);
+      assert.equal(entry.runtime, `nodejs${read(`${entry.source}/package.json`).engines.node}`);
+    }
+  }
+  assert.equal(read("package.json").scripts.export, "npm run build");
+});
 
 test("local mode is the non-production default, with four coherent destinations", () => {
   const input = contract.localEnvironmentInput();

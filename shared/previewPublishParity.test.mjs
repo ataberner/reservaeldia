@@ -7,8 +7,10 @@ import {
   createPublishValidationImageDownloadBuffer,
 } from "./publicationPublishValidationFixtures.mjs";
 import {
-  FIXTURE_PATHS,
-} from "./renderAssetContractFixtures.mjs";
+  AUTHORIZED_FIXTURE_PATHS as FIXTURE_PATHS,
+  AUTHORIZED_RENDER_CONTEXT,
+  authorizeRenderFixture,
+} from "../functions/testUtils/authorizedRenderFixture.mjs";
 import {
   characterizePreviewPublishParity,
 } from "./previewPublishParity.mjs";
@@ -17,14 +19,17 @@ import {
 } from "../src/domain/dashboard/previewSession.js";
 import {
   PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
-  previewPublishExplicitDriftFixtures,
-  previewPublishSharedParityFixtures,
-  previewPublishWarningParityFixtures,
+  previewPublishExplicitDriftFixtures as originalExplicitDriftFixtures,
+  previewPublishSharedParityFixtures as originalSharedParityFixtures,
+  previewPublishWarningParityFixtures as originalWarningParityFixtures,
 } from "./previewPublishParityFixtures.mjs";
 import generarHTMLDesdeSeccionesModule from "../functions/lib/utils/generarHTMLDesdeSecciones.js";
 
 const { validatePreparedPublicationRenderState } = publicationPublishValidationModule;
 const { generarHTMLDesdeSecciones } = generarHTMLDesdeSeccionesModule;
+const previewPublishExplicitDriftFixtures = authorizeRenderFixture(originalExplicitDriftFixtures);
+const previewPublishSharedParityFixtures = authorizeRenderFixture(originalSharedParityFixtures);
+const previewPublishWarningParityFixtures = authorizeRenderFixture(originalWarningParityFixtures);
 
 function createRepresentativeStorageFiles() {
   return {
@@ -146,6 +151,7 @@ test("preview/publish shared parity fixtures stay logically aligned across the p
         fixture.publishDraft,
         {
           defaultBucketName: PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
+          assetAccess: AUTHORIZED_RENDER_CONTEXT,
         }
       );
 
@@ -167,6 +173,7 @@ test("preview/publish generated gallery markers stay aligned for the global view
     fixture.publishDraft,
     {
       defaultBucketName: PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
+      assetAccess: AUTHORIZED_RENDER_CONTEXT,
     }
   );
   const previewHtml = renderPreviewHtml(fixture.previewDraft);
@@ -217,6 +224,7 @@ test("preview/publish preset Gallery visibility stays aligned", async (t) => {
   );
   const parity = await characterizePreviewPublishParity(previewDraft, publishDraft, {
     defaultBucketName: PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
+    assetAccess: AUTHORIZED_RENDER_CONTEXT,
   });
   const previewHtml = renderPreviewHtml(previewDraft);
   const publishHtml = renderPublishHtml(parity.publishSnapshot.prepared);
@@ -248,6 +256,7 @@ test("preview/publish explicit drift fixtures stay visible until a future parity
         fixture.publishDraft,
         {
           defaultBucketName: PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
+          assetAccess: AUTHORIZED_RENDER_CONTEXT,
         }
       );
 
@@ -270,6 +279,7 @@ test("warning-only preview/publish parity fixtures keep warning-sensitive branch
         fixture.publishDraft,
         {
           defaultBucketName: PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
+          assetAccess: AUTHORIZED_RENDER_CONTEXT,
         }
       );
       const validation = validatePreparedSnapshot(parity.publishSnapshot.prepared);

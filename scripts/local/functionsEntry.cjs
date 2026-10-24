@@ -8,6 +8,9 @@ for (const [name, value] of Object.entries(sessionEnvironment)) {
 require("./networkGuard.cjs");
 const { localBackendEnvironment } = require("../../functions/lib/firebaseAdmin.js");
 if (!localBackendEnvironment()) throw new Error("La entrada local requiere el entorno demo.");
+// Public HTML delivery uses a disposable signing value only in this validated
+// emulator process. No production Secret binding or dotenv is copied.
+process.env.PUBLIC_VISIT_SIGNING_SECRET = "local-only-public-delivery-synthetic-signing-value";
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const handlers = {
   ...require("../../functions/lib/index.js"),
@@ -24,15 +27,35 @@ exports.onUserCreatedWelcomeEmail = region("us-central1").auth.user()
 // Same handler, demo resources, no remote service account or Secret bindings.
 const enabled = new Set([
   "upsertUserProfile", "getMyProfileStatus", "getMyUiPreferences", "updateMyUiPreferences",
+  // Reads the caller's verified claims and configured UID list; no mutation.
+  "getAdminAccess",
   "getPricingConfigV1", "getDashboardHomeConfigV1",
   // Inspected Music V1: owner-checked Firestore transaction, no external provider.
   "saveDraftWithMusicV1",
+  // Inspected draft creation: demo Firestore/Storage only. The network guard
+  // rejects any remote asset encountered in a template.
+  "copiarPlantilla", "copiarPlantillaHTML",
 ]);
 for (const [name, handler] of Object.entries(handlers)) {
   const endpoint = handler?.__endpoint;
   if (!endpoint?.callableTrigger && !endpoint?.httpsTrigger) continue;
   if (enabled.has(name)) {
     exports[name] = onCall({ region: "us-central1", cors: ["http://localhost:3100", "http://127.0.0.1:3100"] }, handler.run);
+    continue;
+  }
+  if (name === "verInvitacion") {
+    exports[name] = onRequest({ region: "us-central1", cors: false }, handler);
+    continue;
+  }
+  if (name === "verInvitacionPublicada") {
+    // Exercise the existing public reader; visit writes stay disabled locally.
+    exports[name] = onRequest({ region: "us-central1", cors: false }, (request, response) => {
+      if (request.method !== "GET") {
+        response.status(412).json({ error: "LOCAL_FLOW_DISABLED: public delivery writes" });
+        return;
+      }
+      return handler(request, response);
+    });
     continue;
   }
   const message = `LOCAL_FLOW_DISABLED: ${name} no está habilitado para pruebas aisladas.`;

@@ -3,7 +3,13 @@ import {
   type DraftRenderState,
 } from "../drafts/sourceOfTruth";
 import { resolveMusicResource } from "../music/config";
-import { getGiftAccounts, normalizeGiftConfig, type GiftsConfig } from "../gifts/config";
+import {
+  getGiftAccounts,
+  normalizeGiftConfig,
+  sanitizeGiftImageUrl,
+  sanitizeGiftLinkUrl,
+  type GiftsConfig,
+} from "../gifts/config";
 import {
   recordBackendCountdownError,
   recordBackendCountdownTelemetry,
@@ -18,6 +24,7 @@ import {
   type PublishAssetNormalizationDiagnostics,
 } from "../utils/publishAssetNormalization";
 import { resolvePublishImageCropState } from "../utils/publishImageCrop";
+import type { RenderAssetAccessContext } from "./renderAssetAuthorization";
 const {
   resolveGalleryCellMediaUrl,
   resolveObjectPrimaryAssetUrl,
@@ -310,17 +317,36 @@ export async function prepareRenderPayload(
   draftData: UnknownRecord,
   options: {
     purpose?: string;
+    assetAccess?: RenderAssetAccessContext;
   } = {}
 ): Promise<PreparedRenderPayload> {
   const draftRenderState = normalizeDraftRenderState(draftData);
+  // Preserve the gifts contract's scheme-less external domains. Raw Storage
+  // paths/gs URLs and explicit URLs still reach authorization without rewriting.
+  const giftReference = (value: unknown, image = false): unknown => {
+    if (typeof value !== "string" || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(value.trim())) return value;
+    return (image ? sanitizeGiftImageUrl(value) : sanitizeGiftLinkUrl(value)) || value;
+  };
+  const giftsForAuthorization = draftRenderState.gifts ? {
+    ...draftRenderState.gifts,
+    giftListUrl: giftReference(draftRenderState.gifts.giftListUrl),
+    ...(Array.isArray(draftRenderState.gifts.giftLinks) ? {
+      giftLinks: draftRenderState.gifts.giftLinks.map((value) => {
+        const link = asRecord(value);
+        return { ...link, url: giftReference(link.url), imageUrl: giftReference(link.imageUrl, true) };
+      }),
+    } : {}),
+  } : null;
   let normalizedAssets;
   const preparationStartedAt = Date.now();
   try {
     normalizedAssets = await normalizePublishRenderStateAssets({
       objetos: draftRenderState.objetos,
       secciones: draftRenderState.secciones,
+      gifts: giftsForAuthorization,
     }, {
       purpose: options.purpose,
+      assetAccess: options.assetAccess,
     });
   } catch (error) {
     recordBackendCountdownError({
@@ -336,6 +362,11 @@ export async function prepareRenderPayload(
 
   const assetObjetos = asRecordList(normalizedAssets.objetos);
   const assetSecciones = asRecordList(normalizedAssets.secciones);
+  // Gifts bypass the canvas objects but their images/links enter the same HTML.
+  // Keep the authorized root for both functional projection and modal rendering.
+  draftRenderState.gifts = draftRenderState.gifts === null
+    ? null
+    : asRecord(normalizedAssets.gifts);
   const initialGroupAwareState = prepareGroupAwareRenderState({
     objetos: assetObjetos,
     secciones: assetSecciones,
@@ -390,9 +421,10 @@ export async function prepareRenderPayload(
 }
 
 export async function preparePublicationRenderState(
-  draftData: UnknownRecord
+  draftData: UnknownRecord,
+  options: { assetAccess?: RenderAssetAccessContext; purpose?: string } = {}
 ): Promise<PreparedPublicationRenderState> {
-  return prepareRenderPayload(draftData);
+  return prepareRenderPayload(draftData, options);
 }
 
 export function validatePreparedRenderPayload(

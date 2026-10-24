@@ -127,7 +127,8 @@ test("Payments lockfile is self-contained and preserves existing dependency vers
   const lock = require("../functions-payments/package-lock.json");
   const pkg = require("../functions-payments/package.json");
   assert.deepEqual(lock.packages[""].dependencies, pkg.dependencies);
-  assert.equal(pkg.engines.node, "20");
+  assert.equal(pkg.engines.node, "22");
+  assert.deepEqual(lock.packages[""].engines, pkg.engines);
   for (const [name, entry] of Object.entries(lock.packages)) {
     if (!name) continue;
     assert.equal(entry.link, undefined, `External link: ${name}`);

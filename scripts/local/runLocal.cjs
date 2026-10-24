@@ -32,7 +32,10 @@ async function stop() {
 }
 
 async function waitForEmulators(child, env) {
-  const deadline = Date.now() + 240000;
+  // Observed cold startup reached Functions discovery at 223s on Windows.
+  // Preserve its existing 60s budget plus the 10s authenticated-readiness probe.
+  // No suite retry, fallback, changed assertions or serialized invocation races.
+  const deadline = Date.now() + 300000;
   while (Date.now() < deadline) {
     if (interruption) throw interruption;
     if (child.done) throw failure("Los emuladores se detuvieron antes de estar listos.");
@@ -52,10 +55,13 @@ async function waitForEmulators(child, env) {
 }
 
 async function main(mode) {
-  const integration = ["test", "verify"].includes(mode), rules = ["rules", "verify"].includes(mode);
+  const release = mode === "release", buildOnly = mode === "build";
+  const integration = ["test", "verify", "release"].includes(mode), rules = ["rules", "verify"].includes(mode);
   const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration ? ["configuration"] : []), "sync", "compile", "contracts-built",
-    ...(integration ? ["backend", "compatibility"] : []), "emulators", ...(rules ? ["rules-countdown"] : []),
-    ...(integration ? ["integration", "seed", "browser", "stop-services", "offline"] : [])];
+    ...(integration ? ["backend", "compatibility"] : []),
+    ...(release || buildOnly ? ["build-capture", "build-export", "build-finalize", "build-release-check"] : []),
+    ...(!buildOnly ? ["emulators"] : []), ...(rules ? ["rules-countdown"] : []),
+    ...(integration ? ["integration", "seed", "browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
   evidence = new Evidence(ROOT, mode, mode === "check" ? ["prerequisites"] : names);
   let requirements;
   const stage = (name, operation, kind) => {
@@ -63,7 +69,7 @@ async function main(mode) {
     return evidence.stage(name, operation, kind);
   };
   await stage("prerequisites", async () => {
-    if (!["dev", "emulators", "test", "rules", "verify", "check"].includes(mode) || process.argv.length > 3)
+    if (!["dev", "emulators", "test", "rules", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
       throw failure("Modo local inválido; no se aceptan overrides de destino.", "prerequisite");
     validateInheritedDestinations();
     requirements = checkRequirements();
@@ -127,7 +133,7 @@ async function main(mode) {
       });
       if (error) throw error;
     }, "tests");
-    await run("tooling", ["--test", "--test-reporter=tap", "scripts/local/tooling.test.mjs", "scripts/local/nextLifecycle.test.mjs", "functions/scripts/lint.test.cjs"]);
+    await run("tooling", ["--test", "--test-reporter=tap", "scripts/local/tooling.test.mjs", "scripts/local/nextLifecycle.test.mjs", "scripts/local/staticBuild.test.cjs", "functions/scripts/lint.test.cjs"]);
     try {
       await run("contracts-tests", ["--test", "--test-reporter=tap", "functions/scripts/contracts.test.cjs"], { timeoutMs: 540000 });
     } finally {
@@ -142,6 +148,17 @@ async function main(mode) {
   if (integration) {
     await run("backend", ["--test", "--test-reporter=tap", "scripts/local/backend.test.cjs"]);
     await run("compatibility", ["scripts/local/productionCompatibility.cjs"]);
+  }
+  if (release || buildOnly) {
+    const { buildEnvironment, recordBuild } = require("./staticBuild.cjs");
+    const target = buildOnly ? "production-config" : "demo";
+    const buildEnv = buildEnvironment(env, target);
+    await run("build-capture", ["scripts/retainNextStaticAssets.cjs", "capture"], { env: buildEnv });
+    await run("build-export", ["node_modules/next/dist/bin/next", "build"], { env: buildEnv, timeoutMs: 600000 });
+    await run("build-finalize", ["scripts/retainNextStaticAssets.cjs", "finalize"], { env: buildEnv });
+    await run("build-release-check", ["scripts/verifyNextStaticRelease.cjs"], { env: buildEnv });
+    recordBuild({ workspace, session, target });
+    if (buildOnly) return;
   }
   await stage("emulators", async log => {
     env.RESERVA_LOCAL_EMULATOR_LOG = log;
@@ -161,7 +178,9 @@ async function main(mode) {
   if (rules) await stage("rules-countdown", async log => {
     let testError;
     try {
-      await processes.run(["--test", "--test-reporter=tap", "scripts/local/rules.test.mjs", "scripts/local/welcomeAuth.test.mjs", ...Object.values(countdownChecks).flat()],
+      // Limit worker processes on small development machines. Explicit races
+      // inside individual tests remain concurrent.
+      await processes.run(["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/rules.test.mjs", "scripts/local/welcomeAuth.test.mjs", ...Object.values(countdownChecks).flat()],
         { cwd: workspace, env, log, name: "Rules y countdown", kind: "tests", timeoutMs: 600000 });
     } catch (error) { testError = error; }
     // Infrastructure/missing evidence takes precedence over an assertion exit.
@@ -171,23 +190,24 @@ async function main(mode) {
   });
   if (mode === "rules") return;
   if (integration || mode === "dev") {
-    if (integration) await run("integration", ["--test", "--test-reporter=tap", "scripts/local/integration.test.mjs"]);
+    if (integration) await run("integration", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/integration.test.mjs", "scripts/local/authFlows.test.mjs", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
     if (mode === "dev") evidence.data.stages.push({ name: "seed", status: "not-executed" });
     await run("seed", ["scripts/local/seedLocal.cjs"]);
-    const next = processes.start(["scripts/runNextDev.cjs"], { cwd: workspace, env: { ...env, NODE_ENV: "development" },
+    const next = processes.start([release ? "scripts/local/serveExport.cjs" : "scripts/runNextDev.cjs"], { cwd: workspace, env: { ...env, NODE_ENV: release ? "production" : "development" },
       log: path.join(evidence.directory, "next.log"), name: "next" });
     if (integration) {
       browserEnvironment = createSocketEnvironment(env);
       await run("browser", ["--test", "--test-reporter=tap", "scripts/local/browser.test.mjs"], { timeoutMs: 360000, env: browserEnvironment.env });
+      if (release) await run("editor-flow", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/editorFlow.browser.test.mjs"], { timeoutMs: 900000, env: browserEnvironment.env });
       if (next.done) throw failure("Next se detuvo durante la prueba.");
       await stage("stop-services", stop);
       await run("offline", ["--test", "--test-reporter=tap", "scripts/local/offline.test.mjs"]);
-      for (const name of ["integration", "browser", "offline"]) {
+      for (const name of ["integration", "browser", "offline", ...(release ? ["editor-flow", "build"] : [])]) {
         if (!fs.existsSync(path.join(session, `${name}-evidence.json`))) throw failure(`Falta evidencia ${name}`);
       }
       fs.writeFileSync(path.join(session, "verified.json"), JSON.stringify({ project: contract.LOCAL_PROJECT, checkedAt: new Date().toISOString(), mode,
         checks: evidence.data.stages.filter(s => s.status === "passed").map(s => s.name), countdown: rules ? countdownChecks : undefined,
-        exclusions: [...(mode === "verify" ? ["frontend lint"] : ["lint", "watch behavior tests"]), "production Next build/export", "disabled handlers", "Q1 approval", "remote configuration/deployment", "live Functions module reload", "original-to-prepared tree synchronization"] }, null, 2));
+        exclusions: [...(mode === "verify" ? ["frontend lint"] : ["lint", "watch behavior tests", "Functions ownership gate"]), ...(!rules ? ["Rules acceptance suite"] : []), ...(!release ? ["production Next build/export"] : ["Hosting rewrites/cache behavior", "production assets pixel parity"]), "disabled handlers", "Q1 approval", "remote configuration/deployment", "live Functions module reload", "original-to-prepared tree synchronization"] }, null, 2));
       return;
     }
   }
@@ -204,12 +224,12 @@ async function entry() {
   }
   let error;
   const interrupt = kind => {
-    interruption ||= failure(kind === "interrupted" ? "Interrupción solicitada" : "Tiempo máximo global (25 minutos)", kind);
+    interruption ||= failure(kind === "interrupted" ? "Interrupción solicitada" : "Tiempo máximo global del recorrido", kind);
     stop().catch(e => { error = e; });
   };
   const onSignal = () => interrupt("interrupted");
   process.once("SIGINT", onSignal); process.once("SIGTERM", onSignal);
-  const timer = ["verify", "test", "rules", "check"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), 25 * 60000) : undefined;
+  const timer = ["verify", "test", "rules", "check", "build", "release"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
   try { await main(mode); } catch (e) { error = e; }
   finally {
     clearTimeout(timer);

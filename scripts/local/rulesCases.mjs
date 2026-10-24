@@ -4,8 +4,9 @@ export const authorities = {
   M1: "docs/contracts/MUSIC_SYSTEM_CONTRACT.md (music authoring is backend authorized; preserve legacy ownership)",
   A1: "docs/architecture/ARCHITECTURE_GUIDELINES.md#43-security-first (ownership)",
   A2: "docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md (backend publication / visit authority)",
-  A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (non-admin writes forbidden)",
+  A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (provider documents/images administrative; no public SDK delivery)",
   A4: "docs/architecture/DATA_MODEL.md#countdownpresets (administrative draft; immutable published versions)",
+  D1: "docs/contracts/SECURITY_CONTRACT.md (backend-only stored draft artifacts and immutable creation provenance)",
   W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
   W2: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails (backend-only internal notification reservations)",
   AI1: "docs/contracts/SECURITY_CONTRACT.md (backend-only Designer AI policy and accounting)",
@@ -199,10 +200,10 @@ observed("catalog-unfiltered-list", "anonymous", "firestore", "plantillas_catalo
 });
 
 // Preserve the provider boundary, without executing provider tooling/handlers.
-for (const resource of ["proveedores/{ID}", "categorias_proveedores/{ID}"]) for (const identity of ["anonymous", "A"]) {
+for (const resource of ["proveedores/{ID}", "categorias_proveedores/{ID}"]) for (const identity of ["anonymous", "A", "B"]) {
   for (const op of ["create", "update", "delete"]) add(`provider-${resource.split('/')[0]}-${identity}-${op}`, "acceptance", identity, "firestore", resource, op, "deny", "A3");
 }
-observed("provider-public-tuple", "anonymous", "firestore", "proveedores/{ID}", "get", "allow", { data: { estado: "publicado", activo: true, visible: true } });
+add("provider-public-tuple", "acceptance", "anonymous", "firestore", "proveedores/{ID}", "get", "deny", "A3", { data: { estado: "publicado", activo: true, visible: true } });
 observed("provider-hidden", "A", "firestore", "proveedores/{ID}", "get", "deny", { data: { estado: "publicado", activo: true, visible: false } });
 observed("provider-inactive", "anonymous", "firestore", "proveedores/{ID}", "get", "deny", { data: { estado: "publicado", activo: false, visible: true } });
 observed("provider-subcollection", "A", "firestore", "proveedores/{ID}/internal/1", "get", "deny");
@@ -224,7 +225,7 @@ for (const file of ["index.html", "share.jpg"]) for (const identity of ["A", "B"
 }
 observed("published-anonymous-sdk-get", "anonymous", "storage", "publicadas/{ID}/index.html", "get", "deny");
 for (const prefix of ["iconos", "iconos_archived", "decoraciones/originals", "decoraciones/thumbnails", "plantillas/{ID}/assets",
-  "plantillas_secciones", "public", "previews/plantillas", "user_uploads/{A}", "borradores/{ID}",
+  "plantillas_secciones", "public", "previews/plantillas", "user_uploads/{A}",
   "assets/countdown/staging/{ID}", "assets/countdown/frames/{ID}/operations/op", "analytics-exports/raw/2026/09"]) {
   const id = prefix.replaceAll('/', '-').replaceAll('{', '').replaceAll('}', '');
   for (const op of ["get", "update", "delete"]) {
@@ -233,18 +234,156 @@ for (const prefix of ["iconos", "iconos_archived", "decoraciones/originals", "de
       restricted ? { expectationChange: { phase: "4B2B", authority: "A4", before: "allow" } } : {});
   }
 }
-for (const identity of ["anonymous", "A"]) for (const op of ["create", "update", "delete"]) {
+for (const identity of ["anonymous", "A", "B"]) for (const op of ["create", "update", "delete"]) {
   add(`provider-storage-${identity}-${op}`, "acceptance", identity, "storage", "proveedores/{ID}/portada/portada-original.png", op, "deny", "A3");
 }
 for (const [id, data, expected] of [
-  ["public", { estado: "publicado", activo: true, visible: true }, "allow"],
+  ["public", { estado: "publicado", activo: true, visible: true }, "deny"],
   ["hidden", { estado: "publicado", activo: true, visible: false }, "deny"],
-]) observed(`provider-storage-${id}`, "anonymous", "storage", "proveedores/{ID}/portada/portada-original.png", "get", expected,
+]) add(`provider-storage-${id}`, "acceptance", "anonymous", "storage", "proveedores/{ID}/portada/portada-original.png", "get", expected, "A3",
   { fixtures: [{ path: "proveedores/{ID}", data }] });
 observed("provider-storage-admin-valid", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "allow");
 observed("provider-storage-admin-mime", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "deny", { contentType: "text/plain" });
 observed("provider-storage-admin-size", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "deny", { byteLength: 15 * 1024 * 1024 + 1 });
 observed("provider-storage-admin-path", "admin", "storage", "proveedores/{ID}/other/fixture.png", "create", "deny");
+
+// Provider publication flags do not authorize disclosure of canonical data.
+// Retain the current claim variants without deciding the broader Q1 policy.
+const publicProvider = { estado: "publicado", activo: true, visible: true,
+  propietario: { reclamado: true, userId: "{A}" },
+  revisionManual: { notas: "synthetic-internal-note" } };
+const providerClaimIdentities = ["anonymous", "A", "B", "admin", "superclaim", "role", "stringAdmin", "serverSuper", "canonicalAdmin", "canonicalSuper"];
+for (const identity of providerClaimIdentities) {
+  const expected = ["admin", "superclaim", "role"].includes(identity) ? "allow" : "deny";
+  add(`provider-closed-${identity}-get`, "acceptance", identity, "firestore", "proveedores/{ID}", "get", expected, "A3", { data: publicProvider });
+  for (const filtered of [false, true]) {
+    add(`provider-closed-${identity}-${filtered ? "published-query" : "list"}`, "acceptance", identity, "firestore", "proveedores", "list", expected, "A3", {
+      fixtures: [{ path: "proveedores/{ID}", data: publicProvider }],
+      filters: filtered ? [["estado", "==", "publicado"], ["activo", "==", true], ["visible", "==", true]] : [],
+    });
+  }
+  for (const folder of ["portada", "galeria"]) {
+    for (const op of ["get", "list"]) {
+      const prefix = `proveedores/{ID}/${folder}`;
+      const object = `${prefix}/${folder === "portada" ? "portada-original.png" : "fixture.png"}`;
+      add(`provider-closed-storage-${identity}-${folder}-${op}`, "acceptance", identity, "storage", op === "list" ? prefix : object, op, expected, "A3", {
+        fixtures: [{ path: "proveedores/{ID}", data: publicProvider }], objectFixture: object,
+      });
+    }
+  }
+}
+for (const [name, data] of [["imported", { estado: "importado", activo: true, visible: false }],
+  ["suspended", { estado: "pausado", activo: false, visible: false }], ["incomplete", {}]]) {
+  for (const identity of ["anonymous", "A", "admin"]) {
+    add(`provider-closed-${name}-${identity}`, "acceptance", identity, "firestore", "proveedores/{ID}", "get", identity === "admin" ? "allow" : "deny", "A3", { data });
+  }
+}
+for (const identity of ["anonymous", "A", "B", "admin"]) {
+  for (const op of ["get", "create", "update", "delete"]) {
+    add(`provider-child-${identity}-${op}`, "acceptance", identity, "firestore", "proveedores/{ID}/internal/child", op, "deny", "A3", {
+      fixtures: [{ path: "proveedores/{ID}", data: publicProvider }],
+    });
+  }
+  add(`provider-child-${identity}-list`, "acceptance", identity, "firestore", "proveedores/{ID}/internal", "list", "deny", "A3", {
+    fixtures: [{ path: "proveedores/{ID}", data: publicProvider }, { path: "proveedores/{ID}/internal/child", data: { marker: "synthetic" } }],
+  });
+  for (const [name, resource] of [["root", "proveedores"], ["id", "proveedores/{ID}"],
+    ["folder", "proveedores/{ID}/portada"], ["nested", "proveedores/{ID}/portada/nested/fixture.png"],
+    ["unknown", "proveedores/{ID}/private/fixture.png"]]) {
+    for (const op of ["get", "create", "update", "delete"]) {
+      add(`provider-storage-boundary-${name}-${identity}-${op}`, "acceptance", identity, "storage", resource, op, "deny", "A3", {
+        fixtures: [{ path: "proveedores/{ID}", data: publicProvider }],
+      });
+    }
+  }
+  for (const prefix of ["proveedores", "proveedores/{ID}", "proveedores/{ID}/private"]) {
+    add(`provider-storage-ancestor-list-${prefix.replaceAll('/', '-')}-${identity}`, "acceptance", identity, "storage", prefix, "list", "deny", "A3", {
+      fixtures: [{ path: "proveedores/{ID}", data: publicProvider }], objectFixture: `${prefix}/fixture.png`,
+    });
+  }
+}
+for (const identity of ["A", "B"]) {
+  const profile = { path: `usuarios/{${identity}}`, data: { admin: true, superadmin: true, role: "admin", providerApproved: true } };
+  for (const store of ["firestore", "storage"]) {
+    add(`provider-self-profile-admin-${identity}-${store}`, "acceptance", identity, store,
+      store === "firestore" ? "proveedores/{ID}" : "proveedores/{ID}/galeria/fixture.png", "get", "deny", "A3", {
+        fixtures: [profile, { path: "proveedores/{ID}", data: publicProvider }], data: publicProvider, clientSetup: [profile],
+      });
+  }
+}
+
+// A retry source must remain the backend's original reservation. In particular,
+// adding/removing a provenance map cannot switch a private preview into legacy.
+const draftCreation = { mode: "html", sourcePath: "plantillas/synthetic/index.html",
+  sourceGeneration: "1", htmlSha256: "0".repeat(64) };
+for (const identity of ["A", "B", "admin"]) {
+  const uid = identity === "admin" ? "{ADMIN}" : `{${identity}}`;
+  const data = { userId: uid, editor: "html", plantillaId: "synthetic", draftCreation };
+  for (const [name, marker] of [["map", draftCreation], ["null", null]]) {
+    add(`draft-creation-${identity}-spoof-${name}`, "acceptance", identity, "firestore", "borradores/{ID}", "create", "deny", "D1", {
+      payload: { ...data, draftCreation: marker },
+    });
+  }
+  add(`draft-creation-${identity}-inject`, "acceptance", identity, "firestore", "borradores/{ID}", "update", "deny", "D1", {
+    data: { userId: uid }, payload: { draftCreation },
+  });
+  for (const payload of [{ draftCreation: { ...draftCreation, sourceGeneration: "2" } }, { draftCreation: null }]) {
+    add(`draft-creation-${identity}-${payload.draftCreation ? "change" : "nullify"}`, "acceptance", identity, "firestore", "borradores/{ID}", "update", "deny", "D1", { data, payload });
+  }
+  add(`draft-creation-${identity}-remove`, "acceptance", identity, "firestore", "borradores/{ID}", "removeDraftCreation", "deny", "D1", { data });
+  add(`draft-creation-${identity}-replace-without-marker`, "acceptance", identity, "firestore", "borradores/{ID}", "replace", "deny", "D1", {
+    data, payload: { userId: uid, nombre: "Synthetic replacement" },
+  });
+}
+for (const withCreation of [false, true]) {
+  const data = { userId: "{A}", nombre: "Synthetic draft", ...(withCreation ? { draftCreation } : {}) };
+  add(`draft-creation-owner-edit-${withCreation ? "reserved" : "legacy"}`, "acceptance", "A", "firestore", "borradores/{ID}", "update", "allow", "D1", {
+    data, payload: { nombre: "Synthetic normal edit" },
+  });
+  add(`draft-creation-owner-preserving-replace-${withCreation ? "reserved" : "legacy"}`, "acceptance", "A", "firestore", "borradores/{ID}", "replace", "allow", "D1", {
+    data, payload: { ...data, nombre: "Synthetic normal replacement" },
+  });
+}
+add("draft-creation-owner-legacy-create", "acceptance", "A", "firestore", "borradores/{ID}", "create", "allow", "D1", {
+  payload: { userId: "{A}", nombre: "Synthetic legacy draft" },
+});
+
+// Stored legacy draft HTML/assets are backend-only, including orphan objects.
+// A matching Firestore owner is not proof that the stored bytes belong to it.
+const ownedDraft = { path: "borradores/{ID}", data: { userId: "{A}" } };
+for (const identity of ["anonymous", "A", "B", "admin", "superclaim", "role"]) {
+  for (const [name, resource] of [["html", "borradores/{ID}/index.html"], ["asset", "borradores/{ID}/assets/nested/fixture.png"]]) {
+    for (const op of ["get", "create", "update", "delete"]) {
+      add(`draft-storage-${name}-${identity}-${op}`, "acceptance", identity, "storage", resource, op, "deny", "D1", { fixtures: [ownedDraft] });
+    }
+  }
+  add(`draft-storage-${identity}-list`, "acceptance", identity, "storage", "borradores/{ID}", "list", "deny", "D1", {
+    fixtures: [ownedDraft], objectFixture: "borradores/{ID}/index.html",
+  });
+  for (const [name, resource] of [["root", "borradores"], ["id", "borradores/{ID}"]]) {
+    for (const op of ["get", "create", "update", "delete"]) {
+      add(`draft-storage-prefix-${name}-${identity}-${op}`, "acceptance", identity, "storage", resource, op, "deny", "D1", { fixtures: [ownedDraft] });
+    }
+  }
+}
+for (const identity of ["A", "B", "admin", "anonymous"]) {
+  add(`draft-storage-root-${identity}-list`, "acceptance", identity, "storage", "borradores", "list", "deny", "D1", {
+    fixtures: [ownedDraft], objectFixture: "borradores/{ID}/index.html",
+  });
+}
+for (const [name, fixtures] of [
+  ["missing", []],
+  ["ownerless", [{ ...ownedDraft, data: {} }]],
+  ["spoofed-uid", [{ ...ownedDraft, data: { uid: "{A}", userId: "{B}" } }]],
+]) {
+  add(`draft-storage-${name}-parent`, "acceptance", "A", "storage", "borradores/{ID}/index.html", "get", "deny", "D1", { fixtures });
+}
+const selfAdminProfile = { path: "usuarios/{B}", data: { admin: true, superadmin: true, role: "admin" } };
+for (const op of ["get", "update"]) {
+  add(`draft-storage-self-profile-admin-${op}`, "acceptance", "B", "storage", "borradores/{ID}/index.html", op, "deny", "D1", {
+    fixtures: [ownedDraft, selfAdminProfile], clientSetup: [selfAdminProfile],
+  });
+}
 
 // Provider delete is excluded from fallback: it discriminates real admin helpers.
 for (const identity of ["admin", "superclaim", "role", "stringAdmin", "serverSuper", "A"]) {

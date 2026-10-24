@@ -3,6 +3,7 @@
     {
       "source": "functions",
       "codebase": "default",
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".email-preview",
@@ -22,6 +23,7 @@
     {
       "source": "functions-payments",
       "codebase": "payments",
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",
@@ -40,6 +42,7 @@
     {
       "source": "functions-email",
       "codebase": "email",
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",

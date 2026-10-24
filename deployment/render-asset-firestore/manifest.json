@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "project": "reservaeldia-7a440",
+  "database": "(default)",
+  "base": {
+    "file": "base.rules",
+    "source": "exact local canonical snapshot; not deployed-state evidence",
+    "canonicalFile": "firestore.rules",
+    "canonicalComparison": "bytes after CRLF-to-LF normalization only",
+    "sha256": "700e0117fab33ccac394311907976fca5f0334b0b05d92adf709de7f0c12d1f0",
+    "bytes": 14370
+  },
+  "candidate": {
+    "file": "firestore.rules",
+    "sha256": "7c6ad315deaa372f6c5d416e89593024480858a32ab1e46e9705411d44eb386c",
+    "bytes": 15416
+  },
+  "config": {
+    "file": "firebase.json",
+    "sha256": "ee887975bbca8bff8ac0bb895ab8ecbda78e7206e2706ba3ccf204219ce7a56f"
+  },
+  "scope": [
+    "split recursive compatibility fallback read/write without changing its read predicate",
+    "exclude iconos and decoraciones from fallback writes only, including descendants",
+    "preserve all explicit grants, claims and all other baseline bytes"
+  ],
+  "status": "prepared locally; not deployed; compatibility and remote base review required"
+}

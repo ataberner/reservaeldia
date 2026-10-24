@@ -22,6 +22,17 @@ function checkWorkflows(workflows) {
       for (const dependency of [jobs[id].needs || []].flat()) visit(dependency, new Set([...visiting, id]));
     };
     for (const id of Object.keys(jobs)) visit(id);
+    for (const job of Object.values(jobs).filter(job => job.steps)) {
+      const setups = job.steps.filter(step => step.uses?.startsWith("actions/setup-node@"));
+      assert.equal(setups.length, 1, `${name}: un runtime Node explícito por job`);
+      const setup = setups[0];
+      assert.equal(setup.with["node-version-file"], ".node-version", `${name}: usar el pin compartido`);
+      assert.equal(setup.with["node-version"], undefined, `${name}: no sobrescribir el pin`);
+      assert.equal(setup.if, undefined, `${name}: no omitir el runtime`);
+      const setupIndex = job.steps.indexOf(setup);
+      assert.ok(job.steps.slice(0, setupIndex).some(step => step.uses?.startsWith("actions/checkout@")), `${name}: checkout antes del pin`);
+      assert.ok(!job.steps.slice(0, setupIndex).some(step => step.run), `${name}: runtime antes de comandos`);
+    }
   }
   const reusable = workflows["local-verification.yml"];
   assert.ok(Object.hasOwn(reusable.on, "workflow_call"));

@@ -1,0 +1,1112 @@
+{
+  "schemaVersion": 1,
+  "scope": "Local configuration and canonical registry only; not a remote inventory, deployment plan execution or deployment authorization.",
+  "registry": {
+    "path": "functions/functionOwnership.json",
+    "sha256": "afe2daaf2264168e94722a746f1428acc9f45c80d5a25e5ff31aa189485b4c96"
+  },
+  "localNodeVersionPin": "22.23.4",
+  "codebases": {
+    "default": {
+      "source": "functions",
+      "runtime": "nodejs22",
+      "count": 103
+    },
+    "payments": {
+      "source": "functions-payments",
+      "runtime": "nodejs22",
+      "count": 3
+    },
+    "email": {
+      "source": "functions-email",
+      "runtime": "nodejs22",
+      "count": 3
+    }
+  },
+  "counts": {
+    "all": 109,
+    "security": 11,
+    "runtimeOnly": 98
+  },
+  "limitations": [
+    "Generation is omitted where the canonical registry does not record it. Verify the SDK manifests and remote generation before any deployment; runtime alignment does not authorize a generation change.",
+    "Targets identify all local Functions affected by the Node 22 configuration. They do not assert that those resources exist remotely or already use this runtime.",
+    "Security targets also receive the runtime change; runtimeOnlyTargets is the remaining set, without duplicates.",
+    "The two rollback configurations concern codebase ownership and preserve nodejs22; they are not a security rollback.",
+    "runtimeOnlyTargets classifies deployment priority outside the eleven security handlers; it does not assert that their packages or shared imports have byte-for-byte runtime-only diffs. Preserve draftState extraction and verify its existing consumers.",
+    "The eight render targets are local reachable callers of the prepared asset normalizer. Protecting one deployed caller does not patch other deployed callers, even when they import the same TypeScript module. Catalog write protection in the separate Firestore artifact is a prerequisite; Storage Rules and the three draft handlers alone do not secure this path.",
+    "Source anchors below are static source evidence, not build results, deployed revision evidence, IAM verification, or confirmation that prior signed/download URLs have been revoked."
+  ],
+  "securityTargets": [
+    {
+      "name": "adminGetTemplateEditorDocumentV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "copiarPlantilla",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "copiarPlantillaHTML",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "prepareDraftPreviewRender",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "publicarInvitacion",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "retryPaidPublicationWithNewSlug",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "validateDraftForPublication",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "verInvitacion",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "createPublicationCheckoutSession",
+      "codebase": "payments",
+      "region": "us-central1"
+    },
+    {
+      "name": "createPublicationPayment",
+      "codebase": "payments",
+      "region": "us-central1"
+    },
+    {
+      "name": "mercadoPagoWebhook",
+      "codebase": "payments",
+      "region": "us-central1"
+    }
+  ],
+  "runtimeOnlyTargets": [
+    {
+      "name": "adminCommitTemplateWorkspaceV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminConvertDraftToTemplateV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminCreateTemplateFromDraftV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminDeleteTextPresetV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminDuplicateTextPresetV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminGetDecorUsageStatsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminGetIconUsageStatsV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminGetPricingConfigV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminHardDeleteTemplateFromTrashV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListDecorCatalogV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListIconCatalogV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListPricingHistoryV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListTemplatesV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListTemplateTagsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListTemplateTrashV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminListTextPresetsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminMoveTemplateToTrashV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminOpenTemplateWorkspaceV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminPatchDecorMetadataV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminPatchIconMetadataV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminRebuildBusinessAnalyticsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminRestoreTemplateFromTrashV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminRevalidateDecorV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminRevalidateIconV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSaveTemplateEditorDocumentV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSetDecorActivationV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSetDecorPriorityV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSetIconActivationV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSetIconPriorityV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSetTextPresetActivationV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSetTextPresetVisibilityV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminSyncLegacyTextPresetsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminUpdatePricingConfigV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminUpsertDashboardHomeConfigV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminUpsertTemplateEditorialV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminUpsertTemplateTagV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "adminUpsertTextPresetV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "archiveCountdownPreset",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "borrarBorrador",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "borrarPlantilla",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "borrarTodosLosBorradores",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "checkPublicSlugAvailability",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "crearPlantilla",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "dailyIconCatalogReconcileV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "dailyIconUsageScanV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "deleteCountdownPreset",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "designerAiChat",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "duplicateCountdownPreset",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "finalizeExpiredPublications",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getAdminAccess",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getAdminDraftSnapshot",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getAdminUserByEmail",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getBusinessAnalyticsOverviewV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getBusinessAnalyticsRawExportStatusV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getDashboardHomeConfigV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getGiftLinkMetadata",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getMyProfileStatus",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getMyPublicationVisitMetrics",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getMyUiPreferences",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getPricingConfigV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getPublicationCheckoutStatus",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getUserDirectoryDetail",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "getUsersStats",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "hardDeleteLegacyPublication",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listAdminUsers",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listCountdownPresetsAdmin",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listCountdownPresetsPublic",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listCountdownPresetVersionsAdmin",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listPublicationDiscountCodes",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listPublicationDiscountCodeUsage",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listTextPresetsPublicV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "listUsersDirectory",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "moveDraftToTrash",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "onDecorCatalogDocWriteV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "onIconCatalogDocWriteV2",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "preparePublicTemplatePreview",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "processPendingAnalyticsEventsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "publicRsvpSubmit",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "publishCountdownPresetDraft",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "purgeTrashedDrafts",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "purgeTrashedPublications",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "reportClientIssue",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "requestBusinessAnalyticsRawExportV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "restoreDraftFromTrash",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "runBusinessAnalyticsExportJobsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "runBusinessAnalyticsRebuildJobsV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "saveCountdownPresetDraft",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "saveDraftWithMusicV1",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "setAdminClaim",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "syncLegacyCountdownPresets",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "transitionPublishedInvitationState",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "updateMyUiPreferences",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "upsertPublicationDiscountCode",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "upsertUserProfile",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "verInvitacionPublicada",
+      "codebase": "default",
+      "region": "us-central1"
+    },
+    {
+      "name": "onUserCreatedWelcomeEmail",
+      "codebase": "email",
+      "region": "us-central1"
+    },
+    {
+      "name": "testTransactionalEmail",
+      "codebase": "email",
+      "region": "us-central1"
+    },
+    {
+      "name": "testWelcomeEmail",
+      "codebase": "email",
+      "region": "us-central1"
+    }
+  ],
+  "partitionCounts": {
+    "default": {
+      "all": 103,
+      "security": 8,
+      "runtimeOnly": 95
+    },
+    "payments": {
+      "all": 3,
+      "security": 3,
+      "runtimeOnly": 0
+    },
+    "email": {
+      "all": 3,
+      "security": 0,
+      "runtimeOnly": 3
+    }
+  },
+  "securityGroups": {
+    "draftCreationAndPrivateDelivery": [
+      "copiarPlantilla",
+      "copiarPlantillaHTML",
+      "verInvitacion"
+    ],
+    "renderAssetAuthorization": [
+      "prepareDraftPreviewRender",
+      "validateDraftForPublication",
+      "publicarInvitacion",
+      "retryPaidPublicationWithNewSlug",
+      "adminGetTemplateEditorDocumentV1",
+      "createPublicationCheckoutSession",
+      "createPublicationPayment",
+      "mercadoPagoWebhook"
+    ]
+  },
+  "dependencyEvidence": {
+    "method": "Static imports, declarations and reachable call sites inspected in canonical TypeScript sources. No Function was invoked and no build was run for this inventory update.",
+    "nodes": [
+      {
+        "id": "functions/src/index.ts#prepareDraftPreviewRender",
+        "path": "functions/src/index.ts",
+        "symbol": "prepareDraftPreviewRender",
+        "line": 1620,
+        "anchor": "export const prepareDraftPreviewRender ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#prepareDraftPreviewRenderHandler",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "prepareDraftPreviewRenderHandler",
+        "line": 1703,
+        "anchor": "export async function prepareDraftPreviewRenderHandler("
+      },
+      {
+        "id": "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+        "path": "functions/src/render/prepareRenderPayload.ts",
+        "symbol": "prepareRenderPayload",
+        "line": 316,
+        "anchor": "export async function prepareRenderPayload("
+      },
+      {
+        "id": "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+        "path": "functions/src/utils/publishAssetNormalization.ts",
+        "symbol": "normalizePublishRenderStateAssets",
+        "line": 450,
+        "anchor": "export async function normalizePublishRenderStateAssets("
+      },
+      {
+        "id": "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer",
+        "path": "functions/src/render/renderAssetAuthorization.ts",
+        "symbol": "createRenderAssetAuthorizer",
+        "line": 26,
+        "anchor": "export function createRenderAssetAuthorizer("
+      },
+      {
+        "id": "functions/src/index.ts#validateDraftForPublication",
+        "path": "functions/src/index.ts",
+        "symbol": "validateDraftForPublication",
+        "line": 1615,
+        "anchor": "export const validateDraftForPublication ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#validateDraftForPublicationHandler",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "validateDraftForPublicationHandler",
+        "line": 1686,
+        "anchor": "export async function validateDraftForPublicationHandler("
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "buildPublicationRenderArtifacts",
+        "line": 1315,
+        "anchor": "async function buildPublicationRenderArtifacts("
+      },
+      {
+        "id": "functions/src/index.ts#publicarInvitacion",
+        "path": "functions/src/index.ts",
+        "symbol": "publicarInvitacion",
+        "line": 1956,
+        "anchor": "export const publicarInvitacion ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#publishWithApprovedPaymentSession",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "publishWithApprovedPaymentSession",
+        "line": 2461,
+        "anchor": "export async function publishWithApprovedPaymentSession("
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#finalizeApprovedSession",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "finalizeApprovedSession",
+        "line": 1565,
+        "anchor": "async function finalizeApprovedSession("
+      },
+      {
+        "id": "functions/src/payments/publicationApprovedSessionFlow.ts#finalizeApprovedSessionFlow",
+        "path": "functions/src/payments/publicationApprovedSessionFlow.ts",
+        "symbol": "finalizeApprovedSessionFlow",
+        "line": 404,
+        "anchor": "export async function finalizeApprovedSessionFlow"
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#publishDraftToPublic",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "publishDraftToPublic",
+        "line": 1389,
+        "anchor": "export async function publishDraftToPublic("
+      },
+      {
+        "id": "functions/src/index.ts#retryPaidPublicationWithNewSlug",
+        "path": "functions/src/index.ts",
+        "symbol": "retryPaidPublicationWithNewSlug",
+        "line": 1751,
+        "anchor": "export const retryPaidPublicationWithNewSlug ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#retryPaidPublicationWithNewSlugHandler",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "retryPaidPublicationWithNewSlugHandler",
+        "line": 2380,
+        "anchor": "export async function retryPaidPublicationWithNewSlugHandler("
+      },
+      {
+        "id": "functions/src/index.ts#adminGetTemplateEditorDocumentV1",
+        "path": "functions/src/index.ts",
+        "symbol": "adminGetTemplateEditorDocumentV1",
+        "line": 242,
+        "anchor": "export const adminGetTemplateEditorDocumentV1 ="
+      },
+      {
+        "id": "functions/src/templates/editorialService.ts#adminGetTemplateEditorDocumentV1",
+        "path": "functions/src/templates/editorialService.ts",
+        "symbol": "adminGetTemplateEditorDocumentV1",
+        "line": 1369,
+        "anchor": "export const adminGetTemplateEditorDocumentV1 ="
+      },
+      {
+        "id": "functions/src/templates/templateEditorPreview.ts#prepareTemplateEditorPreview",
+        "path": "functions/src/templates/templateEditorPreview.ts",
+        "symbol": "prepareTemplateEditorPreview",
+        "line": 15,
+        "anchor": "export async function prepareTemplateEditorPreview("
+      },
+      {
+        "id": "functions/src/payments/entrypoint.ts#createPublicationCheckoutSession",
+        "path": "functions/src/payments/entrypoint.ts",
+        "symbol": "createPublicationCheckoutSession",
+        "line": 11,
+        "anchor": "export const createPublicationCheckoutSession ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#createPublicationCheckoutSessionHandler",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "createPublicationCheckoutSessionHandler",
+        "line": 2057,
+        "anchor": "export async function createPublicationCheckoutSessionHandler("
+      },
+      {
+        "id": "functions/src/payments/entrypoint.ts#createPublicationPayment",
+        "path": "functions/src/payments/entrypoint.ts",
+        "symbol": "createPublicationPayment",
+        "line": 21,
+        "anchor": "export const createPublicationPayment ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#createPublicationPaymentHandler",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "createPublicationPaymentHandler",
+        "line": 2202,
+        "anchor": "export async function createPublicationPaymentHandler("
+      },
+      {
+        "id": "functions/src/payments/entrypoint.ts#mercadoPagoWebhook",
+        "path": "functions/src/payments/entrypoint.ts",
+        "symbol": "mercadoPagoWebhook",
+        "line": 34,
+        "anchor": "export const mercadoPagoWebhook ="
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#processMercadoPagoWebhookRequest",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "processMercadoPagoWebhookRequest",
+        "line": 2535,
+        "anchor": "export async function processMercadoPagoWebhookRequest("
+      },
+      {
+        "id": "functions/src/payments/publicationPayments.ts#processMercadoPagoPayment",
+        "path": "functions/src/payments/publicationPayments.ts",
+        "symbol": "processMercadoPagoPayment",
+        "line": 1634,
+        "anchor": "async function processMercadoPagoPayment("
+      },
+      {
+        "id": "functions/src/payments/publicationApprovedSessionFlow.ts#processMercadoPagoPaymentFlow",
+        "path": "functions/src/payments/publicationApprovedSessionFlow.ts",
+        "symbol": "processMercadoPagoPaymentFlow",
+        "line": 726,
+        "anchor": "export async function processMercadoPagoPaymentFlow"
+      },
+      {
+        "id": "functions/src/index.ts#copiarPlantilla",
+        "path": "functions/src/index.ts",
+        "symbol": "copiarPlantilla",
+        "line": 2015,
+        "anchor": "export const copiarPlantilla ="
+      },
+      {
+        "id": "functions/src/drafts/templateDraftCreation.ts#createTemplateDraft",
+        "path": "functions/src/drafts/templateDraftCreation.ts",
+        "symbol": "createTemplateDraft",
+        "line": 49,
+        "anchor": "export async function createTemplateDraft("
+      },
+      {
+        "id": "functions/src/index.ts#copiarPlantillaHTML",
+        "path": "functions/src/index.ts",
+        "symbol": "copiarPlantillaHTML",
+        "line": 1545,
+        "anchor": "export const copiarPlantillaHTML ="
+      },
+      {
+        "id": "functions/src/drafts/legacyHtmlDraft.ts#copyLegacyTemplateDraft",
+        "path": "functions/src/drafts/legacyHtmlDraft.ts",
+        "symbol": "copyLegacyTemplateDraft",
+        "line": 52,
+        "anchor": "export async function copyLegacyTemplateDraft("
+      },
+      {
+        "id": "functions/src/index.ts#verInvitacion",
+        "path": "functions/src/index.ts",
+        "symbol": "verInvitacion",
+        "line": 1463,
+        "anchor": "export const verInvitacion ="
+      },
+      {
+        "id": "functions/src/drafts/legacyHtmlDraft.ts#readLegacyDraftHtml",
+        "path": "functions/src/drafts/legacyHtmlDraft.ts",
+        "symbol": "readLegacyDraftHtml",
+        "line": 28,
+        "anchor": "export async function readLegacyDraftHtml("
+      }
+    ],
+    "traces": [
+      {
+        "name": "prepareDraftPreviewRender",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#prepareDraftPreviewRender",
+          "functions/src/payments/publicationPayments.ts#prepareDraftPreviewRenderHandler",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "validateDraftForPublication",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#validateDraftForPublication",
+          "functions/src/payments/publicationPayments.ts#validateDraftForPublicationHandler",
+          "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "publicarInvitacion",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#publicarInvitacion",
+          "functions/src/payments/publicationPayments.ts#publishWithApprovedPaymentSession",
+          "functions/src/payments/publicationPayments.ts#finalizeApprovedSession",
+          "functions/src/payments/publicationApprovedSessionFlow.ts#finalizeApprovedSessionFlow",
+          "functions/src/payments/publicationPayments.ts#publishDraftToPublic",
+          "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "retryPaidPublicationWithNewSlug",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#retryPaidPublicationWithNewSlug",
+          "functions/src/payments/publicationPayments.ts#retryPaidPublicationWithNewSlugHandler",
+          "functions/src/payments/publicationPayments.ts#finalizeApprovedSession",
+          "functions/src/payments/publicationApprovedSessionFlow.ts#finalizeApprovedSessionFlow",
+          "functions/src/payments/publicationPayments.ts#publishDraftToPublic",
+          "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "adminGetTemplateEditorDocumentV1",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#adminGetTemplateEditorDocumentV1",
+          "functions/src/templates/editorialService.ts#adminGetTemplateEditorDocumentV1",
+          "functions/src/templates/templateEditorPreview.ts#prepareTemplateEditorPreview",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "createPublicationCheckoutSession",
+        "codebase": "payments",
+        "chain": [
+          "functions/src/payments/entrypoint.ts#createPublicationCheckoutSession",
+          "functions/src/payments/publicationPayments.ts#createPublicationCheckoutSessionHandler",
+          "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "createPublicationPayment",
+        "codebase": "payments",
+        "chain": [
+          "functions/src/payments/entrypoint.ts#createPublicationPayment",
+          "functions/src/payments/publicationPayments.ts#createPublicationPaymentHandler",
+          "functions/src/payments/publicationPayments.ts#finalizeApprovedSession",
+          "functions/src/payments/publicationApprovedSessionFlow.ts#finalizeApprovedSessionFlow",
+          "functions/src/payments/publicationPayments.ts#publishDraftToPublic",
+          "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      },
+      {
+        "name": "mercadoPagoWebhook",
+        "codebase": "payments",
+        "chain": [
+          "functions/src/payments/entrypoint.ts#mercadoPagoWebhook",
+          "functions/src/payments/publicationPayments.ts#processMercadoPagoWebhookRequest",
+          "functions/src/payments/publicationPayments.ts#processMercadoPagoPayment",
+          "functions/src/payments/publicationApprovedSessionFlow.ts#processMercadoPagoPaymentFlow",
+          "functions/src/payments/publicationPayments.ts#finalizeApprovedSession",
+          "functions/src/payments/publicationApprovedSessionFlow.ts#finalizeApprovedSessionFlow",
+          "functions/src/payments/publicationPayments.ts#publishDraftToPublic",
+          "functions/src/payments/publicationPayments.ts#buildPublicationRenderArtifacts",
+          "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+          "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+          "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer"
+        ]
+      }
+    ],
+    "additionalEdges": [
+      {
+        "from": "functions/src/payments/publicationPayments.ts#createPublicationPaymentHandler",
+        "to": "functions/src/payments/publicationPayments.ts#processMercadoPagoPayment",
+        "condition": "Nonzero approved Mercado Pago payment; zero-amount branch reaches finalizeApprovedSession directly."
+      },
+      {
+        "from": "functions/src/render/prepareRenderPayload.ts#prepareRenderPayload",
+        "to": "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+        "callSite": {
+          "path": "functions/src/render/prepareRenderPayload.ts",
+          "symbol": "normalization call",
+          "line": 343,
+          "anchor": "normalizedAssets = await normalizePublishRenderStateAssets("
+        }
+      },
+      {
+        "from": "functions/src/utils/publishAssetNormalization.ts#normalizePublishRenderStateAssets",
+        "to": "functions/src/render/renderAssetAuthorization.ts#createRenderAssetAuthorizer",
+        "callSite": {
+          "path": "functions/src/utils/publishAssetNormalization.ts",
+          "symbol": "context authorizer construction",
+          "line": 467,
+          "anchor": "authorizer: createRenderAssetAuthorizer("
+        }
+      }
+    ],
+    "imports": [
+      {
+        "path": "functions/src/index.ts",
+        "importFrom": "./payments/publicationPayments",
+        "symbols": [
+          "prepareDraftPreviewRenderHandler",
+          "validateDraftForPublicationHandler",
+          "publishWithApprovedPaymentSession",
+          "retryPaidPublicationWithNewSlugHandler"
+        ]
+      },
+      {
+        "path": "functions/src/payments/entrypoint.ts",
+        "importFrom": "./publicationPayments",
+        "symbols": [
+          "createPublicationCheckoutSessionHandler",
+          "createPublicationPaymentHandler",
+          "processMercadoPagoWebhookRequest"
+        ]
+      },
+      {
+        "path": "functions/src/templates/editorialService.ts",
+        "importFrom": "./templateEditorPreview",
+        "symbols": [
+          "prepareTemplateEditorPreview"
+        ]
+      },
+      {
+        "path": "functions/src/templates/templateEditorPreview.ts",
+        "importFrom": "../render/prepareRenderPayload",
+        "symbols": [
+          "prepareRenderPayload"
+        ]
+      },
+      {
+        "path": "functions/src/payments/publicationPayments.ts",
+        "importFrom": "../render/prepareRenderPayload",
+        "symbols": [
+          "prepareRenderPayload"
+        ]
+      },
+      {
+        "path": "functions/src/render/prepareRenderPayload.ts",
+        "importFrom": "../utils/publishAssetNormalization",
+        "symbols": [
+          "normalizePublishRenderStateAssets"
+        ]
+      },
+      {
+        "path": "functions/src/index.ts",
+        "importFrom": "./templates/editorialService",
+        "symbols": [
+          "adminGetTemplateEditorDocumentV1"
+        ],
+        "localAliases": {
+          "adminGetTemplateEditorDocumentV1": "adminGetTemplateEditorDocumentV1Handler"
+        }
+      }
+    ],
+    "nonCallers": [
+      {
+        "name": "preparePublicTemplatePreview",
+        "path": "functions/src/index.ts",
+        "reason": "Uses normalizeRenderAssetState, group preparation and the pure HTML generator; it does not call prepareRenderPayload or the prepared asset normalizer."
+      },
+      {
+        "path": "functions/src/payments/publicationPublishExecution.ts",
+        "symbol": "executePublicationPublish",
+        "reason": "Consumes prepared artifacts and calls generateHtmlFromPreparedRenderPayload; it does not independently resolve or authorize assets and is not an additional exported Function."
+      },
+      {
+        "path": "functions/src/payments/publicationPublishValidation.ts",
+        "symbol": "preparePublicationRenderState",
+        "reason": "Compatibility re-export/alias; no additional production caller found."
+      }
+    ],
+    "sharedCompatibilityDependency": {
+      "path": "functions/src/drafts/draftState.ts",
+      "importedBy": [
+        "functions/src/drafts/templateDraftCreation.ts",
+        "functions/src/drafts/draftTrashLifecycle.ts"
+      ],
+      "note": "The extraction preserves the prior state resolution logic; lifecycle consumers remain in the 98-target group. This is not an independently deployed Function."
+    },
+    "draftTraces": [
+      {
+        "name": "copiarPlantilla",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#copiarPlantilla",
+          "functions/src/drafts/templateDraftCreation.ts#createTemplateDraft"
+        ]
+      },
+      {
+        "name": "copiarPlantillaHTML",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#copiarPlantillaHTML",
+          "functions/src/drafts/legacyHtmlDraft.ts#copyLegacyTemplateDraft",
+          "functions/src/drafts/templateDraftCreation.ts#createTemplateDraft"
+        ]
+      },
+      {
+        "name": "verInvitacion",
+        "codebase": "default",
+        "chain": [
+          "functions/src/index.ts#verInvitacion",
+          "functions/src/drafts/legacyHtmlDraft.ts#readLegacyDraftHtml"
+        ]
+      }
+    ],
+    "verification": {
+      "kind": "offline registry union, partition, import and source-anchor checks",
+      "identityCount": 109,
+      "securityIdentityCount": 11,
+      "runtimeRemainderCount": 98,
+      "renderCallerCount": 8,
+      "draftSecurityCallerCount": 3,
+      "duplicateIdentities": 0,
+      "buildExecuted": false,
+      "remoteRequests": false
+    }
+  }
+}

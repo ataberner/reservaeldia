@@ -12,7 +12,7 @@
       "dev:reset": "node scripts/local/runLocal.cjs dev",
       "build": "node scripts/retainNextStaticAssets.cjs capture && next build && node scripts/retainNextStaticAssets.cjs finalize && node scripts/verifyNextStaticRelease.cjs",
       "build:next": "next build",
-      "export": "next export",
+      "export": "npm run build",
       "templates:seed:dry": "node scripts/seedTemplateContracts.cjs --dry-run",
       "templates:seed:apply": "node scripts/seedTemplateContracts.cjs --apply",
       "templates:editorial:backfill:dry": "node scripts/backfillTemplateEditorialWorkflow.cjs --dry-run",
@@ -52,6 +52,7 @@
       "test:local:rules": "node scripts/local/runLocal.cjs rules",
       "local:prepare": "node scripts/local/prepareLocal.cjs",
       "verify:local": "node scripts/local/runLocal.cjs verify",
+      "verify:release:local": "node scripts/local/runLocal.cjs release",
       "test:local:negative": "node scripts/local/verifyNegative.cjs"
    },
    "dependencies": {
@@ -88,6 +89,6 @@
       "tailwindcss": "^3.4.1"
    },
    "engines": {
-      "node": "20"
+      "node": "22"
    }
 }

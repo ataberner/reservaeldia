@@ -1,0 +1,8 @@
+{
+  "storage": [
+    {
+      "bucket": "reservaeldia-7a440.firebasestorage.app",
+      "rules": "storage.rules"
+    }
+  ]
+}

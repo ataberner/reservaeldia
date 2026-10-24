@@ -97,7 +97,7 @@ test("package lock uses only existing locked versions, without outside-package l
     assert.equal(entry.link, undefined); assert.equal(entry.version, original.packages[name].version);
   }
   assert.deepEqual(Object.keys(pkg.dependencies).sort(), ["@aws-sdk/client-sesv2", "firebase-admin", "firebase-functions", "react", "react-dom", "react-email"]);
-  assert.equal(pkg.engines.node, "20"); assert.equal(pkg.main, "lib/emails/entrypoint.js");
+  assert.equal(pkg.engines.node, "22"); assert.equal(pkg.main, "lib/emails/entrypoint.js");
 });
 
 test("email configuration permits explicit modes, production requires a valid cutoff and superadmin authority is preserved", () => {

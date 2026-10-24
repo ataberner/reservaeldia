@@ -13,6 +13,7 @@ test("template editor preview uses the prepared render pipeline for valid HTML",
 
   const result = await prepareTemplateEditorPreview({
     templateId: "template-prepared-valid",
+    assetAccess: { kind: "template", actorUid: "admin-fixture", templateId: "template-prepared-valid" },
     includeDebugPayload: true,
     editorDocument: {
       objetos: [
@@ -56,6 +57,7 @@ test("template editor preview omits the duplicated debug payload by default", as
 
   const result = await prepareTemplateEditorPreview({
     templateId: "template-compact-response",
+    assetAccess: { kind: "template", actorUid: "admin-fixture", templateId: "template-compact-response" },
     previewTimingSessionId: "template-timing",
     editorDocument: {
       objetos: [],
@@ -75,6 +77,7 @@ test("template editor preview blocks invalid prepared render state without local
 
   const result = await prepareTemplateEditorPreview({
     templateId: "template-prepared-blocked",
+    assetAccess: { kind: "template", actorUid: "admin-fixture", templateId: "template-prepared-blocked" },
     editorDocument: {
       objetos: [
         {

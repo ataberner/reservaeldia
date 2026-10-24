@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "project": "reservaeldia-7a440",
+  "bucket": "reservaeldia-7a440.firebasestorage.app",
+  "base": {
+    "release": "projects/reservaeldia-7a440/releases/firebase.storage/reservaeldia-7a440.firebasestorage.app",
+    "ruleset": "projects/reservaeldia-7a440/rulesets/cd354678-8198-4a0a-b651-0f8f8868e305",
+    "sha256": "bb8224303fd2ee57a00bceee1bde95d5c545b1785ada22b6d79b9af2930c492a",
+    "bytes": 2325,
+    "recoveredFromGit": "f276a8952a3dfaa7e2f7370ae0be17cb6cd3f35d:storage.rules",
+    "evidencePath": ".local-isolation/remote-authorization-20261023/control-plane.json",
+    "evidenceSha256": "96dd8e69643ea0cac21eb91ea9e03a2f4f97bac792115ffc4c7be966ec76fd8a"
+  },
+  "candidate": {
+    "file": "storage.rules",
+    "sha256": "40ed3e455aa8ee2510744a25ca968e912f0fb3fe43c28c34f99bf0d590daca80",
+    "bytes": 1874
+  },
+  "config": {
+    "file": "firebase.json",
+    "sha256": "346fc6d5d2de79776329883ca8ea8b6dcf7a7fff0104dde86ddb84e656ae2867"
+  },
+  "scope": [
+    "provider image read requires existing admin claim",
+    "borradores recursive SDK deny including admins",
+    "fallback excludes borradores for both read and write"
+  ],
+  "status": "prepared locally; not deployed; fresh remote base evidence required"
+}

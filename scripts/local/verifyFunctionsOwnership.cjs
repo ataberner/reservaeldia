@@ -4,11 +4,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const { ROOT, copyWorkspace, cleanEnvironment, findFirebaseCli } = require("./session.cjs");
+const { ROOT, copyWorkspace, cleanEnvironment, findFirebaseCli, assertNodeRuntime } = require("./session.cjs");
 const { Processes } = require("./processes.cjs");
 const { assertSourceConfigurationNames } = require("../../functions/testUtils/functionOwnership.cjs");
 
 async function verify(cliRoot) {
+  assertNodeRuntime();
   assertSourceConfigurationNames(ROOT);
   const cli = cliRoot || path.resolve(findFirebaseCli(), "../../..");
   assert.equal(require(path.join(cli, "package.json")).version, require("./tools/package.json").dependencies["firebase-tools"], "Use the pinned Firebase CLI");

@@ -4,6 +4,7 @@ import {
   prepareRenderPayload,
   validatePreparedRenderPayload,
 } from "../render/prepareRenderPayload";
+import type { RenderAssetAccessContext } from "../render/renderAssetAuthorization";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -14,6 +15,7 @@ function normalizeText(value: unknown): string {
 export async function prepareTemplateEditorPreview(params: {
   templateId: string;
   editorDocument: UnknownRecord;
+  assetAccess: Extract<RenderAssetAccessContext, { kind: "template" }>;
   includeDebugPayload?: boolean;
   previewTimingSessionId?: string;
 }) {
@@ -24,6 +26,7 @@ export async function prepareTemplateEditorPreview(params: {
   const templateId = normalizeText(params.templateId);
   const prepared = await prepareRenderPayload(params.editorDocument, {
     purpose: "template-editor-preview",
+    assetAccess: params.assetAccess,
   });
   const preparedAt = includeTiming ? now() : 0;
   const validation = validatePreparedRenderPayload(prepared);

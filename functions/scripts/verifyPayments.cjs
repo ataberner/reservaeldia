@@ -58,6 +58,7 @@ function assertPlan(cliRoot) {
   const rollbackConfig = require("../../firebase.payments-rollback.json").functions;
   const endpoints = codebase => {
     const wire = JSON.parse(fs.readFileSync(path.join(evidence, "manifests", codebase + ".json"), "utf8"));
+    // Historical September migration simulation, not current runtime readiness.
     const converted = converter.buildFromV1Alpha1(wire, remote.project, "us-central1", "nodejs20");
     const resolved = build.toBackend(converted, {});
     resolveCpuAndConcurrency(resolved);
@@ -140,7 +141,8 @@ async function discoveryChild(cliRoot, codebase) {
     try { return await detect(...args); } finally { detectorMs = performance.now() - started; }
   };
   const { Delegate } = require(path.join(cliRoot, "lib/deploy/functions/runtimes/node/index.js"));
-  const delegate = new Delegate("reservaeldia-7a440", root, discoverySource, "nodejs20");
+  const runtime = require("../../firebase.json").functions.find(entry => entry.codebase === codebase).runtime;
+  const delegate = new Delegate("reservaeldia-7a440", root, discoverySource, runtime);
   const firebase = { projectId: "reservaeldia-7a440", storageBucket: "reservaeldia-7a440.firebasestorage.app" };
   // The SDK's shutdown leaves a CLI kill timer. Observe completion, then exit.
   quitTimer = setTimeout(() => { if (child) child.kill(); process.exit(2); }, 45000);

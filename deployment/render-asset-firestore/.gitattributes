@@ -1,0 +1,4 @@
+/base.rules -text
+/firestore.rules -text
+/manifest.json -text
+/firebase.json -text

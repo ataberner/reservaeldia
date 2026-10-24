@@ -54,12 +54,6 @@ service cloud.firestore {
         resource.data.estadoEditorial == "publicada";
     }
 
-    function isPublicProviderResource() {
-      return resource.data.estado == "publicado" &&
-        resource.data.activo == true &&
-        resource.data.visible == true;
-    }
-
     function isValidProviderWrite() {
       return request.resource.data.keys().hasAll([
           "schemaVersion",
@@ -250,10 +244,15 @@ service cloud.firestore {
 
     match /borradores/{draftId} {
       // Music mutations use the atomic, owner-checked admin callable.
-      allow create: if isDraftOwnerOnCreate() && hasDefaultMusic(request.resource.data);
+      // Creation provenance is written only by the backend, never supplied or
+      // replaced by a client when resuming a stored HTML artifact.
+      allow create: if isDraftOwnerOnCreate() &&
+        !("draftCreation" in request.resource.data) && hasDefaultMusic(request.resource.data);
       allow read, delete: if isDraftOwner();
       allow update: if isDraftOwner() &&
-        request.resource.data.userId == resource.data.userId && preservesMusic();
+        request.resource.data.userId == resource.data.userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["draftCreation"]) &&
+        preservesMusic();
     }
 
     // A4: roots/operation results remain administrative even when published.
@@ -380,9 +379,9 @@ service cloud.firestore {
     }
 
     match /proveedores/{proveedorId} {
-      // Firestore Rules cannot redact internal fields. This direct read exposes
-      // the whole document and is therefore limited to explicitly public rows.
-      allow read: if isAdmin() || isPublicProviderResource();
+      // Canonical provider documents remain administrative, including rows
+      // marked published. Public delivery needs its own reviewed projection.
+      allow read: if isAdmin();
       allow create, update: if isAdmin() && isValidProviderWrite();
       allow delete: if isAdmin();
     }

@@ -5,6 +5,12 @@ const env = { ...process.env, NODE_ENV: "production", RESERVA_FIREBASE_MODE: "pr
 for (const name of Object.keys(env)) {
   if ((name.includes("EMULATOR") && name !== "FIREBASE_EMULATORS_PATH") || ["GCLOUD_PROJECT", "GOOGLE_CLOUD_PROJECT", "FIREBASE_CONFIG", "FIREBASE_STORAGE_BUCKET", "NEXT_PUBLIC_FIREBASE_PROJECT_ID", "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET", "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"].includes(name)) delete env[name];
 }
-const tests = ["renderContractCompatibility.test.mjs", "motionEffectsRenderCompatibility.test.mjs", "templateStorageAssets.test.mjs", "designerAiService.test.mjs"];
-const result = spawnSync(process.execPath, ["--test", ...tests.map((name) => `functions/${name}`)], { cwd: process.cwd(), env, stdio: "inherit", windowsHide: true });
+const tests = ["renderContractCompatibility.test.mjs", "motionEffectsRenderCompatibility.test.mjs", "templateStorageAssets.test.mjs", "designerAiService.test.mjs",
+  "renderAssetAuthorization.test.mjs", "renderAssetCatalogAccess.test.mjs", "renderAssetContextWiring.test.mjs", "renderGiftAssetAuthorization.test.mjs",
+  "publishAssetNormalization.test.mjs", "publicationPublishValidation.test.mjs", "publicationPublishExecution.test.mjs", "templateEditorPreview.test.mjs",
+  "musicRenderIntegration.test.mjs", "iconRenderableParity.test.mjs", "iconSnapshotAssetAuthorization.test.mjs", "giftsModal.test.mjs",
+  "publicationApprovedSessionFlow.test.mjs", "publicationCheckoutSessionFlow.test.mjs", "publicationFinalizationFlow.test.mjs", "publicationPaymentEdge.test.mjs"];
+// Only test files run sequentially to bound memory. Races inside the emulator
+// authorization suite retain their concurrent requests and assertions.
+const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...tests.map((name) => `functions/${name}`), "shared/previewPublishParity.test.mjs"], { cwd: process.cwd(), env, stdio: "inherit", windowsHide: true });
 process.exitCode = result.status ?? 1;

@@ -3,19 +3,27 @@ import assert from "node:assert/strict";
 
 import {
   FIXTURE_BUCKET,
-  FIXTURE_PATHS,
   buildGsUrl,
 } from "../shared/renderAssetContractFixtures.mjs";
 import {
   createRepresentativeBlockingDraftFixture,
-  createRepresentativeCompatibilityWarningDraftFixture,
-  createRepresentativeGiftNoUsableMethodsDraftFixture,
-  createRepresentativePublishReadyDraftFixture,
+  createRepresentativeCompatibilityWarningDraftFixture as createLegacyCompatibilityWarningDraftFixture,
+  createRepresentativeGiftNoUsableMethodsDraftFixture as createLegacyGiftNoUsableMethodsDraftFixture,
+  createRepresentativePublishReadyDraftFixture as createLegacyPublishReadyDraftFixture,
 } from "../shared/publicationPublishValidationFixtures.mjs";
 import {
   installFirebaseStorageMock,
 } from "./testUtils/firebaseStorageMock.mjs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
+import {
+  AUTHORIZED_RENDER_CONTEXT,
+  AUTHORIZED_FIXTURE_PATHS as FIXTURE_PATHS,
+  authorizeRenderFixture,
+} from "./testUtils/authorizedRenderFixture.mjs";
+
+const createRepresentativePublishReadyDraftFixture = () => authorizeRenderFixture(createLegacyPublishReadyDraftFixture());
+const createRepresentativeCompatibilityWarningDraftFixture = () => authorizeRenderFixture(createLegacyCompatibilityWarningDraftFixture());
+const createRepresentativeGiftNoUsableMethodsDraftFixture = () => authorizeRenderFixture(createLegacyGiftNoUsableMethodsDraftFixture());
 
 const {
   buildPreviewRenderPayloadFromPreparedPayload,
@@ -394,7 +402,7 @@ test("prepares a representative clean draft into a publish-ready state without w
   t.after(() => storageMock.restore());
 
   const draftState = createRepresentativePublishReadyDraftFixture();
-  const prepared = await preparePublicationRenderState(draftState);
+  const prepared = await preparePublicationRenderState(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const result = validatePreparedDraft(draftState, prepared);
   const heroImage = prepared.objetosFinales.find((entry) => entry.id === "hero-image");
 
@@ -419,7 +427,7 @@ test("prepares grouped image compositions recursively so publish validates the c
   const draftState = createRepresentativePublishReadyDraftFixture();
   draftState.objetos.push(createGroupedImageCaptionObject());
 
-  const prepared = await preparePublicationRenderState(draftState);
+  const prepared = await preparePublicationRenderState(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const result = validatePreparedDraft(draftState, prepared);
   const groupedObject = prepared.objetosFinales.find((entry) => entry.id === "photo-caption-group");
   const groupedImage = groupedObject.children.find((entry) => entry.id === "photo-caption-image");
@@ -485,7 +493,7 @@ test("prepared render payload applies functional group visibility and centering 
     ],
     rsvp: { enabled: true },
     gifts: { enabled: false },
-  });
+  }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   assert.deepEqual(prepared.seccionesFinales.map((section) => section.id), ["shared"]);
   assert.deepEqual(prepared.objetosFinales.map((object) => object.id), ["shared-title", "rsvp-group"]);
@@ -558,7 +566,7 @@ test("prepared preview and publish hide standalone RSVP roots and center the Gif
       bank: { alias: "ANA.LUIS" },
       visibility: { alias: true },
     },
-  });
+  }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const validation = validatePreparedRenderPayload(prepared);
 
   assert.equal(validation.canPublish, true);
@@ -629,7 +637,7 @@ test("preview and publish keep standalone functional roots independent and equal
       mode: "single",
       dressCode: { enabled: false, value: "Formal" },
     },
-  });
+  }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   assert.deepEqual(prepared.objetosFinales.map((object) => object.id), ["ceremony-title"]);
   assert.equal(prepared.objetosFinales[0].tipo, "texto");
@@ -647,14 +655,14 @@ test("preview and publish keep standalone functional roots independent and equal
   });
 });
 
-test("validation ignores a disabled functional section and its omitted objects", async (t) => {
+test("authorization checks hidden assets before omitting a disabled functional section", async (t) => {
   const storageMock = installFirebaseStorageMock({
     defaultBucketName: FIXTURE_BUCKET,
     files: {},
   });
   t.after(() => storageMock.restore());
 
-  const prepared = await prepareRenderPayload({
+  const draftData = {
     secciones: [
       { id: "hero", orden: 0, altura: 500 },
       {
@@ -678,7 +686,17 @@ test("validation ignores a disabled functional section and its omitted objects",
       mode: "ceremony_party",
       dressCode: { enabled: false, value: "Elegante" },
     },
-  });
+  };
+
+  await assert.rejects(() => prepareRenderPayload(draftData, { assetAccess: AUTHORIZED_RENDER_CONTEXT }),
+    (error) => error.code === "permission-denied");
+  assert.equal(storageMock.metadataReads.length, 0);
+  assert.equal(storageMock.signedUrlReads.length, 0);
+  assert.equal(storageMock.downloadReads.length, 0);
+
+  // Editorial omission is still valid for an authorized, missing own image.
+  draftData.objetos[2].src = buildGsUrl("usuarios/render-owner/imagenes/missing-dress.png");
+  const prepared = await prepareRenderPayload(draftData, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   assert.deepEqual(prepared.seccionesFinales.map((section) => section.id), ["hero"]);
   assert.deepEqual(prepared.objetosFinales.map((object) => object.id), ["hero-title"]);
@@ -726,8 +744,8 @@ test("prepared publish payload omits and restores a complete countdown-associate
     ],
   });
 
-  const hidden = await prepareRenderPayload(buildDraft(false));
-  const visible = await prepareRenderPayload(buildDraft(true));
+  const hidden = await prepareRenderPayload(buildDraft(false), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
+  const visible = await prepareRenderPayload(buildDraft(true), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   assert.deepEqual(hidden.seccionesFinales.map((section) => section.id), ["hero"]);
   assert.deepEqual(hidden.objetosFinales.map((object) => object.id), ["hero-title"]);
@@ -759,8 +777,8 @@ test("canonical prepared render payload preserves the publication wrapper and va
   t.after(() => storageMock.restore());
 
   const draftState = createRepresentativePublishReadyDraftFixture();
-  const canonical = await prepareRenderPayload(draftState);
-  const compatibility = await preparePublicationRenderState(draftState);
+  const canonical = await prepareRenderPayload(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
+  const compatibility = await preparePublicationRenderState(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const canonicalValidation = validatePreparedRenderPayload(canonical);
   const compatibilityValidation = validatePreparedPublicationRenderState({
     rawObjetos: compatibility.draftRenderState.objetos,
@@ -797,7 +815,7 @@ test("preview and publish html can be generated from the same prepared render pa
   const draftState = createRepresentativePublishReadyDraftFixture();
   draftState.objetos.push(createGroupedImageCaptionObject());
 
-  const prepared = await prepareRenderPayload(draftState);
+  const prepared = await prepareRenderPayload(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const previewPayload = buildPreviewRenderPayloadFromPreparedPayload(prepared);
   const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
     slug: "fixture-public",
@@ -892,7 +910,7 @@ test("keeps representative compatibility and preview drift branches as warnings 
   t.after(() => storageMock.restore());
 
   const draftState = createRepresentativeCompatibilityWarningDraftFixture();
-  const prepared = await preparePublicationRenderState(draftState);
+  const prepared = await preparePublicationRenderState(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const result = validatePreparedDraft(draftState, prepared);
 
   assert.equal(result.canPublish, true);
@@ -922,7 +940,7 @@ test("keeps a gift CTA without usable methods as a warning-only compatibility ca
   t.after(() => storageMock.restore());
 
   const draftState = createRepresentativeGiftNoUsableMethodsDraftFixture();
-  const prepared = await preparePublicationRenderState(draftState);
+  const prepared = await preparePublicationRenderState(draftState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   const result = validatePreparedDraft(draftState, prepared);
 
   assert.equal(result.canPublish, true);

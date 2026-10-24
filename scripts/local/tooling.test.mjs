@@ -33,6 +33,22 @@ test("CI requires missing-evidence errors after success without masking earlier 
   }
 });
 
+test("CI runtime pin cannot be omitted, overridden or selected after build commands", () => {
+  const workflows = readWorkflows(ROOT);
+  for (const [file, jobName] of [["local-verification.yml", "verify"], ["firebase-hosting-merge.yml", "build_and_deploy"], ["firebase-hosting-pull-request.yml", "build_and_preview"]]) {
+    for (const mutate of [
+      steps => steps.filter(step => !step.uses?.startsWith("actions/setup-node@")),
+      steps => { steps.find(step => step.uses?.startsWith("actions/setup-node@")).with["node-version"] = "20"; return steps; },
+      steps => { steps.find(step => step.uses?.startsWith("actions/setup-node@")).if = "false"; return steps; },
+      steps => [steps[0], { run: "npm run build" }, ...steps.slice(1)],
+    ]) {
+      const copy = structuredClone(workflows);
+      copy[file].jobs[jobName].steps = mutate(copy[file].jobs[jobName].steps);
+      assert.throws(() => checkWorkflows(copy));
+    }
+  }
+});
+
 test("failed mandatory stage propagates and leaves dependent stage unexecuted", async () => {
   const evidence = new Evidence(ROOT, "synthetic-tooling-test", ["acceptance", "dependent"]);
   let reached = false;

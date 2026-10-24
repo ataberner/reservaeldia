@@ -257,9 +257,9 @@ export function buildPreviewParitySnapshot(draftData, { defaultBucketName = "" }
 
 export async function buildPublishParitySnapshot(
   draftData,
-  { defaultBucketName = "" } = {}
+  { defaultBucketName = "", assetAccess } = {}
 ) {
-  const prepared = await preparePublicationRenderState(draftData);
+  const prepared = await preparePublicationRenderState(draftData, { assetAccess });
   const sectionModeById = buildSectionModeById(prepared.seccionesFinales);
 
   return {
@@ -287,13 +287,14 @@ export async function buildPublishParitySnapshot(
 export async function characterizePreviewPublishParity(
   previewDraft,
   publishDraft,
-  { defaultBucketName = "" } = {}
+  { defaultBucketName = "", assetAccess } = {}
 ) {
   const previewSnapshot = buildPreviewParitySnapshot(previewDraft, {
     defaultBucketName,
   });
   const publishSnapshot = await buildPublishParitySnapshot(publishDraft, {
     defaultBucketName,
+    assetAccess,
   });
   const mismatchCodes = [];
 

@@ -1,11 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { ROOT, cleanEnvironment, copyWorkspace } = require("./session.cjs");
+const { ROOT, cleanEnvironment, copyWorkspace, assertNodeRuntime } = require("./session.cjs");
 const { Processes, failure } = require("./processes.cjs");
 const { Evidence } = require("./evidence.cjs");
 
 async function prepare() {
   if (process.argv.length !== 2) throw failure("local:prepare no acepta destinos ni credenciales", "prerequisite");
+  assertNodeRuntime();
   const base = path.join(ROOT, ".local-isolation");
   fs.mkdirSync(base, { recursive: true });
   const directory = fs.mkdtempSync(path.join(base, "prepared-"));

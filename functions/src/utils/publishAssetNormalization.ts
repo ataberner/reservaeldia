@@ -1,20 +1,23 @@
 import { getStorage } from "firebase-admin/storage";
+import { createHash } from "node:crypto";
 import * as logger from "firebase-functions/logger";
 import {
   buildSectionDecorationsPayload,
   normalizeSectionBackgroundModel,
 } from "./sectionBackground";
 import {
-  areEquivalentStorageBuckets,
   normalizeStoragePathCandidate,
-  parseBucketAndPathFromStorageValue,
 } from "./storageAssetValue";
+import { createRenderAssetAuthorizer, requireRenderAssetAccessContext, type RenderAssetAccessContext } from "../render/renderAssetAuthorization";
+import { parseRenderAssetReference } from "../render/renderAssetReference";
+import type { IconSvgRenderable } from "../iconCatalog/types";
 import { backfillPublishImageSourceDimensions } from "./publishImageSourceDimensions";
 const {
   normalizeRenderAssetObject,
   normalizeRenderAssetSection,
   normalizeRenderAssetState,
 } = require("../../shared/renderAssetContract.cjs");
+const { normalizeIconRenderable, buildIconSvgDataUrl } = require("../../shared/iconRenderableContract.cjs");
 
 const PUBLISH_ASSET_FIELD_KEYS = new Set([
   "src",
@@ -22,6 +25,8 @@ const PUBLISH_ASSET_FIELD_KEYS = new Set([
   "mediaUrl",
   "fondoImagen",
   "frameSvgUrl",
+  "imageUrl",
+  "giftListUrl",
 ]);
 const DEFAULT_SECTION_HEIGHT = 600;
 
@@ -52,8 +57,10 @@ export type PublishAssetNormalizationDiagnostics = {
 };
 
 type PublishAssetResolveCache = {
+  authorizer: ReturnType<typeof createRenderAssetAuthorizer>;
   metadata: Map<string, Promise<PublishAssetMetadata>>;
   signedUrls: Map<string, Promise<string | null>>;
+  iconSnapshots: Map<string, Promise<IconSvgRenderable | null>>;
   diagnostics: PublishAssetNormalizationDiagnostics;
 };
 
@@ -72,16 +79,28 @@ function getFirebaseDownloadToken(value: string): string {
 
   try {
     const url = new URL(value);
-    if (
-      url.hostname !== "firebasestorage.googleapis.com" &&
-      !url.hostname.endsWith(".firebasestorage.app")
-    ) {
+    const localStorage = process.env.RESERVA_FIREBASE_MODE === "emulators" &&
+      url.host === process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+    if (url.hostname.replace(/\.+$/, "") !== "firebasestorage.googleapis.com" &&
+      !url.hostname.replace(/\.+$/, "").endsWith(".firebasestorage.app") && !localStorage) {
       return "";
     }
     return getString(url.searchParams.get("token"));
   } catch {
     return "";
   }
+}
+
+function canonicalDownloadUrl(path: string, token: string, directValue: string): string {
+  const bucketName = getStorage().bucket().name;
+  let origin = "https://firebasestorage.googleapis.com";
+  if (process.env.RESERVA_FIREBASE_MODE === "emulators" && bucketName.startsWith("demo-")) {
+    try {
+      const url = new URL(directValue);
+      if (url.host === process.env.FIREBASE_STORAGE_EMULATOR_HOST) origin = url.origin;
+    } catch { /* Non-URL values cannot supply a download token. */ }
+  }
+  return `${origin}/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media&token=${encodeURIComponent(token)}`;
 }
 
 function parseDownloadTokens(metadata: unknown): Set<string> {
@@ -178,6 +197,10 @@ async function resolveStoragePathToReadUrl(
   const safePath = normalizeStoragePathCandidate(storagePath);
   if (!safePath) return null;
 
+  // Keep the guard at the resolution boundary as well as at descriptor parsing:
+  // neither a reused token nor either cache is an authorization source.
+  await cache.authorizer.authorize(safePath);
+
   const directToken = getFirebaseDownloadToken(directValue);
   if (
     directToken &&
@@ -186,7 +209,7 @@ async function resolveStoragePathToReadUrl(
     directToken === persistedDownloadToken
   ) {
     cache.diagnostics.canonicalDescriptorReuseCount += 1;
-    return directValue;
+    return canonicalDownloadUrl(safePath, directToken, directValue);
   }
 
   const metadata = await readPublishAssetMetadata(safePath, cache);
@@ -205,7 +228,7 @@ async function resolveStoragePathToReadUrl(
     metadata.downloadTokens.has(directToken)
   ) {
     cache.diagnostics.verifiedDownloadUrlReuseCount += 1;
-    return directValue;
+    return canonicalDownloadUrl(safePath, directToken, directValue);
   }
 
   const cacheKey = `${bucket.name}/${safePath}`;
@@ -245,24 +268,20 @@ async function resolvePublishAssetValue(
   cache: PublishAssetResolveCache
 ): Promise<string> {
   cache.diagnostics.assetFieldCount += 1;
-  const bucket = getStorage().bucket();
   const directValue = getString(rawValue);
-  const directLocation = directValue
-    ? parseBucketAndPathFromStorageValue(directValue, bucket.name)
-    : null;
-  const overridePath = normalizeStoragePathCandidate(getString(storagePathOverride));
-
-  const directPath =
-    directLocation && areEquivalentStorageBuckets(directLocation.bucketName, bucket.name)
-      ? normalizeStoragePathCandidate(directLocation.path)
-      : "";
+  // Authorize BOTH representations, including a descriptor that differs from
+  // its displayed URL. An allowed override cannot launder a private direct URL.
+  const directLocation = await cache.authorizer.authorize(directValue);
+  const overrideLocation = await cache.authorizer.authorize(getString(storagePathOverride));
+  const directPath = directLocation.kind === "storage" ? directLocation.path : "";
+  const overridePath = overrideLocation.kind === "storage" ? overrideLocation.path : "";
   const storagePath = directPath || overridePath;
   const descriptorMatchesDirectAsset = Boolean(
     directPath && overridePath && directPath === overridePath
   );
 
   if (!storagePath) {
-    return directValue;
+    return directLocation.kind === "external" ? directLocation.value : "";
   }
 
   const resolvedUrl = await resolveStoragePathToReadUrl(
@@ -272,7 +291,55 @@ async function resolvePublishAssetValue(
     descriptorMatchesDirectAsset ? getString(persistedDownloadToken) : "",
     cache
   );
-  return resolvedUrl || directValue || storagePath;
+  // No unverified input URL/path is returned when a Storage resolution fails.
+  // Validation can report the absent asset without exposing an alternate route.
+  return resolvedUrl || "";
+}
+
+async function prepareCanonicalIconSnapshot(
+  source: Record<string, unknown>,
+  cache: PublishAssetResolveCache
+): Promise<Record<string, unknown>> {
+  if (source.tipo !== "icono" || source.formato !== "svg" || !source.iconRender) return source;
+  const snapshot = normalizeIconRenderable(source.iconRender) as IconSvgRenderable | null;
+  if (!snapshot) return source;
+  const bytes = Buffer.byteLength(snapshot.svgText, "utf8");
+  const hash = createHash("sha256").update(snapshot.svgText).digest("hex");
+  if (bytes !== snapshot.bytes || hash !== snapshot.hashSha256) return { ...source, iconRender: null };
+
+  if (!cache.iconSnapshots.has(hash)) {
+    cache.iconSnapshots.set(hash, (async () => {
+      // Lazy import keeps JSDOM/sharp out of the render module's import path.
+      // The catalog's existing SVG authority validates the stored bytes; schema
+      // fields or a client-supplied hash alone never establish a safe snapshot.
+      const { inspectAndNormalizeSvg } = await import("../iconCatalog/svgValidation");
+      const report = await inspectAndNormalizeSvg({ svgText: snapshot.svgText,
+        fileName: "persisted-icon.svg", bytes, normalizeSafe: true, normalizeCurrentColor: false });
+      return report.renderable;
+    })());
+  }
+  const verified = await cache.iconSnapshots.get(hash);
+  if (!verified || verified.hashSha256 !== hash || verified.bytes !== bytes ||
+      verified.viewBox !== snapshot.viewBox || verified.geometryCount !== snapshot.geometryCount ||
+      verified.colorMode !== snapshot.colorMode) return { ...source, iconRender: null };
+
+  // Catalog URLs are provenance for a canonical SVG, not render inputs. Only
+  // this narrow iconos provenance may skip current catalog availability. Any
+  // unrelated private reference still goes through the ordinary authorization.
+  for (const key of ["src", "url", "storagePath"]) {
+    const value = getString(source[key]);
+    if (!value) continue;
+    const reference = parseRenderAssetReference(value, getStorage().bucket().name);
+    if (reference.kind === "storage" && reference.path.startsWith("iconos/")) continue;
+    await cache.authorizer.authorize(value);
+  }
+  const result = { ...source, iconRender: verified, src: buildIconSvgDataUrl(verified, source.color),
+    url: buildIconSvgDataUrl(verified, source.color) } as Record<string, unknown>;
+  // A Storage descriptor cannot override this self-contained image downstream.
+  delete result.storagePath;
+  delete result.storageGeneration;
+  delete result.storageDownloadToken;
+  return result;
 }
 
 async function normalizePublishAssetFieldsDeep(
@@ -286,7 +353,10 @@ async function normalizePublishAssetFieldsDeep(
   }
 
   if (value && typeof value === "object") {
-    const source = value as Record<string, unknown>;
+    const source = await prepareCanonicalIconSnapshot(value as Record<string, unknown>, cache);
+    for (const key of ["storagePath", "fondoImagenStoragePath"]) {
+      if (typeof source[key] === "string" && source[key]) await cache.authorizer.authorize(source[key] as string);
+    }
     const entries = await Promise.all(
       Object.entries(source).map(async ([key, nestedValue]) => {
         if (PUBLISH_ASSET_FIELD_KEYS.has(key)) {
@@ -380,26 +450,35 @@ async function normalizePublishSections(
 export async function normalizePublishRenderStateAssets(params: {
   objetos: unknown[];
   secciones: unknown[];
+  gifts?: unknown;
 }, options: {
   purpose?: string;
+  assetAccess?: RenderAssetAccessContext;
 } = {}): Promise<{
   objetos: unknown[];
   secciones: unknown[];
+  gifts: Record<string, unknown> | null;
   diagnostics: PublishAssetNormalizationDiagnostics;
 }> {
   const startedAt = performance.now();
   const diagnostics = createDiagnostics(options.purpose);
+  const assetAccess = requireRenderAssetAccessContext(options.assetAccess);
   const cache: PublishAssetResolveCache = {
+    authorizer: createRenderAssetAuthorizer(assetAccess, getStorage().bucket().name),
     metadata: new Map(),
     signedUrls: new Map(),
+    iconSnapshots: new Map(),
     diagnostics,
   };
   const safeObjetos = Array.isArray(params.objetos) ? params.objetos : [];
   const safeSecciones = Array.isArray(params.secciones) ? params.secciones : [];
 
-  const [objetos, secciones] = await Promise.all([
+  const safeGifts = params.gifts && typeof params.gifts === "object" && !Array.isArray(params.gifts)
+    ? params.gifts : null;
+  const [objetos, secciones, gifts] = await Promise.all([
     normalizePublishAssetFieldsDeep(safeObjetos, cache),
     normalizePublishSections(safeSecciones, cache),
+    normalizePublishAssetFieldsDeep(safeGifts, cache),
   ]);
   const objetosConDimensionesOrigen = await backfillPublishImageSourceDimensions(
     Array.isArray(objetos) ? objetos : [],
@@ -434,6 +513,7 @@ export async function normalizePublishRenderStateAssets(params: {
   return {
     objetos: renderAssetState.objetos,
     secciones: renderAssetState.secciones,
+    gifts: gifts as Record<string, unknown> | null,
     diagnostics,
   };
 }

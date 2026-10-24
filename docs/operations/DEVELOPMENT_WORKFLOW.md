@@ -6,6 +6,25 @@ Autoridad operativa para el recorrido aislado de FASE 4A y su verificación
 integrada de FASE 5A. No define permisos,
 roles ni garantías de Rules; F10/F11 y Q1 conservan sus responsables.
 
+Preparación de runtime, 2026-10-23: `.node-version` fija **22.23.4** para CI y
+la selección local. El lanzador y la preparación rechazan otras versiones
+mayores y parches anteriores de Node 22; cada ejecución registra su versión
+efectiva. Los cinco packages/locks (raíz, tres codebases y herramientas) declaran
+Node 22. `firebase.json`, las configuraciones de rollback y la configuración de
+emuladores usan `nodejs22`; discovery consume esa configuración. Esta alineación
+local no demuestra un cambio remoto ni autoriza despliegues. Los bloques y
+baselines fechados que mencionan Node 20 conservan su carácter histórico.
+
+Node 22 está en Maintenance LTS hasta 2027-04-30 según el
+[calendario oficial de Node](https://github.com/nodejs/Release); **22.23.4** es el
+[release de seguridad del 2026-10-21](https://nodejs.org/en/blog/release/v22.23.4).
+Google admite `nodejs22` en ambas generaciones, con deprecación 2027-04-30 y
+retiro 2027-10-31; Node 20 se deprecó 2026-04-30 y se retira 2026-10-30 según su
+[calendario de runtimes](https://docs.cloud.google.com/functions/docs/runtime-support).
+El patch de la imagen administrada de Google no se fija con `engines` ni con el
+pin local. La [configuración Firebase](https://firebase.google.com/docs/functions/manage-functions#set_nodejs_version)
+da precedencia al `runtime` de `firebase.json`; ambos metadatos deben coincidir.
+
 Desde la Etapa 1 de ownership, `verify:local` exige además el gate de
 [Functions/codebases](../architecture/FUNCTIONS_CODEBASE_OWNERSHIP.md#registro-y-guardrails)
 antes de crear la sesión de emuladores. `npm --prefix functions run verify:ownership`
@@ -151,12 +170,24 @@ los 9099/3000 encontrados ocupados durante la línea base; no se tocaron esos pr
 
 Disponibles: SDKs de Auth/Firestore/Storage y callables existentes
 `upsertUserProfile`, `getMyProfileStatus`, `getMyUiPreferences`,
-`updateMyUiPreferences`, `getPricingConfigV1`, `getDashboardHomeConfigV1`.
+`updateMyUiPreferences`, `getPricingConfigV1`, `getDashboardHomeConfigV1`,
+`saveDraftWithMusicV1`, `copiarPlantilla` y `copiarPlantillaHTML`.
 Los últimos leen configuración local y pueden devolver el diagnóstico de
 configuración ausente en una sesión vacía. No se asignan roles administrativos.
 
-Bloqueados: pagos/checkout/publicación, IA, correo SES, RSVP/Sheets, previews de
-backend, administración y los restantes endpoints no incluidos explícitamente.
+La validación de autorización de octubre de 2026 habilita además lectura HTTP
+de `verInvitacion` y sólo GET de `verInvitacionPublicada` en el wrapper demo.
+El firmante de visitas usa un valor sintético local; no se cargan Secrets ni se
+habilitan escrituras de visitas. `draftAuthorization.test.mjs` prueba los handlers
+reales con cuentas A/B, concurrencia, reintentos y separación privado/público;
+`authFlows.test.mjs` prueba registro/login/verificación/recuperación por SDK real
+y códigos OOB del Auth Emulator. Ambos se ejecutan secuencialmente en integration.
+El preview moderno sólo ejecuta casos negativos directos antes de renderizar;
+su endpoint HTTP y los efectos de render siguen bloqueados. Los tests no autorizan
+operación remota ni certifican los artefactos históricos sin vínculo verificable.
+
+Bloqueados: pagos/checkout/publicación, IA, correo SES, RSVP/Sheets, generación de
+previews de backend, administración y los endpoints no incluidos explícitamente.
 Salvo el onCreate de bienvenida con email disabled, triggers y schedulers no se
 registran. El guard de proveedores también impide
 construir clientes SES, Mercado Pago y OpenAI en modo local.
@@ -389,10 +420,11 @@ las líneas base históricas 4B1 y 4B2A.
 
 ## Verificación integrada — FASES 5A, 5B y 5C
 
-Preparar **Node 20.19.5 (npm 10.8.2)** y **Java Temurin 21.0.8+9** en PATH.
-Ambos paquetes productivos siguen declarando Node 20. El lanzador admite también
-Node 22, pero cada ejecución registra la versión usada. Las fuentes oficiales
-son [Node](https://nodejs.org/download/release/v20.19.5/) y
+Preparar **Node 22.23.4**, fijado en `.node-version`, y **Java Temurin 21.0.8+9**
+en PATH. CI usa ese mismo archivo en verificación y en los dos builds de Hosting.
+El lanzador admite revisiones posteriores de Node 22 y registra la versión usada.
+Los packages productivos y de herramientas declaran Node 22. Las fuentes oficiales
+son [Node](https://nodejs.org/en/blog/release/v22.23.4) y
 [Temurin](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.8%2B9).
 No usar perfiles Firebase/Google ni secretos. La preparación se ejecuta desde
 la raíz que contiene los cambios a verificar:
@@ -417,15 +449,16 @@ los `node_modules`, compilados o lockfiles del árbol original. En esa copia:
 
 El paquete de herramientas separado evita agregar la CLI al bundle/producto.
 Fija también `yaml` para analizar sintaxis y dependencias de CI. Sus overrides
-de cloud-sql-connector, sqladmin, universal-analytics y re2 conservan transitivas
-compatibles con Node 20; sin ellos la resolución actual de CLI 14.4.0 trae
-dependencias que requieren Node 22. Revisarlos junto con el lockfile al actualizar
-la CLI. No son cambios de dependencias productivas.
+de cloud-sql-connector, sqladmin, universal-analytics y re2 se conservan junto con
+las versiones fijadas; esta preparación sólo cambia metadatos `engines` de los
+lockfiles. Revisarlos junto con el lockfile al actualizar la CLI. No se actualizan
+dependencias productivas ni transitivas como parte del cambio de runtime.
 
-La instalación limpia en Node 20.19.5 registra un `EBADENGINE` preexistente:
-`openai@7.5.0` de Functions declara Node >=22. No se modifica ese paquete ni el
-runtime productivo. El recorrido aislado mantiene IA deshabilitada y no demuestra
-compatibilidad productiva completa de esa dependencia.
+La instalación histórica en Node 20.19.5 registró un `EBADENGINE`:
+`openai@7.5.0` de Functions declara Node >=22. La declaración actual Node 22
+satisface ese requisito; no se modifica ese paquete. El recorrido aislado mantiene
+IA deshabilitada y no demuestra compatibilidad productiva completa de esa
+dependencia ni una instalación limpia hasta ejecutar la preparación correspondiente.
 
 Al terminar imprime la ruta exacta y el comando. Desde esa copia preparada:
 
@@ -485,9 +518,13 @@ reportes de integración no se acepta.
 | 3 | Infraestructura, evidencia ausente/incompleta, timeout o limpieza no confirmada |
 | 130 | Interrupción; consultar también el resultado de limpieza |
 
-Los procesos acotados tienen máximos de 3 minutos por etapa, 4 minutos de
+Los procesos acotados tienen máximos de 3 minutos por etapa, 5 minutos de
 readiness, 9 minutos para el supervisor de pruebas sync/watch (8 dentro del test),
 10 minutos para Rules/countdown y 25 minutos globales de verificación.
+El readiness de emuladores pasó de 240 a 300 segundos tras medir un arranque
+Windows con discovery iniciado a +223 s: permite sus 60 s ya existentes y el
+probe de 10 s. No cambia condiciones de disponibilidad, destinos, concurrencia
+ni assertions; la corrida cortada se conserva en el informe de autorización.
 La espera de readiness del test de watch es de 90 segundos: una ráfaga durante
 compilación requiere dos ciclos TypeScript reales (25-32 s por ciclo en el
 Windows auditado el 2026-10-05). Mantiene las mismas assertions, diagnósticos
@@ -572,6 +609,49 @@ de módulos Functions y sincronización general entre árboles,
 migraciones, Rules desplegadas, configuración remota y aceptación Q1. No es
 «calidad completa». F13 sigue abierto con mitigación parcial; F10/F11 y Q1
 mantienen sus estados. F12 conserva la frontera documentada de 4A.
+
+### Build aislado y recorrido de release (2026-10-23)
+
+Con el runtime de `.node-version` y las herramientas ya preparadas, ejecutar
+desde la raíz, sin overrides de destino:
+
+```powershell
+node scripts/local/runLocal.cjs build
+npm run verify:release:local
+```
+
+`build` toma una copia sin credenciales ni dotenv personales, compila Functions y
+ejecuta los cuatro pasos del build estático: captura de assets, `next build`,
+retención y verificación local del export. Usa optimización de producción y la
+configuración pública productiva; el bloqueo de red sigue activo. No inicia
+emuladores, no consulta datos de producción y no verifica configuración remota.
+Con Next 15, `next build` con `output: 'export'` ya genera `out`; el alias `export`
+invoca `build`, sin el comando retirado `next export`.
+
+`verify:release:local` usa otra copia y otro export, optimizado para producción
+pero conectado exclusivamente al proyecto demo. Ejecuta configuración, backend,
+compatibilidad e integración real Admin/Auth/HTTP, sirve ese export mediante
+`serveExport.cjs` con CSP local y prueba login, dashboard, creación desde una
+plantilla sintética, edición con mouse/teclado, autosave y reapertura. Incluye
+login/reapertura mobile, denegación entre cuentas y HTML privado/público. Los
+fixtures y su limpieza están limitados a la sesión demo; el wrapper admite
+`getAdminAccess`, que sólo devuelve privilegios de la identidad autenticada.
+No se habilitan pagos, envío de correos ni publicación/render externo.
+
+El servidor sólo acepta GET/HEAD, restringe archivos al `out` verificado y
+rechaza escapes mediante rutas o enlaces. Las pruebas conservan capturas
+sintéticas enumeradas y `build-evidence.json`/`editor-flow-evidence.json`; no
+conservan tokens, perfiles de navegador ni HAR. **Estos exports de verificación
+no son artefactos para desplegar**, especialmente el conectado a emuladores.
+
+Next 15.3.2 recibe `CIRCLE_NODE_TOTAL=2` sólo en el build para usar un worker de
+generación estática. No serializa las solicitudes concurrentes de los tests de
+Functions. Los límites de cada etapa se conservan; `release` dispone de 35
+minutos totales y el build de 10 minutos. `verify:local` sigue siendo el gate de
+Rules, ownership, lint y contratos; `release` lo complementa y no lo reemplaza.
+CI continúa ejecutando `verify:local`; estos dos comandos adicionales requieren
+evidencia explícita para la revisión de despliegue. Resultados y límites vigentes:
+[autorización de borradores y proveedores](../testing/DRAFT_PROVIDER_AUTHORIZATION.md).
 
 <a id="functions-lint-5b"></a>
 

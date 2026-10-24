@@ -28,8 +28,9 @@ las decisiones faltantes, sin reemplazar los contratos de dominio.
 | --- | --- | --- |
 | A1 | Respetar propiedad de datos, evitar exposición innecesaria y usar paths de Storage por usuario. A no puede leer/modificar/eliminar recursos privados de B ni transferirse su ownership. | [Architecture Guidelines, 4.3](../architecture/ARCHITECTURE_GUIDELINES.md#43-security-first). Las excepciones compartidas/públicas requieren política explícita; un consumidor existente no la concede. Los positivos de edición propia se apoyan también en el [modelo de datos](../architecture/DATA_MODEL.md) y su boundary de [persistencia](../../src/components/editor/persistence/editorSessionPersistence.js). |
 | A2 | Publicación, artefactos, estado de checkout y contabilidad de visitas mantienen la autoridad del backend; un cliente, aunque sea dueño, no puede sustituir ese proceso. | [Lifecycle Contract](CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md), Authoritative Entities, Approved Session Publication Execution, Public Delivery; [share](PUBLISHED_SHARE_IMAGE_CONTRACT.md); [visitas](../architecture/DATA_MODEL.md). La invitación pública se entrega por HTTP bajo lifecycle, no por permiso general al documento/bucket. |
-| A3 | Clientes no administrativos no escriben proveedores, categorías ni imágenes de proveedores. | [Provider Data Model, §7](../architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision). Publicar el documento completo o crear una proyección sigue siendo decisión de ese contrato; no se resuelve en Q1. |
+| A3 | Clientes no administrativos no leen documentos ni imágenes de proveedores, aun con tuple publicado/activo/visible, ni escriben proveedores, categorías o imágenes. Categorías activas conservan lectura pública. | [Provider Data Model, §7](../architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision). Cierre local autorizado el 2026-10-23; futura entrega por whitelist/proyección pendiente, sin resolver Q1. |
 | A4 | El draft de countdown es administrativo; versiones publicadas son inmutables, con publicación controlada por versión y operación. | [DATA_MODEL, countdownPresets](../architecture/DATA_MODEL.md#countdownpresets). No habilita acceso directo general al root porque un catálogo se llame público. |
+| D1 | Artefactos Storage de borradores son exclusivamente backend: ningún cliente SDK puede leer/listar/crear/reemplazar/eliminar bytes, incluido dueño/admin. La entrega HTTP autenticada valida dueño y vinculación del artefacto. `borradores.draftCreation` es procedencia reservada al backend: cliente no puede introducirla en create ni agregarla, cambiarla o eliminarla en update/reemplazo. | Endurecimiento local autorizado el 2026-10-23; `storage.rules`, todo `borradores/**`, `firestore.rules` y productores Admin de `functions/src/index.ts`. Un documento reservado no demuestra ownership de bytes huérfanos preexistentes. Fijar fuente/generación/hash evita cambiar el intento al reanudar; edición normal preservando el marker y borradores legacy sin marker conservan acceso propio. |
 | W1 | `welcomeEmailDeliveries` y sus descendientes son exclusivamente backend. Ningún cliente puede leer, crear, actualizar ni borrar, incluido el propio UID y los administradores. | Pedido explícito de Fase 2B.1; [contrato del procesador](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1). Adaptador validado en sandbox el 26/09; sandbox/disabled omiten envíos. |
 | W2 | `newUserNotificationDeliveries` y sus descendientes son exclusivamente backend, incluso para el propio UID y administradores. No comparten estado con la bienvenida. | Habilitación productiva preparada localmente el 27/09; [dos efectos independientes](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails), sin deploy. |
 | AI1 | `designerAiUsage`, su configuración, contadores, reservas y descendientes son exclusivamente backend. Ningún SDK cliente puede leer, listar, crear, actualizar ni borrar, incluso con claims administrativos. | Plan de seguridad del Asistente autorizado el 2026-10-07; [AI Assistant System](../architecture/AI_ASSISTANT_SYSTEM.md#designer-ai-admission) y [modelo de datos](../architecture/DATA_MODEL.md#designer-ai-usage). Implementación local; activación/despliegue requieren evidencia separada. |
@@ -62,7 +63,7 @@ Reglas actuales, abreviadas:
 - **F**: fallback Firestore concede `glcud` a cualquier autenticado; N no accede.
   Alcanza cualquier descendiente. Las reglas coincidentes se combinan por OR.
 - **S**: fallback Storage concede `glcud` a cualquier autenticado salvo
-  `proveedores/**`, `usuarios/**`, `thumbnails_borradores/**`, `publicadas/**`, `assets/**`.
+  `proveedores/**`, `usuarios/**`, `thumbnails_borradores/**`, `publicadas/**`, `borradores/**`, `assets/**`.
   Hay compatibilidad explícita para objetos/folders de usuarios no modelados;
   En assets hay compatibilidad específica para otros namespaces y familias
   countdown no modeladas; staging/frames/thumbnails ya no reciben ese grant.
@@ -135,7 +136,7 @@ a ejecutar sus handlers o la UI.
 | --- | --- | --- | --- |
 | `usuarios/{uid}/imagenes/**`, `usuarios/{uid}/thumbnails/**` | O SDK glcud, bytes y thumbnails en [useMisImagenes](../../src/hooks/useMisImagenes.js). | 4B2A: glcud sólo UID del path, incluidos prefijo exacto y descendientes; X/N —. | A1 aceptado: O glcud, X/N SDK —. Validación de tipo/tamaño requiere compatibilidad con formatos reales; límites nuevos pendientes. Tokens de descarga requieren revisión independiente. |
 | `thumbnails_borradores/{uid}/{slug}.webp` | O SDK c/u y URL; [guardarThumbnail](../../src/utils/guardarThumbnail.js). | 4B2A: glcud sólo UID del path para todo su subárbol; no comprueba borrador relacionado. | A1: O glcud propio; X/N —. Propuesto verificar también dueño del slug antes de crear/reemplazar; no transferir propiedad por metadata. |
-| `borradores/{slug}/index.html` y otros assets del prefijo | B crea/copia/genera/elimina; [index.ts](../../functions/src/index.ts), endpoints preview. Usuario llega por CALL/HTTP según entrada. | S glcud a cualquier sesión. | A1/A2: privacidad por owner de `borradores/{slug}`. Propuesto SDK c/u/d — para artefactos de backend; lectura de owner por canal explícito. Este path no contiene UID: resolver relación, no inferir dueño desde slug. |
+| `borradores/{slug}/index.html` y otros assets del prefijo | B crea/copia/elimina en [index.ts](../../functions/src/index.ts); reconocimiento de assets legacy en template storageAssets. Sin lector/escritor SDK actual; entrega por HTTP autenticado. | D1: SDK glcud — incluso dueño/admin y objetos exactos de prefijo. Excluido del fallback. | Implementación local; casos SDK en rulesCases. Reservar un documento nuevo no debe otorgar lectura de bytes huérfanos preexistentes. La autorización y vinculación de bytes corresponden al handler HTTP; Rules no certifican ACL ni URLs con token. |
 | `user_uploads/**`, `previews/**` legacy | Referencias/clonado en [template storageAssets](../../functions/src/templates/storageAssets.ts), [render normalization](../../functions/src/utils/publishAssetNormalization.ts); no se halló uploader genérico actual que defina todas las formas. | S. | Pendiente: no inferir que todo segundo segmento es UID. `previews/plantillas/{id}.png` sí tiene consumidor concreto; separar ese subprefijo. 4B2 requiere inventario autorizado de compatibilidad o mantener bloqueados paths ambiguos. |
 | `previews/plantillas/{id}.png`, `plantillas/{id}/preview.png`, `plantillas/{id}/assets/**` | M preview SDK upload [DashboardHeader](../../src/components/DashboardHeader.jsx); B crea/clona y elimina [editorialService](../../functions/src/templates/editorialService.ts) / storageAssets. URLs usadas por catálogo/editor/render. | S; algunos productores usan makePublic/token (otro canal). | Propuesto: M upload preview validado, CALL gestión y B clonado; lectura compartida/publicada explícita sin exponer drafts. Q1 y compatibilidad de assets compartidos pendientes; no borrar automáticamente archivos referenciados. |
 | `publicadas/{slug}/index.html`, `publicadas/{slug}/share.jpg` | B c/u/d; N HTTP g por [servePublishedInvitation](../../functions/src/index.ts) y `/i/{slug}/share.jpg`; [execution](../../functions/src/payments/publicationPublishExecution.ts). | 4B2A: cud denegado en todo `publicadas/**`, incluidos objetos en el prefijo exacto, slug y assets anidados. gl autenticado se conserva observado; N —. | A2 aceptado: SDK cud — incluso O/M/S. Propuesta SDK gl — y preservar HTTP/lifecycle. Negar SDK anónimo no demuestra que el HTTP público funciona. |
@@ -149,13 +150,13 @@ a ejecutar sus handlers o la UI.
 | `analytics-exports/raw/{yyyy}/{mm}/{exportId}.csv` | B crea; S CALL obtiene URL firmada de corta duración en [analytics/service](../../functions/src/analytics/service.ts). | S permite X SDK glcud. | A1 protege datos de usuarios; propuesto SDK — incluso M/S; S obtiene export autorizado por CALL, con TTL/alcance existente. Firmada no depende de Rules. |
 | Cualquier otro prefijo, incluidos nombres que parezcan privados | No consumidor demostrado. | S fuera de las exclusiones enumeradas; otros folders `usuarios/{uid}` y objeto en UID conservan acceso autenticado. Listar usuarios/UID o thumbnails_borradores globalmente queda denegado por contener paths privados. | Propuesto deny default; nombres y metadata enviados por cliente no conceden ownership. |
 
-### Frontera de proveedores preservada
+### Frontera de proveedores: cierre de entrega pública
 
 | Recurso | Canal y comportamiento actual | Permiso/estado |
 | --- | --- | --- |
-| `proveedores/{id}` | Admin scripts operadores glcud; sin ruta/cliente/Function desplegada de directorio en el repositorio. SDK gl si R-admin o tuple publicado/activo/visible; cud R-admin con shape en c/u. | A3 deny cud N/X. Otros grants observados; prueba de tuple público sólo caracteriza. Su proyección pública requiere decisión del contrato de proveedores. |
+| `proveedores/{id}` | Admin scripts operadores glcud; SDK gl sólo R-admin, incluso tuple publicado/activo/visible; cud R-admin con shape en c/u. | A3 deniega glcud N/X. Cierre local autorizado el 2026-10-23, sin despliegue implícito. Entrega pública futura requiere whitelist/proyección revisada. |
 | `categorias_proveedores/{id}` | SDK gl si R-admin o activa; cud R-admin con shape; Admin import/seed. | A3, sin habilitar scripts/importaciones. Query público requeriría `activa==true`. |
-| `proveedores/{id}/portada/{file}`, `/galeria/{file}` | SDK g/l R-admin o tuple del documento padre; c/u R-admin, filename/MIME y ≤15 MiB; d R-admin. Admin enriquecimiento omite Rules. | A3. Ensayos con imágenes sintéticas prueban exclusión del fallback y lectura cruzada Firestore/Storage. Sin publicar proveedores reales ni habilitar endpoints. |
+| `proveedores/{id}/portada/{file}`, `/galeria/{file}` | SDK g/l sólo R-admin; c/u R-admin, filename/MIME y ≤15 MiB; d R-admin. Estado del padre ya no concede lectura pública. Admin enriquecimiento omite Rules. | A3. Casos SDK sintéticos cubren documento público, claims y prefijos; no equivalen a revocar tokens, ACL o URLs firmadas ni prueban estado remoto. |
 | Subcolecciones Firestore y otros subpaths Storage de proveedores | No grant recursivo adicional; tampoco fallback. | Preservar denegación. Cambiar helper administrativo depende de Q1; no ampliar shape, tipos, tamaño o visibilidad. |
 
 <a id="queries-and-boundaries"></a>
@@ -456,6 +457,132 @@ aliases; proveedor oculto/inactivo/path/MIME/tamaño inválido. Mantener positiv
 de O y de cada capacidad aceptada, incluidos catálogo/render y entrega pública
 cuando exista un recorrido local seguro para esos handlers.
 
+## Creación y previews privados — corrección local de octubre de 2026
+
+La [evidencia y limitaciones de ejecución](../testing/DRAFT_PROVIDER_AUTHORIZATION.md)
+registra controles pasados y los tests Admin/Rules que no pudieron completarse
+por recursos del entorno. La implementación local no equivale a aceptación
+integrada ni autorización de despliegue.
+
+`copiarPlantilla` y `copiarPlantillaHTML` conservan el UID y el slug existentes.
+La precondición `DocumentReference.create()` impide reemplazar un destino en
+Firestore incluso si dos solicitudes lo leyeron ausente. Un reintento sólo se
+acepta con el mismo dueño, plantilla y modalidad, y fuera de papelera; devuelve
+el documento existente sin reiniciar contenido, fechas ni emitir otra creación.
+
+HTML reserva primero el documento y luego crea el objeto con
+`ifGenerationMatch: 0`. `draftCreation` conserva fuente, generación y SHA-256;
+el objeto conserva SHA-256, UID y slug. El marcador es exclusivo del backend
+en Rules. Un fallo entre servicios deja una reserva recuperable por su dueño,
+sin borrar ni reemplazar bytes. Si la generación fuente dejó de existir, o el
+destino es un huérfano/incompatible, se necesita revisión explícita. No existe
+una transacción distribuida Firestore/Storage: eliminar/recrear un documento
+durante la copia puede dejar residuos, pero no permite leerlos ni sobrescribirlos.
+
+`verInvitacion` sólo acepta GET con ID token Bearer del dueño en Authorization,
+verifica revocación/usuario deshabilitado, ownership y papelera. Exige procedencia
+backend y coincidencia del vínculo y bytes HTML. Tanto éxito como rechazo usan
+`private, no-store`; tokens en query no autorizan. No concede bypass admin.
+`verInvitacionPublicada` conserva su ruta y validación de lifecycle públicos.
+El preview moderno conserva su guarda existente de dueño/admin autorizado.
+
+Compatibilidad deliberada: HTML histórico sin marcador/vínculo verificable
+devuelve 404 en preview y `failed-precondition` al reintentar; sus documentos y
+archivos se preservan. Una URL privada abierta sin cabecera devuelve 401. No hay
+caller activo de este HTML en `src/`; no adaptar el flujo actual Konva para
+restaurar un enlace anónimo. No se realizó backfill, inventario ni reconciliación
+de producción. Las plantillas HTML nuevas deben tener un documento Firestore
+publicado, igual que el catálogo actual; un archivo de bucket aislado no basta.
+`scripts/generarPreview.cjs`, sin callers en package/src, queda retirado con
+salida inmediata antes de SDK/ADC: usaba lectura anónima y subía capturas con un
+token público, o podía subir una página de error sin comprobar HTTP status.
+Su test offline verifica rechazo sin imports ni efectos externos.
+
+Pruebas separadas: `scripts/local/draftAuthorization.test.mjs` ejecuta las dos
+copias reales y HTTP privado/público con Auth/Functions/Firestore/Storage demo;
+`rulesCases.mjs` + `rules.test.mjs` ejecutan clientes SDK y distinguen denegaciones
+de fallos de infraestructura. `authFlows.test.mjs` ejercita registro, perfil,
+login, verificación y recuperación por SDK real con OOB exclusivamente local.
+Los tests de dashboard/lector/editor y del adaptador de creación son regresiones
+offline. El test browser verifica Next/CSP desktop/mobile; no certifica una
+sesión E2E completa de edición/publicación ni login federado. Los negativos de
+preview moderno de esa primera corrida se ejecutaban antes del renderer.
+La ampliación local de octubre también ejecuta el handler de preview y validación
+con recursos sintéticos y Admin SDK contra emuladores. El wrapper HTTP local
+continúa bloqueado y no se habilitan pagos/webhooks reales.
+
+No cambia la fuente de privilegios: Rules usa sus claims administrativos
+existentes; los callables conservan `auth/adminAuth`. Ninguno de estos recorridos
+consulta rol/admin/superadmin de `usuarios/{uid}` para conceder permisos. A3
+cierra la lectura pública del documento canónico y sus imágenes, manteniendo
+la gestión administrativa existente. Los fallbacks de proveedores ya estaban
+excluidos y ahora se prueban también prefijos, documentos y descendientes.
+
+Antes de desplegar se requiere autorización separada, revisar consumidores HTML
+históricos y canales alternativos (URLs con token, ACL/IAM, CDN), coordinar Rules
+y Functions y realizar canarios sintéticos autorizados. Una reversión debe
+preservar los cierres de permisos: no restaurar las escrituras Admin sin
+precondición ni el acceso anónimo a borradores/proveedores. Q1, los demás
+fallbacks y la operación remota siguen pendientes.
+
+## Autorización de archivos del render — candidato local de octubre
+
+`prepareRenderPayload` exige un contexto construido por el backend después de
+verificar identidad y relación persistida. Los ocho consumidores de preview,
+validación, publicación, plantilla y pagos comparten ese límite. En webhooks la
+sesión de pago persistida aporta usuario/borrador; se verifica su vínculo y se
+vuelve a comprobar el dueño del borrador. Una sesión de pago de otro borrador,
+aunque tenga el mismo dueño, no habilita publicación. No hay excepción por usar
+Admin SDK ni por invocación interna; `usuarios/{uid}` no otorga privilegios.
+
+La política `renderAssetAuthorization` admite, dentro del bucket esperado:
+
+- `usuarios/{owner}/imagenes/**`, `usuarios/{owner}/thumbnails/**` y
+  `thumbnails_borradores/{owner}/**`. En plantilla administrativa, owner es el
+  actor ya autorizado; en preview administrativo de borrador, es su dueño real.
+- `plantillas/{id}/assets/**` con documento de plantilla existente, no archivado
+  ni en papelera, publicado o legado sin campo editorial. Una plantilla propia
+  del contexto administrativo admite también en proceso/revisión. Este prefijo
+  compartido conserva los clones de `cloneTemplateAssetToSharedPath`, que no
+  necesariamente se vuelven a registrar en el documento padre.
+- `iconos/**`, `decoraciones/originals/**` y thumbnails de decoración: coincidencia
+  exacta con una referencia de catálogo activo; el nombre del prefijo no basta.
+- Frames/thumbnails countdown referidos por una versión inmutable protegida con
+  id y versión concordantes. No staging/draft; archivar el catálogo no invalida
+  versiones históricas. No se concede acceso general al directorio de assets.
+
+Archivos de otra persona, proveedores, HTML de borradores/publicaciones y
+namespaces privados/desconocidos se rechazan. Una URL con token o una firma
+anterior no es permiso. Paths, `gs://` y formas Firebase/GCS usan el mismo parser;
+representaciones ambiguas y buckets ajenos se rechazan. El control precede
+cachés de resolución, descriptores, tokens, metadata y firmas. La caché de
+permisos pertenece a un único contexto inmutable y render. Un fallo de resolución
+no devuelve la referencia original. URLs externas y recursos estáticos del sitio
+mantienen su contrato, sin convertirlos en permisos para objetos Storage.
+
+Imágenes/enlaces de regalos pasan por el mismo control. Los SVG canónicos se
+verifican con la autoridad backend de inspección, bytes/hash y geometría, y se
+renderizan inline: sus URLs de procedencia `iconos/**` no necesitan catálogo
+actualmente activo. Un snapshot inválido o una referencia privada arbitraria no
+recibe esa excepción. No se modifica el documento original durante el render.
+
+**Dependencia obligatoria del release:** el artefacto separado
+`deployment/render-asset-firestore/firestore.rules` conserva los cierres previos
+y separa read/write del fallback para excluir sólo escrituras de `iconos` y
+`decoraciones`. Conserva exactamente las lecturas existentes y los claims
+administrativos vigentes; impide que el usuario fabrique su propio permiso de
+catálogo. Las Rules canónicas quedan intactas por alcance del pedido. No
+desplegar después el archivo canónico sobre este artefacto: reabriría esas
+escrituras. El artefacto Storage independiente deriva de la base remota observada
+y limita su delta a borradores/proveedores; no equivale a todas las protecciones
+del Storage canónico. Ver manifiestos, pruebas y límites en sus README y en
+[el plan de despliegue](../operations/DRAFT_PROVIDER_AUTHORIZATION_DEPLOYMENT.md).
+
+Estos controles no revocan capacidades ya emitidas, ACL, tokens o copias. El
+rollout no está cerrado mientras quede cualquiera de los ocho consumidores
+antiguos en servicio. Q1 y los permisos amplios fuera del delta permanecen
+separados, sin aceptación implícita ni reescritura general de Rules.
+
 ## Verificación y límites
 
 Tooling: [runLocal](../../scripts/local/runLocal.cjs),
@@ -476,7 +603,7 @@ ejecución. Fixtures usan UUID; los probes de objetos en prefijos exactos usan
 esos nombres dentro del emulador exclusivo de sesión. Todo se limpia por path
 exacto; no se comparte sesión ni se vacía una base/bucket global.
 
-No se verificaron despliegue, IAM, claims reales, URLs firmadas/tokens/GCS público,
+La caracterización histórica descrita arriba no verificó despliegue, IAM, claims reales, URLs firmadas/tokens/GCS público,
 política de retención, entrega HTTP bloqueada, pagos, proveedores operativos,
 IA/correo, schedulers/triggers remotos, SDK móvil ni todos los
 legados remotos. Tampoco autenticación de tokens firmados reales: mockUserToken
@@ -485,4 +612,6 @@ caracterizan sin ejecutar negocio; no son pruebas de Rules ni de HTTP/callables.
 La prueba separada de [Auth onCreate de 2B.2](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b2)
 sí verifica Auth/Functions/Firestore emulados con cuentas sintéticas y email
 disabled; no certifica permisos IAM ni entrega de correo.
-Las decisiones de Q1 y las excepciones compartidas continúan propuestas.
+La corrección de octubre añade únicamente la cobertura local explícita de la
+sección anterior; no amplía lo demostrado remotamente. Las decisiones de Q1 y
+las excepciones compartidas continúan propuestas.

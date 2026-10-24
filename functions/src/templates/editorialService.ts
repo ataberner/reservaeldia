@@ -1390,6 +1390,7 @@ export const adminGetTemplateEditorDocumentV1 = onCall(
       ? await prepareTemplateEditorPreview({
           templateId: loaded.id,
           editorDocument,
+          assetAccess: { kind: "template", actorUid: uid, templateId: loaded.id },
           includeDebugPayload: data.includeDebugPayload === true,
           previewTimingSessionId: normalizeText(
             asObject(data.previewTiming).sessionId

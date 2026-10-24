@@ -5,7 +5,6 @@ import { readFileSync } from "node:fs";
 
 import {
   FIXTURE_BUCKET,
-  FIXTURE_PATHS,
 } from "../shared/renderAssetContractFixtures.mjs";
 import {
   createPublishValidationImageDownloadBuffer,
@@ -15,6 +14,11 @@ import {
   installFirebaseStorageMock,
 } from "./testUtils/firebaseStorageMock.mjs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
+import {
+  AUTHORIZED_RENDER_CONTEXT,
+  AUTHORIZED_FIXTURE_PATHS as FIXTURE_PATHS,
+  authorizeRenderFixture,
+} from "./testUtils/authorizedRenderFixture.mjs";
 
 const require = createRequire(import.meta.url);
 const sharp = require("sharp");
@@ -150,7 +154,7 @@ function installFetchImageMock(t, imagesByUrl) {
 }
 
 async function buildResolvedArtifacts(draftData) {
-  const prepared = await preparePublicationRenderState(draftData);
+  const prepared = await preparePublicationRenderState(draftData, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   return {
     draftRenderState: prepared.draftRenderState,
@@ -174,7 +178,7 @@ async function createExecutionInput(t, draftOverrides = {}) {
   t.after(() => storageMock.restore());
 
   const draftData = {
-    ...createRepresentativePublishReadyDraftFixture(),
+    ...authorizeRenderFixture(createRepresentativePublishReadyDraftFixture()),
     plantillaId: "tpl-1",
     nombre: "Fiesta de Lucia",
     tipoInvitacion: "boda",

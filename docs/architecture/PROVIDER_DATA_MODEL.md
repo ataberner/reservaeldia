@@ -95,8 +95,8 @@ provider's canonical source URL; it does not discover new businesses. None of
 these scripts is exported as a Cloud Function or executes automatically.
 
 The directory does not traverse invitation editor, preview, checkout,
-publication, or generated-public-HTML flows. Its current public-delivery
-boundary is limited to the Firestore/Storage rules described in section 7.
+publication, or generated-public-HTML flows. Public delivery of canonical
+provider documents and images is closed as described in section 7.
 
 ## 2. Collections
 
@@ -852,33 +852,38 @@ must pass the rules shape checks. `firestore.rules` permits provider/category
 create, update, and delete only to administrators; `storage.rules` excludes
 `proveedores` from the broad authenticated compatibility fallback.
 
-The repository Firestore rule allows a whole provider document to be read only
-when `estado == "publicado"`, `activo == true`, and `visible == true`.
+**Decision accepted, 2026-10-23:** the authorized local security hardening
+closes public SDK reads of canonical provider documents and images. Only the
+existing Rules administrative predicate may read them, even when `estado ==
+"publicado"`, `activo == true`, and `visible == true`. Ownership fields and
+self-written profile role flags do not grant provider access. This preserves
+current administrative writes and their validation; it does not resolve Q1 or
+introduce provider self-service. Active category reads remain public.
+
 Firestore Rules cannot hide `fuente`, `importacion`, validation actor IDs, or
-other individual fields. Therefore setting any provider visible is blocked
-operationally until product/security decides one of:
+other individual fields. **[Pending]** Any future public delivery therefore
+requires an explicitly reviewed field whitelist and access lifecycle, through
+a backend response or a derived public projection. That choice remains open;
+the complete canonical document is not authorized for public delivery. A
+projection must be derived from `proveedores`, never a parallel authority.
 
-1. the complete canonical document is intentionally public; or
-2. a backend read endpoint returns an explicit public-field whitelist.
+**[Current implementation]** Both provider namespaces are excluded from the
+broad authenticated fallbacks. Unmodeled Firestore subcollections, Storage
+subpaths, and exact ancestor objects receive no extra grant. The unit suite
+checks this isolation and the administrative read/write boundary, path pattern,
+MIME set, and 15 MiB bound as source text. `scripts/local/rulesCases.mjs` adds
+client SDK get/list/write cases for anonymous, A/B, existing claim variants,
+published/hidden/incomplete records, prefix boundaries, and successful
+self-profile role writes followed by denied provider access. Administrative
+helpers retain their existing Q1 characterization separately.
 
-Option 2 is preferred if provenance, import errors, or validation/claim actor
-IDs are internal. **[Current implementation]** No duplicate public collection,
-backend projection, directory client, or public route exists. If a projection
-is introduced, it must be derived from `proveedores` and must never become a
-parallel authority.
-
-**[Current implementation]** The unit suite asserts that both provider paths
-are excluded from broad authenticated rule fallbacks and checks the public
-tuple, admin write gate, path pattern, MIME set, and 15 MiB bound as source
-text. The Firestore/Storage emulator tests exercise Admin SDK serialization,
-persistence, interruption, and recovery; they do not execute allow/deny
-requests through Firebase Rules.
-
-**[Pending]** A rules-unit-testing suite for unauthenticated, provider,
-administrator, public, hidden, inactive, malformed-write, MIME/size, and delete
-cases remains required before treating the prepared rules as an independently
-verified public-delivery boundary. Repository state also cannot prove whether
-the rules or indexes have been deployed to a remote project.
+**[Verification boundary]** These client cases run through
+`npm run test:local:rules` or the integrated local gate; source inspection and
+the source-text unit check alone do not prove Rules execution. The separate
+provider serialization/enrichment emulator tests use Admin SDK and do not
+prove client authorization. Rules also do not revoke existing download-token,
+signed, or publicly accessible GCS URLs. Remote Rules, indexes, bucket ACLs,
+existing tokens, and deployed behavior require separate authorized verification.
 
 ## 8. Concrete queries and indexes
 
@@ -895,8 +900,9 @@ filter by `importacion.completadaEn`, page by document ID, or run review/error
 queries. Completion and retry decisions occur after the ID scope is built,
 using Firestore state plus the local checkpoint.
 
-`firestore.indexes.json` contains two composite indexes reserved for the
-future directory read shapes:
+`firestore.indexes.json` contains two composite indexes reserved for possible
+future directory read shapes. The first query is now denied to non-admin SDK
+clients, regardless of its filters; an index does not confer access:
 
 ```js
 query(

@@ -74,8 +74,18 @@ before(async () => {
     assert.equal(localBackendEnvironment().config.projectId, contract.LOCAL_PROJECT);
     const hub = await (await fetch("http://127.0.0.1:14400/emulators", { signal: AbortSignal.timeout(5000) })).json();
     for (const [name, port] of Object.entries(contract.EMULATORS)) assert.equal(hub[name].port, port);
-    // Only disabled wrappers are probed; no business handler is invoked.
-    for (const endpoint of ["getAdminAccess", "setAdminClaim", "publicRsvpSubmit",
+    // This reviewed reader is enabled for the real dashboard. Anonymous callers
+    // must reach its authentication guard, never receive role information.
+    preflightStep = "authenticated-reader:getAdminAccess";
+    const accessResponse = await fetch(`http://${process.env.FIREBASE_FUNCTIONS_EMULATOR_HOST}/${contract.LOCAL_PROJECT}/${contract.REGION}/getAdminAccess`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: '{"data":{}}', signal: AbortSignal.timeout(30000),
+    });
+    assert.equal(accessResponse.status, 401, "getAdminAccess must require authentication");
+    const accessBody = await accessResponse.json();
+    assert.equal(accessBody.error.status, "UNAUTHENTICATED");
+    assert.equal(Object.hasOwn(accessBody, "result"), false);
+    // Other inspected operations remain disabled before their business handler.
+    for (const endpoint of ["setAdminClaim", "publicRsvpSubmit",
       "listCountdownPresetsPublic", "saveCountdownPresetDraft", "publishCountdownPresetDraft", "listCountdownPresetVersionsAdmin"]) {
       preflightStep = `disabled-wrapper:${endpoint}`;
       const response = await fetch(`http://${process.env.FIREBASE_FUNCTIONS_EMULATOR_HOST}/${contract.LOCAL_PROJECT}/${contract.REGION}/${endpoint}`, {
@@ -144,6 +154,7 @@ async function evaluate(c, cl) {
   if (c.operation === "get") { assert.equal((await getDocFromServer(target)).exists(), true); return; }
   if (c.operation === "delete") return deleteDoc(target);
   if (c.operation === "removeOwner") return updateDoc(target, { userId: deleteField() });
+  if (c.operation === "removeDraftCreation") return updateDoc(target, { draftCreation: deleteField() });
   const data = c.payload || (c.operation === "create" ? c.data || { userId: replacements.A, marker: "synthetic-4b1" } : { marker: "synthetic-update" });
   return ["create", "replace"].includes(c.operation) ? setDoc(target, data) : updateDoc(target, data);
 }
@@ -266,7 +277,7 @@ test("Designer AI: real Firestore transactions bound replay, concurrency and the
   }
 });
 
-test("music callable: real Auth claims, owner transaction, SDK denial and ordinary preservation", { timeout: 120000 }, async () => {
+test("admin reader and music callable: real Auth claims, self-role rejection, owner transaction and ordinary preservation", { timeout: 120000 }, async () => {
   const app = initializeApp({ projectId: contract.LOCAL_PROJECT, apiKey: "synthetic-emulator-only" }, `music-callable-${randomUUID()}`);
   const auth = getAuth(app);
   connectAuthEmulator(auth, `http://${contract.HOST}:${contract.EMULATORS.auth}`, { disableWarnings: true });
@@ -275,6 +286,8 @@ test("music callable: real Auth claims, owner transaction, SDK denial and ordina
   const db = getFirestore(app);
   connectFirestoreEmulator(db, contract.HOST, contract.EMULATORS.firestore);
   const save = httpsCallable(functions, "saveDraftWithMusicV1");
+  const getAccess = httpsCallable(functions, "getAdminAccess");
+  const setAdminClaim = httpsCallable(functions, "setAdminClaim");
   const draftId = `${runId}-music-callable`, foreignId = `${draftId}-foreign`;
   const ref = adminDb.doc(`borradores/${draftId}`), foreign = adminDb.doc(`borradores/${foreignId}`);
   const [catalogTrack] = listAvailableMusicTracks();
@@ -284,11 +297,20 @@ test("music callable: real Auth claims, owner transaction, SDK denial and ordina
   try {
     const credential = await createUserWithEmailAndPassword(auth, `${draftId}@example.test`, `Synthetic-${randomUUID()}!`);
     uid = credential.user.uid;
+    const ordinaryAccess = { uid, email: credential.user.email, adminClaim: false, isSuperAdmin: false, isAdmin: false };
+    assert.deepEqual((await getAccess({})).data, ordinaryAccess);
+    // Existing self-profile writes cannot become the authority for this reader.
+    // Use the client SDK so a denied setup cannot masquerade as a passed check.
+    await setDoc(doc(db, "usuarios", uid), { role: "admin", roles: ["admin", "superadmin"], admin: true, isAdmin: true, isSuperAdmin: true });
+    assert.deepEqual((await getAccess({})).data, ordinaryAccess);
+    await assert.rejects(setAdminClaim({ uidTarget: uid, admin: true }), { code: "functions/failed-precondition" });
     await ref.set({ userId: uid, objetos: [], secciones: [], gifts: { enabled: false, stale: true } });
     await foreign.set({ userId: `${uid}-foreign` });
     await assert.rejects(save({ draftId, patch: { music } }), { code: "functions/permission-denied" });
     await admin.auth().setCustomUserClaims(uid, { admin: true });
     await getIdToken(credential.user, true);
+    assert.deepEqual((await getAccess({})).data, { ...ordinaryAccess, adminClaim: true, isAdmin: true });
+    await assert.rejects(setAdminClaim({ uidTarget: uid, admin: true }), { code: "functions/failed-precondition" });
     await assert.rejects(updateDoc(doc(db, "borradores", draftId), { music }), { code: "permission-denied" });
     await assert.rejects(save({ draftId: foreignId, patch: { music } }), { code: "functions/permission-denied" });
     await save({ draftId, patch: { music, gifts: { enabled: false }, nombre: "Music invitation", draftContentMeta: { lastReason: "integration-test" } } });
@@ -300,6 +322,7 @@ test("music callable: real Auth claims, owner transaction, SDK denial and ordina
     assert.ok(saved.ultimaEdicion.toDate() instanceof Date);
     await admin.auth().setCustomUserClaims(uid, {});
     await getIdToken(credential.user, true);
+    assert.deepEqual((await getAccess({})).data, ordinaryAccess, "Refreshed verified claims remain authoritative over the self-profile");
     await save({ draftId, patch: { music, nombre: "Ordinary owner edit" } });
     await assert.rejects(save({ draftId, patch: { music: { ...music, enabled: false } } }), { code: "functions/permission-denied" });
     assert.equal((await ref.get()).data().nombre, "Ordinary owner edit");
@@ -316,6 +339,7 @@ test("music callable: real Auth claims, owner transaction, SDK denial and ordina
       const welcome = adminDb.doc(`welcomeEmailDeliveries/${uid}`);
       while (!(await welcome.get()).exists && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
       await admin.auth().deleteUser(uid);
+      await adminDb.doc(`usuarios/${uid}`).delete();
       await welcome.delete();
       await adminDb.doc(`newUserNotificationDeliveries/${uid}`).delete();
     }
@@ -328,12 +352,18 @@ for (const entry of cases) test(`${entry.group}: ${entry.id}`, { timeout: 25000 
     syntheticIdentity: entry.identity === "anonymous" ? null : expand(identities[entry.identity], entry.id),
     observed: "not-executed", classification: "error de infraestructura" };
   // Do not retain seed/payload contents in the result; test source owns fixtures.
-  for (const key of ["data", "fixtures", "payload", "objectFixture", "byteLength"]) delete row[key];
+  for (const key of ["data", "fixtures", "payload", "objectFixture", "byteLength", "clientSetup"]) delete row[key];
   results.push(row);
   let cleanup;
   try {
     cleanup = await fixture(c);
     const cl = client(entry.identity);
+    // Setup must succeed through the client SDK. It is outside the expected
+    // denial catch so a failed self-profile write cannot masquerade as security.
+    for (const setup of c.clientSetup || []) {
+      assert.ok(c.fixtures?.some(f => f.path === setup.path), "Client setup needs an owned cleanup fixture");
+      await setDoc(doc(cl.db, setup.path), setup.data);
+    }
     let timer;
     try {
       await Promise.race([Promise.resolve().then(() => evaluate(c, cl)), new Promise((_, reject) => {

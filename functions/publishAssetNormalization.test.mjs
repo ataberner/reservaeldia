@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   FIXTURE_BUCKET,
-  FIXTURE_PATHS,
   createRepresentativePublishNormalizationStageState,
 } from "../shared/renderAssetContractFixtures.mjs";
 import {
@@ -11,6 +10,9 @@ import {
   installFirebaseStorageMock,
 } from "./testUtils/firebaseStorageMock.mjs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
+import { AUTHORIZED_RENDER_CONTEXT, AUTHORIZED_FIXTURE_PATHS as FIXTURE_PATHS, authorizeRenderFixture } from "./testUtils/authorizedRenderFixture.mjs";
+
+const OWN_CONTEXT = { kind: "draft", ownerUid: "u-1", draftId: "fixture-draft" };
 
 const { normalizePublishRenderStateAssets } = requireBuiltModule(
   "lib/utils/publishAssetNormalization.js"
@@ -33,8 +35,8 @@ test("normalizes representative publish assets and rebuilds section decorations"
   });
   t.after(() => storageMock.restore());
 
-  const rawState = createRepresentativePublishNormalizationStageState();
-  const normalizedState = await normalizePublishRenderStateAssets(rawState);
+  const rawState = authorizeRenderFixture(createRepresentativePublishNormalizationStageState());
+  const normalizedState = await normalizePublishRenderStateAssets(rawState, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   const heroImage = normalizedState.objetos.find((entry) => entry.id === "hero-image");
   const rasterIcon = normalizedState.objetos.find((entry) => entry.id === "icon-raster");
@@ -112,7 +114,7 @@ test("does not download full image bytes for a legacy crop without dimensions", 
       },
     ],
     secciones: [],
-  }, { purpose: "draft-preview" });
+  }, { purpose: "draft-preview", assetAccess: { kind: "draft", ownerUid: "u-legacy", draftId: "legacy-draft" } });
 
   assert.equal(normalizedState.objetos[0].ancho, undefined);
   assert.equal(normalizedState.objetos[0].alto, undefined);
@@ -160,7 +162,7 @@ test("normalizes section edge decoration assets", async (t) => {
         },
       },
     ],
-  });
+  }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
 
   const section = normalizedState.secciones[0];
   assert.equal(
@@ -211,7 +213,7 @@ test("reuses a verified Firebase download URL without signing the asset again", 
       },
     ],
     secciones: [],
-  });
+  }, { assetAccess: OWN_CONTEXT });
 
   assert.equal(normalizedState.objetos[0].src, downloadUrl);
   assert.equal(normalizedState.objetos[0].url, downloadUrl);
@@ -261,7 +263,7 @@ test("trusts a canonical upload descriptor without repeating metadata or signing
       },
     ],
     secciones: [],
-  }, { purpose: "draft-preview" });
+  }, { purpose: "draft-preview", assetAccess: OWN_CONTEXT });
 
   assert.equal(normalizedState.objetos[0].src, downloadUrl);
   assert.equal(normalizedState.objetos[0].url, downloadUrl);
@@ -295,7 +297,7 @@ test("falls back to a signed URL when the persisted download token is stale", as
   const normalizedState = await normalizePublishRenderStateAssets({
     objetos: [{ id: "stale", tipo: "imagen", src: staleUrl }],
     secciones: [],
-  });
+  }, { assetAccess: OWN_CONTEXT });
 
   assert.equal(
     normalizedState.objetos[0].src,

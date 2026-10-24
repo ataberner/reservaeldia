@@ -1,4 +1,5 @@
 import test from "node:test";
+import { AUTHORIZED_RENDER_CONTEXT, authorizeRenderFixture } from "../functions/testUtils/authorizedRenderFixture.mjs";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 
@@ -1383,7 +1384,7 @@ test(
         const prepared = await prepareRenderPayload({
           secciones: fixture.sections,
           objetos: [],
-        });
+        }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
         const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
           slug: `${fixture.id}-preview`,
           isPreview: true,
@@ -1445,7 +1446,7 @@ test(
         const prepared = await prepareRenderPayload({
           secciones: fixture.sections,
           objetos: [],
-        });
+        }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
         const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
           slug: `${fixture.id}-preview`,
           isPreview: true,
@@ -1501,7 +1502,7 @@ test(
       const prepared = await prepareRenderPayload({
         secciones: fixture.sections,
         objetos: [],
-      });
+      }, { assetAccess: AUTHORIZED_RENDER_CONTEXT });
       const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
         slug: `${fixture.id}-preview`,
         isPreview: true,
@@ -1572,8 +1573,8 @@ test(
       createPublishValidationImageDownloadBuffer,
     } = await import("./publicationPublishValidationFixtures.mjs");
     const {
-      FIXTURE_PATHS,
-    } = await import("./renderAssetContractFixtures.mjs");
+      AUTHORIZED_FIXTURE_PATHS: FIXTURE_PATHS,
+    } = await import("../functions/testUtils/authorizedRenderFixture.mjs");
     const {
       PREVIEW_PUBLISH_PARITY_DEFAULT_BUCKET,
     } = await import("./previewPublishParityFixtures.mjs");
@@ -2105,7 +2106,7 @@ test(
           questions: [],
         },
       };
-      const prepared = await prepareRenderPayload(draft);
+      const prepared = await prepareRenderPayload(authorizeRenderFixture(draft), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
       const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
         slug: "mobile-edge-content-preview",
         isPreview: true,
@@ -2227,7 +2228,7 @@ test(
 
     for (const fixture of previewPublishVisualBaselineFixtures) {
       await t.test(fixture.id, async () => {
-        const prepared = await prepareRenderPayload(fixture.publishDraft);
+        const prepared = await prepareRenderPayload(authorizeRenderFixture(fixture.publishDraft), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
         const previewHtml = generateHtmlFromPreparedRenderPayload(prepared, {
           slug: "mobile-geometry-preview",
           isPreview: true,

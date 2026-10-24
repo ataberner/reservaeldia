@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { installFirebaseStorageMock } from "./testUtils/firebaseStorageMock.mjs";
 import { requireBuiltModule } from "./testUtils/requireBuiltModule.mjs";
+import { AUTHORIZED_RENDER_CONTEXT } from "./testUtils/authorizedRenderFixture.mjs";
 const { normalizeDraftRenderState } = requireBuiltModule("lib/drafts/sourceOfTruth.js");
 const { prepareRenderPayload, validatePreparedRenderPayload, buildPreviewRenderPayloadFromPreparedPayload, generateHtmlFromPreparedRenderPayload } = requireBuiltModule("lib/render/prepareRenderPayload.js");
 const { normalizeMusicConfig } = requireBuiltModule("lib/music/config.js");
@@ -12,7 +13,7 @@ const draft = (config) => ({ objetos: [{ id: "title", tipo: "texto", texto: "Inv
 test("legacy and disabled music produce no entry gate or audio resource in either prepared surface", async (t) => {
   const mock = installFirebaseStorageMock(); t.after(() => mock.restore());
   for (const config of [undefined, { ...music, enabled: false }]) {
-    const prepared = await prepareRenderPayload(draft(config));
+    const prepared = await prepareRenderPayload(draft(config), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
     assert.equal(prepared.draftRenderState.music.enabled, false);
     assert.equal(buildPreviewRenderPayloadFromPreparedPayload(prepared).musicResource, null);
     for (const isPreview of [true, false]) {
@@ -24,7 +25,7 @@ test("legacy and disabled music produce no entry gate or audio resource in eithe
 });
 test("prepared preview and publication share canonical selection and the same music runtime resource", async (t) => {
   const mock = installFirebaseStorageMock(); t.after(() => mock.restore());
-  const prepared = await prepareRenderPayload(draft(music));
+  const prepared = await prepareRenderPayload(draft(music), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
   assert.equal(validatePreparedRenderPayload(prepared).canPublish, true);
   const preview = buildPreviewRenderPayloadFromPreparedPayload(prepared);
   assert.deepEqual(preview.music, music);
@@ -41,7 +42,7 @@ test("prepared preview and publication share canonical selection and the same mu
 test("unavailable tracks warn and leave invitation accessible without a gate", async (t) => {
   const mock = installFirebaseStorageMock(); t.after(() => mock.restore());
   for (const track of [null, { source: "catalog", id: "not-in-catalog" }, { source: "user", id: "future" }]) {
-    const prepared = await prepareRenderPayload(draft({ ...music, track }));
+    const prepared = await prepareRenderPayload(draft({ ...music, track }), { assetAccess: AUTHORIZED_RENDER_CONTEXT });
     const result = validatePreparedRenderPayload(prepared);
     assert.equal(result.canPublish, true);
     assert.ok(result.warnings.some((issue) => issue.code === "music-track-unavailable"));
@@ -64,7 +65,7 @@ test("music saved by the verified pilot reaches preview and published HTML", asy
     auth: { uid: "pilot", token: { email: "jpeses@gmail.com", email_verified: true } },
     data: { draftId: "pilot-draft", patch: { music } },
   }, db);
-  const prepared = await prepareRenderPayload(savedDraft);
+  const prepared = await prepareRenderPayload(savedDraft, { assetAccess: { kind: "draft", ownerUid: "pilot", draftId: "pilot-draft" } });
   assert.equal(validatePreparedRenderPayload(prepared).canPublish, true);
   assert.deepEqual(buildPreviewRenderPayloadFromPreparedPayload(prepared).music, music);
   for (const isPreview of [true, false]) {

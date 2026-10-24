@@ -12,7 +12,7 @@ test("desktop/mobile browser runs local Next and CSP blocks remote effects and a
   assert.ok(process.env.RESERVA_TEST_CHROME, "Falta Chromium instalado para la prueba de navegador.");
   const browser = await puppeteer.launch({ executablePath: process.env.RESERVA_TEST_CHROME, headless: true,
     userDataDir: path.join(process.env.RESERVA_LOCAL_SESSION, "browser-profile"),
-    args: ["--disable-background-networking", "--disable-component-update", "--disable-sync", "--no-first-run", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost"],
+    args: ["--disable-background-networking", "--disable-component-update", "--disable-sync", "--no-first-run", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1"],
   });
   context.after(() => browser.close());
   const page = await browser.newPage();
@@ -32,6 +32,13 @@ test("desktop/mobile browser runs local Next and CSP blocks remote effects and a
   assert.equal(new URL(response.url()).origin, "http://localhost:3100");
   assert.match(response.headers()["content-security-policy"], /connect-src 'self' http:\/\/127.0.0.1/);
   await page.waitForFunction(() => document.querySelector("#__next")?.children.length > 0);
+  // Chromium's MAP * also rewrites literal IPs. A localhost-only smoke used to
+  // pass while every Firebase request to 127.0.0.1 failed DNS resolution.
+  const loopbackPage = await browser.newPage();
+  const loopbackResponse = await loopbackPage.goto("http://127.0.0.1:3100/", { waitUntil: "domcontentloaded", timeout: 5000 });
+  assert.equal(loopbackResponse.status(), 200, "Literal loopback must remain reachable with the DNS guard enabled");
+  assert.equal(new URL(loopbackResponse.url()).hostname, "127.0.0.1");
+  await loopbackPage.close();
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844, isMobile: true }]) {
     await page.setViewport(viewport);
     const blocked = await page.evaluate(async () => {
@@ -47,5 +54,5 @@ test("desktop/mobile browser runs local Next and CSP blocks remote effects and a
   assert.deepEqual(errors.filter((message) => /Firebase.*(incompatible|requiere|unknown)|connect.*emulator/i.test(message)), []);
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[role="status"]');
-  await writeFile(path.join(process.env.RESERVA_LOCAL_SESSION, "browser-evidence.json"), JSON.stringify({ nextStatus: response.status(), viewports: ["1280x800", "390x844"], cspBlockedRequests: failures.length, firebaseInitializationErrors: 0, limitation: "CSP covers application requests and embedded assets; not an OS firewall or browser-wide traffic guarantee" }, null, 2));
+  await writeFile(path.join(process.env.RESERVA_LOCAL_SESSION, "browser-evidence.json"), JSON.stringify({ nextStatus: response.status(), literalLoopbackStatus: loopbackResponse.status(), viewports: ["1280x800", "390x844"], cspBlockedRequests: failures.length, firebaseInitializationErrors: 0, limitation: "CSP covers application requests and embedded assets; not an OS firewall or browser-wide traffic guarantee" }, null, 2));
 });

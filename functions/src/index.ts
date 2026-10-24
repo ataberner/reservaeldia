@@ -1,6 +1,13 @@
 import { normalizeMusicConfig, resolveMusicResource } from "./music/config";
 import { saveDraftWithMusicHandler } from "./music/draftMusicWrite";
 import {
+  createTemplateDraft,
+  readDraftCreationRetry,
+  requireDraftPathSegment,
+} from "./drafts/templateDraftCreation";
+import { ensureDraftOwnership } from "./payments/publicationPaymentReads";
+import { copyLegacyTemplateDraft, readLegacyDraftHtml } from "./drafts/legacyHtmlDraft";
+import {
   readUserDirectoryPublicationMetrics,
   type UserDirectoryPublicationMetrics,
 } from "./users/publicationMetrics";
@@ -1456,31 +1463,36 @@ export const getMyPublicationVisitMetrics = onCall(
 export const verInvitacion = onRequest(
   { region: "us-central1", cpu: "gcf_gen1" },
   async (req, res): Promise<void> => {
-    const slug = req.query.slug as string;
-    if (!slug) {
-      res.status(400).send("Falta el slug");
+    res.set("Cache-Control", "private, no-store").set("Vary", "Authorization");
+    if (req.method !== "GET") {
+      res.set("Allow", "GET").status(405).send("Metodo no permitido");
       return;
     }
-
+    // A bare iframe URL is not authorization. Tokens are accepted only in the
+    // header, never in query strings that can leak through history/referrers.
+    const bearer = /^Bearer ([^\s]+)$/i.exec(req.get("Authorization") || "");
+    if (!bearer) {
+      res.status(401).send("Autenticacion requerida");
+      return;
+    }
+    let uid: string;
     try {
-      const snap = await db.collection("borradores").doc(slug).get();
-      if (!snap.exists) {
-        res.status(404).send("Invitación no encontrada");
-        return;
-      }
-
-      const datos = snap.data();
-      const contenido = datos?.contenido || {};
-      const draftState = resolveDraftStateFromData(
-        (datos || {}) as Record<string, unknown>
-      );
+      uid = (await admin.auth().verifyIdToken(bearer[1], true)).uid;
+    } catch {
+      res.status(401).send("Autenticacion invalida");
+      return;
+    }
+    try {
+      const slug = requireDraftPathSegment(req.query.slug, "slug");
+      const { data: datos } = await ensureDraftOwnership({ db, uid, draftSlug: slug });
+      const contenido = datos.contenido || {};
+      const draftState = resolveDraftStateFromData(datos);
       if (draftState === DRAFT_STATES.TRASH) {
         res.status(404).send("Borrador en papelera");
         return;
       }
 
-      const file = bucket.file(`borradores/${slug}/index.html`);
-      const [htmlBuffer] = await file.download();
+      const htmlBuffer = await readLegacyDraftHtml({ bucket, slug, uid, data: datos });
       const html = htmlBuffer.toString("utf-8");
 
       const { JSDOM } = loadJSDOM();
@@ -1506,6 +1518,12 @@ export const verInvitacion = onRequest(
       res.set("X-Frame-Options", "").set("Content-Type", "text/html");
       res.status(200).send(dom.serialize());
     } catch (error) {
+      if (error instanceof HttpsError) {
+        const status = error.code === "invalid-argument" ? 400 :
+          error.code === "permission-denied" ? 403 : error.code === "not-found" ? 404 : 500;
+        res.status(status).send(status === 500 ? "Error interno del servidor" : error.message);
+        return;
+      }
       logger.error("Error al servir invitacion:", summarizeErrorForLog(error));
       res.status(500).send("Error interno del servidor");
     }
@@ -1527,56 +1545,26 @@ type CopiarPlantillaData = {
 export const copiarPlantillaHTML = onCall(
   { region: "us-central1", cpu: "gcf_gen1" },
   async (request) => {
-  const { plantillaId, slug } = request.data;
-  const uid = request.auth?.uid;
-
-  if (!plantillaId || !slug)
-    throw new HttpsError("invalid-argument", "Faltan datos");
-  if (!uid) throw new HttpsError("unauthenticated", "Usuario no autenticado");
-
-  const [archivos] = await bucket.getFiles({ prefix: `plantillas/${plantillaId}/` });
-  const archivoHtml = archivos.find((f) => f.name.endsWith("index.html"));
-  if (!archivoHtml)
-    throw new HttpsError("not-found", "No se encontró index.html");
-
-  const destino = archivoHtml.name.replace(
-    `plantillas/${plantillaId}/`,
-    `borradores/${slug}/`
-  );
-  await archivoHtml.copy(bucket.file(destino));
-
-  const [htmlBuffer] = await archivoHtml.download();
-  const html = htmlBuffer.toString("utf-8");
-  const { JSDOM } = loadJSDOM();
-  const dom = new JSDOM(html);
-  const { document } = dom.window;
-
-  const contenido: Record<string, any> = {};
-  document.querySelectorAll("[data-id]").forEach((el) => {
-    const id = el.getAttribute("data-id");
-    const texto = el.textContent?.trim() || "";
-    const style = el.getAttribute("style") || "";
-    const top = style.match(/top:\s*([^;]+)/)?.[1]?.trim();
-    const left = style.match(/left:\s*([^;]+)/)?.[1]?.trim();
-
-    contenido[id!] = { texto, ...(top && { top }), ...(left && { left }) };
-  });
-
-  await db.collection("borradores").doc(slug).set({
-    userId: uid,
-    slug,
-    plantillaId,
-    contenido,
-    estadoBorrador: DRAFT_STATES.ACTIVE,
-    enPapeleraAt: null,
-    eliminacionDefinitivaAt: null,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  return {
-    slug,
-    url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${slug}`,
-  };
+    const uid = requireAuth(request);
+    const plantillaId = requireDraftPathSegment(request.data?.plantillaId, "plantillaId");
+    const slug = requireDraftPathSegment(request.data?.slug, "slug");
+    await copyLegacyTemplateDraft({
+      db, bucket, uid, plantillaId, slug,
+      assertTemplateAvailable: async () => {
+        const template = await db.collection("plantillas").doc(plantillaId).get();
+        if (!template.exists) throw new HttpsError("not-found", "Plantilla no encontrada");
+        const normalized = await normalizeTemplateContractDocument({ id: template.id, ...template.data() }, template.id);
+        if (normalized.estado === "archived" || normalized.estadoEditorial !== "publicada") {
+          throw new HttpsError("permission-denied", "La plantilla no esta disponible para uso publico");
+        }
+      },
+    });
+    return {
+      slug,
+      // Existing response shape; fetching this private URL now requires the
+      // owner's Authorization header. It is not a public/shareable invitation.
+      url: `https://us-central1-reservaeldia-7a440.cloudfunctions.net/verInvitacion?slug=${encodeURIComponent(slug)}`,
+    };
   }
 );
 
@@ -2026,11 +2014,12 @@ export const borrarTodosLosBorradores = onCall(
 
 export const copiarPlantilla = onCall(
   async (request: CallableRequest<{ plantillaId: string; slug: string }>): Promise<{ slug: string }> => {
-    const { plantillaId, slug } = request.data;
-    const uid = request.auth?.uid;
-
-    if (!uid) throw new Error("Usuario no autenticado");
-    if (!plantillaId || !slug) throw new Error("Faltan datos requeridos");
+    const uid = requireAuth(request);
+    const plantillaId = requireDraftPathSegment(request.data?.plantillaId, "plantillaId");
+    const slug = requireDraftPathSegment(request.data?.slug, "slug");
+    const draftRef = db.collection("borradores").doc(slug);
+    const identity = { uid, plantillaId, mode: "konva" as const };
+    if (await readDraftCreationRetry(draftRef, identity)) return { slug };
 
     const docPlantilla = await db.collection("plantillas").doc(plantillaId).get();
     const datos = docPlantilla.data();
@@ -2105,7 +2094,7 @@ export const copiarPlantilla = onCall(
         ? plantillaNormalizada.portadaSource
         : null;
 
-    await db.collection("borradores").doc(slug).set({
+    const creation = await createTemplateDraft(draftRef, identity, {
       slug,
       userId: uid,
       plantillaId,
@@ -2132,8 +2121,9 @@ export const copiarPlantilla = onCall(
       ultimaEdicion: FieldValue.serverTimestamp(),
       creado: FieldValue.serverTimestamp(),
     });
-
-
+    // Another request may have won while preparing assets. Returning its result
+    // never resets content or ownership, and does not emit a second create event.
+    if (!creation.created) return { slug };
     try {
       await recordBusinessAnalyticsEvent({
         eventId: `invitacion_creada:${slug}`,

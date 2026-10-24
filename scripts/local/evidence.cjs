@@ -5,7 +5,11 @@ const { failure } = require("./processes.cjs");
 const EXIT_CODES = { tests: 1, prerequisite: 2, infrastructure: 3, interrupted: 130 };
 // Explicit synthetic artifacts only. No HOME, profiles, env, repository copy,
 // browser profile, emulator databases, credentials or arbitrary debug logs.
-const ARTIFACTS = ["source-manifest.json", "lint-evidence.json", "contracts-evidence.json", "rules-source.json", "rules-evidence.json", "integration-evidence.json", "browser-evidence.json", "offline-evidence.json", "verified.json", "session.json"];
+const ARTIFACTS = ["source-manifest.json", "lint-evidence.json", "contracts-evidence.json", "rules-source.json", "rules-evidence.json", "integration-evidence.json", "browser-evidence.json", "offline-evidence.json", "build-evidence.json", "editor-flow-evidence.json", "verified.json", "session.json"];
+const EDITOR_SCREENSHOTS = ["01-login-desktop.png", "02-dashboard-desktop.png", "03-editor-created-desktop.png",
+  "04-editor-saved-desktop.png", "05-editor-reopened-desktop.png", "06-login-mobile.png", "07-dashboard-mobile.png",
+  "08-editor-reopened-mobile.png", "09-other-account-denied.png", "10-private-owner.png", "11-private-anonymous-denied.png",
+  "12-private-other-denied.png", "13-public-desktop.png", "14-public-mobile.png", "15-public-paused.png", "failure.png"];
 class Evidence {
   constructor(root, mode, names) {
     const base = path.join(root, ".local-isolation/reports");
@@ -29,6 +33,13 @@ class Evidence {
     for (const name of ARTIFACTS) {
       const source = path.join(session, name);
       if (fs.existsSync(source)) fs.copyFileSync(source, path.join(this.directory, name));
+    }
+    for (const name of EDITOR_SCREENSHOTS) {
+      const source = path.join(session, "editor-flow-screenshots", name);
+      if (!fs.existsSync(source)) continue;
+      const destination = path.join(this.directory, "editor-flow-screenshots");
+      fs.mkdirSync(destination, { recursive: true });
+      fs.copyFileSync(source, path.join(destination, name));
     }
   }
   finish(error) {
@@ -64,4 +75,4 @@ function assertLintEvidence(session, exitCode) {
     ![0, 1].includes(exitCode) || (report.errors > 0) !== (exitCode === 1)) throw failure("Lint incompleto o resultado inconsistente");
   return report;
 }
-module.exports = { Evidence, EXIT_CODES, ARTIFACTS, assertRulesEvidence, assertTap, assertLintEvidence };
+module.exports = { Evidence, EXIT_CODES, ARTIFACTS, EDITOR_SCREENSHOTS, assertRulesEvidence, assertTap, assertLintEvidence };

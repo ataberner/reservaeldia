@@ -1,0 +1,68 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.superadmin == true ||
+        request.auth.token.role == "admin"
+      );
+    }
+
+    function isAllowedProviderImage() {
+      return request.resource != null &&
+        request.resource.size <= 15 * 1024 * 1024 &&
+        request.resource.contentType.matches(
+          '^image/(jpeg|png|webp|gif|avif)$'
+        );
+    }
+
+    match /iconos/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /iconos_archived/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /decoraciones/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /proveedores/{proveedorId}/portada/{fileName} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() &&
+        fileName.matches('^portada-original\\.(jpg|jpeg|png|webp|gif|avif)$') &&
+        isAllowedProviderImage();
+      allow delete: if isAdmin();
+    }
+
+    match /proveedores/{proveedorId}/galeria/{fileName} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() &&
+        fileName.matches('^[A-Za-z0-9][A-Za-z0-9_-]{0,79}\\.(jpg|jpeg|png|webp|gif|avif)$') &&
+        isAllowedProviderImage();
+      allow delete: if isAdmin();
+    }
+
+    match /borradores/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Compatibility fallback for existing app assets.
+    match /{topLevel}/{allPaths=**} {
+      allow read: if isSignedIn() &&
+        topLevel != "proveedores" &&
+        topLevel != "borradores";
+      allow write: if isSignedIn() &&
+        topLevel != "proveedores" &&
+        topLevel != "borradores";
+    }
+  }
+}

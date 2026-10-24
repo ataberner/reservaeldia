@@ -154,7 +154,20 @@ This replaces the former permanent fail-closed resource-loading policy, without
 changing backend validation, persistence confirmation or share-image capture
 requirements. Regression: `functions/invitationRuntimeReadiness.test.mjs`.
 
-Prepared asset normalization keeps Storage as authority. It reads object
+Prepared asset normalization first requires a trusted draft-owner or template
+context and authorizes every Storage reference through
+`renderAssetAuthorization.ts`. Document ownership alone does not grant access
+to referenced files. Equivalent path, gs and Firebase/GCS URL forms use one
+parser; private/unknown namespaces fail closed before resolution caches,
+tokens, metadata or signing. Shared catalogs require protected persisted
+records; gifts images/links enter the same boundary. External resources retain
+their existing contract. A failed resolution never returns the original URL.
+Valid canonical SVG snapshots are independently inspected and rendered inline;
+their icon catalog provenance does not require the catalog to remain active.
+Invalid snapshots or unrelated private references do not receive that treatment.
+See `SECURITY_CONTRACT.md` for the permitted namespaces and release dependency.
+
+After authorization, prepared asset normalization reads Storage object
 metadata at most once per path for compatibility assets. A canonical persisted
 descriptor (`storagePath`, `storageGeneration`, `storageDownloadToken`) whose
 token matches the Firebase download URL skips both metadata and signing reads;

@@ -47,7 +47,8 @@ if (mode === "serve") {
         env: { ...env, PORT: String(port), FUNCTIONS_CONTROL_API: "true" } });
       const closed = new Promise(resolve => child.once("close", resolve));
       try {
-        const manifest = await detectFromPort(port, "reservaeldia-7a440", "nodejs20");
+        const runtime = require("../../firebase.json").functions.find(entry => entry.codebase === "default").runtime;
+        const manifest = await detectFromPort(port, "reservaeldia-7a440", runtime);
         result = { ok: true, ms: performance.now() - start, manifest };
       } finally { child.kill(); await closed; }
     } else throw new Error("Use sdk|cli <output.json> [local CLI root]");

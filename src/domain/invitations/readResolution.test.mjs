@@ -253,3 +253,31 @@ test("resolveOwnedDraftSlugForEditorRead keeps permission-denied fallback semant
 
   assert.equal(resolvedSlug, null);
 });
+
+test("editor resolution rejects another account's draft without following a publication fallback", async () => {
+  let publicationReads = 0;
+  const resolvedSlug = await resolveOwnedDraftSlugForEditorRead({
+    slug: "private-draft",
+    uid: "owner-a",
+    readDraftBySlug: async () => ({ data: { userId: "owner-b" } }),
+    readPublicationBySlug: async () => { publicationReads++; return null; },
+  });
+  assert.equal(resolvedSlug, null);
+  assert.equal(publicationReads, 0);
+});
+
+test("editor resolution rejects another account's publication and an own publication pointing at an alien draft", async () => {
+  for (const publicationOwner of ["owner-a", "owner-b"]) {
+    const resolvedSlug = await resolveOwnedDraftSlugForEditorRead({
+      slug: "published-slug",
+      uid: "owner-a",
+      readDraftBySlug: async slug => slug === "linked-draft"
+        ? { data: { userId: "owner-b" } }
+        : null,
+      readPublicationBySlug: async () => ({ data: {
+        userId: publicationOwner, borradorSlug: "linked-draft",
+      } }),
+    });
+    assert.equal(resolvedSlug, null, `Publication owner: ${publicationOwner}`);
+  }
+});

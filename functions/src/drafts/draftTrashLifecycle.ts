@@ -2,6 +2,9 @@ import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { CallableRequest, HttpsError } from "firebase-functions/v2/https";
+import { DRAFT_STATES, readMillis, resolveDraftStateFromData } from "./draftState";
+
+export { DRAFT_STATES, resolveDraftStateFromData } from "./draftState";
 
 const BORRADORES_COLLECTION = "borradores";
 const THUMBNAILS_PREFIX = "thumbnails_borradores";
@@ -9,12 +12,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const DRAFT_TRASH_RETENTION_DAYS = 30;
 
-export const DRAFT_STATES = {
-  ACTIVE: "borrador_activo",
-  TRASH: "borrador_papelera",
-} as const;
-
-type DraftState = (typeof DRAFT_STATES)[keyof typeof DRAFT_STATES];
 type DraftDocData = Record<string, unknown>;
 
 const db = admin.firestore();
@@ -25,77 +22,6 @@ function readSlugFromRequestData(data: unknown): string {
   const source = data as Record<string, unknown>;
   const slug = typeof source.slug === "string" ? source.slug.trim() : "";
   return slug;
-}
-
-function readMillis(value: unknown): number | null {
-  if (!value) return null;
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
-  if (typeof value === "string") {
-    const parsed = new Date(value).getTime();
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  if (value instanceof Date) {
-    const parsed = value.getTime();
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as { toDate?: unknown }).toDate === "function"
-  ) {
-    try {
-      const asDate = (value as { toDate: () => Date }).toDate();
-      const parsed = asDate.getTime();
-      return Number.isFinite(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
-  }
-
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "seconds" in value &&
-    typeof (value as { seconds?: unknown }).seconds === "number"
-  ) {
-    const seconds = (value as { seconds: number }).seconds;
-    return Number.isFinite(seconds) ? seconds * 1000 : null;
-  }
-
-  return null;
-}
-
-function normalizeDraftStateValue(raw: unknown): DraftState {
-  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (!value) return DRAFT_STATES.ACTIVE;
-
-  if (
-    value === DRAFT_STATES.TRASH ||
-    value === "trash" ||
-    value === "papelera" ||
-    value === "trashed"
-  ) {
-    return DRAFT_STATES.TRASH;
-  }
-
-  return DRAFT_STATES.ACTIVE;
-}
-
-export function resolveDraftStateFromData(data: DraftDocData): DraftState {
-  const fromStateField = normalizeDraftStateValue(data.estadoBorrador);
-  if (fromStateField === DRAFT_STATES.TRASH) return DRAFT_STATES.TRASH;
-
-  const trashedAtMs = readMillis(data.enPapeleraAt);
-  if (trashedAtMs && trashedAtMs > 0) return DRAFT_STATES.TRASH;
-
-  return DRAFT_STATES.ACTIVE;
 }
 
 function computeDraftPurgeAtMs(data: DraftDocData): number | null {

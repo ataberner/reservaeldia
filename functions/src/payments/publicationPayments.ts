@@ -63,6 +63,7 @@ import {
   validatePreparedRenderPayload,
   type PreparedRenderPayload,
 } from "../render/prepareRenderPayload";
+import type { RenderAssetAccessContext } from "../render/renderAssetAuthorization";
 import { executePublicationPublish } from "./publicationPublishExecution";
 import {
   createPublishingProgressReporter,
@@ -1314,9 +1315,10 @@ function cloneFirestoreSafe<T>(value: T): T {
 async function buildPublicationRenderArtifacts(
   draftData: Record<string, unknown>,
   options: {
+    assetAccess: RenderAssetAccessContext;
     progress?: PublishingProgressReporter;
     assertCanPublish?: boolean;
-  } = {}
+  }
 ): Promise<{
   draftRenderState: ReturnType<typeof normalizeDraftRenderState>;
   objetosFinales: Record<string, unknown>[];
@@ -1333,6 +1335,7 @@ async function buildPublicationRenderArtifacts(
   });
   const prepared = await prepareRenderPayload(draftData, {
     purpose: assertCanPublish ? "publish" : "publication-validation",
+    assetAccess: options.assetAccess,
   });
   await progress?.complete("preparing_invitation", {
     objectCount: prepared.draftRenderState.objetos.length,
@@ -1461,6 +1464,7 @@ export async function publishDraftToPublic(params: PublishDraftParams): Promise<
   const artifacts = await buildPublicationRenderArtifacts(
     draftData as Record<string, unknown>,
     {
+      assetAccess: { kind: "draft", ownerUid: uid, draftId: draftSlug },
       progress,
       assertCanPublish: true,
     }
@@ -1686,7 +1690,8 @@ export async function validateDraftForPublicationHandler(
   const draftSlug = normalizeDraftSlug(request.data?.draftSlug);
   const draft = await ensureDraftOwnership(uid, draftSlug);
   const artifacts = await buildPublicationRenderArtifacts(
-    draft.data as Record<string, unknown>
+    draft.data as Record<string, unknown>,
+    { assetAccess: { kind: "draft", ownerUid: uid, draftId: draftSlug } }
   );
 
   return {
@@ -1745,6 +1750,11 @@ export async function prepareDraftPreviewRenderHandler(
       !administrativeOwnerUid && request.data?.resolvePublicationLink !== false;
     const preparedPromise = prepareRenderPayload(draftData, {
       purpose: "draft-preview",
+      assetAccess: {
+        kind: "draft",
+        ownerUid: getString(draftData.userId),
+        draftId: draftSlug,
+      },
     }).then((value) => {
       if (includeTiming) preparationCompletedAt = readNow();
       return value;
@@ -2062,7 +2072,8 @@ export async function createPublicationCheckoutSessionHandler(
     throw new HttpsError("failed-precondition", "La publicacion con pago esta deshabilitada");
   }
   const checkoutArtifacts = await buildPublicationRenderArtifacts(
-    draft.data as Record<string, unknown>
+    draft.data as Record<string, unknown>,
+    { assetAccess: { kind: "draft", ownerUid: uid, draftId: draftSlug } }
   );
   assertPublicationValidationCanPublish(checkoutArtifacts.validation);
   const pricingConfig = await loadCheckoutPricingConfig({
@@ -2463,6 +2474,13 @@ export async function publishWithApprovedPaymentSession(params: {
     sessionRef: getSessionRef(paymentSessionId),
   });
   const data = session.data;
+
+  if (getString(data.draftSlug) !== draftSlug) {
+    throw new HttpsError(
+      "failed-precondition",
+      "El borrador solicitado no coincide con el borrador aprobado en la sesion"
+    );
+  }
 
   const sessionPublicSlug = getString(data.publicSlug);
   const requestedSlug = normalizePublicSlug(slugPublico || sessionPublicSlug);

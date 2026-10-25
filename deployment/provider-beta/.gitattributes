@@ -1,0 +1,5 @@
+*.rules -text
+# Preserve the historical Firestore CRLF bytes used by the signed-off base hash.
+firestore.rules whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+firebase.json -text
+manifest.json -text

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "project": "reservaeldia-7a440",
+  "database": "(default)",
+  "bucket": "reservaeldia-7a440.firebasestorage.app",
+  "status": "Prepared locally only. Fresh remote base comparison and authorization required before applying.",
+  "scope": "Only remove provider SDK grants; preserve every other byte of the previous scoped release artifacts.",
+  "rules": {
+    "firestore": {
+      "base": "deployment/render-asset-firestore/firestore.rules",
+      "baseSha256": "7c6ad315deaa372f6c5d416e89593024480858a32ab1e46e9705411d44eb386c",
+      "candidate": "firestore.rules",
+      "candidateSha256": "7033002a97a6a59c7097de2d28a3115987e457b68f759ce17634f2a92c10902a",
+      "bytes": 15231
+    },
+    "storage": {
+      "base": "deployment/storage-draft-provider/storage.rules",
+      "baseSha256": "40ed3e455aa8ee2510744a25ca968e912f0fb3fe43c28c34f99bf0d590daca80",
+      "candidate": "storage.rules",
+      "candidateSha256": "45ad7da135b748f824df779491c2a02db9b5846eede3b946999de0f6adcb7c23",
+      "bytes": 1433
+    }
+  },
+  "configSha256": "5a27eb42c32e32742cb31e62fde68c5aab4bab6abba1d900678317b1c9890dfc"
+}

@@ -27,6 +27,8 @@ function cleanEnvironment(session, inherited = process.env) {
     FUNCTIONS_DISCOVERY_TIMEOUT: "60",
     FIREBASE_CLI_DISABLE_USAGE_REPORTING: "true", NEXT_TELEMETRY_DISABLED: "1",
     EMAIL_MODE: "disabled", WELCOME_EMAIL_ACTIVATION_AT: "",
+    // Synthetic local operator only; never inherit the real superadmin list.
+    SUPERADMINS_UIDS: "local-provider-admin",
     FIREBASE_EMULATORS_PATH: path.join(session, "emulator-cache"),
     RESERVA_LOCAL_SESSION: session, RESERVA_FIREBASE_MODE: "emulators",
     NEXT_PUBLIC_FIREBASE_MODE: "emulators", NEXT_PUBLIC_FIREBASE_PROJECT_ID: contract.LOCAL_PROJECT,
@@ -143,7 +145,7 @@ function copyWorkspace(workspace) {
   fs.mkdirSync(workspace, { recursive: true });
   // Explicit source allowlist includes current uncommitted edits. No lib, exports,
   // backups, credential/config files or personal browser profiles are imported.
-  for (const name of ["src", "shared", "styles", "scripts/local", ".github/workflows"]) {
+  for (const name of ["src", "shared", "styles", "scripts/local", ".github/workflows", "deployment/provider-beta"]) {
     if (fs.existsSync(path.join(ROOT, name))) copySourceTree(path.join(ROOT, name), path.join(workspace, name));
   }
   // public/ also contains legacy invitations. Copy only application branding and

@@ -86,7 +86,11 @@ function assertLocalUrl(value) {
   const bucket = decoded.match(/\/b\/([^/]+)/)?.[1];
   if (bucket && bucket !== LOCAL_BUCKET) fail("Bucket del endpoint incompatible.");
   const project = decoded.match(/\/projects\/([^/]+)/)?.[1];
-  if (project && project !== LOCAL_PROJECT) fail("Proyecto del endpoint incompatible.");
+  // The pinned Firestore Emulator loads Rules through this exact local RPC.
+  // Its colon suffix is an operation, never an alternate project or host.
+  const localRulesLoad = url.port === String(EMULATORS.firestore) && !url.search && !url.hash &&
+    decoded === `/emulator/v1/projects/${LOCAL_PROJECT}:securityRules`;
+  if (project && project !== LOCAL_PROJECT && !localRulesLoad) fail("Proyecto del endpoint incompatible.");
   return url;
 }
 

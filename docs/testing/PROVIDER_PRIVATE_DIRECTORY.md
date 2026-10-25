@@ -1,14 +1,16 @@
 # Directorio privado aprobado — verificación
 
 Status: Testing Baseline.
-Fecha: 2026-10-25. Verificación local/CI completada; backend remoto privado aplicado.
+Fecha: 2026-10-25. Verificación local/CI completada; backend y Hosting privados integrados y desplegados.
 
 La autoridad funcional es
 [PROVIDER_DATA_MODEL §10](../architecture/PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
 Este documento registra evidencia y reproducción, sin duplicar reglas de negocio
 ni autorizar operación remota. El
-[runbook privado](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md) distingue el
-panel ya aplicado del backend de la segunda entrega y su Hosting todavía pendiente.
+[runbook privado](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md) distingue la
+entrega administrativa de la conexión del directorio, sus versiones desplegadas, la prueba productiva y sus
+limitaciones. `panelEnabled` y `privateDirectoryEnabled` están habilitados sólo
+para el superadmin existente; directorio público y onboarding permanecen cerrados.
 
 ## Base, alcance e implementación
 
@@ -162,8 +164,16 @@ pasó integralmente en `40226008315`, antes de abrir el PR de esta entrega.
   relajar assertions para presentar un PASS.
 - Las nueve capturas sintéticas revisadas permanecen como evidencia local; no se
   incorporan perfiles, archivos privados ni imágenes sin revisar al artefacto CI.
-- Completar PR/Hosting/aplicación y recorrido remoto de la segunda entrega bajo
-  el runbook. Mantener público/registro cerrados.
+- PR #2 integrado como `da0831b8`; checks de rama `40227333196`, PR `40227348740`
+  y main `40228220351` PASS. El último incluye build/deploy live y
+  `verify:hosting:production`. Recursos y recorrido productivo en el runbook;
+  la evidencia remota no sustituye ni amplía el alcance de los tests locales.
+- Producción: sesión habitual superadmin, cierre previo del gate, ambos listados/detalles,
+  filtros de categoría/cobertura con vacío, versión aprobada conservada al editar,
+  pausa sin tarjeta/detalle/contacto y reactivación con historial: PASS acotado.
+  El dashboard y un borrador de invitación abrieron después del Hosting final;
+  no se editaron ni publicaron invitaciones. Las fotos positivas y el rechazo de
+  una cuenta común siguen pendientes por las limitaciones acordadas con el usuario.
 
 El límite beta de consulta es explícito: hasta 5000 candidatos examinados, con
 un documento adicional de detección por lote; al excederlo se devuelve error,

@@ -6,6 +6,13 @@ Fecha: 2026-10-25. Alcance: etapas 1–3 locales; sin efectos remotos.
 Contrato: [Provider Data Model §10](../architecture/PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
 Este informe registra evidencia, no redefine comportamiento.
 
+Este baseline conserva el alcance local original. La integración y los despliegues
+posteriores autorizados (PR #1 y #2), sus pruebas productivas y límites se registran
+en el [runbook privado](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md).
+La [conexión privada del directorio](PROVIDER_PRIVATE_DIRECTORY.md) se adelantó
+respecto del orden original; las afirmaciones de ausencia de efectos remotos al
+final de este informe describen exclusivamente la ejecución inicial del hito 1.
+
 ## Base y dependencias
 
 Worktree aislado `.local-isolation/proveedores-beta-base`, rama
@@ -56,7 +63,7 @@ Archivos principales para revisión:
 Commits funcionales locales: `dfad9974` (contrato), `7c45086e` (backend/permisos),
 `6096df5f` (administración), `a6e17a42` (pruebas/capturas/artefactos). El cierre
 documental posterior no modifica comportamiento. Inventario reproducible completo:
-`git diff --name-only d3ba5c22..HEAD`; commits: `git log --oneline d3ba5c22..HEAD`.
+`git diff --name-only d3ba5c22..e0fa2b76`; commits: `git log --oneline d3ba5c22..e0fa2b76`.
 
 ## Verificación ejecutada
 
@@ -197,9 +204,11 @@ en `run-VoMzYs/emulator-cache-cleanup.json`.
 
 ## Límites
 
-No se probaron producción, cuentas reales, correos reales, pagos, importación
-remota ni apertura pública. Etapas 4–9 siguen pendientes según el contrato
-canónico. No se ejecutó la suite global `verify:local` ni se afirma auditoría
+En la ejecución local inicial no se probaron producción, cuentas reales, correos
+reales, pagos, importación remota ni apertura pública. Las etapas posteriores
+seguían pendientes; la continuación autorizada adelantó el directorio privado,
+según su informe enlazado al inicio. En este baseline no se ejecutó la suite global
+`verify:local` ni se afirma auditoría
 general; se ejecutan los gates y casos alcanzados por este cambio. Las advertencias
 de lint históricas no equivalen a errores nuevos ni a una certificación del resto
 del repositorio. Una prueba de foco por teclado no es una auditoría completa de
@@ -211,6 +220,7 @@ indexada a gran escala. Los bytes privados no referenciados aún no se purgan
 automáticamente. No hay nuevo mecanismo de invitaciones, asignación de responsables
 o publicación pública en este hito.
 
-La [propuesta de despliegue privado](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md)
-queda preparada, sin ejecución, con comparación remota fresca como prerrequisito
-posterior. No se hizo push, apertura de PR, merge ni despliegue indirecto.
+La ejecución inicial dejó una propuesta privada sin push, PR, merge ni deploy.
+El [runbook de continuación](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md)
+registra la autorización posterior, comparación de Rules, integración y
+despliegues efectivamente realizados, con evidencia y límites separados.

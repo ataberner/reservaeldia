@@ -1,7 +1,7 @@
 # Beta de proveedores — despliegue privado en dos entregas
 
 Status: Operational Diagnostic Evidence.
-Fecha: 2026-10-25. Ejecución parcial bajo autorización específica de esta sesión.
+Fecha: 2026-10-25. Ambas entregas integradas y desplegadas bajo autorización específica de esta sesión; limitaciones de prueba explícitas abajo.
 
 El [contrato canónico](../architecture/PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible)
 define comportamiento y permisos. La evidencia local está separada en
@@ -28,8 +28,10 @@ la importación remota. Se conservan Auth/login de parejas y sus invitaciones.
    que `e0fa2b76` antes de agregar esta entrega), en
    `C:\Reservaeldia\.local-isolation\proveedores-beta-base`. UI/backend y
    comprobaciones locales tienen evidencia propia. No atribuir a esta entrega
-   el estado remoto de la primera. Sus dos Functions están aplicadas; Hosting e
-   integración siguen pendientes al registrar el checkpoint siguiente.
+   el estado remoto de la primera. Sus dos Functions están aplicadas y el
+   [PR #2](https://github.com/ataberner/reservaeldia/pull/2) fue integrado como
+   `da0831b898f88d68437debbf8ad87a1845b8ff6f`. Hosting live y lectura privada
+   habilitados; el cierre inferior distingue cada paso y las pruebas pendientes.
 
 ## Evidencia remota confirmada de la entrega 1
 
@@ -155,7 +157,8 @@ demuestra merge, publicación live ni resultado correcto de sus checks.
 También se observó un check **Netlify deploy-preview** en el PR #1. El
 `netlify.toml` local declara `npm run build`, salida `out` y Functions de Netlify
 en `netlify/functions`; no declara por sí solo los eventos remotos o su resultado.
-No se modificaron automatismos. Los checks Firebase y Netlify del PR #1
+No se modificaron los automatismos compartidos de despliegue. Se agregó una
+verificación de candidato por rama sin Hosting. Los checks Firebase y Netlify del PR #1
 finalizaron correctamente. El preview Netlify mostró el rechazo anónimo real en
 `/admin/proveedores/`; no se inició sesión en ese origen alternativo.
 
@@ -168,9 +171,13 @@ finalizaron correctamente. El preview Netlify mostró el rechazo anónimo real e
 | Hosting live de la entrega 1 | PASS: workflow `40222487740`, build/deploy y `verify:hosting:production` success. Release `1792954156944000`, versión `972c3b51b4275486`, 2026-10-25T18:49:16.944Z, commit `689bde9b`. |
 | Gate administrativo | La sesión habitual superadmin vio «Beta privada cerrada» en el Hosting live. A las 18:51:02Z se habilitó sólo `panelEnabled` con precondición de updateTime; los otros tres flags permanecieron false. Cinco denegaciones anónimas repetidas después de habilitar: PASS. |
 | Recorrido de panel en producción | PASS acotado con la sesión habitual superadmin: crear/guardar incompleto, editar, enviar/abrir revisión, rechazar aprobación obsoleta, aprobar vigente, preview privado sin nota interna, conservar aprobada al guardar, pausar/reactivar y archivar manteniendo historial. Fotos y cuenta común quedan pendientes explícitos. |
-| Login e invitación de parejas en producción | Sesión habitual conservada, dashboard cargado y apertura de un borrador existente en el editor (seis canvases observados); sin acciones de edición, publicación, pago o correo. No equivale a probar credenciales de una cuenta común ni un nuevo login desde cero. |
+| Login e invitación de parejas en producción | Sesión habitual conservada, dashboard cargado y apertura de un borrador existente en el editor (seis canvases observados); repetido después del Hosting de la entrega 2. Sin acciones de edición, publicación, pago o correo. No equivale a probar credenciales de una cuenta común ni un nuevo login desde cero. |
 | Entrega 2, Functions | PASS: dos endpoints activos y denegaciones anónimas, según checkpoint. |
-| Entrega 2, PR/Hosting/recorrido | PENDIENTE: integración y Hosting después de checks; gate privado todavía cerrado. |
+| Entrega 2, integración | PASS: PR #2, head `feb1002c`, merge `da0831b8`; checks de rama `40227333196` y PR `40227348740`, Firebase preview y Netlify success. Protecciones/reviews comprobadas antes del merge, sin omitir requisitos. |
+| Entrega 2, autoridad remota | PASS, 19:56:33Z: ambas Functions nuevas tienen exactamente la misma configuración de superadmin que `getAdminAccess`, comparada en memoria sin exponer identidades/valores; cero Secrets vinculados. |
+| Entrega 2, Hosting | PASS: workflow main `40228220351`, commit `da0831b8`; verificación integral, build/deploy y `verify:hosting:production` success. Release `1792958582719000`, versión `1f9fb131eb49a303`, 2026-10-25T20:03:02.719Z. |
+| Entrega 2, habilitación privada | La sesión habitual superadmin vio el directorio cerrado antes de habilitarlo. CAS de un solo campo a las 20:05:05.224380Z: `privateDirectoryEnabled:true`; `panelEnabled:true`, `directoryEnabled:false`, `onboardingEnabled:false`. Denegaciones anónimas 7/7 PASS antes (20:04:33Z) y después (20:05:13Z); media `private, no-store`. |
+| Entrega 2, recorrido productivo | PASS acotado: lugar y profesional aprobados en su landing/detalle real, filtro de categoría y cobertura con resultado/vacío, capacidad confirmada y fallback neutro, desktop y móvil (390 px sin desborde). Detalle conserva aprobada 4 frente al borrador 7 y excluye la nota interna sintética. Pausa retira tarjeta, detalle y botón de contacto; reactivación restaura la misma aprobación y conserva once eventos. |
 | Apertura pública | Fuera del alcance; `directoryEnabled:false`, `onboardingEnabled:false`. |
 
 Actualizar esta sección sin sustituir resultados observados por planes ni
@@ -185,19 +192,58 @@ denegación anónima del endpoint remoto son evidencias diferentes.
 
 ### Datos sintéticos del recorrido administrativo
 
-Readback acotado a los tres IDs creados por UI, 2026-10-25T19:04:16Z:
+Readback final acotado a los tres IDs creados por UI, **2026-10-25T20:15:37Z**:
 
 | ID | Estado observado |
 | --- | --- |
-| `prov_017152a8e6c34ab7bd85384043e4cc70` | `BETA PRIVADA 20261025 · Lugar de prueba`: publicado privado, aprobación 4; borrador 7 distinto y revisión administrativa 9 después de pausa/reactivación; nueve eventos. |
+| `prov_017152a8e6c34ab7bd85384043e4cc70` | `BETA PRIVADA 20261025 · Lugar de prueba`: publicado privado, aprobación 4; borrador 7 distinto y revisión administrativa 11 después de la segunda pausa/reactivación; once eventos. |
 | `prov_c3538cbffbe042cbbda56adf98ec6dd2` | `BETA PRIVADA 20261025 · Profesional de prueba`: publicado privado, aprobación 1, revisión administrativa 3; tres eventos. |
 | `prov_12105bc6ae0840bc8329c0b41bd9c10c` | `BETA PRIVADA 20261025 · Control de archivo`: borrador incompleto archivado (`estado:eliminado`, `activo:false`); dos eventos, conservado. |
 
 Los tres conservan `visible:false`. No tienen responsable ni fotos; los contactos
 usan `example.test`. No se modificaron proveedores reales ni se crearon cuentas,
 enviaron correos o ejecutaron pagos. La nota interna sintética sólo se ve en
-administración. Estos registros se conservan para la prueba privada siguiente;
+administración. Estos registros se conservan para evaluar la beta privada;
 no son contenido comercial ni datos a publicar.
+
+### Cierre y evidencia reproducible
+
+Readback final **20:15:34Z**: Hosting `1f9fb131eb49a303` sigue live; Rules idénticas
+al artefacto aplicado; las cuatro Functions siguen ACTIVE/Node 22, sin cambios
+ajenos desde el despliegue del directorio. Gates efectivos: panel y directorio
+privado `true`, público e incorporaciones `false`. Total 3197 proveedores;
+ninguna migración ni reimportación.
+
+La evidencia operativa local permanece fuera de Git en
+`C:\Reservaeldia\.local-isolation\provider-beta-private-release\`:
+`panel-ui-evidence.json`, `directory-ui-evidence.json`, readbacks fechados,
+logs de despliegue y capturas reales. Capturas revisadas: panel de publicación
+desktop/móvil, landing de lugares desktop, profesionales móvil, detalle aprobado
+desktop/móvil y rechazo del detalle pausado. No se guardaron capturas del historial
+con identidades administrativas ni del contenido real de invitaciones.
+
+Para probar con la cuenta habitual, iniciar sesión por el acceso existente y abrir
+`https://reservaeldia.com.ar/admin/proveedores/`. Crear ficha, guardar sus datos,
+ir a Publicación, enviar a revisión, abrir la revisión y aprobarla. Abrir
+`https://reservaeldia.com.ar/lugares/` o
+`https://reservaeldia.com.ar/profesionales/` según la categoría, y luego «Ver ficha».
+La ficha sintética de lugar ya disponible tiene detalle en
+`https://reservaeldia.com.ar/proveedor/?id=prov_017152a8e6c34ab7bd85384043e4cc70`.
+Pausarla desde administración y recargar retira listado/detalle; reactivarla
+restaura sólo la versión aprobada. No usar contactos sintéticos para enviar mensajes.
+
+El listado administrativo conserva su escaneo acotado: una búsqueda puede tener
+páginas intermedias sin coincidencias. En el recorrido final, buscar
+`BETA PRIVADA 20261025` requirió avanzar hasta la página 7. La nueva paginación del
+directorio filtra en el servidor y no hereda ese comportamiento; el caso con más
+de una página está probado en emuladores, no con importaciones remotas artificiales.
+
+Las pruebas productivas pendientes acordadas son rechazo de una cuenta común
+autorizada y carga/entrega positiva de fotos. No se considera su cobertura local
+como aprobación de producción. No se enviaron correos ni mensajes ni se probaron
+pagos. La apertura pública y las etapas de importación, invitaciones, responsables
+y solicitudes siguen fuera de esta entrega; se adelantó únicamente la conexión
+privada del directorio del orden original.
 
 ## Recuperación segura
 

@@ -23,7 +23,7 @@ function approve(document) {
 
 test("beta gates deny by default and unimplemented onboarding/directory cannot be opened by config", () => {
   for (const configuration of [undefined, null, {}, { panelEnabled: "true" }]) assert.equal(model.providerBetaControls(configuration).panelEnabled, false);
-  assert.deepEqual(model.providerBetaControls({ panelEnabled: true, onboardingEnabled: true, directoryEnabled: true }), { panelEnabled: true, onboardingEnabled: false, directoryEnabled: false });
+  assert.deepEqual(model.providerBetaControls({ panelEnabled: true, onboardingEnabled: true, directoryEnabled: true }), { panelEnabled: true, privateDirectoryEnabled: false, onboardingEnabled: false, directoryEnabled: false });
 });
 test("incomplete V3 draft preserves unknown values and canonical compatibility", () => {
   const document = create(model.normalizeProviderDraft({}));

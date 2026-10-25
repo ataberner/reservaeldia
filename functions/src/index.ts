@@ -1,6 +1,8 @@
 import { normalizeMusicConfig, resolveMusicResource } from "./music/config";
 import { adminProvidersHandler } from "./providers/betaService";
 export { providerAdminImageV1 } from "./providers/betaMedia";
+import { providerDirectoryHandler } from "./providers/directoryService";
+export { providerDirectoryImageV1 } from "./providers/directoryMedia";
 import { saveDraftWithMusicHandler } from "./music/draftMusicWrite";
 import {
   createTemplateDraft,
@@ -2386,6 +2388,12 @@ export const adminProvidersV1 = onCall(
   { region: "us-central1", memory: "256MiB", timeoutSeconds: 60, maxInstances: 3,
     cors: ["https://reservaeldia.com.ar", "http://localhost:3000"] },
   async (request) => adminProvidersHandler(request, db)
+);
+
+export const providerDirectoryV1 = onCall(
+  { region: "us-central1", memory: "256MiB", timeoutSeconds: 60, maxInstances: 3,
+    cors: ["https://reservaeldia.com.ar", "http://localhost:3000"] },
+  async (request) => providerDirectoryHandler(request, db)
 );
 
 

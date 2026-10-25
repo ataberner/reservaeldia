@@ -15,6 +15,7 @@ import { useDashboardTemplateModal } from "@/hooks/useDashboardTemplateModal";
 import { useUserUiPreferences } from "@/hooks/useUserUiPreferences";
 import {
   consumePendingLandingTemplateSelection,
+  readPendingLandingTemplateSelection,
 } from "@/domain/templates/pendingLandingTemplateSelection";
 import {
   buildDashboardCanvasEditorProps,
@@ -156,6 +157,7 @@ export default function Dashboard() {
   const [futurosExternos, setFuturosExternos] = useState([]);
   const [focusedPublicSlug, setFocusedPublicSlug] = useState("");
   const pendingLandingTemplateOpenRef = useRef(false);
+  const [isResumingLandingTemplate, setIsResumingLandingTemplate] = useState(false);
   const pendingHomeScrollTargetRef = useRef("");
   const pageViewState = buildDashboardPageViewState({
     slugInvitacion,
@@ -184,6 +186,7 @@ export default function Dashboard() {
     initialEditorData: templateWorkspaceView?.initialData || null,
     isResolvingEditorRoute,
     isHomeView: pageViewState.isHomeView,
+    isOpeningLandingTemplate: isResumingLandingTemplate,
     homeResetKey: `${tipoSeleccionado}:${usuario?.uid || ""}:${startupRecoveryGeneration}`,
   });
   const previewGateState = buildDashboardPreviewGateState({
@@ -345,6 +348,12 @@ export default function Dashboard() {
     };
   }, [abrirBorradorEnEditor, checkingAuth, showProfileCompletion]);
 
+  // Keep the shared loader while the selected template waits for the entry gates.
+  useEffect(() => {
+    if (pendingLandingTemplateOpenRef.current) return;
+    setIsResumingLandingTemplate(Boolean(readPendingLandingTemplateSelection()));
+  }, []);
+
   // Resume the template selected on the landing after auth/profile gates finish.
   useEffect(() => {
     if (pendingLandingTemplateOpenRef.current) return;
@@ -362,10 +371,16 @@ export default function Dashboard() {
 
     const pendingSelection = consumePendingLandingTemplateSelection();
     const templateId = String(pendingSelection?.templateId || "").trim();
-    if (!templateId) return;
+    if (!templateId) {
+      setIsResumingLandingTemplate(false);
+      return;
+    }
 
     pendingLandingTemplateOpenRef.current = true;
-    void openTemplateEditorFromTemplateId(templateId);
+    setIsResumingLandingTemplate(true);
+    void openTemplateEditorFromTemplateId(templateId).finally(() => {
+      setIsResumingLandingTemplate(false);
+    });
   }, [
     checkingAuth,
     hasSyncedEditorRoute,

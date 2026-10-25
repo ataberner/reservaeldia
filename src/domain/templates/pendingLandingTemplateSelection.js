@@ -123,13 +123,17 @@ export function savePendingLandingTemplateSelection(templateOrId) {
   return selection;
 }
 
-export function consumePendingLandingTemplateSelection() {
+export function readPendingLandingTemplateSelection() {
   const sessionStorage = getStorage("sessionStorage");
   const localStorage = getStorage("localStorage");
-  const selection =
+  return (
     readSelection(sessionStorage, PENDING_LANDING_TEMPLATE_SELECTION_KEY) ||
-    readSelection(localStorage, PENDING_LANDING_TEMPLATE_SELECTION_LOCAL_KEY);
+    readSelection(localStorage, PENDING_LANDING_TEMPLATE_SELECTION_LOCAL_KEY)
+  );
+}
 
+export function consumePendingLandingTemplateSelection() {
+  const selection = readPendingLandingTemplateSelection();
   clearPendingLandingTemplateSelection();
 
   return selection;

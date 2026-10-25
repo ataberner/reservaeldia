@@ -62,7 +62,7 @@ test("dashboard home readiness has one data-driven authority and no forced revea
   assert.match(homeViewSource, /isDashboardHomeContentReady\(\{/);
   assert.match(
     startupHookSource,
-    /showHomeStartupLoader\s*=\s*isHomeView\s*&&\s*!homeViewReady/
+    /showHomeStartupLoader\s*=\s*isHomeView\s*&&\s*\(!homeViewReady\s*\|\|\s*isOpeningLandingTemplate\)/
   );
   assert.doesNotMatch(startupHookSource, /HOME_DASHBOARD_LOADER_MAX_MS/);
   assert.doesNotMatch(startupHookSource, /homeLoaderForcedDone/);

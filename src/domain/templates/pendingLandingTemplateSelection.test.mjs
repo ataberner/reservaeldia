@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   clearPendingLandingTemplateSelection,
   consumePendingLandingTemplateSelection,
+  readPendingLandingTemplateSelection,
   savePendingLandingTemplateSelection,
 } from "./pendingLandingTemplateSelection.js";
 
@@ -91,6 +92,24 @@ test("saves and consumes a pending landing template selection once", () => {
       createdAt: 1000,
     });
     assert.equal(consumePendingLandingTemplateSelection(), null);
+  } finally {
+    windowHarness.restore();
+  }
+});
+
+test("reading a pending selection for the loader preserves it until the auth gates pass", () => {
+  const windowHarness = installWindow();
+
+  try {
+    assert.equal(readPendingLandingTemplateSelection(), null);
+    const selection = savePendingLandingTemplateSelection("tpl-waiting-auth");
+
+    assert.deepEqual(readPendingLandingTemplateSelection(), selection);
+    assert.deepEqual(readPendingLandingTemplateSelection(), selection);
+    windowHarness.sessionStorage.clear();
+    assert.deepEqual(readPendingLandingTemplateSelection(), selection);
+    assert.deepEqual(consumePendingLandingTemplateSelection(), selection);
+    assert.equal(readPendingLandingTemplateSelection(), null);
   } finally {
     windowHarness.restore();
   }

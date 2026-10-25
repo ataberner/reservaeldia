@@ -79,6 +79,11 @@ This document is an ownership map for the current implementation. It does not au
   home data loading. The home loader sits outside the inert dashboard shell; profile
   and browser-storage recovery dialogs retain their existing owners. The dashboard
   still validates email, profile completeness and administrative access.
+- Since 2026-10-24, a pending landing template keeps that same home loader visible while entry
+  gates, template lookup, draft creation and draft opening finish, even when the
+  home catalogue is already ready. The selection is only consumed after the gates
+  pass. On success the editor startup loader takes over; a failed opening releases
+  the home loader, and the profile completion dialog remains outside the inert shell.
 - When Firebase confirms there is no session at `/dashboard/`, the existing
   `useDashboardAuthGate` replaces the route with `/`, keeping the startup loader
   visible during navigation. Gate-triggered sign-outs retain their specific
@@ -91,6 +96,26 @@ This document is an ownership map for the current implementation. It does not au
   `src/domain/dashboard/homeStartup.test.mjs`, `src/domain/dashboard/pageShell.test.mjs`,
   and `src/domain/templates/pendingLandingTemplateSelection.test.mjs`. Local build
   and browser evidence belongs under `.local-isolation/`; it does not certify a deploy.
+- The pending-template transition has an offline browser regression at
+  `src/components/dashboard/home/landingTemplateTransition.browser.test.mjs`:
+  desktop/mobile coverage of pending access gates, delayed opening, failure recovery,
+  normal entry and profile completion, with synthetic service boundaries.
+  Verified locally on 2026-10-24: 39 focused Node tests and all eight browser
+  scenarios passed (1280×800 and 390×844), with no external requests delivered.
+  The browser check required execution outside the process sandbox to create pages;
+  production authentication, deployment and the full Next build were not exercised.
+- The user subsequently authorized deployment on 2026-10-24. The complete
+  production export (Node 22.23.4, network blocked during compilation) and local
+  asset checks passed. Hosting version `50ffba5ff50afbfe` went live at 15:49:01
+  Argentina time with Next build `mN5pzCIoY0UvcXgeHTfv9`. Public GET checks of `/`
+  and `/dashboard/` returned that build; the deployed dashboard bundle matched
+  the verified SHA-256 and contained the pending-template loader change. All 78
+  retained/current static assets passed `verifyNextStaticRelease.cjs --origin
+  https://reservaeldia.com.ar`. Only Hosting was deployed; no production account
+  or draft was created for verification. Evidence:
+  `.local-isolation/landing-loader-deploy-20261024/` (`build-evidence.json`,
+  `artifact-evidence.json`, `transition-artifact.json`, `deployment-evidence.json`,
+  `published-evidence.json` and `verify-release.log`).
 
 Verification on 2026-09-18: Next 15.3.2 build/export in an isolated demo-configured
 copy, with outbound Node traffic blocked and frontend lint omitted. Summed gzip

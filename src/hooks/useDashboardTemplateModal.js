@@ -676,7 +676,7 @@ export function createDashboardTemplateModalControllerRuntime({
       resetTemplateModalController();
     }
 
-    void openDraftInEditor?.(slug);
+    await openDraftInEditor?.(slug);
     return { slug };
   };
 

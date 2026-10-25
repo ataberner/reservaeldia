@@ -904,3 +904,48 @@ test("direct template opening blocks duplicate attempts while loading", async ()
   assert.deepEqual(harness.openDraftInEditorCalls, ["draft-direct-blocked"]);
   assert.equal(harness.getState().isOpeningTemplateEditor, false);
 });
+
+test("direct template opening stays pending until the draft is ready to enter", async () => {
+  const draftOpening = createDeferred();
+  const startedOpening = createDeferred();
+  const harness = createControllerHarness({
+    openDraftInEditor: (slug) => {
+      startedOpening.resolve(slug);
+      return draftOpening.promise;
+    },
+    dependencyOverrides: {
+      getTemplateById: async () => createFullTemplate(),
+      createDraftFromTemplateWithInput: async () => ({ slug: "draft-waiting" }),
+    },
+  });
+  let settled = false;
+  const opening = harness.controller.openTemplateEditorFromTemplateId("tpl-1")
+    .then((result) => { settled = true; return result; });
+
+  assert.equal(await startedOpening.promise, "draft-waiting");
+  await flushMicrotasks();
+  assert.equal(settled, false);
+  assert.equal(harness.getState().isOpeningTemplateEditor, true);
+  assert.equal(await harness.controller.openTemplateEditorFromTemplateId("tpl-1"), null);
+
+  draftOpening.resolve();
+  assert.deepEqual(await opening, { slug: "draft-waiting" });
+  assert.equal(harness.getState().isOpeningTemplateEditor, false);
+});
+
+test("a failed direct draft opening releases the transition and reports the error", async () => {
+  const alerts = [];
+  const harness = createControllerHarness({
+    openDraftInEditor: async () => { throw new Error("No se pudo abrir el borrador."); },
+    dependencyOverrides: {
+      getTemplateById: async () => createFullTemplate(),
+      createDraftFromTemplateWithInput: async () => ({ slug: "draft-failed" }),
+      showAlert: (message) => alerts.push(message),
+      logTemplateEditorError: () => {},
+    },
+  });
+
+  assert.equal(await harness.controller.openTemplateEditorFromTemplateId("tpl-1"), null);
+  assert.equal(harness.getState().isOpeningTemplateEditor, false);
+  assert.deepEqual(alerts, ["No se pudo abrir el borrador."]);
+});

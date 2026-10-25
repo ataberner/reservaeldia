@@ -2,12 +2,16 @@
 
 Fecha: 2026-10-23. Base inspeccionada: `5ff9bb85`; árbol inicialmente limpio
 en la primera implementación. Al retomar se preservaron las correcciones de
-seguridad y los cambios concurrentes de publicidad. HEAD continúa en esa base.
+seguridad y los cambios concurrentes de publicidad. Durante la ventana apareció
+el commit externo `2c4fe15a`; no se cambió el candidato inmutable ni se hicieron
+commits, push o modificaciones del índice por esta operación.
 Alcance inicial: preparar la revisión de un despliegue, sin ejecutarlo. La
 validación inicial quedó completa; la ampliación de runtime/build/editor y sus
 resultados se documentan más abajo. Las etapas anteriores a la autorización
 remota sólo realizaron lecturas. La ejecución autorizada posterior está
-**en curso** y se registra al final con su hora de corte; no interpretar las
+**completa para Rules/Functions y retiro de tokens de los doce objetos, con una limitación
+histórica aceptada del primer objeto** y se registra al final
+con su hora de corte; no interpretar las
 declaraciones históricas de cero modificaciones como estado actual.
 No se implementó panel/alta/beta de proveedores.
 
@@ -18,13 +22,16 @@ registra la validación y pendientes vigentes; los diagnósticos remotos anterio
 conservan su fecha y no se repitieron. En esa etapa local no se hizo ninguna
 modificación remota.
 
-**Estado operativo, corte 24/10/2026 01:49:57 UTC:** ejecución autorizada en
-curso. El usuario confirmó continuar dejando los canarios A/B pendientes.
-Los tres servicios de borradores están contenidos por IAM; ambos artefactos
-Rules tienen lectura posterior coincidente y dos Functions de seguridad
-(`verInvitacion`, `copiarPlantilla`) tienen Node 22, revisión Ready y 100% del
-tráfico comprobados. El resto continúa en la secuencia autorizada. No es un
-cierre del despliegue ni una validación autenticada de producción.
+**Estado operativo, corte 24/10/2026 11:36 ART (14:36 UTC): cierre acotado de
+tokens completado con limitación histórica aceptada.** Los doce objetos tienen
+token ausente y caché `private,no-store`: los once pendientes se modificaron y
+verificaron con V2; el primero sólo se leyó y su conservación histórica de
+ACL/metadata permanece **no verificable**, nunca aprobada retrospectivamente.
+La evidencia previa de Rules/Functions conserva su corte 03:38:47 UTC y las
+109 ACTIVE en Node 22; no se redesplegaron ni se repitió ese inventario.
+Los tres servicios de borradores siguen sin nuevas restricciones. A/B continúa
+pendiente por decisión del usuario. Ver el cierre de tokens al final; los
+estados anteriores conservan su fecha y sus resultados originales.
 
 En la revisión final aparecieron cambios concurrentes ajenos a esta tarea en
 `src/pages/_app.js`, `src/components/analytics/`, `src/domain/analytics/openAiAds.js`
@@ -1286,3 +1293,381 @@ inmutabilidad de su contenido. Esta comprobación acredita configuración,
 no ejecución funcional ni drenaje. La secuencia de `copiarPlantillaHTML` y los
 ocho consumidores continúa; no se añaden éxitos a la tabla intermedia hasta
 obtener sus lecturas posteriores.
+
+## Cierre parcial de la ventana — 24/10/2026 02:36:51 UTC
+
+**HECHO:** la secuencia se detuvo al fallar una comprobación posterior de
+metadata. Se completó únicamente la recuperación segura de disponibilidad de
+los tres servicios de borradores. No se restauraron tokens, Rules vulnerables
+ni handlers anteriores. La dispensa de canarios A/B autorizada por el usuario
+no se interpretó como dispensa de integridad de objetos.
+
+### Recursos efectivos
+
+El candidato continuó siendo `provider-auth-5ff9bb85217c-44d15fc46b29f1d2`,
+archivo SHA256 `527275585c92ea395e845890941da357a4b1343b1bc547b26960dfe2d03627a7`.
+El ejecutor verificó los 389 archivos seleccionados antes de cada operación.
+No se incluyeron publicidad, evidencia privada ni Hosting. Se conservaron los
+predeploy/build originales; no se repitieron suites locales ya aprobadas.
+
+| Recurso | Resultado observado |
+| --- | --- |
+| Storage acotado | Ruleset `fa06a161-b080-412b-99dc-50a4a0841268`, SHA256 `40ed3e455aa8ee2510744a25ca968e912f0fb3fe43c28c34f99bf0d590daca80`; readback coincidente, último a las 02:35 UTC. |
+| Firestore acotado | Ruleset `54aa5487-fcd8-481e-a4dd-fe9a4fda1578`, SHA256 `7c6ad315deaa372f6c5d416e89593024480858a32ab1e46e9705411d44eb386c`; readback coincidente, último a las 02:35 UTC. |
+| Functions de seguridad | 11/11 actualizadas, Node 22, ACTIVE, revisión Ready nueva con 100% de tráfico; generación, codebase y configuración efectiva conservadas. |
+| Functions sólo runtime | 0/98 actualizadas. Inventario final de 109 completo, 11 Node 22 / 98 Node 20, sin identidades extra o faltantes ni cambios de generación/codebase/entrypoint. |
+| Contención de borradores | Finalizada mediante reapertura condicionada de los tres servicios; políticas originales restauradas exactamente salvo el ETag emitido por IAM. |
+| Doce objetos | Un PATCH aplicado; once no intentados. Conservación completa de metadata/ACL del primero sin poder certificarse; detalles abajo. |
+
+| Function | Revisión nueva Ready observada | Actualización UTC |
+| --- | --- | --- |
+| `verInvitacion` | `verinvitacion-00530-cob` | 01:46:32 |
+| `copiarPlantilla` | `copiarplantilla-00545-til` | 01:49:43 |
+| `copiarPlantillaHTML` | `copiarplantillahtml-00497-his` | 02:00:31 |
+| `prepareDraftPreviewRender` | `preparedraftpreviewrender-00125-riy` | 02:03:17 |
+| `validateDraftForPublication` | `validatedraftforpublication-00125-qat` | 02:05:34 |
+| `publicarInvitacion` | `publicarinvitacion-00539-loc` | 02:08:12 |
+| `retryPaidPublicationWithNewSlug` | `retrypaidpublicationwithnewslug-00270-tug` | 02:10:18 |
+| `mercadoPagoWebhook` | `mercadopagowebhook-00297-wel` | 02:12:18 |
+| `createPublicationPayment` | `createpublicationpayment-00287-nax` | 02:14:23 |
+| `createPublicationCheckoutSession` | `createpublicationcheckoutsession-00267-reh` | 02:16:42 |
+| `adminGetTemplateEditorDocumentV1` | `admingettemplateeditordocumentv1-00206-quy` | 02:19:50 |
+
+`revision-config-1792806907271.json` y `revision-config-1792808706937.json`
+comparan las once revisiones anteriores/nuevas: entorno efectivo, referencias
+y versiones de Secrets, volúmenes y cuentas de servicio conservados. No se
+leyeron valores de Secrets ni se alteraron activaciones de Email. La adaptación
+puntual de CLI conserva la cuenta de servicio ya observada si CLI propone
+`serviceAccountEmail: null`; no permite reemplazarla por un valor por defecto.
+La excepción HTTP explícito/ausente continúa limitada al valor efectivo por
+defecto documentado, sin excepciones para configuración de negocio.
+
+### Incidente del primer objeto y resultado por alias
+
+El ejecutor privado `provider-release-metadata.mjs`, SHA256
+`f77e9ba7508c855a6b91f85025f0ac63a42bc4f9d56d8853db29c6a16226b14a`,
+aplicó un solo PATCH a las 02:20:13 UTC con `ifGenerationMatch` y
+`ifMetagenerationMatch`. Su cuerpo retiró exclusivamente
+`metadata.firebaseStorageDownloadTokens` y fijó `cacheControl: private,no-store`.
+No envió campos ACL ni modificó contenido.
+
+La respuesta y el GET de conciliación coinciden: misma generación, tamaño,
+CRC32C y MD5, metageneration 2→3, token ausente y Cache-Control esperado.
+**Fallaron** `unchangedAcl` y `unchangedProtectedMetadata`. El comparador
+incluye toda la representación ACL, incluidos sus ETag, también dentro de
+metadata protegida: las dos fallas no prueban dos cambios independientes.
+La lectura posterior encontró cuatro entradas sin permisos públicos; todos sus
+ETag coinciden con el nuevo ETag del objeto. Una simulación local demuestra
+que cambiar sólo esos ETag produce ambas fallas; **no demuestra** que ése haya
+sido el único cambio real.
+
+El helper no persistió el detalle de la ACL previa ni un resumen suficiente
+para repetir la comparación: es una limitación del ejecutor de esta operación.
+No se puede reconstruir ese estado a partir de la ACL actual o sus valores por
+defecto. La consulta puntual del audit log —un objeto, método update, ventana
+de siete segundos, una página— terminó sin entradas; no proporcionó baseline.
+No se descargó contenido privado y no se repitió el PATCH.
+
+| Alias privado | Resultado al cierre |
+| --- | --- |
+| `7c5d792e9f03bcb9ec5a572c` | Token retirado, bytes verificados, sin ACL pública observada; conservación completa de ACL/metadata pendiente de conciliación. |
+| `5002d6b48847ecef164ad716` | No intentado; token no retirado por esta operación. |
+| `2fe40ffa32dc2a19f5121da3` | No intentado; token no retirado por esta operación. |
+| `e65c6d92ff982f4d2ff121fd` | No intentado; token no retirado por esta operación. |
+| `9f2619d12a4f7b437c9cf334` | No intentado; token no retirado por esta operación. |
+| `45a716642cb2bb9645d6883a` | No intentado; token no retirado por esta operación. |
+| `c5f924f88e91027cd2945951` | No intentado; token no retirado por esta operación. |
+| `af53ad9a3df2810228ac9a51` | No intentado; token no retirado por esta operación. |
+| `8270c69467f6f79c9a2e4b25` | No intentado; token no retirado por esta operación. |
+| `362be99038d54d0f151a035f` | No intentado; token no retirado por esta operación. |
+| `4a6cfac60426a3c25ef7963c` | No intentado; token no retirado por esta operación. |
+| `6364719b4a87dde298acc197` | No intentado; token no retirado por esta operación. |
+
+La evidencia está en `metadata-mutation-results.json`,
+`first-object-reconcile-*.json` y
+`object-audit-reconciliation-2026-10-24T02-36-47-905Z.json`.
+Los fallos diagnósticos HTTP 400 anteriores se produjeron con proyecciones
+de subcampos de `Any`/map; corregidas las proyecciones, los lectores completaron
+sus consultas. Un 429 intermedio se conservó como error y se repitió una sola
+vez después. Ninguno de esos lectores modificó objetos o descargó contenido.
+
+### Reapertura segura y límites de observación
+
+La recuperación de disponibilidad no continuó el lote de metadata ni desplegó
+los 98 targets restantes. Se basó en las nuevas Rules, los tres handlers seguros,
+sus configuraciones efectivas, políticas contenidas coincidentes y rutas de
+tráfico exclusivamente hacia revisiones nuevas, junto con evidencia histórica
+de retiro de actividad:
+
+- `verInvitacion`: instancias activas e inactivas explícitamente en cero en
+  muestras 01:25–01:31 UTC posteriores a la contención.
+- `copiarPlantillaHTML`: ambas clases explícitamente en cero 01:26–01:32 UTC.
+- `copiarPlantilla`: actividad en cero desde 01:26; instancias inactivas todavía
+  presentes en la primera ventana. Una segunda ventana observó ambas clases
+  en cero 01:44–01:45 y 01:51–01:56 UTC. No se interpretó ausencia de series
+  como cero ni se usó sólo el timeout de 60 segundos.
+
+La lectura fresca de los tres servicios a las 02:34 UTC confirmó Ready,
+100% de tráfico nuevo, IAM contenido y sin bypass de invocación. La reapertura
+verificó ETag, política completa, bindings ajenos y proyecto/ancestría antes de
+cada cambio. Resultado:
+
+| Servicio | Reapertura UTC | Comprobación inmediata |
+| --- | --- | --- |
+| `verInvitacion` | 02:35:40 | 3/3 URLs observadas: 401, sin solicitar slug ni contenido. |
+| `copiarPlantilla` | 02:36:06 | 3/3: 401 `UNAUTHENTICATED`, cuerpo callable vacío. |
+| `copiarPlantillaHTML` | 02:36:36 | 3/3: 401 `UNAUTHENTICATED`, cuerpo callable vacío. |
+
+**No queda ningún servicio temporalmente contenido.** Se conservan snapshots
+IAM cifrados y evidencia `anonymous-reopened-*.json`. Las respuestas prueban
+rechazo anónimo del código nuevo; no sustituyen un recorrido autenticado.
+
+Para los once targets, `security-after.json` documenta nuevo tráfico al 100%
+y cero tráfico asignado a revisiones anteriores. Las métricas de 02:05–02:25
+observaron ceros finales para algunas revisiones y ausencia de series para
+otras; no se certifica por eso drenaje exhaustivo de los ocho consumidores.
+La consulta de logs 02:00–02:30 observó tres solicitudes antiguas completadas
+con 400 en publicación, retry y pago, con latencias inferiores a cuatro segundos;
+no se invocaron esos handlers como prueba ni se infiere el origen de esos logs. Cero logs para los demás
+no se equipara a cero solicitudes. Pagos/webhooks permanecen habilitados.
+
+### Comandos y evidencia de cierre
+
+Todos los helpers siguientes viven bajo `.local-isolation/`, usan el Node
+22.23.4 fijado localmente y conservaron sus outputs bajo
+`.local-isolation/provider-release-20261024T0112Z/`. No contienen credenciales
+en argumentos ni se publican logs privados:
+
+- `provider-release-cli.cjs storage`, `firestore` y `functions <selector exacto>`:
+  operaciones autorizadas registradas individualmente; builds/predeploy conservados.
+- `provider-release-rules-readback.mjs both`: hashes efectivos de ambos artefactos PASS.
+- `provider-release-function-readback.mjs <targets>` y
+  `provider-release-revision-config.mjs --execute-read-only <targets>`:
+  once revisiones y configuración PASS; la evidencia de los tres borradores
+  anterior a la reapertura muestra IAM contenido, no su estado final.
+- `provider-release-draft-drain-readonly.mjs --execute-read-only --start ... --end ... --out ...`:
+  ventanas históricas exactas 01:15–01:35 y 01:43–02:03, seis GET cada una.
+- `provider-release-iam.mjs reopen <servicio> --preflight .../before/control-plane.json --state-dir ... --execute --restore-removed-public-binding`:
+  aplicado individualmente a los tres servicios y seguido por
+  `provider-release-anonymous.mjs reopened <Function>`: 9/9 PASS.
+- `provider-release-runtime-inventory.mjs --execute-read-only`:
+  tres GET paginados, 109 identidades, 108 GEN2/1 GEN1, default 103/payments 3/email 3;
+  `runtime-inventory-1792809274681.json` confirma 11 Node 22 / 98 Node 20.
+
+**Pendiente bloqueante:** conciliar el límite de evidencia del primer objeto
+y corregir/revisar el verificador antes de reanudar los once restantes. Separar
+igualdad de permisos y campos estables de ETag volátiles; retener una baseline
+previa cifrada y evidencia suficiente. Ese ajuste prospectivo no certifica
+retroactivamente la ACL del primer objeto. No reintentar ese PATCH ni restaurar
+su token; no considerar el lote completo. La secuencia de 98 runtimes queda
+retenida por la parada operativa, sin un defecto nuevo observado en esas Functions.
+
+**Pendientes no ejecutados:** canarios autenticados A/B y recorridos propios en
+producción, CI remota del candidato, drenaje exhaustivo de consumidores y
+actualización de las 98 Functions. Las suites locales previas, Q1 no aceptados
+y advertencias ajenas mantienen su alcance original. No hubo nuevos usuarios,
+claims, documentos sintéticos, cobros, comunicaciones de prueba, Hosting,
+directorio público, beta ni push. El plan operativo conserva la recuperación
+segura y los requisitos para retomar sin redesplegar las once Functions exitosas.
+
+## Continuación completada de Functions — 24/10/2026 03:38:47 UTC
+
+El pedido posterior «hace deploy de las cosas que falten deployar» reanudó los
+98 runtimes pendientes, independientemente del incidente de metadata. Se
+conservó el candidato `provider-auth-5ff9bb85217c-44d15fc46b29f1d2`, Node local
+22.23.4 y CLI 14.4.0. Antes de cada operación se verificaron los 389 archivos
+seleccionados; publicidad y evidencia privada no se incorporaron al candidato.
+No se repitieron las suites del producto aprobadas. Los predeploy/build
+obligatorios permanecieron activos y aprobaron en los trece lotes completados.
+
+**Resultado comprobado:** 98/98 nombres únicos del inventario runtimeOnly,
+95 default y tres Email, con CLI exitoso y lectura posterior independiente.
+Se compararon identidad, configuración efectiva y política IAM con la lectura
+inmediatamente anterior al PATCH. En las 97 GEN2 se comprobaron revisión Ready,
+tráfico íntegro hacia la revisión nueva y control IAM de invocación habilitado.
+La GEN1 `onUserCreatedWelcomeEmail` conservó generación, trigger, configuración
+e IAM y quedó ACTIVE. Los tres overlays Email preservaron sus tres valores
+efectivos; no se accedió al contenido de Secret Manager ni se invocaron handlers.
+
+| Lote | Cantidad | Operación privada, prefijo `provider-release-operation-` | Lectura posterior UTC |
+| --- | ---: | --- | --- |
+| default 1 | 10 | `CoHlaN` | 02:56:31 |
+| default 2 | 10 | `LMSmnV` | 02:59:52 |
+| default 3 | 10 | `errKup` | 03:03:38 |
+| default 4 | 10 | `mdh0CJ` | 03:07:07 |
+| default 5 | 10 | `2Y2tds` | 03:10:05 |
+| default 6 | 10 | `38vHmL` | 03:13:39 |
+| default 7 | 10 | `DZotny` | 03:17:18 |
+| default 8 | 10 | `T7QKXQ` | 03:20:55 |
+| default 9 | 7 | `Laebzo` | 03:24:01 |
+| ocho funciones programadas default | 8 | `hm332j` | 03:27:54 |
+| `onUserCreatedWelcomeEmail` | 1 | `HC1W7Z` | 03:34:32 |
+| `testTransactionalEmail` | 1 | `qGceGj` | 03:36:28 |
+| `testWelcomeEmail` | 1 | `bQXiRG` | 03:38:30 |
+
+El inventario fresco `runtime-inventory-1792813119410.json`, obtenido con tres
+GET paginados, confirma **109/109 Node 22 y ACTIVE**: 108 GEN2/una GEN1,
+default 103/payments tres/email tres, sin diferencias de identidad, entrypoint,
+generación o codebase. Incluye las once de seguridad, sin redesplegarlas.
+La agregación local posterior exige cobertura exacta y ausencia de cambios de
+`updateTime` entre readback e inventario de las 98. Evidencia en
+`.local-isolation/provider-release-20261024T0112Z/`:
+
+- `runtime-default-continuation-1792810607345.json`: 95 default verificados.
+- `runtime-email-continuation-1792812485370.json`: tres Email verificados;
+  conserva el intento bloqueado anterior y la continuación.
+- `runtime-final-evidence-1792813127423.json`: 13 operaciones, 98 resultados,
+  revisiones y referencias con hashes a capturas, lecturas e inventario final.
+  SHA-256: `af6455fe91e19b993b8311fdb82111ff8cd2096f726fd290606e0f779d02f77d`.
+
+La revisión independiente de los registros de esas trece operaciones confirmó
+98 PATCH Functions únicos y ninguna mutación fuera del alcance registrado.
+Los dos intentos bloqueados tuvieron cero PATCH Functions transmitidos. El
+`git diff --check` del cierre aprobó; sólo informó avisos de conversión LF/CRLF.
+La caché de Hosting preexistente se preservó y no se incluyó en el despliegue.
+
+**Dos interrupciones locales resueltas sin ampliar el cambio remoto.** El primer
+intento default (`snyDir`) bloqueó diez PATCH antes de transmisión porque el SDK
+expresaba opciones no declaradas como `null`. Se conservó explícitamente el
+valor efectivo de esos campos cuando el updateMask pedía reset; un valor
+concreto diferente sigue bloqueado. La comparación estricta posterior no se
+eliminó. El primer Email (`XL3UoP`) bloqueó su PATCH por la representación
+numérica del mismo proyecto en las referencias de secretos GEN1. Cinco GET
+acotados confirmaron nombres/versiones equivalentes y ninguna modificación de
+esa Function. El helper local preserva exclusivamente esa representación en
+`onUserCreatedWelcomeEmail`, con los dos pares key/secret esperados y todos los
+demás campos idénticos. Sus **12 casos locales aprobaron**, incluidos cambio
+de versión, proyecto, nombre, alta/baja y destino ajeno. El reintento reutilizó
+el overlay preparado; no rotó secretos. No se cambió el código del candidato
+ni el comparador de capturas usado por los 95 resultados anteriores.
+
+Comandos ejecutados, con el Node fijado y helpers dentro de `.local-isolation/`
+(registro de ejecución; no volver a desplegar estos lotes):
+
+- `provider-runtime-default-batches.cjs --execute <operación-CoHlaN>`.
+- `provider-runtime-email-batches.cjs --execute`, detenido antes del primer PATCH;
+  `provider-runtime-email-resume.cjs --execute`, tres actualizaciones verificadas.
+- `provider-email-secret-project.test.cjs`: 12/12, sin red.
+- `provider-release-runtime-inventory.mjs --execute-read-only`: 109/109.
+- `provider-runtime-final-evidence.cjs --write-local-evidence`: PASS, sin red.
+
+**Límite y pendientes:** lo verificado aquí es despliegue, runtime, configuración,
+IAM, readiness y tráfico; no certifica los recorridos autenticados A/B, CI remota,
+ejecución de cada job ni drenaje exhaustivo de solicitudes antiguas. No se
+invocaron pagos, webhooks ni correos como prueba. No hubo nuevos cambios de IAM,
+Rules, datos de aplicación, tokens o ACL en esta continuación, ni Hosting,
+directorio, beta, usuarios Auth, claims o push. Los tres servicios de borradores
+siguen reabiertos. La tabla anterior de los doce alias conserva su resultado:
+primer token retirado y ACL histórica inconclusa; once objetos sin modificar.
+La remediación de esos once sigue bloqueada por la conciliación y el verificador
+documentados; ya no quedan Functions pendientes de despliegue en este alcance.
+
+## Cierre acotado de tokens — 24/10/2026 11:36 ART (14:36 UTC)
+
+**DECISIÓN aceptada:** el usuario autorizó completar exclusivamente los once
+objetos pendientes después de corregir y probar el verificador, y aceptó dejar
+como «no verificable» la conservación histórica del primer objeto cuando la
+evidencia no permitiera reconstruirla. No autorizó marcar esa conservación como
+aprobada, modificar permisos ni repetir el PATCH del primero. Esa decisión
+resuelve la condición operativa anterior; no repara ni reemplaza los resultados
+`false` de la primera ejecución. A/B sigue diferido.
+
+**HECHO sobre el primero:** el checkpoint sólo retenía exposición y alias, el
+mutador anterior guardó el objeto previo en memoria y los resultados en
+booleanos; la consulta de auditoría ya documentada no aportó una baseline.
+La revisión local de esos artefactos no permite reconstruir las ACL/metadata
+anteriores. No se repitió la investigación remota. V2 realizó un único GET de
+metadata del primero: misma generación, tamaño, CRC32C y MD5 del manifiesto,
+metageneración 3, token ausente, caché privada y ninguna ACL pública observada.
+Esto acredita su estado observado; **no acredita conservación histórica**.
+
+El nuevo verificador puro es
+[`scripts/providerAssetMetadataVerification.mjs`](../../scripts/providerAssetMetadataVerification.mjs).
+Compara todos los campos estables y todas las propiedades ACL, normalizando
+orden de claves/entradas. Excluye sólo los cambios autorizados de token/caché
+y los campos de versionado `metageneration`, `updated`, `etag` y `acl[].etag`.
+Conserva las comprobaciones de generación, owner, identidad, roles, domain,
+projectTeam, cifrado, retenciones, holds y propiedades desconocidas. El mapa de
+custom metadata vacío/ausente se normaliza después de quitar sólo el token.
+Exige metageneración exactamente +1, token ausente, caché exacta, checksums
+intactos y correspondencia completa entre PATCH y GET, incluidos sus ETags.
+El ETag ACL se registra aparte como identificador opaco; no se presume igual
+al ETag del objeto. Fuentes oficiales de la API JSON usada:
+[ObjectAccessControls](https://docs.cloud.google.com/storage/docs/json_api/v1/objectAccessControls),
+[Objects](https://docs.cloud.google.com/storage/docs/json_api/v1/objects) y
+[PATCH/precondiciones](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/patch).
+
+**Validación ejecutada, Node 22.23.4: 76/76 pruebas enfocadas.**
+
+- `node --test scripts/providerAssetMetadataVerification.test.mjs`: **56/56**.
+  Admite versionado esperado y distinto orden; rechaza cambios reales de ACL,
+  altas/bajas, metadata protegida, valores desconocidos, generación, token,
+  caché o respuesta posterior. No serializa tokens, ni siquiera si aparecen
+  duplicados en otro campo o dentro de una URL.
+- `node --test .local-isolation/provider-release-metadata-v2.test.mjs`:
+  **20/20**. Snapshot persistido antes de PATCH; exclusión del primer alias y
+  destinos ajenos; fallo de persistencia o precondiciones impide escritura;
+  412, timeout y diferencia posterior hacen sólo una reconciliación GET y
+  detienen el lote sin reintento. Sin red ni servicios externos en estas pruebas.
+- No se repitieron suites generales, emuladores, builds, inventarios de
+  Functions ni canarios de producto: no cambió código de aplicación.
+
+**Ejecución real:** `.local-isolation/provider-release-metadata-v2.mjs --execute
+--state-dir .local-isolation/provider-metadata-close-20261024-v2`, con el Node
+fijado, entre 14:35:21 y 14:36:00 UTC. Exactamente **11 PATCH y 25 GET** de
+metadata: tres operaciones por pendiente, un GET del primero y dos del bucket.
+Se validó el hash del checkpoint original y el destino; cada PATCH mantuvo
+`ifGenerationMatch` original y `ifMetagenerationMatch=2`, seleccionando live
+sin `generation`. Cuerpo limitado a eliminar `firebaseStorageDownloadTokens`
+y fijar `cacheControl=private,no-store`; sin campos ACL ni cambios IAM.
+
+Antes de cada PATCH se guardó la metadata completa sin token, cifrada con DPAPI
+CurrentUser, escritura exclusiva, flush y descifrado de comprobación. Se
+conservaron también respuesta PATCH y GET posterior: **34 snapshots cifrados**
+(tres por pendiente y uno de lectura del primero), con hashes vinculados al
+registro. No se guardaron tokens ni hashes de tokens. Los once tuvieron
+metageneración 2 → 3, ETags ACL cambiados y permisos/metadata estable idénticos;
+ningún resultado requirió reconciliación. La configuración de acceso uniforme
+del bucket consultada antes/después permaneció igual; no se repitió una auditoría
+general de IAM heredado.
+
+| Alias | Resultado actual | Permisos y metadata estable | PATCH en este cierre |
+| --- | --- | --- | ---: |
+| `7c5d792e9f03bcb9ec5a572c` | Token ausente, caché privada; integridad por metadata confirmada | Conservación histórica **no verificable**, limitación aceptada | 0 |
+| `5002d6b48847ecef164ad716` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `2fe40ffa32dc2a19f5121da3` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `e65c6d92ff982f4d2ff121fd` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `9f2619d12a4f7b437c9cf334` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `45a716642cb2bb9645d6883a` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `c5f924f88e91027cd2945951` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `af53ad9a3df2810228ac9a51` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `8270c69467f6f79c9a2e4b25` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `362be99038d54d0f151a035f` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `4a6cfac60426a3c25ef7963c` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+| `6364719b4a87dde298acc197` | Token retirado, caché privada | Conservación verificada V2 | 1 |
+
+Registro saneado:
+`.local-isolation/provider-metadata-close-20261024-v2/metadata-v2-results.json`,
+SHA-256 `3577da12d33ca5a235be0d44a7d1e58332d63c7d18759bf0bea38755428f5b4d`.
+Mutador V2: `5ade62b7e5f14538fba4fb8c8c8c39c7da49e6e7bebe9f2ce23d557875b4da92`;
+verificador: `e2bdee9d60da7e3bafc07182ea37f4330a940e40924db6b811a45ffcbda0f7db`.
+El mutador anterior y sus resultados originales se preservan como evidencia,
+no como procedimiento para volver a ejecutar los doce PATCH.
+La revisión independiente local confirmó los once alias y generaciones,
+34/34 hashes de snapshots, hashes del código/checkpoint y todos los controles
+de precondiciones y lectura posterior, sin nuevas consultas remotas.
+
+**Límites restantes:** A/B autenticados sigue pendiente; no se descargó contenido
+privado ni se probó HTTP con las URLs antiguas. Token ausente no prueba borrar
+copias distribuidas ni revocar URLs firmadas. La conservación histórica del
+primero sigue no verificable. CI remota y drenaje exhaustivo conservan sus
+límites anteriores. No hubo despliegues, nuevas restricciones de servicios,
+modificaciones de permisos, Hosting, pagos, comunicaciones, Auth/claims ni
+archivos de aplicación ajenos; se preservó el trabajo concurrente de publicidad
+y dashboard.
+
+**Siguiente paso propuesto, no ejecutado:** preparar el alcance mínimo de una
+beta cerrada con alta por invitación, la autenticación existente, un negocio
+con propietario verificado y un panel que gestione sólo su ficha privada.
+Mantener la entrega pública y colaboradores múltiples para etapas posteriores;
+no abrir accesos a proveedores ni publicar el directorio como efecto de este cierre.

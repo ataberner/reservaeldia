@@ -231,6 +231,7 @@ export function useDashboardStartupLoaders({
   initialEditorData = null,
   isResolvingEditorRoute = false,
   isHomeView,
+  isOpeningLandingTemplate = false,
   homeResetKey,
 }) {
   const [homeViewReady, setHomeViewReady] = useState(false);
@@ -823,7 +824,8 @@ export function useDashboardStartupLoaders({
     };
   }, [renderEditorStartupLoader, showEditorStartupLoader]);
 
-  const showHomeStartupLoader = isHomeView && !homeViewReady;
+  const showHomeStartupLoader =
+    isHomeView && (!homeViewReady || isOpeningLandingTemplate);
   const shouldRenderHomeStartupLoader =
     showHomeStartupLoader || holdHomeStartupLoader;
   const isHomeStartupLoaderExiting =

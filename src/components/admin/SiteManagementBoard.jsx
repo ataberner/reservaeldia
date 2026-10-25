@@ -42,6 +42,13 @@ export default function SiteManagementBoard({
 
       {!loadingAdminAccess && canAccessSiteManagement && (
         <div className="space-y-4">
+          <a
+            href="/admin/proveedores/"
+            className="block rounded-xl border border-purple-200 bg-white p-4 text-left shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4"
+          >
+            <h2 className="text-lg font-semibold text-purple-900">Salones y profesionales</h2>
+            <p className="mt-1 text-sm text-slate-600">Administrar fichas y revisiones de la beta privada.</p>
+          </a>
           <div
             className={`rounded-xl p-[1px] transition-all ${
               isAnalyticsOpen

@@ -31,6 +31,8 @@ const enabled = new Set([
   "getAdminAccess",
   // Provider beta: verified superadmin + closed backend gate; demo Firestore only.
   "adminProvidersV1",
+  // Read-only private directory; verified superadmin and independent closed gate.
+  "providerDirectoryV1",
   "getPricingConfigV1", "getDashboardHomeConfigV1",
   // Inspected Music V1: owner-checked Firestore transaction, no external provider.
   "saveDraftWithMusicV1",
@@ -49,7 +51,7 @@ for (const [name, handler] of Object.entries(handlers)) {
     exports[name] = onRequest({ region: "us-central1", cors: false }, handler);
     continue;
   }
-  if (name === "providerAdminImageV1") {
+  if (["providerAdminImageV1", "providerDirectoryImageV1"].includes(name)) {
     // Authenticated private image upload/read; emulator bucket only, no tokens.
     exports[name] = onRequest({ region: "us-central1", cors: false }, handler);
     continue;

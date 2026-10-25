@@ -56,12 +56,13 @@ async function waitForEmulators(child, env) {
 
 async function main(mode) {
   const release = mode === "release", buildOnly = mode === "build", providersOnly = mode === "providers";
-  const integration = ["test", "verify", "release", "providers"].includes(mode), rules = ["rules", "verify"].includes(mode);
-  const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration ? ["configuration"] : []), "sync", "compile", "contracts-built",
-    ...(integration && !providersOnly ? ["backend", "compatibility"] : []),
+  const directoryBrowserOnly = mode === "provider-directory-browser", directoryOnly = mode === "provider-directory" || directoryBrowserOnly;
+  const integration = ["test", "verify", "release", "providers", "provider-directory", "provider-directory-browser"].includes(mode), rules = ["rules", "verify"].includes(mode);
+  const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration && !directoryBrowserOnly ? ["configuration"] : []), "sync", "compile", "contracts-built",
+    ...(integration && !providersOnly && !directoryOnly ? ["backend", "compatibility"] : []),
     ...(release || buildOnly ? ["build-capture", "build-export", "build-finalize", "build-release-check"] : []),
     ...(!buildOnly ? ["emulators"] : []), ...(rules ? ["rules-countdown"] : []),
-    ...(integration ? ["integration", "providers-api", "seed", "browser", "providers-browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
+    ...(integration ? [...(!directoryOnly ? ["integration", "providers-api"] : []), ...(!directoryBrowserOnly ? ["provider-directory-api"] : []), "seed", ...(!directoryOnly ? ["browser", "providers-browser"] : ["provider-directory-warmup"]), "provider-directory-browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
   evidence = new Evidence(ROOT, mode, mode === "check" ? ["prerequisites"] : names);
   let requirements;
   const stage = (name, operation, kind) => {
@@ -69,7 +70,7 @@ async function main(mode) {
     return evidence.stage(name, operation, kind);
   };
   await stage("prerequisites", async () => {
-    if (!["dev", "providers-dev", "providers", "emulators", "test", "rules", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
+    if (!["dev", "providers-dev", "providers", "provider-directory", "provider-directory-browser", "provider-directory-dev", "emulators", "test", "rules", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
       throw failure("Modo local inválido; no se aceptan overrides de destino.", "prerequisite");
     validateInheritedDestinations();
     requirements = checkRequirements();
@@ -141,11 +142,11 @@ async function main(mode) {
       if (fs.existsSync(report)) fs.copyFileSync(report, path.join(session, "contracts-evidence.json"));
     }
   }
-  if (integration) await run("configuration", ["--test", "--test-reporter=tap", "scripts/local/environment.test.mjs", "src/firebaseInitializationContract.test.mjs"]);
+  if (integration && !directoryBrowserOnly) await run("configuration", ["--test", "--test-reporter=tap", "scripts/local/environment.test.mjs", "src/firebaseInitializationContract.test.mjs"]);
   await run("sync", ["scripts/syncTemplateContract.cjs"], { cwd: path.join(workspace, "functions"), kind: "infrastructure" });
   await run("compile", ["node_modules/typescript/bin/tsc"], { cwd: path.join(workspace, "functions"), kind: "tests" });
   await run("contracts-built", ["scripts/syncTemplateContract.cjs", "--check"], { cwd: path.join(workspace, "functions") });
-  if (integration && !providersOnly) {
+  if (integration && !providersOnly && !directoryOnly) {
     await run("backend", ["--test", "--test-reporter=tap", "scripts/local/backend.test.cjs"]);
     await run("compatibility", ["scripts/local/productionCompatibility.cjs"]);
   }
@@ -189,35 +190,42 @@ async function main(mode) {
     evidence.data.stages.find(s => s.name === "rules-countdown").tap = assertTap(log);
   });
   if (mode === "rules") return;
-  if (integration || ["dev", "providers-dev"].includes(mode)) {
-    if (integration) await run("integration", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/integration.test.mjs", "scripts/local/authFlows.test.mjs", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
-    if (integration) await run("providers-api", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/providerBeta.test.mjs", "scripts/local/providerBetaArtifact.test.mjs"], { timeoutMs: 300000 });
-    if (["dev", "providers-dev"].includes(mode)) evidence.data.stages.push({ name: "seed", status: "not-executed" });
+  if (integration || ["dev", "providers-dev", "provider-directory-dev"].includes(mode)) {
+    if (integration && !directoryOnly) await run("integration", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/integration.test.mjs", "scripts/local/authFlows.test.mjs", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
+    if (integration && !directoryOnly) await run("providers-api", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/providerBeta.test.mjs", "scripts/local/providerBetaArtifact.test.mjs"], { timeoutMs: 300000 });
+    if (integration && !directoryBrowserOnly) await run("provider-directory-api", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/providerDirectory.test.mjs"], { timeoutMs: 300000 });
+    if (["dev", "providers-dev", "provider-directory-dev"].includes(mode)) evidence.data.stages.push({ name: "seed", status: "not-executed" });
     await run("seed", ["scripts/local/seedLocal.cjs"]);
     if (mode === "providers-dev") {
       evidence.data.stages.push({ name: "providers-seed", status: "not-executed" });
       await run("providers-seed", ["scripts/local/seedProviderBeta.cjs"]);
     }
+    if (mode === "provider-directory-dev") {
+      evidence.data.stages.push({ name: "provider-directory-seed", status: "not-executed" });
+      await run("provider-directory-seed", ["scripts/local/seedProviderDirectory.cjs"]);
+    }
     const next = processes.start([release ? "scripts/local/serveExport.cjs" : "scripts/runNextDev.cjs"], { cwd: workspace, env: { ...env, NODE_ENV: release ? "production" : "development" },
       log: path.join(evidence.directory, "next.log"), name: "next" });
     if (integration) {
       browserEnvironment = createSocketEnvironment(env);
-      await run("browser", ["--test", "--test-reporter=tap", "scripts/local/browser.test.mjs"], { timeoutMs: 360000, env: browserEnvironment.env });
-      await run("providers-browser", ["--test", "--test-reporter=tap", "scripts/local/providerBeta.browser.test.mjs"], { timeoutMs: 600000, env: browserEnvironment.env });
+      if (!directoryOnly) await run("browser", ["--test", "--test-reporter=tap", "scripts/local/browser.test.mjs"], { timeoutMs: 360000, env: browserEnvironment.env });
+      if (!directoryOnly) await run("providers-browser", ["--test", "--test-reporter=tap", "scripts/local/providerBeta.browser.test.mjs"], { timeoutMs: 600000, env: browserEnvironment.env });
+      if (directoryOnly) await run("provider-directory-warmup", ["scripts/local/warmProviderDirectory.cjs"], { timeoutMs: 600000, kind: "infrastructure" });
+      await run("provider-directory-browser", ["--test", "--test-reporter=tap", "scripts/local/providerDirectory.browser.test.mjs"], { timeoutMs: 600000, env: browserEnvironment.env });
       if (release) await run("editor-flow", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/editorFlow.browser.test.mjs"], { timeoutMs: 900000, env: browserEnvironment.env });
       if (next.done) throw failure("Next se detuvo durante la prueba.");
       await stage("stop-services", stop);
       await run("offline", ["--test", "--test-reporter=tap", "scripts/local/offline.test.mjs"]);
-      for (const name of ["integration", "browser", "providers-api", "providers-artifact", "providers-browser", "offline", ...(release ? ["editor-flow", "build"] : [])]) {
+      for (const name of [...(!directoryOnly ? ["integration", "browser", "providers-api", "providers-artifact", "providers-browser"] : []), ...(!directoryBrowserOnly ? ["provider-directory-api"] : []), ...(directoryOnly ? ["provider-directory-warmup"] : []), "provider-directory-browser", "offline", ...(release ? ["editor-flow", "build"] : [])]) {
         if (!fs.existsSync(path.join(session, `${name}-evidence.json`))) throw failure(`Falta evidencia ${name}`);
       }
       fs.writeFileSync(path.join(session, "verified.json"), JSON.stringify({ project: contract.LOCAL_PROJECT, checkedAt: new Date().toISOString(), mode,
         checks: evidence.data.stages.filter(s => s.status === "passed").map(s => s.name), countdown: rules ? countdownChecks : undefined,
-        exclusions: [...(mode === "verify" ? ["frontend lint"] : ["lint", "watch behavior tests", "Functions ownership gate"]), ...(!rules ? ["Rules acceptance suite"] : []), ...(!release ? ["production Next build/export"] : ["Hosting rewrites/cache behavior", "production assets pixel parity"]), "disabled handlers", "Q1 approval", "remote configuration/deployment", "live Functions module reload", "original-to-prepared tree synchronization"] }, null, 2));
+        exclusions: [...(directoryBrowserOnly ? ["API suites (separate recorded run)"] : []), ...(mode === "verify" ? ["frontend lint"] : ["lint", "watch behavior tests", "Functions ownership gate"]), ...(!rules ? ["Rules acceptance suite"] : []), ...(!release ? ["production Next build/export"] : ["Hosting rewrites/cache behavior", "production assets pixel parity"]), "disabled handlers", "Q1 approval", "remote configuration/deployment", "live Functions module reload", "original-to-prepared tree synchronization"] }, null, 2));
       return;
     }
   }
-  console.log(["dev", "providers-dev"].includes(mode) ? "Desarrollo: http://localhost:3100 — Ctrl+C detiene la sesión." : "Cuatro emuladores demo — Ctrl+C detiene la sesión.");
+  console.log(["dev", "providers-dev", "provider-directory-dev"].includes(mode) ? "Desarrollo: http://localhost:3100 — Ctrl+C detiene la sesión." : "Cuatro emuladores demo — Ctrl+C detiene la sesión.");
   await Promise.race([...processes.owned].filter(c => !c.done).map(c => c.completion));
   if (!interruption) throw failure("Un servicio local terminó inesperadamente.");
 }
@@ -235,7 +243,7 @@ async function entry() {
   };
   const onSignal = () => interrupt("interrupted");
   process.once("SIGINT", onSignal); process.once("SIGTERM", onSignal);
-  const timer = ["verify", "test", "rules", "check", "build", "release", "providers"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
+  const timer = ["verify", "test", "rules", "check", "build", "release", "providers", "provider-directory", "provider-directory-browser"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
   try { await main(mode); } catch (e) { error = e; }
   finally {
     clearTimeout(timer);

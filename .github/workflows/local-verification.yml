@@ -60,6 +60,10 @@ jobs:
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/rules-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/integration-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/browser-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-api-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-browser-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-warmup-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-screenshots/*.png
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/verified.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/tooling.log
@@ -74,4 +78,7 @@ jobs:
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/seed.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/next.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/browser.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-api.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-browser.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-warmup.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline.log

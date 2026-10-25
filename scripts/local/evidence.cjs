@@ -5,7 +5,8 @@ const { failure } = require("./processes.cjs");
 const EXIT_CODES = { tests: 1, prerequisite: 2, infrastructure: 3, interrupted: 130 };
 // Explicit synthetic artifacts only. No HOME, profiles, env, repository copy,
 // browser profile, emulator databases, credentials or arbitrary debug logs.
-const ARTIFACTS = ["source-manifest.json", "lint-evidence.json", "contracts-evidence.json", "rules-source.json", "rules-evidence.json", "integration-evidence.json", "browser-evidence.json", "offline-evidence.json", "build-evidence.json", "editor-flow-evidence.json", "providers-api-evidence.json", "providers-artifact-evidence.json", "providers-browser-evidence.json", "verified.json", "session.json"];
+const ARTIFACTS = ["source-manifest.json", "lint-evidence.json", "contracts-evidence.json", "rules-source.json", "rules-evidence.json", "integration-evidence.json", "browser-evidence.json", "offline-evidence.json", "build-evidence.json", "editor-flow-evidence.json", "providers-api-evidence.json", "providers-artifact-evidence.json", "providers-browser-evidence.json", "provider-directory-api-evidence.json", "provider-directory-browser-evidence.json", "provider-directory-warmup-evidence.json", "verified.json", "session.json"];
+const DIRECTORY_SCREENSHOTS = ["01-venues-desktop.png", "02-professionals-mobile.png", "03-detail-desktop.png", "04-detail-mobile.png", "05-empty.png", "06-paused.png", "07-closed.png", "08-common-denied.png", "09-retry.png", "failure.png"];
 const PROVIDER_SCREENSHOTS = ["01-list-desktop.png", "02-form-desktop.png", "03-form-mobile.png", "04-preview-desktop.png", "05-history-desktop.png", "06-list-mobile.png", "07-couple-dashboard-mobile.png", "08-common-user-denied.png", "09-couple-editor-mobile.png", "10-photos-mobile.png", "11-photos-preview-desktop.png", "failure.png"];
 const EDITOR_SCREENSHOTS = ["01-login-desktop.png", "02-dashboard-desktop.png", "03-editor-created-desktop.png",
   "04-editor-saved-desktop.png", "05-editor-reopened-desktop.png", "06-login-mobile.png", "07-dashboard-mobile.png",
@@ -46,6 +47,13 @@ class Evidence {
       const source = path.join(session, "providers-screenshots", name);
       if (!fs.existsSync(source)) continue;
       const destination = path.join(this.directory, "providers-screenshots");
+      fs.mkdirSync(destination, { recursive: true });
+      fs.copyFileSync(source, path.join(destination, name));
+    }
+    for (const name of DIRECTORY_SCREENSHOTS) {
+      const source = path.join(session, "provider-directory-screenshots", name);
+      if (!fs.existsSync(source)) continue;
+      const destination = path.join(this.directory, "provider-directory-screenshots");
       fs.mkdirSync(destination, { recursive: true });
       fs.copyFileSync(source, path.join(destination, name));
     }

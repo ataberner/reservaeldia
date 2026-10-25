@@ -48,14 +48,14 @@ after(async () => {
 });
 
 test("beta defaults closed and admin claims or editable profiles never grant management", async () => {
-  assert.deepEqual(await call(privileged, "access"), { enabled: false, controls: { panelEnabled: false, onboardingEnabled: false, directoryEnabled: false } });
+  assert.deepEqual(await call(privileged, "access"), { enabled: false, controls: { panelEnabled: false, privateDirectoryEnabled: false, onboardingEnabled: false, directoryEnabled: false } });
   await rejects(() => call(privileged, "list"), "functions/permission-denied");
   await rejects(() => call(anonymous, "access"), "functions/unauthenticated");
   for (const who of [common, claim]) await rejects(() => call(who, "access"), "functions/permission-denied");
   await setDoc(doc(common.db, "usuarios", ordinary.uid), { admin: true, superadmin: true, role: "admin", providerBeta: true }, { merge: true });
   await rejects(() => call(common, "access"), "functions/permission-denied");
   await fixture.createDocument("app_config/proveedoresBeta", { panelEnabled: true, onboardingEnabled: true, directoryEnabled: true });
-  assert.deepEqual((await call(privileged, "access")).controls, { panelEnabled: true, onboardingEnabled: false, directoryEnabled: false });
+  assert.deepEqual((await call(privileged, "access")).controls, { panelEnabled: true, privateDirectoryEnabled: false, onboardingEnabled: false, directoryEnabled: false });
 });
 
 test("incomplete drafts save and public requirements block submission", async () => {

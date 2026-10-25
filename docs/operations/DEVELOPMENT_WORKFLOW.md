@@ -77,7 +77,7 @@ Su descubrimiento de Functions filtra variables; `functionsEntry.cjs` restaura
 exclusivamente `sessionEnvironment.json`, generado sin credenciales, antes de
 importar la aplicación. No se leen secretos remotos para los endpoints locales.
 
-Los seis callables permitidos delegan a sus handlers existentes. La entrada local
+Los callables enumerados en `functionsEntry.cjs` delegan a sus handlers existentes. La entrada local
 no se usa en producción: default usa `lib/index.js`, Payments y Email sus
 entrypoints independientes. El harness combina default y email solo en demo. Los
 exports de Payments no se montan en ese wrapper: su ausencia se verifica contra el
@@ -147,6 +147,25 @@ su verificación usa resolvers/SDKs falsos o transportes bloqueados, sin servici
 productivos. Los comandos de deploy y administración no pertenecen al recorrido.
 
 ## Matriz de destinos
+
+### Beta de proveedores (hito 1, local)
+
+Con los mismos prerrequisitos y runtime Node 22 fijado, desde el worktree del hito:
+
+```powershell
+node scripts/local/runLocal.cjs providers
+node scripts/local/runLocal.cjs providers-dev
+```
+
+`providers` ejecuta configuración, compilación, emuladores, regresión acotada de
+auth/borradores, APIs/Rules/media de proveedores y navegador desktop/móvil con
+red externa bloqueada. Los gates ownership, lint y build se ejecutan por separado;
+este modo no los declara aprobados. `providers-dev` mantiene una copia desechable
+en `http://localhost:3100` y agrega cuentas y catálogo sintéticos; las fichas se
+crean desde la interfaz. Los detalles de credenciales locales, resultados, capturas y
+limitaciones están en [el informe del hito](../testing/PROVIDER_BETA_MILESTONE_1.md).
+No reutiliza cuentas reales ni habilita onboarding/directorio. Ctrl+C detiene
+los procesos propios según el procedimiento de limpieza existente.
 
 La fuente ejecutable es `shared/firebaseEnvironment.cjs`; sus copias de Functions
 las mantiene `functions/scripts/syncTemplateContract.cjs`.

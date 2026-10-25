@@ -64,6 +64,17 @@ This document is an ownership map for the current implementation. It does not au
 
 ## 3. Facts And Assumptions
 
+### Private provider administration (2026-10-25)
+
+`src/pages/admin/proveedores.jsx` owns the authenticated route and composes
+`src/components/admin/providers/`. `ProviderAdmin.module.css` owns its list,
+forms, private preview, history, focus states and responsive layout. It uses the
+documented design palette/typefaces within that scope; it does not introduce a
+global token migration. `SiteManagementBoard.jsx` only adds the authorized entry.
+Landing routes, login behavior, dashboard/editor runtime hooks and generated
+invitation styles retain their existing owners. Evidence and screenshots are in
+[the milestone report](../testing/PROVIDER_BETA_MILESTONE_1.md).
+
 ### Authenticated landing entry (2026-09-18)
 
 - `/` preserves its static public markup and metadata. `src/lib/auth/landingAuthSession.js`

@@ -18,14 +18,6 @@ service firebase.storage {
       );
     }
 
-    function isAllowedProviderImage() {
-      return request.resource != null &&
-        request.resource.size <= 15 * 1024 * 1024 &&
-        request.resource.contentType.matches(
-          '^image/(jpeg|png|webp|gif|avif)$'
-        );
-    }
-
     // Recursive matches include the prefix object itself and every descendant.
     match /usuarios/{uid}/imagenes/{allPaths=**} {
       allow read, write: if isOwner(uid);
@@ -108,21 +100,10 @@ service firebase.storage {
       allow read, write: if isAdmin();
     }
 
-    match /proveedores/{proveedorId}/portada/{fileName} {
-      // Provider images are administrative until public delivery is defined.
-      allow read: if isAdmin();
-      allow create, update: if isAdmin() &&
-        fileName.matches('^portada-original\\.(jpg|jpeg|png|webp|gif|avif)$') &&
-        isAllowedProviderImage();
-      allow delete: if isAdmin();
-    }
-
-    match /proveedores/{proveedorId}/galeria/{fileName} {
-      allow read: if isAdmin();
-      allow create, update: if isAdmin() &&
-        fileName.matches('^[A-Za-z0-9][A-Za-z0-9_-]{0,79}\\.(jpg|jpeg|png|webp|gif|avif)$') &&
-        isAllowedProviderImage();
-      allow delete: if isAdmin();
+    match /proveedores/{allPaths=**} {
+      // Includes imported files, new immutable media and ancestor objects.
+      // HTTP delivery verifies superadmin + beta gate; it never mints URLs.
+      allow read, write: if false;
     }
 
     // Compatibility fallback for existing app assets.

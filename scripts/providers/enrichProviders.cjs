@@ -405,6 +405,15 @@ async function timedStage(report, stageName, callback) {
   }
 }
 
+function assertProviderEnrichmentOwnership(document) {
+  if (Number(document?.schemaVersion) >= 3 || document?.beta) {
+    throw new ProviderEnrichmentError(
+      "provider_managed_by_beta",
+      "La ficha ya está gestionada por la beta; el enriquecimiento no puede modificarla."
+    );
+  }
+}
+
 function providerEnrichmentFingerprint(document) {
   function imageValue(image) {
     if (!image) return null;
@@ -767,6 +776,7 @@ function createFirebaseRuntimeFromClients({
           );
         }
         const current = snapshot.data();
+        assertProviderEnrichmentOwnership(current);
         contract.assertValidProveedor(current);
         if (
           providerEnrichmentFingerprint(current) !==
@@ -983,6 +993,7 @@ async function enrichSingleProvider({
       );
     }
     const provider = providerResult.data;
+    assertProviderEnrichmentOwnership(provider);
     report.providerName = provider.nombre;
     await emitLifecycle(lifecycle, "provider_loaded", {
       providerId: args.providerId,
@@ -1840,6 +1851,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertProviderEnrichmentOwnership,
   createFirebaseRuntime,
   createFirebaseRuntimeForEmulator,
   createFirebaseRuntimeFromClients,

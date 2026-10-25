@@ -720,32 +720,13 @@ test("builds stable Storage paths and rejects traversal", () => {
   );
 });
 
-test("security rules keep provider documents and images administrative", () => {
-  const firestoreRules = readFileSync(
-    new URL("../firestore.rules", import.meta.url),
-    "utf8"
-  );
-  const storageRules = readFileSync(
-    new URL("../storage.rules", import.meta.url),
-    "utf8"
-  );
-
-  assert.match(
-    firestoreRules,
-    /match \/proveedores\/\{proveedorId\}\s*\{\s*(?:\/\/[^\n]*\n\s*)*allow read: if isAdmin\(\);/
-  );
-  assert.doesNotMatch(firestoreRules, /isPublicProviderResource/);
+test("private beta keeps canonical providers and images backend-only", () => {
+  const firestoreRules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
+  const storageRules = readFileSync(new URL("../storage.rules", import.meta.url), "utf8");
+  assert.match(firestoreRules, /match \/proveedores\/\{document=\*\*\}\s*\{[\s\S]*?allow read, write: if false;/);
   assert.match(firestoreRules, /collection != "proveedores"/);
-  assert.match(firestoreRules, /allow create, update: if isAdmin\(\)/);
-  assert.match(firestoreRules, /"revisionManual"/);
-  assert.match(firestoreRules, /"posible_duplicado_nombre"/);
-  for (const folder of ["portada", "galeria"]) {
-    assert.match(storageRules, new RegExp(
-      `match /proveedores/\\{proveedorId\\}/${folder}/\\{fileName\\}\\s*\\{\\s*(?://[^\\n]*\\n\\s*)*allow read: if isAdmin\\(\\);`
-    ));
-  }
-  assert.doesNotMatch(storageRules, /isPublicProvider/);
-  assert.match(storageRules, /request\.resource\.size <= 15 \* 1024 \* 1024/);
-  assert.match(storageRules, /image\/\(jpeg\|png\|webp\|gif\|avif\)/);
+  assert.match(storageRules, /match \/proveedores\/\{allPaths=\*\*\}\s*\{[\s\S]*?allow read, write: if false;/);
   assert.match(storageRules, /topLevel != "proveedores"/);
+  assert.doesNotMatch(firestoreRules, /isPublicProviderResource/);
+  assert.doesNotMatch(storageRules, /isPublicProvider/);
 });

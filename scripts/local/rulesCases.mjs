@@ -4,7 +4,7 @@ export const authorities = {
   M1: "docs/contracts/MUSIC_SYSTEM_CONTRACT.md (music authoring is backend authorized; preserve legacy ownership)",
   A1: "docs/architecture/ARCHITECTURE_GUIDELINES.md#43-security-first (ownership)",
   A2: "docs/contracts/CHECKOUT_PUBLICATION_LIFECYCLE_CONTRACT.md (backend publication / visit authority)",
-  A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (provider documents/images administrative; no public SDK delivery)",
+  A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (private beta: provider documents/images backend-only; no SDK delivery)",
   A4: "docs/architecture/DATA_MODEL.md#countdownpresets (administrative draft; immutable published versions)",
   D1: "docs/contracts/SECURITY_CONTRACT.md (backend-only stored draft artifacts and immutable creation provenance)",
   W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
@@ -242,7 +242,7 @@ for (const [id, data, expected] of [
   ["hidden", { estado: "publicado", activo: true, visible: false }, "deny"],
 ]) add(`provider-storage-${id}`, "acceptance", "anonymous", "storage", "proveedores/{ID}/portada/portada-original.png", "get", expected, "A3",
   { fixtures: [{ path: "proveedores/{ID}", data }] });
-observed("provider-storage-admin-valid", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "allow");
+observed("provider-storage-admin-valid", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "deny");
 observed("provider-storage-admin-mime", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "deny", { contentType: "text/plain" });
 observed("provider-storage-admin-size", "admin", "storage", "proveedores/{ID}/galeria/fixture.png", "create", "deny", { byteLength: 15 * 1024 * 1024 + 1 });
 observed("provider-storage-admin-path", "admin", "storage", "proveedores/{ID}/other/fixture.png", "create", "deny");
@@ -254,7 +254,10 @@ const publicProvider = { estado: "publicado", activo: true, visible: true,
   revisionManual: { notas: "synthetic-internal-note" } };
 const providerClaimIdentities = ["anonymous", "A", "B", "admin", "superclaim", "role", "stringAdmin", "serverSuper", "canonicalAdmin", "canonicalSuper"];
 for (const identity of providerClaimIdentities) {
-  const expected = ["admin", "superclaim", "role"].includes(identity) ? "allow" : "deny";
+  const expected = "deny";
+  for (const [label, resource] of [["controls", "app_config/proveedoresBeta"], ["history", "proveedores/{ID}/historial/entry"], ["images", "proveedores/{ID}/archivos/entry"], ["projection", "proveedores/{ID}/proyecciones/publica"]]) {
+    for (const op of ["get", "create", "update", "delete"]) add(`provider-beta-${label}-${identity}-${op}`, "acceptance", identity, "firestore", resource, op, "deny", "A3");
+  }
   add(`provider-closed-${identity}-get`, "acceptance", identity, "firestore", "proveedores/{ID}", "get", expected, "A3", { data: publicProvider });
   for (const filtered of [false, true]) {
     add(`provider-closed-${identity}-${filtered ? "published-query" : "list"}`, "acceptance", identity, "firestore", "proveedores", "list", expected, "A3", {
@@ -275,7 +278,7 @@ for (const identity of providerClaimIdentities) {
 for (const [name, data] of [["imported", { estado: "importado", activo: true, visible: false }],
   ["suspended", { estado: "pausado", activo: false, visible: false }], ["incomplete", {}]]) {
   for (const identity of ["anonymous", "A", "admin"]) {
-    add(`provider-closed-${name}-${identity}`, "acceptance", identity, "firestore", "proveedores/{ID}", "get", identity === "admin" ? "allow" : "deny", "A3", { data });
+    add(`provider-closed-${name}-${identity}`, "acceptance", identity, "firestore", "proveedores/{ID}", "get", "deny", "A3", { data });
   }
 }
 for (const identity of ["anonymous", "A", "B", "admin"]) {
@@ -385,11 +388,11 @@ for (const op of ["get", "update"]) {
   });
 }
 
-// Provider delete is excluded from fallback: it discriminates real admin helpers.
+// Beta deliberately closes provider SDK deletion for every claim. Q1 remains
+// characterized independently by the real backend helpers and proposal cases.
 for (const identity of ["admin", "superclaim", "role", "stringAdmin", "serverSuper", "A"]) {
-  const ruleAllows = ["admin", "superclaim", "role"].includes(identity);
-  observed(`q1-${identity}-firestore`, identity, "firestore", "proveedores/{ID}", "delete", ruleAllows ? "allow" : "deny");
-  observed(`q1-${identity}-storage`, identity, "storage", "proveedores/{ID}/galeria/fixture.png", "delete", ruleAllows ? "allow" : "deny");
+  observed(`q1-${identity}-firestore`, identity, "firestore", "proveedores/{ID}", "delete", "deny");
+  observed(`q1-${identity}-storage`, identity, "storage", "proveedores/{ID}/galeria/fixture.png", "delete", "deny");
   add(`q1-${identity}-backend-admin`, "characterization", identity, "backend-helper", "requireAdmin", "authorize",
     ["admin", "serverSuper"].includes(identity) ? "allow" : "deny", "C2");
   add(`q1-${identity}-backend-super`, "characterization", identity, "backend-helper", "requireSuperAdmin", "authorize",

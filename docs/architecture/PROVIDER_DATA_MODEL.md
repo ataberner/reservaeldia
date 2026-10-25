@@ -2,7 +2,9 @@
 
 Status: Canonical Contract.
 
-Current-implementation snapshot revalidated: 2026-07-27.
+Import/enrichment snapshot: 2026-07-27. Private-beta contract accepted: 2026-10-25.
+Local implementation and verification are tracked separately in
+[PROVIDER_BETA_MILESTONE_1.md](../testing/PROVIDER_BETA_MILESTONE_1.md).
 
 Scope: provider persistence, deterministic identity, normalization,
 eligibility, import progress, Storage paths, security boundaries, and the
@@ -86,9 +88,9 @@ rejected during normalization; they are not a second application database.
 Storage is authoritative for image bytes. Firestore only stores stable
 `storagePath` values, optional delivery URLs, and image metadata.
 
-**[Current implementation]** There is no provider client, public route,
-validation flow, claim flow, discovery crawler, or deployed enrichment
-backend. The repository does implement explicit operator CLIs for local
+**[Current implementation]** The private administrative client and review backend
+are defined in section 10. There is no public delivery, claim flow, discovery
+crawler, or deployed enrichment backend. The repository implements operator CLIs for local
 analysis, JSON/CSV import, category seed, and remote single/mass enrichment.
 Mass enrichment starts from existing Firestore provider IDs and each
 provider's canonical source URL; it does not discover new businesses. None of
@@ -102,8 +104,10 @@ provider documents and images is closed as described in section 7.
 
 ### `proveedores/{proveedorId}`
 
-The definitive TypeScript shape is `Proveedor` in
-`functions/src/providers/types.ts`. It contains exactly these root groups:
+The import/legacy TypeScript shape is `Proveedor` in
+`functions/src/providers/types.ts`. Schema 3 extends that shape with the private
+editing types in `functions/src/providers/betaModel.ts` (section 10); it does not
+change imported identity or create another collection. The legacy root groups are:
 
 | Group | Purpose |
 | --- | --- |
@@ -838,40 +842,38 @@ A durable one-provider run must preserve `--provider-id` manually or the next
 scope hash will fail closed. The generated command also does not preserve a
 custom `--log` path.
 
-Prepared Storage rules limit create/update to administrators, 15 MiB, the
-corresponding MIME types, and the exact cover/gallery path shapes. Deletes are
-administrator-only. Reads require an administrator or a linked provider that
-is published, active, and visible.
+New private-beta photos use the authenticated backend described in section 10.
+Legacy paths and image counts remain readable by that backend; new-file limits
+do not delete or invalidate imported images. SDK access to all provider bytes is
+closed. The historical enrichment CLI continues to use Admin SDK.
 
 ## 7. Security and public projection decision
 
-Public clients cannot write provider documents, categories, or provider
-images. Backend Admin SDK writes bypass client rules; authorized admin clients
-must pass the script's runtime/preflight checks, while client-originated writes
-must pass the rules shape checks. `firestore.rules` permits provider/category
-create, update, and delete only to administrators; `storage.rules` excludes
-`proveedores` from the broad authenticated compatibility fallback.
+Clients cannot read or write canonical provider documents or images through SDKs.
+`proveedores/**` is recursively backend-only in Firestore and Storage, including
+history, upload ledgers and exact ancestor objects. Backend entrypoints enforce
+identity, the private-beta gate and the revision protocol. Active category reads
+remain public; existing category administration is unchanged. Both namespaces
+remain excluded from broad compatibility fallbacks.
 
-**Decision accepted, 2026-10-23:** the authorized local security hardening
-closes public SDK reads of canonical provider documents and images. Only the
-existing Rules administrative predicate may read them, even when `estado ==
-"publicado"`, `activo == true`, and `visible == true`. Ownership fields and
-self-written profile role flags do not grant provider access. This preserves
-current administrative writes and their validation; it does not resolve Q1 or
-introduce provider self-service. Active category reads remain public.
+**Historical decision, 2026-10-23:** public SDK reads were closed while retaining
+the existing Rules administrative predicate. **Accepted evolution, 2026-10-25:**
+this milestone also closes that direct administrative channel so it cannot
+bypass the gate/review/history protocol. It reuses the site-management
+`requireSuperAdmin` backend authority; no profile flag or beta admission grants
+administration. This scoped change does not resolve Q1 for other domains.
 
-Firestore Rules cannot hide `fuente`, `importacion`, validation actor IDs, or
-other individual fields. **[Pending]** Any future public delivery therefore
-requires an explicitly reviewed field whitelist and access lifecycle, through
-a backend response or a derived public projection. That choice remains open;
-the complete canonical document is not authorized for public delivery. A
-projection must be derived from `proveedores`, never a parallel authority.
+Firestore Rules cannot hide individual fields. Section 10 defines the explicit
+approved-content whitelist; administrative previews use it already. Public
+delivery remains unimplemented and denied. Any later reader must derive its
+response from that approved content and recheck publication/restrictions, never
+return the canonical document or create a second property authority.
 
 **[Current implementation]** Both provider namespaces are excluded from the
 broad authenticated fallbacks. Unmodeled Firestore subcollections, Storage
 subpaths, and exact ancestor objects receive no extra grant. The unit suite
-checks this isolation and the administrative read/write boundary, path pattern,
-MIME set, and 15 MiB bound as source text. `scripts/local/rulesCases.mjs` adds
+checks isolation as source text; media tests check bytes and metadata in the
+backend. `scripts/local/rulesCases.mjs` adds
 client SDK get/list/write cases for anonymous, A/B, existing claim variants,
 published/hidden/incomplete records, prefix boundaries, and successful
 self-profile role writes followed by denied provider access. Administrative
@@ -980,3 +982,217 @@ demo emulators, confirms one of three synthetic providers, kills the child
 process without cleanup, resumes through the stale lock, and proves no lost
 confirmation, duplicate Storage path, inconsistent final document/state or
 temporary directory. They never target a real project.
+
+## 10. Beta privada V1: contrato funcional y evolución compatible
+
+**DECISIÓN aceptada, 2026-10-25:** especificación solicitada por el propietario
+del producto para el directorio de salones y profesionales. Este apartado es su
+única autoridad funcional. Las reglas de importación anteriores siguen vigentes
+salvo las evoluciones explícitas de acceso y edición indicadas aquí.
+**Implementación:** hito 1 comprende etapas 1–3; las demás etapas son obligaciones
+aceptadas todavía pendientes, sin botones que simulen acciones. El
+[informe de pruebas](../testing/PROVIDER_BETA_MILESTONE_1.md) distingue código,
+ejecución local y limitaciones; el
+[runbook](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md) define una propuesta
+de aplicación posterior, nunca una autorización de despliegue.
+
+### 10.1 Personas, negocios y autoridad
+
+- Firebase Authentication y `usuarios` identifican personas; `proveedores/{id}`
+  identifica negocios. Una persona puede conservar sus invitaciones de casamiento
+  y gestionar varios negocios. No se crea otra base de cuentas ni de negocios.
+- V1 tiene un único responsable principal por negocio, dado por
+  `propietario.userId`; una ficha sin responsable puede ser gestionada y aprobada
+  por la plataforma. Tener responsable no implica publicación ni verificación.
+- El ID es permanente. Los IDs importados `pcar_*` se conservan; las nuevas fichas
+  manuales usan un ID aleatorio. Nombre, slug, correo comercial, cambio de
+  responsable y archivo no alteran identidad. Archivar nunca elimina la cuenta.
+- Asignaciones y acceso se resuelven por backend con identidad verificada; los
+  campos editables de `usuarios` no conceden privilegios. Admisión a beta no
+  equivale a administración. Este hito conserva `requireSuperAdmin` de gestión
+  del sitio, sin ampliar claims/roles ni resolver globalmente Q1.
+- El login de parejas y su destino habitual se conservan. La futura entrada de
+  proveedores debe expresar una intención validada; no redirigir a todos los
+  usuarios ni deducir intención de un correo o de atributos editables.
+
+### 10.2 Contenido editable y requisitos
+
+La UI distingue contenido editable, versión aprobada e información interna.
+Los grupos existentes de nombre/categorías/descripciones/contacto/redes/ubicación
+e imágenes siguen siendo la fuente editable. Se agregan `cobertura`, `servicios`,
+`precio`, `contratacion`, `espacio` e `imagenes.logo` de manera compatible.
+El schema 2 importado se lee sin migración masiva; creación y edición explícitas
+utilizan schema 3. No se reinterpreta la importación como aprobación.
+
+| Grupo | Regla V1 |
+| --- | --- |
+| Identidad comercial | Nombre comercial, categoría principal del catálogo vigente y adicionales compatibles. Categoría no es servicio; tipos de espacio se derivan de las categorías de lugares. |
+| Descripciones | Breve y completa; contenido literal del negocio, sin generación IA. Borradores pueden estar incompletos. |
+| Ubicación | Localidad, provincia y país de referencia. La ubicación física es distinta de la cobertura; la dirección particular de un profesional no se publica automáticamente. |
+| Contacto | WhatsApp, correo comercial y teléfono; sitio/redes opcionales con URLs utilizables. El correo comercial no participa en autorización. |
+| Profesionales | Cobertura informada por zonas; no inferida de domicilio ni coordenadas. |
+| Lugares | Dirección del establecimiento; capacidades mínima/máxima confirmadas; cubierto/aire libre; catálogo acotado de características (estacionamiento, accesibilidad, alojamiento, cocina). Coordenadas sólo se proyectan como mapa si fueron verificadas. |
+| Datos desconocidos | `null`/ausencia para capacidad, coordenadas y booleanos desconocidos; nunca cero ni falso por falta de evidencia. No completar importados por deducción. |
+| Servicios | IDs de un catálogo acotado administrado por la plataforma, filtrado por categorías. No hay generador de formularios. Sin catálogo específico se permite descripción general y publicación; no se asignan servicios a importados automáticamente. |
+| Precio | Por defecto “Consultar presupuesto”. Opcional “Desde” con importe positivo, moneda, unidad (evento/persona/hora/unidad) y actualización. No calcular el precio desde servicios heterogéneos ni exigir paquetes/precio. |
+| Contratación | Respuestas opcionales a anticipación, qué incluye, duración y cómo reservar; no repetir capacidad/cobertura ni publicar respuestas vacías. |
+| Fotos | Portada seleccionable, logo opcional y galería ordenable/agregable/removible. Sin fotos, representación neutra de categoría; nunca fotografías inventadas. |
+
+Para aprobar/publicar: nombre, categoría principal activa/válida, ambas
+descripciones, localidad, provincia, WhatsApp o correo utilizable y cobertura
+para profesionales. La falta de fotos, precios, servicios catalogados o bloque
+de contratación no impide aprobar. Publicar además requiere aprobación
+administrativa vigente y ausencia de pausa/restricción. Una ficha sin responsable
+debe ofrecer un canal atendido; no mostrar verificación de representación por
+haber encontrado un correo ni prometer calidad del servicio por verificarla.
+
+Datos siempre privados: identidad/accesos del responsable, destinatarios de
+invitaciones, notas, evidencia y método de verificación, fuente/procesamiento de
+importación e historial administrativo. Nunca entregar documentos canónicos en
+búsquedas públicas, vistas previas ni respuestas de directorio.
+
+### 10.3 Estados, versiones y concurrencia
+
+No hay un segundo estado de publicación que compita con la raíz existente:
+
+| Concepto | Representación compatible |
+| --- | --- |
+| Publicación | `estado`: `importado`/`borrador`/legacy `pendiente_revision`/`rechazado` se presentan como borrador; `publicado` como publicada; `pausado` como pausada; `eliminado` como archivada (sin borrado físico). `activo` y `visible` son gates compatibles, no otra máquina de estados. |
+| Revisión de contenido | `beta.estadoRevision`: `sin_cambios`, `en_revision`, `requiere_correcciones`. `beta.revision` detecta cualquier mutación; `contenidoRevision` identifica el contenido editable concreto. |
+| Revisión enviada | `revisionPendiente` congela proyección, revisión, fecha y actor de envío. Guardar después no modifica ese snapshot. |
+| Versión aprobada | `aprobada` congela proyección, revisión, fecha y actor de aprobación. Guardar borradores no la reemplaza. |
+| Pausa | `estado` y `beta.pausaOrigen` distinguen administración/responsable. `validacion.estado == suspendido` conserva restricción administrativa. Aprobar una edición nunca reactiva una pausa/archivo. |
+| Gestión | Sin `propietario.userId`: plataforma. Con UID y acceso vigente: responsable activo. Suspensión de acceso es una decisión independiente de validación/publicación; su operación corresponde a etapa 5. |
+| Invitación y envío | Pendiente/aceptada/rechazada/vencida/cancelada; resultado de entrega/error/reintentos separado. Persistencia y sender quedan en etapa 5, sin reutilizar el estado de publicación o revisión. |
+
+`revisionManual` sigue representando hallazgos del importador y su revisión
+administrativa; no se utiliza como copia de `beta.estadoRevision`. Un hallazgo no
+queda “resuelto” por guardar una descripción. `validacion` mantiene su significado
+de validación de datos, sin conceder representación ni acceso por sí misma.
+
+Toda mutación exige `expectedRevision` y una transacción que compare estado
+actual. Desfase devuelve conflicto explícito, sin sobrescritura silenciosa.
+La primera mutación de una ficha legacy sin metadata beta exige también
+`expectedVersionToken` obtenido de `updateTime` al leerla. Esto detecta un
+enriquecimiento concurrente que todavía no incrementa revisiones beta. Después
+de la adopción, el pipeline de enriquecimiento rechaza `provider_managed_by_beta`
+antes de descargar y vuelve a comprobarlo dentro de su transacción; `--force`
+no lo elude. Conectar ese pipeline al flujo de revisión pertenece a etapa 4.
+Aprobar exige además `reviewRevision` de la vista revisada y que no existan
+cambios posteriores de contenido. No puede aprobarse “lo último” incidentalmente.
+El historial se escribe en la misma transacción que el cambio de ficha.
+El indicador de cambios pendientes se deriva de la revisión/contenido aprobados
+y de `estadoRevision`; una edición guardada sin enviar se muestra como tal sin
+inventar un segundo estado persistido. Las notas internas no cambian la revisión
+del contenido público. La categoría adicional de nuevas ediciones pertenece a
+la misma familia lugar/profesional que la principal; combinaciones legacy
+conservadas sin cambios no se eliminan automáticamente.
+
+En este hito `visible` permanece falso incluso al aprobar: **aprobada/publicada
+internamente no equivale a accesible al público**. La futura entrega consumirá
+sólo `aprobada.contenido` y comprobará gates actuales. Pausa/archivo retiran
+listados, búsqueda y contacto; nunca borran snapshots ni historial. En etapa 5,
+el responsable puede pausar inmediatamente y reactivar sólo su propia pausa con
+versión aprobada y sin restricción. Administración levanta sus restricciones.
+
+### 10.4 Backend, archivos, administración y beta
+
+`app_config/proveedoresBeta` es backend-only. Tres controles independientes,
+`panelEnabled`, `onboardingEnabled`, `directoryEnabled`, tienen denegación por
+defecto ante ausencia/valor distinto de `true`. Hito 1 sólo implementa consumo
+administrativo de panel; incorporaciones, invitaciones, solicitudes, panel del
+responsable y entrega del directorio no se habilitan por cambiar otros flags.
+La habilitación individual futura será backend-only, nunca un campo de perfil.
+
+`adminProvidersV1` pertenece a `identity-support`/`default`, Node 22. Separa
+acceso/catálogo/listado/detalle/preview de las mutaciones crear/guardar/enviar/
+aprobar/pedir correcciones/pausar/archivar/reactivar. La route
+`/admin/proveedores` usa autenticación existente, sin datos estáticos privados.
+El listado tiene paginación y búsqueda por nombre/correo; filtros de categoría,
+localidad, publicación, responsable y pendientes. Detalle: Información,
+Publicación, Responsable, Historial. Importar e Invitar no aparecen hasta tener
+implementación real. Las futuras acciones masivas muestran alcance/exclusiones
+antes de confirmar y resultados parciales después.
+
+Historial append-only en `proveedores/{id}/historial`: actor, fecha, acción,
+revisión, campos cambiados y motivo cuando aplica. No guardar contraseñas,
+enlaces secretos ni tokens; tampoco un volcado del documento anterior. Las
+versiones revisadas preservan contenido sin convertir el historial en una copia
+ilimitada de datos privados.
+
+La proyección es una whitelist construida campo por campo: identidad comercial,
+categorías, descripciones, contacto comercial, redes válidas, localidad/provincia/
+país, cobertura/servicios/precio/contratación y datos confirmados de lugares.
+Imágenes incluyen sólo metadata de presentación y referencia privada de Storage;
+se excluyen URLs originales/de descarga, procedencia, responsables y actores.
+El preview es React administrativo autenticado, sin HTML remoto ni URL secreta.
+
+`providerAdminImageV1` valida Bearer revocado, superadmin y panel en cada acceso.
+Nuevas imágenes: mismos MIME y 15 MiB del contrato existente, decodificación
+real, límite de 40 megapíxeles y WebP estático sin EXIF/GPS. Se almacenan con ID
+aleatorio inmutable en `proveedores/{id}/media/{imageId}.webp`, `private,no-store`,
+sin download token, con registro backend-only `archivos/{imageId}`. Guardar sólo
+acepta referencias del mismo negocio previamente registradas/importadas; cambiar
+portada/orden no reemplaza bytes ni imágenes aprobadas. Quitar de la galería no
+borra bytes todavía referenciados por snapshots. No hay purga automática.
+Archivos importados conservan formato, paths y cantidad; no se reescriben.
+
+Noindex, rutas ocultas y enlaces no publicados no son controles de acceso.
+SDKs, backend y preview deben denegar por defecto aunque se conozca una URL.
+No hay secretos ni fichas incrustados en el frontend exportado.
+
+### 10.5 Etapas posteriores aceptadas y todavía pendientes
+
+**4. Importación.** Reutilizar el pipeline existente; preview de nuevos/posibles
+duplicados/diferencias/errores, selección del conjunto válido y resultados con
+reanudación por lote. Reejecutar no duplica ni pisa correcciones posteriores.
+Nombre/correo coincidentes no fusionan negocios. Importar sólo crea privado;
+nunca publica, crea cuentas ni envía correo.
+
+**5. Invitaciones y responsables.** Administración confirma que el destinatario
+es contacto autorizado (el correo importado no lo demuestra). Invitación a una
+ficha: negocio, destinatario, emisor, emisión/vencimiento, estado y mensaje
+opcional. Vigencia inicial centralizada de siete días. Enlace independiente de
+verificación/reset Firebase. Recorrido: abrir, iniciar sesión o crear cuenta,
+confirmar correo destinatario, aceptar, asignar UID y entrar al panel. Reutilizar
+cuentas sin cambiar contraseña; administración no genera ni comparte contraseñas.
+
+Aceptación única y atómica; pendiente no concede acceso; correo distinto no
+acepta. Reenvío invalida enlace anterior, cancelación bloquea, invitación antigua
+no sobrescribe asignaciones posteriores. Reintentos no duplican asignaciones ni
+envíos. No registrar secretos en logs/analytics/historial. Cambio de responsable:
+el anterior conserva acceso hasta aceptación salvo suspensión; al aceptar se
+retira sólo el acceso a ese negocio, conservando cuenta, ficha e historial.
+Revisar triggers de correo para que un alta de proveedor no dispare comunicaciones
+de parejas. Senders conservan ownership `transactional-email`/`email`.
+
+Panel: Resumen, Información, Publicación, Actividad y acceso separado a las
+invitaciones de casamiento; selector simple para varios negocios. Información
+seccionada en negocio/servicios/ubicación-cobertura/fotos/adicional. Opcionales
+plegables y campos pertinentes a categoría. Mostrar estado, guardado, versión
+aprobada, revisión, correcciones y acciones. Actividad excluye notas internas y
+datos de otras personas.
+
+**6. Registro espontáneo y solicitudes.** “Soy proveedor” reutiliza Auth. Tras
+ingresar, buscar negocio y solicitar acceso o crear ficha y enviar a revisión.
+No asignar por nombre/correo. Solicitud con UID, negocio, relación declarada,
+mensaje, estado y decisión; administración pide información/aprueba/rechaza y
+registra evidencia del vínculo. Email verificado no prueba representación.
+Responsable existente nunca se reemplaza automáticamente. Solicitante pendiente
+no edita ni lee privados; búsqueda entrega únicamente campos permitidos.
+
+**7–9. Directorio privado, validación y apertura.** Reutilizar landings existentes
+de lugares/profesionales, con datos aprobados y acceso privado primero. Contacto
+V1 directo por WhatsApp/correo aprobado; sin bandeja interna. Validar con cuentas
+sintéticas y grupo reducido autorizado antes de una apertura pública explícita.
+
+Todas las superficies requieren carga/vacío/error/permisos, invitación vencida y
+cuenta incorrecta cuando corresponda; escritorio/móvil, etiquetas accesibles,
+teclado y estados comprensibles sin depender del color. Diseño simple del sistema
+del repositorio, sin migración CSS global ni cambios al editor. Referencias de
+competidores/maquetas no son contratos de atributos ni imágenes para copiar.
+
+Fuera de V1: mensajería/CRM, reseñas, colaboradores múltiples, empresas
+colaboradoras, suscripciones/planes/cobros, contenido IA y ampliación general a
+otros eventos. Ninguna etapa autoriza por sí misma despliegue, importación remota,
+usuarios reales, correos, cobros, webhooks ni apertura pública.

@@ -29,6 +29,8 @@ const enabled = new Set([
   "upsertUserProfile", "getMyProfileStatus", "getMyUiPreferences", "updateMyUiPreferences",
   // Reads the caller's verified claims and configured UID list; no mutation.
   "getAdminAccess",
+  // Provider beta: verified superadmin + closed backend gate; demo Firestore only.
+  "adminProvidersV1",
   "getPricingConfigV1", "getDashboardHomeConfigV1",
   // Inspected Music V1: owner-checked Firestore transaction, no external provider.
   "saveDraftWithMusicV1",
@@ -44,6 +46,11 @@ for (const [name, handler] of Object.entries(handlers)) {
     continue;
   }
   if (name === "verInvitacion") {
+    exports[name] = onRequest({ region: "us-central1", cors: false }, handler);
+    continue;
+  }
+  if (name === "providerAdminImageV1") {
+    // Authenticated private image upload/read; emulator bucket only, no tokens.
     exports[name] = onRequest({ region: "us-central1", cors: false }, handler);
     continue;
   }

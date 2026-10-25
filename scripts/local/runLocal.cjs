@@ -55,13 +55,13 @@ async function waitForEmulators(child, env) {
 }
 
 async function main(mode) {
-  const release = mode === "release", buildOnly = mode === "build";
-  const integration = ["test", "verify", "release"].includes(mode), rules = ["rules", "verify"].includes(mode);
+  const release = mode === "release", buildOnly = mode === "build", providersOnly = mode === "providers";
+  const integration = ["test", "verify", "release", "providers"].includes(mode), rules = ["rules", "verify"].includes(mode);
   const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration ? ["configuration"] : []), "sync", "compile", "contracts-built",
-    ...(integration ? ["backend", "compatibility"] : []),
+    ...(integration && !providersOnly ? ["backend", "compatibility"] : []),
     ...(release || buildOnly ? ["build-capture", "build-export", "build-finalize", "build-release-check"] : []),
     ...(!buildOnly ? ["emulators"] : []), ...(rules ? ["rules-countdown"] : []),
-    ...(integration ? ["integration", "seed", "browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
+    ...(integration ? ["integration", "providers-api", "seed", "browser", "providers-browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
   evidence = new Evidence(ROOT, mode, mode === "check" ? ["prerequisites"] : names);
   let requirements;
   const stage = (name, operation, kind) => {
@@ -69,7 +69,7 @@ async function main(mode) {
     return evidence.stage(name, operation, kind);
   };
   await stage("prerequisites", async () => {
-    if (!["dev", "emulators", "test", "rules", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
+    if (!["dev", "providers-dev", "providers", "emulators", "test", "rules", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
       throw failure("Modo local inválido; no se aceptan overrides de destino.", "prerequisite");
     validateInheritedDestinations();
     requirements = checkRequirements();
@@ -145,7 +145,7 @@ async function main(mode) {
   await run("sync", ["scripts/syncTemplateContract.cjs"], { cwd: path.join(workspace, "functions"), kind: "infrastructure" });
   await run("compile", ["node_modules/typescript/bin/tsc"], { cwd: path.join(workspace, "functions"), kind: "tests" });
   await run("contracts-built", ["scripts/syncTemplateContract.cjs", "--check"], { cwd: path.join(workspace, "functions") });
-  if (integration) {
+  if (integration && !providersOnly) {
     await run("backend", ["--test", "--test-reporter=tap", "scripts/local/backend.test.cjs"]);
     await run("compatibility", ["scripts/local/productionCompatibility.cjs"]);
   }
@@ -189,20 +189,26 @@ async function main(mode) {
     evidence.data.stages.find(s => s.name === "rules-countdown").tap = assertTap(log);
   });
   if (mode === "rules") return;
-  if (integration || mode === "dev") {
+  if (integration || ["dev", "providers-dev"].includes(mode)) {
     if (integration) await run("integration", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/integration.test.mjs", "scripts/local/authFlows.test.mjs", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
-    if (mode === "dev") evidence.data.stages.push({ name: "seed", status: "not-executed" });
+    if (integration) await run("providers-api", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/providerBeta.test.mjs", "scripts/local/providerBetaArtifact.test.mjs"], { timeoutMs: 300000 });
+    if (["dev", "providers-dev"].includes(mode)) evidence.data.stages.push({ name: "seed", status: "not-executed" });
     await run("seed", ["scripts/local/seedLocal.cjs"]);
+    if (mode === "providers-dev") {
+      evidence.data.stages.push({ name: "providers-seed", status: "not-executed" });
+      await run("providers-seed", ["scripts/local/seedProviderBeta.cjs"]);
+    }
     const next = processes.start([release ? "scripts/local/serveExport.cjs" : "scripts/runNextDev.cjs"], { cwd: workspace, env: { ...env, NODE_ENV: release ? "production" : "development" },
       log: path.join(evidence.directory, "next.log"), name: "next" });
     if (integration) {
       browserEnvironment = createSocketEnvironment(env);
       await run("browser", ["--test", "--test-reporter=tap", "scripts/local/browser.test.mjs"], { timeoutMs: 360000, env: browserEnvironment.env });
+      await run("providers-browser", ["--test", "--test-reporter=tap", "scripts/local/providerBeta.browser.test.mjs"], { timeoutMs: 600000, env: browserEnvironment.env });
       if (release) await run("editor-flow", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/editorFlow.browser.test.mjs"], { timeoutMs: 900000, env: browserEnvironment.env });
       if (next.done) throw failure("Next se detuvo durante la prueba.");
       await stage("stop-services", stop);
       await run("offline", ["--test", "--test-reporter=tap", "scripts/local/offline.test.mjs"]);
-      for (const name of ["integration", "browser", "offline", ...(release ? ["editor-flow", "build"] : [])]) {
+      for (const name of ["integration", "browser", "providers-api", "providers-artifact", "providers-browser", "offline", ...(release ? ["editor-flow", "build"] : [])]) {
         if (!fs.existsSync(path.join(session, `${name}-evidence.json`))) throw failure(`Falta evidencia ${name}`);
       }
       fs.writeFileSync(path.join(session, "verified.json"), JSON.stringify({ project: contract.LOCAL_PROJECT, checkedAt: new Date().toISOString(), mode,
@@ -211,7 +217,7 @@ async function main(mode) {
       return;
     }
   }
-  console.log(mode === "dev" ? "Desarrollo: http://localhost:3100 — Ctrl+C detiene la sesión." : "Cuatro emuladores demo — Ctrl+C detiene la sesión.");
+  console.log(["dev", "providers-dev"].includes(mode) ? "Desarrollo: http://localhost:3100 — Ctrl+C detiene la sesión." : "Cuatro emuladores demo — Ctrl+C detiene la sesión.");
   await Promise.race([...processes.owned].filter(c => !c.done).map(c => c.completion));
   if (!interruption) throw failure("Un servicio local terminó inesperadamente.");
 }
@@ -229,7 +235,7 @@ async function entry() {
   };
   const onSignal = () => interrupt("interrupted");
   process.once("SIGINT", onSignal); process.once("SIGTERM", onSignal);
-  const timer = ["verify", "test", "rules", "check", "build", "release"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
+  const timer = ["verify", "test", "rules", "check", "build", "release", "providers"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
   try { await main(mode); } catch (e) { error = e; }
   finally {
     clearTimeout(timer);

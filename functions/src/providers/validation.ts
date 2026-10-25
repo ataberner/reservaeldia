@@ -53,7 +53,7 @@ function validateImage(
   push(issues, isRecord(value), path, "Debe ser un objeto.");
   if (!isRecord(value)) return;
   push(issues, typeof value.id === "string" && value.id.length > 0, `${path}.id`, "Debe ser un string no vacío.");
-  push(issues, value.tipo === "portada" || value.tipo === "galeria", `${path}.tipo`, "Tipo de imagen inválido.");
+  push(issues, value.tipo === "portada" || value.tipo === "galeria" || value.tipo === "logo", `${path}.tipo`, "Tipo de imagen inválido.");
   push(issues, typeof value.storagePath === "string" && value.storagePath.startsWith("proveedores/"), `${path}.storagePath`, "Ruta de Storage inválida.");
   push(issues, isStringOrNull(value.url), `${path}.url`, "Debe ser string o null.");
   push(issues, isStringOrNull(value.urlOriginal), `${path}.urlOriginal`, "Debe ser string o null.");
@@ -88,7 +88,7 @@ export function validateProveedor(value: unknown): RuntimeValidationIssue[] {
   for (const field of ["nombre", "nombreNormalizado", "slug", "descripcion", "descripcionCorta"]) {
     push(issues, typeof value[field] === "string", field, "Debe ser string.");
   }
-  push(issues, typeof value.nombre === "string" && value.nombre.trim().length > 0, "nombre", "No puede estar vacío.");
+  push(issues, typeof value.nombre === "string" && (value.nombre.trim().length > 0 || Number(value.schemaVersion) >= 3), "nombre", "No puede estar vacío fuera del contenido editable V3.");
   push(issues, typeof value.slug === "string" && value.slug.trim().length > 0, "slug", "No puede estar vacío.");
   push(issues, isStringOrNull(value.categoriaPrincipalId), "categoriaPrincipalId", "Debe ser string o null.");
   push(issues, Array.isArray(value.categoriaIds) && value.categoriaIds.every((entry) => typeof entry === "string"), "categoriaIds", "Debe ser un array de strings.");
@@ -191,6 +191,7 @@ export function validateProveedor(value: unknown): RuntimeValidationIssue[] {
   push(issues, isRecord(imagenes), "imagenes", "Debe ser un objeto.");
   if (isRecord(imagenes)) {
     if (imagenes.portada !== null) validateImage(imagenes.portada, "imagenes.portada", issues);
+    if (imagenes.logo != null) validateImage(imagenes.logo, "imagenes.logo", issues);
     push(issues, Array.isArray(imagenes.galeria), "imagenes.galeria", "Debe ser un array.");
     if (Array.isArray(imagenes.galeria)) {
       imagenes.galeria.forEach((image, index) =>

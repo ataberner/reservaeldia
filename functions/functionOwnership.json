@@ -270,6 +270,16 @@
       "manifestHash": "8f758beab7d8acb84a701ce9ae8a1630b94dfec365cda42cc7bac0e458c5c17b"
     },
     {
+      "name": "adminProvidersV1",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "17688df4b586c36b258c4183066ac76de8a694214bf88495a198cb072055ff27"
+    },
+    {
       "name": "adminRebuildBusinessAnalyticsV1",
       "domain": "business-analytics",
       "codebase": "default",
@@ -920,6 +930,16 @@
       ],
       "secrets": [],
       "manifestHash": "4c49ae66468ddbbe6412aaa89cb4aa605819592b8ad0ea0e857913fa465a1207"
+    },
+    {
+      "name": "providerAdminImageV1",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "baa2e3c65a875d95102a8f048acd40d08ea1bc4fdf08e743b1c6335705a045f3"
     },
     {
       "name": "publicarInvitacion",

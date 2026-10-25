@@ -54,107 +54,6 @@ service cloud.firestore {
         resource.data.estadoEditorial == "publicada";
     }
 
-    function isValidProviderWrite() {
-      return request.resource.data.keys().hasAll([
-          "schemaVersion",
-          "nombre",
-          "nombreNormalizado",
-          "slug",
-          "categoriaPrincipalId",
-          "categoriaIds",
-          "descripcion",
-          "descripcionCorta",
-          "contacto",
-          "redesSociales",
-          "ubicacion",
-          "imagenes",
-          "estado",
-          "activo",
-          "visible",
-          "validacion",
-          "propietario",
-          "revisionManual",
-          "fuente",
-          "importacion",
-          "creadoEn",
-          "actualizadoEn",
-          "publicadoEn"
-        ]) &&
-        request.resource.data.schemaVersion is int &&
-        request.resource.data.schemaVersion >= 2 &&
-        request.resource.data.nombre is string &&
-        request.resource.data.nombre.size() > 0 &&
-        request.resource.data.nombreNormalizado is string &&
-        request.resource.data.slug is string &&
-        request.resource.data.slug.size() > 0 &&
-        request.resource.data.categoriaIds is list &&
-        request.resource.data.estado in [
-          "importado",
-          "borrador",
-          "pendiente_revision",
-          "publicado",
-          "pausado",
-          "rechazado",
-          "eliminado"
-        ] &&
-        request.resource.data.activo is bool &&
-        request.resource.data.visible is bool &&
-        request.resource.data.validacion is map &&
-        request.resource.data.validacion.estado in [
-          "no_validado",
-          "pendiente",
-          "validado",
-          "rechazado",
-          "suspendido"
-        ] &&
-        request.resource.data.propietario is map &&
-        request.resource.data.revisionManual is map &&
-        request.resource.data.revisionManual.keys().hasAll([
-          "requerida",
-          "motivos",
-          "revisadaEn",
-          "revisadaPor",
-          "notas"
-        ]) &&
-        request.resource.data.revisionManual.requerida is bool &&
-        request.resource.data.revisionManual.motivos is list &&
-        request.resource.data.revisionManual.motivos.hasOnly([
-          "posible_duplicado_nombre",
-          "categoria_contenedora_novias",
-          "categoria_contenedora_experiencias_adicionales",
-          "categoria_ambigua",
-          "sin_id_externo",
-          "ubicacion_incompleta",
-          "contacto_dudoso"
-        ]) &&
-        (
-          (
-            request.resource.data.revisionManual.requerida == true &&
-            request.resource.data.revisionManual.motivos.size() > 0
-          ) ||
-          (
-            request.resource.data.revisionManual.requerida == false &&
-            request.resource.data.revisionManual.motivos.size() == 0
-          )
-        ) &&
-        request.resource.data.fuente is map &&
-        request.resource.data.fuente.keys().hasAll([
-          "categoriaOriginal"
-        ]) &&
-        (
-          request.resource.data.fuente.categoriaOriginal == null ||
-          request.resource.data.fuente.categoriaOriginal is string
-        ) &&
-        request.resource.data.importacion is map &&
-        (
-          request.resource.data.visible == false ||
-          (
-            request.resource.data.estado == "publicado" &&
-            request.resource.data.activo == true
-          )
-        );
-    }
-
     function isValidProviderCategoryWrite() {
       return request.resource.data.keys().hasAll([
           "nombre",
@@ -378,12 +277,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /proveedores/{proveedorId} {
-      // Canonical provider documents remain administrative, including rows
-      // marked published. Public delivery needs its own reviewed projection.
-      allow read: if isAdmin();
-      allow create, update: if isAdmin() && isValidProviderWrite();
-      allow delete: if isAdmin();
+    match /proveedores/{document=**} {
+      // Private beta uses authenticated backend delivery. SDK access cannot
+      // bypass the beta gate, immutable reviews, revision checks or history.
+      allow read, write: if false;
     }
 
     match /categorias_proveedores/{categoriaId} {

@@ -1346,6 +1346,12 @@ deduplicated; possible duplicate names mark every eligible URL identity without
 merging records. The definitive category and review policy remains in the
 provider contract.
 
+The accepted private-beta evolution (2026-10-25) is defined only in
+[Provider Data Model §10](PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
+It retains these collections/IDs and `propietario.userId`, introduces compatible
+schema-3 editing with review/approved snapshots and backend-only administration,
+and keeps the directory closed. Schema-2 imports do not require a bulk migration.
+
 Provider writes use native `Date` values at the domain boundary. The mapper is
 Firebase-independent; the importer owns Firestore serialization and performs a
 no-commit preflight for every candidate. Firestore reads remain compatible with

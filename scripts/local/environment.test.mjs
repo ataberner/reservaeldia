@@ -103,12 +103,25 @@ test("sensitive environment and personal configuration are not inherited", () =>
   const clean = cleanEnvironment("C:/synthetic-session", { PATH: "synthetic-path", GOOGLE_APPLICATION_CREDENTIALS: "do-not-inherit", FIREBASE_TOKEN: "do-not-inherit", OPENAI_API_KEY: "do-not-inherit", AWS_PROFILE: "do-not-inherit", NODE_OPTIONS: "--danger", HTTPS_PROXY: "do-not-inherit", ARBITRARY_NEW_PROVIDER_SECRET: "do-not-inherit", HOME: "personal", EMAIL_MODE: "production", WELCOME_EMAIL_ACTIVATION_AT: "2020-01-01T00:00:00.000Z" });
   assert.equal(clean.EMAIL_MODE, "disabled");
   assert.equal(clean.WELCOME_EMAIL_ACTIVATION_AT, "");
+  assert.equal(clean.SUPERADMINS_UIDS, "local-provider-admin");
+  assert.equal(cleanEnvironment("C:/synthetic-session", { SUPERADMINS_UIDS: "real-operator" }).SUPERADMINS_UIDS, "local-provider-admin");
   for (const key of ["GOOGLE_APPLICATION_CREDENTIALS", "FIREBASE_TOKEN", "OPENAI_API_KEY", "AWS_PROFILE", "HTTPS_PROXY", "ARBITRARY_NEW_PROVIDER_SECRET"]) assert.equal(clean[key], undefined);
   assert.notEqual(clean.HOME, "personal");
   assert.match(clean.NODE_OPTIONS, /networkGuard/);
   assert.equal(clean.GCLOUD_PROJECT, contract.LOCAL_PROJECT);
   assert.equal(clean.FUNCTIONS_DISCOVERY_TIMEOUT, "60");
   assert.equal(cleanEnvironment("C:/synthetic-session", { FUNCTIONS_DISCOVERY_TIMEOUT: "999999" }).FUNCTIONS_DISCOVERY_TIMEOUT, "60");
+});
+
+test("Rules reload admits only the exact demo Firestore RPC and port", () => {
+  const endpoint = `http://127.0.0.1:18080/emulator/v1/projects/${contract.LOCAL_PROJECT}:securityRules`;
+  assert.equal(contract.assertLocalUrl(endpoint).href, endpoint);
+  for (const forbidden of [endpoint.replace(":18080", ":19199"), endpoint.replace(":18080", ":15001"),
+    endpoint.replace(contract.LOCAL_PROJECT, "real-project"), endpoint.replace("/emulator/v1/", "/v1/"),
+    `${endpoint}/suffix`, `${endpoint}Extra`, `${endpoint}?other=true`, `${endpoint}#fragment`, endpoint.replace(":securityRules", ":otherOperation"),
+    endpoint.replace("127.0.0.1", "firestore.googleapis.com"), endpoint.replace("http:", "https:")]) {
+    assert.throws(() => contract.assertLocalUrl(forbidden), /incompatible|bloqueado/);
+  }
 });
 
 test("launcher rejects explicit incompatible selections before starting processes", () => {

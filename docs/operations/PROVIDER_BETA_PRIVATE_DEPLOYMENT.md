@@ -232,11 +232,13 @@ La ficha sintética de lugar ya disponible tiene detalle en
 Pausarla desde administración y recargar retira listado/detalle; reactivarla
 restaura sólo la versión aprobada. No usar contactos sintéticos para enviar mensajes.
 
-El listado administrativo conserva su escaneo acotado: una búsqueda puede tener
-páginas intermedias sin coincidencias. En el recorrido final, buscar
+En la entrega inicial, el listado administrativo conservaba un escaneo acotado
+con páginas intermedias sin coincidencias. En aquel recorrido final, buscar
 `BETA PRIVADA 20261025` requirió avanzar hasta la página 7. La nueva paginación del
 directorio filtra en el servidor y no hereda ese comportamiento; el caso con más
 de una página está probado en emuladores, no con importaciones remotas artificiales.
+La corrección posterior del listado administrativo, sus mediciones y su aplicación
+remota se registran en [Búsqueda administrativa](../testing/PROVIDER_ADMIN_SEARCH.md).
 
 Las pruebas productivas pendientes acordadas son rechazo de una cuenta común
 autorizada y carga/entrega positiva de fotos. No se considera su cobertura local

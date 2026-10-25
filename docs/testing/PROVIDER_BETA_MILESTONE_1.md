@@ -214,9 +214,12 @@ de lint históricas no equivalen a errores nuevos ni a una certificación del re
 del repositorio. Una prueba de foco por teclado no es una auditoría completa de
 accesibilidad, y el navegador local no certifica todos los dispositivos móviles.
 
-El listado administra registros legacy con un escaneo acotado por página; puede
-mostrar una página sin coincidencias y ofrecer Siguiente. No promete búsqueda
-indexada a gran escala. Los bytes privados no referenciados aún no se purgan
+El baseline inicial del listado administraba registros legacy con un escaneo
+acotado que podía mostrar una página sin coincidencias y ofrecer Siguiente.
+Ese defecto y su corrección se registran en
+[Búsqueda administrativa](PROVIDER_ADMIN_SEARCH.md), con pruebas y estado de despliegue
+separados. No se promete búsqueda indexada a gran escala.
+Los bytes privados no referenciados aún no se purgan
 automáticamente. No hay nuevo mecanismo de invitaciones, asignación de responsables
 o publicación pública en este hito.
 

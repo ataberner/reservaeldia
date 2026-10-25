@@ -56,7 +56,11 @@ export function parseOptionalNumber(value) {
 }
 
 export function providerErrorMessage(error) {
-  if (String(error?.code || "").replace(/^functions\//, "") === "resource-exhausted") {
+  const code = String(error?.code || "").replace(/^functions\//, "");
+  if (code === "internal") return "No pudimos completar la acción. Volvé a intentarlo.";
+  if (code === "unavailable") return "El servicio no está disponible en este momento. Volvé a intentarlo.";
+  if (code === "network-request-failed") return "No pudimos comunicarnos con el servicio. Revisá tu conexión y volvé a intentarlo.";
+  if (code === "resource-exhausted") {
     return "No pudimos completar la búsqueda dentro del límite de la beta. Volvé a intentarlo; si persiste, contactá a soporte.";
   }
   if (String(error?.code || "").includes("aborted")) {

@@ -111,6 +111,7 @@ test("administrative search completes across 3205 records on desktop/mobile with
         assert.ok(heldRequest); holdList = false; await heldRequest.continue(); heldRequest = null;
         await ready(page); assert.equal(await countRows(page), 1);
         failList = true; await click(page, "Buscar fichas"); await page.waitForSelector('[role="alert"]'); await ready(page);
+        await contains(page, "No pudimos completar la acción. Volvé a intentarlo.");
         assert.equal(await countRows(page), 0); assert.doesNotMatch(await page.$eval("body", node => node.textContent), /No hay coincidencias|Página 1 · 1 fichas/);
         await screenshot(page, "04-error.png", '[role="alert"]'); failList = false;
         await click(page, "Volver a intentar la búsqueda"); await ready(page); await contains(page, SEARCH_TARGET); assert.equal(await countRows(page), 1);

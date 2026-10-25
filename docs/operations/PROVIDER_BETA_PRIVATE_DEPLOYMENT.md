@@ -9,18 +9,26 @@ pruebas locales. Este documento no autoriza cambios remotos.
 
 ## Recursos y orden
 
+Artefacto local exacto: [deployment/provider-beta](../../deployment/provider-beta/README.md).
+`firebase.json` incluye sólo Firestore `(default)` y el bucket
+`reservaeldia-7a440.firebasestorage.app`, proyecto `reservaeldia-7a440`.
+El manifiesto fija hashes de fuentes históricas/candidatos; el generador no tiene
+SDK Firebase ni operaciones remotas. Su comprobación no sustituye comparar una
+base remota fresca antes de autorizar el despliegue.
+
 1. Revisar el candidato/commits, evidencia local y diff de reglas. Leer estado
-   remoto sólo bajo autorización posterior para preparar artefactos acotados que
+   remoto sólo bajo autorización posterior para confirmar los artefactos acotados que
    conserven protecciones vigentes; no desplegar a ciegas las Rules completas.
 2. Mantener `app_config/proveedoresBeta` ausente o con `panelEnabled`,
    `onboardingEnabled`, `directoryEnabled` en `false`. No modificar identidades,
    claims, responsables ni registros importados como prerrequisito del deploy.
-3. Preparar Rules con único delta beta: Firestore `proveedores/**` y Storage
+3. Validar/aplicar el artefacto con único delta beta: Firestore `proveedores/**` y Storage
    `proveedores/**` sin acceso SDK, conservando `app_config/**` backend-only y las
    exclusiones de fallback. Aplicar estos cierres antes de abrir el panel.
 4. Desplegar únicamente `default:adminProvidersV1` y
    `default:providerAdminImageV1`, región `us-central1`, Node 22, sin Secrets ni
    triggers/schedulers/email. Verificar registro de ownership/opciones exactas.
+   Ambos: timeout 60 s, máximo 3 instancias; callable 256 MiB, HTTP media 512 MiB.
    No volver a desplegar las 109 Functions históricas por este hito.
 5. Construir Hosting desde el candidato revisado y aplicar únicamente mediante
    el procedimiento de Hosting autorizado. El shell exportado no contiene datos
@@ -37,6 +45,8 @@ No se requieren índices compuestos nuevos ni migración masiva. Catálogos ya
 existentes se leen/validan; su ausencia/incompatibilidad se resuelve con el
 procedimiento de catálogo existente bajo autorización independiente, sin seed
 implícito. El registro funcional de cuentas beta y asignaciones es etapa posterior.
+La primera edición legacy exige el token de versión de su lectura; el CLI de
+enriquecimiento rechaza fichas adoptadas por la beta incluso con `--force`.
 
 ## Recuperación segura
 

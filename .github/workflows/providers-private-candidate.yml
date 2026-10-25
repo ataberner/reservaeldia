@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/proveedores-directorio-privado
+      - fix/busqueda-administrativa-proveedores
 permissions:
   contents: read
 concurrency:

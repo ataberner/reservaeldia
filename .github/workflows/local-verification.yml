@@ -30,6 +30,10 @@ jobs:
         run: npm --prefix "$VERIFY_WORKSPACE" run verify:local
         env:
           VERIFY_WORKSPACE: ${{ steps.prepare.outputs.workspace }}
+      - name: Verify provider administration search
+        run: node "$VERIFY_WORKSPACE/scripts/local/runLocal.cjs" provider-admin-search
+        env:
+          VERIFY_WORKSPACE: ${{ steps.prepare.outputs.workspace }}
       - name: Preserve synthetic evidence on success or failure
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -63,6 +67,9 @@ jobs:
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-api-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-browser-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-warmup-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-api-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-browser-evidence.json
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-warmup-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/verified.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/tooling.log
@@ -80,4 +87,8 @@ jobs:
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-api.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-browser.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-warmup.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-unit.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-api.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-browser.log
+            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-admin-search-warmup.log
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline.log

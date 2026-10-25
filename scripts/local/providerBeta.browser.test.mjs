@@ -98,7 +98,7 @@ test("real private provider administration works on desktop/mobile and ordinary 
 
     const page = await pageFor(desktop); await login(page, operator);
     await page.goto(`${origin}/admin/proveedores/`, { waitUntil: "domcontentloaded" });
-    await contains(page, "No hay fichas para mostrar");
+    await contains(page, "No hay coincidencias");
     await screenshot(page, "01-list-desktop.png");
     await click(page, "Crear ficha");
     await field(page, "Nombre comercial", "Estudio Aurora · prueba local");

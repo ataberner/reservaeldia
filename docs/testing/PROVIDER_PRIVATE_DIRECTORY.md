@@ -49,8 +49,8 @@ bloqueada según el harness. Los tests usan negocios/archivos/cuentas sintético
 | Sync, compile y contratos construidos del harness | **PASS** en `run-B7ladc`, emuladores listos. |
 | API del directorio en emuladores | **9/9 PASS**, sin skips, en `run-B7ladc`; etapa finalizada 18:33:58Z. No prueba producción. |
 | Dos ajustes frontend posteriores | **1/1 PASS cada uno**, ejecuciones focales: estado de carga al recuperar filtros y carga inicial del panel después de validar acceso. No se atribuyen al run anterior de 22 tests. |
-| Navegador real desktop/móvil | **PENDIENTE** tras intentos preservados: `run-B7ladc` agotó navegación durante compilación inicial; `run-8e1hf4` llegó al listado autenticado y falló su helper de hit-test durante scroll suave; `run-fSciWA` agotó discovery antes de UI. Se corrigió sólo el helper para scroll instantáneo y espera de hit-test; el replay sobre snapshot compilado está en curso. No se cambiaron límites ni assertions de negocio. |
-| Ownership de Functions | **Verificación por componentes completada**, sin atribuir PASS al script integral fallido. Primer intento: core TypeScript excedió 180000 ms. Segundo snapshot `ownership-xuWCJZ`: tres builds PASS; ejecución inicial 39/41 por dos startups de subprocess que agotaron 30 s. Repetición intacta sobre ese mismo snapshot: 41/41 PASS y CLI discovery real default 107/payments 3/email 3 PASS. Quince hashes snapshot↔fuente coinciden; `component-evidence.json` conserva todos los resultados. CI volverá a ejecutar el gate integral antes del merge. |
+| Navegador real desktop/móvil | **1/1 PASS**, sin skips, `run-7vKCm9`, 19:15:27–19:18:38Z, nueve capturas. Replay sobre snapshot compilado coincidente: paginación 12+1/volver, filtros, teclado, vacío/error, detalle/fotos aprobadas, pausa/contacto, gate cerrado y denegaciones común/admin claim. Teardown: ocho puertos libres; offline 1/1 PASS. |
+| Ownership de Functions | **Gate integral PASS en CI `40225434395`**: tres builds, 41/41 tests y discovery real default 107/payments 3/email 3. El run completo falló después en tooling, no en ownership. Se conservan los intentos Windows: core TypeScript excedió 180000 ms; `ownership-xuWCJZ` tuvo tres builds PASS y 39/41 por dos startups de subprocess de 30 s. Repetición intacta sobre ese snapshot: 41/41 y tres discoveries PASS; quince hashes snapshot↔fuente coincidentes en `component-evidence.json`. |
 | Build/export del nuevo directorio | **PENDIENTE**. El build anterior del panel no verifica esta entrega. |
 | Deploy y recorrido remoto de las dos Functions nuevas | **PENDIENTE**. No confundir con el panel de la entrega 1. |
 
@@ -80,6 +80,20 @@ registran por separado en `directory-final-source-overlay.json`: siete fuentes
 UI finales y tres fixtures/tests locales copiados antes de la API/Next según
 corresponde. `directory-frontend-overlay.json` conserva el ajuste anterior.
 No atribuir el contenido final al hash del snapshot inicial sin esas salvedades.
+
+El recorrido final está en `.local-isolation/reports/run-7vKCm9/`, sesión
+`session-GBHZ07`, con `replay-source-manifest.json`, `provider-directory-browser-evidence.json` y
+`provider-directory-screenshots/`. Las capturas de detalle desktop/móvil y
+tarjeta profesional móvil fueron revisadas visualmente: contenido y acciones
+legibles, fallback neutro y sin desbordamiento horizontal. Las vistas scrolleadas
+no acreditan por sí solas el header móvil. Son imágenes reales del entorno local
+con recursos sintéticos; no fotografías de negocios ni pruebas de producción.
+
+Se conservan los intentos anteriores: `run-B7ladc` agotó navegación durante la
+compilación inicial; `run-8e1hf4` falló su helper de hit-test durante scroll suave;
+`run-fSciWA` agotó discovery antes de UI. Se corrigió sólo el helper para scroll
+instantáneo y espera de hit-test. El replay recuperó infraestructura dentro de
+los mismos límites; no se relajaron assertions ni timeouts de negocio.
 
 La limpieza local previa está en
 `.local-isolation/reports/provider-directory-cache-cleanup.json`; se recuperaron
@@ -130,9 +144,11 @@ los límites de arranque observados en Windows sin usar el PR/Hosting preview co
 mecanismo de validación ni relajar el gate obligatorio. El resultado CI aún no
 está disponible al registrar esta sección.
 
-- Terminar navegador real y revisar capturas de escritorio/móvil, permisos,
-  búsqueda, ficha, imágenes, pausa y regresión representativa de parejas.
-- Terminar ownership; ejecutar build/export y comprobar shells sin datos privados.
+- Completar el gate integral de ownership en CI; ejecutar build/export y comprobar
+  shells sin datos privados. CI candidato `40225434395` pasó ownership y lint,
+  pero falló dos tests de tooling por agregar un glob PNG al artefacto: el contrato
+  exige nombres explícitos JSON/log. Se retiró el glob, conservando el manifiesto
+  de capturas y los PNG locales; no se relajó el control. Reejecución pendiente.
 - Registrar resultados finales, fallas e intentos sin reemplazar snapshots ni
   relajar assertions para presentar un PASS.
 - Incorporar sólo capturas sintéticas revisadas; todavía no hay capturas de esta

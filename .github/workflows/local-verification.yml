@@ -63,7 +63,6 @@ jobs:
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-api-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-browser-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-warmup-evidence.json
-            .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/provider-directory-screenshots/*.png
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/offline-evidence.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/verified.json
             .local-isolation/prepared-*/workspace/.local-isolation/reports/run-*/tooling.log

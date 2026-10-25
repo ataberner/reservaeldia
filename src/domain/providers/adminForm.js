@@ -56,6 +56,9 @@ export function parseOptionalNumber(value) {
 }
 
 export function providerErrorMessage(error) {
+  if (String(error?.code || "").replace(/^functions\//, "") === "resource-exhausted") {
+    return "No pudimos completar la búsqueda dentro del límite de la beta. Volvé a intentarlo; si persiste, contactá a soporte.";
+  }
   if (String(error?.code || "").includes("aborted")) {
     return "Otra persona modificó esta ficha. Tus cambios siguen en pantalla. Copialos antes de recargar la versión actual.";
   }

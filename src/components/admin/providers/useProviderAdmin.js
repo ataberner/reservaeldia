@@ -10,9 +10,12 @@ export default function useProviderAdmin() {
   const [items, setItems] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
   const [page, setPage] = useState(1);
-  const cursors = useRef([null]);
+  const [listStatus, setListStatus] = useState("loading");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const appliedFilters = useRef(EMPTY_FILTERS);
+  // The last requested query owns retries and pagination, including failed reads.
+  // Form inputs remain independent until the administrator submits a search.
+  const listRequest = useRef({ filters: EMPTY_FILTERS, cursor: null, page: 1, cursors: [null] });
+  const listChanged = useRef(false);
   const [provider, setProvider] = useState(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState(emptyProviderDraft);
@@ -33,12 +36,18 @@ export default function useProviderAdmin() {
     finally { if (mounted.current && requestId.current === id) setBusy(false); }
   }, []);
 
-  const loadList = useCallback(async ({ cursor = null, nextPage = 1, nextFilters = appliedFilters.current } = {}) => run(async (current) => {
-    const { pending, ...otherFilters } = nextFilters;
-    const result = await providerAdminRequest("list", { ...otherFilters, ...(pending ? { pending: pending === "true" } : {}), cursor, pageSize: 20 });
-    if (!current()) return;
-    setItems(result.items); setNextCursor(result.nextCursor); setPage(nextPage);
-    appliedFilters.current = nextFilters;
+  const loadList = useCallback(async (request = listRequest.current) => run(async (current) => {
+    listRequest.current = request;
+    setItems([]); setNextCursor(null); setPage(request.page); setListStatus("loading");
+    const { pending, ...otherFilters } = request.filters;
+    try {
+      const result = await providerAdminRequest("list", { ...otherFilters, ...(pending ? { pending: pending === "true" } : {}), cursor: request.cursor, pageSize: 20 });
+      if (!current()) return;
+      setItems(result.items); setNextCursor(result.nextCursor); setListStatus("ready");
+    } catch (failure) {
+      if (current()) setListStatus("error");
+      throw failure;
+    }
   }), [run]);
 
   const initialize = useCallback(() => run(async (current) => {
@@ -50,7 +59,7 @@ export default function useProviderAdmin() {
         providerAdminRequest("catalog"), providerAdminRequest("list", { pageSize: 20 }),
       ]);
       if (!current()) return;
-      setCatalog(nextCatalog); setItems(list.items); setNextCursor(list.nextCursor);
+      setCatalog(nextCatalog); setItems(list.items); setNextCursor(list.nextCursor); setListStatus("ready");
     }), [run]);
 
   useEffect(() => {
@@ -86,6 +95,7 @@ export default function useProviderAdmin() {
     await run(async (current) => {
       const result = await providerAdminRequest(creating ? "create" : "save", { ...(provider ? { id: provider.id, expectedRevision: provider.revision, ...(provider.versionToken ? { expectedVersionToken: provider.versionToken } : {}) } : {}), draft, internalNotes: notes });
       if (!current()) return;
+      listChanged.current = true;
       acceptProvider(result); setMessage("Borrador guardado. La versión aprobada se conserva.");
     });
   }
@@ -93,6 +103,7 @@ export default function useProviderAdmin() {
     await run(async (current) => {
       const result = await providerAdminRequest(operation, { id: provider.id, expectedRevision: provider.revision, ...(provider.versionToken ? { expectedVersionToken: provider.versionToken } : {}), ...(operation === "approve" ? { reviewRevision: reviewedRevision } : {}), reason });
       if (!current()) return;
+      listChanged.current = true;
       acceptProvider(result);
       setMessage({ submit: "Revisión enviada. La versión aprobada anterior se conserva.", approve: "Revisión aprobada. El directorio público continúa desactivado.", requestChanges: "Correcciones solicitadas.", pause: "Ficha pausada.", archive: "Ficha archivada. El historial se conserva.", resume: "Ficha reactivada dentro de la beta privada." }[operation]);
     });
@@ -115,13 +126,31 @@ export default function useProviderAdmin() {
   }
   async function back() {
     setProvider(null); setCreating(false); setPreview(null); setError(""); setMessage("");
-    await loadList({ cursor: cursors.current[page - 1], nextPage: page });
+    const request = listRequest.current;
+    setFilters(request.filters);
+    const next = listChanged.current ? { ...request, cursor: null, page: 1, cursors: [null] } : request;
+    listChanged.current = false;
+    await loadList(next);
   }
-  function search() { cursors.current = [null]; return loadList({ nextFilters: filters }); }
+  function search() {
+    const nextFilters = { ...filters, search: filters.search.trim(), city: filters.city.trim() };
+    setFilters(nextFilters);
+    return loadList({ filters: nextFilters, cursor: null, page: 1, cursors: [null] });
+  }
   function paginate(direction) {
+    if (busy || listStatus !== "ready") return;
     const nextPage = page + direction;
-    if (direction > 0) cursors.current[nextPage - 1] = nextCursor;
-    return loadList({ cursor: cursors.current[nextPage - 1], nextPage });
+    if (nextPage < 1 || (direction > 0 && !nextCursor)) return;
+    const request = listRequest.current;
+    const cursors = request.cursors.slice(0, direction > 0 ? nextPage : request.cursors.length);
+    if (direction > 0) cursors[nextPage - 1] = nextCursor;
+    return loadList({ ...request, cursor: cursors[nextPage - 1], page: nextPage, cursors });
   }
-  return { access, catalog, items, nextCursor, page, filters, setFilters, provider, creating, draft, notes, setNotes, busy, error, setError, message, preview, reviewedRevision, dirty, setField, create, open, save, transition, showPreview, loadMoreHistory, back, search, paginate, reload: () => provider ? open(provider.id) : !catalog ? initialize() : loadList() };
+  function reload() {
+    if (provider) return open(provider.id);
+    if (!catalog) return initialize();
+    setFilters(listRequest.current.filters);
+    return loadList();
+  }
+  return { access, catalog, items, nextCursor, page, listStatus, filters, setFilters, provider, creating, draft, notes, setNotes, busy, error, setError, message, preview, reviewedRevision, dirty, setField, create, open, save, transition, showPreview, loadMoreHistory, back, search, paginate, reload };
 }

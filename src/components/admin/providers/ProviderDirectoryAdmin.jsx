@@ -121,6 +121,7 @@ export default function ProviderDirectoryAdmin() {
       {state.error && <div className={`${styles.notice} ${styles.error}`} role="alert"><p>{state.error}</p><button type="button" className={styles.button} disabled={state.busy} onClick={() => { if (state.dirty) setDiscard(true); else void state.reload(); }}>Recargar versión actual</button></div>}
       {state.message && <p className={`${styles.notice} ${styles.success}`} role="status">{state.message}</p>}
       {!state.access && state.busy && <p role="status">Validando acceso a la beta…</p>}
+      {state.access?.enabled && !state.catalog && state.busy && <p role="status">Preparando categorías y fichas…</p>}
       {state.access && !state.access.enabled && <div className={styles.panel}><h1>Beta privada cerrada</h1><p className={styles.muted}>La administración del directorio todavía no está habilitada en este entorno.</p></div>}
       {state.access?.enabled && state.catalog && !detail && <ProviderList state={state} onOpen={open} onCreate={create} />}
       {state.access?.enabled && state.catalog && detail && <>

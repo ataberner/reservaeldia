@@ -59,7 +59,7 @@ export type RevisionManualProveedor<
 
 export type ImagenProveedor<TTimestamp = ProviderTimestampValue> = {
   id: string;
-  tipo: "portada" | "galeria";
+  tipo: "portada" | "galeria" | "logo";
   storagePath: string;
   url: string | null;
   urlOriginal: string | null;
@@ -136,6 +136,7 @@ export type Proveedor<TTimestamp = ProviderTimestampValue> = {
 
   imagenes: {
     portada: ImagenProveedor<TTimestamp> | null;
+    logo?: ImagenProveedor<TTimestamp> | null;
     galeria: ImagenProveedor<TTimestamp>[];
   };
 

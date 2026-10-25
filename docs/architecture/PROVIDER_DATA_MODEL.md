@@ -104,8 +104,10 @@ provider documents and images is closed as described in section 7.
 
 ### `proveedores/{proveedorId}`
 
-The definitive TypeScript shape is `Proveedor` in
-`functions/src/providers/types.ts`. It contains exactly these root groups:
+The import/legacy TypeScript shape is `Proveedor` in
+`functions/src/providers/types.ts`. Schema 3 extends that shape with the private
+editing types in `functions/src/providers/betaModel.ts` (section 10); it does not
+change imported identity or create another collection. The legacy root groups are:
 
 | Group | Purpose |
 | --- | --- |
@@ -1070,9 +1072,21 @@ de validación de datos, sin conceder representación ni acceso por sí misma.
 
 Toda mutación exige `expectedRevision` y una transacción que compare estado
 actual. Desfase devuelve conflicto explícito, sin sobrescritura silenciosa.
+La primera mutación de una ficha legacy sin metadata beta exige también
+`expectedVersionToken` obtenido de `updateTime` al leerla. Esto detecta un
+enriquecimiento concurrente que todavía no incrementa revisiones beta. Después
+de la adopción, el pipeline de enriquecimiento rechaza `provider_managed_by_beta`
+antes de descargar y vuelve a comprobarlo dentro de su transacción; `--force`
+no lo elude. Conectar ese pipeline al flujo de revisión pertenece a etapa 4.
 Aprobar exige además `reviewRevision` de la vista revisada y que no existan
 cambios posteriores de contenido. No puede aprobarse “lo último” incidentalmente.
 El historial se escribe en la misma transacción que el cambio de ficha.
+El indicador de cambios pendientes se deriva de la revisión/contenido aprobados
+y de `estadoRevision`; una edición guardada sin enviar se muestra como tal sin
+inventar un segundo estado persistido. Las notas internas no cambian la revisión
+del contenido público. La categoría adicional de nuevas ediciones pertenece a
+la misma familia lugar/profesional que la principal; combinaciones legacy
+conservadas sin cambios no se eliminan automáticamente.
 
 En este hito `visible` permanece falso incluso al aprobar: **aprobada/publicada
 internamente no equivale a accesible al público**. La futura entrega consumirá

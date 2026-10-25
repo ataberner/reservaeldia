@@ -47,6 +47,11 @@ preflight and reviewed report.
   for persistence before the first remote read or commit.
 - Apply uses `create-or-skip`; it does not update existing provider documents
   or merge by name.
+- Enrichment refuses records adopted by the private beta (`schemaVersion >= 3`
+  or beta metadata), including with `--force`. It checks before fetching source
+  content and again inside the write transaction; `provider_managed_by_beta` is
+  a permanent error. Edit those records through the administrative beta instead.
+  See [the canonical beta contract](../../docs/architecture/PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
 - Provider-category documents are created only by the independent idempotent
   seed. Provider importers never create taxonomy opportunistically.
 - Rules, indexes, categories, and provider documents are separate operator
@@ -126,11 +131,10 @@ read back as Firestore `Timestamp` values from the owning Admin SDK.
 
 The enrichment unit and Firestore+Storage emulator baselines are in
 [Recovery validation](#recovery-validation).
-**[Pending]** These integration tests use Admin SDK clients and therefore
-bypass Firebase Rules. There is currently no rules-unit-testing emulator suite
-for provider allow/deny cases; section
-[Rules and indexes](#rules-and-indexes-manual-deployment-boundary) records that
-gap.
+These importer integration tests use Admin SDK clients and therefore bypass
+Firebase Rules. The private beta adds authenticated client SDK allow/deny cases
+in the isolated harness; see [its evidence and commands](../../docs/testing/PROVIDER_BETA_MILESTONE_1.md).
+That coverage does not establish current remote Rules or authorize public delivery.
 
 Analyze a private local JSON:
 
@@ -996,11 +1000,12 @@ firebase deploy --only firestore:rules,firestore:indexes,storage --project "EXPE
 has run in any remote project. The operator must verify the exact Firebase CLI
 target before approval.
 
-**[Pending]** The current tests inspect provider rule isolation as source text,
-but do not run authenticated/unauthenticated allow/deny cases through
-`@firebase/rules-unit-testing`. Add and review those Firestore/Storage Rules
-emulator cases before using the rules as independently verified public
-delivery.
+Private beta Rules deny direct SDK access to provider documents and files,
+including administrative clients. Its authenticated backend and exact proposed
+Rules artifacts have their own [local verification](../../docs/testing/PROVIDER_BETA_MILESTONE_1.md)
+and [scoped deployment proposal](../../docs/operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md).
+Use that proposal for this milestone, not the broad deployment command above.
+Public delivery remains a later stage.
 
 ## Implemented enrichment gates and pending rollout work
 
@@ -1027,8 +1032,7 @@ delivery.
 - enforce/test the portal allowlist before each page redirect request; current
   code applies public-address SSRF checks to every hop but rejects an
   off-origin public redirect only after fetching its final response;
-- add Rules emulator allow/deny coverage and establish actual deployment state;
-- decide the public-field projection before any provider becomes visible;
+- establish actual deployment state and validate the later public-delivery path;
 - define authoritative GBA/level-2 geography before deriving it;
 - define criteria before automatically assigning `ubicacion_incompleta` or
   `contacto_dudoso`.
@@ -1042,9 +1046,9 @@ delivery.
   `null`; deterministic document identity continues to use the normalized URL.
 - Cross-URL name duplicates are marked on every member for manual review; name
   equality is never sufficient to merge or choose a primary record.
-- **[Pending]** Direct public Firestore reads expose the full canonical document. Decide on a
-  backend whitelist before any provider becomes visible if internal fields must
-  remain private.
+- The beta contract now owns the approved-field whitelist and closes direct
+  provider SDK reads. Connecting a public directory remains pending; never
+  return canonical documents as public records.
 - Phone normalization intentionally leaves ambiguous formats untouched; a
   reviewed phone library may be justified later, but the current mapper adds no
   dependency.

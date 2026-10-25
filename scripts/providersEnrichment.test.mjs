@@ -216,6 +216,40 @@ function createFakeRuntime({
   };
 }
 
+test("beta-managed providers fail closed before downloads even with force", async () => {
+  const provider = providerDocument();
+  provider.schemaVersion = 3;
+  provider.beta = { version: 1, revision: 1 };
+  const fake = createFakeRuntime({ provider });
+  const report = await enrichment.enrichSingleProvider({
+    args: args({ apply: true, force: true, completeGallery: true }),
+    runtime: fake.runtime, contract,
+    pageFetcher: async () => { throw new Error("No download is allowed"); },
+    imageDownloader: async () => { throw new Error("No download is allowed"); },
+  });
+  assert.equal(report.status, "failed");
+  assert.equal(report.error.code, "provider_managed_by_beta");
+  assert.equal(report.remoteWrites, 0);
+  assert.equal(fake.state.uploadCalls, 0);
+  assert.equal(fake.state.commitCalls, 0);
+});
+
+test("enrichment transaction cannot overwrite a profile adopted by beta after its initial read", async () => {
+  const original = providerDocument();
+  const adopted = { ...original, schemaVersion: 3, beta: { version: 1, revision: 1 } };
+  let writes = 0;
+  const reference = {};
+  const runtime = enrichment.createFirebaseRuntimeFromClients({
+    app: {}, bucket: {}, db: {
+      collection: () => ({ doc: () => reference }),
+      runTransaction: callback => callback({ get: async () => ({ exists: true, data: () => adopted }), update: () => { writes += 1; } }),
+    },
+  });
+  await assert.rejects(runtime.commitProviderUpdate({ providerId: PROVIDER_ID, expectedFingerprint: enrichment.providerEnrichmentFingerprint(original), update: { descripcion: "External replacement" }, contract }), { code: "provider_managed_by_beta" });
+  assert.equal(writes, 0);
+  assert.equal(runtime.metrics.remoteWrites, 0);
+});
+
 function fixturePageFetcher(html = COMPLETE_HTML) {
   return async ({ url }) => ({
     html,

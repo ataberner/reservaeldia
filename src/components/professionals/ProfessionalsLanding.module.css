@@ -258,6 +258,9 @@
   margin-top: 34px;
 }
 
+.categoryItem:not(:disabled) { cursor: pointer; }
+.categoryItem[aria-pressed="true"] .categoryIcon { background: #efdbff; outline: 2px solid #692b9a; }
+
 .categoryItem {
   display: flex;
   flex-direction: column;

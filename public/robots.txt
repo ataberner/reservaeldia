@@ -4,5 +4,6 @@ Disallow: /profesionales
 Disallow: /assets/profesionales/
 Disallow: /lugares
 Disallow: /assets/lugares/
+Disallow: /proveedor
 
 Sitemap: https://reservaeldia.com.ar/sitemap.xml

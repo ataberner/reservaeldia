@@ -10,7 +10,7 @@ import {
   providerRecord, transitionProviderBeta, sanitizeProviderPublicSnapshot, providerHasPendingChanges, type ProviderBetaOperation, type ProviderDraft,
 } from "./betaModel";
 import { verifyProviderImageReferences } from "./betaMedia";
-import { normalizeSearchText } from "./normalization";
+import { normalizeAdminSearchFilters, ProviderAdminSearchError, searchAdminProviders } from "./adminSearch";
 
 type Data = Record<string, unknown>;
 const MUTATIONS = ["save", "submit", "approve", "requestChanges", "pause", "archive", "resume"];
@@ -77,49 +77,17 @@ async function validateRuntimeCategories(transaction: Transaction, db: Firestore
     if (!category.exists || category.data()?.activa !== true || category.data()?.slug !== id) throw new HttpsError("failed-precondition", "Una categoría no está disponible en el catálogo. Revisá la ficha.", { fields: ["categoriaIds"] });
   }
 }
-function summary(id: string, document: Data): Data {
-  const beta = providerBetaMetadata(document);
-  return { id, nombre: document.nombre || "Sin nombre", categoriaPrincipalId: document.categoriaPrincipalId || null,
-    ciudad: providerRecord(document.ubicacion).ciudad || null, email: providerRecord(document.contacto).email || null,
-    publication: providerPublicationState(document), reviewStatus: beta.estadoRevision,
-    ownerUserId: providerRecord(document.propietario).userId || null, revision: beta.revision, hasPendingChanges: providerHasPendingChanges(document) };
-}
 async function listProviders(db: Firestore, data: Data): Promise<Data> {
-  const pageSize = data.pageSize == null ? 20 : Number(data.pageSize);
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new HttpsError("invalid-argument", "Tamaño de página inválido.");
-  const search = typeof data.search === "string" ? normalizeSearchText(data.search).slice(0, 200) : "";
-  const city = typeof data.city === "string" ? normalizeSearchText(data.city).slice(0, 200) : "";
-  let cursor = data.cursor ? providerId(data.cursor) : null;
-  const items: Data[] = [];
-  let scanned = 0;
-  let exhausted = false;
-  // Bounded scan avoids silently excluding legacy records without new search fields.
-  // Cursor always identifies the last inspected row, including filtered exclusions.
-  while (items.length < pageSize && scanned < 500 && !exhausted) {
-    let query = db.collection("proveedores").orderBy(FieldPath.documentId()).limit(100)
-      .select("nombre", "categoriaPrincipalId", "categoriaIds", "ubicacion.ciudad", "contacto.email", "contacto.emailsAlternativos", "estado", "propietario.userId", "beta", "aprobada.revision");
-    if (cursor) query = query.startAfter(cursor);
+  const filters = normalizeAdminSearchFilters(data);
+  return searchAdminProviders(async (after, limit) => {
+    // Include one extra row to distinguish a full batch from the actual end.
+    // Legacy records use their canonical fields; no search-field migration.
+    let query = db.collection("proveedores").orderBy(FieldPath.documentId()).limit(limit + 1)
+      .select("nombre", "categoriaPrincipalId", "categoriaIds", "ubicacion.ciudad", "contacto.email", "contacto.emailsAlternativos", "estado", "propietario.userId", "beta.revision", "beta.contenidoRevision", "beta.estadoRevision", "aprobada.revision");
+    if (after) query = query.startAfter(after);
     const snapshot = await query.get();
-    if (snapshot.empty) { exhausted = true; break; }
-    for (const record of snapshot.docs) {
-      scanned += 1; cursor = record.id;
-      const document = record.data();
-      const entry = summary(record.id, document);
-      const contact = providerRecord(document.contacto);
-      const haystack = normalizeSearchText([document.nombre, contact.email, ...(Array.isArray(contact.emailsAlternativos) ? contact.emailsAlternativos : [])].join(" "));
-      if (search && !haystack.includes(search)) continue;
-      if (data.categoryId && !(Array.isArray(document.categoriaIds) && document.categoriaIds.includes(data.categoryId))) continue;
-      if (city && !normalizeSearchText(entry.ciudad).includes(city)) continue;
-      if (data.publication && data.publication !== entry.publication) continue;
-      if (data.owner === "plataforma" && entry.ownerUserId) continue;
-      if (data.owner === "responsable" && !entry.ownerUserId) continue;
-      if (typeof data.pending === "boolean" && entry.hasPendingChanges !== data.pending) continue;
-      items.push(entry);
-      if (items.length === pageSize) break;
-    }
-    exhausted = snapshot.size < 100 && cursor === snapshot.docs[snapshot.docs.length - 1]?.id;
-  }
-  return { items, nextCursor: exhausted || !cursor ? null : cursor, scanned };
+    return { records: snapshot.docs.slice(0, limit).map(record => ({ id: record.id, data: record.data() })), received: snapshot.size, exhausted: snapshot.size <= limit };
+  }, filters, data.cursor);
 }
 
 /** All operations use the existing superadmin authority; profile fields are never read. */
@@ -139,7 +107,7 @@ export async function adminProvidersHandler(request: CallableRequest<unknown>, d
       const categories = snapshot.docs.map((document) => ({ id: document.id, nombre: document.data().nombre, orden: document.data().orden, tipo: VENUE_CATEGORY_IDS.includes(document.id) ? "lugar" : "profesional" })).sort((a, b) => Number(a.orden) - Number(b.orden));
       return { categories, services: PROVIDER_SERVICES, features: PROVIDER_VENUE_FEATURES, imageUpload: { maxBytes: PROVIDER_IMAGE_MAX_BYTES, mimeTypes: PROVIDER_IMAGE_MIME_TYPES } };
     }
-    if (operation === "list") return listProviders(db, data);
+    if (operation === "list") return await listProviders(db, data);
     if (operation === "get") {
       const id = providerId(data.id);
       const snapshot = await db.collection("proveedores").doc(id).get();
@@ -211,6 +179,7 @@ export async function adminProvidersHandler(request: CallableRequest<unknown>, d
     }
     throw new HttpsError("invalid-argument", "Acción de proveedores desconocida.");
   } catch (error) {
+    if (error instanceof ProviderAdminSearchError) throw new HttpsError(error.code, error.message);
     if (error instanceof ProviderBetaError) throw new HttpsError(error.code, error.message, { fields: error.fields });
     throw error;
   }

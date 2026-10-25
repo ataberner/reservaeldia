@@ -1120,6 +1120,38 @@ Publicación, Responsable, Historial. Importar e Invitar no aparecen hasta tener
 implementación real. Las futuras acciones masivas muestran alcance/exclusiones
 antes de confirmar y resultados parciales después.
 
+**Corrección aceptada, 2026-10-25 — búsqueda administrativa:** cada página divide
+coincidencias, no bloques internos de lectura. La búsqueda parcial normaliza
+mayúsculas, acentos y espacios en nombre y correos principal/alternativos; conserva
+los filtros anteriores y los registros importados sin metadata beta. Consulta el
+contenido administrativo editable, incluidos borradores, sin exigir aprobación
+ni reutilizar permisos/elegibilidad/DTOs del directorio aprobado.
+
+El servidor recorre lotes por ID ascendente estable y resuelve una página más una
+coincidencia adicional, o el fin real. Sólo esa coincidencia adicional habilita
+Siguiente. El cursor versionado identifica la última coincidencia entregada y se
+vincula al ámbito administrativo, filtros normalizados, orden y tamaño de página;
+se rechazan cursores inválidos o de otra consulta. Avanzar continúa desde ese ID,
+sin volver al inicio. Los datos pueden cambiar entre peticiones; no se promete un
+snapshot inmutable. No se descargan todos los proveedores al navegador.
+
+Los límites operativos son explícitos: hasta 5.000 candidatos examinados, hasta
+50 consultas en lotes de 100 y una lectura adicional por lote para detectar el fin (hasta 5.050
+documentos recibidos, además de la lectura del control de beta), 20 segundos de
+escaneo después de autorizar y 256 KiB de JSON de respuesta. Una lectura ya
+iniciada puede terminar en el SDK tras vencer el tiempo; no se inicia otro lote.
+Si no se logra determinar la
+página y su continuación dentro del presupuesto, se devuelve un error recuperable
+sin resultados parciales ni un falso «sin coincidencias». El resumen de respuesta
+conserva su whitelist administrativa, con 20 fichas por defecto y máximo 50.
+
+Cambiar búsqueda/filtros reinicia los cursores. La UI descarta respuestas antiguas
+y distingue carga, error y ausencia real; reintentar usa la misma consulta que
+falló. Al guardar y volver al listado consulta de nuevo desde la primera página
+con los filtros aplicados, sin forzar la inclusión de una ficha que no coincide.
+La [verificación focal](../testing/PROVIDER_ADMIN_SEARCH.md) registra implementación,
+mediciones y despliegue por separado; esta decisión no afirma resultados de pruebas.
+
 Historial append-only en `proveedores/{id}/historial`: actor, fecha, acción,
 revisión, campos cambiados y motivo cuando aplica. No guardar contraseñas,
 enlaces secretos ni tokens; tampoco un volcado del documento anterior. Las

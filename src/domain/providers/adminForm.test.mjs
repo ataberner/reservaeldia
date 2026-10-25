@@ -74,6 +74,20 @@ test("concurrent rejection tells the editor how to preserve unsaved content", ()
   assert.match(providerErrorMessage({ message: "Ficha incompleta", details: { fields: ["descripcionCorta", "ubicacion.ciudad"] } }), /descripción breve, localidad/);
 });
 
+test("Firebase transport failures show useful messages without inventing an internal error cause", () => {
+  for (const prefix of ["", "functions/"]) {
+    const internal = providerErrorMessage({ code: `${prefix}internal`, message: "internal" });
+    assert.match(internal, /No pudimos completar la acción.*Volvé a intentarlo/);
+    assert.doesNotMatch(internal, /internal|conexión|internet/i);
+    const unavailable = providerErrorMessage({ code: `${prefix}unavailable`, message: "PRIVATE_UNAVAILABLE" });
+    assert.match(unavailable, /servicio no está disponible.*Volvé a intentarlo/);
+    assert.doesNotMatch(unavailable, /PRIVATE_/);
+    const network = providerErrorMessage({ code: `${prefix}network-request-failed`, message: "PRIVATE_NETWORK" });
+    assert.match(network, /comunicarnos con el servicio.*conexión.*intentarlo/);
+    assert.doesNotMatch(network, /PRIVATE_/);
+  }
+});
+
 test("saved edits awaiting submission are not mislabeled as no pending changes", () => {
   assert.equal(providerReviewLabel("sin_cambios", true), "Cambios guardados sin enviar");
   assert.equal(providerReviewLabel("sin_cambios", false), "Sin cambios pendientes");

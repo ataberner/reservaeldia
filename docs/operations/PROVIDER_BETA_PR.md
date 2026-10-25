@@ -6,8 +6,11 @@ Título: `feat(proveedores): administración privada con revisión y versión ap
 
 Rama: `feat/proveedores-beta-base`. Base comprobada: `d3ba5c22`, que contiene
 `2c4fe15a` (autorización y Node 22). Este documento es el cuerpo preparado del PR;
-no se abrió ni se hizo push. Los workflows actuales pueden desplegar Hosting al
-recibir eventos de PR: revisar sus efectos antes de crear el PR remoto.
+al cerrar la ejecución local no se había abierto ni se había hecho push. La
+continuación autorizada integró el [PR #1](https://github.com/ataberner/reservaeldia/pull/1)
+como `689bde9b`; el [runbook](PROVIDER_BETA_PRIVATE_DEPLOYMENT.md) registra la
+aplicación posterior y el [PR #2](https://github.com/ataberner/reservaeldia/pull/2)
+del directorio privado. El cuerpo histórico siguiente describe sólo el hito 1.
 
 ## Problema y comportamiento resultante
 

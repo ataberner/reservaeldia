@@ -1,14 +1,14 @@
 # Directorio privado aprobado — verificación
 
 Status: Testing Baseline.
-Fecha: 2026-10-25. Implementación local; comprobaciones pendientes señaladas.
+Fecha: 2026-10-25. Verificación local/CI completada; backend remoto privado aplicado.
 
 La autoridad funcional es
 [PROVIDER_DATA_MODEL §10](../architecture/PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
 Este documento registra evidencia y reproducción, sin duplicar reglas de negocio
 ni autorizar operación remota. El
 [runbook privado](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md) distingue el
-backend administrativo ya aplicado de la segunda entrega todavía pendiente.
+panel ya aplicado del backend de la segunda entrega y su Hosting todavía pendiente.
 
 ## Base, alcance e implementación
 
@@ -49,10 +49,12 @@ bloqueada según el harness. Los tests usan negocios/archivos/cuentas sintético
 | Sync, compile y contratos construidos del harness | **PASS** en `run-B7ladc`, emuladores listos. |
 | API del directorio en emuladores | **9/9 PASS**, sin skips, en `run-B7ladc`; etapa finalizada 18:33:58Z. No prueba producción. |
 | Dos ajustes frontend posteriores | **1/1 PASS cada uno**, ejecuciones focales: estado de carga al recuperar filtros y carga inicial del panel después de validar acceso. No se atribuyen al run anterior de 22 tests. |
+| Regresión frontend final | **27/27 PASS**, sin skips, Node 22.23.4, 19:27:41–19:28:16Z. Los cuatro archivos frontend anteriores más `src/components/admin/providers/providerAdmin.test.mjs`; incluye ambos ajustes posteriores. Evidencia en `.local-isolation/frontend-final-20261025-162740/`. |
 | Navegador real desktop/móvil | **1/1 PASS**, sin skips, `run-7vKCm9`, 19:15:27–19:18:38Z, nueve capturas. Replay sobre snapshot compilado coincidente: paginación 12+1/volver, filtros, teclado, vacío/error, detalle/fotos aprobadas, pausa/contacto, gate cerrado y denegaciones común/admin claim. Teardown: ocho puertos libres; offline 1/1 PASS. |
 | Ownership de Functions | **Gate integral PASS en CI `40225434395`**: tres builds, 41/41 tests y discovery real default 107/payments 3/email 3. El run completo falló después en tooling, no en ownership. Se conservan los intentos Windows: core TypeScript excedió 180000 ms; `ownership-xuWCJZ` tuvo tres builds PASS y 39/41 por dos startups de subprocess de 30 s. Repetición intacta sobre ese snapshot: 41/41 y tres discoveries PASS; quince hashes snapshot↔fuente coincidentes en `component-evidence.json`. |
-| Build/export del nuevo directorio | **PENDIENTE**. El build anterior del panel no verifica esta entrega. |
-| Deploy y recorrido remoto de las dos Functions nuevas | **PENDIENTE**. No confundir con el panel de la entrega 1. |
+| Build/export del nuevo directorio | **PASS**, `run-iuSN8W` / `session-O8E6E5`, finalizado 19:28:01Z: contratos, compilación, export, finalización y release check; ocho puertos libres al terminar. Artefacto aislado local, no destinado a despliegue. |
+| Verificación integral CI | **PASS**, workflow `40226008315`, commit `f5a8b722`, finalizada 19:34:20Z: ownership, lint, tooling, contratos, configuración, backend, compatibilidad, emuladores, Rules, integración, API/browser del panel y directorio, regresión de parejas y offline. Reporte `run-5BedyO/verified.json`; sin operaciones remotas. No sustituye build ni recorrido productivo. |
+| Deploy de las dos Functions nuevas | **PASS**, ACTIVE y denegaciones anónimas 7/7 a las 19:41Z; revisiones exactas en el runbook. Hosting y recorrido productivo autenticado siguen pendientes. |
 
 Frontend comprueba render de proyección, desconocidos/precios, destinos de contacto
 seguros, errores diferenciados y recuperación de filtros, cierre de datos ante
@@ -94,6 +96,13 @@ compilación inicial; `run-8e1hf4` falló su helper de hit-test durante scroll s
 `run-fSciWA` agotó discovery antes de UI. Se corrigió sólo el helper para scroll
 instantáneo y espera de hit-test. El replay recuperó infraestructura dentro de
 los mismos límites; no se relajaron assertions ni timeouts de negocio.
+
+`run-iuSN8W/directory-export-inspection.json` registra las cuatro rutas privadas
+exportadas con `pageProps:{}` y estado inicial de validación de acceso. La búsqueda
+acotada de ocho marcadores sintéticos en 91 archivos de texto no encontró datos de
+prueba. Las 1193 fuentes de aplicación coinciden con el candidato; el único cambio
+posterior de la copia verificada es la lista de artefactos CI. Esta inspección no
+afirma paridad de todos los assets productivos ni reemplaza la verificación live.
 
 La limpieza local previa está en
 `.local-isolation/reports/provider-directory-cache-cleanup.json`; se recuperaron
@@ -141,18 +150,18 @@ El workflow `providers-private-candidate.yml` verifica exclusivamente pushes de
 `feat/proveedores-directorio-privado` llamando al harness existente. No contiene
 deploy, secretos ni cambios a las automatizaciones compartidas. Permite resolver
 los límites de arranque observados en Windows sin usar el PR/Hosting preview como
-mecanismo de validación ni relajar el gate obligatorio. El resultado CI aún no
-está disponible al registrar esta sección.
+mecanismo de validación ni relajar el gate obligatorio. El candidato corregido
+pasó integralmente en `40226008315`, antes de abrir el PR de esta entrega.
 
-- Completar el gate integral de ownership en CI; ejecutar build/export y comprobar
-  shells sin datos privados. CI candidato `40225434395` pasó ownership y lint,
-  pero falló dos tests de tooling por agregar un glob PNG al artefacto: el contrato
-  exige nombres explícitos JSON/log. Se retiró el glob, conservando el manifiesto
-  de capturas y los PNG locales; no se relajó el control. Reejecución pendiente.
+- CI candidato `40225434395` pasó ownership y lint, pero falló dos tests de tooling
+  por agregar un glob PNG al artefacto: el contrato exige nombres explícitos
+  JSON/log. Se retiró el glob, conservando el manifiesto de capturas y los PNG
+  locales; no se relajó el control. Los dos tests focales y la reejecución integral
+  `40226008315` pasaron. Se conserva también la evidencia del fallo inicial.
 - Registrar resultados finales, fallas e intentos sin reemplazar snapshots ni
   relajar assertions para presentar un PASS.
-- Incorporar sólo capturas sintéticas revisadas; todavía no hay capturas de esta
-  entrega declaradas como evidencia final en Git.
+- Las nueve capturas sintéticas revisadas permanecen como evidencia local; no se
+  incorporan perfiles, archivos privados ni imágenes sin revisar al artefacto CI.
 - Completar PR/Hosting/aplicación y recorrido remoto de la segunda entrega bajo
   el runbook. Mantener público/registro cerrados.
 

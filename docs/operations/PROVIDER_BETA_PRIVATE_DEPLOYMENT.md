@@ -28,7 +28,8 @@ la importación remota. Se conservan Auth/login de parejas y sus invitaciones.
    que `e0fa2b76` antes de agregar esta entrega), en
    `C:\Reservaeldia\.local-isolation\proveedores-beta-base`. UI/backend y
    comprobaciones locales tienen evidencia propia. No atribuir a esta entrega
-   el estado remoto de la primera; sus dos Functions y Hosting están pendientes.
+   el estado remoto de la primera. Sus dos Functions están aplicadas; Hosting e
+   integración siguen pendientes al registrar el checkpoint siguiente.
 
 ## Evidencia remota confirmada de la entrega 1
 
@@ -84,7 +85,7 @@ ejecución remoto, ni reemplazó el gate de ownership. Mantener ambas en Node 22
 timeout 60 s y máximo 3 instancias: callable 256 MiB, media HTTP 512 MiB. Sin
 Secrets, sender de correo ni cuentas nuevas como efecto del despliegue.
 
-## Aplicación pendiente de la entrega 2
+## Aplicación de la entrega 2
 
 El contrato del directorio especifica el gate independiente
 `privateDirectoryEnabled`; `panelEnabled` no abre la lectura del directorio y
@@ -118,6 +119,31 @@ Catálogos ausentes/incompatibles se resuelven con el procedimiento existente,
 sin seed remoto implícito. Asignaciones, invitaciones y registro espontáneo
 permanecen fuera de esta entrega.
 
+### Checkpoint remoto del backend privado
+
+Verificación integral previa **PASS**, workflow `40226008315`, fuente
+`f5a8b722`, además de build/export aislado y recorrido local desktop/móvil.
+Se desplegaron exclusivamente las dos Functions indicadas con CLI 14.4.0 y
+Node 22.23.4. Los hooks existentes compilaron también los paquetes Payments/Email
+localmente; no se desplegaron esos codebases ni sus endpoints.
+
+Readback **2026-10-25T19:41:38Z**:
+
+| Recurso | Resultado |
+| --- | --- |
+| `providerDirectoryV1` | ACTIVE, Node 22, 256 MiB, 60 s, máximo 3; revisión `providerdirectoryv1-00001-lah`, aplicada 19:41:01Z. |
+| `providerDirectoryImageV1` | ACTIVE, Node 22, 256 MiB, 60 s, máximo 3; revisión `providerdirectoryimagev1-00001-jis`, aplicada 19:41:02Z. |
+| Alcance | Inventario 113 Functions, todas Node 22; ninguna Function ajena actualizada desde el inicio de este despliegue. `getAdminAccess` y las dos Functions administrativas conservan sus revisiones anteriores. |
+| Rules y datos | Hashes de Rules iguales a la entrega 1; 3197 proveedores, incluidos los tres sintéticos. Sin índices, migración ni escrituras de negocios como parte del deploy. |
+| Gates | `panelEnabled:true`; `privateDirectoryEnabled:false`, `directoryEnabled:false`, `onboardingEnabled:false`. |
+| Acceso anónimo | **7/7 PASS**, 19:41:45Z: callable/media administrativos y de directorio devuelven 401; SDK proveedores/config/Storage rechazan. Media responde `private, no-store`. |
+
+El primer intento local fue detenido al iniciar CLI por permisos del sandbox sobre
+su configuración personal, antes de operaciones remotas. La ejecución autorizada
+con las credenciales existentes completó el despliegue; se conservan ambos logs.
+Este checkpoint no acredita todavía el Hosting del directorio ni su recorrido
+productivo autenticado.
+
 ## Efectos de PR, Hosting y Netlify
 
 `firebase-hosting-pull-request.yml` despliega preview al abrir/actualizar un PR
@@ -143,7 +169,8 @@ finalizaron correctamente. El preview Netlify mostró el rechazo anónimo real e
 | Gate administrativo | La sesión habitual superadmin vio «Beta privada cerrada» en el Hosting live. A las 18:51:02Z se habilitó sólo `panelEnabled` con precondición de updateTime; los otros tres flags permanecieron false. Cinco denegaciones anónimas repetidas después de habilitar: PASS. |
 | Recorrido de panel en producción | PASS acotado con la sesión habitual superadmin: crear/guardar incompleto, editar, enviar/abrir revisión, rechazar aprobación obsoleta, aprobar vigente, preview privado sin nota interna, conservar aprobada al guardar, pausar/reactivar y archivar manteniendo historial. Fotos y cuenta común quedan pendientes explícitos. |
 | Login e invitación de parejas en producción | Sesión habitual conservada, dashboard cargado y apertura de un borrador existente en el editor (seis canvases observados); sin acciones de edición, publicación, pago o correo. No equivale a probar credenciales de una cuenta común ni un nuevo login desde cero. |
-| Entrega 2, PR/Functions/Hosting | PENDIENTE: completar gates locales y nueva revisión separada antes de operar. |
+| Entrega 2, Functions | PASS: dos endpoints activos y denegaciones anónimas, según checkpoint. |
+| Entrega 2, PR/Hosting/recorrido | PENDIENTE: integración y Hosting después de checks; gate privado todavía cerrado. |
 | Apertura pública | Fuera del alcance; `directoryEnabled:false`, `onboardingEnabled:false`. |
 
 Actualizar esta sección sin sustituir resultados observados por planes ni

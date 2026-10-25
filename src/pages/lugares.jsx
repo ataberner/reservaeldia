@@ -60,7 +60,7 @@ export default function VenuesPage() {
         <meta name="googlebot" content="noindex, nofollow, noarchive" />
       </Head>
       {canView ? (
-        <VenuesLanding user={session.user} />
+        <VenuesLanding user={session.user} key={session.user.uid} />
       ) : (
         <AccessStatus pending={pending} failed={failed} signedIn={Boolean(session.user)} />
       )}

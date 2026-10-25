@@ -272,7 +272,46 @@ Assumptions:
 | Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `AppHeader.jsx`, `CanvasEditorHeader.jsx`, `DashboardSidebar.jsx` | Tailwind shell classes, `AppHeader.module.css` for non-editor dashboard header visuals, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. `DashboardHeader.jsx` owns the runtime shell; `AppHeader.jsx` owns non-editor dashboard header visuals; `CanvasEditorHeader.jsx` owns only editor header content. |
 | Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `AuthModal.module.css` for Login/Register; `styles/styles.css` plus Bootstrap button/modal classes for ProfileCompletion; small inline styles where present | Login/Register have scoped auth ownership. ProfileCompletion remains the legacy global/auth Bootstrap exception and should be migrated separately. |
 
-### Professionals design preview (2026-10-15)
+### Private approved directory (2026-10-25)
+
+Current implementation replaces the example cards and simulated controls in
+`/lugares/` and `/profesionales/` with the approved-data reader defined by
+[PROVIDER_DATA_MODEL.md](PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
+The historical design-preview baselines below remain evidence for their dates,
+not descriptions of the current data flow.
+
+`VenuesLanding.jsx` and `ProfessionalsLanding.jsx` still own their landing
+compositions and scoped modules. The professionals hero collage is decorative
+site artwork only; it is never a provider photo or a missing-image fallback.
+`VenuesMap.jsx` is no longer mounted: no illustrative markers, availability,
+favorites, ratings or simulated ordering appear in the connected directory.
+The existing invitation links and `MarketplaceHeader` remain independent of
+directory state; login still enters the ordinary dashboard.
+
+`src/components/marketplace/ProviderDirectory.module.css` owns shared filters,
+cards, image/fallback geometry, pagination, status messages and the new approved
+detail at `/proveedor/?id=...`. The shared presentation components consume only
+directory DTOs; `useProviderDirectory.js` coordinates current-account requests,
+pagination and retry. Route guards reuse `useAdminAccess`; backend gates and
+media authorization are owned by the provider contract, not this styling map.
+Images use authenticated Blob reads and revoke object URLs on revision changes
+or unmount. The administrative preview/image path remains unchanged.
+
+Filters have visible labels, keyboard focus and real search submission. Venue
+capacity explicitly means a confirmed maximum at least as large as the filter,
+not event-date availability. Desktop cards use three/two columns and mobile one;
+detail contact controls stay in document flow. Unknown capacity/venue booleans
+remain explicit unknowns. The approved detail omits empty optional blocks.
+
+Local frontend verification: `node --test
+src/domain/providers/directoryModel.test.mjs
+src/components/marketplace/providerDirectory.test.mjs
+src/pages/lugares.test.mjs src/pages/profesionales.test.mjs` passed 22/22 with
+Node 22.23.4. This covers React render/hooks and route tests with offline
+adapters; it is not a browser, deployment or production-access claim. Browser
+and build evidence belong to the private-directory verification report.
+
+### Historical professionals design preview (2026-10-15)
 
 `/profesionales/` is a secondary, design-only marketplace preview. Presentation
 belongs to `src/components/professionals/ProfessionalsLanding.jsx` and its
@@ -308,7 +347,7 @@ This presentation component owns no authorization or
 backend behavior. Crawl/indexing controls and static-delivery limitations belong
 to [SEO_ROUTE_INVENTORY.md](SEO_ROUTE_INVENTORY.md).
 
-### Venues design preview (2026-10-16)
+### Historical venues design preview (2026-10-16)
 
 `/lugares/` is a secondary design preview without a hero. Presentation belongs
 to `src/components/venues/VenuesLanding.jsx`, its scoped

@@ -30,6 +30,31 @@ const catalog = {
   services: [{ id: "foto", nombre: "Fotografía", categoriaIds: ["foto-video"] }], features: [],
 };
 
+test("admin initialization keeps a loading status after access resolves and preserves closed/error states", () => {
+  let state = { access: null, catalog: null, busy: true };
+  const Admin = compile("./ProviderDirectoryAdmin.jsx", {
+    "./useProviderAdmin": { __esModule: true, default: () => state },
+    "./ProviderFields": { __esModule: true, default: () => null, Field: () => null },
+    "./ProviderPreview": { __esModule: true, default: () => null },
+  }).default;
+  const render = () => renderToStaticMarkup(React.createElement(Admin));
+  assert.match(render(), /role="status">Validando acceso a la beta/);
+  state.access = { enabled: true };
+  const loading = render();
+  assert.match(loading, /role="status">Preparando categorías y fichas/);
+  assert.doesNotMatch(loading, /Validando acceso|Crear ficha|No hay fichas/);
+  state.access = { enabled: false };
+  const closed = render();
+  assert.match(closed, /Beta privada cerrada/);
+  assert.doesNotMatch(closed, /Preparando categorías y fichas/);
+  state = { ...state, access: { enabled: true }, busy: false, error: "No se pudo cargar el catálogo." };
+  const failed = render();
+  assert.match(failed, /role="alert"/);
+  assert.match(failed, /No se pudo cargar el catálogo/);
+  assert.match(failed, /Recargar versión actual/);
+  assert.doesNotMatch(failed, /Preparando categorías y fichas|Crear ficha/);
+});
+
 test("V1 fields adapt venue/professional sections without requiring fabricated details", () => {
   const Fields = compile("./ProviderFields.jsx", { "./ProviderPhotos": photosStub }).default;
   function render(category) {

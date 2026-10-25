@@ -21,15 +21,38 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
 | `/profesionales/`, `/profesionales/**` | No | `Disallow: /profesionales`; `noindex, nofollow, noarchive` for direct fetches | Omitted | No | None | None | High |
 | `/assets/profesionales/**` | No | `Disallow: /assets/profesionales/`; `X-Robots-Tag: noindex, nofollow, noarchive` | N/A | No | None | None | High |
 | `/lugares/`, `/lugares/**` | No | `Disallow: /lugares`; `noindex, nofollow, noarchive` for direct fetches | Omitted | No | None | None | High |
+| `/proveedor/`, `/proveedor/**` (including `?id=...`) | No | `Disallow: /proveedor`; `noindex, nofollow, noarchive` for direct fetches | Omitted | No | None | None | High |
 | `/assets/lugares/**` | No | `Disallow: /assets/lugares/`; `X-Robots-Tag: noindex, nofollow, noarchive` | N/A | No | None | None | High |
 | `/boda/*` | No | `noindex, noarchive` | Omitted | No | None | None | High |
 | `/para-diseño/` | No | `noindex, noarchive` | Omitted | No | None | None | Medium |
 | `/404/`, `404.html` | No | `noindex` | Omitted | No | None | None | Medium |
-| `/robots.txt` | N/A | Allows crawling except the professionals/venues design previews and their assets | N/A | No | None | None | High |
+| `/robots.txt` | N/A | Allows crawling except the private directory routes and their legacy artwork | N/A | No | None | None | High |
 | `/sitemap.xml` | N/A | Accessible | N/A | No | None | None | High |
 | `/_next/**`, `/assets/**`, `/icons/**`, `/favicon_io/**` | Not pages | No sitemap; public PDFs use `noindex` | N/A | No | None | None | Medium |
 
 ## Implementation Notes
+
+- Private directory, implemented locally 2026-10-25: `/lugares/` and
+  `/profesionales/` now consume eligible approved provider projections through
+  authenticated backend reads; `/proveedor/?id=...` renders one approved detail.
+  All three routes retain the exact current-user superadmin guard and require
+  the independent private-directory backend gate. The source of truth for those
+  permissions, snapshots and protected media is
+  [PROVIDER_DATA_MODEL.md](PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
+  Exported HTML/JavaScript contain only application shells, not provider
+  records, contact data or image credentials. Shells remain publicly deliverable;
+  protected data/images require backend authorization even with known URLs.
+- These routes remain excluded from sitemap, canonicals, social metadata and
+  structured data. The new detail uses one static route with an opaque permanent
+  ID query; it does not generate public provider HTML during export. Existing
+  noindex/crawler exclusions extend to `/proveedor` and descendants. Robots
+  controls are indexing policy, not confidentiality. No public directory or
+  registration opening follows from this change. Remote behavior and deployment
+  must be recorded separately from the local implementation.
+- The design-preview implementation notes and verification below are historical
+  baselines. Their example cards and disabled controls were replaced by the
+  private approved-data flow above; their old passing checks do not verify the
+  new backend, images or access gate.
 
 - `robots.txt` is static in `public/robots.txt` because the policy does not
   depend on Firestore or runtime publication state.
@@ -40,7 +63,7 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
   `noindex` directive on private invitations.
 - Public invitations use `noindex, noarchive` only. Do not add `nofollow` or
   `nosnippet` unless a concrete technical reason is documented here first.
-- Professionals preview exception, accepted by the user's 2026-10-15 request:
+- Historical professionals preview exception, accepted by the user's 2026-10-15 request:
   `/profesionales/` is a design-only secondary page; `/` remains unchanged.
   Search crawling is explicitly disallowed for `/profesionales` (including the
   exact path and descendants) and `/assets/profesionales/`. The page and Hosting
@@ -56,7 +79,7 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
   Examples must not contain private provider data. Status: implemented and
   verified locally on 2026-10-15; deployment remains pending. No backend
   or administrative identity-policy change is authorized by this preview.
-- Venues preview exception, accepted by the user's 2026-10-16 request:
+- Historical venues preview exception, accepted by the user's 2026-10-16 request:
   `/lugares/` follows the same internal design-preview policy. Its exact route,
   descendants and `/assets/lugares/**` receive Hosting
   `noindex, nofollow, noarchive`; `robots.txt` disallows `/lugares` and
@@ -75,6 +98,13 @@ with any change that adds, removes, rewrites, indexes, or noindexes a public URL
   structured-data policy changes.
 
 ## Verification Anchors
+
+- Private-directory frontend, local 2026-10-25, Node 22.23.4:
+  `node --test src/domain/providers/directoryModel.test.mjs src/components/marketplace/providerDirectory.test.mjs src/pages/lugares.test.mjs src/pages/profesionales.test.mjs`
+  passed 22/22. The new detail metadata is generic and noindex; offline route
+  tests deny unresolved/ordinary/admin sessions. These tests do not establish
+  deployed headers, public export contents or real backend authorization;
+  build/browser/API results are recorded in the delivery verification report.
 
 - Venues preview, verified locally on 2026-10-16:
   `node --test src/pages/lugares.test.mjs src/pages/profesionales.test.mjs src/hooks/dashboardStartupReaders.test.mjs functions/seoStaticFiles.test.mjs`

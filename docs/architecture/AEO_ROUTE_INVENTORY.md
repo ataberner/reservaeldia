@@ -20,14 +20,15 @@ and sitemap inclusion.
 | `/i/{slug}/share.jpg` | Social preview image for one invitation. | Image fetch for WhatsApp and social previews. | `X-Robots-Tag: noindex`; not an answer surface. | None. | High |
 | `/dashboard/`, `/dashboard/**` | Authenticated customer application. | App usage, not public answer content. | `noindex, noarchive`; static shell plus client-side auth. | None for AEO. | High |
 | `/admin/*` | Administration. | Internal management, not public answer content. | `noindex, noarchive`. | None for AEO. | High |
-| `/profesionales/`, `/profesionales/**` | Internal marketplace design preview. | Superadmin visual review, not public answer content. | Crawling disallowed; direct fetches carry `noindex, nofollow, noarchive`; no sitemap, canonical, social metadata or structured data. | Implemented and verified locally 2026-10-15; deployment pending. Client guard does not make static files private. Evidence in SEO inventory. | High |
+| `/profesionales/`, `/profesionales/**` | Private approved professional directory. | Authorized superadmin directory review, not public answer content. | Crawling disallowed; direct fetches carry `noindex, nofollow, noarchive`; no sitemap, canonical, social metadata or structured data. | Approved content and images use authenticated backend gates. Local implementation 2026-10-25; deployment evidence separate. Shell is not confidential. | High |
 | `/assets/profesionales/**` | Professionals preview artwork. | Supports the internal design preview. | Crawling disallowed; `X-Robots-Tag: noindex, nofollow, noarchive`; no sitemap. | Static files remain publicly deliverable. | High |
-| `/lugares/`, `/lugares/**` | Internal wedding-venue design preview. | Superadmin visual review of the list/map layout, not public answer content. | Crawling disallowed; direct fetches carry `noindex, nofollow, noarchive`; no sitemap, canonical, social metadata or structured data. | SEO configuration verified offline; route/browser and deployment evidence must be recorded separately. Static files remain publicly deliverable. | High |
+| `/lugares/`, `/lugares/**` | Private approved wedding-venue directory. | Authorized superadmin directory review, not public geographic answers. | Crawling disallowed; direct fetches carry `noindex, nofollow, noarchive`; no sitemap, canonical, social metadata or structured data. | Approved content and images use authenticated backend gates. Unknown capacity is not inferred. Local implementation 2026-10-25; deployment evidence separate. | High |
+| `/proveedor/`, `/proveedor/**` (including `?id=...`) | One approved business in the private directory. | Authorized inspection and approved direct contact. | Generic noindex static shell; no indexable provider HTML, canonical, sitemap, social metadata or structured data. | Backend independently validates identity/gate/eligibility and approved image revision. This is not a public business answer surface. | High |
 | `/assets/lugares/**` | Venues preview artwork. | Supports the internal design preview. | Crawling disallowed; `X-Robots-Tag: noindex, nofollow, noarchive`; no sitemap. | Static files remain publicly deliverable. | High |
 | `/boda/*` | Legacy public/demo surface. | Not a current answer target. | `noindex, noarchive`. | Could become approved template/content pages only after a new inventory entry. | Medium |
 | `/para-diseño/` | Legacy design surface. | Not a current answer target. | `noindex, noarchive`. | Keep out of answer surfaces unless product approves a future public page. | Medium |
 | `/404/`, `404.html` | Error surface. | Page not found. | `noindex`. | None for AEO. | Medium |
-| `/robots.txt` | Crawler policy. | Lets search and answer crawlers discover indexable content and see `noindex` where needed. | Static file allows crawling except the professionals/venues design previews and their assets, and points to the sitemap. | Do not block `/i/`; crawlers need to see the invitation `noindex`. | High |
+| `/robots.txt` | Crawler policy. | Lets search and answer crawlers discover indexable content and see `noindex` where needed. | Static file allows crawling except the private directory routes and their legacy artwork, and points to the sitemap. | Do not block `/i/`; crawlers need to see the invitation `noindex`. | High |
 | `/sitemap.xml` | Search discovery. | Lists approved indexable URLs. | Static sitemap lists `/` and `/preguntas-frecuentes/`. | Add future content pages only after this inventory and the SEO inventory are updated. | High |
 | `/_next/**`, `/assets/**`, `/icons/**`, `/favicon_io/**` | Static resources. | Support rendering, not answer content. | No sitemap; PDFs use `noindex` where configured. | None for AEO. | Medium |
 
@@ -37,14 +38,20 @@ and sitemap inclusion.
   answer-engine targets.
 - The public invitation route is intentionally private for search and answer
   engines. It must remain crawlable enough for crawlers to observe `noindex`.
-- The 2026-10-15 professionals preview is an explicitly requested crawling
+- The private-directory implementation of 2026-10-25 replaces the historical
+  example lists with approved backend projections. It preserves the existing
+  crawling exception and extends it to `/proveedor/`; no public directory or
+  `SearchAction` is enabled. Authorization and media controls are owned by
+  [PROVIDER_DATA_MODEL.md](PROVIDER_DATA_MODEL.md#10-beta-privada-v1-contrato-funcional-y-evolución-compatible).
+  The SEO inventory distinguishes local checks from deployment evidence.
+- Historical baseline: the 2026-10-15 professionals preview is an explicitly requested crawling
   exception, not a public provider directory or answer surface. Blocked crawlers
   cannot observe its direct-fetch `noindex`; robots instructions do not enforce
   authentication or make static HTML, JavaScript and artwork confidential.
   The visual preview uses the existing `getAdminAccess` superadmin authority,
   with no provider backend integration. See the SEO inventory for the complete
   route policy and implementation/deployment status.
-- The 2026-10-16 `/lugares/` preview follows the same narrow crawling exception.
+- Historical baseline: the 2026-10-16 `/lugares/` preview follows the same narrow crawling exception.
   It uses the current-user superadmin guard, example venues and an illustrative
   map, with no provider or map-service integration. It is not a public venue
   directory, geographic answer surface or `SearchAction` endpoint. The SEO

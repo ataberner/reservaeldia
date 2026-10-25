@@ -60,7 +60,7 @@ export default function ProfessionalsPage() {
         <meta name="googlebot" content="noindex, nofollow, noarchive" />
       </Head>
       {canView ? (
-        <ProfessionalsLanding user={session.user} />
+        <ProfessionalsLanding user={session.user} key={session.user.uid} />
       ) : (
         <AccessStatus pending={pending} failed={failed} signedIn={Boolean(session.user)} />
       )}

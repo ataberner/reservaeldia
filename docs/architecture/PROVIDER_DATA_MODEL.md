@@ -989,8 +989,10 @@ temporary directory. They never target a real project.
 del producto para el directorio de salones y profesionales. Este apartado es su
 única autoridad funcional. Las reglas de importación anteriores siguen vigentes
 salvo las evoluciones explícitas de acceso y edición indicadas aquí.
-**Implementación:** hito 1 comprende etapas 1–3; las demás etapas son obligaciones
-aceptadas todavía pendientes, sin botones que simulen acciones. El
+**Implementación:** hito 1 comprende etapas 1–3. La entrega siguiente incorpora
+la lectura del directorio exclusivamente para superadmin (§10.4.1), sin abrirlo
+al público ni anticipar importación UI, responsables o solicitudes. Las demás
+etapas siguen pendientes, sin botones que simulen acciones. El
 [informe de pruebas](../testing/PROVIDER_BETA_MILESTONE_1.md) distingue código,
 ejecución local y limitaciones; el
 [runbook](../operations/PROVIDER_BETA_PRIVATE_DEPLOYMENT.md) define una propuesta
@@ -1097,11 +1099,15 @@ versión aprobada y sin restricción. Administración levanta sus restricciones.
 
 ### 10.4 Backend, archivos, administración y beta
 
-`app_config/proveedoresBeta` es backend-only. Tres controles independientes,
-`panelEnabled`, `onboardingEnabled`, `directoryEnabled`, tienen denegación por
-defecto ante ausencia/valor distinto de `true`. Hito 1 sólo implementa consumo
-administrativo de panel; incorporaciones, invitaciones, solicitudes, panel del
-responsable y entrega del directorio no se habilitan por cambiar otros flags.
+`app_config/proveedoresBeta` es backend-only. Los controles de panel,
+incorporaciones y entrega pública son independientes: `panelEnabled`,
+`onboardingEnabled` y `directoryEnabled`. La entrega privada adicional incorpora
+`privateDirectoryEnabled` como cuarto control independiente: no habilita entrega
+pública ni acceso al panel. Todos deniegan ante ausencia/valor distinto de `true`;
+incorporaciones y entrega pública continúan sin implementación y se mantienen
+cerradas aunque sus valores persistidos sean verdaderos. Hito 1 sólo implementa
+consumo administrativo de panel; invitaciones, solicitudes y panel del
+responsable no se habilitan por cambiar otros flags.
 La habilitación individual futura será backend-only, nunca un campo de perfil.
 
 `adminProvidersV1` pertenece a `identity-support`/`default`, Node 22. Separa
@@ -1140,6 +1146,68 @@ Archivos importados conservan formato, paths y cantidad; no se reescriben.
 Noindex, rutas ocultas y enlaces no publicados no son controles de acceso.
 SDKs, backend y preview deben denegar por defecto aunque se conozca una URL.
 No hay secretos ni fichas incrustados en el frontend exportado.
+
+#### 10.4.1 Directorio privado de versiones aprobadas
+
+**DECISIÓN aceptada, 2026-10-25:** conectar las landings existentes para revisión
+privada de superadmin, después de integrar el hito 1. `privateDirectoryEnabled`
+deniega por defecto y se comprueba en backend en cada operación. Es independiente
+de `panelEnabled`; `directoryEnabled` público sigue cerrado. No existe una
+allowlist nueva basada en perfiles ni un privilegio otorgado por participar en beta.
+
+`providerDirectoryV1` y `providerDirectoryImageV1` pertenecen a
+`identity-support/default`, Node 22 y sin Secrets. El primero entrega únicamente
+acceso, catálogo vigente, listado paginado y detalle. Nunca reutiliza el DTO
+administrativo. La elegibilidad requiere `estado == publicado`, `activo == true`,
+ausencia de suspensión en `validacion.estado`, un snapshot aprobado válido y su
+categoría principal actualmente activa. `visible:false` se admite deliberadamente
+en este lector privado; no se modifica al consultar. Los legacy sin aprobación
+quedan fuera aunque un valor histórico diga publicado/visible.
+
+Listado y detalle se construyen exclusivamente desde `aprobada.contenido`, pasando
+por la whitelist canónica del preview. No leen contenido editable para nombre,
+categorías, búsqueda, ubicación, contacto o fotos. Ediciones/revisiones pendientes
+conservan visible la versión aprobada anterior en este recorrido. Pausa, archivo,
+inactividad o suspensión retiran la ficha del listado, detalle y nuevas lecturas
+de imágenes. La UI vuelve a consultar el detalle antes de activar contacto directo;
+si cambió la revisión aprobada, exige examinarla antes de usar el canal nuevo.
+
+El listado distingue `kind: lugar|profesional`; admite categoría activa de esa
+familia, búsqueda normalizada por nombre/descripción breve y ubicación por
+localidad/provincia, más cobertura explícita en profesionales. No ofrece fechas,
+disponibilidad, favoritos o recomendaciones no implementadas. Para lugares,
+`minCapacity` opcional es un entero positivo de hasta 100.000: compara únicamente
+la capacidad máxima confirmada de la versión aprobada y excluye valores
+desconocidos cuando se aplica. No significa disponibilidad para una fecha ni
+completa capacidades no informadas. El backend consulta
+sólo registros con `estado == publicado`, ordenados por ID estable, y filtra el
+contenido aprobado por lotes. Llena cada página (12 por defecto, máximo 24) hasta
+hallar una coincidencia adicional o el fin real. No descarga la base al navegador
+ni declara totales globales. El cursor versionado queda ligado a filtros
+normalizados, familia y tamaño de página; cambiar filtros reinicia la búsqueda.
+La paginación refleja el estado actual en cada petición, no promete una fotografía
+inmutable entre páginas mientras administración modifica fichas.
+
+El presupuesto es de 5.000 candidatos examinados por llamada, con un documento
+adicional por lote para detectar el fin exacto. Si no permite resolver la página
+y su continuación, devuelve `resource-exhausted` explícito sin una página parcial
+ni un falso fin de resultados. Las lecturas permanecen en el servidor. Esta beta
+no agrega estado persistido de elegibilidad ni un índice paralelo contradictorio;
+la query por estado/ID utiliza el índice simple existente.
+
+Los DTOs de imágenes sólo incluyen ID y metadata de presentación; excluyen paths,
+URLs originales/de descarga y tokens. El GET de imagen recibe ID de negocio,
+ID de imagen y revisión aprobada; verifica token revocado, superadmin, gate y
+elegibilidad actuales. Resuelve la referencia exclusivamente entre portada, logo
+y galería del snapshot aprobado actual y exige un path propio del negocio.
+Una referencia sólo presente en borrador, revisión pendiente o ledger se deniega,
+igual que una revisión aprobada sustituida. No hay fallback al endpoint
+administrativo, URLs firmadas, redirecciones ni escritura de archivos. Respuestas
+privadas usan `private, no-store`; una copia ya descargada no puede retirarse del
+dispositivo. Las Rules SDK restrictivas del hito 1 se conservan.
+
+La evidencia local y sus limitaciones se registran en
+[verificación del directorio privado](../testing/PROVIDER_PRIVATE_DIRECTORY.md).
 
 ### 10.5 Etapas posteriores aceptadas y todavía pendientes
 
@@ -1181,7 +1249,9 @@ registra evidencia del vínculo. Email verificado no prueba representación.
 Responsable existente nunca se reemplaza automáticamente. Solicitante pendiente
 no edita ni lee privados; búsqueda entrega únicamente campos permitidos.
 
-**7–9. Directorio privado, validación y apertura.** Reutilizar landings existentes
+**7–9. Directorio privado, validación y apertura.** La lectura privada superadmin
+se implementa según §10.4.1; la apertura y admisión de otras cuentas siguen
+pendientes. Reutilizar landings existentes
 de lugares/profesionales, con datos aprobados y acceso privado primero. Contacto
 V1 directo por WhatsApp/correo aprobado; sin bandeja interna. Validar con cuentas
 sintéticas y grupo reducido autorizado antes de una apertura pública explícita.

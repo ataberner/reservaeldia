@@ -1,0 +1,15 @@
+name: Verify private provider candidate
+on:
+  push:
+    branches:
+      - feat/proveedores-directorio-privado
+permissions:
+  contents: read
+concurrency:
+  group: providers-private-candidate-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verification:
+    # Run the existing credential-free emulator checks before any PR event can
+    # trigger Hosting preview. This workflow has no deployment job or secrets.
+    uses: ./.github/workflows/local-verification.yml

@@ -942,6 +942,26 @@
       "manifestHash": "baa2e3c65a875d95102a8f048acd40d08ea1bc4fdf08e743b1c6335705a045f3"
     },
     {
+      "name": "providerDirectoryImageV1",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "3e9e0276222bd3692888495bf74d2b93bf5071a56ee28945c80e053f0faecd11"
+    },
+    {
+      "name": "providerDirectoryV1",
+      "domain": "identity-support",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "0487a0c381741be8b96296d4e93aecfe60af36f51f5670353dfc61fe11dae1c4"
+    },
+    {
       "name": "publicarInvitacion",
       "domain": "publication-delivery",
       "codebase": "default",

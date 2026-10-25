@@ -332,8 +332,8 @@ export function transitionProviderBeta(document: RecordValue, input: { operation
   return { document: next, changedFields, reason };
 }
 
-export function providerBetaControls(value: unknown): { panelEnabled: boolean; onboardingEnabled: boolean; directoryEnabled: boolean } {
+export function providerBetaControls(value: unknown): { panelEnabled: boolean; privateDirectoryEnabled: boolean; onboardingEnabled: boolean; directoryEnabled: boolean } {
   const config = providerRecord(value);
   // Public delivery and onboarding are intentionally unimplemented in milestone 1.
-  return { panelEnabled: config.panelEnabled === true, onboardingEnabled: false, directoryEnabled: false };
+  return { panelEnabled: config.panelEnabled === true, privateDirectoryEnabled: config.privateDirectoryEnabled === true, onboardingEnabled: false, directoryEnabled: false };
 }

@@ -16,6 +16,7 @@ function Status({ provider }) {
 
 export function ProviderList({ state, onOpen, onCreate }) {
   const { filters, setFilters, catalog, busy, items, page, nextCursor } = state;
+  const ready = state.listStatus === "ready" && !busy && !state.error;
   const filter = (key, value) => setFilters((previous) => ({ ...previous, [key]: value }));
   return (
     <>
@@ -24,7 +25,7 @@ export function ProviderList({ state, onOpen, onCreate }) {
         <button type="button" className={styles.primary} onClick={onCreate} disabled={busy}><Plus size={18} aria-hidden="true" />Crear ficha</button>
       </header>
       <div className={styles.notice}><ShieldCheck size={18} className="inline mr-2" aria-hidden="true" />Directorio público desactivado. Las fichas y sus vistas previas permanecen privadas.</div>
-      <div className={styles.panel}>
+      <div className={styles.panel} aria-busy={busy}>
         <form className={styles.filters} onSubmit={(event) => { event.preventDefault(); void state.search(); }}>
           <Field label="Buscar por nombre o correo" value={filters.search} onChange={(value) => filter("search", value)} type="search" />
           <Field label="Categoría" value={filters.categoryId} onChange={(value) => filter("categoryId", value)} options={[["", "Todas"], ...catalog.categories.map((entry) => [entry.id, entry.nombre])]} />
@@ -35,7 +36,7 @@ export function ProviderList({ state, onOpen, onCreate }) {
           <button className={styles.button} type="submit" disabled={busy}><Search size={16} aria-hidden="true" />Buscar fichas</button>
         </form>
         {busy && <p role="status" className={styles.notice}>Cargando fichas…</p>}
-        {!busy && items.length === 0 ? <div className={styles.empty}><Store size={40} aria-hidden="true" /><h2>{nextCursor ? "Sin coincidencias en esta página" : "No hay fichas para mostrar"}</h2><p className={styles.muted}>{nextCursor ? "Hay más registros por consultar. Usá Siguiente para continuar con estos filtros." : "Creá la primera ficha o probá otros filtros."}</p></div> : (
+        {ready && (items.length === 0 ? <div className={styles.empty}><Store size={40} aria-hidden="true" /><h2>No hay coincidencias</h2><p className={styles.muted}>Probá otros filtros para encontrar una ficha.</p></div> : (
           <table className={styles.table}>
             <thead><tr><th scope="col">Negocio</th><th scope="col">Categoría y localidad</th><th scope="col">Publicación</th><th scope="col">Responsable</th><th scope="col">Revisión</th></tr></thead>
             <tbody>{items.map((item) => <tr key={item.id}>
@@ -46,8 +47,8 @@ export function ProviderList({ state, onOpen, onCreate }) {
               <td data-label="Revisión">{providerReviewLabel(item.reviewStatus, item.hasPendingChanges)}</td>
             </tr>)}</tbody>
           </table>
-        )}
-        <div className={styles.row}><p className={styles.hint}>Página {page} · {items.length} fichas</p><div className={styles.actions}><button className={styles.button} type="button" disabled={busy || page <= 1} onClick={() => void state.paginate(-1)}>Anterior</button><button className={styles.button} type="button" disabled={busy || !nextCursor} onClick={() => void state.paginate(1)}>Siguiente</button></div></div>
+        ))}
+        {ready && <div className={styles.row}><p className={styles.hint}>Página {page} · {items.length} fichas</p><div className={styles.actions}><button className={styles.button} type="button" disabled={page <= 1} onClick={() => void state.paginate(-1)}>Anterior</button><button className={styles.button} type="button" disabled={!nextCursor || !items.length} onClick={() => void state.paginate(1)}>Siguiente</button></div></div>}
       </div>
     </>
   );
@@ -118,7 +119,7 @@ export default function ProviderDirectoryAdmin() {
   return (
     <div className={styles.shell}>
       <div className={`${styles.row} mb-6`}><a href="/admin/gestion-sitio/" className={styles.button}><ArrowLeft size={16} aria-hidden="true" />Administración</a><a href="/dashboard/">Mis invitaciones</a></div>
-      {state.error && <div className={`${styles.notice} ${styles.error}`} role="alert"><p>{state.error}</p><button type="button" className={styles.button} disabled={state.busy} onClick={() => { if (state.dirty) setDiscard(true); else void state.reload(); }}>Recargar versión actual</button></div>}
+      {state.error && <div className={`${styles.notice} ${styles.error}`} role="alert"><p>{state.error}</p><button type="button" className={styles.button} disabled={state.busy} onClick={() => { if (state.dirty) setDiscard(true); else void state.reload(); }}>{!detail && state.catalog ? "Volver a intentar la búsqueda" : "Recargar versión actual"}</button></div>}
       {state.message && <p className={`${styles.notice} ${styles.success}`} role="status">{state.message}</p>}
       {!state.access && state.busy && <p role="status">Validando acceso a la beta…</p>}
       {state.access?.enabled && !state.catalog && state.busy && <p role="status">Preparando categorías y fichas…</p>}

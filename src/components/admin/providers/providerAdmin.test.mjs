@@ -98,6 +98,160 @@ function providerFixture() {
   };
 }
 
+async function withAdminList(api, exercise) {
+  const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
+  const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  let state;
+  const requests = [];
+  const Hook = compile("./useProviderAdmin.js", { "@/domain/providers/adminApi": { async providerAdminRequest(operation, data) {
+    requests.push({ operation, data });
+    if (operation === "access") return { enabled: true };
+    if (operation === "catalog") return catalog;
+    return api(operation, data);
+  } } }).default;
+  function Harness() { state = Hook(); return null; }
+  const root = createRoot(dom.window.document.getElementById("root"));
+  try {
+    await act(async () => root.render(React.createElement(Harness)));
+    await exercise({ state: () => state, requests });
+  } finally {
+    await act(async () => root.unmount()); dom.window.close();
+    globalThis.window = previous.window; globalThis.document = previous.document; globalThis.IS_REACT_ACT_ENVIRONMENT = previous.act;
+  }
+}
+
+test("admin search retries the failed query after resetting pagination, not a prior successful query", async () => {
+  let rejectSearch = true;
+  await withAdminList(async (_operation, data) => {
+    if (data.search === "second" && rejectSearch) throw new Error("Synthetic network failure");
+    return { items: [{ id: data.cursor ? "page-two" : "first" }], nextCursor: "cursor-first" };
+  }, async ({ state, requests }) => {
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "first", pending: "false" })));
+    await act(async () => state().search());
+    await act(async () => state().paginate(1));
+    assert.equal(state().page, 2);
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "second" })));
+    await act(async () => state().search());
+    assert.equal(state().page, 1);
+    assert.deepEqual(state().items, []);
+    assert.equal(state().nextCursor, null);
+    rejectSearch = false;
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "not submitted" })));
+    await act(async () => state().reload());
+    assert.equal(requests.at(-1).data.search, "second");
+    assert.equal(state().filters.search, "second");
+    assert.equal(requests.at(-1).data.pending, false);
+    assert.equal(requests.at(-1).data.cursor, null);
+    assert.equal(state().page, 1);
+    const requestCount = requests.length;
+    await act(async () => state().paginate(-1));
+    assert.equal(requests.length, requestCount);
+  });
+});
+
+test("admin pending searches remove previous rows and late success/error cannot replace the current result", async () => {
+  const deferred = {};
+  await withAdminList(async (_operation, data) => {
+    if (!data.search) return { items: [{ id: "initial" }], nextCursor: "initial-cursor" };
+    return new Promise((resolve, reject) => { deferred[data.search] = { resolve, reject }; });
+  }, async ({ state }) => {
+    let first; let second;
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "first" })));
+    await act(async () => { first = state().search(); });
+    assert.equal(state().busy, true);
+    assert.deepEqual(state().items, []);
+    assert.equal(state().nextCursor, null);
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "second" })));
+    await act(async () => { second = state().search(); });
+    await act(async () => { deferred.second.resolve({ items: [{ id: "newest" }], nextCursor: null }); await second; });
+    await act(async () => { deferred.first.resolve({ items: [{ id: "obsolete" }], nextCursor: "obsolete-cursor" }); await first; });
+    assert.deepEqual(state().items, [{ id: "newest" }]);
+    assert.equal(state().nextCursor, null);
+    let third; let fourth;
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "third" })));
+    await act(async () => { third = state().search(); });
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "fourth" })));
+    await act(async () => { fourth = state().search(); });
+    await act(async () => { deferred.fourth.resolve({ items: [{ id: "final" }], nextCursor: null }); await fourth; });
+    await act(async () => { deferred.third.reject(new Error("obsolete error")); await third; });
+    assert.deepEqual(state().items, [{ id: "final" }]);
+    assert.equal(state().error, "");
+    assert.equal(state().busy, false);
+  });
+});
+
+test("admin return refreshes applied filters, keeping the page until a successful mutation resets it", async () => {
+  await withAdminList(async (operation, data) => {
+    if (operation === "list") return { items: [{ id: "synthetic" }], nextCursor: "cursor-first" };
+    if (["get", "save", "archive"].includes(operation)) return { provider: providerFixture() };
+    if (operation === "create") return { provider: { ...providerFixture(), id: "new-nonmatching" } };
+    throw new Error(`Unexpected operation ${operation}`);
+  }, async ({ state, requests }) => {
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "saved", city: "Rosario", publication: "borrador" })));
+    await act(async () => state().search());
+    await act(async () => state().paginate(1));
+    await act(async () => state().open("synthetic"));
+    await act(async () => state().back());
+    assert.equal(requests.at(-1).data.cursor, "cursor-first");
+    assert.equal(state().page, 2);
+    await act(async () => state().setFilters((filters) => ({ ...filters, search: "not submitted" })));
+    await act(async () => state().open("synthetic"));
+    await act(async () => state().setField("nombre", "Saved updated name"));
+    await act(async () => state().save());
+    await act(async () => state().back());
+    assert.equal(requests.at(-1).data.cursor, null);
+    assert.equal(requests.at(-1).data.search, "saved");
+    assert.equal(requests.at(-1).data.city, "Rosario");
+    assert.equal(requests.at(-1).data.publication, "borrador");
+    assert.equal(state().filters.search, "saved");
+    assert.equal(state().page, 1);
+    await act(async () => state().paginate(1));
+    await act(async () => state().open("synthetic"));
+    await act(async () => state().transition("archive", "Synthetic archive"));
+    await act(async () => state().back());
+    assert.equal(requests.at(-1).data.cursor, null);
+    assert.equal(state().page, 1);
+    await act(async () => state().paginate(1));
+    await act(async () => state().create());
+    await act(async () => state().save());
+    await act(async () => state().back());
+    assert.equal(requests.at(-1).data.cursor, null);
+    assert.equal(requests.at(-1).data.search, "saved");
+    assert.equal(state().page, 1);
+    assert.deepEqual(state().items, [{ id: "synthetic" }]);
+  });
+});
+
+test("admin list distinguishes loading and errors from a completed empty search", () => {
+  const List = compile("./ProviderDirectoryAdmin.jsx", {
+    "./useProviderAdmin": { __esModule: true, default: () => null },
+    "./ProviderFields": { __esModule: true, default: () => null, Field: () => null },
+    "./ProviderPreview": { __esModule: true, default: () => null },
+  }).ProviderList;
+  const state = { filters: {}, setFilters() {}, catalog, busy: true, items: [{ id: "stale", nombre: "STALE_NAME" }], page: 1, nextCursor: null, listStatus: "loading", error: "" };
+  const render = () => renderToStaticMarkup(React.createElement(List, { state, onOpen() {}, onCreate() {} }));
+  assert.match(render(), /Cargando fichas/);
+  assert.doesNotMatch(render(), /STALE_NAME|No hay coincidencias|1 fichas/);
+  Object.assign(state, { busy: false, listStatus: "error", error: "Synthetic failure", items: [] });
+  assert.doesNotMatch(render(), /No hay coincidencias|Sin coincidencias/);
+  Object.assign(state, { listStatus: "ready", error: "" });
+  assert.match(render(), /No hay coincidencias/);
+  // A malformed/obsolete cursor must not turn a completed empty result into
+  // instructions to walk storage blocks. Valid backend pages contain matches.
+  state.nextCursor = "obsolete-cursor";
+  const empty = render();
+  assert.doesNotMatch(empty, /Sin coincidencias en esta página|Hay más registros|continuar con estos filtros/);
+  assert.match(empty, /<button[^>]*disabled=""[^>]*>Siguiente<\/button>/);
+});
+
+test("admin search capacity failures explain the bounded query without exposing internal errors", () => {
+  const message = form.providerErrorMessage({ code: "functions/resource-exhausted", message: "PRIVATE_BUDGET_DETAIL" });
+  assert.match(message, /límite.*búsqueda|búsqueda.*límite/i);
+  assert.match(message, /Volvé a intentarlo; si persiste, contactá a soporte/);
+  assert.doesNotMatch(message, /PRIVATE_/);
+});
+
 test("real hook sends exact revisions and retains local draft after concurrent-write rejection", async () => {
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
   const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };

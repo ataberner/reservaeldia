@@ -59,13 +59,16 @@ async function waitForEmulators(child, env) {
 async function main(mode) {
   const release = mode === "release", buildOnly = mode === "build", providersOnly = mode === "providers";
   const administrativeDraftsOnly = mode === "admin-drafts";
+  const adminSearchOnly = mode === "provider-admin-search";
   const directoryBrowserOnly = mode === "provider-directory-browser", directoryOnly = mode === "provider-directory" || directoryBrowserOnly;
   const integration = ["test", "verify", "release", "providers", "provider-directory", "provider-directory-browser"].includes(mode), rules = ["rules", "verify", "admin-drafts"].includes(mode);
-  const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration && !directoryBrowserOnly ? ["configuration"] : []), "sync", "compile", "contracts-built",
+  const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...((integration && !directoryBrowserOnly) || adminSearchOnly ? ["configuration"] : []), "sync", "compile", "contracts-built",
     ...(integration && !providersOnly && !directoryOnly ? ["backend", "compatibility"] : []),
     ...(release || buildOnly ? ["build-capture", "build-export", "build-finalize", "build-release-check"] : []),
     ...(administrativeDraftsOnly ? ["administrative-drafts-frontend"] : []),
+    ...(adminSearchOnly ? ["provider-admin-search-unit"] : []),
     ...(!buildOnly ? ["emulators"] : []), ...(rules ? ["rules-countdown"] : []), ...(administrativeDraftsOnly ? ["administrative-drafts"] : []),
+    ...(adminSearchOnly ? ["provider-admin-search-api", "seed", "provider-admin-search-warmup", "provider-admin-search-browser", "stop-services", "offline"] : []),
     ...(integration ? [...(!directoryOnly ? ["integration", "providers-api"] : []), ...(!directoryBrowserOnly ? ["provider-directory-api"] : []), "seed", ...(!directoryOnly ? ["browser", "providers-browser"] : ["provider-directory-warmup"]), "provider-directory-browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
   evidence = new Evidence(ROOT, mode, mode === "check" ? ["prerequisites"] : names);
   let requirements;
@@ -74,7 +77,7 @@ async function main(mode) {
     return evidence.stage(name, operation, kind);
   };
   await stage("prerequisites", async () => {
-    if (!["dev", "providers-dev", "providers", "provider-directory", "provider-directory-browser", "provider-directory-dev", "emulators", "test", "rules", "admin-drafts", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
+    if (!["dev", "providers-dev", "providers", "provider-admin-search", "provider-directory", "provider-directory-browser", "provider-directory-dev", "emulators", "test", "rules", "admin-drafts", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
       throw failure("Modo local inválido; no se aceptan overrides de destino.", "prerequisite");
     validateInheritedDestinations();
     requirements = checkRequirements();
@@ -146,13 +149,14 @@ async function main(mode) {
       if (fs.existsSync(report)) fs.copyFileSync(report, path.join(session, "contracts-evidence.json"));
     }
   }
-  if (integration && !directoryBrowserOnly) await run("configuration", ["--test", "--test-reporter=tap", "scripts/local/environment.test.mjs", "src/firebaseInitializationContract.test.mjs"]);
+  if ((integration && !directoryBrowserOnly) || adminSearchOnly) await run("configuration", ["--test", "--test-reporter=tap", "scripts/local/environment.test.mjs", "src/firebaseInitializationContract.test.mjs"]);
   await run("sync", ["scripts/syncTemplateContract.cjs"], { cwd: path.join(workspace, "functions"), kind: "infrastructure" });
   await run("compile", ["node_modules/typescript/bin/tsc"], { cwd: path.join(workspace, "functions"), kind: "tests" });
   await run("contracts-built", ["scripts/syncTemplateContract.cjs", "--check"], { cwd: path.join(workspace, "functions") });
   if (administrativeDraftsOnly) {
     await run("administrative-drafts-frontend", ["--test", "--test-concurrency=1", "--test-reporter=tap", ...adminDraftChecks], { timeoutMs: 180000 });
   }
+  if (adminSearchOnly) await run("provider-admin-search-unit", ["--test", "--test-concurrency=1", "--test-reporter=tap", "functions/providersAdminSearch.test.mjs", "src/components/admin/providers/providerAdmin.test.mjs", "src/domain/providers/adminForm.test.mjs", "scripts/local/providerAdminSearchHarness.test.mjs"]);
   if (integration && !providersOnly && !directoryOnly) {
     await run("backend", ["--test", "--test-reporter=tap", "scripts/local/backend.test.cjs"]);
     await run("compatibility", ["scripts/local/productionCompatibility.cjs"]);
@@ -201,6 +205,24 @@ async function main(mode) {
     return;
   }
   if (mode === "rules") return;
+  if (adminSearchOnly) {
+    await run("provider-admin-search-api", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/providerAdminSearch.test.mjs"], { timeoutMs: 300000 });
+    await run("seed", ["scripts/local/seedLocal.cjs"]);
+    const next = processes.start(["scripts/runNextDev.cjs"], { cwd: workspace, env: { ...env, NODE_ENV: "development" }, log: path.join(evidence.directory, "next.log"), name: "next" });
+    await run("provider-admin-search-warmup", ["scripts/local/warmProviderAdminSearch.cjs"], { timeoutMs: 600000, kind: "infrastructure" });
+    browserEnvironment = createSocketEnvironment(env);
+    await run("provider-admin-search-browser", ["--test", "--test-reporter=tap", "scripts/local/providerAdminSearch.browser.test.mjs"], { timeoutMs: 600000, env: browserEnvironment.env });
+    if (next.done) throw failure("Next se detuvo durante la prueba.");
+    await stage("stop-services", stop);
+    await run("offline", ["--test", "--test-reporter=tap", "scripts/local/offline.test.mjs"]);
+    for (const name of ["provider-admin-search-api", "provider-admin-search-warmup", "provider-admin-search-browser", "offline"]) {
+      if (!fs.existsSync(path.join(session, `${name}-evidence.json`))) throw failure(`Falta evidencia ${name}`);
+    }
+    fs.writeFileSync(path.join(session, "verified.json"), JSON.stringify({ project: contract.LOCAL_PROJECT, checkedAt: new Date().toISOString(), mode,
+      checks: evidence.data.stages.filter(s => s.status === "passed").map(s => s.name),
+      exclusions: ["Functions ownership gate", "lint", "general Rules suite", "directory/editor/photos regression", "production Next build/export", "production latency/billing", "remote operations"] }, null, 2));
+    return;
+  }
   if (integration || ["dev", "providers-dev", "provider-directory-dev"].includes(mode)) {
     if (integration && !directoryOnly) await run("integration", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/integration.test.mjs", "scripts/local/authFlows.test.mjs", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
     if (integration && !directoryOnly) await run("providers-api", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/providerBeta.test.mjs", "scripts/local/providerBetaArtifact.test.mjs"], { timeoutMs: 300000 });
@@ -258,7 +280,7 @@ async function entry() {
   };
   const onSignal = () => interrupt("interrupted");
   process.once("SIGINT", onSignal); process.once("SIGTERM", onSignal);
-  const timer = ["verify", "test", "rules", "check", "build", "release", "providers", "provider-directory", "provider-directory-browser"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
+  const timer = ["verify", "test", "rules", "check", "build", "release", "providers", "provider-admin-search", "provider-directory", "provider-directory-browser"].includes(mode) ? setTimeout(() => interrupt("infrastructure"), (mode === "release" ? 35 : 25) * 60000) : undefined;
   try { await main(mode); } catch (e) { error = e; }
   finally {
     clearTimeout(timer);

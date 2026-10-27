@@ -163,3 +163,20 @@ test("resolveCompatibleDraftForDashboardEditor preserves legacy detection and pu
     },
   });
 });
+
+test("explicit Konva drafts remain editable when their canvas is empty", async () => {
+  for (const [fields, expected] of [
+    [{ editor: "konva", objetos: [], secciones: [] }, "ok"],
+    [{ objetos: [], secciones: [] }, "legacy"],
+    [{ editor: "konva", objetos: [] }, "legacy"],
+  ]) {
+    const draftData = { userId: "owner", ...fields };
+    const result = await resolveCompatibleDraftForDashboardEditor({
+      slug: "empty-draft",
+      uid: "owner",
+      readDraftBySlug: async () => ({ exists: () => true, data: () => draftData }),
+      readPublicationBySlug: async () => ({ exists: () => false }),
+    });
+    assert.equal(result.status, expected);
+  }
+});

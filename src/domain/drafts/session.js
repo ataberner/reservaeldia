@@ -22,5 +22,8 @@ export function normalizeEditorSession(value, fallbackSlug = "") {
     kind,
     id,
     isSupported: isSupportedEditorSessionKind(kind),
+    ...(kind === EDITOR_SESSION_KINDS.DRAFT && safeValue.adminEdit
+      ? { adminEdit: safeValue.adminEdit }
+      : {}),
   };
 }

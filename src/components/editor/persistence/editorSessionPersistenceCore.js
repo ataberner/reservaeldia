@@ -167,6 +167,7 @@ export function createEditorSessionPersistence({
     session,
     slug = "",
     initialData = null,
+    resetDraftRevision = false,
   } = {}) {
     const resolvedSession = normalizeEditorSession(session, slug);
     assertSupportedSession(resolvedSession);
@@ -233,6 +234,8 @@ export function createEditorSessionPersistence({
       const result = normalizeSnapshotResult(
         await readDraftDocument({
           draftId: resolvedSession.id,
+          session: resolvedSession,
+          resetDraftRevision,
         })
       );
 
@@ -318,6 +321,7 @@ export function createEditorSessionPersistence({
       const writeResult = await writeDraftPatch({
         draftId: resolvedSession.id,
         patch: payload,
+        session: resolvedSession,
       });
 
       return {

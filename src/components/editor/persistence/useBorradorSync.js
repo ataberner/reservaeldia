@@ -262,10 +262,14 @@ export default function useBorradorSync({
             severity: "error",
           });
 
+          const isConflict = error?.code === "draft-conflict" ||
+            error?.code === "functions/aborted";
           return {
             ok: false,
-            reason: "persist-failed",
-            error: "No se pudo guardar el borrador en este momento.",
+            reason: isConflict ? "draft-conflict" : "persist-failed",
+            error: isConflict
+              ? error.message
+              : "No se pudo guardar el borrador en este momento.",
           };
         }
       };

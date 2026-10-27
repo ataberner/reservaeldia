@@ -255,6 +255,7 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice, onAu
       nombre: statusData?.profile?.nombre || fallbackNames.nombre || "",
       apellido: statusData?.profile?.apellido || fallbackNames.apellido || "",
       fechaNacimiento: statusData?.profile?.fechaNacimiento || "",
+      designAssistance: statusData?.profile?.designAssistance,
       nombreCompleto:
         statusData?.profile?.nombreCompleto || user?.displayName || "",
     });
@@ -651,8 +652,6 @@ export default function RegisterModal({ onClose, onGoToLogin, onAuthNotice, onAu
       <ProfileCompletionModal
         visible={showProfileCompletion}
         mandatory
-        title="Completa tu perfil"
-        subtitle="Antes de continuar necesitamos nombre, apellido y fecha de nacimiento."
         initialValues={profileInitialValues}
         submitLabel="Guardar y continuar"
         onSubmit={handleProfileSubmit}

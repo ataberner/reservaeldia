@@ -45,6 +45,12 @@ export const FAQ_SECTIONS = [
           "Sí. Podés comenzar con una plantilla de invitación profesional y personalizar cada sección con la información de tu evento, tus textos, fotos, colores y otros elementos visuales. El editor está pensado para que avances de forma guiada y veas el resultado mientras trabajás. No necesitás contratar a un diseñador para crear una invitación digital clara, cuidada y coherente con el estilo de tu celebración.",
       },
       {
+        id: "ayuda-para-disenar-y-personalizar",
+        question: "¿Pueden ayudarme a diseñar y personalizar mi invitación?",
+        answer:
+          "¡Sí! Contamos con un equipo de diseñadores para acompañarte en la edición de tu invitación. Si preferís, podemos encargarnos de toda la personalización con los datos de tu evento, sin compromiso de compra. Así podés verla terminada antes de decidir: si te gusta, la publicás y recién ahí pagás.",
+      },
+      {
         id: "conocimientos-de-diseno-o-programacion",
         question: "¿Necesito conocimientos de diseño o programación?",
         answer:

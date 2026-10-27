@@ -7,6 +7,7 @@ export const authorities = {
   A3: "docs/architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision (private beta: provider documents/images backend-only; no SDK delivery)",
   A4: "docs/architecture/DATA_MODEL.md#countdownpresets (administrative draft; immutable published versions)",
   D1: "docs/contracts/SECURITY_CONTRACT.md (backend-only stored draft artifacts and immutable creation provenance)",
+  AD1: "docs/contracts/SECURITY_CONTRACT.md#administrative-drafts (explicit superadmin draft channel, reserved audit and concurrent-edit protection)",
   W1: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1 (backend-only welcome reservations)",
   W2: "docs/operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails (backend-only internal notification reservations)",
   AI1: "docs/contracts/SECURITY_CONTRACT.md (backend-only Designer AI policy and accounting)",
@@ -350,6 +351,74 @@ for (const withCreation of [false, true]) {
 add("draft-creation-owner-legacy-create", "acceptance", "A", "firestore", "borradores/{ID}", "create", "allow", "D1", {
   payload: { userId: "{A}", nombre: "Synthetic legacy draft" },
 });
+
+// Administrative support never grants SDK access to another owner's draft.
+// The reserved token prevents an already-open owner editor from overwriting an
+// administrative change without acknowledging the newly loaded revision.
+const adminDraftRevision = "synthetic-admin-revision-current";
+const adminAudit = { ownerUid: "{A}", updatedByUid: "{SUPER}", role: "superadmin" };
+const adminManagedDraft = {
+  userId: "{A}", nombre: "Synthetic administratively edited draft", objetos: [],
+  adminDraftRevision, adminAudit,
+  draftContentMeta: { baseAdminRevision: "synthetic-admin-revision-previous", updatedAt: 1 },
+};
+const adminDraftCase = (id, identity, operation, expected, extra = {}) =>
+  add(`admin-draft-${id}`, "acceptance", identity, "firestore", "borradores/{ID}", operation,
+    expected, "AD1", { data: adminManagedDraft, ...extra });
+for (const identity of ["B", "admin", "superclaim", "role", "serverSuper"]) {
+  for (const operation of ["get", "update", "delete"]) {
+    adminDraftCase(`${identity}-foreign-${operation}`, identity, operation, "deny");
+  }
+  adminDraftCase(`${identity}-foreign-create`, identity, "create", "deny", {
+    payload: { userId: "{A}", nombre: "Synthetic foreign creation" },
+  });
+}
+for (const [field, value] of [["adminDraftRevision", adminDraftRevision], ["adminAudit", adminAudit]]) {
+  for (const identity of ["A", "admin"]) {
+    const userId = identity === "A" ? "{A}" : "{ADMIN}";
+    const owned = { ...adminManagedDraft, userId };
+    adminDraftCase(`${identity}-${field}-create`, identity, "create", "deny", {
+      payload: { userId, [field]: value },
+    });
+    adminDraftCase(`${identity}-${field}-inject`, identity, "update", "deny", {
+      data: { userId }, payload: { [field]: value },
+    });
+    adminDraftCase(`${identity}-${field}-nullify`, identity, "update", "deny", {
+      data: owned, payload: { [field]: null },
+    });
+    const replacement = { ...owned, draftContentMeta: { baseAdminRevision: adminDraftRevision, updatedAt: 2 } };
+    delete replacement[field];
+    adminDraftCase(`${identity}-${field}-remove`, identity, "replace", "deny", {
+      data: owned, payload: replacement,
+    });
+  }
+}
+for (const [id, payload] of [
+  ["stale-content", { objetos: [{ id: "stale" }] }],
+  ["stale-explicit-revision", { nombre: "Stale rename", draftContentMeta: { baseAdminRevision: "synthetic-admin-revision-previous", updatedAt: 2 } }],
+  ["missing-revision", { objetos: [], draftContentMeta: { updatedAt: 2 } }],
+  ["null-revision", { objetos: [], draftContentMeta: { baseAdminRevision: null, updatedAt: 2 } }],
+  ["stale-with-thumbnail", { nombre: "Stale rename", thumbnailUrl: "synthetic-thumbnail" }],
+]) adminDraftCase(id, "A", "update", "deny", { payload });
+adminDraftCase("implicit-current-metadata", "A", "update", "deny", {
+  data: { ...adminManagedDraft, draftContentMeta: { baseAdminRevision: adminDraftRevision, updatedAt: 1 } },
+  payload: { nombre: "Old editor without explicit acknowledgment" },
+});
+for (const operation of ["update", "replace"]) {
+  adminDraftCase(`owner-current-${operation}`, "A", operation, "allow", {
+    payload: { ...(operation === "replace" ? adminManagedDraft : {}), nombre: "Current owner edit",
+      draftContentMeta: { baseAdminRevision: adminDraftRevision, updatedAt: 2 } },
+  });
+}
+adminDraftCase("owner-thumbnail-refresh", "A", "update", "allow", {
+  payload: { thumbnailUrl: "synthetic-thumbnail", thumbnailUpdatedAt: 2 },
+});
+adminDraftCase("owner-get", "A", "get", "allow");
+adminDraftCase("owner-delete", "A", "delete", "allow");
+add("admin-draft-audit-subcollection-owner", "acceptance", "A", "firestore",
+  "borradores/{ID}/adminAudit/operation", "get", "deny", "AD1", {
+    fixtures: [{ path: "borradores/{ID}", data: adminManagedDraft }], data: adminAudit,
+  });
 
 // Stored legacy draft HTML/assets are backend-only, including orphan objects.
 // A matching Firestore owner is not proof that the stored bytes belong to it.

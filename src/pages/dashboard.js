@@ -27,6 +27,8 @@ import ProfileCompletionModal from "@/lib/components/ProfileCompletionModal";
 import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 import EditorIssueBanner from "@/components/editor/diagnostics/EditorIssueBanner";
 import BrowserStorageRecoveryBanner from "@/components/dashboard/BrowserStorageRecoveryBanner";
+import AdminDraftEditingControls from "@/components/admin/AdminDraftEditingControls";
+import { DRAFT_SAVE_ERROR_EVENT } from "@/components/editor/persistence/draftRevisionTransport";
 import { pushEditorBreadcrumb } from "@/lib/monitoring/editorIssueReporter";
 import { applyDefaultEditorConsoleDebugFlags } from "@/lib/monitoring/editorConsoleDebugFlags";
 const CanvasEditor = dynamic(() => import("@/components/CanvasEditor"), {
@@ -77,6 +79,7 @@ export default function Dashboard() {
     legacyDraftNotice,
     setLegacyDraftNotice,
     adminDraftView,
+    setAdminDraftEditing,
     templateWorkspaceView,
     editorSession,
     isAdminReadOnlyView,
@@ -143,10 +146,77 @@ export default function Dashboard() {
     modoEditor,
     editorSession,
     editorReadOnly: isEditorReadOnly,
-    administrativeDraftPreview: isAdminReadOnlyView
+    administrativeDraftPreview: adminDraftView.enabled
       ? adminDraftView
       : null,
   });
+  const [adminEditBusy, setAdminEditBusy] = useState(false);
+  const [draftSaveError, setDraftSaveError] = useState("");
+  const adminEditBusyRef = useRef(false);
+  const activeEditorSessionRef = useRef(editorSession);
+  activeEditorSessionRef.current = editorSession;
+  useEffect(() => {
+    if (!adminEditBusy) return undefined;
+    // Canvas shortcuts listen on document, outside the inert editor surface.
+    const blockShortcuts = (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("keydown", blockShortcuts, true);
+    return () => window.removeEventListener("keydown", blockShortcuts, true);
+  }, [adminEditBusy]);
+  useEffect(() => {
+    setDraftSaveError("");
+    const handleSaveError = (event) => {
+      if (event.detail?.draftId !== slugInvitacion) return;
+      if (event.detail.saved) { setDraftSaveError(""); return; }
+      setDraftSaveError(event.detail.message || "No se pudieron guardar los cambios. Intentá nuevamente.");
+    };
+    window.addEventListener(DRAFT_SAVE_ERROR_EVENT, handleSaveError);
+    return () => window.removeEventListener(DRAFT_SAVE_ERROR_EVENT, handleSaveError);
+  }, [slugInvitacion]);
+
+  const toggleAdminEditing = async () => {
+    if (adminEditBusyRef.current) return;
+    adminEditBusyRef.current = true;
+    setAdminEditBusy(true);
+    try {
+      if (adminDraftView.editing) {
+        const result = await ensureDraftFlushBeforeCriticalAction("admin-return-readonly");
+        if (!result?.ok) throw new Error(result?.error || "No se guardaron los cambios. Permanecés en modo edición.");
+      }
+      const changed = await setAdminDraftEditing(!adminDraftView.editing);
+      if (changed) setDraftSaveError("");
+    } catch (error) {
+      if (activeEditorSessionRef.current === editorSession) {
+        setDraftSaveError(error.message || "No se pudo cambiar el modo del editor.");
+      }
+    } finally {
+      adminEditBusyRef.current = false;
+      setAdminEditBusy(false);
+    }
+  };
+  const flushBeforeEditorHeaderAction = async (...args) => {
+    if (!editorSession.adminEdit || args[0] !== "admin-editor-close") {
+      return ensureDraftFlushBeforeCriticalAction(...args);
+    }
+    if (adminEditBusyRef.current) return { ok: false, error: "Esperá a que termine el guardado." };
+    adminEditBusyRef.current = true;
+    setAdminEditBusy(true);
+    try {
+      return await ensureDraftFlushBeforeCriticalAction(...args);
+    } finally {
+      adminEditBusyRef.current = false;
+      setAdminEditBusy(false);
+    }
+  };
+  const reloadDraftAfterConflict = () => {
+    if (window.confirm("Se abrirá la versión guardada. Los cambios que no se pudieron guardar se descartarán. ¿Continuar?")) {
+      // A fresh route always starts administrative drafts in read-only mode.
+      if (adminDraftView.editContext) adminDraftView.editContext.closed = true;
+      window.location.reload();
+    }
+  };
   const userUiPreferences = useUserUiPreferences(usuario?.uid, startupRecoveryGeneration);
   const [homeRecoveryState, setHomeRecoveryState] = useState("idle");
   const waitingForConnection = authRecoveryState === "waiting" ||
@@ -192,6 +262,7 @@ export default function Dashboard() {
   const previewGateState = buildDashboardPreviewGateState({
     isTemplateEditorSession,
     isEditorReadOnly,
+    isAdministrativeDraft: adminDraftView.enabled,
     mostrarCheckoutPublicacion,
   });
   const toggleZoom = () => {
@@ -270,7 +341,7 @@ export default function Dashboard() {
     adminDraftView,
     templateWorkspaceView,
     editorSession,
-    ensureDraftFlushBeforeCriticalAction,
+    ensureDraftFlushBeforeCriticalAction: flushBeforeEditorHeaderAction,
     handleOpenTemplateSession,
     seccionActivaId: null,
     assistantTourEditorReady: editorRuntimeState?.status === "ready",
@@ -433,7 +504,8 @@ export default function Dashboard() {
       )}
       <div
         hidden={checkingAuth}
-        inert={checkingAuth || showHomeStartupLoader || (pageViewState.isHomeView && waitingForConnection) ? true : undefined}
+        inert={adminEditBusy || checkingAuth || showHomeStartupLoader || (pageViewState.isHomeView && waitingForConnection) ? true : undefined}
+        aria-busy={adminEditBusy || undefined}
         aria-hidden={checkingAuth || showHomeStartupLoader || (pageViewState.isHomeView && waitingForConnection) ? "true" : undefined}
       >
       <DashboardLayout key={usuario.uid} {...layoutProps}>
@@ -531,6 +603,19 @@ export default function Dashboard() {
       {pageViewState.showEditorView && (
         <ChunkErrorBoundary>
           <div style={editorSurfaceStyle}>
+            {isSuperAdmin && adminDraftView.enabled && adminDraftView.status === "ready" ? (
+              <AdminDraftEditingControls
+                editing={adminDraftView.editing === true}
+                busy={adminEditBusy}
+                error={draftSaveError}
+                onToggle={toggleAdminEditing}
+                onReload={reloadDraftAfterConflict}
+              />
+            ) : draftSaveError ? (
+              <div role="alert" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {draftSaveError} <button type="button" className="ml-2 underline" onClick={reloadDraftAfterConflict}>Recargar borrador</button>
+              </div>
+            ) : null}
             {shouldMountCanvasEditor && (
               <div
                 className={
@@ -541,6 +626,7 @@ export default function Dashboard() {
                 aria-hidden={showEditorStartupLoader ? "true" : undefined}
               >
                 <CanvasEditor
+                  key={`${slugInvitacion}:${adminDraftView.editing ? "admin-edit" : "view"}`}
                   {...canvasEditorProps}
                   editorCanvasSidebarInsetLeft={editorCanvasLayout.sidebarInsetLeft}
                 />
@@ -605,8 +691,6 @@ export default function Dashboard() {
       <ProfileCompletionModal
         visible={showProfileCompletion}
         mandatory
-        title="Completa tu perfil"
-        subtitle="Para seguir usando la app necesitamos nombre, apellido y fecha de nacimiento."
         initialValues={profileInitialValues}
         submitLabel="Guardar y continuar"
         onSubmit={handleCompleteProfile}

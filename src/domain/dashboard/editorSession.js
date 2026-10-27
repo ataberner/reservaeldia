@@ -41,6 +41,9 @@ function normalizeText(value) {
 }
 
 function hasModernDraftRenderState(rawDraft) {
+  if (rawDraft?.editor === "konva" && Array.isArray(rawDraft.objetos) && Array.isArray(rawDraft.secciones)) {
+    return true;
+  }
   const renderState = normalizeDraftRenderState(rawDraft);
   return renderState.secciones.length > 0 || renderState.objetos.length > 0;
 }

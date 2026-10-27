@@ -46,7 +46,7 @@ function checkWorkflows(workflows) {
   assert.ok(verify["timeout-minutes"] > 0);
   const steps = verify.steps;
   for (const step of steps) if (!step.uses?.startsWith("actions/upload-artifact@")) assert.equal(step.if, undefined, "No omitir preparación o verificaciones");
-  assert.ok(steps.some(s => s.run === "npm run local:prepare"));
+  assert.ok(steps.some(s => s.run === "npm run local:prepare -- --keep-workspace"));
   assert.ok(steps.some(s => s.run === 'npm --prefix "$VERIFY_WORKSPACE" run verify:local'));
   assert.ok(steps.some(s => s.uses?.startsWith("actions/checkout@") && s.with["persist-credentials"] === false));
   const artifacts = steps.find(s => s.uses?.startsWith("actions/upload-artifact@"));

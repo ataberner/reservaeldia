@@ -29,6 +29,8 @@ const enabled = new Set([
   "upsertUserProfile", "getMyProfileStatus", "getMyUiPreferences", "updateMyUiPreferences",
   // Reads the caller's verified claims and configured UID list; no mutation.
   "getAdminAccess",
+  // Identity support: superadmin-only paginated demo Auth/Firestore reads.
+  "listUsersDirectory",
   // Provider beta: verified superadmin + closed backend gate; demo Firestore only.
   "adminProvidersV1",
   // Read-only private directory; verified superadmin and independent closed gate.
@@ -39,6 +41,9 @@ const enabled = new Set([
   // Inspected draft creation: demo Firestore/Storage only. The network guard
   // rejects any remote asset encountered in a template.
   "copiarPlantilla", "copiarPlantillaHTML",
+  // Explicit superadmin support: verified identity, owner binding and CAS;
+  // only demo Auth/Firestore/Storage effects, no publish or external service.
+  "getAdminDraftSnapshot", "getUserDirectoryDetail", "saveAdminDraftPatch",
 ]);
 for (const [name, handler] of Object.entries(handlers)) {
   const endpoint = handler?.__endpoint;

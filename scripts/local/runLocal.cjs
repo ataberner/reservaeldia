@@ -3,9 +3,11 @@ const path = require("node:path");
 const { createHash } = require("node:crypto");
 const contract = require("../../shared/firebaseEnvironment.cjs");
 const countdownChecks = require("./countdownChecks.cjs");
+const adminDraftChecks = require("./adminDraftChecks.cjs");
 const { ROOT, checkRequirements, createSession, createSocketEnvironment, assertPortsFree, removeSession, validateInheritedDestinations } = require("./session.cjs");
 const { Processes, failure } = require("./processes.cjs");
 const { Evidence, assertRulesEvidence, assertTap, assertLintEvidence } = require("./evidence.cjs");
+const { cleanupSession } = require("./sessionCleanup.cjs");
 
 const processes = new Processes();
 const allPorts = [...Object.values(contract.EMULATORS), 14400, 14500, 19150, 3100];
@@ -56,12 +58,14 @@ async function waitForEmulators(child, env) {
 
 async function main(mode) {
   const release = mode === "release", buildOnly = mode === "build", providersOnly = mode === "providers";
+  const administrativeDraftsOnly = mode === "admin-drafts";
   const directoryBrowserOnly = mode === "provider-directory-browser", directoryOnly = mode === "provider-directory" || directoryBrowserOnly;
-  const integration = ["test", "verify", "release", "providers", "provider-directory", "provider-directory-browser"].includes(mode), rules = ["rules", "verify"].includes(mode);
+  const integration = ["test", "verify", "release", "providers", "provider-directory", "provider-directory-browser"].includes(mode), rules = ["rules", "verify", "admin-drafts"].includes(mode);
   const names = ["prerequisites", ...(mode === "verify" ? ["functions-ownership"] : []), "copy", "contracts-input", ...(mode === "verify" ? ["lint", "tooling", "contracts-tests"] : []), ...(integration && !directoryBrowserOnly ? ["configuration"] : []), "sync", "compile", "contracts-built",
     ...(integration && !providersOnly && !directoryOnly ? ["backend", "compatibility"] : []),
     ...(release || buildOnly ? ["build-capture", "build-export", "build-finalize", "build-release-check"] : []),
-    ...(!buildOnly ? ["emulators"] : []), ...(rules ? ["rules-countdown"] : []),
+    ...(administrativeDraftsOnly ? ["administrative-drafts-frontend"] : []),
+    ...(!buildOnly ? ["emulators"] : []), ...(rules ? ["rules-countdown"] : []), ...(administrativeDraftsOnly ? ["administrative-drafts"] : []),
     ...(integration ? [...(!directoryOnly ? ["integration", "providers-api"] : []), ...(!directoryBrowserOnly ? ["provider-directory-api"] : []), "seed", ...(!directoryOnly ? ["browser", "providers-browser"] : ["provider-directory-warmup"]), "provider-directory-browser", ...(release ? ["editor-flow"] : []), "stop-services", "offline"] : [])];
   evidence = new Evidence(ROOT, mode, mode === "check" ? ["prerequisites"] : names);
   let requirements;
@@ -70,7 +74,7 @@ async function main(mode) {
     return evidence.stage(name, operation, kind);
   };
   await stage("prerequisites", async () => {
-    if (!["dev", "providers-dev", "providers", "provider-directory", "provider-directory-browser", "provider-directory-dev", "emulators", "test", "rules", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
+    if (!["dev", "providers-dev", "providers", "provider-directory", "provider-directory-browser", "provider-directory-dev", "emulators", "test", "rules", "admin-drafts", "verify", "check", "build", "release"].includes(mode) || process.argv.length > 3)
       throw failure("Modo local inválido; no se aceptan overrides de destino.", "prerequisite");
     validateInheritedDestinations();
     requirements = checkRequirements();
@@ -90,7 +94,7 @@ async function main(mode) {
     evidence.data.stages.find(s => s.name === "functions-ownership").tap = assertTap(log);
   }, "tests");
   await stage("copy", async () => {
-    currentSession = createSession(requirements);
+    currentSession = createSession(requirements, created => { currentSession = created; });
     evidence.data.session = path.relative(ROOT, currentSession.session);
     console.log(`Copia del estado actual: ${currentSession.workspace}`);
   });
@@ -146,6 +150,9 @@ async function main(mode) {
   await run("sync", ["scripts/syncTemplateContract.cjs"], { cwd: path.join(workspace, "functions"), kind: "infrastructure" });
   await run("compile", ["node_modules/typescript/bin/tsc"], { cwd: path.join(workspace, "functions"), kind: "tests" });
   await run("contracts-built", ["scripts/syncTemplateContract.cjs", "--check"], { cwd: path.join(workspace, "functions") });
+  if (administrativeDraftsOnly) {
+    await run("administrative-drafts-frontend", ["--test", "--test-concurrency=1", "--test-reporter=tap", ...adminDraftChecks], { timeoutMs: 180000 });
+  }
   if (integration && !providersOnly && !directoryOnly) {
     await run("backend", ["--test", "--test-reporter=tap", "scripts/local/backend.test.cjs"]);
     await run("compatibility", ["scripts/local/productionCompatibility.cjs"]);
@@ -189,6 +196,10 @@ async function main(mode) {
     if (testError) throw testError;
     evidence.data.stages.find(s => s.name === "rules-countdown").tap = assertTap(log);
   });
+  if (administrativeDraftsOnly) {
+    await run("administrative-drafts", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
+    return;
+  }
   if (mode === "rules") return;
   if (integration || ["dev", "providers-dev", "provider-directory-dev"].includes(mode)) {
     if (integration && !directoryOnly) await run("integration", ["--test", "--test-concurrency=1", "--test-reporter=tap", "scripts/local/integration.test.mjs", "scripts/local/authFlows.test.mjs", "scripts/local/draftAuthorization.test.mjs"], { timeoutMs: 360000 });
@@ -231,7 +242,11 @@ async function main(mode) {
 }
 
 async function entry() {
-  const mode = process.argv[2] || "dev";
+  const mode = process.argv[2] || "quick";
+  if (mode === "quick") {
+    process.exitCode = await require("./quickVerification.cjs").main(process.argv.slice(3));
+    return;
+  }
   if (mode === "clean") {
     if (!process.argv[3] || process.argv.length !== 4) throw failure("Usar clean <ruta-absoluta-de-sesión-detenida>", "prerequisite");
     removeSession(process.argv[3]); return;
@@ -248,13 +263,28 @@ async function entry() {
   finally {
     clearTimeout(timer);
     // Save test evidence before cleanup; keep it even if stopping fails.
-    evidence?.collect(currentSession?.session);
+    let preserved = true;
+    try { evidence?.collect(currentSession?.session); }
+    catch (e) { preserved = false; error ||= e; }
     try { await stop(); } catch (e) {
       error = e;
       if (evidence) evidence.data.cleanup = { status: "failed", message: e.message };
     }
     if (interruption && evidence?.data.cleanup?.status !== "failed") error = interruption;
-    evidence?.collect(currentSession?.session);
+    try { evidence?.collect(currentSession?.session); }
+    catch (e) { preserved = false; error ||= e; }
+    if (currentSession?.receipt && evidence && preserved) {
+      try {
+        evidence.data.sessionCleanup = cleanupSession(currentSession.receipt, {
+          stopped: evidence.data.cleanup?.status === "passed", evidenceDirectory: evidence.directory,
+        });
+        if (evidence.data.sessionCleanup.status === "retained") console.log(`[local] Sesión conservada: ${evidence.data.sessionCleanup.reason}`);
+      } catch (e) { error ||= e; evidence.data.sessionCleanup = { status: "failed", message: e.message }; }
+    } else if (currentSession?.receipt) {
+      // Record retention so an enclosing temporary preparation cannot discard
+      // a session whose evidence could not be preserved.
+      cleanupSession(currentSession.receipt, { stopped: false });
+    }
     process.exitCode = evidence ? evidence.finish(error) : 3;
     process.removeListener("SIGINT", onSignal); process.removeListener("SIGTERM", onSignal);
     if (error) console.error(error.message);

@@ -122,3 +122,17 @@ test("template sessions never enable publish or checkout compatibility paths", (
     publishValidationRefreshMode: "compatibility-side-effect",
   });
 });
+
+test("administrative editing preserves prepared preview without publication or checkout side effects", () => {
+  const state = buildDashboardPreviewCompatibilityState({
+    slugInvitacion: "foreign-draft",
+    editorSession: { kind: "draft", id: "foreign-draft", adminEdit: { ownerUid: "owner" } },
+    editorReadOnly: false,
+    administrativeDraftPreview: { ownerUid: "owner" },
+  });
+  assert.equal(state.administrativeOwnerUid, "owner");
+  assert.equal(state.canValidateForPublication, false);
+  assert.equal(state.canOpenCheckoutFromPreview, false);
+  assert.equal(state.shouldRefreshPublishValidationAfterPreview, false);
+  assert.equal(state.shouldResolvePublicationLink, false);
+});

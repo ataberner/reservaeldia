@@ -12,7 +12,7 @@ import {
 
 test("FAQ content keeps stable categories, unique ids, and concise complete answers", () => {
   assert.equal(FAQ_SECTIONS.length, 7);
-  assert.equal(FAQ_ITEMS.length, 19);
+  assert.equal(FAQ_ITEMS.length, 20);
 
   const ids = new Set(FAQ_ITEMS.map((item) => item.id));
   assert.equal(ids.size, FAQ_ITEMS.length);

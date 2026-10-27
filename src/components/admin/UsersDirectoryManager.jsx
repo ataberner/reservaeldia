@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 import { formatPublicationVisitMetric } from "@/domain/publications/myInvitationsView";
+
+const CreateUserDraftModal = lazy(() => import("@/components/admin/CreateUserDraftModal"));
 
 const USERS_PAGE_SIZE = 100;
 
@@ -80,6 +82,26 @@ function getMetrics(item) {
     firstApprovedPaymentAt:
       typeof metrics.firstApprovedPaymentAt === "string" ? metrics.firstApprovedPaymentAt : null,
   };
+}
+
+export function DesignAssistanceContact({ user }) {
+  if (user?.designAssistance?.requested !== true) return null;
+  const phone = user.designAssistance.whatsapp;
+  const hasPhone = typeof phone === "string" && /^\+[1-9]\d{7,14}$/.test(phone);
+  return (
+    <div className="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm">
+      <p className="font-semibold text-purple-900">Solicitó asistencia de diseño</p>
+      {hasPhone ? (
+        <a className="mt-1 inline-block break-all text-purple-800 underline"
+          href={`https://wa.me/${phone.slice(1)}`} target="_blank" rel="noopener noreferrer">
+          Contactar por WhatsApp: {phone}
+        </a>
+      ) : user.email ? (
+        <a className="mt-1 inline-block break-all text-purple-800 underline"
+          href={`mailto:${encodeURIComponent(user.email)}`}>Contactar por email: {user.email}</a>
+      ) : <p className="mt-1 text-purple-800">Sin datos de contacto disponibles</p>}
+    </div>
+  );
 }
 
 function RoleBadge({ isSuperAdmin, adminClaim }) {
@@ -328,6 +350,8 @@ export default function UsersDirectoryManager() {
   const [detailMap, setDetailMap] = useState({});
   const [detailErrorMap, setDetailErrorMap] = useState({});
   const [loadingDetailUid, setLoadingDetailUid] = useState("");
+  const [createDraftOwner, setCreateDraftOwner] = useState(null);
+  const [createdDraft, setCreatedDraft] = useState(null);
 
   const loadStats = useCallback(async () => {
     setLoadingStats(true);
@@ -404,6 +428,9 @@ export default function UsersDirectoryManager() {
             publications: Array.isArray(data.publications) ? data.publications : [],
           },
         }));
+        setUsers((prev) => prev.map((user) => user.uid === uid
+          ? { ...user, metrics: data.metrics || user.metrics }
+          : user));
       } catch (error) {
         console.error("Error cargando detalle de usuario:", error);
         setDetailErrorMap((prev) => ({
@@ -605,6 +632,7 @@ export default function UsersDirectoryManager() {
                             </span>
                             <span>UID: {item.uid}</span>
                           </div>
+                          <DesignAssistanceContact user={item} />
                         </div>
 
                         <div className="flex items-start justify-end">
@@ -702,14 +730,29 @@ export default function UsersDirectoryManager() {
                             </p>
 
                             <div className="space-y-2">
-                              <div>
-                                <h3 className="text-sm font-semibold text-slate-800">
-                                  Borradores
-                                </h3>
-                                <p className="text-xs text-slate-500">
-                                  Lista simple de borradores del usuario.
-                                </p>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <h3 className="text-sm font-semibold text-slate-800">
+                                    Borradores
+                                  </h3>
+                                  <p className="text-xs text-slate-500">
+                                    Lista simple de borradores del usuario.
+                                  </p>
+                                </div>
+                                <button type="button" onClick={() => setCreateDraftOwner(item)}
+                                  className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50">
+                                  Crear borrador
+                                </button>
                               </div>
+                              {createdDraft?.ownerUid === item.uid && (
+                                <p role="status" className="text-xs text-emerald-700">
+                                  Borrador creado. {" "}
+                                  <a href={`/dashboard?slug=${encodeURIComponent(createdDraft.slug)}&adminView=1&ownerUid=${encodeURIComponent(item.uid)}`}
+                                    target="_blank" rel="noreferrer" className="font-semibold underline">
+                                    Abrir en solo lectura
+                                  </a>
+                                </p>
+                              )}
                               <DraftDetailList ownerUid={item.uid} drafts={detail.drafts} />
                             </div>
 
@@ -754,6 +797,20 @@ export default function UsersDirectoryManager() {
           </div>
         </div>
       </div>
+      {createDraftOwner && (
+        <Suspense fallback={<p role="status" className="mt-3 text-sm text-slate-500">Cargando selector de plantillas...</p>}>
+          <CreateUserDraftModal
+            key={createDraftOwner.uid}
+            owner={createDraftOwner}
+            onClose={() => setCreateDraftOwner(null)}
+            onCreated={({ ownerUid, slug }) => {
+              setCreateDraftOwner(null);
+              setCreatedDraft({ ownerUid, slug });
+              void loadUserDetail(ownerUid);
+            }}
+          />
+        </Suspense>
+      )}
     </section>
   );
 }

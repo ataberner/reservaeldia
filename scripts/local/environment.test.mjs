@@ -152,12 +152,12 @@ test("a cleanup permission failure preserves the ownership marker for safe retry
   const marker = path.join(session, "session.json");
   fs.writeFileSync(marker, JSON.stringify({ owner: "reservaeldia-local", project: contract.LOCAL_PROJECT, stopped: true }));
   fs.writeFileSync(path.join(session, "synthetic.txt"), "synthetic");
-  const remove = fs.rmSync;
+  const remove = fs.unlinkSync;
   try {
-    fs.rmSync = () => { throw Object.assign(new Error("synthetic permission failure"), { code: "EPERM" }); };
+    fs.unlinkSync = () => { throw Object.assign(new Error("synthetic permission failure"), { code: "EPERM" }); };
     assert.throws(() => removeSession(session), /synthetic permission failure/);
     assert.equal(fs.existsSync(marker), true);
-  } finally { fs.rmSync = remove; removeSession(session); }
+  } finally { fs.unlinkSync = remove; removeSession(session); }
 });
 
 test("endpoint identity checks reject production and a foreign local bucket/project", () => {

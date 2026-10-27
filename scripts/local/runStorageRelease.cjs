@@ -14,7 +14,8 @@ let socketEnvironment, current, stopping;
 function selectedModes(args) {
   if (args.length === 0) return ["base", "candidate"];
   if (args.length === 1 && args[0] === "--firestore-assets") return ["firestore-assets"];
-  throw new Error("runner_accepts_only_fixed_firestore_assets_mode");
+  if (args.length === 1 && args[0] === "--administrative-drafts") return ["administrative-drafts"];
+  throw new Error("runner_accepts_only_fixed_artifact_modes");
 }
 
 async function stop() {
@@ -43,6 +44,9 @@ function prepare(mode, requirements, artifact, firestoreArtifact) {
     ...["base.rules", "storage.rules", "manifest.json", "firebase.json"].map(f => `deployment/storage-draft-provider/${f}`)];
   if (mode === "firestore-assets") files.push("firestore.rules", "scripts/local/firestoreAssetReleaseArtifact.mjs", "scripts/local/firestoreAssetReleaseRules.test.mjs",
     ...["base.rules", "firestore.rules", "manifest.json", "firebase.json"].map(f => `deployment/render-asset-firestore/${f}`));
+  if (mode === "administrative-drafts") files.push("firestore.rules", "deployment/provider-beta/firestore.rules",
+    "scripts/local/administrativeDraftReleaseArtifact.cjs", "scripts/local/administrativeDraftReleaseRules.test.mjs", "scripts/local/rulesCases.mjs",
+    ...["base.rules", "firestore.rules", "manifest.json", "firebase.json", ".gitattributes"].map(f => `deployment/administrative-drafts/${f}`));
   const sources = {};
   for (const file of files) {
     const dest = path.join(workspace, file); fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -58,8 +62,10 @@ function prepare(mode, requirements, artifact, firestoreArtifact) {
   env.JAVA_TOOL_OPTIONS = "-Xms64m -Xmx384m";
   for (const dir of [env.HOME, env.APPDATA, env.LOCALAPPDATA, env.XDG_CONFIG_HOME, env.CLOUDSDK_CONFIG, env.TEMP, env.FIREBASE_EMULATORS_PATH]) fs.mkdirSync(dir, { recursive: true });
   for (const jar of requirements.jars) fs.copyFileSync(path.join(requirements.cache, jar), path.join(env.FIREBASE_EMULATORS_PATH, jar));
-  if (mode !== "firestore-assets") fs.writeFileSync(path.join(workspace, "firestore.fixture.rules"), "rules_version = '2';\nservice cloud.firestore { match /databases/{database}/documents { match /{document=**} { allow read, write: if false; } } }\n");
-  const config = { firestore: { rules: mode === "firestore-assets" ? "deployment/render-asset-firestore/firestore.rules" : "firestore.fixture.rules" },
+  const firestoreRules = mode === "administrative-drafts" ? "deployment/administrative-drafts/firestore.rules"
+    : mode === "firestore-assets" ? "deployment/render-asset-firestore/firestore.rules" : "firestore.fixture.rules";
+  if (firestoreRules === "firestore.fixture.rules") fs.writeFileSync(path.join(workspace, "firestore.fixture.rules"), "rules_version = '2';\nservice cloud.firestore { match /databases/{database}/documents { match /{document=**} { allow read, write: if false; } } }\n");
+  const config = { firestore: { rules: firestoreRules },
     storage: { rules: `deployment/storage-draft-provider/${mode === "base" ? "base.rules" : "storage.rules"}` },
     emulators: { firestore: { host: "127.0.0.1", port: 18080, websocketPort: 19150 }, storage: { host: "127.0.0.1", port: 19199 },
       hub: { host: "127.0.0.1", port: 14400 }, logging: { host: "127.0.0.1", port: 14500 }, ui: { enabled: false }, singleProjectMode: true } };
@@ -91,10 +97,12 @@ async function ready(child) {
 async function main() {
   const modes = selectedModes(process.argv.slice(2));
   const firestoreAssets = modes[0] === "firestore-assets";
+  const administrativeDrafts = modes[0] === "administrative-drafts";
   validateInheritedDestinations();
   const { validateArtifact } = await import("./storageReleaseArtifact.mjs");
   const artifact = validateArtifact(), requirements = checkRequirements();
-  const firestoreArtifact = firestoreAssets ? (await import("./firestoreAssetReleaseArtifact.mjs")).validateFirestoreAssetArtifact() : undefined;
+  const firestoreArtifact = administrativeDrafts ? require("./administrativeDraftReleaseArtifact.cjs").check()
+    : firestoreAssets ? (await import("./firestoreAssetReleaseArtifact.mjs")).validateFirestoreAssetArtifact() : undefined;
   for (const mode of modes) {
     stopping = undefined; current = undefined;
     await assertPortsFree(ports);
@@ -106,7 +114,8 @@ async function main() {
       const child = processes.start([requirements.cli, "emulators:start", "--config", "firebase.local.json", "--project", contract.LOCAL_PROJECT,
         "--only", "firestore,storage", "--non-interactive"], { cwd: workspace, env: socketEnvironment.env, log: path.join(session, "emulators.log"), name: `${mode}-emulators` });
       await ready(child);
-      const suite = firestoreAssets ? "scripts/local/firestoreAssetReleaseRules.test.mjs" : "scripts/local/storageReleaseRules.test.mjs";
+      const suite = administrativeDrafts ? "scripts/local/administrativeDraftReleaseRules.test.mjs"
+        : firestoreAssets ? "scripts/local/firestoreAssetReleaseRules.test.mjs" : "scripts/local/storageReleaseRules.test.mjs";
       await processes.run(["--test", "--test-concurrency=1", "--test-reporter=tap", suite], {
         cwd: workspace, env, log: path.join(session, "tests.tap"), name: `${mode}-rules`, timeoutMs: 300000, kind: "tests" });
       const result = JSON.parse(fs.readFileSync(path.join(session, "rules-results.json")));

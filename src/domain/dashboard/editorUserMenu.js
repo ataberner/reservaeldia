@@ -5,6 +5,7 @@ export function resolveEditorUserMenuAccess({
   isSuperAdmin = false,
   editorReadOnly = false,
   isAdminReadOnlyView = false,
+  isAdminEditing = false,
 } = {}) {
   const hasResolvedManagementAccess =
     hasActiveEditor === true &&
@@ -21,7 +22,7 @@ export function resolveEditorUserMenuAccess({
   return {
     showAddSection: showWritableAdminActions,
     showCreateTemplate:
-      showWritableAdminActions || showReadOnlySuperAdminCreateTemplate,
-    showSaveTemplate: showWritableAdminActions,
+      (showWritableAdminActions && !isAdminEditing) || showReadOnlySuperAdminCreateTemplate,
+    showSaveTemplate: showWritableAdminActions && !isAdminEditing,
   };
 }

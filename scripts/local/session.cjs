@@ -51,7 +51,7 @@ function cleanEnvironment(session, inherited = process.env) {
 
 function findFirebaseCli() {
   const result = path.join(ROOT, "scripts/local/tools/node_modules/firebase-tools/lib/bin/firebase.js");
-  if (!fs.existsSync(result)) throw new Error("Falta Firebase CLI local fijada; ejecutar npm run local:prepare. No se usa CLI global ni npx/login.");
+  if (!fs.existsSync(result)) throw new Error("Falta Firebase CLI local fijada; usar npm run verify:local:prepared o preparar explícitamente con npm run local:prepare -- --keep-workspace. No se usa CLI global ni npx/login.");
   return result;
 }
 
@@ -105,14 +105,14 @@ function checkRequirements() {
   for (const [service, prefix] of [["firestore", "cloud-firestore-emulator"], ["storage", "cloud-storage-rules-runtime"]]) {
     const info = metadata[service], name = `${prefix}-v${info.version}.jar`, file = path.join(cache, name);
     if (!fs.existsSync(file) || fs.statSync(file).size !== info.expectedSize || createHash("md5").update(fs.readFileSync(file)).digest("hex") !== info.expectedChecksum)
-      throw new Error(`JAR ausente/corrupto: ${name}; ejecutar local:prepare. No se descarga al verificar.`);
+      throw new Error(`JAR ausente/corrupto: ${name}; usar verify:local:prepared o local:prepare -- --keep-workspace. No se descarga al verificar.`);
     jars.push(name);
   }
   const puppeteerRoot = path.join(ROOT, "node_modules/puppeteer");
   const revisions = require(path.join(ROOT, "node_modules/puppeteer-core/lib/cjs/puppeteer/revisions.js")).PUPPETEER_REVISIONS;
   const browsers = require(require.resolve("@puppeteer/browsers", { paths: [puppeteerRoot] }));
   const chrome = browsers.computeExecutablePath({ cacheDir: path.join(ROOT, ".local-isolation/tool-cache/browser"), browser: browsers.Browser.CHROME, buildId: revisions.chrome });
-  if (!fs.existsSync(chrome)) throw new Error("Falta Chrome fijado por Puppeteer; ejecutar local:prepare. No hay fallback al navegador personal.");
+  if (!fs.existsSync(chrome)) throw new Error("Falta Chrome fijado por Puppeteer; usar verify:local:prepared o local:prepare -- --keep-workspace. No hay fallback al navegador personal.");
   return { cli, cache, jars, chrome, node: process.version, java: java.stderr.split(/\r?\n/)[0], firebase,
     browser: revisions.chrome, emulators: Object.fromEntries(["firestore", "storage"].map(name => [name, metadata[name].version])) };
 }
@@ -131,10 +131,19 @@ function validateInheritedDestinations(inherited = process.env) {
   if (inherited.STORAGE_EMULATOR_HOST && inherited.STORAGE_EMULATOR_HOST !== `http://${expected.FIREBASE_STORAGE_EMULATOR_HOST}`) throw new Error("STORAGE_EMULATOR_HOST heredada incompatible.");
 }
 
+const REGENERABLE_DIRECTORIES = new Set([".git", ".local-isolation", "node_modules", ".next", ".next-dev", "out", "artifacts", "coverage", ".cache", ".turbo", ".hosting-static-history", "dist", "build", ".email-preview"]);
+
+function isSourcePath(file) {
+  const parts = file.split(/[\\/]/);
+  return !parts.some(name => REGENERABLE_DIRECTORIES.has(name) || name.startsWith(".next-dev-")) &&
+    !/\.(?:log|tsbuildinfo)$/.test(file);
+}
+
 function copySourceTree(source, destination) {
   fs.cpSync(source, destination, { recursive: true, filter: (file) => {
     const name = path.basename(file);
-    if (name === "node_modules") return false;
+    // Apply to every depth, including outputs accidentally nested in src/scripts.
+    if (!isSourcePath(path.relative(source, file) || name)) return false;
     const stat = fs.lstatSync(file);
     if (stat.isSymbolicLink()) throw new Error("No se copian enlaces de fuentes a destinos desconocidos.");
     return !name.startsWith(".env") && !name.startsWith(".secret") && name !== ".runtimeconfig.json" && name !== "firebase-key.json" && !name.endsWith(".pem");
@@ -155,12 +164,13 @@ function copyWorkspace(workspace) {
     if (fs.existsSync(source)) { fs.mkdirSync(path.dirname(path.join(workspace, "public", name)), { recursive: true }); copySourceTree(source, path.join(workspace, "public", name)); }
   }
   for (const source of require("../../functions/scripts/lintScope.cjs").functionsSources(ROOT)) {
+    if (!isSourcePath(path.relative(ROOT, source))) continue;
     const destination = path.join(workspace, path.relative(ROOT, source));
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     copySourceTree(source, destination);
   }
   for (const name of [".node-version", "package.json", "package-lock.json", "next.config.mjs", "jsconfig.json", "postcss.config.cjs", "postcss.config.js", "postcss.config.mjs", "tailwind.config.js", "tailwind.config.mjs", "firestore.rules", "firestore.indexes.json", "storage.rules", "functions/package.json", "functions/package-lock.json", "functions/tsconfig.json", "scripts/runNextDev.cjs", "scripts/retainNextStaticAssets.cjs", "scripts/verifyNextStaticRelease.cjs"]) {
-    if (fs.existsSync(path.join(ROOT, name))) { fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true }); fs.copyFileSync(path.join(ROOT, name), path.join(workspace, name)); }
+    if (fs.existsSync(path.join(ROOT, name))) { fs.mkdirSync(path.dirname(path.join(workspace, name)), { recursive: true }); copySourceTree(path.join(ROOT, name), path.join(workspace, name)); }
   }
   // Ownership tests inspect production metadata separately from firebase.local.json
   // and its blocked-handler wrapper. Copy no personal dotenv or generated output.
@@ -172,15 +182,20 @@ function copyWorkspace(workspace) {
     "docs/operations/baselines/payments-remote-2026-09-22.json", "docs/operations/baselines/email-remote-2026-09-25.json"]) {
     const destination = path.join(workspace, name);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.copyFileSync(path.join(ROOT, name), destination);
+    copySourceTree(path.join(ROOT, name), destination);
   }
 }
 
-function createSession(requirements) {
+function createSession(requirements, onCreated = () => {}) {
+  const { registerSession, assertNoLinkedAncestors } = require("./sessionCleanup.cjs");
   const base = path.join(ROOT, ".local-isolation");
+  assertNoLinkedAncestors(base);
   fs.mkdirSync(base, { recursive: true });
   const session = fs.mkdtempSync(path.join(base, "session-"));
   const workspace = path.join(session, "workspace");
+  const current = { session, workspace };
+  onCreated(current);
+  try {
   fs.writeFileSync(path.join(session, "session.json"), JSON.stringify({ owner: "reservaeldia-local", pid: process.pid, project: contract.LOCAL_PROJECT, createdAt: new Date().toISOString() }, null, 2));
   copyWorkspace(workspace);
   const sources = {};
@@ -202,7 +217,16 @@ function createSession(requirements) {
   // Firebase CLI prompts for defineString even with a default; no email effects.
   fs.writeFileSync(path.join(workspace, "functions/.env.local"), "EMAIL_MODE=disabled\nWELCOME_EMAIL_ACTIVATION_AT=\n", { flag: "wx" });
   for (const directory of [env.HOME, env.APPDATA, env.LOCALAPPDATA, env.XDG_CONFIG_HOME, env.CLOUDSDK_CONFIG, env.TEMP, env.FIREBASE_EMULATORS_PATH]) fs.mkdirSync(directory, { recursive: true });
-  for (const name of requirements.jars) fs.copyFileSync(path.join(requirements.cache, name), path.join(env.FIREBASE_EMULATORS_PATH, name));
+  // Immutable JARs were size/checksum-verified by checkRequirements. Link the
+  // bytes on this volume; cross-device platforms fall back to a private copy.
+  for (const name of requirements.jars) {
+    const source = path.join(requirements.cache, name), destination = path.join(env.FIREBASE_EMULATORS_PATH, name);
+    try { fs.linkSync(source, destination); }
+    catch (error) {
+      if (!["EXDEV", "EPERM", "EACCES", "ENOTSUP"].includes(error.code)) throw error;
+      fs.copyFileSync(source, destination);
+    }
+  }
   const config = {
     functions: [{ source: "functions", codebase: "default", runtime: require("../../firebase.json").functions.find(entry => entry.codebase === "default").runtime }],
     firestore: { rules: "firestore.rules", indexes: "firestore.indexes.json" }, storage: { rules: "storage.rules" },
@@ -228,23 +252,42 @@ function createSession(requirements) {
   fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2));
   // Module lookup from scripts/local needs the Functions dependency tree too.
   fs.symlinkSync(path.join(ROOT, "functions/node_modules"), path.join(workspace, "scripts/local/node_modules"), process.platform === "win32" ? "junction" : "dir");
-  return { session, workspace, env };
+  current.env = env;
+  return current;
+  } finally {
+    // The caller receives the owned directory even if setup fails. Snapshot
+    // after generated config/package changes, before any child can mutate it.
+    current.receipt = registerSession(session, { root: ROOT, workspace });
+  }
 }
 
 function removeSession(target) {
+  const { assertSafeSessionTarget, assertNoGitTree, removeWithoutFollowingLinks } = require("./sessionCleanup.cjs");
   const absolute = path.resolve(target);
   const base = path.join(ROOT, ".local-isolation");
-  if (path.dirname(absolute) !== base || !path.basename(absolute).startsWith("session-") || fs.lstatSync(absolute).isSymbolicLink()) throw new Error("Limpieza rechazada: destino fuera de una sesión propia.");
+  if (!path.isAbsolute(target) || path.dirname(absolute) !== base || !path.basename(absolute).startsWith("session-") || fs.lstatSync(absolute).isSymbolicLink()) throw new Error("Limpieza rechazada: destino fuera de una sesión propia.");
+  assertSafeSessionTarget(ROOT, absolute);
+  if (fs.lstatSync(path.join(absolute, "session.json")).isSymbolicLink()) throw new Error("Marca de sesión enlazada; limpieza rechazada.");
   const marker = JSON.parse(fs.readFileSync(path.join(absolute, "session.json")));
   if (marker.owner !== "reservaeldia-local" || marker.project !== contract.LOCAL_PROJECT) throw new Error("Limpieza rechazada: identidad de sesión inválida.");
   if (!marker.stopped) throw new Error("La sesión no registró detención; comprobar primero sus procesos.");
+  if (Number.isInteger(marker.pid) && marker.pid > 0) {
+    let alive = true;
+    try { process.kill(marker.pid, 0); } catch (error) { if (error.code === "ESRCH") alive = false; }
+    if (alive) throw new Error("La sesión todavía tiene un proceso activo.");
+  }
+  assertNoGitTree(absolute);
+  // Historical sessions have no in-memory receipt. Do not infer that their
+  // source edits or evidence are disposable from a stopped marker alone.
+  if (fs.existsSync(path.join(absolute, "workspace")) || fs.readdirSync(absolute).some(name => /(?:evidence|source-manifest|verified)\.json$/.test(name)))
+    throw new Error("Sesión histórica con fuentes o evidencia: revisar y autorizar su eliminación manual; no se descarta automáticamente.");
   // Keep the ownership marker until all contents are removed, so a permission
-  // failure can be retried safely. fs.rm never follows dependency junctions.
+  // failure can be retried safely. The explicit walker only unlinks junctions.
   for (const name of fs.readdirSync(absolute)) {
-    if (name !== "session.json") fs.rmSync(path.join(absolute, name), { recursive: true, force: true });
+    if (name !== "session.json") removeWithoutFollowingLinks(path.join(absolute, name));
   }
   fs.unlinkSync(path.join(absolute, "session.json"));
   fs.rmdirSync(absolute);
 }
 
-module.exports = { ROOT, cleanEnvironment, createSocketEnvironment, findFirebaseCli, assertPortsFree, assertNodeRuntime, checkRequirements, validateInheritedDestinations, copyWorkspace, createSession, removeSession };
+module.exports = { ROOT, cleanEnvironment, createSocketEnvironment, findFirebaseCli, assertPortsFree, assertNodeRuntime, checkRequirements, validateInheritedDestinations, copySourceTree, isSourcePath, copyWorkspace, createSession, removeSession };

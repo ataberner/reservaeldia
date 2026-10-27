@@ -1,24 +1,41 @@
-import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { db, functions } from "../../../firebase.js";
-import { buildDraftMusicCallableRequest } from "../../../domain/music/draftMusicTransport.js";
+import { auth, db, functions } from "../../../firebase.js";
+import { createDraftRevisionTransport, DRAFT_SAVE_ERROR_EVENT } from "./draftRevisionTransport.js";
 import {
   getTemplateEditorDocument,
   saveTemplateEditorDocument,
 } from "../../../domain/templates/adminService.js";
 import { createEditorSessionPersistence } from "./editorSessionPersistenceCore.js";
 
-const editorSessionPersistence = createEditorSessionPersistence({
-  readDraftDocument: async ({ draftId }) => getDoc(doc(db, "borradores", draftId)),
-  writeDraftPatch: async ({ draftId, patch }) => {
-    if (Object.prototype.hasOwnProperty.call(patch, "music")) {
-      await httpsCallable(functions, "saveDraftWithMusicV1")(
-        buildDraftMusicCallableRequest(draftId, patch)
-      );
-      return { transport: "callable" };
+const draftTransport = createDraftRevisionTransport({
+  actorUid: () => auth.currentUser?.uid,
+  readDraft: (draftId) => getDoc(doc(db, "borradores", draftId)),
+  call: async (name, payload) => (await httpsCallable(functions, name)(payload)).data,
+  transactDraft: (draftId, buildPatch) => runTransaction(db, async (transaction) => {
+    const reference = doc(db, "borradores", draftId);
+    const snapshot = await transaction.get(reference);
+    if (!snapshot.exists()) throw new Error("El borrador ya no existe.");
+    transaction.update(reference, buildPatch(snapshot.data()));
+  }),
+  onError: ({ draftId, error }) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(DRAFT_SAVE_ERROR_EVENT, {
+        detail: { draftId, message: error.message, code: error.code },
+      }));
     }
-    await updateDoc(doc(db, "borradores", draftId), patch);
   },
+  onSaved: ({ draftId }) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(DRAFT_SAVE_ERROR_EVENT, {
+        detail: { draftId, saved: true },
+      }));
+    }
+  },
+});
+
+const editorSessionPersistence = createEditorSessionPersistence({
+  ...draftTransport,
   readTemplateEditorDocument: getTemplateEditorDocument,
   writeTemplateDocument: saveTemplateEditorDocument,
   createTimestamp: () => serverTimestamp(),

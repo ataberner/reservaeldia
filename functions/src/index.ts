@@ -4,6 +4,10 @@ export { providerAdminImageV1 } from "./providers/betaMedia";
 import { providerDirectoryHandler } from "./providers/directoryService";
 export { providerDirectoryImageV1 } from "./providers/directoryMedia";
 import { saveDraftWithMusicHandler } from "./music/draftMusicWrite";
+import { resolveTemplateDraftCreationIdentity } from "./drafts/administrativeDraftCreation";
+import { adminDraftContentRevision, saveAdminDraftPatchHandler } from "./drafts/administrativeDraftWrite";
+import { normalizeAdministrativeDraftAssets } from "./drafts/administrativeDraftAssets";
+import { hasModernDraftRenderState } from "./drafts/draftState";
 import {
   createTemplateDraft,
   readDraftCreationRetry,
@@ -16,6 +20,7 @@ import {
   type UserDirectoryPublicationMetrics,
 } from "./users/publicationMetrics";
 import { FieldValue } from "firebase-admin/firestore";
+import { parseDesignAssistance, readDesignAssistance, type DesignAssistance } from "./users/designAssistance";
 import { ensureAdminApp } from "./firebaseAdmin";
 import { onRequest, onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2/options";
@@ -293,6 +298,7 @@ type UserProfileSource =
   | "profile-completion";
 
 type UserProfileData = {
+  designAssistance: DesignAssistance;
   nombre: string | null;
   apellido: string | null;
   nombreCompleto: string | null;
@@ -344,6 +350,7 @@ type UserDirectoryPublicationDetail = {
 } & UserDirectoryPublicationMetrics;
 
 type UserDirectoryItem = {
+  designAssistance: DesignAssistance;
   uid: string;
   email: string | null;
   displayName: string | null;
@@ -495,6 +502,7 @@ function extractProfileFromDocData(data: unknown): UserProfileData {
     nombre,
     apellido,
     nombreCompleto,
+    designAssistance: readDesignAssistance(raw.designAssistance),
     fechaNacimiento: isValidBirthDateString(fechaNacimiento)
       ? fechaNacimiento
       : null,
@@ -773,6 +781,7 @@ function toUserDirectoryItem(
     nombreCompleto: null,
     fechaNacimiento: null,
     profileComplete: false,
+    designAssistance: readDesignAssistance(undefined),
   };
   const nombreCompleto = profileData.nombreCompleto || userRecord.displayName || null;
   const profileComplete = isProfileCompleteFromFields(
@@ -789,6 +798,7 @@ function toUserDirectoryItem(
     apellido: profileData.apellido,
     nombreCompleto,
     fechaNacimiento: profileData.fechaNacimiento,
+    designAssistance: profileData.designAssistance,
     profileComplete,
     metrics: metrics || createEmptyUserDirectoryMetrics(),
     adminClaim: claims.admin === true,
@@ -893,13 +903,6 @@ async function listDocsByUserIds(
   }
 
   return docs;
-}
-
-function hasModernDraftRenderState(data: Record<string, unknown> | null | undefined): boolean {
-  if (!data || typeof data !== "object") return false;
-  const secciones = Array.isArray(data.secciones) ? data.secciones : [];
-  const objetos = Array.isArray(data.objetos) ? data.objetos : [];
-  return secciones.length > 0 || objetos.length > 0;
 }
 
 function resolveUserDirectoryDraftName(
@@ -2017,8 +2020,10 @@ export const borrarTodosLosBorradores = onCall(
 
 
 export const copiarPlantilla = onCall(
-  async (request: CallableRequest<{ plantillaId: string; slug: string }>): Promise<{ slug: string }> => {
-    const uid = requireAuth(request);
+  async (request: CallableRequest<{ plantillaId: string; slug: string; ownerUid?: string }>): Promise<{ slug: string }> => {
+    const { actorUid, ownerUid: uid, administrative } = await resolveTemplateDraftCreationIdentity(
+      request, (ownerUid) => admin.auth().getUser(ownerUid)
+    );
     const plantillaId = requireDraftPathSegment(request.data?.plantillaId, "plantillaId");
     const slug = requireDraftPathSegment(request.data?.slug, "slug");
     const draftRef = db.collection("borradores").doc(slug);
@@ -2077,7 +2082,7 @@ export const copiarPlantilla = onCall(
     const templateAuthoringDraft = buildDraftTemplateAuthoringMetadata({
       template: plantillaNormalizada as Record<string, unknown>,
       templateId: plantillaId,
-      uid,
+      uid: actorUid,
       updatedAt: FieldValue.serverTimestamp(),
     });
     const rsvp =
@@ -2124,6 +2129,10 @@ export const copiarPlantilla = onCall(
       eventDetails,
       ultimaEdicion: FieldValue.serverTimestamp(),
       creado: FieldValue.serverTimestamp(),
+      ...(administrative ? {
+        draftCreation: { mode: "konva", actorUid, ownerUid: uid, actorRole: "superadmin" },
+        adminAudit: { createdByUid: actorUid, ownerUid: uid, role: "superadmin", createdAt: FieldValue.serverTimestamp() },
+      } : {}),
     });
     // Another request may have won while preparing assets. Returning its result
     // never resets content or ownership, and does not emit a second create event.
@@ -2137,6 +2146,7 @@ export const copiarPlantilla = onCall(
         invitacionId: slug,
         templateId: plantillaId,
         metadata: {
+          ...(administrative ? { actorUid, ownerUid: uid, actorRole: "superadmin" } : {}),
           templateName:
             typeof datosPlantilla.nombre === "string" ? datosPlantilla.nombre : "",
         },
@@ -2591,6 +2601,7 @@ export const upsertUserProfile = onCall(
       apellido: string;
       fechaNacimiento: string;
       source?: UserProfileSource;
+      designAssistance?: unknown;
     }>
   ) => {
     const uid = requireAuth(request);
@@ -2598,6 +2609,7 @@ export const upsertUserProfile = onCall(
     const apellido = normalizeRequiredName(request.data?.apellido, "apellido");
     const fechaNacimiento = normalizeBirthDate(request.data?.fechaNacimiento);
     const source = normalizeProfileSource(request.data?.source);
+    const designAssistance = parseDesignAssistance(request.data?.designAssistance);
     const nombreCompleto = buildNombreCompleto(nombre, apellido);
 
     let userRecord: admin.auth.UserRecord;
@@ -2629,6 +2641,13 @@ export const upsertUserProfile = onCall(
 
     if (!existingSnap.exists) {
       payload.createdAt = FieldValue.serverTimestamp();
+    }
+
+    if (designAssistance !== undefined) {
+      payload.designAssistance = {
+        ...designAssistance,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
     }
 
     await profileRef.set(payload, { merge: true });
@@ -2681,6 +2700,7 @@ export const upsertUserProfile = onCall(
         nombreCompleto,
         fechaNacimiento,
         profileComplete: true,
+        designAssistance: readDesignAssistance(updatedData.designAssistance),
         updatedAt: toISODateTime(updatedData.updatedAt),
       },
     };
@@ -2737,6 +2757,7 @@ export const getMyProfileStatus = onCall(
         apellido: profileData.apellido,
         nombreCompleto,
         fechaNacimiento: profileData.fechaNacimiento,
+        designAssistance: profileData.designAssistance,
       },
       profileComplete,
     };
@@ -3002,11 +3023,8 @@ export const getAdminDraftSnapshot = onCall(
   async (request: CallableRequest<{ ownerUid?: string | null; slug?: string | null }>) => {
     requireSuperAdmin(request);
 
-    const ownerUid = normalizeOptionalText(request.data?.ownerUid);
-    const slug = normalizeOptionalText(request.data?.slug);
-    if (!ownerUid || !slug) {
-      throw new HttpsError("invalid-argument", "Faltan ownerUid o slug");
-    }
+    const ownerUid = requireDraftPathSegment(request.data?.ownerUid, "ownerUid");
+    const slug = requireDraftPathSegment(request.data?.slug, "slug");
 
     const draftRef = db.collection("borradores").doc(slug);
     const draftSnap = await draftRef.get();
@@ -3050,9 +3068,16 @@ export const getAdminDraftSnapshot = onCall(
       draftName,
       status: "ok",
       canOpenCanvas: true,
+      revision: adminDraftContentRevision(draftData),
       draft: serializeCallableValue(draftData),
     };
   }
+);
+
+export const saveAdminDraftPatch = onCall(
+  { region: "us-central1", cors: ["https://reservaeldia.com.ar", "http://localhost:3000"] },
+  (request) => saveAdminDraftPatchHandler(request, db,
+    (patch, context) => normalizeAdministrativeDraftAssets(patch, context, bucket))
 );
 
 

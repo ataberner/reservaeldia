@@ -27,7 +27,7 @@ function resolveCountdownAuditStageSnapshot() {
  * Genera y guarda un thumbnail de borrador para el dashboard.
  * La exportacion limpia del Stage pertenece a dashboardCanvasExport.
  */
-export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
+export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug, persistThumbnail = null }) => {
   const stage = stageRef?.current;
 
   if (!stage || !slug || !uid) {
@@ -62,11 +62,12 @@ export const guardarThumbnailDesdeStage = async ({ stageRef, uid, slug }) => {
 
     const urlFinal = await getDownloadURL(archivoRef);
 
-    const refDoc = doc(db, "borradores", slug);
-    await updateDoc(refDoc, {
+    const patch = {
       thumbnailUrl: urlFinal,
       thumbnailUpdatedAt: serverTimestamp(),
-    });
+    };
+    if (persistThumbnail) await persistThumbnail(patch);
+    else await updateDoc(doc(db, "borradores", slug), patch);
 
     const { countdown, altoModo } = resolveCountdownAuditStageSnapshot();
     if (countdown) {

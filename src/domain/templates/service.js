@@ -30,6 +30,7 @@ import {
 import { resolveTemplatePersonalizationInput } from "./personalizationContract.js";
 
 const copiarPlantillaCallable = httpsCallable(cloudFunctions, "copiarPlantilla");
+const getAdminDraftSnapshotCallable = httpsCallable(cloudFunctions, "getAdminDraftSnapshot");
 const preparePublicTemplatePreviewCallable = httpsCallable(
   cloudFunctions,
   "preparePublicTemplatePreview"
@@ -55,7 +56,7 @@ function slugify(value) {
     .toLowerCase();
 }
 
-function buildDraftSlug(templateName) {
+export function buildDraftSlug(templateName) {
   const baseName = slugify(templateName) || "plantilla";
   return `${baseName}-${Date.now()}`;
 }
@@ -292,17 +293,44 @@ function normalizeGalleryFilesByField(value) {
   return out;
 }
 
-export async function createDraftFromTemplate({ templateId, templateName }) {
+async function waitForAdminDraftCreation({ slug, ownerUid, templateId }) {
+  for (const waitMs of DRAFT_CREATION_CONFIRMATION_DELAYS_MS) {
+    if (waitMs > 0) await delay(waitMs);
+    try {
+      const result = await getAdminDraftSnapshotCallable({ slug, ownerUid });
+      const data = result?.data;
+      if (
+        data?.status === "ok" &&
+        data.slug === slug &&
+        data.ownerUid === ownerUid &&
+        data.draft?.userId === ownerUid &&
+        data.draft?.plantillaId === templateId
+      ) return true;
+    } catch {
+      // La copia puede seguir en curso. Confirmar solo mediante el canal autorizado.
+    }
+  }
+  return false;
+}
+
+export async function createDraftFromTemplate({
+  templateId,
+  templateName,
+  ownerUid,
+  requestedSlug,
+}) {
   const safeTemplateId = normalizeText(templateId);
   if (!safeTemplateId) {
     throw new Error("No se pudo crear el borrador: plantilla invalida.");
   }
 
-  const slug = buildDraftSlug(templateName);
+  const safeOwnerUid = normalizeText(ownerUid);
+  const slug = normalizeText(requestedSlug) || buildDraftSlug(templateName);
   const callablePromise = Promise.resolve(
     copiarPlantillaCallable({
       plantillaId: safeTemplateId,
       slug,
+      ...(safeOwnerUid ? { ownerUid: safeOwnerUid } : {}),
     })
   );
   callablePromise.catch(() => null);
@@ -317,6 +345,17 @@ export async function createDraftFromTemplate({ templateId, templateName }) {
   }
 
   if (result.status === "timeout") {
+    if (safeOwnerUid) {
+      const confirmed = await waitForAdminDraftCreation({
+        slug,
+        ownerUid: safeOwnerUid,
+        templateId: safeTemplateId,
+      });
+      if (confirmed) return { slug };
+      throw new Error(
+        "La creacion sigue pendiente de confirmacion. Podes reintentar con esta plantilla sin crear otro borrador."
+      );
+    }
     const confirmedDraftSnap = await waitForDraftDocument(slug, {
       retryDelaysMs: DRAFT_CREATION_CONFIRMATION_DELAYS_MS,
       tolerateErrors: true,
@@ -337,7 +376,9 @@ export async function createDraftFromTemplate({ templateId, templateName }) {
     throw new Error("No se pudo crear el borrador desde la plantilla.");
   }
 
-  scheduleDraftCountdownAudit(createdSlug, "draft-created-from-template");
+  if (!safeOwnerUid) {
+    scheduleDraftCountdownAudit(createdSlug, "draft-created-from-template");
+  }
 
   return { slug: createdSlug };
 }

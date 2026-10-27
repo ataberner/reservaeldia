@@ -8,7 +8,7 @@ const artifacts = [
     sourcePath: path.resolve(__dirname, `../../shared/${file}`),
     targetPaths: [path.resolve(__dirname, `../shared/${file}`), path.resolve(__dirname, `../lib/shared/${file}`)],
   })),
-  ...["musicAccess", "musicConfig", "musicCatalog", "giftsConfig", "rsvpCatalog", "rsvpConfig", "rsvpEditorOps", "rsvpResponseMetrics", "authoringValueNormalization", "gallerySlotOrder", "designerAiConfigReducers", "designerAiActionProjection"].map((name) => ({
+  ...["musicAccess", "musicConfig", "musicCatalog", "giftsConfig", "rsvpCatalog", "rsvpConfig", "rsvpEditorOps", "rsvpResponseMetrics", "authoringValueNormalization", "gallerySlotOrder", "designerAiConfigReducers", "designerAiActionProjection", "profileDesignAssistance"].map((name) => ({
     label: `Dominio puro compartido: ${name}`,
     sourcePath: path.resolve(__dirname, `../../shared/${name}.cjs`),
     targetPaths: [path.resolve(__dirname, `../shared/${name}.cjs`), path.resolve(__dirname, `../lib/shared/${name}.cjs`)],

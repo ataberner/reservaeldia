@@ -26,7 +26,7 @@ test("the administrative read-only editor exposes one preview action", () => {
   );
   assert.match(
     canvasEditorHeaderSource,
-    /\{!readOnlyPreviewOnly \? \(\s*<button[\s\S]*?\{previewButtonLabel\}[\s\S]*?<\/button>\s*\) : null\}/
+    /\{!readOnlyPreviewOnly && !hidePublicationAction \? \(\s*<button[\s\S]*?\{previewButtonLabel\}[\s\S]*?<\/button>\s*\) : null\}/
   );
 });
 

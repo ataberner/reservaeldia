@@ -173,6 +173,14 @@ export async function persistBorradorSyncState({
       stageRef,
       uid: safeState.userId,
       slug: safeSlug,
+      ...(session.adminEdit ? {
+        persistThumbnail: (patch) => persistEditorSessionSnapshot({
+          state: { ...safeState, editorSession: session },
+          patch,
+          reason: "thumbnail",
+          includeDraftMetadata: false,
+        }),
+      } : {}),
     });
   }
 

@@ -1,0 +1,70 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(38, 38, 38, 0.38);
+  backdrop-filter: blur(3px);
+}
+.dialog {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 32px 36px 24px;
+  border-radius: 16px;
+  background: #fff;
+  color: #262626;
+  box-shadow: 0 20px 70px #26262626;
+  font-family: "DM Sans", sans-serif;
+  text-align: left;
+  outline: none;
+}
+.dialog *, .dialog *::before, .dialog *::after { box-sizing: border-box; }
+.welcome { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; color: #692b9a; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.dialog .title { margin: 0; color: #262626; font-family: "DM Sans", sans-serif; font-size: 30px; font-weight: 600; line-height: 1.2; }
+.dialog .subtitle { margin: 10px 0 24px; color: #66616b; font-family: "Source Sans 3", sans-serif; font-size: 17px; line-height: 1.4; }
+.form, .fields { display: flex; flex-direction: column; gap: 20px; }
+.fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.nameRow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.inputGroup { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
+.inputGroup label { font-size: 14px; font-weight: 500; line-height: 1.4; }
+.inputGroup input { min-width: 0; width: 100%; height: 46px; padding: 10px 12px; border: 1px solid #dcd6e3; border-radius: 8px; background: #fff; color: #262626; font-family: "Source Sans 3", sans-serif; font-size: 16px; line-height: 24px; }
+.inputGroup input::placeholder { color: #82798b; }
+.inputGroup input:focus { outline: 2px solid #efdbff; outline-offset: 1px; border-color: #692b9a; }
+.inputGroup input[aria-invalid="true"] { border-color: #b3261e; }
+.assistance { margin: 0; padding: 20px; border: 1px solid #efdbff; border-radius: 12px; background: #faf5ff; text-align: left; }
+.assistanceHeading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: #692b9a; }
+.assistanceHeading svg { flex: 0 0 auto; }
+.dialog .assistanceHeading h3 { flex: 1; min-width: 150px; margin: 0; color: #692b9a; font-family: "DM Sans", sans-serif; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.optionalBadge { padding: 3px 9px; border: 1px solid #efdbff; border-radius: 20px; color: #692b9a; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.dialog .assistanceCopy { margin: 12px 0 18px; color: #5c5267; font-family: "Source Sans 3", sans-serif; font-size: 16px; line-height: 1.45; }
+.checkboxLabel { display: flex; align-items: flex-start; gap: 12px; color: #42384b; cursor: pointer; font-family: "Source Sans 3", sans-serif; font-size: 16px; line-height: 1.4; }
+.checkboxLabel input { flex: 0 0 20px; width: 20px; height: 20px; margin: 2px 0 0; accent-color: #692b9a; cursor: pointer; }
+.phoneFields { margin-top: 20px; }
+.optional { color: #756b7f; font-weight: 400; }
+.dialog .phoneHint { margin: 8px 0 0; color: #692b9a; font-family: "Source Sans 3", sans-serif; font-size: 14px; line-height: 1.4; }
+.dialog .fieldError { margin: 0; color: #b3261e; font-family: "Source Sans 3", sans-serif; font-size: 14px; line-height: 1.35; }
+.dialog .error { margin: 0; padding: 12px; border-radius: 8px; background: #ffdada; color: #b3261e; font-size: 14px; }
+.submit { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 50px; border: 0; border-radius: 8px; background: #692b9a; color: #fff; cursor: pointer; font-family: "DM Sans", sans-serif; font-size: 16px; font-weight: 500; }
+.submit:hover:not(:disabled) { background: #582182; }
+.submit:disabled { opacity: 0.65; cursor: wait; }
+.dialog .footnote { margin: -8px 0 0; color: #756b7f; font-family: "Source Sans 3", sans-serif; font-size: 13px; line-height: 1.4; text-align: center; }
+.close { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 8px; background: transparent; color: #756b7f; cursor: pointer; }
+.submit:focus-visible, .close:focus-visible, .checkboxLabel input:focus-visible { outline: 3px solid #692b9a; outline-offset: 3px; }
+@media (max-width: 560px) {
+  .backdrop { padding: 12px; }
+  .dialog { padding: 24px 20px 20px; max-height: calc(100dvh - 24px); border-radius: 14px; }
+  .dialog .title { font-size: 26px; }
+  .dialog .subtitle { font-size: 16px; margin-bottom: 20px; }
+  .nameRow { gap: 12px; }
+  .assistance { padding: 16px; }
+  .assistanceHeading { gap: 8px; }
+  .dialog .assistanceHeading h3 { font-size: 16px; min-width: 140px; }
+}
+@media (max-width: 360px) { .nameRow { grid-template-columns: 1fr; } }

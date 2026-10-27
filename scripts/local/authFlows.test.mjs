@@ -169,6 +169,55 @@ test("registration, verification, login, password recovery and legacy profiles u
       );
     });
 
+    await context.test("optional designer contact persists only for the authenticated profile and survives older clients", async () => {
+      const account = await createAccount();
+      const ref = firestoreSdk.doc(db, "usuarios", account.uid);
+      const profile = { nombre: "Persona", apellido: "Asistida", fechaNacimiento: "1990-01-02" };
+      const helpByEmail = { requested: true, whatsapp: null };
+      const saved = (await upsert({ ...profile, designAssistance: helpByEmail, uid: "not-the-owner" })).data;
+      assert.deepEqual(saved.profile.designAssistance, helpByEmail);
+      assert.deepEqual((await status({})).data.profile.designAssistance, helpByEmail);
+      let stored = (await firestoreSdk.getDocFromServer(ref)).data();
+      assert.equal(stored.uid, account.uid);
+      assert.equal(stored.email, account.email);
+      assert.equal(stored.profileComplete, true);
+      assert.ok(stored.designAssistance.updatedAt);
+      await upsert({ ...profile, designAssistance: { requested: true, whatsapp: "+54 9 11 1234-5678" } });
+      const beforeOldClient = (await firestoreSdk.getDocFromServer(ref)).data();
+      await upsert(profile);
+      stored = (await firestoreSdk.getDocFromServer(ref)).data();
+      assert.deepEqual(stored.designAssistance, beforeOldClient.designAssistance);
+      assert.deepEqual((await status({})).data.profile.designAssistance, { requested: true, whatsapp: "+5491112345678" });
+      for (const designAssistance of [{ requested: "yes" }, { requested: true, whatsapp: "invalid" }, []]) {
+        await assert.rejects(upsert({ ...profile, designAssistance }), error => error.code === "functions/invalid-argument");
+      }
+      assert.deepEqual((await firestoreSdk.getDocFromServer(ref)).data(), stored);
+      for (const name of ["listUsersDirectory", "getUserDirectoryDetail"]) {
+        await assert.rejects(httpsCallable(functions, name)({ uid: account.uid }),
+          error => error.code === "functions/permission-denied");
+      }
+      assert.equal(process.env.SUPERADMINS_UIDS, "local-provider-admin");
+      const operatorEmail = `auth-flows-${randomUUID()}@example.test`;
+      const operatorPassword = `Synthetic-${randomUUID()}!`;
+      await admin.auth().createUser({ uid: "local-provider-admin", email: operatorEmail, password: operatorPassword });
+      createdUids.add("local-provider-admin");
+      await authSdk.signOut(auth);
+      await authSdk.signInWithEmailAndPassword(auth, operatorEmail, operatorPassword);
+      const directory = (await httpsCallable(functions, "listUsersDirectory")({})).data;
+      assert.deepEqual(directory.items.find(item => item.uid === account.uid).designAssistance,
+        { requested: true, whatsapp: "+5491112345678" });
+      const detail = (await httpsCallable(functions, "getUserDirectoryDetail")({ uid: account.uid })).data;
+      assert.deepEqual(detail.user.designAssistance, { requested: true, whatsapp: "+5491112345678" });
+      await authSdk.signOut(auth);
+      await authSdk.signInWithEmailAndPassword(auth, account.email, account.password);
+      await upsert({ ...profile, designAssistance: { requested: false, whatsapp: "+5491112345678" } });
+      assert.deepEqual((await status({})).data.profile.designAssistance, { requested: false, whatsapp: null });
+      assert.equal((await status({})).data.profileComplete, true);
+      await authSdk.signOut(auth);
+      await assert.rejects(upsert({ ...profile, designAssistance: helpByEmail }),
+        error => error.code === "functions/unauthenticated");
+    });
+
     await context.test("an existing Auth account with an absent or incomplete profile completes it without changing identity", async () => {
       const account = await createAccount();
       const profileRef = adminDb.doc(`usuarios/${account.uid}`);

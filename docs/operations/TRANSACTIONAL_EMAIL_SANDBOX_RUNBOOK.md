@@ -581,11 +581,18 @@ validador y sus pruebas como un cambio deliberado.
 
 - **Subject:** `Bienvenido a Reserva el Día`.
 - **Preheader:** `Tu invitación empieza acá. Elegí una plantilla y hacela tuya.`
-- **CTA:** `Crear mi invitación`.
-- Copy centralizado en `content/welcome.ts`: carta personal de Agus, fundador.
-  Mantiene los párrafos en una sola superficie, las dos frases solicitadas en
-  negrita y el CTA inmediatamente después del párrafo de personalización.
-  La firma usa dos líneas, también en plain-text.
+- **CTA al dashboard:** `Crear mi invitación`, después del párrafo de personalización.
+- **Regalo de bienvenida (copy actualizado el 26/10/2026):** asistencia de un
+  diseñador o personalización completa de la invitación, sin costo adicional.
+  El CTA `Quiero mi regalo de bienvenida` dirige a
+  `https://tally.so/r/RWW0VK` para completar los datos del evento.
+  Este enlace es fijo en `content/welcome.ts`; no se recibe del usuario ni
+  modifica la validación de `dashboardUrl`. HTML y plain-text conservan su URL.
+- Copy centralizado en `content/welcome.ts`: carta breve de Agus, fundador.
+  Mantiene los párrafos en una sola superficie, el regalo y su gratuidad en
+  negrita, y la firma en dos líneas, también en plain-text.
+  El cambio de plantilla necesita desplegar `onUserCreatedWelcomeEmail` para
+  aplicarse a los próximos registros; editar el código no actualiza el remoto.
 
 Los componentes usan tablas de presentación y estilos inline, Arial/Helvetica,
 ancho de 600 px limitado al espacio disponible, cuerpo de 16 px e idioma español.

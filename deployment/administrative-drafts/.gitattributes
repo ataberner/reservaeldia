@@ -1,0 +1,4 @@
+base.rules -text whitespace=cr-at-eol
+firestore.rules -text whitespace=cr-at-eol
+manifest.json -text
+firebase.json -text

@@ -5,6 +5,9 @@ const { createHash } = require("node:crypto");
 const { ROOT, checkRequirements, createSession, assertPortsFree } = require("./session.cjs");
 const { Processes } = require("./processes.cjs");
 const { EMULATORS } = require("../../shared/firebaseEnvironment.cjs");
+const { Evidence } = require("./evidence.cjs");
+const { cleanupSession } = require("./sessionCleanup.cjs");
+const { preserveReports } = require("./prepareLocal.cjs");
 
 // Opt-in demonstration; never mutates ROOT sources. The normal gate does not
 // intentionally break lint/acceptance; this harness uses their existing runners.
@@ -13,16 +16,25 @@ async function main() {
   if (args.length && (args.length !== 1 || args[0] !== "--contracts-only")) throw new Error("Uso: verifyNegative.cjs [--contracts-only]");
   const requirements = checkRequirements(), owner = new Processes();
   const original = fs.readFileSync(path.join(ROOT, "firestore.rules"));
-  const copy = createSession(requirements);
+  const evidence = new Evidence(ROOT, "negative", []);
+  let copy, error, stopped = false;
+  const resultFile = path.join(evidence.directory, "negative-controls.json"), results = [];
+  const save = () => fs.writeFileSync(resultFile, JSON.stringify({ sourceSha256: createHash("sha256").update(original).digest("hex"), results }, null, 2));
+  const onSignal = () => {
+    error ||= Object.assign(new Error("Controles negativos interrumpidos"), { kind: "interrupted" });
+    owner.stop().catch(e => { error = e; });
+  };
+  process.once("SIGINT", onSignal); process.once("SIGTERM", onSignal);
+  try {
+  copy = createSession(requirements, created => { copy = created; });
   const local = path.join(copy.workspace, ".local-isolation");
   fs.mkdirSync(local, { recursive: true });
   fs.symlinkSync(path.join(ROOT, ".local-isolation/tool-cache"), path.join(local, "tool-cache"), process.platform === "win32" ? "junction" : "dir");
-  const resultFile = path.join(copy.session, "negative-controls.json"), results = [];
-  const save = () => fs.writeFileSync(resultFile, JSON.stringify({ sourceSha256: createHash("sha256").update(original).digest("hex"), results }, null, 2));
   async function execute(name, env, interrupt = false) {
+    if (error) throw error;
     const reports = path.join(local, "reports");
     const before = fs.existsSync(reports) ? fs.readdirSync(reports) : [];
-    let error;
+    let runError;
     const interruptionDriver = `const fs=require('fs'),path=require('path');
       process.argv=[process.execPath,'scripts/local/runLocal.cjs','verify'];
       const before=${JSON.stringify(before)};
@@ -33,25 +45,23 @@ async function main() {
         }},25);poll.unref();require('./scripts/local/runLocal.cjs').entry();`;
     const args = interrupt ? ["-e", interruptionDriver] : ["scripts/local/runLocal.cjs", "verify"];
     try { await owner.run(args, { cwd: copy.workspace, env,
-      log: path.join(copy.session, `${name}.log`), name, timeoutMs: 25 * 60000 }); }
-    catch (e) { error = e; }
+      log: path.join(evidence.directory, `${name}.log`), name, timeoutMs: 25 * 60000 }); }
+    catch (e) { runError = e; }
     await owner.stop();
-    assert.ok(error, "Negative control must return failure");
+    assert.ok(runError, "Negative control must return failure");
     const added = fs.readdirSync(reports).filter(name => !before.includes(name));
     assert.equal(added.length, 1);
     const directory = path.join(reports, added[0]);
     const report = JSON.parse(fs.readFileSync(path.join(directory, "result.json")));
-    assert.equal(error.exitCode, report.exitCode, "Actual process exit must agree with report");
+    assert.equal(runError.exitCode, report.exitCode, "Actual process exit must agree with report");
     // A dependent action uses exactly the canonical exit code as a CI-like gate.
     const dependent = path.join(copy.session, `${name}-dependent-stage.txt`);
-    if (error.exitCode === 0) fs.writeFileSync(dependent, "synthetic dependent stage reached");
+    if (runError.exitCode === 0) fs.writeFileSync(dependent, "synthetic dependent stage reached");
     assert.equal(fs.existsSync(dependent), false);
     await assertPortsFree([...Object.values(EMULATORS), 14400, 14500, 19150, 3100]);
-    results.push({ name, exitCode: report.exitCode, dependentReached: false, portsFree: true, report: directory }); save();
+    results.push({ name, exitCode: report.exitCode, dependentReached: false, portsFree: true, report: path.join(evidence.directory, "verification", added[0]) }); save();
     return { report, directory };
   }
-  let error;
-  try {
     const { artifacts, targetKind } = require("../../functions/scripts/syncTemplateContract.cjs");
     const mapped = artifacts.flatMap(a => a.targetPaths).find(file => targetKind(file) === "input");
     const target = path.join(copy.workspace, path.relative(ROOT, mapped));
@@ -78,9 +88,9 @@ async function main() {
     try {
       const functions = path.join(copy.workspace, "functions");
       await owner.run(["scripts/syncTemplateContract.cjs"], { cwd: functions, env: copy.env,
-        log: path.join(copy.session, "lint-probe-sync.log"), name: "lint-probe-sync", timeoutMs: 180000 });
+        log: path.join(evidence.directory, "lint-probe-sync.log"), name: "lint-probe-sync", timeoutMs: 180000 });
       await owner.run(["node_modules/typescript/bin/tsc", "--noEmit"], { cwd: functions, env: copy.env,
-        log: path.join(copy.session, "lint-probe-typecheck.log"), name: "lint-probe-typecheck", timeoutMs: 180000 });
+        log: path.join(evidence.directory, "lint-probe-typecheck.log"), name: "lint-probe-typecheck", timeoutMs: 180000 });
       const lint = await execute("lint-new-typescript-error", copy.env);
       assert.equal(lint.report.exitCode, 1);
       const stage = lint.report.stages.find(s => s.name === "lint");
@@ -120,13 +130,29 @@ async function main() {
     assert.equal(missing.report.stages.find(stage => stage.name === "copy").status, "not-executed");
   } catch (e) { error = e; }
   finally {
-    await owner.stop();
-    assert.deepEqual(fs.readFileSync(path.join(ROOT, "firestore.rules")), original, "Main Rules must stay byte-identical");
-    const marker = path.join(copy.session, "session.json");
-    fs.writeFileSync(marker, JSON.stringify({ ...JSON.parse(fs.readFileSync(marker)), stopped: true }, null, 2));
-    save();
+    try { await owner.stop(); stopped = true; } catch (e) { error = e; }
+    try {
+      assert.deepEqual(fs.readFileSync(path.join(ROOT, "firestore.rules")), original, "Main Rules must stay byte-identical");
+      if (copy) {
+        // Restore the deliberate negative mutation even when its assertion failed.
+        const copiedRules = path.join(copy.workspace, "firestore.rules");
+        if (fs.existsSync(copiedRules)) fs.writeFileSync(copiedRules, original);
+        const marker = path.join(copy.session, "session.json");
+        if (stopped) fs.writeFileSync(marker, JSON.stringify({ ...JSON.parse(fs.readFileSync(marker)), stopped: true }, null, 2));
+        evidence.collect(copy.session);
+        preserveReports(copy.workspace, path.join(evidence.directory, "verification"));
+        if (copy.receipt) evidence.data.sessionCleanup = cleanupSession(copy.receipt, { stopped, evidenceDirectory: evidence.directory });
+      }
+      save();
+    } catch (e) {
+      error ||= e;
+      if (copy?.receipt) cleanupSession(copy.receipt, { stopped: false });
+    }
+    process.removeListener("SIGINT", onSignal); process.removeListener("SIGTERM", onSignal);
+    process.exitCode = evidence.finish(error);
   }
   if (error) throw error;
   console.log(`Controles negativos comprobados: ${resultFile}`);
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode ||= 1; });
+module.exports = { main };

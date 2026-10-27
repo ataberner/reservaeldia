@@ -379,6 +379,7 @@ export default function DashboardHeader(props) {
                 const result = await readEditorSessionDocument({
                     session: normalizedEditorSession,
                     slug: slugInvitacion,
+                    initialData: administrativeDraftData,
                 });
 
                 if (result.exists) {
@@ -1064,11 +1065,21 @@ export default function DashboardHeader(props) {
         isSuperAdmin,
         editorReadOnly,
         isAdminReadOnlyView,
+        isAdminEditing: Boolean(normalizedEditorSession.adminEdit),
     });
     const userMenuActionButton =
         "group mx-2 my-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60";
 
-    const handleEditorBack = () => {
+    const handleEditorBack = async () => {
+        const adminEditContext = normalizedEditorSession.adminEdit;
+        if (adminEditContext) {
+            const result = await ensureEditorFlushBeforeAction?.("admin-editor-close");
+            if (adminEditContext.closed) return;
+            if (!result?.ok) {
+                window.alert(result?.error || "No se pudo guardar. Revisá los cambios antes de salir.");
+                return;
+            }
+        }
         markEditorSessionIntentionalExit({
             slug: slugInvitacion || null,
             reason: "header-back-button",
@@ -1234,6 +1245,7 @@ export default function DashboardHeader(props) {
                     isMobile={isMobile}
                     editorReadOnly={editorReadOnly}
                     readOnlyPreviewOnly={readOnlyPreviewOnly}
+                    hidePublicationAction={Boolean(normalizedEditorSession.adminEdit)}
                     historialExternos={historialExternos}
                     futurosExternos={futurosExternos}
                     documentDisplayName={documentDisplayName}

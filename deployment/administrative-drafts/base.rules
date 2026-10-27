@@ -1,0 +1,440 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.superadmin == true ||
+        request.auth.token.role == "admin"
+      );
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && uid is string && request.auth.uid == uid;
+    }
+
+    function isDraftOwner() {
+      return isOwner(resource.data.userId);
+    }
+
+    function isDraftOwnerOnCreate() {
+      return isOwner(request.resource.data.userId);
+    }
+
+    function hasDefaultMusic(data) {
+      return !("music" in data) || data.music == null || (
+        data.music is map &&
+        data.music.keys().hasOnly(["version", "enabled", "track", "volume", "loop"]) &&
+        data.music.version == 1 && data.music.enabled == false &&
+        data.music.track == null && data.music.volume == 0.35 && data.music.loop == true
+      );
+    }
+
+    function preservesMusic() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(["music"]) ||
+        (hasDefaultMusic(resource.data) && hasDefaultMusic(request.resource.data));
+    }
+
+    function isPublicationOwner(publicSlug) {
+      return isOwner(get(/databases/$(database)/documents/publicadas/$(publicSlug)).data.userId);
+    }
+
+    function isPublishedTemplateResource() {
+      return (!("estado" in resource.data) || resource.data.estado != "archived") &&
+        (!("estadoEditorial" in resource.data) || resource.data.estadoEditorial == "publicada");
+    }
+
+    function isPublishedTemplateCatalogResource() {
+      return resource.data.estado == "active" &&
+        resource.data.estadoEditorial == "publicada";
+    }
+
+    function isValidProviderWrite() {
+      return request.resource.data.keys().hasAll([
+          "schemaVersion",
+          "nombre",
+          "nombreNormalizado",
+          "slug",
+          "categoriaPrincipalId",
+          "categoriaIds",
+          "descripcion",
+          "descripcionCorta",
+          "contacto",
+          "redesSociales",
+          "ubicacion",
+          "imagenes",
+          "estado",
+          "activo",
+          "visible",
+          "validacion",
+          "propietario",
+          "revisionManual",
+          "fuente",
+          "importacion",
+          "creadoEn",
+          "actualizadoEn",
+          "publicadoEn"
+        ]) &&
+        request.resource.data.schemaVersion is int &&
+        request.resource.data.schemaVersion >= 2 &&
+        request.resource.data.nombre is string &&
+        request.resource.data.nombre.size() > 0 &&
+        request.resource.data.nombreNormalizado is string &&
+        request.resource.data.slug is string &&
+        request.resource.data.slug.size() > 0 &&
+        request.resource.data.categoriaIds is list &&
+        request.resource.data.estado in [
+          "importado",
+          "borrador",
+          "pendiente_revision",
+          "publicado",
+          "pausado",
+          "rechazado",
+          "eliminado"
+        ] &&
+        request.resource.data.activo is bool &&
+        request.resource.data.visible is bool &&
+        request.resource.data.validacion is map &&
+        request.resource.data.validacion.estado in [
+          "no_validado",
+          "pendiente",
+          "validado",
+          "rechazado",
+          "suspendido"
+        ] &&
+        request.resource.data.propietario is map &&
+        request.resource.data.revisionManual is map &&
+        request.resource.data.revisionManual.keys().hasAll([
+          "requerida",
+          "motivos",
+          "revisadaEn",
+          "revisadaPor",
+          "notas"
+        ]) &&
+        request.resource.data.revisionManual.requerida is bool &&
+        request.resource.data.revisionManual.motivos is list &&
+        request.resource.data.revisionManual.motivos.hasOnly([
+          "posible_duplicado_nombre",
+          "categoria_contenedora_novias",
+          "categoria_contenedora_experiencias_adicionales",
+          "categoria_ambigua",
+          "sin_id_externo",
+          "ubicacion_incompleta",
+          "contacto_dudoso"
+        ]) &&
+        (
+          (
+            request.resource.data.revisionManual.requerida == true &&
+            request.resource.data.revisionManual.motivos.size() > 0
+          ) ||
+          (
+            request.resource.data.revisionManual.requerida == false &&
+            request.resource.data.revisionManual.motivos.size() == 0
+          )
+        ) &&
+        request.resource.data.fuente is map &&
+        request.resource.data.fuente.keys().hasAll([
+          "categoriaOriginal"
+        ]) &&
+        (
+          request.resource.data.fuente.categoriaOriginal == null ||
+          request.resource.data.fuente.categoriaOriginal is string
+        ) &&
+        request.resource.data.importacion is map &&
+        (
+          request.resource.data.visible == false ||
+          (
+            request.resource.data.estado == "publicado" &&
+            request.resource.data.activo == true
+          )
+        );
+    }
+
+    function isValidProviderCategoryWrite() {
+      return request.resource.data.keys().hasAll([
+          "nombre",
+          "slug",
+          "descripcion",
+          "activa",
+          "orden",
+          "icono",
+          "categoriaPadreId",
+          "creadoEn",
+          "actualizadoEn"
+        ]) &&
+        request.resource.data.nombre is string &&
+        request.resource.data.nombre.size() > 0 &&
+        request.resource.data.slug is string &&
+        request.resource.data.slug.size() > 0 &&
+        request.resource.data.descripcion is string &&
+        request.resource.data.activa is bool &&
+        request.resource.data.orden is int;
+    }
+
+    // W1: TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md, welcome-registration-2b1.
+    match /welcomeEmailDeliveries/{document=**} {
+      allow read, write: if false; // Backend-only automatic welcome reservations.
+    }
+    match /newUserNotificationDeliveries/{document=**} {
+      allow read, write: if false; // Independent backend-only internal notification reservations.
+    }
+    match /designerAiUsage/{document=**} {
+      allow read, write: if false; // Backend-only assistant policy, quotas and request reservations.
+    }
+    match /giftLinkMetadataUsage/{document=**} {
+      allow read, write: if false; // Backend-only gift-link metadata quota accounting.
+    }
+
+    // A1/A2 scope and unresolved operations: SECURITY_CONTRACT.md, phase-4b2a.
+    match /usuarios/{uid} {
+      allow read: if isOwner(uid);
+      // Existing own-profile writes retained; field/account policy is pending.
+      // Ownership is the path UID, never a mutable profile field or role flag.
+      allow write: if isOwner(uid);
+
+      match /imagenes/{document=**} {
+        allow read, write: if isOwner(uid);
+      }
+      // Unmodeled subcollections retain the observed fallback pending policy.
+      match /{subcollection}/{document=**} {
+        allow read, write: if isSignedIn() && subcollection != "imagenes";
+      }
+    }
+
+    match /publicadas/{publicSlug} {
+      allow read: if isOwner(resource.data.userId);
+      allow write: if false; // Backend publication authority, including admins.
+
+      match /rsvps/{document=**} {
+        allow read: if isPublicationOwner(publicSlug);
+        // Denying all own RSVP writes remains a proposal; narrow ownership only.
+        allow write: if isPublicationOwner(publicSlug);
+      }
+      match /visits/{document=**} {
+        // Removing the owner's raw reads is still pending, not implied by A2.
+        allow read: if isPublicationOwner(publicSlug);
+        allow write: if false;
+      }
+      match /uniqueVisitors/{document=**} {
+        allow read: if isPublicationOwner(publicSlug);
+        allow write: if false;
+      }
+      match /{subcollection}/{document=**} {
+        allow read, write: if isSignedIn() &&
+          !(subcollection in ["rsvps", "visits", "uniqueVisitors"]);
+      }
+    }
+
+    match /publicadas_historial/{historyId} {
+      allow read: if isOwner(resource.data.userId);
+      // Backend-only CRUD is proposed. Preserve own writes but protect identity.
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.userId == resource.data.userId;
+      allow delete: if isOwner(resource.data.userId);
+      match /{subcollection}/{document=**} {
+        allow read, write: if isSignedIn(); // Unmodeled; policy still pending.
+      }
+    }
+
+    match /borradores/{draftId} {
+      // Music mutations use the atomic, owner-checked admin callable.
+      // Creation provenance is written only by the backend, never supplied or
+      // replaced by a client when resuming a stored HTML artifact.
+      allow create: if isDraftOwnerOnCreate() &&
+        !("draftCreation" in request.resource.data) && hasDefaultMusic(request.resource.data);
+      allow read, delete: if isDraftOwner();
+      allow update: if isDraftOwner() &&
+        request.resource.data.userId == resource.data.userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["draftCreation"]) &&
+        preservesMusic();
+    }
+
+    // A4: roots/operation results remain administrative even when published.
+    // No SDK writer may bypass version, concurrency or retention procedures.
+    match /countdownPresets/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /countdownPresets/{presetId}/versions/{document=**} {
+      // Preserve observed authenticated raw reads; the catalog still uses CALL.
+      // This is not approval of raw-version distribution or of Q1.
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /plantillas/{templateId} {
+      allow read: if isSignedIn() && isPublishedTemplateResource();
+      allow create, update, delete: if false;
+    }
+
+    match /plantillas_catalog/{templateId} {
+      allow read: if isPublishedTemplateCatalogResource();
+      allow create, update, delete: if false;
+    }
+
+    match /plantillas_tags/{tagId} {
+      allow read, write: if false;
+    }
+
+    match /analyticsEvents/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsUsers/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsInvitations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsDaily/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsWeekly/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsMonthly/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsTemplates/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsCohorts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsJobs/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /analyticsExports/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /site_settings/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /app_config/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /publication_checkout_sessions/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /public_slug_reservations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /publication_discount_codes/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /publication_discount_code_usage/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /iconos/{iconId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /iconos_archived/{iconId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /iconos_usage_snapshots/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /iconos_audit/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /decoraciones/{decorId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /decoraciones_archived/{decorId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /decoraciones_audit/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /proveedores/{document=**} {
+      // Private beta: all access through authenticated backend gates.
+      allow read, write: if false;
+    }
+
+    match /categorias_proveedores/{categoriaId} {
+      allow read: if isAdmin() || resource.data.activa == true;
+      allow create, update: if isAdmin() && isValidProviderCategoryWrite();
+      allow delete: if isAdmin();
+    }
+
+    // Compatibility fallback for the rest of current app documents.
+    match /{collection}/{document=**} {
+      allow read: if isSignedIn() &&
+        collection != "welcomeEmailDeliveries" &&
+        collection != "newUserNotificationDeliveries" &&
+        collection != "designerAiUsage" &&
+        collection != "giftLinkMetadataUsage" &&
+        collection != "usuarios" &&
+        collection != "publicadas" &&
+        collection != "publicadas_historial" &&
+        collection != "borradores" &&
+        collection != "countdownPresets" &&
+        collection != "plantillas" &&
+        collection != "plantillas_catalog" &&
+        collection != "plantillas_tags" &&
+        collection != "site_settings" &&
+        collection != "app_config" &&
+        collection != "publication_checkout_sessions" &&
+        collection != "public_slug_reservations" &&
+        collection != "publication_discount_codes" &&
+        collection != "publication_discount_code_usage" &&
+        collection != "proveedores" &&
+        collection != "categorias_proveedores";
+      allow write: if isSignedIn() &&
+        collection != "welcomeEmailDeliveries" &&
+        collection != "newUserNotificationDeliveries" &&
+        collection != "designerAiUsage" &&
+        collection != "giftLinkMetadataUsage" &&
+        collection != "usuarios" &&
+        collection != "publicadas" &&
+        collection != "publicadas_historial" &&
+        collection != "borradores" &&
+        collection != "countdownPresets" &&
+        collection != "plantillas" &&
+        collection != "plantillas_catalog" &&
+        collection != "plantillas_tags" &&
+        collection != "site_settings" &&
+        collection != "app_config" &&
+        collection != "publication_checkout_sessions" &&
+        collection != "public_slug_reservations" &&
+        collection != "publication_discount_codes" &&
+        collection != "publication_discount_code_usage" &&
+        collection != "iconos" &&
+        collection != "decoraciones" &&
+        collection != "proveedores" &&
+        collection != "categorias_proveedores";
+    }
+  }
+}

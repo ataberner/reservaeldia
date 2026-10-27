@@ -89,6 +89,25 @@ existente ni reproduzcas fallas contra producción sin autorización.
 
 ## Verificación y Definition of Done
 
+Para el desarrollo local, Codex usa por defecto verificación rápida y selectiva:
+`npm test` / `npm run verify:quick`; `-- --list` muestra el alcance y se pueden
+pasar archivos de test explícitos después de revisar sus efectos. Un resultado
+rápido sólo acredita los checks informados, no la suite completa.
+
+Evitá por defecto pruebas locales extensivas o de rendimiento, builds completos
+o repetitivos, emuladores, instalaciones de herramientas, entornos aislados
+innecesarios y copias completas del repositorio. Priorizá verificaciones
+focalizadas; ampliá sólo por necesidad del cambio o pedido explícito y no repitas
+checks aprobados sin una razón nueva.
+`verify:local`, las suites de Rules/autenticación/pagos y los gates de CI/despliegue
+conservan sus controles obligatorios. El modo rápido no los sustituye.
+La preparación exige elegir `--verify` (preparar, verificar y limpiar) o
+`--keep-workspace` (conservar deliberadamente); sin flags no crea un entorno.
+No borres entornos históricos sin aprobación explícita. La limpieza automática
+sólo alcanza directorios creados por la ejecución actual, con procesos detenidos
+y evidencia preservada; protege worktrees, cambios sin integrar y enlaces.
+Ver [comandos y limpieza](docs/operations/DEVELOPMENT_WORKFLOW.md#verificacion-rapida).
+
 Una tarea se puede dar por completada cuando, dentro de su alcance:
 
 - cumple el comportamiento solicitado y conserva contratos e invariantes;

@@ -441,3 +441,18 @@ test("preview gate state keeps template and read-only sessions from exposing pub
     }
   );
 });
+
+test("administrative edit hydration preserves the injected owner document and disables publishing", () => {
+  const data = { userId: "owner", nombre: "Invitation" };
+  const props = buildDashboardCanvasEditorProps({
+    slugInvitacion: "foreign", usuarioUid: "staff", isEditorReadOnly: false,
+    adminDraftView: { enabled: true, editing: true, draftData: data },
+    editorSession: { kind: "draft", id: "foreign", adminEdit: { ownerUid: "owner" } },
+  });
+  assert.equal(props.initialDraftData, data);
+  assert.equal(props.readOnly, false);
+  assert.equal(props.userId, "staff");
+  assert.equal(buildDashboardPreviewGateState({
+    isAdministrativeDraft: true, mostrarCheckoutPublicacion: true,
+  }).canPublishFromPreview, false);
+});

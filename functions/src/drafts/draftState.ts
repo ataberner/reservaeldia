@@ -6,6 +6,15 @@ export const DRAFT_STATES = {
 type DraftState = (typeof DRAFT_STATES)[keyof typeof DRAFT_STATES];
 type DraftDocData = Record<string, unknown>;
 
+export function hasModernDraftRenderState(data: DraftDocData | null | undefined): boolean {
+  if (!data || typeof data !== "object") return false;
+  const hasSections = Array.isArray(data.secciones);
+  const hasObjects = Array.isArray(data.objetos);
+  if (data.editor === "konva" && hasSections && hasObjects) return true;
+  return (hasSections && (data.secciones as unknown[]).length > 0) ||
+    (hasObjects && (data.objetos as unknown[]).length > 0);
+}
+
 export function readMillis(value: unknown): number | null {
   if (!value) return null;
 

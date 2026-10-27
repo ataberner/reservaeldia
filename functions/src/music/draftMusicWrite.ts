@@ -89,6 +89,10 @@ export async function saveDraftWithMusicHandler(
       throw new HttpsError("permission-denied", "No pod\u00e9s modificar este borrador.");
     }
     const current = snapshot.data() || {};
+    const currentAdminRevision = typeof current.adminDraftRevision === "string" ? current.adminDraftRevision : null;
+    if ((data.expectedAdminRevision ?? null) !== currentAdminRevision) {
+      throw new HttpsError("aborted", "El borrador cambio durante la edicion. Volve a abrirlo para cargar los cambios recientes.");
+    }
     const incomingPatch = asRecord(data.patch);
     const musicChanged = JSON.stringify(normalizeMusicConfig(incomingPatch.music)) !==
       JSON.stringify(normalizeMusicConfig(current.music));
@@ -105,6 +109,9 @@ export async function saveDraftWithMusicHandler(
     }
     const timestamp = FieldValue.serverTimestamp();
     const patch = buildDraftMusicPatch(incomingPatch, timestamp, current.music);
+    if (currentAdminRevision) {
+      patch.draftContentMeta = { ...asRecord(patch.draftContentMeta), baseAdminRevision: currentAdminRevision };
+    }
     if (!musicChanged) {
       if (Object.prototype.hasOwnProperty.call(current, "music")) patch.music = current.music;
       else delete patch.music;

@@ -1,7 +1,7 @@
 import styles from "./LandingShareSection.module.css";
 
 const SHARE_INVITATION_MOCKUP_SRC =
-  "/assets/img/landing/compartir-invitacion-mockup.webp";
+  "/assets/img/landing/compartir-invitacion-mockup-mica-juani.webp";
 
 export default function LandingShareSection({
   titleId = "landing-share-title",

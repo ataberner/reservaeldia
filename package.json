@@ -3,6 +3,9 @@
    "name": "reservaeldia",
    "version": "1.0.0",
    "scripts": {
+      "test": "node scripts/local/quickVerification.cjs",
+      "verify": "node scripts/local/quickVerification.cjs",
+      "verify:quick": "node scripts/local/quickVerification.cjs",
       "email:dev": "npm --prefix functions run email:dev",
       "email:build": "npm --prefix functions run email:build",
       "dev": "node scripts/local/runLocal.cjs dev",
@@ -48,10 +51,12 @@
       "deploy:hosting": "npm run hosting:bootstrap && npm run build && firebase deploy --only hosting && npm run verify:hosting:production",
       "local:check": "node scripts/local/runLocal.cjs check",
       "test:local:unit": "node --test scripts/local/environment.test.mjs src/firebaseInitializationContract.test.mjs",
-      "test:local": "node scripts/local/runLocal.cjs test",
+      "test:local": "node scripts/local/quickVerification.cjs",
+      "test:local:full": "node scripts/local/runLocal.cjs test",
       "test:local:rules": "node scripts/local/runLocal.cjs rules",
       "local:prepare": "node scripts/local/prepareLocal.cjs",
       "verify:local": "node scripts/local/runLocal.cjs verify",
+      "verify:local:prepared": "node scripts/local/prepareLocal.cjs --verify",
       "verify:release:local": "node scripts/local/runLocal.cjs release",
       "test:local:negative": "node scripts/local/verifyNegative.cjs"
    },

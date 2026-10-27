@@ -32,6 +32,63 @@ ejecuta ese mismo stage aisladamente: tres builds, tests de packages/registro/
 configuración y discovery CLI real, sólo en una copia sin credenciales ni dotenv
 personales. La evidencia del stage queda en `functions-ownership.log` en el reporte
 normal; los snapshots anteriores a esta etapa conservan su alcance fechado.
+La copia `ownership-*` actual también se limpia tras detener procesos y guardar
+hashes, manifests y diagnósticos en `.local-isolation/ownership-evidence/run-*`;
+estos artefactos locales complementan el log que ya conserva CI.
+
+<a id="verificacion-rapida"></a>
+
+## Verificación rápida predeterminada — 2026-10-27
+
+`npm test`, `npm run verify`, `npm run verify:quick` y `npm run test:local`
+ejecutan el runner selectivo. `node scripts/local/runLocal.cjs` sin modo también
+elige este recorrido. Consulta cambios staged, unstaged y archivos nuevos de Git;
+comprueba sintaxis de `.cjs`/`.mjs` modificados y selecciona únicamente tests del
+catálogo pequeño revisado en `quickVerification.cjs`. Informa archivos fuera de
+cobertura; no descubre toda la suite ni infiere cobertura de JSX/TypeScript.
+
+```powershell
+npm test -- --list
+npm test -- scripts/local/sessionCopy.test.cjs
+```
+
+Los archivos explícitos deben ser tests dentro del repositorio, sin globs,
+directorios ni enlaces. Conservan sus propios efectos: inspeccionarlos antes de
+seleccionarlos. Cada archivo se ejecuta secuencialmente, con plazo de 60 segundos
+y detención de sus procesos propios. Este recorrido no instala herramientas,
+copia fuentes, compila la aplicación ni inicia emuladores por sí mismo.
+
+El antiguo `test:local` integral se conserva como `test:local:full`.
+`verify:local` sigue siendo el gate completo obligatorio de CI; no se cambian
+sus etapas, Rules, autenticación, ownership, pagos ni dependencias de Hosting.
+`dev` y los modos de emuladores siguen siendo solicitudes explícitas de una
+sesión completa aislada. No iniciar esos recorridos para un cambio que se puede
+validar con checks puntuales.
+
+Para solicitar preparación y gate completo en una única ejecución temporal:
+
+```powershell
+npm run verify:local:prepared
+```
+
+Este comando equivale a `npm run local:prepare -- --verify`: instala herramientas, ejecuta
+el mismo gate y limpia su nueva preparación al terminar, también ante falla si
+se cumplen las condiciones de seguridad. Conserva reportes anidados en
+`.local-isolation/reports/run-*/verification/`.
+
+`local:prepare` exige exactamente una opción: `--verify` o `--keep-workspace`.
+Sin flags se detiene con instrucciones antes de comprobar el runtime, crear
+carpetas o instalar herramientas. `npm run local:prepare -- --keep-workspace`
+retiene intencionalmente la preparación para uso posterior; CI usa esa opción
+explícita y ejecuta después el mismo `verify:local`. No usar la preparación como
+verificación cotidiana.
+
+La caché de descargas npm se comparte en `.local-isolation/npm-cache`, usando
+su validación por contenido y configuración vacía. No se comparten instalaciones
+mutables entre preparaciones; las sesiones reutilizan dependencias mediante
+junctions y JAR verificados mediante hardlinks (copia privada si el volumen no
+lo permite). Las listas de copia excluyen salidas regenerables a toda profundidad.
+`.gitignore` evita versionarlas, pero no elimina nada.
 
 ## Línea base revalidada — 2026-09-11
 
@@ -122,11 +179,13 @@ y el alcance de credenciales/secretos de
 Desde `C:\Reservaeldia`:
 
 ```powershell
-npm run local:check
-npm run test:local:unit
-npm run test:local
-npm run dev
+npm test -- --list
+npm test -- scripts/local/sessionCopy.test.cjs
 ```
+
+`local:check`, `test:local:unit`, `test:local:full`, `test:local:rules` y `dev`
+siguen disponibles para sus alcances explícitos; no son pasos previos obligatorios
+de la verificación rápida.
 
 `npm run dev` abre Next en `http://localhost:3100` después de comprobar los cuatro
 emuladores y un callable existente. Crea una identidad sintética ordinaria:
@@ -174,7 +233,7 @@ las mantiene `functions/scripts/syncTemplateContract.cjs`.
 | --- | --- | --- | --- | --- |
 | `dev` y alias | Auth, Firestore, Functions, Storage + Next | `demo-reservaeldia-local` / `demo-reservaeldia-local.appspot.com` | Contrato compartido → entorno limpio → `firebase.local.json`; Next `127.0.0.1:3100` | Copia, compilados, cachés, logs y fixtures propios; sin datos ni efectos externos habilitados |
 | `emulators` y alias de Functions | Los cuatro servicios | Mismo demo/bucket | Auth `127.0.0.1:19099`; Firestore `127.0.0.1:18080`; Functions `127.0.0.1:15001`; Storage `127.0.0.1:19199` | Sin Next ni seed; memoria efímera y blobs en la sesión |
-| `test:local` | Los cuatro servicios, cliente real, Admin, Next y Chrome temporal | Mismo demo/bucket | API Functions bajo `/demo-reservaeldia-local/us-central1/`; conexiones SDK previas al primer acceso | Sólo identidades aleatorias `@example.test`, documentos y bytes sintéticos; evidencia JSON |
+| `test:local:full` | Los cuatro servicios, cliente real, Admin, Next y Chrome temporal | Mismo demo/bucket | API Functions bajo `/demo-reservaeldia-local/us-central1/`; conexiones SDK previas al primer acceso | Sólo identidades aleatorias `@example.test`, documentos y bytes sintéticos; evidencia JSON |
 | Backend local | Admin Auth/Firestore/Storage | Mismo demo/bucket, validado antes de crear/reutilizar app | Variables de emulación completas; `FIREBASE_CONFIG` compatible; sin obtención de tokens ADC | SDK Admin usa transporte de emuladores; no demuestra autorización de Rules |
 | HTML local | Generador compartido, RSVP y assets | Demo; RSVP actualmente deshabilitado en servidor | `http://127.0.0.1:15001/demo-reservaeldia-local/us-central1/publicRsvpSubmit`; Sheets rechazado; CSP local en HTML | RSVP responde 412; assets remotos incrustados bloqueados antes de cargar |
 | Producción (no ejecutada) | Auth, Firestore, Functions, Storage | `reservaeldia-7a440` / `reservaeldia-7a440.firebasestorage.app` | Firebase normal; Functions `https://us-central1-reservaeldia-7a440.cloudfunctions.net`; web `https://reservaeldia.com.ar`; authDomain configurable | Configuración preservada por pruebas sin transporte real |
@@ -237,7 +296,7 @@ La copia debe recrearse después de cada edición. Editar la copia sirve para
 una prueba efímera; conservar los cambios deseados en el repositorio. F15 no queda
 resuelto por esta copia inicial. Los scripts especializados de proveedores,
 migradores y operación conservan sus revisiones específicas; no están certificados
-por `test:local`.
+por `test:local:full`.
 
 ## Detención, archivos y limpieza
 
@@ -247,9 +306,9 @@ terminar procesos, no se debe marcar la sesión como detenida ni limpiar sus arc
 habilitar el permiso de terminación de esos procesos propios y repetir la detención.
 No buscar y matar procesos por puerto, nombre o proyecto compartido.
 
-Se conservan `session.json`, `workspace/` (incluidos `functions/lib`, copias de
-contratos y `.next-dev-3100`), `home/`, `tmp/`, caché de JAR y el perfil temporal de
-Chrome. Las pruebas escriben `integration-evidence.json`, `browser-evidence.json`,
+Desde 2026-10-27, el `finally` del lanzador conserva los reportes necesarios y
+limpia la sesión creada por esa misma ejecución después de detener procesos,
+también si falla una prueba. Las pruebas escriben `integration-evidence.json`, `browser-evidence.json`,
 `offline-evidence.json` y, sólo si termina toda la suite, `verified.json`.
 No se exporta la base de emuladores. La integración elimina únicamente sus
 documentos, archivos y usuario; los datos restantes desaparecen al detener la sesión.
@@ -276,16 +335,26 @@ capturado por el lanzador en `emulators.log`, con el UID, `sourceEventId` y
 la escritura del delivery puede preceder la llegada del log. No depende de una
 lectura inmediata de `firebase-debug.log`, cuyo transporte de archivo es asíncrono.
 
-Para borrar una sesión propia ya detenida:
+La limpieza automática exige un recibo en memoria creado antes de ejecutar
+procesos y evidencia fuera del directorio a eliminar. Compara hashes de fuentes
+de la copia y del original; conserva snapshots con cambios sin integrar, fuentes
+originales modificadas durante el recorrido, worktrees registrados o metadatos
+Git, procesos activos y sesiones anidadas retenidas. Rechaza ancestros enlazados
+y sólo desvincula junctions/enlaces, sin recorrer sus destinos. Si no puede
+comprobar estas condiciones, informa la retención y no barre otros directorios.
+
+El comando histórico siguiente sólo admite restos detenidos sin workspace ni
+evidencia pendiente; rechaza fuentes históricas que no tienen recibo vigente:
 
 ```powershell
 node scripts/local/runLocal.cjs clean C:\Reservaeldia\.local-isolation\session-NOMBRE
 ```
 
-La limpieza exige ruta absoluta dentro del directorio creado, nombre de sesión,
-marca de propiedad/proyecto y estado detenido. No sigue enlaces a `node_modules`
-ni elimina cachés, perfiles o directorios ajenos. `dev:reset` crea una sesión nueva;
-no limpia sesiones anteriores ni cachés existentes del usuario.
+Exige ruta absoluta, propiedad/proyecto, estado detenido, PID inactivo y ausencia
+de worktrees. No elimina carpetas históricas automáticamente: su revisión y
+borrado requieren aprobación explícita. `dev:reset` crea una sesión nueva; no
+limpia sesiones anteriores ni cachés existentes. Un cierre forzado del proceso
+puede impedir su `finally`; esos restos quedan protegidos para revisión.
 
 ## Evidencia 4A — 2026-09-11
 
@@ -361,6 +430,12 @@ emuladores; compila Functions en la copia, sin Next, seed de desarrollo, CI ni
 proveedores. No se descarga ni agrega ninguna dependencia. Es necesario iniciar
 una sesión nueva después de editar tests, contratos o Rules.
 
+Para borradores administrativos, con el Node 22 fijado en `.node-version`,
+`node scripts/local/runLocal.cjs admin-drafts` agrega los consumidores frontend de
+`adminDraftChecks.cjs` y la integración real de creación/edición/medios a esa suite
+aislada. [AD1](../contracts/SECURITY_CONTRACT.md#administrative-drafts) delimita
+permisos, concurrencia y despliegue pendiente; no inicia Next ni publica.
+
 Desde 4B2B también ejecuta los checks countdown existentes enumerados en
 [countdownChecks.cjs](../../scripts/local/countdownChecks.cjs): 21 tests de
 comportamiento puro (políticas/catálogo/lifecycle/frames) y 10 de inspección de
@@ -407,7 +482,7 @@ La fuente de casos es [rulesCases.mjs](../../scripts/local/rulesCases.mjs);
   todavía capacidades completas, transición o revocación.
 
 El resultado general **debe ser no cero** mientras haya fallas de aceptación.
-No forma parte de `test:local`, `test:local:unit` ni `dev`; desde 5A integra
+No forma parte de `test:local:full`, `test:local:unit` ni `dev`; desde 5A integra
 `verify:local` y el control previo de los workflows de Hosting. No agregar `|| true`
 para presentar esta línea base como verde. Errores de arranque, hook, transporte,
 timeout, objeto ausente y limpieza no cuentan como `deny`. Sólo se aceptan como
@@ -445,11 +520,12 @@ El lanzador admite revisiones posteriores de Node 22 y registra la versión usad
 Los packages productivos y de herramientas declaran Node 22. Las fuentes oficiales
 son [Node](https://nodejs.org/en/blog/release/v22.23.4) y
 [Temurin](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.8%2B9).
-No usar perfiles Firebase/Google ni secretos. La preparación se ejecuta desde
-la raíz que contiene los cambios a verificar:
+No usar perfiles Firebase/Google ni secretos. Para separar preparación y
+verificación, conservar explícitamente la copia desde la raíz que contiene los
+cambios a verificar:
 
 ```sh
-npm run local:prepare
+npm run local:prepare -- --keep-workspace
 ```
 
 Este comando **sí accede a Internet público**. Usa `copyWorkspace` del mismo
@@ -459,7 +535,8 @@ los `node_modules`, compilados o lockfiles del árbol original. En esa copia:
 
 1. Ejecuta `npm ci --no-audit --no-fund` en raíz, `functions/` y
    `scripts/local/tools/`, cada uno con su lockfile. Usa configuración npm vacía
-   y caché propia; desactiva el download implícito de Puppeteer durante instalación.
+   y caché de descargas compartida en el repositorio; desactiva el download
+   implícito de Puppeteer durante instalación.
 2. Ejecuta la CLI fijada **14.4.0** mediante Node para descargar exclusivamente
    Firestore **1.19.8** y Storage Rules runtime **1.1.3**. Auth/Functions pertenecen
    a esa CLI. No inicia servicios, importa bases ni hace login.
@@ -564,9 +641,11 @@ integración/navegador/offline, `verified.json` y `session.json`. Se conservan l
 de etapas y de emuladores/Next. Los datos de emuladores no se exportan. El launcher
 detiene sus árboles por PID en Windows y grupos propios en POSIX, con escalamiento
 acotado; no mata por nombre/puerto. Una limpieza fallida impide resultado verde.
-Los archivos de sesión quedan disponibles y `clean` sigue siendo una operación
-explícita sobre una sesión propia ya detenida. Guardar los reportes antes de
-eliminar una copia preparada completa.
+Los archivos regenerables de la sesión actual se eliminan después de conservar
+la evidencia, salvo retención por los controles anteriores. `verify:local:prepared`
+hace lo mismo con su preparación. Sólo `local:prepare -- --keep-workspace`
+conserva deliberadamente una preparación exitosa para uso posterior; sin flags
+no prepara nada. Nunca se recorre un inventario de carpetas históricas para borrarlas.
 
 Un fallo de aceptación se busca por `group`, `id`, `expected`, `observed` y
 `matchesExpected` en Rules; una falla de infraestructura no cuenta como deny.
@@ -606,7 +685,8 @@ esas fallas esperadas y la limpieza quedan demostradas.
 
 Los workflows Hosting llaman al workflow reutilizable `local-verification.yml`.
 La verificación usa Ubuntu 22.04, Node/Java fijados, librerías públicas del sistema
-para Chrome, la misma preparación y `verify:local`. No requiere secretos,
+para Chrome, `local:prepare -- --keep-workspace` y después `verify:local` sobre
+la ruta emitida por la preparación. No requiere secretos,
 perfiles ni cachés anteriores. El checkout no conserva credenciales. Cada job de
 Hosting declara `needs: verification`; preview conserva su condición de PR del
 mismo repositorio. PRs de forks ejecutan la verificación sin recibir los secretos

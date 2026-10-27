@@ -43,7 +43,7 @@ Current tolerated legacy content:
 - `dashboard-invitation-card` animation styles exist in `globals.css` and are shared by multiple dashboard card surfaces.
 - Canvas and inline textarea compatibility rules exist in `globals.css`.
 - Dashboard shell runtime hooks such as `[data-dashboard-header]`, `[data-dashboard-sidebar]`, `[data-dashboard-scroll-root]`, `#sidebar-panel`, and `--dashboard-header-height` are not general styling hooks. They are cross-component runtime contracts used by editor overlays, selection preservation, modal scroll locking, and toolbar positioning. They must remain stable unless every consumer is updated in the same change.
-- Legacy auth/profile selectors in `styles.css` remain tolerated only for `ProfileCompletionModal.js` and residual Bootstrap/global compatibility. Login/Register styles are owned by `src/lib/components/AuthModal.module.css`.
+- Profile completion is owned by `src/lib/components/ProfileCompletionModal.module.css`; Login/Register remain in `AuthModal.module.css`. Residual auth selectors in `styles.css` are legacy compatibility, not an owner for new profile UI.
 
 Migration direction:
 - Move route-specific or component-specific rules out of `globals.css` when touching those surfaces for unrelated work.
@@ -54,7 +54,7 @@ Migration direction:
 
 Allowed in `styles.css` during migration:
 - Existing legacy landing-page styles until the landing page is migrated to route-scoped or component-scoped styling.
-- Existing legacy auth/profile styles that still back `ProfileCompletionModal.js`; Login/Register now have scoped ownership in `AuthModal.module.css`.
+- Residual legacy auth/profile styles pending separate cleanup. ProfileCompletion, Login and Register now have scoped CSS Module ownership.
 - Existing Bootstrap compatibility overrides until the Bootstrap dependency boundary is reduced.
 - Temporary compatibility rules with a short comment explaining the owning surface and removal condition.
 

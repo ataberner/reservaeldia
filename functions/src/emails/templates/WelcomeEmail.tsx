@@ -26,9 +26,6 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailData) {
         {welcomeContent.introduction}
       </Text>
       <Text style={paragraphStyle}>
-        {welcomeContent.purpose}
-      </Text>
-      <Text style={paragraphStyle}>
         <strong>{welcomeContent.gettingStarted}</strong>
       </Text>
       <Text style={{ ...paragraphStyle, marginBottom: emailTheme.spacing.large }}>
@@ -36,6 +33,18 @@ export function WelcomeEmail({ name, dashboardUrl }: WelcomeEmailData) {
       </Text>
       <Section style={{ marginBottom: emailTheme.spacing.large }}>
         <EmailButton href={dashboardUrl}>{welcomeContent.action}</EmailButton>
+      </Section>
+      <Text style={paragraphStyle}>
+        <strong>{welcomeContent.giftHeading}</strong>
+      </Text>
+      <Text style={paragraphStyle}>
+        {welcomeContent.giftDescription} <strong>{welcomeContent.giftCost}</strong>.
+      </Text>
+      <Text style={{ ...paragraphStyle, marginBottom: emailTheme.spacing.large }}>
+        {welcomeContent.giftInstructions}
+      </Text>
+      <Section style={{ marginBottom: emailTheme.spacing.large }}>
+        <EmailButton href={welcomeContent.giftUrl}>{welcomeContent.giftAction}</EmailButton>
       </Section>
       <Text style={paragraphStyle}>
         {welcomeContent.replyInvitation}

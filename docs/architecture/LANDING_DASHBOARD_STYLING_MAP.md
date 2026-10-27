@@ -251,7 +251,7 @@ Facts:
 - `AppHeader.jsx` owns shared visual header content for public landing and authenticated non-editor dashboard chrome only. It does not own editor runtime data attributes, header height measurement, shell layout, or editor selection preservation contracts.
 - `CanvasEditorHeader.jsx` owns editor-specific header content and actions only; it does not own header measurement, dashboard runtime data attributes, selection preservation attributes, or `--dashboard-header-height`.
 - `LoginModal.js` and `RegisterModal.js` use `src/lib/components/AuthModal.module.css` for their primary modal layout, typography, form, button, and status styling.
-- `ProfileCompletionModal.js` still uses legacy global auth/ProfileCompletion selectors in `styles/styles.css` plus Bootstrap button/modal utility classes.
+- `ProfileCompletionModal.js` now owns its responsive profile/optional designer-assistance UI in `ProfileCompletionModal.module.css`, independently of Bootstrap and the legacy global auth selectors.
 - Phase 3 was documentation-only. The later safe header refactor extracted the shared landing/dashboard visual header while leaving editor runtime, preview/publish, and generated invitation systems frozen.
 - The public invitation route `/i/{slug}` is not a Next route; `firebase.json` rewrites it to the publication delivery Function. App global CSS must not be treated as public invitation CSS.
 
@@ -270,7 +270,7 @@ Assumptions:
 | Dashboard `/dashboard` | `src/pages/dashboard.js` plus `src/domain/dashboard/pageShell.js` | Tailwind classes in JSX, dashboard shell props, shared global dashboard card hook | The route coordinates dashboard home, editor mount, publications/trash/admin views, preview modal, and checkout modal. |
 | Dashboard home | `src/components/dashboard/home/DashboardHomeView.jsx` and child components | `DashboardHomeStartupLoader.module.css` for the entry loader; `LandingHero.module.css` for the shared hero; `DashboardPublicationSummarySection.module.css` for the latest publication or latest draft summary; `LandingTemplateShowcase.module.css` through `LandingTemplateCarouselPrimitives.jsx` for the post-summary carousel block; `LandingHowItWorks.module.css` for the shared step-circle section; `LandingPricing.module.css` for the shared pricing section; `LandingFeatureDetails.module.css` for the shared feature-details section; `LandingShareSection.module.css` for the shared share section; `LandingFooter.module.css` for the shared footer | Keeps partial home content hidden and inert until all required sources settle, fades the loader out, then exposes the complete dashboard composition. |
 | Shared dashboard shell | `DashboardLayout.jsx`, `DashboardHeader.jsx`, `AppHeader.jsx`, `CanvasEditorHeader.jsx`, `DashboardSidebar.jsx` | Tailwind shell classes, `AppHeader.module.css` for non-editor dashboard header visuals, measured inline layout styles, data attributes, `--dashboard-header-height` | This is both visual chrome and a runtime boundary for editor overlays, toolbar placement, selection preservation, and modal scroll locking. `DashboardHeader.jsx` owns the runtime shell; `AppHeader.jsx` owns non-editor dashboard header visuals; `CanvasEditorHeader.jsx` owns only editor header content. |
-| Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `AuthModal.module.css` for Login/Register; `styles/styles.css` plus Bootstrap button/modal classes for ProfileCompletion; small inline styles where present | Login/Register have scoped auth ownership. ProfileCompletion remains the legacy global/auth Bootstrap exception and should be migrated separately. |
+| Auth modals | `LoginModal.js`, `RegisterModal.js`, `ProfileCompletionModal.js` | `AuthModal.module.css` for Login/Register; `ProfileCompletionModal.module.css` for profile completion | All three auth surfaces have scoped ownership. Legacy global selectors remain pending separate cleanup. |
 
 ### Private approved directory (2026-10-25)
 
@@ -385,7 +385,7 @@ and its adjacent screenshots. This verification does not assert deployment.
 | --- | --- | --- | --- |
 | `src/pages/index.js` | Landing page structure and auth modal triggers; passes public header configuration to `AppHeader` and renders shared landing sections | `LandingHero.module.css` for the shared hero; `LandingFeatureDetails.module.css` for the shared feature-details section; `LandingHowItWorks.module.css` for the shared step-circle section; `LandingPricing.module.css` for the shared pricing section; `LandingShareSection.module.css` for the shared share section; `LandingFooter.module.css` for the shared footer; `src/pages/index.module.css` for current main/remaining section styles; Bootstrap + global landing selectors for remaining sections | Header, hero, feature-details, how-it-works, pricing, share, and footer markup are no longer inline here. Remaining sections still need migration out of globals later. |
 | `src/lib/components/LoginModal.js` / `RegisterModal.js` | Landing/auth entry modals plus Google/email auth flows | `src/lib/components/AuthModal.module.css` | Scoped auth owner for Login/Register. Do not reintroduce their styling into `styles/styles.css` or Bootstrap modal selectors. |
-| `src/lib/components/ProfileCompletionModal.js` | Mandatory profile completion after auth when profile fields are missing | `styles/styles.css` legacy auth/ProfileCompletion selectors plus Bootstrap button/modal classes | Remaining auth modal global-style exception. Migration target is scoped auth ownership without changing auth flow behavior. |
+| `src/lib/components/ProfileCompletionModal.js` | Mandatory profile completion after auth when profile fields are missing | `ProfileCompletionModal.module.css` | Scoped responsive modal; optional human designer assistance is separate from required profile fields. |
 | `src/components/appHeader/AppHeader.jsx` | Shared visual header for public landing and authenticated non-editor dashboard chrome | `src/components/appHeader/AppHeader.module.css` | Visual-only owner. Does not own editor runtime attributes, header measurement, scroll roots, sidebar geometry, or preview/publish behavior. |
 | `src/pages/dashboard.js` | Dashboard route orchestrator and view composition | Tailwind wrappers and state-dependent view containers | Avoid broad visual rewrites here; prefer child-component ownership later. |
 | `src/domain/dashboard/pageShell.js` | Dashboard view/layout prop derivation | No direct CSS; controls shell props such as `modoSelector`, `ocultarSidebar`, and `lockMainScroll` | Behavior boundary. Do not change during visual cleanup unless preserving exact view behavior. |
@@ -438,7 +438,7 @@ Current route-owned styling is incomplete:
 
 - Legacy reset and `html, body` sizing/overflow/typography.
 - Legacy dashboard/sidebar candidates: `.layout`, `.sidebar`, `.main`, `.main-card`.
-- Legacy ProfileCompletion/auth global modal styles and residual auth compatibility styles. Login/Register primary modal styles are no longer owned here.
+- Residual legacy auth compatibility styles. Login/Register/ProfileCompletion modal styles are owned by their CSS Modules.
 - Legacy landing navbar selectors, hero, invitation examples, features, how-it-works, CTA, footer, and inactive/commented landing section candidates. The shared `AppHeader` does not use the legacy `.navbar*` hooks.
 - Broad element selectors such as `section`, `h2, h3, p`, and `footer`.
 
@@ -488,7 +488,7 @@ Current Bootstrap-dependent surfaces:
 - Remaining landing layout sections: `container`, `container-fluid`, `row`, `col-*`, `text-center`, `img-fluid`, `w-100`, `d-flex`, spacing utilities, and grid classes. The extracted `AppHeader` no longer uses Bootstrap navbar classes.
 - Legacy navbar CSS remains in global styles as a removal risk until unused Bootstrap/header compatibility is verified.
 - Landing and legacy profile/auth buttons: `btn`, `btn-primary`, `btn-outline-dark`, `btn-link`, `w-100`, `mt-2`, `position-relative`.
-- Legacy ProfileCompletion/auth modal styling: `modal-content` is targeted globally in `styles/styles.css`. Login/Register modal shells use `AuthModal.module.css`.
+- Residual legacy `modal-content` selectors remain global in `styles/styles.css`; the three auth modals now use scoped CSS Modules.
 
 Risk:
 
@@ -733,15 +733,15 @@ Reasons:
 
 - `LoginModal.js`, `RegisterModal.js`, and `ProfileCompletionModal.js` are reusable auth UI, not landing content sections.
 - Login/Register primary styles are now scoped in `AuthModal.module.css`.
-- `ProfileCompletionModal.js` still mixes app-owned `auth-*` selectors with generic `.modal-content`, `.close-btn`, `.error`, and Bootstrap button behavior.
+- `ProfileCompletionModal.js` uses its own CSS Module for the complete modal, controls and optional designer assistance.
 - Global modal and body/scroll behavior can interact with dashboard modals and editor overlays.
-- Bootstrap is still required for the current ProfileCompletion auth path, so Bootstrap reduction should happen after that component receives an auth-owned scoped boundary.
+- ProfileCompletion no longer depends on Bootstrap classes. Any broader Bootstrap reduction still requires review of the remaining consumers.
 
 Future target boundary:
 
 - Keep current auth output unchanged during preparation.
 - Keep Login/Register changes inside `AuthModal.module.css`.
-- Migrate ProfileCompletion from generic `.modal-content`, `.close-btn`, and `.error` ownership into an auth-owned scoped boundary before reducing Bootstrap dependency.
+- ProfileCompletion scoped migration completed on 2026-10-26 with the authorized optional designer-assistance UI. Residual global selector cleanup remains a separate task.
 - Do not refactor auth modal code or Bootstrap behavior during landing/dashboard visual preparation unless a dedicated auth phase is scheduled.
 
 ### 16.3 Body/HTML Overflow Boundary

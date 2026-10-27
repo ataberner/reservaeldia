@@ -35,6 +35,7 @@ export default function CanvasEditorHeader({
     isMobile,
     editorReadOnly,
     readOnlyPreviewOnly = false,
+    hidePublicationAction = false,
     historialExternos,
     futurosExternos,
     documentDisplayName,
@@ -157,7 +158,7 @@ export default function CanvasEditorHeader({
                             >
                                 Vista previa
                             </button>
-                            {!readOnlyPreviewOnly ? (
+                            {!readOnlyPreviewOnly && !hidePublicationAction ? (
                                 <button
                                     onClick={generarVistaPrevia}
                                     className={`${primaryHeaderButton} ml-[16px] hidden h-10 px-4 md:inline-flex`}

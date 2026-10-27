@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   doc,
   getDoc,
@@ -58,6 +58,12 @@ export function useDashboardEditorRoute({
     createDashboardEditorSession()
   );
   const [hasSyncedEditorRoute, setHasSyncedEditorRoute] = useState(false);
+  const activeAdminRouteRef = useRef(null);
+  activeAdminRouteRef.current = { usuarioUid, isSuperAdmin, adminDraftView };
+  useEffect(() => () => {
+    const context = activeAdminRouteRef.current?.adminDraftView?.editContext;
+    if (context) context.closed = true;
+  }, [usuarioUid, router.asPath]);
 
   const adminDraftSnapshotCallable = useMemo(
     () => httpsCallable(cloudFunctions, "getAdminDraftSnapshot"),
@@ -65,8 +71,43 @@ export function useDashboardEditorRoute({
   );
 
   const resetAdminDraftView = useCallback(() => {
+    const context = activeAdminRouteRef.current?.adminDraftView?.editContext;
+    if (context) context.closed = true;
     setAdminDraftView(createAdminDraftViewState());
   }, []);
+
+  const setAdminDraftEditing = useCallback(async (editing) => {
+    const current = activeAdminRouteRef.current;
+    const view = current?.adminDraftView;
+    if (!current?.isSuperAdmin || !view?.enabled || view.status !== "ready") return false;
+    const result = await adminDraftSnapshotCallable({ ownerUid: view.ownerUid, slug: view.slug });
+    const data = result?.data;
+    const latest = activeAdminRouteRef.current;
+    if (latest?.usuarioUid !== current.usuarioUid || !latest?.isSuperAdmin ||
+        latest.adminDraftView !== view) return false;
+    if (data?.status !== "ok" || !data.draft || !data.revision) {
+      throw new Error("El borrador ya no está disponible para editar.");
+    }
+    if (editing && data.draft.templateWorkspace) {
+      throw new Error("Este documento pertenece al editor de plantillas y permanece en solo lectura.");
+    }
+    if (view.editContext) view.editContext.closed = true;
+    const editContext = editing ? {
+      ownerUid: data.ownerUid,
+      actorUid: current.usuarioUid,
+      revision: data.revision,
+      closed: false,
+    } : null;
+    setEditorSession(createDashboardEditorSession({
+      kind: "draft", id: view.slug,
+      ...(editContext ? { adminEdit: editContext } : {}),
+    }));
+    setAdminDraftView(createAdminDraftViewState({
+      ...view, draftData: data.draft, draftName: data.draftName,
+      editing: Boolean(editing), editContext,
+    }));
+    return true;
+  }, [adminDraftSnapshotCallable]);
 
   const resetTemplateWorkspaceView = useCallback(() => {
     setTemplateWorkspaceView(createTemplateWorkspaceViewState());
@@ -872,11 +913,13 @@ export function useDashboardEditorRoute({
     Boolean(requestedRouteSlug || requestedRouteTemplateId);
 
   const isAdminReadOnlyView =
-    adminDraftView.enabled === true && adminDraftView.status === "ready";
+    adminDraftView.enabled === true && adminDraftView.status === "ready" &&
+    adminDraftView.editing !== true;
   const isTemplateWorkspaceReadOnly =
     templateWorkspaceView.enabled === true &&
     templateWorkspaceView.readOnly === true;
-  const isEditorReadOnly = isAdminReadOnlyView || isTemplateWorkspaceReadOnly;
+  const isEditorReadOnly = isAdminReadOnlyView || isTemplateWorkspaceReadOnly ||
+    (adminDraftView.enabled && adminDraftView.status !== "ready");
   const isTemplateEditorSession = editorSession.kind === "template";
 
   return {
@@ -889,6 +932,7 @@ export function useDashboardEditorRoute({
     legacyDraftNotice,
     setLegacyDraftNotice,
     adminDraftView,
+    setAdminDraftEditing,
     templateWorkspaceView,
     editorSession,
     isAdminReadOnlyView,

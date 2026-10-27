@@ -24,6 +24,7 @@ const { welcomeContent } = requireBuiltModule("lib/emails/content/welcome.js");
 const { createTransactionalEmailService } = requireBuiltModule("lib/emails/sendTransactionalEmail.js");
 const { SANDBOX_RECIPIENT } = requireBuiltModule("lib/emails/config.js");
 const dashboardUrl = "https://reservaeldia.com.ar/dashboard?from=bienvenida&view=invitaciones";
+const giftUrl = "https://tally.so/r/RWW0VK";
 const instagramUrl = "https://www.instagram.com/reservaeldia.ok/";
 const linkedinUrl = "https://www.linkedin.com/company/reserva-el-d%C3%ADa/?viewAsMember=true";
 const normalizeText = value => value.replace(/\s+/g, " ").trim();
@@ -37,12 +38,14 @@ test("welcome renders accessible Spanish HTML and readable plain-text with its r
   assert.equal(document.documentElement.lang, "es");
   assert.equal(document.body.lang, "es");
   for (const value of [document.body.textContent, result.text].map(normalizeText)) {
-    for (const expected of ["¡Hola, María José Muñoz!", "Soy Agus, el fundador.", "Podés cambiar textos", "pedirle ayuda al asistente", "Crear mi invitación"]) {
+    for (const expected of ["¡Hola, María José Muñoz!", "Soy Agus, el fundador.", "Podés personalizar textos", "con ayuda del asistente", "Crear mi invitación", "Quiero mi regalo de bienvenida", "sin costo adicional"]) {
       assert.ok(value.includes(expected), expected);
     }
   }
   assert.equal([...document.querySelectorAll("a")].find(a => a.textContent === welcomeContent.action).href, dashboardUrl);
   assert.ok(result.text.includes(dashboardUrl));
+  assert.equal([...document.querySelectorAll("a")].find(a => a.textContent === welcomeContent.giftAction).href, giftUrl);
+  assert.ok(result.text.includes(giftUrl));
   assert.ok(result.text.toLocaleLowerCase("es").includes("reserva el día"));
   assert.doesNotMatch(result.text, /<\/?(?:html|body|table|p|a)\b/i);
   assert.ok(Buffer.byteLength(result.html) < 25_000, "keep this simple template lightweight");
@@ -94,7 +97,7 @@ test("email markup has no JavaScript, browser layout dependency, local URLs or d
   }
   for (const element of document.querySelectorAll("[href],[src]")) {
     const url = new URL(element.getAttribute("href") || element.getAttribute("src"));
-    assert.ok([dashboardUrl, "https://reservaeldia.com.ar/", instagramUrl, linkedinUrl].includes(url.href), url.href);
+    assert.ok([dashboardUrl, giftUrl, "https://reservaeldia.com.ar/", instagramUrl, linkedinUrl].includes(url.href), url.href);
   }
   assert.doesNotMatch(html, /javascript:|localhost|127\.0\.0\.1|file:|display:\s*(flex|grid)|var\(--|@font-face|unsubscribe/i);
   assert.ok([...document.querySelectorAll("table")].every(table => table.getAttribute("role") === "presentation"));
@@ -110,23 +113,31 @@ test("founder's letter preserves the requested copy, emphasis and CTA placement"
   const expectedCopy = [
     "¡Hola, Agustín!",
     "Qué alegría tenerte en Reserva el Día.",
-    "Soy Agus, el fundador. Creé Reserva el Día con una idea bastante simple: que organizar un casamiento tenga menos complicaciones y deje más tiempo para disfrutar de lo que realmente importa.",
-    "Porque, al final, no se trata de invitaciones, listas o confirmaciones. Se trata de reunir a las personas que queremos, compartir una mesa, bailar con amigos y crear recuerdos juntos.",
+    "Soy Agus, el fundador. Creé Reserva el Día con una idea simple: que organizar un casamiento tenga menos complicaciones y deje más tiempo para disfrutar de lo que realmente importa: reunir a las personas que queremos y crear recuerdos juntos.",
     "Para empezar, elegí la plantilla que más te guste y hacela tuya.",
-    "Podés cambiar textos, colores, fotos, tipografías y cada detalle de la invitación. Podés hacerlo directamente desde el editor o pedirle ayuda al asistente. La idea es que no necesites saber de diseño para crear algo que realmente los represente.",
-    "Y si en algún momento tenés una duda, algo no funciona como esperabas o simplemente querés contarnos qué te gustaría que mejoráramos, respondé directamente a este mail. Lo voy a leer.",
+    "Podés personalizar textos, colores, fotos y cada detalle desde el editor, por tu cuenta o con ayuda del asistente.",
+    "Además, tenemos un regalo de bienvenida para vos.",
+    "Si preferís contar con uno de nuestros diseñadores, podemos acompañarte con el diseño o encargarnos de toda la personalización de tu invitación, sin costo adicional.",
+    "Para reclamar este beneficio, solo tenés que completar los datos de tu evento:",
+    "Y si tenés alguna duda o querés contarnos algo, respondé directamente a este mail. Lo voy a leer.",
     "Gracias por elegir Reserva el Día para ser una pequeña parte de un momento tan importante.",
     "Ahora sí: reservemos el día.",
   ];
   const letterParagraphs = expectedCopy.map(copy => paragraphs.find(p => normalizeText(p.textContent) === copy));
   assert.ok(letterParagraphs.every(Boolean), "all requested paragraphs must be present verbatim");
   assert.ok(letterParagraphs.every(p => p.parentElement === letterParagraphs[0].parentElement), "the letter is not split into cards");
-  assert.deepEqual([...document.querySelectorAll("strong")].map(node => node.textContent), [expectedCopy[4], "reservemos el día."]);
-  const actionSection = letterParagraphs[5].nextElementSibling;
+  assert.deepEqual([...document.querySelectorAll("strong")].map(node => node.textContent), [expectedCopy[3], expectedCopy[5], "sin costo adicional", "reservemos el día."]);
+  const actionSection = letterParagraphs[4].nextElementSibling;
   assert.equal(actionSection.querySelector("a").textContent, "Crear mi invitación");
   assert.equal(actionSection.querySelector("a").href, dashboardUrl);
-  assert.equal(actionSection.nextElementSibling, letterParagraphs[6]);
-  const textSequence = [...expectedCopy.slice(0, 6), `Crear mi invitación ${dashboardUrl}`, ...expectedCopy.slice(6), "Agus Fundador de Reserva el Día"];
+  assert.equal(actionSection.nextElementSibling, letterParagraphs[5]);
+  const giftSection = letterParagraphs[7].nextElementSibling;
+  assert.equal(giftSection.querySelector("a").textContent, "Quiero mi regalo de bienvenida");
+  assert.equal(giftSection.querySelector("a").href, giftUrl);
+  assert.equal(giftSection.nextElementSibling, letterParagraphs[8]);
+  const textSequence = [...expectedCopy.slice(0, 5), `Crear mi invitación ${dashboardUrl}`,
+    ...expectedCopy.slice(5, 8), `Quiero mi regalo de bienvenida ${giftUrl}`,
+    ...expectedCopy.slice(8), "Agus Fundador de Reserva el Día"];
   let lastPosition = -1;
   for (const copy of textSequence) {
     const position = normalizeText(text).indexOf(copy);

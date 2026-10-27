@@ -31,6 +31,7 @@ las decisiones faltantes, sin reemplazar los contratos de dominio.
 | A3 | SDK no lee ni escribe `proveedores/**` en Firestore/Storage, incluidos administradores; backend aplica identidad y gate beta. Categorías activas conservan lectura pública y su política existente. | [Provider Data Model, §7](../architecture/PROVIDER_DATA_MODEL.md#7-security-and-public-projection-decision). Evolución privada autorizada el 2026-10-25; no resuelve Q1 ni abre directorio. |
 | A4 | El draft de countdown es administrativo; versiones publicadas son inmutables, con publicación controlada por versión y operación. | [DATA_MODEL, countdownPresets](../architecture/DATA_MODEL.md#countdownpresets). No habilita acceso directo general al root porque un catálogo se llame público. |
 | D1 | Artefactos Storage de borradores son exclusivamente backend: ningún cliente SDK puede leer/listar/crear/reemplazar/eliminar bytes, incluido dueño/admin. La entrega HTTP autenticada valida dueño y vinculación del artefacto. `borradores.draftCreation` es procedencia reservada al backend: cliente no puede introducirla en create ni agregarla, cambiarla o eliminarla en update/reemplazo. | Endurecimiento local autorizado el 2026-10-23; `storage.rules`, todo `borradores/**`, `firestore.rules` y productores Admin de `functions/src/index.ts`. Un documento reservado no demuestra ownership de bytes huérfanos preexistentes. Fijar fuente/generación/hash evita cambiar el intento al reanudar; edición normal preservando el marker y borradores legacy sin marker conservan acceso propio. |
+| AD1 | Superadmin puede crear y editar un borrador ajeno mediante un canal backend explícito, conservando propietario, estado de publicación y procedencia; SDK mantiene aislamiento por dueño. Auditoría y revisión administrativa son backend-only. Las escrituras concurrentes deben detectar una revisión ajena posterior y conservar los cambios pendientes en el cliente. | Pedido explícito de creación/edición desde Superadmin, 2026-10-25; [decisión acotada](#administrative-drafts). Reutiliza `requireSuperAdmin`; no acepta Q1 ni convierte claims administrativos en permiso sobre borradores. |
 | W1 | `welcomeEmailDeliveries` y sus descendientes son exclusivamente backend. Ningún cliente puede leer, crear, actualizar ni borrar, incluido el propio UID y los administradores. | Pedido explícito de Fase 2B.1; [contrato del procesador](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#welcome-registration-2b1). Adaptador validado en sandbox el 26/09; sandbox/disabled omiten envíos. |
 | W2 | `newUserNotificationDeliveries` y sus descendientes son exclusivamente backend, incluso para el propio UID y administradores. No comparten estado con la bienvenida. | Habilitación productiva preparada localmente el 27/09; [dos efectos independientes](../operations/TRANSACTIONAL_EMAIL_SANDBOX_RUNBOOK.md#produccion-registration-emails), sin deploy. |
 | AI1 | `designerAiUsage`, su configuración, contadores, reservas y descendientes son exclusivamente backend. Ningún SDK cliente puede leer, listar, crear, actualizar ni borrar, incluso con claims administrativos. | Plan de seguridad del Asistente autorizado el 2026-10-07; [AI Assistant System](../architecture/AI_ASSISTANT_SYSTEM.md#designer-ai-admission) y [modelo de datos](../architecture/DATA_MODEL.md#designer-ai-usage). Implementación local; activación/despliegue requieren evidencia separada. |
@@ -38,10 +39,227 @@ las decisiones faltantes, sin reemplazar los contratos de dominio.
 
 **Observado** significa comprobado en código o en la línea base; no significa
 aprobado por producto. **Propuesto / pendiente** necesita aceptación antes de
-convertirse en permiso. Los casos `acceptance` evalúan A1–A4, W1–W2, AI1 y GM1; `characterization`
+convertirse en permiso. Los casos `acceptance` evalúan A1–A4, D1, AD1, W1–W2, AI1 y GM1; `characterization`
 evalúa implementación actual; `proposal` mide diferencias con Q1 sin aprobarla.
 La [línea base por caso](../testing/SECURITY_RULES_BASELINE_4B1.md) registra los
 resultados y los límites del experimento.
+
+<a id="administrative-drafts"></a>
+
+## Creación y edición administrativas de borradores
+
+**Decisión: accepted**, por el pedido explícito del usuario del 2026-10-25.
+**Implementación: desplegada; verificación remota del 2026-10-26 registrada abajo.**
+El usuario autorizó posteriormente el despliegue con «hace deploy». Esta
+autorización no incluye migraciones, publicación de invitaciones ni cambios de
+propietario.
+
+- La identidad sigue siendo la de `requireSuperAdmin` en
+  [`adminAuth.ts`](../../functions/src/auth/adminAuth.ts): UID configurado por el
+  backend. Un perfil editable o un claim `admin`, `superadmin` o `role` no otorga
+  esta capacidad. La representación administrativa general Q1 sigue sin resolver.
+- La creación usa el mismo productor de borradores desde plantilla, con dueño
+  explícito validado en backend. Actor y dueño son datos distintos; reintentar la
+  creación no reemplaza contenido ya existente ni crea otro borrador.
+- El editor administrativo abre en solo lectura. La edición se habilita de forma
+  voluntaria durante esa apertura; al reabrir vuelve a solo lectura. El guardado
+  backend acepta sólo campos del editor y conserva `userId`, procedencia y
+  lifecycle. No habilita SDK cross-owner ni publicación administrativa implícita.
+- `adminDraftRevision` y `adminAudit` son campos root reservados al backend, igual
+  que `draftCreation`: el cliente no puede crearlos, introducirlos, alterarlos ni
+  quitarlos con un reemplazo. Los descendientes de `borradores` siguen denegados
+  al SDK, incluidos registros de auditoría.
+- El guardado administrativo compara la revisión leída antes de escribir dentro
+  de una transacción y cambia `adminDraftRevision`. El editor del propietario
+  conserva el token cargado y lo comprueba al guardar; el transporte de música
+  comprueba la misma revisión en su transacción. Un conflicto requiere cargar la
+  versión actual; no se debe reintentar sobrescribiendo automáticamente.
+- El guardado conserva referencias exactas ya persistidas a
+  `plantillas/{id}/assets/**` aunque la plantilla haya sido eliminada o archivada.
+  El antecedente proviene del snapshot backend protegido por la revisión, sólo
+  de campos de assets en `objetos`, `secciones`, `gifts` y `portada`; conserva el
+  mismo campo y valor incluso al reordenar elementos. Texto, metadata o historial
+  enviado por el cliente no conceden este antecedente. El parser sigue rechazando
+  buckets ajenos y referencias ambiguas. Esta conservación no lee ni copia bytes
+  de Storage, ni concede permisos de render/publicación. Referencias nuevas,
+  valores alterados y otros namespaces mantienen la autorización actual.
+- Las Rules exigen, sólo cuando el borrador ya tiene `adminDraftRevision`, que una
+  escritura de contenido cambie explícitamente `draftContentMeta` e incluya
+  `baseAdminRevision` igual al token actual. Así una pestaña anterior no puede
+  conservar implícitamente la nueva metadata y pisar la edición administrativa.
+  La actualización de `thumbnailUrl`/`thumbnailUpdatedAt` queda exenta porque no
+  reemplaza contenido. Los borradores sin revisión administrativa mantienen sus
+  permisos de edición habituales, sin migración.
+
+Ancla reproducible de Rules: casos `admin-draft-*` en
+[`rulesCases.mjs`](../../scripts/local/rulesCases.mjs), ejecutados exclusivamente
+por `npm run test:local:rules` en la copia aislada y proyecto demo. Cubre acceso
+del dueño, denegación cross-owner incluso con claims/UID administrativo,
+inmutabilidad de auditoría y revisión, escritura desactualizada, reemplazos,
+metadata implícita y actualización de thumbnail. La prueba local no acredita
+estado remoto ni cierra los riesgos generales F10/F11.
+
+Para comprobar además los endpoints reales y las copias de imágenes en el mismo
+entorno aislado: `node scripts/local/runLocal.cjs admin-drafts` ejecuta esa suite
+de Rules/countdown, los consumidores de `adminDraftChecks.cjs` y
+`draftAuthorization.test.mjs`, con el runtime Node fijado
+por `.node-version`. No habilita publicaciones ni proveedores externos.
+
+Evidencia local del 2026-10-25, Node 22.23.4 y proyecto
+`demo-reservaeldia-local`:
+
+- Rules/countdown: **2283/2283** tests pasan. La matriz de Rules contiene
+  1968 casos de aceptación y 267 de caracterización, todos conformes, incluidos
+  los 48 casos `admin-draft-*`. Los 12 probes de propuesta mantienen seis
+  diferencias; **Q1 no queda aceptado ni resuelto**.
+- Integración real de borradores: **18/18** tests pasan en la copia aislada,
+  incluyendo creación administrativa, lectura/continuación del dueño, guardado,
+  conflictos en ambos sentidos, denegación de claims y copia de imágenes.
+  El snapshot precede los ajustes posteriores acotados de música, hash de
+  contenido, auditoría root y thumbnail; sus checks unitarios/build se verifican
+  por separado. No se presenta esa integración como repetida sobre esos ajustes.
+- Consumidores frontend: **114/114** tests pasan en las 20 suites del snapshot
+  de `adminDraftChecks.cjs`, con entorno limpio y red externa bloqueada.
+  La regresión posterior de `editorSession.test.mjs` pasa **6/6**, incluidos
+  borradores Konva vacíos; el catálogo reproducible actual enumera 21 suites.
+- Evidencia local: `.local-isolation/reports/run-g9xaVv/` y
+  `.local-isolation/admin-draft-frontend-kgIxk5/`. El launcher devolvió código 3
+  por un fallo de cierre de procesos en Windows, después de pasar ambos stages
+  funcionales. La recuperación detuvo exclusivamente su árbol de emuladores y
+  comprobó todos los puertos libres (`cleanup-recovery.json`); se conserva el
+  resultado original sin reclasificarlo como ejecución completa exitosa.
+- Fixture visual desktop (1280×900): selección de plantilla, error/reintento,
+  actualización del listado y controles de edición/conflicto/recarga conformes
+  mediante CUA. Evidencia: `.local-isolation/admin-drafts-ui-0FasGj/cua-evidence.json`.
+  Es un fixture de componentes con backend sintético; el recorrido móvil quedó
+  incompleto por timeout y no acredita el editor completo ni persistencia real.
+- El runner normal de build se detuvo en prerrequisitos porque otra sesión
+  ocupaba el puerto 19099: `.local-isolation/reports/run-zMvWxH/`, código 2.
+  Se conservó ese resultado y no se detuvo ni reutilizó la sesión ajena. Esto
+  no invalida la comprobación anterior de cierre de los emuladores propios.
+- Verificación focal separada de Next: las cuatro etapas capture, build/export,
+  finalize y verificación local del release pasan en una copia sin servicios,
+  configuración pública de producción y bloqueo de TCP incluido loopback,
+  UDP y fetch. Evidencia: `.local-isolation/reports/run-wLYKJt/`, código 0;
+  48 referencias de assets HTML y 75 archivos estáticos. No aprueba el runner
+  normal ni verifica Hosting. El único delta frontend posterior al snapshot
+  fue el bloqueo de atajos durante la transición en `dashboard.js`: su versión
+  final pasó transformación JSX/SWC por separado (`final-dashboard-swc.json`),
+  sin presentar ese check de sintaxis como otro build completo.
+- Backend final: compilación conforme, batch de **126/126** checks y foco
+  administrativo de **19/19** conformes; lint sin errores, con 233 warnings.
+  El gate ownership conserva **41/41** pruebas conformes, pero no está aprobado:
+  discovery excedió su límite de 10 segundos, también en HEAD sin estos cambios
+  (`.local-isolation/admin-drafts-head-baseline-TG8fZk/report.json`).
+
+Estos resultados iniciales no incluyen la validación visual completa del editor
+en un navegador ni la configuración desplegada. En esa etapa no hubo migraciones
+ni despliegue; la aplicación remota posterior se registra a continuación.
+
+**Orden de despliegue y compatibilidad:** aplicar primero las Rules
+que reservan revisión y auditoría; coordinar después backend y frontend de esta
+capacidad. Las pestañas de clientes anteriores deben recargarse cuando intenten
+guardar contenido de un borrador ya editado administrativamente. Hasta entonces,
+la denegación evita sobrescribir cambios recientes; no se debe relajar la Rule
+para compatibilizar una pestaña desactualizada. El estado remoto requiere una
+verificación separada y autorizada.
+
+### Despliegue autorizado y verificado — 2026-10-26 UTC
+
+Aplicación acotada en `reservaeldia-7a440`, solicitada explícitamente por el
+usuario. Se conservaron las protecciones adicionales de producción mediante
+[`deployment/administrative-drafts`](../../deployment/administrative-drafts/README.md),
+derivado de los bytes remotos de `provider-beta`, en lugar de desplegar las
+Rules raíz completas. Sin migraciones ni escrituras de datos de usuarios.
+
+- Preflight: lectura remota release/ruleset/release conforme, base SHA256
+  `7033002a97a6a59c7097de2d28a3115987e457b68f759ce17634f2a92c10902a`.
+  Guard y runner: **11/11**; SDK sobre el candidato exacto: **62/62**
+  (48 AD1 y 14 regresiones). El arranque frío del runner excedió 120 segundos;
+  la etapa SDK pasó en la misma copia y el cierre recuperado dejó los cinco
+  puertos libres. Se conservan fallo original, continuación y cleanup en
+  `.local-isolation/storage-release-dh1MuE/`.
+- Ownership: tres builds, **41/41** tests y discovery real de default/payments/email
+  conformes sobre `ownership-Unka9L`, unión de 114 endpoints. Límite original de
+  10 segundos; se completaron las etapas pendientes sin modificar código ni
+  timeout. Evidencia: `.local-isolation/admin-drafts-ownership-stages-1VzK1l/`.
+- Build completo del frontend final: capture, Next/export, finalize y verificación
+  conformes, 302 archivos y dos manifests retenidos. Maps conserva el valor
+  publicado; GA permanece sin configurar, igual a la versión live/CI previa.
+  Compilación con HOME vacío y guard de red, cero intentos bloqueados.
+- Rules aplicadas a las `00:41:52Z`: ruleset
+  `6b4615ca-14d7-493b-b27f-e74f8df9487a`, SHA256
+  `262582ee1e46e76d0bee0cb934a15f6b9451b4ae335714b64ae407d5d37682c5`.
+  Lectura posterior conforme byte a byte; sin cambios de Storage ni índices.
+- Functions: `copiarPlantilla`, `getAdminDraftSnapshot`, `saveAdminDraftPatch`,
+  `saveDraftWithMusicV1` y `getUserDirectoryDetail`, exclusivamente default en
+  us-central1, ACTIVE/Node 22. Configuración y entornos preservados, sin nuevos
+  bindings de Secrets. El primer intento abortó antes de subir código por el
+  discovery local; el reintento pasó con el mismo límite de 10 segundos. Las
+  demás Functions conservaron su metadata, normalizando sólo el orden de filtros
+  de eventos devuelto por la API, sin omitir atributos, operadores ni valores.
+- Hosting aplicado a las `00:48:47Z`: release `1792975727362000`, versión
+  `e3879750460777e8`, build `8H3ob-ttfqhouzCGekLs5`. Verificación a las
+  `00:51:07Z`: dashboard y **138 archivos estáticos** conformes; se retienen assets
+  del build previo `GmpEK0utsWAUUzWOC1nn_`.
+- Las cinco callables respondieron **204** al preflight CORS desde el origen
+  productivo y **401 UNAUTHENTICATED** a la llamada sin sesión. No se crearon ni
+  editaron borradores reales, ni se suplantaron cuentas. Los positivos funcionales
+  siguen sustentados por las pruebas locales descritas arriba; no se afirma un
+  recorrido autenticado completo en producción.
+
+Evidencia local ignorada en `.local-isolation/admin-drafts-release-20261025/`:
+`source-manifest.json`, `output-manifest.json`, `build-evidence.json`, logs de
+deploy, `rules-after.json`, `functions-after.json`, inventarios antes/después y
+`release-result.json`. Las fuentes de aplicación permanecieron idénticas al
+snapshot verificado. Conservar las reservas y la precondición de revisión en
+cualquier recuperación; no volver a escritores/Rules que permitan sobrescritura
+de borradores administrativamente revisados.
+
+### Corrección de guardado con referencias de plantillas retiradas — 2026-10-26
+
+El guardado administrativo revalidaba como nuevos los archivos ya incorporados
+al borrador. La lectura acotada del caso reportado confirmó referencias de
+galería, fondo y portada a plantillas inexistentes o archivadas/en papelera.
+La conservación acotada definida arriba permite guardar ese contenido existente;
+no modifica la política de preview/publicación ni restaura plantillas.
+
+- Regresión reproducida antes del ajuste; **66/66** pruebas focales de borradores
+  y autorización de render pasan después. Se cubren referencias nuevas, tokens
+  alterados, namespaces ajenos, historial falsificado y edición concurrente.
+- Compilación conforme; lint de 321 archivos: **0 errores**, 233 warnings previos.
+  Ownership: tres builds, **41 pruebas completadas por etapas** y discovery real
+  de las tres codebases conforme, sin cambiar el límite de 10 segundos. La prueba
+  JSDOM agotó 30 segundos en dos corridas; pasó luego aisladamente en 3,71 segundos
+  con el mismo límite, fuentes y compilados. Se conservaron los fallos originales.
+- Reproducción del contenido reportado exclusivamente en memoria: validación
+  anterior rechazada y corregida conforme, contenido exacto conservado, sin
+  escrituras de negocio ni operaciones de Storage. No acredita una sesión de
+  edición autenticada completa en producción.
+- Despliegue puntual de `saveAdminDraftPatch`: **completado el 2026-10-26 a las
+  12:54:57 UTC**, revisión `saveadmindraftpatch-00002-dog`, ACTIVE. Los cuatro
+  intentos previos detenidos por Runtime Config/cuota HTTP 429 quedan conservados
+  como evidencia histórica. El lanzador local ocultó una excepción posterior del
+  operador que no se pudo reproducir; se ejecutó directamente su fase CLI con
+  idéntico selector, entorno filtrado y controles previos/posteriores. El primer
+  intento directo encontró `us-central1` inaccesible; el reintento concluyó sin
+  cambiar credenciales, cuotas ni límites.
+- Verificación final del 2026-10-26 a las 13:09 UTC: fuentes selladas, valores de
+  entorno, Functions restantes, Hosting y Firestore Rules conformes. Google pasó
+  de omitir `maxInstanceCount` a explicitar `100`; se normalizó únicamente ese
+  [default documentado para HTTP gen2](https://docs.cloud.google.com/functions/quotas),
+  sobre una copia de comparación, conservando la base original. El adapter tiene
+  **7/7** pruebas, incluidas denegaciones de cambios reales de configuración.
+  Una comparación de inventario v1 no coincidió; la consulta independiente y la
+  verificación completa posterior fueron conformes, sin relajar esa comparación.
+  Endpoint: CORS **204**, llamada sin sesión **401 UNAUTHENTICATED**. No se
+  escribieron borradores reales ni se afirma un guardado autenticado en producción.
+
+Evidencia local ignorada: `.local-isolation/admin-assets-fix-checks/`,
+`.local-isolation/admin-draft-assets-diagnostic.json`,
+`.local-isolation/admin-drafts-hotfix-ownership-continuation-20261026/`,
+`.local-isolation/admin-drafts-hotfix-jsdom-diagnostic-20261026/` y
+`.local-isolation/admin-drafts-hotfix-20261026/`.
 
 <a id="access-matrix"></a>
 
@@ -91,7 +309,7 @@ Reglas actuales, abreviadas:
 | `usuarios/{uid}`; titular UID, perfil/preferencias backend | O: SDK g; CALL g/u mediante `upsertUserProfile`, `getMyProfileStatus`, `getMyUiPreferences`, `updateMyUiPreferences`. S: CALL gl de directorio. B: c/u. [index.ts](../../functions/src/index.ts), [useAdminAccess](../../src/hooks/useAdminAccess.js). | 4B2A: glcud sólo UID del path; query global denegada. CRUD propio permanece observado/pendiente de política de campos y cuenta; `admin` del perfil no autoriza. | A1 aceptado: negar X/N glcud y l global. Propuesto: SDK O g; c/u sólo campos propios explícitos si se conserva canal directo; d sólo flujo de cuenta autorizado. M/S sin acceso SDK global. No dar por aprobado CRUD del perfil por observar F. |
 | `usuarios/{uid}/imagenes/{imageId}`; titular del path | O: SDK glcud para biblioteca; [useMisImagenes](../../src/hooks/useMisImagenes.js), [corregirImagenes](../../src/utils/corregirImagenes.js). | 4B2A: glcud sólo UID del path, recursivo; sin validar `storagePath`/URLs. | A1 aceptado: O glcud, X/N —. Ownership por UID del path, no por metadata modificable. Propuesto: validar que paths privados referidos pertenecen al mismo UID; URLs compartidas requieren su política. |
 | `usuarios/{uid}/otros/**`; titular del path, sin consumidor encontrado | No se encontró escritor/lector actual de otras subcolecciones. | F glcud. | Propuesto: denegar por defecto; no heredar todas las operaciones de `imagenes`. La ausencia de consumidor no prueba inexistencia remota. |
-| `borradores/{slug}`; `userId` | O: SDK glcud; autosave/flush en [persistencia](../../src/components/editor/persistence/editorSessionPersistence.js), query en [useDashboardDrafts](../../src/hooks/useDashboardDrafts.js). CALL copia, preview, trash y publicación validan identidad; B c/u/d. | Create exige userId del caller; gu/d miran resource.userId; u conserva userId; l debe estar filtrado. No bypass admin. | A1 aceptado: O glcud, X/N —, dueño inmutable. Los espejos de lifecycle no son prueba de pago/publicación (A2). Q1 no autoriza M/S a saltar ownership. |
+| `borradores/{slug}`; `userId` | O: SDK glcud; autosave/flush en [persistencia](../../src/components/editor/persistence/editorSessionPersistence.js), query en [useDashboardDrafts](../../src/hooks/useDashboardDrafts.js). CALL copia, preview, trash y publicación validan identidad; S: creación/edición explícita por CALL bajo AD1; B c/u/d. | Create exige userId del caller; gu/d miran resource.userId; u conserva userId; l debe estar filtrado. Sin bypass admin SDK. Procedencia, revisión y auditoría administrativas reservadas al backend; contenido bajo revisión administrativa exige reconocerla explícitamente. | A1/AD1 aceptados: O glcud con protección de concurrencia, X/N —, dueño inmutable. Los espejos de lifecycle no son prueba de pago/publicación (A2). La capacidad CALL acotada no acepta Q1. |
 | `borradores/{slug}/**`; dueño del padre | Sin consumidor persistente hallado. | Denegado: excluido de F y sin match de descendientes. | Observado; propuesto preservar denegación. Test de subcolección confirma que ser dueño del padre no concede automáticamente acceso. |
 | `publicadas/{slug}`; `userId`, escritor backend | O: SDK gl por [dashboardList](../../src/domain/publications/dashboardList.js), [route](../../src/hooks/useDashboardEditorRoute.js), [preview](../../src/hooks/useDashboardPreviewController.js); CALL cambios de lifecycle; HTTP entrega; B glcud. | 4B2A: gl propio por userId; cud denegado a todo SDK cliente, incluso claims administrativos. | A1/A2 aceptados: SDK O gl, X/N —; SDK c/u/d — para todos, incluidos M/S. Público accede por HTTP. El backend sigue validando relación y lifecycle. |
 | `publicadas/{slug}/rsvps/{id}`; dueño del padre, respuesta del invitado | O: SDK gl en [PublicadasGrid](../../src/components/PublicadasGrid.jsx) y [summary](../../src/hooks/useDashboardPublicationRsvpSummary.js). N: HTTP c validado por `publicRsvpSubmit`; B c y limpieza/finalización. | 4B2A: glcud requiere dueño del padre, incluidos descendientes. O cud sigue observado/pendiente; X/N no acceden. | A1 aceptado: O gl, X/N SDK —. Propuesto: SDK c/u/d —, preservar HTTP como autoridad de envío y exportación; no abrir Firestore al invitado. [Interactividad](PREVIEW_PUBLISH_INTERACTIVITY_CONTRACT.md) y [DATA_MODEL RSVP](../architecture/DATA_MODEL.md) conservan contenido/compatibilidad. |

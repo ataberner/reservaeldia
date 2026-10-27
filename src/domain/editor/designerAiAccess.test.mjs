@@ -28,6 +28,7 @@ test("Tu asistente still requires a session and a writable draft outside the sel
     { editorReadOnly: true },
     { editorSession: { kind: "template" } },
     { editorSession: null },
+    { editorSession: { kind: "draft", id: "third-party", adminEdit: { ownerUid: "other" } } },
     { modoSelector: true },
   ]) {
     assert.equal(canAccessDesignerAi({ ...allowed, ...patch }), false);

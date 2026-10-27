@@ -108,7 +108,7 @@ export function buildDashboardLayoutProps({
     isAdminReadOnlyView: isAdminReadOnlyView === true,
     allowReadOnlyPreview: isAdminReadOnlyView === true,
     administrativeDraftData:
-      isAdminReadOnlyView === true ? adminDraftView?.draftData || null : null,
+      adminDraftView?.enabled === true || isAdminReadOnlyView === true ? adminDraftView?.draftData || null : null,
     draftDisplayName:
       normalizeText(adminDraftView?.draftName) ||
       normalizeText(templateWorkspaceView?.draftName) ||
@@ -161,9 +161,9 @@ export function buildDashboardCanvasEditorProps({
     canManageSite: canManageSite === true && isAdminReadOnlyView !== true,
     readOnly: isEditorReadOnly === true,
     initialDraftData:
-      isAdminReadOnlyView === true ? adminDraftView?.draftData || null : null,
+      adminDraftView?.enabled === true || isAdminReadOnlyView === true ? adminDraftView?.draftData || null : null,
     initialEditorData:
-      isAdminReadOnlyView === true
+      adminDraftView?.enabled === true || isAdminReadOnlyView === true
         ? adminDraftView?.draftData || null
         : templateWorkspaceView?.initialData || null,
   };
@@ -172,10 +172,11 @@ export function buildDashboardCanvasEditorProps({
 export function buildDashboardPreviewGateState({
   isTemplateEditorSession = false,
   isEditorReadOnly = false,
+  isAdministrativeDraft = false,
   mostrarCheckoutPublicacion = false,
 } = {}) {
   const canPublishFromPreview =
-    isTemplateEditorSession !== true && isEditorReadOnly !== true;
+    isTemplateEditorSession !== true && isEditorReadOnly !== true && !isAdministrativeDraft;
   const previewCheckoutVisible =
     canPublishFromPreview && mostrarCheckoutPublicacion === true;
 

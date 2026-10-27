@@ -214,6 +214,7 @@ export function useDashboardAuthGate({ router }) {
                   apellido:
                     statusData?.profile?.apellido || fallbackNames.apellido || "",
                   fechaNacimiento: statusData?.profile?.fechaNacimiento || "",
+                  designAssistance: statusData?.profile?.designAssistance,
                   nombreCompleto:
                     statusData?.profile?.nombreCompleto || user.displayName || "",
                 });

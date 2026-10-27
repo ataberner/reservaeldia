@@ -90,6 +90,8 @@ These fields coexist with the render state in `borradores/{slug}`, but they are 
 | `templateInput` | template personalization flow | Auxiliary metadata. Stores applied input values and apply report. |
 | `designerAiConversation` | Designer AI conversation planning | Auxiliary metadata. Stores ledger version, durable `usage.hasStarted` and monotonic `usage.guidedFlowCompleted`, value fingerprints/provenance, documented resolution rules (including explicit per-Gallery guided completion), and automatic/explicit document-name policy. It does not mirror invitation values or chat history. |
 | `draftContentMeta` | source-of-truth tracking | Auxiliary metadata. Writes `policyVersion`, `canonicalSource`, `lastWriter`, optional `lastReason`, and `updatedAt`. |
+| `adminDraftRevision` | administrative edits / stale-owner protection | Optional backend-only token replaced on administrative content saves. No migration; owner writes acknowledge the loaded token in `draftContentMeta.baseAdminRevision`. |
+| `adminAudit` | administrative creation/edit provenance | Backend-only metadata identifies creation and last-edit actors separately from unchanged `userId`; it follows the draft lifecycle without a separate history collection. See [AD1](../contracts/SECURITY_CONTRACT.md#administrative-drafts). |
 | `ultimaEdicion` | UI ordering, persistence | Auxiliary metadata. Current editor updates it on save. |
 | `creado` / `createdAt` / `updatedAt` | draft creation and maintenance | Auxiliary metadata. Observed in different creation and lifecycle flows. |
 
@@ -1701,3 +1703,40 @@ Those rewrites do not mean the logical invitation element changed. The stable id
 Root opcional `music` en el render state de drafts/templates. Ausencia equivale a OFF; no requiere migración. Shape normalizado: `{ version: 1, enabled: false, track: null | { source: "catalog" | "user", id: string }, volume: 0.35, loop: true }`. Volumen finito en [0,1]; OFF conserva track. No contiene URL ni ruta MP3. `shared/musicConfig.cjs` es el normalizador; `shared/musicCatalog.cjs` resuelve la identidad durante preparación/render. La fuente user se conserva como extensión, sin upload/resolución en V1.
 
 Música pasa por hidratación, snapshot, autosave FIFO, flush, preparación preview/publish, copias administrativas de templates y persistencia de publicación. Los autosaves de drafts legacy conservan la ausencia; backend, templates y publicaciones pueden materializar OFF. La creación desde plantilla sólo habilita Música para autores autorizados. El writer de patches con Música usa una callable atómica que verifica owner y autorización del cambio; no se convierte en dueño de estado. Ver [contrato Música](../contracts/MUSIC_SYSTEM_CONTRACT.md) para autorización, gate, recursos y pruebas.
+
+## Asistencia de diseño en el perfil
+
+Estado: decisión aceptada e implementada el 2026-10-26; sin deploy.
+La [evidencia y los pendientes de despliegue](../../deployment/profile-design-assistance/README.md)
+registran por separado lo verificado y las limitaciones del entorno.
+
+`usuarios/{uid}.designAssistance` es una preferencia privada opcional:
+`{ requested: boolean, whatsapp: string | null, updatedAt: Timestamp }`.
+`upsertUserProfile` valida la entrada y escribe únicamente sobre el UID
+autenticado; `updatedAt` lo asigna el servidor. El contrato puro compartido es
+`shared/profileDesignAssistance.cjs`, con copias generadas por el mapa de
+`functions/scripts/syncTemplateContract.cjs`.
+
+- La ausencia del campo no solicita asistencia ni vuelve incompleto el perfil.
+  Un cliente anterior que omite el patch conserva cualquier preferencia guardada.
+- El checkbox comienza desmarcado para un perfil nuevo. La solicitud es opcional,
+  independiente de nombre, apellido y fecha de nacimiento.
+- `requested: true` admite `whatsapp: null`: el equipo dispone del email de Auth
+  en el directorio administrativo. No se muestra esa aclaración en el modal.
+- WhatsApp admite números internacionales con `+` y 8–15 dígitos; se quitan
+  espacios, paréntesis, puntos y guiones, sin adivinar el país. Un valor inválido
+  se rechaza antes de escribir. `requested: false` guarda `whatsapp: null`.
+- `getMyProfileStatus` devuelve la preferencia propia.
+  `listUsersDirectory` y `getUserDirectoryDetail` la proyectan únicamente tras
+  su autorización superadmin existente. El directorio muestra la solicitud y
+  el enlace de WhatsApp o email. No se inicia una comunicación automáticamente.
+- La asistencia humana se presenta sin costo adicional; el usuario también puede
+  personalizar la invitación por su cuenta en el editor. No modifica precios,
+  el Diseñador AI ni la condición de perfil completo.
+- No se agregan colecciones, índices, claims, permisos SDK, eventos de analítica
+  ni logs con teléfonos. El dato sigue el ciclo de vida existente del perfil.
+
+Anclas: `shared/profileDesignAssistance.test.mjs`,
+`scripts/local/authFlows.test.mjs`,
+`src/lib/components/ProfileCompletionModal.browser.test.mjs` y
+`src/components/admin/UsersDirectoryManager.test.mjs`.

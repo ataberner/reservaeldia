@@ -7,6 +7,7 @@ export function canAccessDesignerAi({
   return (
     Boolean(String(userUid || "").trim()) &&
     editorReadOnly !== true &&
+    !editorSession?.adminEdit &&
     modoSelector !== true &&
     String(editorSession?.kind || "").trim().toLowerCase() === "draft"
   );

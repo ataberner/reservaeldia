@@ -510,6 +510,16 @@
       "manifestHash": "2c6f915ff0f9fe7536915ed643a58259340193e800b47678547212a3ffb5592d"
     },
     {
+      "name": "saveAdminDraftPatch",
+      "domain": "drafts",
+      "codebase": "default",
+      "regions": [
+        "us-central1"
+      ],
+      "secrets": [],
+      "manifestHash": "05f4b1c3cc11f9f66a313b18c97bbd98cfcea728f7c4d81913fed6a989e18d53"
+    },
+    {
       "name": "copiarPlantillaHTML",
       "domain": "drafts",
       "codebase": "default",

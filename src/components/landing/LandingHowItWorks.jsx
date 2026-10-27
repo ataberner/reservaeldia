@@ -9,7 +9,7 @@ const HOW_IT_WORKS_STEPS = [
   {
     title: "Personaliz\u00e1 los detalles",
     description:
-      "Carg\u00e1 tu informaci\u00f3n, sum\u00e1 fotos y activ\u00e1 solo los m\u00f3dulos que necesites (mapas, regalos, preguntas de asistencia).",
+      "Personaliz\u00e1 textos y fotos con ayuda del asistente de IA. Si prefer\u00eds, un dise\u00f1ador de nuestro equipo est\u00e1 a tu disposici\u00f3n para personalizar tu invitaci\u00f3n. Totalmente gratis.",
   },
   {
     title: "Envi\u00e1",

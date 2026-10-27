@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
-import React from "react";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import swc from "next/dist/build/swc/index.js";
 import * as invitationView from "../../domain/publications/myInvitationsView.js";
@@ -19,12 +20,21 @@ const adapters = {
   "@/firebase": {},
   "firebase/functions": { httpsCallable: () => { throw new Error("Unexpected Firebase access"); } },
   "@/domain/publications/myInvitationsView": invitationView,
+  "@/components/admin/CreateUserDraftModal": { __esModule: true, default: () => null },
 };
-const compiled = { exports: {} };
-new Function("require", "module", "exports", code)(
-  (id) => Object.hasOwn(adapters, id) ? adapters[id] : require(id),
-  compiled, compiled.exports
-);
+function compile(overrides = {}, loadedModules = []) {
+  const dependencies = { ...adapters, ...overrides };
+  const module = { exports: {} };
+  new Function("require", "module", "exports", code)(
+    (id) => {
+      loadedModules.push(id);
+      return Object.hasOwn(dependencies, id) ? dependencies[id] : require(id);
+    },
+    module, module.exports
+  );
+  return module;
+}
+const compiled = compile();
 
 export function renderPublications(publications) {
   return renderToStaticMarkup(React.createElement(compiled.exports.PublicationDetailList, { publications }));
@@ -105,4 +115,78 @@ test("each invitation keeps its own metrics, link and empty state", () => {
     dom.window.close();
   }
   assert.match(renderPublications([]), /No hay invitaciones publicadas para mostrar/);
+});
+
+test("creating for the selected user refreshes its drafts and retains read-only editor links", async () => {
+  const dom = new JSDOM("<main></main>", { url: "http://localhost/" });
+  const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const user = { uid: "selected-owner", email: "owner@example.invalid", metrics: { drafts: 0 } };
+  const details = [];
+  const owners = [];
+  const loadedModules = [];
+  const module = compile({
+    "firebase/functions": { httpsCallable: (_functions, name) => async (input) => {
+      if (name === "getUsersStats") return { data: { totalUsers: 1 } };
+      if (name === "listUsersDirectory") return { data: { items: [user] } };
+      assert.equal(name, "getUserDirectoryDetail");
+      details.push(input);
+      const drafts = details.length > 1
+        ? [{ slug: "new-draft", nombre: "Nueva invitación", canOpenCanvas: true }]
+        : [];
+      return { data: { user: { ...user, metrics: { drafts: drafts.length } },
+        metrics: { drafts: drafts.length }, drafts, publications: [] } };
+    } },
+    "@/components/admin/CreateUserDraftModal": { __esModule: true, default: ({ owner, onCreated }) => {
+      owners.push(owner.uid);
+      return React.createElement("button", {
+        onClick: () => onCreated({ ownerUid: owner.uid, slug: "new-draft" }),
+      }, "Confirmar creación");
+    } },
+  }, loadedModules);
+  const root = createRoot(dom.window.document.querySelector("main"));
+  const button = text => [...dom.window.document.querySelectorAll("button")].find(item => item.textContent === text);
+  try {
+    await act(async () => root.render(React.createElement(module.exports.default)));
+    await act(async () => button("Ver detalle").click());
+    assert.match(dom.window.document.body.textContent, /No hay borradores para mostrar/);
+    assert.equal(loadedModules.includes("@/components/admin/CreateUserDraftModal"), false);
+    await act(async () => button("Crear borrador").click());
+    assert.equal(loadedModules.includes("@/components/admin/CreateUserDraftModal"), true);
+    assert.deepEqual(owners, [user.uid]);
+    await act(async () => button("Confirmar creación").click());
+    assert.deepEqual(details, [{ uid: user.uid }, { uid: user.uid }]);
+    assert.match(dom.window.document.body.textContent, /Nueva invitación/);
+    const editorLinks = [...dom.window.document.querySelectorAll('a[href*="slug="]')];
+    assert.equal(editorLinks.length, 2);
+    for (const link of editorLinks) {
+      const url = new URL(link.href);
+      assert.equal(url.searchParams.get("slug"), "new-draft");
+      assert.equal(url.searchParams.get("ownerUid"), user.uid);
+      assert.equal(url.searchParams.get("adminView"), "1");
+      assert.equal(url.searchParams.has("adminEdit"), false);
+    }
+    assert.equal(button("Confirmar creación"), undefined);
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    globalThis.window = previous.window;
+    globalThis.document = previous.document;
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previous.act;
+  }
+});
+
+test("designer assistance exposes WhatsApp or email only after an explicit request", () => {
+  const render = user => renderToStaticMarkup(React.createElement(compiled.exports.DesignAssistanceContact, {user}));
+  assert.equal(render({email:"fixture@example.test"}), "");
+  assert.equal(render({email:"fixture@example.test",designAssistance:{requested:false,whatsapp:"+5491112345678"}}), "");
+  const whatsapp = render({email:"fixture@example.test",designAssistance:{requested:true,whatsapp:"+5491112345678"}});
+  assert.match(whatsapp,/https:\/\/wa.me\/5491112345678/);
+  assert.match(whatsapp,/Solicitó asistencia de diseño/);
+  const email = render({email:"fixture@example.test",designAssistance:{requested:true,whatsapp:null}});
+  assert.match(email,/mailto:fixture%40example.test/);
+  assert.doesNotMatch(email,/wa.me/);
+  assert.doesNotMatch(render({email:"fixture@example.test",designAssistance:{requested:true,whatsapp:"javascript:bad"}}),/javascript:/);
 });

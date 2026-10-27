@@ -3,7 +3,7 @@
 # =========================
 # Dependencies
 # =========================
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -94,8 +94,9 @@ trace
 # Runtime-only provider analysis, dry-run reports, and resume state
 /artifacts/providers/runtime/
 
-# Disposable isolated development sessions (no personal configuration copied)
-/.local-isolation/
+# Isolated sessions, retained evidence and shared npm download cache at any depth.
+# Ignore is not cleanup: historical environments are never removed automatically.
+.local-isolation/
 
 # Installed emulator/CLI tooling; package.json and lockfile remain canonical.
 /scripts/local/tools/node_modules/

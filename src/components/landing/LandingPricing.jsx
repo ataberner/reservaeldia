@@ -28,8 +28,9 @@ export default function LandingPricing({ id = "precios", compactBottom = false }
           </h2>
 
           <p className={styles.pricingDescription}>
-            Sin suscripciones. Accedé a todas las funciones y gestioná tus
-            invitados por un costo fijo.
+            Sin suscripciones. Contás con un diseñador de nuestro equipo para
+            ayudarte, totalmente gratis. Mirá cómo queda tu invitación y decidí
+            después si querés publicarla. Recién ahí pagás.
           </p>
         </div>
 

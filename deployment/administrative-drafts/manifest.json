@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "project": "reservaeldia-7a440",
+  "database": "(default)",
+  "status": "Prepared locally. Fresh exact remote-base readback required; this artifact performs no deployment.",
+  "base": {
+    "file": "base.rules",
+    "source": "deployment/provider-beta/firestore.rules",
+    "sha256": "7033002a97a6a59c7097de2d28a3115987e457b68f759ce17634f2a92c10902a",
+    "bytes": 15231
+  },
+  "candidate": {
+    "file": "firestore.rules",
+    "sha256": "262582ee1e46e76d0bee0cb934a15f6b9451b4ae335714b64ae407d5d37682c5",
+    "bytes": 16101
+  },
+  "config": {
+    "file": "firebase.json",
+    "sha256": "ee887975bbca8bff8ac0bb895ab8ecbda78e7206e2706ba3ccf204219ce7a56f"
+  },
+  "scope": [
+    "Add the canonical AD1 administrative-revision acknowledgement helper.",
+    "Reserve adminDraftRevision/adminAudit on draft create/update and enforce owner acknowledgement on content updates.",
+    "Preserve every other base byte, including provider SDK denial, catalog fallback closure and existing owner/read/delete grants."
+  ]
+}

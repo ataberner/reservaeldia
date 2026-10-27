@@ -660,7 +660,7 @@ export function buildDashboardPreviewCompatibilityState({
     administrativeDraftPreview?.ownerUid
   );
   const canValidateForPublication =
-    canUsePublishCompatibility && hasTargetId && !isReadOnly;
+    canUsePublishCompatibility && hasTargetId && !isReadOnly && !administrativeOwnerUid;
 
   return {
     isTemplateSession,
@@ -670,7 +670,7 @@ export function buildDashboardPreviewCompatibilityState({
     shouldRefreshPublishValidationAfterPreview:
       canValidateForPublication,
     shouldResolvePublicationLink:
-      canUsePublishCompatibility && hasTargetId && !isReadOnly,
+      canUsePublishCompatibility && hasTargetId && !isReadOnly && !administrativeOwnerUid,
     administrativeOwnerUid,
     publishValidationRefreshMode: canValidateForPublication
       ? "compatibility-side-effect"

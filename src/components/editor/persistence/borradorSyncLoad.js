@@ -117,6 +117,7 @@ export async function loadBorradorSyncState({
   const readResult = await readEditorSessionDocument({
     session: safeSession,
     slug: safeSession.id,
+    resetDraftRevision: true,
     initialData:
       injectedData && typeof injectedData === "object" ? injectedData : null,
   });

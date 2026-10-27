@@ -203,6 +203,33 @@ Current behavior:
 
 Editor modules must not call `doc(db, "borradores", slug)` to persist editor-session state. New session kinds must be represented explicitly in `normalizeEditorSession`; unsupported kinds fail closed at the persistence authority instead of falling back to draft.
 
+Administrative drafts (authorized extension, 2026-10-25) use the same `draft`
+session and canvas. `UsersDirectoryManager` creates them through `copiarPlantilla`
+with an explicit target `ownerUid`, then refreshes the selected user's list.
+`adminView=1` always opens read-only. Only an explicit in-memory edit action,
+after a fresh `getAdminDraftSnapshot`, adds `editorSession.adminEdit`; neither
+URL parameters nor persisted draft fields enable that mode. Returning to
+read-only flushes pending changes and reloads the saved snapshot. Closing the
+editor also flushes; a failed flush keeps it open.
+
+`draftRevisionTransport.js`, consumed by the existing persistence authority,
+serializes administrative writes through `saveAdminDraftPatch`. Its content
+revision detects intervening owner/admin saves, while owner transactions compare
+the `adminDraftRevision` captured during hydration. Metadata rereads do not advance
+that baseline. Rules require an explicit current acknowledgement for content
+writes on administratively edited drafts, including clients from older builds;
+the music callable applies the same check. Conflicts retain local edits, show an
+error, and require an explicit reload before replacing them. No automatic merge
+or takeover occurs. This is not general collaborative editing between owners.
+
+Preview uses the existing administrative render authorization after flush.
+Administrative editing cannot publish or start checkout. Uploads authenticate as
+the actor and the backend copies new private images/thumbnails into the owner's
+namespace before persisting their references. Designer AI retains its owner-only
+admission/quotas and is unavailable in this mode; manual authoring and the guided
+editor remain available. See [AD1](../contracts/SECURITY_CONTRACT.md#administrative-drafts)
+for the narrow permission extension, reserved audit data and deployment ordering.
+
 Initial dynamic-authoring hydration starts after the canvas document has loaded.
 Its v2 migration writes authoring metadata, input values and `eventDetails` through
 the same session queue. Objects are validation input only: this migration never

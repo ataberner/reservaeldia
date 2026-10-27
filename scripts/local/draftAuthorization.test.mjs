@@ -5,7 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, getIdToken } from "firebase/auth";
+import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, getIdToken } from "firebase/auth";
 import { getFirestore, connectFirestoreEmulator, doc, getDocFromServer, setDoc, updateDoc, deleteField, terminate } from "firebase/firestore";
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from "firebase/functions";
 
@@ -15,12 +15,13 @@ const runId = `draft-auth-${randomUUID()}`;
 const clients = [];
 const documents = new Set();
 const objects = new Set();
-let admin, db, bucket, owner, other, anonymous;
+let admin, db, bucket, owner, other, anonymous, superadmin, claimedAdmin;
 const endpoint = name => `http://${contract.HOST}:${contract.EMULATORS.functions}/${contract.LOCAL_PROJECT}/${contract.REGION}/${name}`;
 const draftId = label => `${runId}-${label}`;
 const templateId = draftId("template");
 const alternativeTemplateId = draftId("alternative-template");
 const legacyTemplateId = draftId("legacy-template");
+const administrativeTemplateId = draftId("administrative-template");
 const templateHtml = "<!doctype html><html><head><style>.editable { color:red }</style></head><body><h1 data-id=\"title\">Synthetic legacy title</h1></body></html>";
 
 function documentRef(resource) {
@@ -52,6 +53,27 @@ async function createClient(label, authenticated = true) {
     client.token = await getIdToken(client.user);
   }
   return client;
+}
+async function createAdministrativeClient() {
+  const uid = "local-provider-admin";
+  assert.equal(process.env.SUPERADMINS_UIDS, uid);
+  const email = `${runId}-operator@example.test`, password = `Synthetic-${randomUUID()}!`;
+  await admin.auth().createUser({ uid, email, password, emailVerified: true });
+  const client = await createClient("operator", false);
+  client.user = (await signInWithEmailAndPassword(client.auth, email, password)).user;
+  client.token = await getIdToken(client.user);
+  // Fixed operator UID is also used by later suites. Wait for both disabled
+  // email reservations so their exact documents can be cleaned up here.
+  for (const collection of ["welcomeEmailDeliveries", "newUserNotificationDeliveries", "analyticsUsers"])
+    documents.add(`${collection}/${uid}`);
+  documents.add(`analyticsEvents/registro_usuario:${uid}`);
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    const deliveries = await Promise.all(["welcomeEmailDeliveries", "newUserNotificationDeliveries"].map(collection => db.doc(`${collection}/${uid}`).get()));
+    if (deliveries.every(snapshot => snapshot.exists)) return client;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error("Synthetic operator email reservations did not settle");
 }
 function copy(client, name, slug, source = templateId) {
   draftRef(slug);
@@ -90,9 +112,15 @@ before(async () => {
   admin = ensureAdminApp(); db = admin.firestore(); bucket = admin.storage().bucket();
   assert.equal(bucket.name, contract.LOCAL_BUCKET);
   owner = await createClient("a"); other = await createClient("b"); anonymous = await createClient("anonymous", false);
-  for (const id of [templateId, alternativeTemplateId, legacyTemplateId]) {
+  superadmin = await createAdministrativeClient();
+  claimedAdmin = await createClient("claimed-admin");
+  await admin.auth().setCustomUserClaims(claimedAdmin.user.uid, { admin: true, superadmin: true, role: "admin" });
+  claimedAdmin.token = await getIdToken(claimedAdmin.user, true);
+  for (const id of [templateId, alternativeTemplateId, legacyTemplateId, administrativeTemplateId]) {
     await documentRef(`plantillas/${id}`).set({ nombre: "Synthetic authorization template", tipo: "boda", estado: "active",
-      estadoEditorial: "publicada", objetos: [], secciones: [], editor: id === legacyTemplateId ? "html" : "konva" });
+      estadoEditorial: "publicada", objetos: [],
+      secciones: id === administrativeTemplateId ? [{ id: "hero", orden: 1, altura: 600, fondo: "#ffffff", fondoTipo: "color" }] : [],
+      editor: id === legacyTemplateId ? "html" : "konva" });
   }
   await objectRef(`plantillas/${legacyTemplateId}/index.html`).save(templateHtml, { contentType: "text/html" });
 });
@@ -112,6 +140,109 @@ after(async () => {
   if (admin) await admin.delete();
   const rejected = results.filter(result => result.status === "rejected");
   assert.equal(rejected.length, 0, "synthetic fixture cleanup must succeed");
+});
+
+const adminSnapshot = async (slug, client = superadmin, ownerUid = owner.user.uid) =>
+  (await httpsCallable(client.functions, "getAdminDraftSnapshot")({ slug, ownerUid })).data;
+async function adminSave(slug, revision, patch, client = superadmin, ownerUid = owner.user.uid) {
+  const result = (await httpsCallable(client.functions, "saveAdminDraftPatch")({ slug, ownerUid, expectedRevision: revision, patch })).data;
+  return result;
+}
+
+test("only configured superadmin creates another user's draft with the same template producer and immutable owner", { timeout: 120000 }, async () => {
+  const slug = draftId("administrative-create"), resource = draftRef(slug);
+  const request = { plantillaId: administrativeTemplateId, slug, ownerUid: owner.user.uid };
+  for (const client of [anonymous, other, claimedAdmin]) {
+    await rejectsCode(() => httpsCallable(client.functions, "copiarPlantilla")(request),
+      client === anonymous ? "functions/unauthenticated" : "functions/permission-denied");
+    assert.equal((await resource.get()).exists, false);
+  }
+  await rejectsCode(() => httpsCallable(superadmin.functions, "copiarPlantilla")({ ...request, ownerUid: draftId("absent-user") }), "functions/not-found");
+  assert.equal((await httpsCallable(superadmin.functions, "copiarPlantilla")(request)).data.slug, slug);
+  const created = (await resource.get()).data();
+  assert.equal(created.userId, owner.user.uid);
+  assert.equal(created.plantillaId, administrativeTemplateId);
+  assert.equal(created.sourceTemplateId, administrativeTemplateId);
+  assert.equal(created.estadoBorrador, "borrador_activo");
+  assert.equal(created.adminAudit.createdByUid, superadmin.user.uid);
+  assert.equal(created.adminAudit.ownerUid, owner.user.uid);
+  assert.equal(created.draftCreation.actorUid, superadmin.user.uid);
+  assert.equal(created.draftCreation.ownerUid, owner.user.uid);
+  assert.equal((await bucket.file(`borradores/${slug}/index.html`).exists())[0], false);
+  assert.equal((await db.doc(`publicadas/${slug}`).get()).exists, false);
+  await rejectsCode(() => getDocFromServer(doc(superadmin.firestore, "borradores", slug)), "permission-denied");
+  await updateDoc(doc(owner.firestore, "borradores", slug), { nombre: "Owner continued administrative creation" });
+  await httpsCallable(superadmin.functions, "copiarPlantilla")(request);
+  assert.equal((await getDocFromServer(doc(owner.firestore, "borradores", slug))).data().nombre, "Owner continued administrative creation");
+  const detail = (await httpsCallable(superadmin.functions, "getUserDirectoryDetail")({ uid: owner.user.uid })).data;
+  assert.ok(detail.drafts.some(item => item.slug === slug), "new draft is listed under its owner");
+});
+
+test("administrative save preserves identity and publication while both sides reject stale edits", { timeout: 120000 }, async () => {
+  const slug = draftId("administrative-create"), resource = draftRef(slug);
+  const first = await adminSnapshot(slug);
+  assert.equal(first.status, "ok");
+  assert.equal(first.ownerUid, owner.user.uid);
+  assert.ok(first.revision);
+  const untouched = (await resource.get()).data();
+  for (const client of [anonymous, other, claimedAdmin]) {
+    await rejectsCode(() => adminSnapshot(slug, client), client === anonymous ? "functions/unauthenticated" : "functions/permission-denied");
+    await rejectsCode(() => adminSave(slug, first.revision, { nombre: "Denied admin edit" }, client), client === anonymous ? "functions/unauthenticated" : "functions/permission-denied");
+  }
+  await rejectsCode(() => adminSnapshot(slug, superadmin, other.user.uid), "functions/permission-denied");
+  for (const patch of [{ userId: superadmin.user.uid }, { estadoBorrador: "papelera" }, { slugPublico: "changed-publication" }, { adminDraftRevision: "forged" }, { adminAudit: {} }]) {
+    await rejectsCode(() => adminSave(slug, first.revision, patch), "functions/invalid-argument");
+  }
+  assert.deepEqual((await resource.get()).data(), untouched);
+  await updateDoc(doc(owner.firestore, "borradores", slug), { nombre: "Concurrent owner edit" });
+  await rejectsCode(() => adminSave(slug, first.revision, { nombre: "Stale administrator" }), "functions/aborted");
+  const fresh = await adminSnapshot(slug);
+  const changed = await adminSave(slug, fresh.revision, { nombre: "Administrative content edit", eventDetails: { mode: "single" } });
+  const saved = (await resource.get()).data();
+  assert.equal(saved.nombre, "Administrative content edit");
+  assert.equal(saved.userId, owner.user.uid);
+  assert.equal(saved.estadoBorrador, untouched.estadoBorrador);
+  assert.deepEqual(saved.draftCreation, untouched.draftCreation);
+  assert.equal(saved.adminAudit.updatedByUid, superadmin.user.uid);
+  assert.equal(saved.adminAudit.ownerUid, owner.user.uid);
+  assert.equal(saved.adminDraftRevision, changed.adminDraftRevision);
+  assert.notEqual(changed.revision, fresh.revision);
+  assert.equal((await getDocFromServer(doc(owner.firestore, "borradores", slug))).data().nombre, saved.nombre);
+  await rejectsCode(() => updateDoc(doc(owner.firestore, "borradores", slug), { nombre: "Old owner tab" }), "permission-denied");
+  await rejectsCode(() => httpsCallable(owner.functions, "saveDraftWithMusicV1")({ draftId: slug,
+    patch: { nombre: "Old music autosave", music: saved.music } }), "functions/aborted");
+  await updateDoc(doc(owner.firestore, "borradores", slug), { nombre: "Owner continued latest draft",
+    draftContentMeta: { ...saved.draftContentMeta, baseAdminRevision: changed.adminDraftRevision, updatedAt: "synthetic-owner-update" } });
+  await rejectsCode(() => adminSave(slug, changed.revision, { nombre: "Stale after latest owner edit" }), "functions/aborted");
+  const final = await adminSnapshot(slug);
+  assert.equal(final.draft.nombre, "Owner continued latest draft");
+  assert.equal(final.draft.userId, owner.user.uid);
+  assert.equal((await db.doc(`publicadas/${slug}`).get()).exists, false);
+});
+
+test("admin-uploaded images become independent owner assets before a draft can reference them", { timeout: 120000 }, async () => {
+  const slug = draftId("administrative-assets"), resource = draftRef(slug);
+  await copy(owner, "copiarPlantilla", slug, administrativeTemplateId);
+  const assetPath = `usuarios/${superadmin.user.uid}/imagenes/${runId}.png`;
+  const source = objectRef(assetPath);
+  await source.save(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2s5sAAAAASUVORK5CYII=", "base64"), {
+    contentType: "image/png", metadata: { metadata: { firebaseStorageDownloadTokens: "synthetic-token", sourceWidth: "1", sourceHeight: "1" } },
+  });
+  const imageUrl = `http://${process.env.FIREBASE_STORAGE_EMULATOR_HOST}/v0/b/${bucket.name}/o/${encodeURIComponent(assetPath)}?alt=media&token=synthetic-token`;
+  const snapshot = await adminSnapshot(slug);
+  await adminSave(slug, snapshot.revision, { objetos: [{ id: "admin-image", tipo: "imagen", src: imageUrl, storagePath: assetPath }] });
+  const image = (await resource.get()).data().objetos[0];
+  objects.add(image.storagePath);
+  assert.ok(image.storagePath.startsWith(`usuarios/${owner.user.uid}/imagenes/admin-`));
+  assert.ok(image.src.includes(encodeURIComponent(image.storagePath)));
+  assert.ok(image.storageGeneration);
+  assert.ok(image.storageDownloadToken);
+  const expected = (await bucket.file(image.storagePath).download())[0];
+  await source.delete();
+  assert.deepEqual((await bucket.file(image.storagePath).download())[0], expected);
+  const { createRenderAssetAuthorizer } = require("../../functions/lib/render/renderAssetAuthorization.js");
+  assert.equal((await createRenderAssetAuthorizer({ kind: "draft", ownerUid: owner.user.uid, draftId: slug }, bucket.name).authorize(image.src)).path, image.storagePath);
+  assert.equal((await getDocFromServer(doc(owner.firestore, "borradores", slug))).data().userId, owner.user.uid);
 });
 
 test("copy handlers reject anonymous callers and unsafe identifiers before creating resources", { timeout: 90000 }, async () => {

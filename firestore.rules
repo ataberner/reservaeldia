@@ -40,6 +40,19 @@ service cloud.firestore {
         (hasDefaultMusic(resource.data) && hasDefaultMusic(request.resource.data));
     }
 
+    function acknowledgesAdministrativeDraftRevision() {
+      // Older editor tabs may update only content while implicitly retaining the
+      // server's metadata. Require an explicit metadata change for content writes.
+      // Thumbnail refreshes do not replace authored content.
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !("adminDraftRevision" in resource.data) ||
+        changed.hasOnly(["thumbnailUrl", "thumbnailUpdatedAt"]) || (
+          changed.hasAny(["draftContentMeta"]) &&
+          request.resource.data.draftContentMeta is map &&
+          request.resource.data.draftContentMeta.baseAdminRevision == resource.data.adminDraftRevision
+        );
+    }
+
     function isPublicationOwner(publicSlug) {
       return isOwner(get(/databases/$(database)/documents/publicadas/$(publicSlug)).data.userId);
     }
@@ -146,12 +159,13 @@ service cloud.firestore {
       // Creation provenance is written only by the backend, never supplied or
       // replaced by a client when resuming a stored HTML artifact.
       allow create: if isDraftOwnerOnCreate() &&
-        !("draftCreation" in request.resource.data) && hasDefaultMusic(request.resource.data);
+        !request.resource.data.keys().hasAny(["draftCreation", "adminDraftRevision", "adminAudit"]) &&
+        hasDefaultMusic(request.resource.data);
       allow read, delete: if isDraftOwner();
       allow update: if isDraftOwner() &&
         request.resource.data.userId == resource.data.userId &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["draftCreation"]) &&
-        preservesMusic();
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["draftCreation", "adminDraftRevision", "adminAudit"]) &&
+        preservesMusic() && acknowledgesAdministrativeDraftRevision();
     }
 
     // A4: roots/operation results remain administrative even when published.

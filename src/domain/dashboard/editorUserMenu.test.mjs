@@ -72,3 +72,10 @@ test("generic read-only editor sessions do not inherit the administrative except
     false
   );
 });
+
+test("editing a user's draft keeps section authoring without template conversion actions", () => {
+  assert.deepEqual(resolveEditorUserMenuAccess({
+    hasActiveEditor: true, canManageSite: true, isSuperAdmin: true,
+    editorReadOnly: false, isAdminEditing: true,
+  }), { showAddSection: true, showCreateTemplate: false, showSaveTemplate: false });
+});

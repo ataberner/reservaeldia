@@ -81,6 +81,8 @@ the search toolbar; closing them preserves their values and shows a selection
 summary. Mobile uses labelled stacked rows and normal page scrolling. The detail
 form retains the original readable width. These styles remain in the same module;
 authorization, server queries, page size and cursors retain their existing owners.
+Its scoped release procedure is recorded in
+[provider panel deployment](../../deployment/provider-panel/README.md).
 
 ### Authenticated landing entry (2026-09-18)
 

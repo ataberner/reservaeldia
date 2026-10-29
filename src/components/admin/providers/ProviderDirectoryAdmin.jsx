@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Plus, Search, Store, ShieldCheck } from "lucide-react";
+import { useId, useState } from "react";
+import { ArrowLeft, ArrowUpRight, ChevronLeft, ChevronRight, LoaderCircle, Plus, Search, SlidersHorizontal, Store, ShieldCheck } from "lucide-react";
 import { formatProviderDate, publicationLabels, providerReviewLabel } from "@/domain/providers/adminForm";
 import ProviderFields, { Field } from "./ProviderFields";
 import ProviderPreview from "./ProviderPreview";
@@ -18,37 +18,69 @@ export function ProviderList({ state, onOpen, onCreate }) {
   const { filters, setFilters, catalog, busy, items, page, nextCursor } = state;
   const ready = state.listStatus === "ready" && !busy && !state.error;
   const filter = (key, value) => setFilters((previous) => ({ ...previous, [key]: value }));
+  const selectedFilters = [
+    filters.categoryId && (catalog.categories.find((category) => category.id === filters.categoryId)?.nombre || filters.categoryId),
+    filters.city,
+    filters.publication && publicationLabels[filters.publication],
+    filters.owner && (filters.owner === "plataforma" ? "Plataforma" : "Con responsable"),
+    filters.pending && (filters.pending === "true" ? "Con cambios pendientes" : "Sin cambios pendientes"),
+  ].filter(Boolean);
+  const [filtersOpen, setFiltersOpen] = useState(selectedFilters.length > 0);
+  const filtersId = useId();
   return (
     <>
-      <header className={styles.header}>
-        <div><p className={styles.eyebrow}>Administración · Beta privada</p><h1>Salones y profesionales</h1><p className={styles.muted}>Un lugar para preparar, revisar y administrar cada negocio.</p></div>
-        <button type="button" className={styles.primary} onClick={onCreate} disabled={busy}><Plus size={18} aria-hidden="true" />Crear ficha</button>
+      <header className={styles.listHeader}>
+        <div><p className={styles.listEyebrow}>Proveedores · Beta privada</p><h1>Salones y profesionales</h1></div>
+        <div className={styles.listHeaderActions}>
+          <span className={styles.privateIndicator}><ShieldCheck size={16} aria-hidden="true" />Directorio público desactivado</span>
+          <button type="button" className={styles.primary} onClick={onCreate} disabled={busy}><Plus size={18} aria-hidden="true" />Crear ficha</button>
+        </div>
       </header>
-      <div className={styles.notice}><ShieldCheck size={18} className="inline mr-2" aria-hidden="true" />Directorio público desactivado. Las fichas y sus vistas previas permanecen privadas.</div>
-      <div className={styles.panel} aria-busy={busy}>
-        <form className={styles.filters} onSubmit={(event) => { event.preventDefault(); void state.search(); }}>
-          <Field label="Buscar por nombre o correo" value={filters.search} onChange={(value) => filter("search", value)} type="search" />
-          <Field label="Categoría" value={filters.categoryId} onChange={(value) => filter("categoryId", value)} options={[["", "Todas"], ...catalog.categories.map((entry) => [entry.id, entry.nombre])]} />
-          <Field label="Localidad" value={filters.city} onChange={(value) => filter("city", value)} />
-          <Field label="Publicación" value={filters.publication} onChange={(value) => filter("publication", value)} options={[["", "Todas"], ["borrador", "Borrador"], ["publicada", "Publicada"], ["pausada", "Pausada"], ["archivada", "Archivada"]]} />
-          <Field label="Responsable" value={filters.owner} onChange={(value) => filter("owner", value)} options={[["", "Todos"], ["plataforma", "Administrada por la plataforma"], ["responsable", "Con responsable"]]} />
-          <Field label="Pendientes" value={filters.pending} onChange={(value) => filter("pending", value)} options={[["", "Todos"], ["true", "Con cambios pendientes"], ["false", "Sin cambios pendientes"]]} />
-          <button className={styles.button} type="submit" disabled={busy}><Search size={16} aria-hidden="true" />Buscar fichas</button>
+      <div className={styles.directoryPanel} aria-busy={busy}>
+        <form className={styles.searchForm} onSubmit={(event) => { event.preventDefault(); void state.search(); }}>
+          <div className={styles.searchBar}>
+            <label className={styles.searchField}>
+              <span className={styles.srOnly}>Buscar por nombre o correo</span>
+              <Search size={18} aria-hidden="true" />
+              <input type="search" value={filters.search || ""} onChange={(event) => filter("search", event.target.value)} placeholder="Buscar por nombre o correo" />
+            </label>
+            <button type="button" className={`${styles.button} ${filtersOpen ? styles.filterSelected : ""}`} aria-expanded={filtersOpen} aria-controls={filtersId} onClick={() => setFiltersOpen((open) => !open)}>
+              <SlidersHorizontal size={16} aria-hidden="true" />Filtros{selectedFilters.length > 0 && <span className={styles.filterCount}>{selectedFilters.length}</span>}
+            </button>
+            <button className={styles.button} type="submit" disabled={busy}>Buscar fichas</button>
+          </div>
+          <div id={filtersId} className={styles.filterFields} hidden={!filtersOpen}>
+            <Field label="Categoría" value={filters.categoryId} onChange={(value) => filter("categoryId", value)} options={[["", "Todas"], ...catalog.categories.map((entry) => [entry.id, entry.nombre])]} />
+            <Field label="Localidad" value={filters.city} onChange={(value) => filter("city", value)} />
+            <Field label="Publicación" value={filters.publication} onChange={(value) => filter("publication", value)} options={[["", "Todas"], ["borrador", "Borrador"], ["publicada", "Publicada"], ["pausada", "Pausada"], ["archivada", "Archivada"]]} />
+            <Field label="Responsable" value={filters.owner} onChange={(value) => filter("owner", value)} options={[["", "Todos"], ["plataforma", "Administrada por la plataforma"], ["responsable", "Con responsable"]]} />
+            <Field label="Pendientes" value={filters.pending} onChange={(value) => filter("pending", value)} options={[["", "Todos"], ["true", "Con cambios pendientes"], ["false", "Sin cambios pendientes"]]} />
+          </div>
+          {!filtersOpen && selectedFilters.length > 0 && <p className={styles.filterSummary}>Filtros seleccionados: {selectedFilters.join(" · ")}</p>}
         </form>
-        {busy && <p role="status" className={styles.notice}>Cargando fichas…</p>}
-        {ready && (items.length === 0 ? <div className={styles.empty}><Store size={40} aria-hidden="true" /><h2>No hay coincidencias</h2><p className={styles.muted}>Probá otros filtros para encontrar una ficha.</p></div> : (
-          <table className={styles.table}>
-            <thead><tr><th scope="col">Negocio</th><th scope="col">Categoría y localidad</th><th scope="col">Publicación</th><th scope="col">Responsable</th><th scope="col">Revisión</th></tr></thead>
-            <tbody>{items.map((item) => <tr key={item.id}>
-              <td><button type="button" className={styles.businessName} onClick={() => onOpen(item.id)} disabled={busy}>{item.nombre || "Ficha sin nombre"}</button>{item.email && <p className={styles.hint}>{item.email}</p>}</td>
-              <td data-label="Ubicación">{catalog.categories.find((category) => category.id === item.categoriaPrincipalId)?.nombre || "Sin categoría"}<p className={styles.hint}>{item.ciudad || "Localidad pendiente"}</p></td>
-              <td data-label="Publicación"><span className={styles.badge}>{publicationLabels[item.publication] || item.publication}</span></td>
-              <td data-label="Gestión">{item.ownerUserId ? "Con responsable" : "Plataforma"}</td>
-              <td data-label="Revisión">{providerReviewLabel(item.reviewStatus, item.hasPendingChanges)}</td>
-            </tr>)}</tbody>
-          </table>
-        ))}
-        {ready && <div className={styles.row}><p className={styles.hint}>Página {page} · {items.length} fichas</p><div className={styles.actions}><button className={styles.button} type="button" disabled={page <= 1} onClick={() => void state.paginate(-1)}>Anterior</button><button className={styles.button} type="button" disabled={!nextCursor || !items.length} onClick={() => void state.paginate(1)}>Siguiente</button></div></div>}
+        <div className={styles.tableScroll}>
+          {busy && <div role="status" className={styles.listLoading}><LoaderCircle size={22} className={styles.loadingIcon} aria-hidden="true" />Cargando fichas…</div>}
+          {ready && (items.length === 0 ? <div className={styles.empty}><Store size={40} aria-hidden="true" /><h2>No hay coincidencias</h2><p className={styles.muted}>Probá otros filtros para encontrar una ficha.</p></div> : (
+            <table className={styles.directoryTable}>
+              <caption className={styles.srOnly}>Fichas de proveedores · Página {page}</caption>
+              <thead><tr><th scope="col">Negocio</th><th scope="col">Categoría y localidad</th><th scope="col">Publicación</th><th scope="col">Responsable</th><th scope="col">Revisión</th></tr></thead>
+              <tbody>{items.map((item) => <tr key={item.id}>
+                <td>
+                  <button type="button" className={styles.providerLink} aria-label={item.nombre || "Ficha sin nombre"} onClick={() => onOpen(item.id)} disabled={busy}>
+                    <span className={styles.providerAvatar} aria-hidden="true"><Store size={17} /></span>
+                    <span className={styles.providerIdentity}><span className={styles.providerName}>{item.nombre || "Ficha sin nombre"}</span>{item.email && <span className={styles.providerEmail}>{item.email}</span>}</span>
+                    <ArrowUpRight size={15} className={styles.openIcon} aria-hidden="true" />
+                  </button>
+                </td>
+                <td data-label="Ubicación"><span>{catalog.categories.find((category) => category.id === item.categoriaPrincipalId)?.nombre || "Sin categoría"}</span><p className={styles.hint}>{item.ciudad || "Localidad pendiente"}</p></td>
+                <td data-label="Publicación"><span className={styles.publicationBadge} data-publication={item.publication} title={publicationLabels[item.publication]}>{item.publication === "publicada" ? "Publicada" : publicationLabels[item.publication] || item.publication}</span></td>
+                <td data-label="Gestión"><span className={styles.ownerLabel}>{item.ownerUserId ? "Con responsable" : "Plataforma"}</span></td>
+                <td data-label="Revisión"><span className={styles.reviewLabel} data-pending={Boolean(item.hasPendingChanges)}>{providerReviewLabel(item.reviewStatus, item.hasPendingChanges)}</span></td>
+              </tr>)}</tbody>
+            </table>
+          ))}
+        </div>
+        {ready && <div className={styles.pagination}><p className={styles.hint}>{items.length} fichas en esta página</p><nav className={styles.pageControls} aria-label="Páginas de proveedores"><button className={styles.button} type="button" disabled={page <= 1} onClick={() => void state.paginate(-1)}><ChevronLeft size={16} aria-hidden="true" />Anterior</button><span className={styles.pageNumber}>Página {page}</span><button className={styles.button} type="button" disabled={!nextCursor || !items.length} onClick={() => void state.paginate(1)}>Siguiente<ChevronRight size={16} aria-hidden="true" /></button></nav></div>}
       </div>
     </>
   );
@@ -117,8 +149,8 @@ export default function ProviderDirectoryAdmin() {
   const open = async (id) => { setTab("Información"); await state.open(id); };
   const create = () => { setTab("Información"); state.create(); };
   return (
-    <div className={styles.shell}>
-      <div className={`${styles.row} mb-6`}><a href="/admin/gestion-sitio/" className={styles.button}><ArrowLeft size={16} aria-hidden="true" />Administración</a><a href="/dashboard/">Mis invitaciones</a></div>
+    <div className={`${styles.shell} ${!detail ? styles.listShell : ""}`}>
+      <nav className={styles.navigation} aria-label="Navegación administrativa"><a href="/admin/gestion-sitio/"><ArrowLeft size={15} aria-hidden="true" />Administración</a><a href="/dashboard/">Mis invitaciones<ArrowUpRight size={14} aria-hidden="true" /></a></nav>
       {state.error && <div className={`${styles.notice} ${styles.error}`} role="alert"><p>{state.error}</p><button type="button" className={styles.button} disabled={state.busy} onClick={() => { if (state.dirty) setDiscard(true); else void state.reload(); }}>{!detail && state.catalog ? "Volver a intentar la búsqueda" : "Recargar versión actual"}</button></div>}
       {state.message && <p className={`${styles.notice} ${styles.success}`} role="status">{state.message}</p>}
       {!state.access && state.busy && <p role="status">Validando acceso a la beta…</p>}

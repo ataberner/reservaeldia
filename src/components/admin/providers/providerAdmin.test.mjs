@@ -98,7 +98,7 @@ function providerFixture() {
   };
 }
 
-async function withAdminList(api, exercise) {
+async function withAdminList(api, exercise, render = () => null) {
   const dom = new JSDOM("<!doctype html><div id='root'></div>", { url: "http://localhost/" });
   const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };
   globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,7 +110,7 @@ async function withAdminList(api, exercise) {
     if (operation === "catalog") return catalog;
     return api(operation, data);
   } } }).default;
-  function Harness() { state = Hook(); return null; }
+  function Harness() { state = Hook(); return render(state); }
   const root = createRoot(dom.window.document.getElementById("root"));
   try {
     await act(async () => root.render(React.createElement(Harness)));
@@ -242,7 +242,64 @@ test("admin list distinguishes loading and errors from a completed empty search"
   state.nextCursor = "obsolete-cursor";
   const empty = render();
   assert.doesNotMatch(empty, /Sin coincidencias en esta página|Hay más registros|continuar con estos filtros/);
-  assert.match(empty, /<button[^>]*disabled=""[^>]*>Siguiente<\/button>/);
+  const next = [...JSDOM.fragment(empty).querySelectorAll("button")].find((button) => button.textContent.trim() === "Siguiente");
+  assert.ok(next, "the next-page action remains available to inspect");
+  assert.equal(next.disabled, true, "an empty result cannot request another page even with an obsolete cursor");
+});
+
+test("admin filters retain their values when collapsed and submit them through the real search hook", async () => {
+  const { Field } = compile("./ProviderFields.jsx", { "./ProviderPhotos": photosStub });
+  const List = compile("./ProviderDirectoryAdmin.jsx", {
+    "./useProviderAdmin": { __esModule: true, default: () => null },
+    "./ProviderFields": { __esModule: true, default: () => null, Field },
+    "./ProviderPreview": { __esModule: true, default: () => null },
+  }).ProviderList;
+  await withAdminList(async () => ({ items: [], nextCursor: null }), async ({ state, requests }) => {
+    const toggle = document.querySelector("button[aria-controls]");
+    assert.ok(toggle, "filters have an accessible disclosure control");
+    const fields = document.getElementById(toggle.getAttribute("aria-controls"));
+    assert.ok(fields);
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(fields.hidden, true);
+    const initialRequests = requests.length;
+    await act(async () => toggle.click());
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    assert.equal(fields.hidden, false);
+    function control(label) {
+      const field = [...fields.querySelectorAll("label")].find((entry) => entry.querySelector("span")?.textContent === label);
+      assert.ok(field, `filter ${label} remains labelled`);
+      return field.querySelector("select");
+    }
+    for (const [label, value] of [["Categoría", "foto-video"], ["Pendientes", "false"]]) {
+      await act(async () => {
+        const select = control(label);
+        select.value = value;
+        select.dispatchEvent(new window.Event("change", { bubbles: true }));
+      });
+    }
+    await act(async () => toggle.click());
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(fields.hidden, true);
+    assert.equal(state().filters.categoryId, "foto-video");
+    assert.equal(state().filters.pending, "false");
+    assert.match(document.body.textContent, /Filtros seleccionados: Foto y video · Sin cambios pendientes/);
+    await act(async () => toggle.click());
+    assert.equal(control("Categoría").value, "foto-video");
+    assert.equal(control("Pendientes").value, "false");
+    await act(async () => toggle.click());
+    assert.equal(requests.length, initialRequests, "opening or closing filters does not run a query");
+    const submit = [...document.querySelectorAll("button")].find((button) => button.textContent === "Buscar fichas");
+    assert.ok(submit);
+    assert.equal(submit.disabled, false);
+    await act(async () => submit.click());
+    assert.equal(requests.length, initialRequests + 1);
+    assert.equal(requests.at(-1).operation, "list");
+    assert.equal(requests.at(-1).data.categoryId, "foto-video");
+    assert.equal(requests.at(-1).data.pending, false);
+    assert.equal(requests.at(-1).data.cursor, null);
+    assert.equal(state().listStatus, "ready");
+    assert.equal(fields.hidden, true);
+  }, (state) => state.catalog ? React.createElement(List, { state, onOpen() {}, onCreate() {} }) : null);
 });
 
 test("admin search capacity failures explain the bounded query without exposing internal errors", () => {

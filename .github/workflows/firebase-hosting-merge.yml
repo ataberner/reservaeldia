@@ -42,7 +42,7 @@ jobs:
           while IFS= read -r file; do
             case "$file" in
               src/components/admin/providers/ProviderDirectoryAdmin.jsx|src/components/admin/providers/ProviderAdmin.module.css) panel=true ;;
-              src/components/admin/providers/providerAdmin.test.mjs|docs/architecture/LANDING_DASHBOARD_STYLING_MAP.md|deployment/provider-panel/README.md|scripts/prepareProviderPanelHosting.cjs|scripts/prepareProviderPanelHosting.test.cjs|.github/workflows/firebase-hosting-merge.yml|.github/workflows/firebase-hosting-pull-request.yml) ;;
+              src/components/admin/providers/providerAdmin.test.mjs|scripts/local/providerAdminSearch.browser.test.mjs|docs/architecture/LANDING_DASHBOARD_STYLING_MAP.md|deployment/provider-panel/README.md|scripts/prepareProviderPanelHosting.cjs|scripts/prepareProviderPanelHosting.test.cjs|.github/workflows/firebase-hosting-merge.yml|.github/workflows/firebase-hosting-pull-request.yml) ;;
               *) scoped=false ;;
             esac
           done <<< "$changed"

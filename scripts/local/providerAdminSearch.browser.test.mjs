@@ -12,8 +12,8 @@ const viewports = [{ width: 1440, height: 1000, deviceScaleFactor: 1 }, { width:
 async function contains(page, text) { await page.waitForFunction(text => document.body.textContent.includes(text), {}, text); }
 async function ready(page) { await page.waitForFunction(() => ![...document.querySelectorAll('[role="status"]')].some(node => /Cargando fichas|Preparando categorías/.test(node.textContent))); }
 async function click(page, text) {
-  await page.waitForFunction(text => [...document.querySelectorAll("button")].some(node => node.textContent.trim() === text && !node.disabled), {}, text);
-  const handle = await page.evaluateHandle(text => [...document.querySelectorAll("button")].find(node => node.textContent.trim() === text && !node.disabled), text);
+  await page.waitForFunction(text => [...document.querySelectorAll("button")].some(node => (node.getAttribute("aria-label") || node.textContent).trim() === text && !node.disabled), {}, text);
+  const handle = await page.evaluateHandle(text => [...document.querySelectorAll("button")].find(node => (node.getAttribute("aria-label") || node.textContent).trim() === text && !node.disabled), text);
   const button = handle.asElement();
   await button.evaluate(node => node.scrollIntoView({ block: "center", inline: "center", behavior: "instant" }));
   await page.waitForFunction(node => {
@@ -89,9 +89,18 @@ test("administrative search completes across 3205 records on desktop/mobile with
       assert.equal(await countRows(page), 1); await contains(page, "Página 1");
       assert.equal(await page.evaluate(() => [...document.querySelectorAll("button")].find(node => node.textContent.trim() === "Siguiente")?.disabled), true);
       await screenshot(page, index ? "02-search-mobile.png" : "01-search-desktop.png", index ? "tbody" : undefined);
+      await click(page, "Filtros");
+      assert.equal(await page.$eval('button[aria-controls]', node => node.getAttribute("aria-expanded")), "true");
       await field(page, "Categoría", "salones-fiestas", true); await field(page, "Localidad", "La Plata");
       await field(page, "Responsable", "responsable", true); await field(page, "Pendientes", "false", true);
-      await page.keyboard.press("Tab");
+      // The compact toolbar precedes the optional fields. Return to its submit
+      // action using the keyboard, preserving the real focus/navigation check.
+      await page.keyboard.down("Shift");
+      for (let step = 0; step < 8; step++) {
+        await page.keyboard.press("Tab");
+        if (await page.evaluate(() => document.activeElement?.textContent.trim() === "Buscar fichas")) break;
+      }
+      await page.keyboard.up("Shift");
       assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar fichas");
       await page.keyboard.press("Enter"); await ready(page); assert.equal(await countRows(page), 1);
       await click(page, SEARCH_TARGET); await contains(page, "Identificador permanente:");
@@ -106,13 +115,13 @@ test("administrative search completes across 3205 records on desktop/mobile with
       await search(page, "alamo final"); assert.equal(await countRows(page), 1);
       if (index === 0) {
         holdList = true; await click(page, "Buscar fichas"); await contains(page, "Cargando fichas…");
-        assert.equal(await countRows(page), 0); assert.doesNotMatch(await page.$eval("body", node => node.textContent), /Página 1 · 1 fichas|No hay coincidencias/);
+        assert.equal(await countRows(page), 0); assert.doesNotMatch(await page.$eval("body", node => node.textContent), /\b1 fichas en esta página\b|No hay coincidencias/);
         await screenshot(page, "03-loading.png");
         assert.ok(heldRequest); holdList = false; await heldRequest.continue(); heldRequest = null;
         await ready(page); assert.equal(await countRows(page), 1);
         failList = true; await click(page, "Buscar fichas"); await page.waitForSelector('[role="alert"]'); await ready(page);
         await contains(page, "No pudimos completar la acción. Volvé a intentarlo.");
-        assert.equal(await countRows(page), 0); assert.doesNotMatch(await page.$eval("body", node => node.textContent), /No hay coincidencias|Página 1 · 1 fichas/);
+        assert.equal(await countRows(page), 0); assert.doesNotMatch(await page.$eval("body", node => node.textContent), /No hay coincidencias|\b1 fichas en esta página\b/);
         await screenshot(page, "04-error.png", '[role="alert"]'); failList = false;
         await click(page, "Volver a intentar la búsqueda"); await ready(page); await contains(page, SEARCH_TARGET); assert.equal(await countRows(page), 1);
       }

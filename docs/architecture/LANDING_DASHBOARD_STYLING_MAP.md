@@ -75,6 +75,15 @@ Landing routes, login behavior, dashboard/editor runtime hooks and generated
 invitation styles retain their existing owners. Evidence and screenshots are in
 [the milestone report](../testing/PROVIDER_BETA_MILESTONE_1.md).
 
+The 2026-10-29 list layout uses a viewport-sized, wider shell with compact rows,
+a sticky table header and a persistent paginator. Secondary filters expand from
+the search toolbar; closing them preserves their values and shows a selection
+summary. Mobile uses labelled stacked rows and normal page scrolling. The detail
+form retains the original readable width. These styles remain in the same module;
+authorization, server queries, page size and cursors retain their existing owners.
+Its scoped release procedure is recorded in
+[provider panel deployment](../../deployment/provider-panel/README.md).
+
 ### Authenticated landing entry (2026-09-18)
 
 - `/` preserves its static public markup and metadata. `src/lib/auth/landingAuthSession.js`

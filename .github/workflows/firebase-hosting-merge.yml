@@ -22,9 +22,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.node-version'
+      - name: Select provider panel publication scope
+        id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$BEFORE^{commit}"
+          changed=$(git diff --no-renames --name-only "$BEFORE" HEAD)
+          scoped=true
+          panel=false
+          while IFS= read -r file; do
+            case "$file" in
+              src/components/admin/providers/ProviderDirectoryAdmin.jsx|src/components/admin/providers/ProviderAdmin.module.css) panel=true ;;
+              src/components/admin/providers/providerAdmin.test.mjs|scripts/local/providerAdminSearch.browser.test.mjs|docs/architecture/LANDING_DASHBOARD_STYLING_MAP.md|deployment/provider-panel/README.md|scripts/prepareProviderPanelHosting.cjs|scripts/prepareProviderPanelHosting.test.cjs|.github/workflows/firebase-hosting-merge.yml|.github/workflows/firebase-hosting-pull-request.yml) ;;
+              *) scoped=false ;;
+            esac
+          done <<< "$changed"
+          if [[ "$panel" == true && "$scoped" != true ]]; then
+            echo "Provider panel publication includes other changes; reconcile the live site before deploying."
+            exit 1
+          fi
+          echo "panel_only=$([[ "$scoped" == true && "$panel" == true ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: .hosting-static-history
@@ -32,15 +58,27 @@ jobs:
           restore-keys: |
             firebase-next-static-live-
       - run: npm run hosting:bootstrap
+        if: steps.scope.outputs.panel_only != 'true'
       - run: |
           if [ -z "$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY" ]; then
             echo "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY GitHub secret is required for the static export build."
             exit 1
           fi
           npm ci
+          node --test scripts/prepareProviderPanelHosting.test.cjs
           npm run build
         env:
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+      - name: Preserve the current site and replace only the provider panel
+        if: steps.scope.outputs.panel_only == 'true'
+        run: node scripts/prepareProviderPanelHosting.cjs prepare
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RESERVAELDIA_7A440 }}
+      - name: Check that the preserved release is still current
+        if: steps.scope.outputs.panel_only == 'true'
+        run: node scripts/prepareProviderPanelHosting.cjs assert-current
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RESERVAELDIA_7A440 }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
@@ -48,3 +86,16 @@ jobs:
           channelId: live
           projectId: reservaeldia-7a440
       - run: npm run verify:hosting:production
+      - name: Verify provider panel and preserved file hashes
+        if: steps.scope.outputs.panel_only == 'true'
+        run: node scripts/prepareProviderPanelHosting.cjs verify
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RESERVAELDIA_7A440 }}
+      - name: Preserve scoped publication evidence
+        if: always() && steps.scope.outputs.panel_only == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-panel-hosting-${{ github.run_id }}
+          path: .local-isolation/provider-panel-hosting*.json
+          include-hidden-files: true
+          retention-days: 14

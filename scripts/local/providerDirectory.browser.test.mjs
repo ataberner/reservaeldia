@@ -9,6 +9,7 @@ import { assertEditorFlowSession, contract, origin, waitForFixture } from "./edi
 
 const require = createRequire(import.meta.url);
 const desktop = { width: 1440, height: 1000, deviceScaleFactor: 1 };
+const landscape = { width: 844, height: 390, deviceScaleFactor: 1 };
 const mobile = { width: 390, height: 844, deviceScaleFactor: 1 };
 async function contains(page, text) { await page.waitForFunction(text => document.body.textContent.includes(text), {}, text); }
 async function ready(page) { await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]')); }
@@ -47,11 +48,63 @@ async function login(page, user) {
 async function loadedImages(page, minimum) {
   await page.waitForFunction(minimum => [...document.querySelectorAll('img[src^="blob:"]')].filter(image => image.complete && image.naturalWidth > 0).length >= minimum, {}, minimum);
 }
+const venueList = '[role="region"][aria-label="Lista de lugares"]';
+async function documentScrollState(page, top) {
+  return page.evaluate(async requestedTop => {
+    const roots = [...new Set([document.scrollingElement, document.body, document.documentElement])].filter(Boolean);
+    const range = node => node.scrollHeight - node.clientHeight;
+    // The site's global overflow rules make BODY the scroll owner on mobile,
+    // while other layouts use the browser's usual document.scrollingElement.
+    const scrollable = roots.filter(node => range(node) > 1 && /^(auto|scroll)$/.test(getComputedStyle(node).overflowY));
+    const owner = scrollable.sort((a, b) => range(b) - range(a))[0] || document.scrollingElement;
+    if (typeof requestedTop === "number") {
+      for (const node of roots) node.scrollTo({ top: node === owner ? requestedTop : 0, behavior: "instant" });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+    return {
+      documentHeight: Math.max(...roots.map(node => node.scrollHeight)),
+      documentTop: Math.max(...roots.map(node => node.scrollTop)),
+      documentScroller: owner.tagName,
+      documentRoots: roots.map(node => ({ tag: node.tagName, height: node.scrollHeight, clientHeight: node.clientHeight, top: node.scrollTop, overflowY: getComputedStyle(node).overflowY })),
+    };
+  }, top);
+}
+async function venueLayout(page) {
+  const layout = await page.evaluate(selector => {
+    const list = document.querySelector(selector);
+    const map = document.querySelector('aside[aria-label="Mapa de los resultados"]');
+    const band = document.querySelector('[aria-label="Tu búsqueda de lugares"]');
+    const discovery = document.querySelector('[aria-label="Resultados de lugares"]');
+    const rect = node => { const value = node.getBoundingClientRect(); return { top: value.top, bottom: value.bottom, left: value.left, width: value.width, height: value.height }; };
+    // Transparent sections inherit the surface underneath; compare what is
+    // painted rather than requiring one particular CSS ownership technique.
+    const surface = node => {
+      for (let current = node; current; current = current.parentElement) {
+        const color = getComputedStyle(current).backgroundColor;
+        if (color !== "transparent" && color !== "rgba(0, 0, 0, 0)") return color;
+      }
+      return "transparent";
+    };
+    return {
+      viewport: innerHeight,
+      list: { ...rect(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight, display: getComputedStyle(list).display },
+      firstCardTop: list.querySelector("article")?.getBoundingClientRect().top,
+      map: { ...rect(map), display: getComputedStyle(map).display },
+      mapCanvas: rect(map.querySelector('[tabindex="0"]')),
+      surfaces: { filters: surface(band), results: surface(discovery), main: surface(discovery.closest("main")) },
+    };
+  }, venueList);
+  return { ...layout, ...await documentScrollState(page) };
+}
+async function assertListReset(page, label) {
+  await page.waitForFunction(selector => document.querySelector(selector)?.scrollTop <= 1, {}, venueList);
+  assert.ok((await venueLayout(page)).list.scrollTop <= 1, `${label}: results start at the top`);
+}
 
 test("private approved directory works on desktop/mobile, withdraws stale contact and preserves normal login", { timeout: 540000 }, async () => {
   const session = assertEditorFlowSession();
   const folder = path.join(session, "provider-directory-screenshots"); await mkdir(folder, { recursive: true });
-  const evidence = { project: contract.LOCAL_PROJECT, viewports: ["1440x1000", "390x844"], screenshots: [], blockedRemoteRequests: 0, checks: [], remoteEffects: false };
+  const evidence = { project: contract.LOCAL_PROJECT, viewports: ["1440x1000", "844x390", "390x844"], screenshots: [], blockedRemoteRequests: 0, checks: [], remoteEffects: false };
   const fixture = await createProviderDirectoryFixtures();
   let venue = await fixture.create(venueDraft, { image: true });
   const professional = await fixture.create({ ...photographerDraft, cobertura: ["Berisso", "Ensenada"] });
@@ -115,9 +168,31 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     await field(page, "Cantidad de invitados", "150"); await field(page, "¿Dónde querés celebrar?", "ar", true); await click(page, "Buscar lugares"); await contains(page, "Página 1"); await ready(page);
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 12);
     assert.doesNotMatch(await page.$eval('[aria-label="Resultados de lugares"]', node => node.textContent), /Capacidad desconocida sintética/, "Unknown capacity is excluded by an explicit guest count");
+    const desktopBefore = await venueLayout(page);
+    assert.ok(desktopBefore.documentHeight <= desktopBefore.viewport + 1, "Desktop results fit the viewport without a second document scrollbar");
+    assert.ok(desktopBefore.list.top >= 0 && desktopBefore.list.bottom <= desktopBefore.viewport + 1, "Desktop list stays within the viewport");
+    assert.ok(desktopBefore.map.top >= 0 && desktopBefore.map.bottom <= desktopBefore.viewport + 1, "Desktop map stays within the viewport");
+    assert.ok(desktopBefore.mapCanvas.height >= 180, "Desktop map retains a usable canvas");
+    assert.ok(desktopBefore.list.scrollHeight - desktopBefore.list.clientHeight > 360, "Twelve cards genuinely overflow the independent list");
+    assert.notEqual(desktopBefore.surfaces.main, "transparent", "Results have a defined surface");
+    assert.equal(desktopBefore.surfaces.filters, desktopBefore.surfaces.main, "Filters continue the main results surface");
+    assert.equal(desktopBefore.surfaces.results, desktopBefore.surfaces.main, "Discovery continues the same surface");
+    await page.$eval(venueList, node => node.scrollTo({ top: 360, behavior: "instant" }));
+    await page.waitForFunction(selector => document.querySelector(selector).scrollTop >= 350, {}, venueList);
+    const desktopScrolled = await venueLayout(page);
+    assert.ok(desktopBefore.firstCardTop - desktopScrolled.firstCardTop >= 350, "Scrolling the list moves its cards");
+    assert.ok(Math.abs(desktopBefore.documentTop - desktopScrolled.documentTop) <= 1, "List scrolling does not scroll the document");
+    for (const key of ["top", "bottom", "left", "width", "height"]) assert.ok(Math.abs(desktopBefore.map[key] - desktopScrolled.map[key]) <= 1, `Map ${key} remains fixed while cards scroll`);
+    await click(page, "Buscar lugares"); await ready(page);
+    assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 12);
+    await assertListReset(page, "Search");
+    evidence.layout = { desktop: { before: desktopBefore, scrolled: desktopScrolled } };
+    evidence.checks.push("desktop independently scrolls twelve cards with a stationary map and no document overflow", "filters and results share one continuous background", "search resets list scrolling");
     await click(page, "Siguiente"); await contains(page, "Página 2"); await contains(page, venueDraft.nombre); await ready(page);
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 1);
+    await assertListReset(page, "Next page");
     await click(page, "Anterior"); await contains(page, "Página 1"); await ready(page);
+    await assertListReset(page, "Previous page");
     await field(page, "Nombre o descripción", "jardin claro"); await field(page, "Tipo de lugar", "salones-fiestas", true); await field(page, "Cantidad de invitados", "150"); await field(page, "¿Dónde querés celebrar?", "provincia:AR-B", true);
     await page.keyboard.press("Tab");
     assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar lugares", "Search is reachable by keyboard after the region field");
@@ -133,10 +208,52 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     await screenshot(page, "09-retry.png", '[role="alert"]'); failList = false;
     await click(page, "Volver a intentar"); await contains(page, "Página 1"); await ready(page);
     evidence.checks.push("network failure removes results; explicit retry recovers");
-    await page.setViewport(mobile); await screenshot(page, "10-venues-mobile.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
-    await click(page, "Mapa"); await screenshot(page, "11-venues-mobile-map.png", 'aside[aria-label="Mapa de los resultados"]');
-    await click(page, "Lista"); await page.setViewport(desktop);
-    evidence.checks.push("venue results switch between list and map on mobile without overflow");
+    await page.setViewport(landscape);
+    await documentScrollState(page, 0);
+    const landscapeBefore = await venueLayout(page);
+    assert.ok(landscapeBefore.list.clientHeight > 0, "Short landscape viewport does not collapse the results list");
+    assert.ok(landscapeBefore.list.scrollHeight <= landscapeBefore.list.clientHeight + 1, "Short landscape viewport does not clip cards in an inner list");
+    assert.ok(landscapeBefore.documentHeight > landscapeBefore.viewport + 480, "Short landscape viewport uses document scrolling");
+    assert.ok(landscapeBefore.mapCanvas.height >= 180, "Short landscape map retains a useful canvas height");
+    assert.notEqual(landscapeBefore.map.display, "none", "Landscape retains the map beside the list");
+    await page.$eval(`${venueList} article:last-child h2 a`, node => node.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }));
+    await page.waitForFunction(selector => {
+      const node = document.querySelector(`${selector} article:last-child h2 a`);
+      const rect = node.getBoundingClientRect();
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+      if (x < 0 || x >= innerWidth || y < 0 || y >= innerHeight) return false;
+      const hit = document.elementFromPoint(x, y);
+      return node === hit || node.contains(hit);
+    }, {}, venueList);
+    const landscapeLastCard = await venueLayout(page);
+    assert.ok(landscapeLastCard.documentTop - landscapeBefore.documentTop > 360, "The last landscape card is reached by scrolling the document");
+    assert.ok(landscapeLastCard.list.scrollTop <= 1, "Landscape navigation does not rely on a clipped inner list");
+    evidence.layout.landscape = { before: landscapeBefore, lastCard: landscapeLastCard, lastCardReachable: true };
+    evidence.checks.push("short landscape viewport keeps cards reachable with document scrolling and a useful map");
+    await page.setViewport(mobile);
+    await documentScrollState(page, 0);
+    const mobileBefore = await venueLayout(page);
+    assert.ok(mobileBefore.documentHeight > mobileBefore.viewport + 480, "Mobile keeps normal document scrolling for the twelve cards");
+    assert.ok(mobileBefore.list.scrollHeight <= mobileBefore.list.clientHeight + 1, "Mobile list is not a nested vertical scroller");
+    assert.equal(mobileBefore.map.display, "none", "Mobile starts with the list only");
+    await documentScrollState(page, 480);
+    await page.waitForFunction(() => Math.max(document.scrollingElement?.scrollTop || 0, document.body.scrollTop, document.documentElement.scrollTop) >= 470);
+    const mobileScrolled = await venueLayout(page);
+    assert.ok(mobileBefore.firstCardTop - mobileScrolled.firstCardTop >= 470, "Document scrolling moves the mobile cards");
+    assert.ok(mobileScrolled.list.scrollTop <= 1, "Mobile document scrolling does not use an inner list offset");
+    evidence.layout.mobile = { before: mobileBefore, scrolled: mobileScrolled };
+    await screenshot(page, "10-venues-mobile.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
+    await click(page, "Mapa");
+    const mobileMap = await venueLayout(page);
+    assert.notEqual(mobileMap.map.display, "none", "Map switch reveals the actual map");
+    assert.equal(mobileMap.list.display, "none", "Map switch hides the list");
+    await screenshot(page, "11-venues-mobile-map.png", 'aside[aria-label="Mapa de los resultados"]');
+    await click(page, "Lista");
+    const mobileList = await venueLayout(page);
+    assert.notEqual(mobileList.list.display, "none", "List switch restores the cards");
+    assert.equal(mobileList.map.display, "none", "List switch hides the map");
+    await page.setViewport(desktop);
+    evidence.checks.push("venue results preserve mobile document scrolling and switch between list/map without horizontal overflow");
 
     await page.goto(`${origin}/proveedor/?id=${encodeURIComponent(venue.id)}`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[aria-label="Ficha aprobada del negocio"]'); await contains(page, venueDraft.nombre); await loadedImages(page, 2);

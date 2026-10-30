@@ -1,6 +1,6 @@
-.root { min-width: 0; margin: 0; padding: 0; color: #262626; font-family: "DM Sans", sans-serif; transition: none; }
+.root { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 0; color: #262626; font-family: "DM Sans", sans-serif; transition: none; }
 .root p { text-shadow: none; }
-.canvas { position: relative; isolation: isolate; height: min(710px, calc(100dvh - 200px)); min-height: 460px; overflow: hidden; border: 1px solid #e8e3ee; border-radius: 18px; background: #e8eee7; cursor: grab; touch-action: none; }
+.canvas { position: relative; isolation: isolate; flex: 1 1 auto; height: var(--venue-map-height, min(710px, calc(100dvh - 200px))); min-height: var(--venue-map-min-height, 460px); overflow: hidden; border: 1px solid #e8e3ee; border-radius: 18px; background: #e8eee7; cursor: grab; touch-action: none; }
 .canvas:active { cursor: grabbing; }
 .canvas:focus-visible, .root button:focus-visible, .root a:focus-visible { outline: 3px solid #692b9a; outline-offset: 3px; }
 .tiles, .markers { position: absolute; inset: 0; pointer-events: none; }
@@ -33,7 +33,7 @@
 .popupItem a { color: #692b9a; font-size: 13px; font-weight: 600; text-decoration: none; }
 .popupItem a:hover { text-decoration: underline; }
 .close { position: absolute; top: 8px; right: 8px; display: grid; width: 40px; height: 40px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #faf5ff; color: #692b9a; }
-.caption { margin: 9px 4px 0; color: #655e6d; font: 13px/18px "Source Sans 3", sans-serif; }
+.caption { flex-shrink: 0; margin: 9px 4px 0; color: #655e6d; font: 13px/18px "Source Sans 3", sans-serif; }
 .error { position: absolute; z-index: 5; right: 16px; bottom: 140px; left: 16px; padding: 10px 14px; border: 1px solid #e8e3ee; border-radius: 10px; background: #fff; color: #262626; font: 14px/20px "Source Sans 3", sans-serif; }
 .error button { margin-left: 10px; padding: 4px; border: 0; background: transparent; color: #692b9a; text-decoration: underline; }
 @media (max-width: 767px) { .canvas { height: 520px; min-height: 400px; border-radius: 14px; } .fit { font-size: 12px; } }

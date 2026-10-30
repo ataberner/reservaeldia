@@ -321,7 +321,14 @@ by `VenueResultCard` results and a real `VenueResultsMap` after submission.
 The hero reuses a cropped panel of the existing wedding artwork, explicitly
 illustrative; provider cards continue using approved authenticated images and
 neutral missing-photo fallbacks. Desktop results have two card columns on the
-left and a sticky map on the right. Tablet reduces cards to one column; mobile
+left and a stationary map on the right. In results mode from 768px wide and 600px high, the
+route owns a viewport-height grid with the unchanged header in its natural-height
+row. Only the card list scrolls; filters and map remain visible. The list resets
+to its first card on search or pagination and is keyboard-focusable. The filters
+and results share the same light background; cards stay white. This local layout
+does not change body/html overflow or shared header geometry. Short landscape
+screens retain document scrolling and a compact sticky map so results remain
+reachable. Tablet reduces cards to one column; mobile
 offers an accessible List/Map switch. No global CSS or professional-page redesign.
 Functional filter/geography/map rules remain in the provider contract above.
 

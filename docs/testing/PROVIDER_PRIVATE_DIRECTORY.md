@@ -272,3 +272,37 @@ de `/lugares/` caerían en el flujo de exportación completo. Antes de integrar 
 debe preparar una publicación que preserve los cambios ajenos ya desplegados y
 que aplique primero la Function de búsqueda compatible. No se deben publicar
 Rules ni Functions ajenas a esta entrega para resolver esa diferencia.
+
+### Integración autorizada y cierre de verificaciones — 2026-10-30
+
+El pedido posterior autoriza integrar y desplegar el rediseño de forma privada.
+El candidato `458518a0` pasó el workflow
+[41084438656](https://github.com/ataberner/reservaeldia/actions/runs/41084438656)
+antes de abrir PR: `verify:local` completo y búsqueda administrativa suplementaria.
+La evidencia descargada conserva el manifiesto de fuentes y resultados por etapa:
+ownership 41/41, contratos 29/29, compatibilidad 447/447, Rules 2283/2283,
+integración 23/23, administración API 11/11 y directorio API 9/9, además de los
+recorridos browser de parejas, administración y directorio. El suplemento de
+búsqueda administrativa pasó 32 unitarios, 6 API y su recorrido browser.
+
+El browser del directorio verificó búsqueda de invitados/región, paginación,
+vacío/error/reintento, teclado, Lista/Mapa móvil, detalle/fotos exclusivamente
+aprobados, retirada por pausa o cierre, denegación de cuenta común y claim admin,
+y destino habitual del login. Son pruebas con emuladores, no cuentas productivas.
+El intento Windows equivalente se interrumpió de forma controlada tras confirmar
+el PASS de CI; no se registra como un gate local aprobado. Sus resultados y la
+comprobación de cierre de procesos se conservan separadamente.
+
+La revisión de publicación encontró un riesgo entre builds distintos de Next:
+los enlaces cliente podían cargar una versión anterior al entrar al dashboard o
+volver al buscador. Se añadió navegación documental opt-in al adaptador del
+header, conservando su aspecto y el comportamiento por defecto de otros
+consumidores. El detalle vuelve mediante enlace nativo. Pasaron 26/26 pruebas
+focalizadas de navegación/header/directorio (incluyen 11 del grupo anterior),
+y 18/18 del compositor y selector de alcance. La publicación incluye sólo los
+HTML de lugares y detalle, más recursos nuevos; preserva todos los otros bytes.
+
+El estado remoto, la secuencia backend → Hosting y la recuperación se registran
+en [deployment/venues](../../deployment/venues/README.md). Los gates de CI/PR y el
+export de preparación conservan sus obligaciones; esta sección no sustituye
+sus resultados ni acredita por sí misma un despliegue.

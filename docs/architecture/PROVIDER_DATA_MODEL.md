@@ -1241,8 +1241,10 @@ dispositivo. Las Rules SDK restrictivas del hito 1 se conservan.
 La evidencia local y sus limitaciones se registran en
 [verificación del directorio privado](../testing/PROVIDER_PRIVATE_DIRECTORY.md).
 
-**Evolución aceptada, 2026-10-30 — búsqueda de lugares (implementada localmente,
-despliegue pendiente):** `/lugares/` primero pregunta tipo de lugar, cantidad de
+**Evolución aceptada, 2026-10-30 — búsqueda de lugares:** implementación y
+verificación en el informe enlazado arriba; aplicación operativa en el
+[runbook acotado de lugares](../../deployment/venues/README.md). `/lugares/`
+primero pregunta tipo de lugar, cantidad de
 invitados y zona argentina; recién al enviar consulta fichas. El catálogo existente
 define los tipos, sin un selector de evento: este recorrido es para casamientos.
 `guests` es un entero de 1 a 100.000; exige capacidad máxima aprobada conocida que

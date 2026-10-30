@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { useRouter } from "next/router";
 import { ArrowLeft, Mail, MessageCircle } from "lucide-react";
 import { directoryCapacity, directoryContact, directoryLocation, directoryPrice, directoryPriceDate, directoryWebUrl } from "@/domain/providers/directoryModel";
@@ -27,7 +26,7 @@ export function ProviderDirectoryContent({ provider, catalog, busy, onContact })
     && Math.abs(coordinates.latitud) <= 90 && Math.abs(coordinates.longitud) <= 180
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coordinates.latitud},${coordinates.longitud}`)}` : null;
   return <article className={styles.detail} aria-label="Ficha aprobada del negocio">
-    <Link href={venue ? "/lugares/" : "/profesionales/"} className={styles.back}><ArrowLeft size={18} aria-hidden="true" />Volver a {venue ? "lugares" : "profesionales"}</Link>
+    <a href={venue ? "/lugares/" : "/profesionales/"} className={styles.back}><ArrowLeft size={18} aria-hidden="true" />Volver a {venue ? "lugares" : "profesionales"}</a>
     <p className={styles.notice}>Directorio privado · Información aprobada</p>
     <ProviderDirectoryImage providerId={id} approvedRevision={approvedRevision} image={content.imagenes?.portada} kind={kind} className={styles.cover} />
     <header className={styles.detailHeader}>

@@ -15,6 +15,14 @@ const API = "https://firebasehosting.googleapis.com/v1beta1/";
 const PANEL = "admin/proveedores/index.html";
 const DASHBOARD = "dashboard/index.html";
 const REPORT = ".local-isolation/provider-panel-hosting.json";
+const SCOPES = Object.freeze({
+  panel: Object.freeze({ pages: [PANEL], report: REPORT, requiredAssets: [] }),
+  venues: Object.freeze({ pages: ["lugares/index.html", "proveedor/index.html"], report: ".local-isolation/venues-hosting.json", requiredAssets: ["assets/profesionales/wedding-triptych.png"] }),
+});
+function publicationScope(name = "panel") {
+  assert.ok(Object.hasOwn(SCOPES, name), "Unsupported scoped publication");
+  return SCOPES[name];
+}
 const LIMITS = Object.freeze({ files: 1000, bytes: 150 * 1024 * 1024, timeoutMs: 30000, concurrency: 6, pageSize: 100 });
 const hash = value => createHash("sha256").update(value).digest("hex");
 const hostingHash = bytes => hash(gzipSync(bytes, { level: 9 }));
@@ -104,21 +112,25 @@ function validateBytes(files, limits = LIMITS) {
   assert.ok(total <= limits.bytes, "Hosting byte limit exceeded");
   return total;
 }
-function compose(base, candidate, providerBuildId, limits = LIMITS) {
+function compose(base, candidate, providerBuildId, limits = LIMITS, scope = "panel") {
+  const { pages, requiredAssets } = publicationScope(scope);
   validateBytes(base, limits); validateBytes(candidate, limits);
-  assert.ok(base.has(PANEL) && base.has(DASHBOARD), "Current release must include provider and dashboard HTML");
-  assert.ok(candidate.has(PANEL), "Built provider HTML is missing");
-  assert.equal(buildId(candidate.get(PANEL)), providerBuildId, "Provider HTML does not match the new build");
+  assert.ok(pages.every(page => base.has(page)) && base.has(DASHBOARD), "Current release must include selected pages and dashboard HTML");
+  for (const page of pages) {
+    assert.ok(candidate.has(page), "Built selected HTML is missing");
+    assert.equal(buildId(candidate.get(page)), providerBuildId, "Selected HTML does not match the new build");
+  }
+  for (const asset of requiredAssets) assert.ok(base.has(asset) && candidate.has(asset) && base.get(asset).equals(candidate.get(asset)), `Required public asset differs or is missing: ${asset}`);
   const output = new Map(base), added = [];
   for (const [name, bytes] of candidate) {
-    assert.ok(name === PANEL || name.startsWith("_next/static/"), "Candidate exceeds provider/static scope");
-    if (name !== PANEL && output.has(name)) assert.ok(output.get(name).equals(bytes), `Immutable asset collision: ${name}`);
-    else { output.set(name, bytes); if (name !== PANEL) added.push(name); }
+    assert.ok(pages.includes(name) || name.startsWith("_next/static/") || requiredAssets.includes(name), "Candidate exceeds page/static scope");
+    if (!pages.includes(name) && output.has(name)) assert.ok(output.get(name).equals(bytes), `Immutable asset collision: ${name}`);
+    else { output.set(name, bytes); if (!pages.includes(name)) added.push(name); }
   }
   const dashboardBuildId = buildId(base.get(DASHBOARD));
   for (const id of [providerBuildId, dashboardBuildId]) assert.ok(output.has(`_next/static/${id}/_buildManifest.js`), "Required build manifest is missing");
   const totalBytes = validateBytes(output, limits);
-  for (const [name, bytes] of base) if (name !== PANEL) assert.ok(output.get(name).equals(bytes), "Unrelated published bytes changed");
+  for (const [name, bytes] of base) if (!pages.includes(name)) assert.ok(output.get(name).equals(bytes), "Unrelated published bytes changed");
   return { files: output, added: added.sort(), totalBytes, dashboardBuildId, providerBuildId };
 }
 
@@ -237,27 +249,31 @@ function localConfiguration(root) {
   const bytes = fs.readFileSync(path.join(root, "firebase.json"));
   return { sha256: hash(bytes), normalized: normalizeHosting(JSON.parse(bytes).hosting) };
 }
-function assertLocalArtifact(root, report) {
+function assertLocalArtifact(root, report, scope = "panel") {
+  const { pages } = publicationScope(scope);
   assert.equal(report.schemaVersion, 1); assert.equal(report.status, "prepared"); assert.equal(report.site, SITE); assert.equal(report.origin, ORIGIN);
+  assert.equal(report.scope || "panel", scope, "Prepared publication scope changed");
+  assert.deepEqual(report.replaced, pages, "Prepared page scope changed");
   assert.equal(localConfiguration(root).sha256, report.firebaseJsonSha256, "Local Firebase configuration changed");
   const files = readFiles(path.join(root, "out"));
   assert.deepEqual(manifest(files), report.output, "Prepared Hosting artifact changed");
   assertNormalPath(path.join(root, ".next/BUILD_ID"));
   assert.equal(fs.readFileSync(path.join(root, ".next/BUILD_ID"), "utf8").trim(), report.dashboardBuildId);
-  assert.equal(buildId(files.get(PANEL)), report.providerBuildId);
+  for (const page of pages) assert.equal(buildId(files.get(page)), report.providerBuildId);
   readLocalRelease(root); return files;
 }
 
-async function run({ mode, root = process.cwd(), getJson, fetchImpl = fetch, limits = LIMITS }) {
+async function run({ mode, root = process.cwd(), getJson, fetchImpl = fetch, limits = LIMITS, scope = "panel" }) {
+  const { pages, report: reportPath, requiredAssets } = publicationScope(scope);
   assert.ok(["prepare", "assert-current", "verify"].includes(mode), "Choose prepare, assert-current or verify");
   root = path.resolve(root); assertNormalPath(root);
-  const reportFile = path.join(root, REPORT), config = localConfiguration(root);
+  const reportFile = path.join(root, reportPath), config = localConfiguration(root);
   assertNormalPath(reportFile);
   const release = await latestRelease(getJson);
   await checkConfiguration(getJson, release, config.normalized);
   if (mode !== "prepare") {
     const report = JSON.parse(fs.readFileSync(reportFile, "utf8"));
-    assertLocalArtifact(root, report);
+    assertLocalArtifact(root, report, scope);
     if (mode === "assert-current") {
       assertSameRelease(report.baseRelease, release); assertSameRelease(release, await latestRelease(getJson));
       return { status: "current", release: release.name, dashboardBuildId: report.dashboardBuildId, providerBuildId: report.providerBuildId };
@@ -266,12 +282,12 @@ async function run({ mode, root = process.cwd(), getJson, fetchImpl = fetch, lim
     assert.notEqual(release.version.name, report.baseRelease.version.name, "Expected a new Hosting version");
     const inventory = await listVersionFiles(getJson, release, limits);
     assert.deepEqual(inventory.files.map(row => [row.path, row.hash]).sort(), report.output.map(row => [row.path, row.hostingHash]).sort(), "Published inventory differs from prepared artifact");
-    const selected = inventory.files.filter(row => [PANEL, DASHBOARD].includes(row.path));
+    const selected = inventory.files.filter(row => [...pages, DASHBOARD].includes(row.path));
     const publicFiles = await downloadFiles(selected, release, fetchImpl, limits);
     for (const [name, bytes] of publicFiles) assert.equal(hash(bytes), report.output.find(row => row.path === name).sha256);
-    assertSameRelease(release, await latestRelease(getJson)); assertLocalArtifact(root, report);
-    const evidence = { status: "verified", checkedAt: new Date().toISOString(), site: SITE, release, baseRelease: report.baseRelease, files: inventory.files.length, outputSha256: jsonHash(report.output), configurationSha256: jsonHash(config.normalized), publicChecks: [...publicFiles.keys()], dashboardBuildId: report.dashboardBuildId, providerBuildId: report.providerBuildId, remoteMutations: 0 };
-    const verifiedFile = path.join(root, ".local-isolation/provider-panel-hosting-verified.json");
+    assertSameRelease(release, await latestRelease(getJson)); assertLocalArtifact(root, report, scope);
+    const evidence = { status: "verified", scope, checkedAt: new Date().toISOString(), site: SITE, release, baseRelease: report.baseRelease, files: inventory.files.length, outputSha256: jsonHash(report.output), configurationSha256: jsonHash(config.normalized), publicChecks: [...publicFiles.keys()], dashboardBuildId: report.dashboardBuildId, providerBuildId: report.providerBuildId, remoteMutations: 0 };
+    const verifiedFile = path.join(root, reportPath.replace(/\.json$/, "-verified.json"));
     assertNormalPath(verifiedFile);
     fs.writeFileSync(verifiedFile, JSON.stringify(evidence, null, 2) + "\n", { flag: "wx" });
     return evidence;
@@ -281,20 +297,20 @@ async function run({ mode, root = process.cwd(), getJson, fetchImpl = fetch, lim
   const originalBuildId = fs.readFileSync(path.join(root, ".next/BUILD_ID"), "utf8");
   const providerBuildId = originalBuildId.trim(); assert.match(providerBuildId, /^[A-Za-z0-9_-]+$/);
   const built = readFiles(path.join(root, "out"), limits);
-  const candidate = new Map([...built].filter(([name]) => name === PANEL || name.startsWith("_next/static/")));
+  const candidate = new Map([...built].filter(([name]) => pages.includes(name) || name.startsWith("_next/static/") || requiredAssets.includes(name)));
   const inventory = await listVersionFiles(getJson, release, limits);
   const base = await downloadFiles(inventory.files, release, fetchImpl, limits);
-  const composed = compose(base, candidate, providerBuildId, limits);
+  const composed = compose(base, candidate, providerBuildId, limits, scope);
   assertSameRelease(release, await latestRelease(getJson));
   assert.equal(localConfiguration(root).sha256, config.sha256, "Local configuration changed during preparation");
   assert.deepEqual(manifest(readFiles(path.join(root, "out"), limits)), manifest(built), "Build artifact changed during preparation");
   const isolation = path.join(root, ".local-isolation"); assertNormalPath(isolation); fs.mkdirSync(isolation, { recursive: true });
-  const job = fs.mkdtempSync(path.join(isolation, "provider-panel-hosting-"));
+  const job = fs.mkdtempSync(path.join(isolation, `${scope}-hosting-`));
   const staging = path.join(job, "out"); fs.mkdirSync(staging);
   for (const [name, bytes] of composed.files) { const file = inside(staging, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, bytes, { flag: "wx" }); }
   fs.mkdirSync(path.join(job, ".next")); fs.writeFileSync(path.join(job, ".next/BUILD_ID"), composed.dashboardBuildId);
   readLocalRelease(job);
-  const report = { schemaVersion: 1, status: "prepared", preparedAt: new Date().toISOString(), site: SITE, origin: ORIGIN, baseRelease: release, limits, gzipOsCode, sourceGzipOsCodes: base.gzipOsCodes, firebaseJsonSha256: config.sha256, configurationSha256: jsonHash(config.normalized), inventorySha256: jsonHash(inventory.files), excludedReservedFiles: inventory.excluded, dashboardBuildId: composed.dashboardBuildId, providerBuildId, replaced: [PANEL], addedStatic: composed.added, totalBytes: composed.totalBytes, output: manifest(composed.files), preservedExport: path.relative(root, path.join(job, "provider-build-out")).split(path.sep).join("/"), remoteMutations: 0 };
+  const report = { schemaVersion: 1, status: "prepared", scope, preparedAt: new Date().toISOString(), site: SITE, origin: ORIGIN, baseRelease: release, limits, gzipOsCode, sourceGzipOsCodes: base.gzipOsCodes, firebaseJsonSha256: config.sha256, configurationSha256: jsonHash(config.normalized), inventorySha256: jsonHash(inventory.files), excludedReservedFiles: inventory.excluded, dashboardBuildId: composed.dashboardBuildId, providerBuildId, replaced: pages, addedStatic: composed.added, totalBytes: composed.totalBytes, output: manifest(composed.files), preservedExport: path.relative(root, path.join(job, "provider-build-out")).split(path.sep).join("/"), remoteMutations: 0 };
   const output = path.join(root, "out"), backup = path.join(job, "provider-build-out");
   assertNormalPath(output); assertNormalPath(backup);
   let movedOriginal = false, installed = false;
@@ -302,7 +318,7 @@ async function run({ mode, root = process.cwd(), getJson, fetchImpl = fetch, lim
     fs.renameSync(output, backup); movedOriginal = true;
     fs.renameSync(staging, output); installed = true;
     fs.writeFileSync(path.join(root, ".next/BUILD_ID"), composed.dashboardBuildId + "\n");
-    assertLocalArtifact(root, report);
+    assertLocalArtifact(root, report, scope);
     assertSameRelease(release, await latestRelease(getJson));
     fs.writeFileSync(reportFile, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   } catch (error) {
@@ -314,10 +330,10 @@ async function run({ mode, root = process.cwd(), getJson, fetchImpl = fetch, lim
   return report;
 }
 
-module.exports = { SITE, ORIGIN, API, PANEL, DASHBOARD, REPORT, LIMITS, hash, hostingHash, matchHostingHash, gzipOsCode, safePath, validateFileSet, normalizeHosting, releaseIdentity, assertSameRelease, buildId, manifest, validateBytes, compose, readFiles, listVersionFiles, publicUrl, downloadFiles, createGetJson, assertLocalArtifact, run };
+module.exports = { SITE, ORIGIN, API, PANEL, DASHBOARD, REPORT, SCOPES, publicationScope, LIMITS, hash, hostingHash, matchHostingHash, gzipOsCode, safePath, validateFileSet, normalizeHosting, releaseIdentity, assertSameRelease, buildId, manifest, validateBytes, compose, readFiles, listVersionFiles, publicUrl, downloadFiles, createGetJson, assertLocalArtifact, run };
 if (require.main === module) {
   const mode = process.argv[2];
-  Promise.resolve().then(() => { assert.equal(process.argv.length, 3, "Choose exactly one mode: prepare, assert-current, verify"); return run({ mode, getJson: createGetJson() }); })
+  Promise.resolve().then(() => { assert.ok(process.argv.length === 3 || process.argv.length === 4, "Choose a mode (prepare, assert-current, verify) and optional scope (panel, venues)"); const scope = process.argv[3] || "panel"; publicationScope(scope); return run({ mode, scope, getJson: createGetJson() }); })
     .then(result => console.log(JSON.stringify({ status: result.status, site: SITE, release: result.release?.name || result.baseRelease?.name || result.release, providerBuildId: result.providerBuildId, dashboardBuildId: result.dashboardBuildId, files: result.output?.length || result.files, remoteMutations: 0 })))
     .catch(error => { console.error(error.message); process.exitCode = 1; });
 }

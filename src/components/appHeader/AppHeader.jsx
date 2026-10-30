@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import NextLink from "next/link";
 import {
   ChevronDown,
   Menu,
@@ -88,7 +88,8 @@ function getDefaultCenterNavItems(isAuthenticated) {
   ];
 }
 
-function AppHeaderAction({ action, onAfterClick }) {
+function AppHeaderAction({ action, onAfterClick, documentNavigation }) {
+  const Link = documentNavigation ? "a" : NextLink;
   if (!action || typeof action !== "object") return null;
 
   const handleClick = (event) => {
@@ -132,7 +133,8 @@ function AppHeaderAction({ action, onAfterClick }) {
   );
 }
 
-function AppHeaderMobileAuthActions({ actions, onAfterClick }) {
+function AppHeaderMobileAuthActions({ actions, onAfterClick, documentNavigation }) {
+  const Link = documentNavigation ? "a" : NextLink;
   const loginAction = getMobileAuthAction(actions, "landingLogin");
   const createAccountAction = getMobileAuthAction(
     actions,
@@ -196,7 +198,8 @@ function AppHeaderMobileAuthActions({ actions, onAfterClick }) {
   );
 }
 
-function AppHeaderMobileAccount({ actions, userMenu, onAfterClick }) {
+function AppHeaderMobileAccount({ actions, userMenu, onAfterClick, documentNavigation }) {
+  const Link = documentNavigation ? "a" : NextLink;
   if (!userMenu) return null;
 
   const myInvitationsAction = getMobileMyInvitationsAction(actions);
@@ -276,7 +279,11 @@ export default function AppHeader({
   actions = [],
   userMenu = null,
   isAuthenticated = null,
+  documentNavigation = false,
 }) {
+  // Independently published routes can keep distinct Next build IDs. Native
+  // links load the destination's own document; other consumers keep Next Link.
+  const Link = documentNavigation ? "a" : NextLink;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountRef = useRef(null);
@@ -388,6 +395,7 @@ export default function AppHeader({
           key={action.key || action.label}
           action={action}
           onAfterClick={closeTransientMenus}
+          documentNavigation={documentNavigation}
         />
       ))}
     </div>
@@ -561,11 +569,13 @@ export default function AppHeader({
             actions={actions}
             userMenu={userMenu}
             onAfterClick={closeTransientMenus}
+            documentNavigation={documentNavigation}
           />
           {!userMenu ? (
             <AppHeaderMobileAuthActions
               actions={actions}
               onAfterClick={closeTransientMenus}
+              documentNavigation={documentNavigation}
             />
           ) : null}
         </div>

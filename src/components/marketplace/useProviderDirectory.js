@@ -4,7 +4,7 @@ import { directoryErrorState, EMPTY_DIRECTORY_FILTERS } from "@/domain/providers
 
 // A view cache lasts only for this authorized account/mount. No browser storage,
 // canonical provider reads or snapshots from another account enter this hook.
-export default function useProviderDirectory({ kind, id, userUid }) {
+export default function useProviderDirectory({ kind, id, userUid, deferInitialList = false }) {
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(true);
@@ -17,6 +17,7 @@ export default function useProviderDirectory({ kind, id, userUid }) {
   const [page, setPage] = useState(0);
   const [nextCursor, setNextCursor] = useState(null);
   const requestRef = useRef(0);
+  const searchedRef = useRef(false);
   const currentRef = useRef({ userUid, kind, id });
   currentRef.current = { userUid, kind, id };
 
@@ -39,6 +40,8 @@ export default function useProviderDirectory({ kind, id, userUid }) {
         if (!current()) return;
         setCatalog(nextCatalog);
       }
+      // The venue discovery view asks for a search before reading provider pages.
+      if (kind && deferInitialList && !searchedRef.current) { setStatus("ready"); return; }
       if (!kind && !id) { setStatus("unavailable"); return; }
       const result = await providerDirectoryRequest(kind ? "list" : "get", kind
         ? { kind, ...selectedQuery, minCapacity: kind === "lugar" && selectedQuery.minCapacity ? Number(selectedQuery.minCapacity) : null, cursor, pageSize: 12 } : { id });
@@ -48,14 +51,15 @@ export default function useProviderDirectory({ kind, id, userUid }) {
       setStatus("ready");
     } catch (error) { if (current()) fail(error); }
     finally { if (current()) setBusy(false); }
-  }, [query, cursors, page, clear, fail, kind, id, userUid]);
+  }, [query, cursors, page, clear, fail, kind, id, userUid, deferInitialList]);
   const loadRef = useRef(load); loadRef.current = load;
 
   useEffect(() => {
+    searchedRef.current = false;
     setPage(0); setCursors([null]); setQuery({ ...EMPTY_DIRECTORY_FILTERS }); setFilters({ ...EMPTY_DIRECTORY_FILTERS });
     void loadRef.current({ initialize: true, selectedQuery: EMPTY_DIRECTORY_FILTERS, cursor: null });
     return () => { requestRef.current += 1; };
-  }, [userUid, kind, id]);
+  }, [userUid, kind, id, deferInitialList]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") void loadRef.current({ initialize: true }); };
@@ -66,6 +70,9 @@ export default function useProviderDirectory({ kind, id, userUid }) {
 
   async function search(next = filters) {
     const selectedQuery = { search: next.search.trim(), categoryId: next.categoryId, location: next.location.trim(), minCapacity: kind === "lugar" && next.minCapacity ? Number(next.minCapacity) : null };
+    if (kind === "lugar" && next.regionId) selectedQuery.regionId = next.regionId;
+    if (kind === "lugar" && next.guests) selectedQuery.guests = Number(next.guests);
+    searchedRef.current = true;
     setFilters(selectedQuery); setQuery(selectedQuery); setPage(0); setCursors([null]);
     await load({ selectedQuery, cursor: null });
   }
@@ -91,6 +98,6 @@ export default function useProviderDirectory({ kind, id, userUid }) {
     finally { if (request === requestRef.current) setBusy(false); }
   }
 
-  return { status, message, busy, catalog, items, provider, filters, setFilters, page: page + 1, nextCursor, search, paginate, verifyContact,
+  return { status, message, busy, catalog, items, provider, filters, appliedFilters: query, setFilters, page: page + 1, nextCursor, search, paginate, verifyContact,
     reload: () => load({ initialize: true }) };
 }

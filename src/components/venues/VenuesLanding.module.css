@@ -1,798 +1,228 @@
 .root {
-  --venues-purple: #692b9a;
-  --venues-ink: #262626;
-  --venues-muted: #79738d;
-  --venues-border: #e8e3ee;
+  --venue-primary: #692b9a;
+  --venue-ink: #262626;
+  --venue-muted: #6e6775;
+  --venue-border: #e8e3eb;
   width: 100%;
-  min-height: 100vh;
+  min-height: calc(100dvh - 80px);
   background: #fff;
-  color: var(--venues-ink);
+  color: var(--venue-ink);
   font-family: "DM Sans", sans-serif;
   text-align: left;
 }
 
-/* The preview owns its typography and spacing despite legacy global elements. */
-.root *,
-.root *::before,
-.root *::after {
-  box-sizing: border-box;
-  text-shadow: none;
-}
+.root *, .root *::before, .root *::after { box-sizing: border-box; text-shadow: none; }
+.root section { margin: 0; padding: 0; transition: none; }
+.root button, .root input, .root select { font-family: inherit; }
+.root button { cursor: pointer; }
+.root button:disabled { cursor: default; opacity: .55; }
+.root a { color: inherit; }
+.root button:focus-visible, .root a:focus-visible, .root input:focus-visible, .root select:focus-visible { outline: 3px solid var(--venue-primary); outline-offset: 3px; }
+.searchMode { padding-bottom: 24px; }
+.root .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); align-items: center; width: min(1360px, calc(100% - 96px)); margin: 36px auto 0; padding-bottom: 102px; }
+.heroContent { padding: 24px 48px 58px 0; }
+.eyebrow { margin: 0 0 19px; color: var(--venue-primary); font-size: 12px; font-weight: 600; line-height: 19px; letter-spacing: 1.5px; text-transform: uppercase; }
+.eyebrow > span { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: #c6a6da; vertical-align: 1px; }
+.title { max-width: 630px; margin: 0; color: var(--venue-ink); font-family: "DM Sans", sans-serif; font-size: 40px; font-weight: 500; line-height: 44px; letter-spacing: -1px; }
+.title span { display: block; padding-bottom: 3px; background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%); background-clip: text; color: transparent; -webkit-background-clip: text; }
+.intro { max-width: 450px; margin: 21px 0 0; color: var(--venue-muted); font-family: "Source Sans 3", sans-serif; font-size: 18px; line-height: 28px; }
+.heroFootnote { display: flex; align-items: center; gap: 8px; margin: 24px 0 0; color: var(--venue-muted); font: 14px/21px "Source Sans 3", sans-serif; }
+.heroFootnote svg { flex-shrink: 0; color: var(--venue-primary); }
+.heroImage { position: relative; min-width: 0; height: 460px; overflow: hidden; margin: 0; border-radius: 80px 16px 16px 16px; background: #faf5ed; }
+.heroPhoto { position: absolute; inset: 0; background: url("/assets/profesionales/wedding-triptych.png") left center / 300% auto no-repeat; }
+.heroImage figcaption { position: absolute; z-index: 1; right: 14px; top: 14px; max-width: calc(100% - 28px); margin: 0; padding: 3px 7px; border-radius: 5px; background: rgb(255 255 255 / 85%); color: #50444a; font: 11px/16px "Source Sans 3", sans-serif; }
+.heroSearch { position: absolute; z-index: 2; right: 4%; bottom: 24px; left: 0; }
+.searchForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1.3fr) auto; align-items: center; gap: 0; min-width: 0; padding: 12px; border: 1px solid var(--venue-border); border-radius: 14px; background: #fff; box-shadow: 0 12px 34px #35213f0c, 0 3px 7px #35213f08; }
+.searchField { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 64px; margin: 0; padding: 8px 20px; }
+.searchField + .searchField { border-left: 1px solid var(--venue-border); }
+.searchField > svg { width: 22px; height: 22px; flex-shrink: 0; color: #96899f; }
+.searchField > span { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.fieldLabel { color: #736a79; font-size: 11px; font-weight: 600; line-height: 17px; letter-spacing: .65px; text-transform: uppercase; }
+.searchField input, .searchField select { display: block; width: 100%; min-width: 0; height: 29px; padding: 0 20px 0 0; border: 0; border-radius: 0; background-color: transparent; color: var(--venue-ink); font-size: 16px; font-weight: 400; line-height: 24px; }
+.searchField input::placeholder { color: #8c8294; opacity: 1; }
+.searchField select { text-overflow: ellipsis; }
+.regionField { min-width: 0; }
+.searchButton { display: flex; align-items: center; justify-content: center; gap: 9px; min-width: 148px; min-height: 58px; padding: 14px 25px; border: 1px solid var(--venue-primary); border-radius: 9px; background: var(--venue-primary); color: #fff; font-size: 16px; font-weight: 600; line-height: 23px; transition: background .15s ease, box-shadow .15s ease; }
+.searchButton:hover:not(:disabled) { background: #572082; box-shadow: 0 3px 12px #692b9a24; }
+.searchHint { margin: 10px 14px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
+.root .explore { width: min(1360px, calc(100% - 96px)); margin: 22px auto 0; }
+.explore h2 { margin: 0 0 20px; color: var(--venue-ink); font-size: 22px; font-weight: 500; line-height: 29px; letter-spacing: -.4px; }
+.exploreHeading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.exploreHeading .eyebrow { margin-bottom: 7px; }
+.exploreHeading > p { margin: 0 0 16px; color: var(--venue-muted); font: 15px/22px "Source Sans 3", sans-serif; }
+.categoryGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.categoryChoice { display: flex; align-items: center; gap: 14px; min-width: 0; min-height: 82px; padding: 19px 20px; border: 1px solid #eee7e1; border-radius: 12px; background: #faf5ed; color: var(--venue-ink); text-align: left; transition: border-color .15s ease, background .15s ease; }
+.categoryChoice:hover { border-color: #c6a6da; background: #faf5ff; }
+.categoryChoice[aria-pressed="true"] { border-color: #b58bce; background: #faf5ff; box-shadow: 0 0 0 1px #b58bce; }
+.categoryChoice > svg:first-child { flex-shrink: 0; color: var(--venue-primary); }
+.categoryChoice span { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; line-height: 22px; }
+.categoryChoice > svg:last-child { flex-shrink: 0; color: #96899f; }
+.privateFootnote { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 29px 0 0; color: #817988; font: 13px/20px "Source Sans 3", sans-serif; }
+.root .searchBand { padding: 10px 32px 18px; border-top: 1px solid #f0ebf2; border-bottom: 1px solid var(--venue-border); background: #fbf7f9; }
+.searchBandHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1500px, 100%); margin: 0 auto 10px; }
+.searchBandHeading button { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--venue-primary); font-size: 13px; line-height: 20px; }
+.back { font-weight: 500; }
+.privateLabel { display: flex; align-items: center; gap: 6px; color: var(--venue-muted); font: 12px/18px "Source Sans 3", sans-serif; }
+.compactForm { width: min(1500px, 100%); margin: auto; padding: 8px; box-shadow: 0 3px 14px #35213f05; }
+.compactForm .searchField { min-height: 52px; padding-top: 3px; padding-bottom: 3px; }
+.compactForm .searchButton { min-height: 50px; }
+.searchBand .searchHint { width: min(1472px, calc(100% - 28px)); margin-right: auto; margin-left: auto; }
+.root .discovery { width: min(1564px, 100%); margin: 0 auto; padding: 22px 32px; }
+.resultsToolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 22px; }
+.resultsToolbar h1, .resultsToolbar h2 { margin: 0; color: var(--venue-ink); font-size: 24px; font-weight: 500; line-height: 31px; letter-spacing: -.5px; }
+.resultsTitle { scroll-margin-top: 24px; }
+.resultsToolbar p { margin: 5px 0 0; color: var(--venue-muted); font: 14px/20px "Source Sans 3", sans-serif; }
+.nameSearch { display: flex; align-items: center; gap: 9px; width: 245px; min-width: 0; min-height: 43px; margin: 0; padding: 10px 13px; border: 1px solid var(--venue-border); border-radius: 9px; background: #fff; }
+.nameSearch svg { flex-shrink: 0; color: #8d7d98; }
+.nameSearch input { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--venue-ink); font-size: 13px; line-height: 22px; }
+.nameSearch input::placeholder { color: #857b8c; }
+.resultsLayout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 28px; width: 100%; }
+.results { min-width: 0; }
+.venueGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 26px 20px; }
+.venueCard { min-width: 0; overflow: hidden; border: 1px solid var(--venue-border); border-radius: 14px; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
+.venueCard:hover { border-color: #ceb7dd; box-shadow: 0 6px 20px #35213f09; }
+.selectedCard { border-color: var(--venue-primary); box-shadow: 0 0 0 1px var(--venue-primary); }
+.cardImageLink { position: relative; display: block; height: 205px; overflow: hidden; background: #faf5ed; text-decoration: none; }
+.cardImageLink > * { width: 100%; height: 100%; border-radius: 0; object-fit: cover; }
+.cardImage { width: 100%; height: 100%; object-fit: cover; }
+.cardBody { padding: 16px; }
+.cardCategory { margin: 0 0 7px; color: var(--venue-primary); font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: .6px; text-transform: uppercase; }
+.cardBody h2, .cardBody h3 { margin: 0 0 10px; color: var(--venue-ink); font-size: 18px; font-weight: 600; line-height: 24px; letter-spacing: -.3px; overflow-wrap: anywhere; }
+.cardBody h2 a, .cardBody h3 a { display: flex; align-items: start; justify-content: space-between; gap: 9px; text-decoration: none; }
+.cardBody h2 svg, .cardBody h3 svg { flex-shrink: 0; margin-top: 3px; color: var(--venue-primary); }
+.cardMeta { display: flex; align-items: start; gap: 7px; margin: 5px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
+.cardMeta svg { flex-shrink: 0; margin-top: 2px; color: #917e9e; }
+.cardSummary { display: -webkit-box; min-height: 40px; margin: 13px 0 14px; overflow: hidden; color: #6e6775; font: 14px/20px "Source Sans 3", sans-serif; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cardFooter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid #f0ebf2; }
+.cardFooter > span, .cardFooter > p { margin: 0; color: #514757; font: 13px/19px "Source Sans 3", sans-serif; }
+.cardFooter button { display: flex; align-items: center; gap: 5px; min-height: 32px; padding: 6px 0; border: 0; background: transparent; color: var(--venue-primary); font-size: 12px; font-weight: 500; line-height: 19px; }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 19px; border-top: 1px solid var(--venue-border); color: var(--venue-muted); font-size: 13px; line-height: 20px; }
+.pagination > div { display: flex; align-items: center; gap: 8px; }
+.pagination button { min-height: 40px; padding: 9px 13px; border: 1px solid var(--venue-border); border-radius: 8px; background: #fff; color: var(--venue-primary); font-size: 13px; }
+.pagination button { display: inline-flex; align-items: center; gap: 6px; }
+.pagination button:hover:not(:disabled) { border-color: #c6a6da; background: #faf5ff; }
+.mapColumn { position: sticky; top: 16px; min-width: 0; }
+.mapHint { margin: 9px 4px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 310px; padding: 32px 24px; border: 1px solid var(--venue-border); border-radius: 14px; background: #fbf7f9; text-align: center; }
+.empty > svg { margin-bottom: 18px; color: #9a79ad; }
+.empty h2 { margin: 0 0 9px; color: var(--venue-ink); font-size: 22px; font-weight: 500; line-height: 28px; }
+.empty p { max-width: 360px; margin: 0; color: var(--venue-muted); font: 16px/24px "Source Sans 3", sans-serif; }
+.empty button { min-height: 42px; margin-top: 19px; padding: 10px 16px; border: 1px solid var(--venue-primary); border-radius: 8px; background: #fff; color: var(--venue-primary); font-size: 14px; }
+.empty button { display: inline-flex; align-items: center; gap: 7px; }
+.loadingGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 20px; }
+.loadingGrid > div { min-height: 360px; border: 1px solid var(--venue-border); border-radius: 14px; background: linear-gradient(110deg, #f4eff5 20%, #fbf9fc 40%, #f4eff5 60%); background-size: 200% 100%; animation: venueSkeleton 1.4s ease-in-out infinite; }
+.spinner { animation: venueSpin .8s linear infinite; }
+.mobileSwitch { display: none; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; margin: -1px; padding: 0; border: 0; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@keyframes venueSpin { to { transform: rotate(360deg); } }
+@keyframes venueSkeleton { to { background-position: -200% 0; } }
 
-.root button {
-  font-family: "DM Sans", sans-serif;
-}
-
-.root button:disabled {
-  cursor: default;
-}
-
-.root a:focus-visible {
-  outline: 3px solid var(--venues-purple);
-  outline-offset: 4px;
-}
-
-.main {
-  padding-bottom: 38px;
-}
-
-.liveResults {
-  width: min(1360px, calc(100% - 48px));
-  margin: 28px auto 0;
-}
-
-.liveResults > h2 {
-  margin-bottom: 20px;
-}
-
-.searchSection {
-  margin: 0 auto;
-  padding: 27px 0 20px;
-  border-bottom: 1px solid #eeeaf3;
-  background: #fff;
-}
-
-.searchContent {
-  width: min(1360px, calc(100% - 80px));
-  margin: 0 auto;
-}
-
-.pageTitle {
-  margin: 0;
-  color: #202020;
-  font-family: "DM Sans", sans-serif;
-  font-size: 36px;
-  font-weight: 600;
-  letter-spacing: -1.15px;
-  line-height: 45px;
-}
-
-.gradientText {
-  background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%);
-  background-clip: text;
-  color: transparent;
-  -webkit-background-clip: text;
-}
-
-.pageDescription {
-  margin: 4px 0 16px;
-  color: var(--venues-muted);
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 20px;
-  font-weight: 400;
-  line-height: 28px;
-}
-
-.filters {
-  display: grid;
-  grid-template-columns: 1.3fr 0.9fr 1fr 1.15fr 0.85fr 1.15fr;
-  gap: 9px;
-  min-width: 0;
-}
-
-.filterButton,
-.searchButton {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 16px;
-  min-width: 0;
-  min-height: 55px;
-  padding: 12px 18px;
-  border: 1px solid var(--venues-border);
-  border-radius: 7px;
-  background: #fff;
-  color: #5e586e;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 22px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.filterIcon {
-  flex-shrink: 0;
-  color: #8e5cae;
-}
-
-.filterChevron {
-  flex-shrink: 0;
-  margin-left: auto;
-  color: #80768f;
-}
-
-.searchButton {
-  justify-content: center;
-  gap: 12px;
-  border-color: transparent;
-  background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 500;
-  opacity: 0.87;
-}
-
-.searchButton svg {
-  flex-shrink: 0;
-}
-
-.resultsLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-  align-items: start;
-  gap: 27px;
-  width: min(1450px, calc(100% - 80px));
-  margin: 23px auto 0;
-}
-
-.results {
-  min-width: 0;
-  padding: 0;
-  background: #fff;
-}
-
-.resultsHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 54px;
-  margin-bottom: 17px;
-}
-
-.resultsTitle {
-  margin: 0;
-  color: #202020;
-  font-family: "DM Sans", sans-serif;
-  font-size: 25px;
-  font-weight: 600;
-  letter-spacing: -0.65px;
-  line-height: 32px;
-}
-
-.resultsDescription {
-  margin: 1px 0 0;
-  color: var(--venues-muted);
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 23px;
-}
-
-.sortPreview {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.sortLabel {
-  color: var(--venues-muted);
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.sortButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 23px;
-  min-height: 37px;
-  padding: 8px 12px;
-  border: 1px solid var(--venues-border);
-  border-radius: 7px;
-  background: #fff;
-  color: #70677d;
-  font-size: 12px;
-  line-height: 20px;
-}
-
-.venueGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 25px 18px;
-}
-
-.venueCard {
-  min-width: 0;
-}
-
-.venueMedia {
-  position: relative;
-  overflow: hidden;
-  aspect-ratio: 1.8;
-  border-radius: 5px;
-  background: #eee9e3;
-}
-
-.venuePhoto {
-  width: 100%;
-  height: 100%;
-  background-image: url("/assets/lugares/venue-contact-sheet.png");
-  background-repeat: no-repeat;
-  /* Preserve each 3:2 photo while cropping the contact sheet to wider cards. */
-  background-size: 200% auto;
-}
-
-.photoEstancia {
-  background-position: left top;
-}
-
-.photoQuinta {
-  background-position: right top;
-}
-
-.photoLago {
-  background-position: left bottom;
-}
-
-.photoJardin {
-  background-position: right bottom;
-}
-
-.favoriteButton {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgb(0 0 0 / 10%);
-  color: #fff;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 20%));
-}
-
-.venueTitleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 9px;
-}
-
-.venueName {
-  min-width: 0;
-  margin: 0;
-  color: #202020;
-  font-family: "DM Sans", sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-  line-height: 25px;
-}
-
-.featuredName {
-  color: var(--venues-purple);
-}
-
-.venueType {
-  flex-shrink: 0;
-  padding: 4px 11px;
-  border-radius: 5px;
-  background: #f5f3f8;
-  color: #635b73;
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.venueMeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 17px;
-  margin-top: 7px;
-}
-
-.venueDetail {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--venues-muted);
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-}
-
-.venueDetail svg {
-  flex-shrink: 0;
-}
-
-.mapFigure {
-  min-width: 0;
-  margin: 0;
-}
-
-.mapCanvas {
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-  aspect-ratio: 0.97;
-  min-height: 550px;
-  border-radius: 10px;
-  background: #eeedeb;
-}
-
-.mapDrawing {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.mapPlaceLabels {
-  fill: #424051;
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 17px;
-}
-
-.mapSecondaryPlace {
-  fill: #716b7c;
-  font-size: 13px;
-}
-
-.mapCapital {
-  font-size: 23px;
-}
-
-.mapWaterLabel {
-  fill: #438fbd;
-  font-size: 11px;
-  font-style: italic;
-}
-
-.mapRoadLabels rect {
-  fill: #fff;
-  stroke: #8e8798;
-  stroke-width: 1px;
-}
-
-.mapRoadLabels text {
-  fill: #5e566c;
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 11px;
-  text-anchor: middle;
-}
-
-.mapSearchButton {
-  position: absolute;
-  top: 15px;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-height: 39px;
-  padding: 10px 16px;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 96%);
-  box-shadow: 0 2px 9px rgb(54 43 74 / 10%);
-  color: #6a6078;
-  font-size: 12px;
-  line-height: 20px;
-  white-space: nowrap;
-  transform: translateX(-50%);
-}
-
-.mapSearchButton svg {
-  color: #9463b0;
-}
-
-.mapPins {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mapPin {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  max-width: 51%;
-  margin: 0;
-  padding: 0;
-}
-
-.mapPinLabel {
-  display: block;
-  padding: 7px 10px;
-  border: 1px solid #9e66bd;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(58 32 76 / 7%);
-  color: var(--venues-purple);
-  font-family: "DM Sans", sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-}
-
-.mapPinFeatured {
-  border-color: var(--venues-purple);
-  background: var(--venues-purple);
-  color: #fff;
-}
-
-.mapPinDot {
-  width: 12px;
-  height: 12px;
-  margin-left: 4px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  background: var(--venues-purple);
-  box-shadow: 0 1px 3px rgb(58 32 76 / 12%);
-}
-
-.pinPilar {
-  top: 25%;
-  left: 8%;
-}
-
-.pinEscobar {
-  top: 18%;
-  left: 37%;
-}
-
-.pinTigre {
-  top: 31%;
-  left: 69%;
-}
-
-.pinSanIsidro {
-  top: 53%;
-  left: 68%;
-}
-
-.mapZoom {
-  position: absolute;
-  right: 13px;
-  bottom: 86px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 2px 9px rgb(54 43 74 / 14%);
-}
-
-.mapZoom button {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  background: #fff;
-  color: #7e748b;
-}
-
-.mapZoom button + button {
-  border-top: 1px solid #eeeaf3;
-}
-
-.mapCaption {
-  margin-top: 10px;
-  color: var(--venues-muted);
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 12px;
-  line-height: 18px;
-  text-align: right;
-}
-
-/* Scoped composition breakpoints follow Tailwind's desktop/tablet boundaries. */
 @media (max-width: 1279px) {
-
-  .searchContent,
-  .resultsLayout {
-    width: calc(100% - 56px);
-  }
-
-  .filterButton,
-  .searchButton {
-    gap: 10px;
-    padding-right: 12px;
-    padding-left: 12px;
-    font-size: 13px;
-  }
-
-  .resultsLayout {
-    gap: 22px;
-  }
-
-  .resultsHeading {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .resultsTitle {
-    font-size: 23px;
-    line-height: 30px;
-  }
-
-  .venueGrid {
-    gap: 23px 14px;
-  }
-
-  .venueName {
-    font-size: 16px;
-    line-height: 23px;
-  }
-
-  .venueType {
-    padding-right: 8px;
-    padding-left: 8px;
-    font-size: 11px;
-  }
-
-  .venueMeta {
-    gap: 2px 12px;
-  }
-
-  .venueDetail {
-    font-size: 12px;
-  }
-
-  .mapPinLabel {
-    padding-right: 8px;
-    padding-left: 8px;
-    font-size: 11px;
-  }
-
-  .pinTigre,
-  .pinSanIsidro {
-    left: 65%;
-  }
+  .root .hero, .root .explore { width: calc(100% - 64px); }
+  .heroContent { padding-right: 32px; }
+  .heroImage { height: 430px; }
+  .searchField { gap: 9px; padding-right: 14px; padding-left: 14px; }
+  .searchButton { min-width: 130px; padding-right: 20px; padding-left: 20px; }
+  .categoryChoice { gap: 10px; padding-right: 15px; padding-left: 15px; }
+  .resultsLayout { gap: 22px; }
+  .venueGrid { gap: 22px 15px; }
+  .cardImageLink { height: 180px; }
+  .cardBody { padding: 13px; }
 }
 
 @media (max-width: 1023px) {
-
-  .pageTitle {
-    font-size: 32px;
-    line-height: 40px;
-  }
-
-  .filters {
-    display: flex;
-    overflow-x: auto;
-    gap: 8px;
-    padding: 1px 1px 8px;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-    scrollbar-color: #d9cce5 transparent;
-  }
-
-  .filterButton {
-    flex: 0 0 auto;
-    min-width: 159px;
-    gap: 13px;
-    padding: 12px 15px;
-    font-size: 14px;
-  }
-
-  .locationFilter {
-    flex-basis: 205px;
-  }
-
-  .searchButton {
-    flex: 0 0 180px;
-    font-size: 15px;
-  }
-
-  .resultsLayout {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-
-  .resultsHeading {
-    flex-wrap: nowrap;
-  }
-
-  .venueGrid {
-    gap: 25px 18px;
-  }
-
-  .venueName {
-    font-size: 18px;
-    line-height: 25px;
-  }
-
-  .venueDetail {
-    font-size: 13px;
-  }
-
-  .mapCanvas {
-    max-height: 600px;
-    min-height: 0;
-    aspect-ratio: 1.2;
-  }
-
-  .mapDrawing {
-    object-fit: cover;
-  }
-
-  .mapPinLabel {
-    font-size: 12px;
-  }
-
-  .pinTigre,
-  .pinSanIsidro {
-    left: 69%;
-  }
+  .root .hero { padding-bottom: 170px; }
+  .title { font-size: 34px; line-height: 39px; }
+  .heroContent { padding-right: 24px; padding-bottom: 32px; }
+  .heroImage { height: 400px; border-top-left-radius: 60px; }
+  .heroSearch { right: 0; bottom: 12px; }
+  .searchForm { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .searchField { min-height: 59px; }
+  .regionField { border-left: 0; }
+  .searchField:nth-child(3) { border-left: 0; }
+  .searchButton { min-height: 55px; }
+  .categoryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .categoryChoice { flex-wrap: wrap; gap: 8px; padding: 16px 13px; }
+  .categoryChoice > svg:last-child { display: none; }
+  .categoryChoice span { font-size: 14px; }
+  .resultsLayout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .venueGrid, .loadingGrid { grid-template-columns: 1fr; }
+  .cardImageLink { height: 220px; }
+  .cardBody { padding: 17px; }
+  .resultsToolbar { gap: 16px; }
+  .nameSearch { width: 215px; }
 }
 
 @media (max-width: 767px) {
-
-  .main {
-    padding-bottom: 24px;
-  }
-
-  .searchSection {
-    padding: 22px 0 10px;
-  }
-
-  .searchContent,
-  .resultsLayout {
-    width: calc(100% - 40px);
-  }
-
-  .pageTitle {
-    max-width: 470px;
-    font-size: 28px;
-    letter-spacing: -0.7px;
-    line-height: 34px;
-  }
-
-  .pageDescription {
-    margin: 8px 0 16px;
-    font-size: 17px;
-    line-height: 24px;
-  }
-
-  .filterButton,
-  .searchButton {
-    min-height: 49px;
-  }
-
-  .resultsLayout {
-    margin-top: 21px;
-  }
-
-  .resultsHeading {
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 18px;
-  }
-
-  .resultsTitle {
-    font-size: 24px;
-    letter-spacing: -0.5px;
-    line-height: 31px;
-  }
-
-  .sortPreview {
-    gap: 9px;
-  }
-
-  .sortButton {
-    min-height: 34px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-
-  .venueGrid {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-
-  .venueMedia {
-    aspect-ratio: 1.72;
-    border-radius: 6px;
-  }
-
-  .venueName {
-    font-size: 19px;
-    line-height: 27px;
-  }
-
-  .venueType {
-    padding: 4px 11px;
-    font-size: 12px;
-  }
-
-  .venueMeta {
-    gap: 3px 15px;
-    margin-top: 5px;
-  }
-
-  .mapCanvas {
-    min-height: 420px;
-    max-height: none;
-    aspect-ratio: 0.85;
-  }
-
-  .mapPinLabel {
-    padding: 6px 7px;
-    border-radius: 8px;
-    font-size: 10px;
-    line-height: 16px;
-  }
-
-  .mapPin {
-    gap: 4px;
-  }
-
-  .pinPilar {
-    left: 5%;
-  }
-
-  .pinEscobar {
-    left: 35%;
-  }
-
-  .pinTigre,
-  .pinSanIsidro {
-    left: 65%;
-  }
-
-  .mapZoom {
-    bottom: 54px;
-  }
-
-  .mapCaption {
-    font-size: 11px;
-    line-height: 17px;
-  }
+  .root .hero { display: flex; flex-direction: column; align-items: stretch; width: calc(100% - 40px); margin-top: 25px; padding-bottom: 0; }
+  .heroContent { padding: 0 0 24px; }
+  .eyebrow { margin-bottom: 12px; font-size: 11px; letter-spacing: 1.2px; }
+  .title { max-width: 520px; font-size: 32px; line-height: 37px; letter-spacing: -.8px; }
+  .intro { margin-top: 15px; font-size: 17px; line-height: 25px; }
+  .heroFootnote { margin-top: 15px; font-size: 13px; }
+  .heroImage { height: 210px; border-radius: 40px 12px 12px 12px; }
+  .heroPhoto { background-position: left 48%; }
+  .heroImage figcaption { top: 10px; right: 10px; bottom: auto; font-size: 10px; }
+  .heroSearch { position: relative; right: auto; bottom: auto; left: auto; margin: -25px 8px 0; }
+  .searchForm { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 9px 12px 12px; border-radius: 12px; box-shadow: 0 8px 24px #35213f0c; }
+  .searchField { min-height: 67px; gap: 12px; padding: 10px 5px; }
+  .searchField + .searchField { border-top: 1px solid var(--venue-border); border-left: 0; }
+  .searchField input, .searchField select { font-size: 16px; }
+  .searchButton { min-height: 49px; margin-top: 9px; }
+  .searchHint { margin: 11px 4px 0; font-size: 12px; line-height: 18px; }
+  .root .explore { width: calc(100% - 40px); margin-top: 34px; }
+  .explore h2 { margin-bottom: 16px; font-size: 21px; line-height: 28px; }
+  .exploreHeading { display: block; }
+  .exploreHeading > p { margin-top: -7px; margin-bottom: 18px; font-size: 14px; }
+  .categoryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .categoryChoice { flex-wrap: nowrap; min-height: 78px; padding: 14px 11px; }
+  .categoryChoice span { font-size: 13px; line-height: 20px; }
+  .privateFootnote { align-items: flex-start; margin-top: 23px; font-size: 12px; text-align: center; }
+  .privateFootnote svg { flex-shrink: 0; margin-top: 2px; }
+  .root .searchBand { padding: 8px 16px 14px; }
+  .searchBandHeading { gap: 8px; margin-bottom: 7px; }
+  .privateLabel { font-size: 11px; }
+  .compactForm { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 6px 9px 9px; }
+  .compactForm .searchField { gap: 7px; min-height: 61px; padding: 8px 5px; }
+  .compactForm .searchField > svg { width: 17px; height: 17px; }
+  .compactForm .searchField:nth-child(2) { border-top: 0; border-left: 1px solid var(--venue-border); padding-left: 10px; }
+  .compactForm .regionField { grid-column: 1 / -1; border-top: 1px solid var(--venue-border); }
+  .compactForm .searchButton { grid-column: 1 / -1; min-height: 44px; margin-top: 3px; font-size: 14px; }
+  .compactForm .fieldLabel { font-size: 10px; }
+  .searchBand .searchHint { width: 100%; margin-top: 8px; }
+  .root .discovery { padding: 20px 16px; }
+  .resultsToolbar { flex-direction: column; align-items: stretch; gap: 15px; margin-bottom: 15px; }
+  .resultsToolbar h1, .resultsToolbar h2 { font-size: 23px; line-height: 29px; }
+  .nameSearch { width: 100%; min-height: 42px; }
+  .mobileSwitch { display: flex; gap: 4px; margin-bottom: 18px; padding: 4px; border: 1px solid var(--venue-border); border-radius: 10px; background: #fbf7f9; }
+  .mobileSwitch button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--venue-muted); font-size: 13px; }
+  .mobileSwitch button[aria-pressed="true"] { border-color: #e4d8eb; background: #fff; box-shadow: 0 2px 6px #35213f08; color: var(--venue-primary); font-weight: 600; }
+  .resultsLayout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .hiddenOnMobile { display: none; }
+  .mapColumn { position: static; }
+  .venueGrid { gap: 22px; }
+  .cardImageLink { height: 220px; }
+  .cardBody { padding: 17px; }
+  .cardBody h2, .cardBody h3 { font-size: 19px; line-height: 25px; }
+  .cardMeta { font-size: 14px; line-height: 20px; }
+  .cardFooter button { min-height: 37px; }
+  .pagination { gap: 8px; margin-top: 22px; font-size: 12px; }
+  .pagination > div { gap: 6px; }
+  .pagination button { padding: 8px 11px; font-size: 12px; }
+  .empty { min-height: 290px; padding: 28px 20px; }
 }
 
 @media (max-width: 374px) {
+  .root .hero, .root .explore { width: calc(100% - 28px); }
+  .title { font-size: 30px; line-height: 35px; }
+  .heroSearch { margin-right: 3px; margin-left: 3px; }
+  .root .searchBand, .root .discovery { padding-right: 12px; padding-left: 12px; }
+  .categoryChoice { gap: 7px; padding-right: 9px; padding-left: 9px; }
+  .categoryChoice > svg { width: 22px; height: 22px; }
+  .cardImageLink { height: 195px; }
+  .cardBody { padding: 14px; }
+}
 
-  .searchContent,
-  .resultsLayout {
-    width: calc(100% - 28px);
-  }
-
-  .venueName {
-    font-size: 17px;
-  }
-
-  .venueDetail {
-    font-size: 12px;
-  }
-
-  .pinTigre,
-  .pinSanIsidro {
-    left: 62%;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .root *, .root *::before, .root *::after { animation: none; transition: none; scroll-behavior: auto; }
 }

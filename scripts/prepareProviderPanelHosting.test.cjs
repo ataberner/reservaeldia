@@ -173,3 +173,41 @@ test("postdeploy verification rejects any unrelated published hash change", asyn
   await assert.rejects(subject.run({ mode: "verify", root: f.root, getJson: f.getJson, fetchImpl: f.fetchImpl }), /inventory differs/);
   assert.ok(!fs.existsSync(path.join(f.root, ".local-isolation/provider-panel-hosting-verified.json")));
 });
+
+test("venues composition replaces its landing/detail HTML and preserves the live panel, other routes and artwork", () => {
+  const { base, candidate } = inputs();
+  const { pages, requiredAssets: [art] } = subject.SCOPES.venues;
+  base.set(art, bytes("existing artwork"));
+  candidate.delete(subject.PANEL); candidate.set(art, base.get(art));
+  for (const page of pages) { base.set(page, html("old")); candidate.set(page, html("new")); }
+  const result = subject.compose(base, candidate, "new", subject.LIMITS, "venues");
+  for (const [name, body] of base) if (!pages.includes(name)) assert.ok(result.files.get(name).equals(body), name);
+  for (const page of pages) assert.ok(result.files.get(page).equals(html("new")));
+  assert.ok(!result.added.includes(art));
+  candidate.set(art, bytes("changed artwork"));
+  assert.throws(() => subject.compose(base, candidate, "new", subject.LIMITS, "venues"), /Required public asset/);
+  candidate.delete(art);
+  assert.throws(() => subject.compose(base, candidate, "new", subject.LIMITS, "venues"), /Required public asset/);
+  assert.throws(() => subject.publicationScope("../index"), /Unsupported scoped/);
+});
+
+test("venues full cycle has a separate report and rejects reusing a panel report", async t => {
+  const f = fixture(t), { pages, report: reportPath, requiredAssets: [art] } = subject.SCOPES.venues;
+  for (const page of pages) f.base.set(page, html("old"));
+  f.base.set(art, bytes("existing artwork"));
+  for (const [name, body] of [...pages.map(page => [page, html("new")]), [art, f.base.get(art)]]) {
+    const file = path.join(f.root, "out", name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body);
+  }
+  const report = await subject.run({ mode: "prepare", scope: "venues", root: f.root, getJson: f.getJson, fetchImpl: f.fetchImpl });
+  assert.deepEqual(report.replaced, pages); assert.equal(report.scope, "venues");
+  assert.ok(fs.existsSync(path.join(f.root, reportPath)));
+  assert.ok(!fs.existsSync(path.join(f.root, subject.REPORT)));
+  assert.ok(fs.readFileSync(path.join(f.root, "out", subject.PANEL)).equals(f.base.get(subject.PANEL)));
+  assert.throws(() => subject.assertLocalArtifact(f.root, report, "panel"), /scope changed/);
+  assert.equal((await subject.run({ mode: "assert-current", scope: "venues", root: f.root, getJson: f.getJson })).status, "current");
+  f.state.release = release("103"); f.state.files = subject.readFiles(path.join(f.root, "out"));
+  const verified = await subject.run({ mode: "verify", scope: "venues", root: f.root, getJson: f.getJson, fetchImpl: f.fetchImpl });
+  assert.deepEqual(verified.publicChecks.sort(), [...pages, subject.DASHBOARD].sort());
+  assert.equal(verified.scope, "venues");
+  assert.ok(fs.existsSync(path.join(f.root, reportPath.replace(/\.json$/, "-verified.json"))));
+});

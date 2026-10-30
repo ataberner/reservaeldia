@@ -30,9 +30,9 @@ async function click(page, text) {
   await button.click(); await handle.dispose();
 }
 async function field(page, label, value, select = false) {
-  const handle = await page.evaluateHandle(label => [...document.querySelectorAll("label")].find(node => node.querySelector("span")?.textContent.trim() === label)?.querySelector("input,select"), label);
+  const handle = await page.evaluateHandle(label => [...document.querySelectorAll("label")].find(node => [...node.querySelectorAll("span")].some(span => span.textContent.trim() === label))?.querySelector("input,select"), label);
   const input = handle.asElement(); assert.ok(input, `Accessible field ${label}`);
-  if (select) await input.select(value);
+  if (select) { await input.focus(); await input.select(value); }
   else { await input.click({ clickCount: 3 }); await page.keyboard.down("Control"); await page.keyboard.press("A"); await page.keyboard.up("Control"); await page.keyboard.press("Backspace"); await input.type(value); }
   await handle.dispose();
 }
@@ -60,12 +60,14 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
   // Enough approved neutral fixtures to exercise the actual UI cursor controls.
   const neutral = (await fixture.db.doc(`proveedores/${venue.id}`).get()).data();
   neutral.aprobada.contenido.imagenes = { portada: null, logo: null, galeria: [] };
-  neutral.aprobada.contenido.espacio.capacidadMaxima = null;
+  neutral.aprobada.contenido.espacio.capacidadMaxima = 200;
   const batch = fixture.db.batch();
   for (let index = 0; index < 12; index += 1) {
     const id = `000_directory_ui_${String(index).padStart(2, "0")}`; fixture.providerIds.add(id);
     batch.create(fixture.db.doc(`proveedores/${id}`), { ...neutral, aprobada: { ...neutral.aprobada, contenido: { ...neutral.aprobada.contenido, nombre: `Espacio de prueba ${index + 1}` } } });
   }
+  const unknownId = "000_directory_ui_unknown"; fixture.providerIds.add(unknownId);
+  batch.create(fixture.db.doc(`proveedores/${unknownId}`), { ...neutral, aprobada: { ...neutral.aprobada, contenido: { ...neutral.aprobada.contenido, nombre: "Capacidad desconocida sintética", espacio: { ...neutral.aprobada.contenido.espacio, capacidadMaxima: null } } } });
   await batch.commit();
   const browser = await require("puppeteer").launch({ executablePath: process.env.RESERVA_TEST_CHROME, headless: true,
     userDataDir: path.join(session, "provider-directory-browser-profile"), args: ["--disable-background-networking", "--disable-component-update", "--disable-sync", "--no-first-run", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1"] });
@@ -101,33 +103,40 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     }, "Local Next starts serving its static favicon", 60000);
     const visitor = await pageFor(desktop);
     await visitor.goto(`${origin}/lugares/`, { waitUntil: "domcontentloaded" }); await contains(visitor, "Iniciar sesión");
-    assert.equal(await visitor.$('form[aria-label="Buscar en el directorio"]'), null);
+    assert.equal(await visitor.$('form[aria-label="Encontrar un lugar para tu casamiento"]'), null);
     assert.doesNotMatch(await visitor.$eval("body", node => node.textContent), /Jardín Claro|Luz Sur|DIRECTORY-PRIVATE/);
     await visitor.browserContext().close();
     evidence.checks.push("anonymous shell has no provider data");
 
     const page = await pageFor(desktop); await login(page, operator);
-    await page.goto(`${origin}/lugares/`, { waitUntil: "domcontentloaded" }); await contains(page, "Página 1"); await ready(page);
-    assert.equal(await page.$$eval('a[aria-label^="Ver ficha de "]', nodes => nodes.length), 12);
-    await contains(page, "Capacidad sin informar");
+    await page.goto(`${origin}/lugares/`, { waitUntil: "domcontentloaded" }); await contains(page, "El lugar donde empieza"); await ready(page);
+    assert.equal(await page.$('[aria-label="Resultados de lugares"]'), null, "Welcome waits for the first search");
+    await page.waitForSelector('form[aria-label="Encontrar un lugar para tu casamiento"] input[name="guests"]', { visible: true });
+    await field(page, "Cantidad de invitados", "150"); await field(page, "¿Dónde querés celebrar?", "ar", true); await click(page, "Buscar lugares"); await contains(page, "Página 1"); await ready(page);
+    assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 12);
+    assert.doesNotMatch(await page.$eval('[aria-label="Resultados de lugares"]', node => node.textContent), /Capacidad desconocida sintética/, "Unknown capacity is excluded by an explicit guest count");
     await click(page, "Siguiente"); await contains(page, "Página 2"); await contains(page, venueDraft.nombre); await ready(page);
-    assert.equal(await page.$$eval('a[aria-label^="Ver ficha de "]', nodes => nodes.length), 1);
+    assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 1);
     await click(page, "Anterior"); await contains(page, "Página 1"); await ready(page);
-    await field(page, "Nombre o descripción", "jardin claro"); await field(page, "Categoría", "salones-fiestas", true); await field(page, "Localidad o provincia", "La Plata"); await field(page, "Capacidad máxima desde", "150");
+    await field(page, "Nombre o descripción", "jardin claro"); await field(page, "Tipo de lugar", "salones-fiestas", true); await field(page, "Cantidad de invitados", "150"); await field(page, "¿Dónde querés celebrar?", "provincia:AR-B", true);
     await page.keyboard.press("Tab");
-    assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar", "Search is reachable by keyboard after the capacity field");
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar lugares", "Search is reachable by keyboard after the region field");
     await page.keyboard.press("Enter"); await contains(page, venueDraft.nombre); await ready(page); await loadedImages(page, 1);
-    assert.equal(await page.$$eval('a[aria-label^="Ver ficha de "]', nodes => nodes.length), 1);
-    await screenshot(page, "01-venues-desktop.png", 'form[aria-label="Buscar en el directorio"]');
-    await field(page, "Nombre o descripción", "Sin coincidencias"); await click(page, "Buscar"); await contains(page, "No encontramos fichas para esta búsqueda");
-    await screenshot(page, "05-empty.png", 'form[aria-label="Buscar en el directorio"]');
-    await click(page, "Limpiar filtros"); await contains(page, "Espacio de prueba"); await ready(page);
-    evidence.checks.push("real pagination forward/back", "approved name/category/location/capacity search", "keyboard tab and enter submit", "unknown capacity is not zero", "empty state and clear filters");
+    assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 1);
+    await screenshot(page, "01-venues-desktop.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
+    await field(page, "Nombre o descripción", "Sin coincidencias"); await click(page, "Buscar lugares"); await contains(page, "Todavía no encontramos ese lugar");
+    await screenshot(page, "05-empty.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
+    await click(page, "Revisar mi búsqueda"); await field(page, "Nombre o descripción", ""); await field(page, "Tipo de lugar", "", true); await field(page, "¿Dónde querés celebrar?", "ar", true); await click(page, "Buscar lugares"); await contains(page, "Espacio de prueba"); await ready(page);
+    evidence.checks.push("real pagination forward/back", "approved name/category/Argentina region/guest search", "keyboard tab and enter submit", "unknown capacity is excluded without inventing zero", "empty state and revise search");
 
-    failList = true; await click(page, "Buscar"); await contains(page, "No pudimos cargar el directorio");
+    failList = true; await click(page, "Buscar lugares"); await contains(page, "No pudimos cargar el directorio");
     await screenshot(page, "09-retry.png", '[role="alert"]'); failList = false;
     await click(page, "Volver a intentar"); await contains(page, "Página 1"); await ready(page);
     evidence.checks.push("network failure removes results; explicit retry recovers");
+    await page.setViewport(mobile); await screenshot(page, "10-venues-mobile.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
+    await click(page, "Mapa"); await screenshot(page, "11-venues-mobile-map.png", 'aside[aria-label="Mapa de los resultados"]');
+    await click(page, "Lista"); await page.setViewport(desktop);
+    evidence.checks.push("venue results switch between list and map on mobile without overflow");
 
     await page.goto(`${origin}/proveedor/?id=${encodeURIComponent(venue.id)}`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[aria-label="Ficha aprobada del negocio"]'); await contains(page, venueDraft.nombre); await loadedImages(page, 2);

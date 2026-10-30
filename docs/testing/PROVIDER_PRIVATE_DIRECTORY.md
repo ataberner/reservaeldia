@@ -182,3 +182,127 @@ flujo, no una prueba de escalabilidad. Se conservan además los límites histór
 del hito 1 (Q1, A/B de responsables futuros, importación, correo, pagos y auditoría
 completa de accesibilidad); no son tests aprobados ni bloqueos automáticos de este
 desarrollo.
+
+## Rediseño de búsqueda de lugares — 2026-10-30
+
+**Estado:** implementación y verificación local en
+`codex/lugares-busqueda-mapa`, desde `origin/main` (`7fc2d2e8`). Esta sección no
+acredita integración ni despliegue del rediseño. El alcance funcional y los
+límites de la búsqueda corresponden a
+[PROVIDER_DATA_MODEL §10.4.1](../architecture/PROVIDER_DATA_MODEL.md#1041-directorio-privado-de-versiones-aprobadas);
+el mapa visual y sus owners se describen en
+[LANDING_DASHBOARD_STYLING_MAP](../architecture/LANDING_DASHBOARD_STYLING_MAP.md).
+
+El recorrido comienza con tipo de lugar, cantidad de invitados y zona/provincia
+argentina. Los resultados se solicitan después de enviar el formulario; el
+catálogo y el control de acceso se consultan antes. La nueva composición mantiene
+`MarketplaceHeader` y `AppHeader`, y conserva los guards de las rutas, las
+Functions de autorización y las lecturas de fotos aprobadas. No se modificó la
+configuración de beta ni se utilizaron proveedores reales para probar el diseño.
+
+### Evidencia focalizada
+
+Runtime local: **Node 22.23.4**. Pruebas frontend offline con React/JSDOM y
+colaboradores sintéticos; no corresponden a sesiones autenticadas productivas.
+
+| Comprobación | Resultado y alcance |
+| --- | --- |
+| Modelo/presentación/hooks, gates de lugares/profesionales y nueva landing | **29/29 PASS**: `src/domain/providers/directoryModel.test.mjs`, `src/components/marketplace/providerDirectory.test.mjs`, `src/pages/lugares.test.mjs`, `src/pages/profesionales.test.mjs`, `src/components/venues/VenuesLanding.test.mjs`. Incluye carga diferida, invitados y región, filtros aplicados, reinicio de cursor, descarte de respuesta antigua, vacío/error/reintento, selección de mapa y ausencia de consultas/datos cuando el gate cierra. |
+| Búsqueda backend de directorio | **17/17 PASS**: `functions/providersDirectory.test.mjs`. Incluye catálogo argentino, zonas GBA, país contradictorio, capacidad desconocida y mínimo confirmado, contenido aprobado y compatibilidad de cursores; detalles y límites en el contrato canónico. |
+| Compilación de Functions | **PASS**: `functions/scripts/buildContracts.cjs`, con 82 copias verificadas. Lint focalizado de las seis fuentes backend afectadas: **PASS**. |
+| Mapa: proyección, interacción y selección | **9/9 PASS**: `src/components/venues/venueMapModel.test.mjs`. Sin red: proyección Mercator, límites, tiles sólo del viewport, coordenadas aprobadas, agrupación por proximidad/zoom sin perder fichas ni inventar posiciones, zoom/teclado, selección externa, limpieza al cambiar de página y reintento. Un caso nuevo reprodujo el cierre indebido de la selección al medir/mostrar el mapa; se corrigió la coordinación con resize. La revisión móvil detectó intercepción entre pines próximos; el agrupamiento y las etiquetas sin área clickeable adicional corrigen ese caso. |
+| Ownership de Functions | **PASS**: tres builds, **41/41** tests de ownership/paquetes/configuración y discovery CLI real (`default` 108 / `payments` 3 / `email` 3) del snapshot local; no es inventario remoto. Node 22.23.4 y CLI fijada 14.4.0. Evidencia `.local-isolation/ownership-evidence/run-eCXcNR/result.json`. |
+| Recorrido CI de directorio | Fuente de `scripts/local/providerDirectory.browser.test.mjs` adaptada al formulario inicial y las etiquetas nuevas; sintaxis **PASS**. No se ejecutó nuevamente el escenario con emuladores en esta verificación focalizada. Conserva las comprobaciones de login, permisos, revisión aprobada, fotos, pausa y contacto; agrega navegación lista/mapa móvil y una ficha de capacidad desconocida excluida al indicar invitados. |
+
+Comando frontend reproducible, desde el worktree con las dependencias existentes:
+
+```powershell
+& 'C:\Reservaeldia\.local-isolation\tool-cache\node-v22.23.4-win-x64\node.exe' --test `
+  src/domain/providers/directoryModel.test.mjs `
+  src/components/marketplace/providerDirectory.test.mjs `
+  src/pages/lugares.test.mjs src/pages/profesionales.test.mjs `
+  src/components/venues/VenuesLanding.test.mjs
+```
+
+### Fixture visual y límites de esta evidencia
+
+La vista local está en `.local-isolation/venue-search-design/`, excluida de Git.
+`server.cjs` compila la ruta, header, componentes, hook y estilos actuales, con
+Firebase/Auth/directorio reemplazados por adapters sintéticos. Se reutilizan
+Bootstrap y fuentes cacheados; el servidor escucha sólo en loopback. Incluye 20
+fichas de prueba neutrales, 15 compatibles con 150 invitados (páginas 12 + 3),
+variantes sin coordenadas y el catálogo de 28 regiones generado desde la fuente
+backend. No inventa fotografías para las fichas. El hero usa arte editorial
+ilustrativo del sitio, rotulado como tal.
+
+El fixture no usa credenciales ni servicios Firebase. Su CSP permite únicamente
+los tiles públicos de OpenStreetMap como imágenes externas para la revisión
+manual del mapa; los datos de fichas, marcadores y selección permanecen locales.
+Los tests automáticos del modelo y componente de mapa son offline y no descargan
+tiles. La simulación de búsqueda del fixture acredita presentación e interacción,
+no sustituye el comportamiento de la Function real ni una comprobación productiva.
+`build-manifest.json` identifica las fuentes y hashes del bundle observado.
+
+Recorrido manual en Chrome sobre ese fixture: portada sin fichas antes de
+buscar; búsqueda de 150 invitados en toda Argentina; páginas de 12 y 3 fichas,
+avance y regreso; búsqueda sin coincidencias en CABA; selección de una ficha
+en el mapa y apertura del grupo de nueve ubicaciones próximas con sus enlaces
+de detalle. Se revisaron escritorio (1536 × 695), tablet (1024 × 768) y móvil
+(390 × 844 y 320 × 740), sin desborde horizontal. En móvil se comprobó el cambio
+Lista/Mapa y la selección del grupo. El header conserva sus fuentes y componentes
+sin cambios. Los enlaces de detalle se comprobaron en el DOM; el fixture no
+sirve la pantalla real de detalle ni acredita ese recorrido productivo.
+
+Capturas locales reales de la interfaz con datos sintéticos, dentro de
+`.local-isolation/venue-search-design/`: `hero-desktop.jpg`,
+`results-desktop.jpg`, `hero-mobile.jpg`, `results-mobile.jpg` y `map-mobile.jpg`.
+No contienen proveedores reales ni se incorporan a Git. La vista local para
+revisión escucha en `http://127.0.0.1:64337/lugares/` mientras el proceso de
+preview permanezca activo.
+
+El gate completo de CI y el recorrido con emuladores conservan sus
+obligaciones antes de integrar/publicar; no se declaran aprobados por estos tests
+focalizados. El gate de ownership sí fue ejecutado y pasó como se detalla arriba; su snapshot se conservó porque una fuente de test frontend cambió durante la ejecución, sin alterar el backend congelado verificado. La falta de una cuenta común productiva y la carga de fotos
+productiva diferida siguen siendo las limitaciones ya acordadas con el usuario,
+sin convertirse en bloqueos ni pruebas aprobadas de este rediseño.
+
+**Precaución de integración comprobada:** el workflow de `main` publica Hosting.
+La composición acotada vigente cubre únicamente el panel administrativo; cambios
+de `/lugares/` caerían en el flujo de exportación completo. Antes de integrar se
+debe preparar una publicación que preserve los cambios ajenos ya desplegados y
+que aplique primero la Function de búsqueda compatible. No se deben publicar
+Rules ni Functions ajenas a esta entrega para resolver esa diferencia.
+
+### Integración autorizada y cierre de verificaciones — 2026-10-30
+
+El pedido posterior autoriza integrar y desplegar el rediseño de forma privada.
+El candidato `458518a0` pasó el workflow
+[41084438656](https://github.com/ataberner/reservaeldia/actions/runs/41084438656)
+antes de abrir PR: `verify:local` completo y búsqueda administrativa suplementaria.
+La evidencia descargada conserva el manifiesto de fuentes y resultados por etapa:
+ownership 41/41, contratos 29/29, compatibilidad 447/447, Rules 2283/2283,
+integración 23/23, administración API 11/11 y directorio API 9/9, además de los
+recorridos browser de parejas, administración y directorio. El suplemento de
+búsqueda administrativa pasó 32 unitarios, 6 API y su recorrido browser.
+
+El browser del directorio verificó búsqueda de invitados/región, paginación,
+vacío/error/reintento, teclado, Lista/Mapa móvil, detalle/fotos exclusivamente
+aprobados, retirada por pausa o cierre, denegación de cuenta común y claim admin,
+y destino habitual del login. Son pruebas con emuladores, no cuentas productivas.
+El intento Windows equivalente se interrumpió de forma controlada tras confirmar
+el PASS de CI; no se registra como un gate local aprobado. Sus resultados y la
+comprobación de cierre de procesos se conservan separadamente.
+
+La revisión de publicación encontró un riesgo entre builds distintos de Next:
+los enlaces cliente podían cargar una versión anterior al entrar al dashboard o
+volver al buscador. Se añadió navegación documental opt-in al adaptador del
+header, conservando su aspecto y el comportamiento por defecto de otros
+consumidores. El detalle vuelve mediante enlace nativo. Pasaron 26/26 pruebas
+focalizadas de navegación/header/directorio (incluyen 11 del grupo anterior),
+y 18/18 del compositor y selector de alcance. La publicación incluye sólo los
+HTML de lugares y detalle, más recursos nuevos; preserva todos los otros bytes.
+
+El estado remoto, la secuencia backend → Hosting y la recuperación se registran
+en [deployment/venues](../../deployment/venues/README.md). Los gates de CI/PR y el
+export de preparación conservan sus obligaciones; esta sección no sustituye
+sus resultados ni acredita por sí misma un despliegue.

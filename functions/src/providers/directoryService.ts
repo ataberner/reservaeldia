@@ -4,6 +4,7 @@ import { requireSuperAdmin } from "../auth/adminAuth";
 import { PROVIDER_CATEGORY_CATALOG } from "./config";
 import { PROVIDER_BETA_CONFIG_PATH, PROVIDER_SERVICES, PROVIDER_VENUE_FEATURES, VENUE_CATEGORY_IDS, providerBetaControls, providerRecord } from "./betaModel";
 import { approvedDirectoryProvider, directoryContent, directoryProviderId, normalizeDirectoryFilters, scanDirectoryPage, serializeDirectory, type DirectoryCategory } from "./directoryModel";
+import { DIRECTORY_REGIONS } from "./directoryRegions";
 
 export async function requirePrivateDirectory(db: Firestore): Promise<void> {
   const config = await db.doc(PROVIDER_BETA_CONFIG_PATH).get();
@@ -34,7 +35,7 @@ export async function providerDirectoryHandler(request: CallableRequest<unknown>
   }
   await requirePrivateDirectory(db);
   const categories = await readDirectoryCategories(db);
-  if (data.operation === "catalog") return { categories, services: PROVIDER_SERVICES, features: PROVIDER_VENUE_FEATURES };
+  if (data.operation === "catalog") return { categories, services: PROVIDER_SERVICES, features: PROVIDER_VENUE_FEATURES, regions: DIRECTORY_REGIONS };
   if (data.operation === "get") {
     const provider = await readApprovedDirectoryProvider(db, directoryProviderId(data.id), categories);
     return serializeDirectory({ id: provider.id, approvedRevision: provider.approvedRevision, content: directoryContent(provider.content), private: true });

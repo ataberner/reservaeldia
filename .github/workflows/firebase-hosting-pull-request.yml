@@ -21,9 +21,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.node-version'
+      - name: Select reviewed publication scope
+        id: scope
+        env:
+          BEFORE: ${{ github.event.pull_request.base.sha }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/selectProviderHostingScope.cjs "$BEFORE" "$AFTER"
       - uses: actions/cache@v4
         with:
           path: .hosting-static-history
@@ -36,27 +44,30 @@ jobs:
             exit 1
           fi
           npm ci
-          node --test scripts/prepareProviderPanelHosting.test.cjs
+          node --test scripts/prepareProviderPanelHosting.test.cjs scripts/selectProviderHostingScope.test.cjs
           npm run build
         env:
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
       # Exercise this release's preservation against the actual live inventory
       # before merging. This reads live Hosting; deployment remains a PR preview.
-      - name: Validate provider panel preservation before integration
-        if: github.head_ref == 'feat/proveedores-panel-compacto'
-        run: node scripts/prepareProviderPanelHosting.cjs prepare
+      - name: Validate selected page preservation before integration
+        if: steps.scope.outputs.scope != 'full'
+        run: node scripts/prepareProviderPanelHosting.cjs prepare "$PUBLICATION_SCOPE"
         env:
+          PUBLICATION_SCOPE: ${{ steps.scope.outputs.scope }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RESERVAELDIA_7A440 }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RESERVAELDIA_7A440 }}
           projectId: reservaeldia-7a440
-      - name: Preserve provider panel preparation evidence
-        if: always() && github.head_ref == 'feat/proveedores-panel-compacto'
+      - name: Preserve scoped preparation evidence
+        if: always() && (steps.scope.outputs.scope == 'panel' || steps.scope.outputs.scope == 'venues')
         uses: actions/upload-artifact@v4
         with:
-          name: provider-panel-preview-${{ github.run_id }}
-          path: .local-isolation/provider-panel-hosting.json
+          name: scoped-preview-${{ steps.scope.outputs.scope }}-${{ github.run_id }}
+          path: |
+            .local-isolation/provider-panel-hosting.json
+            .local-isolation/venues-hosting.json
           include-hidden-files: true
           retention-days: 14

@@ -4,6 +4,7 @@ on:
     branches:
       - feat/proveedores-directorio-privado
       - fix/busqueda-administrativa-proveedores
+      - codex/lugares-busqueda-mapa
 permissions:
   contents: read
 concurrency:

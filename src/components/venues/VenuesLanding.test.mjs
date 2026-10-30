@@ -90,9 +90,14 @@ test("category shortcut selects a real category and guest constraints reject emp
 test("pagination uses applied filters and a changed search restarts at page one", async () => {
   await harness({ list: async data => ({ items: [{ ...item, id: data.cursor ? "second" : item.id }], nextCursor: data.cursor ? null : "cursor-page-two" }) }, async ({ host, requests, input, select, search, click }) => {
     await input("input[name='guests']", "150"); await select("select[name='region']", "ar"); await search();
+    const cards = host.querySelector("[aria-busy]");
+    cards.scrollTop = 600;
     await click("Siguiente"); assert.equal(requests.at(-1).data.cursor, "cursor-page-two"); assert.match(host.textContent, /Página 2/);
+    assert.equal(cards.scrollTop, 0, "The next page starts at the first card");
+    cards.scrollTop = 350;
     await select("select[name='region']", "gba-norte"); await input("input[type='search']", "Jardín"); await search();
     assert.equal(requests.at(-1).data.cursor, null); assert.equal(requests.at(-1).data.regionId, "gba-norte"); assert.equal(requests.at(-1).data.search, "Jardín");
+    assert.equal(cards.scrollTop, 0, "A new search resets the card scrollport");
     assert.match(host.textContent, /Página 1/); assert.equal(host.querySelector("input[type='search']").form.id, "venue-search");
     await click("Ubicar Lugar sintético aprobado en el mapa");
     assert.equal(host.querySelector("[data-selected]").getAttribute("data-selected"), item.id);

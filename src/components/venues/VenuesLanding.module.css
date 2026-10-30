@@ -3,6 +3,7 @@
   --venue-ink: #262626;
   --venue-muted: #6e6775;
   --venue-border: #e8e3eb;
+  --venue-results-surface: #fbf7f9;
   width: 100%;
   min-height: calc(100dvh - 80px);
   background: #fff;
@@ -18,7 +19,7 @@
 .root button:disabled { cursor: default; opacity: .55; }
 .root a { color: inherit; }
 .root button:focus-visible, .root a:focus-visible, .root input:focus-visible, .root select:focus-visible { outline: 3px solid var(--venue-primary); outline-offset: 3px; }
-.searchMode { padding-bottom: 24px; }
+.searchMode { padding-bottom: 24px; background: var(--venue-results-surface); }
 .root .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); align-items: center; width: min(1360px, calc(100% - 96px)); margin: 36px auto 0; padding-bottom: 102px; }
 .heroContent { padding: 24px 48px 58px 0; }
 .eyebrow { margin: 0 0 19px; color: var(--venue-primary); font-size: 12px; font-weight: 600; line-height: 19px; letter-spacing: 1.5px; text-transform: uppercase; }
@@ -58,7 +59,7 @@
 .categoryChoice span { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; line-height: 22px; }
 .categoryChoice > svg:last-child { flex-shrink: 0; color: #96899f; }
 .privateFootnote { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 29px 0 0; color: #817988; font: 13px/20px "Source Sans 3", sans-serif; }
-.root .searchBand { padding: 10px 32px 18px; border-top: 1px solid #f0ebf2; border-bottom: 1px solid var(--venue-border); background: #fbf7f9; }
+.root .searchBand { padding: 10px 32px 18px; background: transparent; }
 .searchBandHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1500px, 100%); margin: 0 auto 10px; }
 .searchBandHeading button { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--venue-primary); font-size: 13px; line-height: 20px; }
 .back { font-weight: 500; }
@@ -67,7 +68,7 @@
 .compactForm .searchField { min-height: 52px; padding-top: 3px; padding-bottom: 3px; }
 .compactForm .searchButton { min-height: 50px; }
 .searchBand .searchHint { width: min(1472px, calc(100% - 28px)); margin-right: auto; margin-left: auto; }
-.root .discovery { width: min(1564px, 100%); margin: 0 auto; padding: 22px 32px; }
+.root .discovery { width: min(1564px, 100%); margin: 0 auto; padding: 12px 32px 22px; background: transparent; }
 .resultsToolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 22px; }
 .resultsToolbar h1, .resultsToolbar h2 { margin: 0; color: var(--venue-ink); font-size: 24px; font-weight: 500; line-height: 31px; letter-spacing: -.5px; }
 .resultsTitle { scroll-margin-top: 24px; }
@@ -78,6 +79,7 @@
 .nameSearch input::placeholder { color: #857b8c; }
 .resultsLayout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 28px; width: 100%; }
 .results { min-width: 0; }
+.results:focus-visible { outline: 2px solid var(--venue-primary); outline-offset: -2px; }
 .venueGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 26px 20px; }
 .venueCard { min-width: 0; overflow: hidden; border: 1px solid var(--venue-border); border-radius: 14px; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
 .venueCard:hover { border-color: #ceb7dd; box-shadow: 0 6px 20px #35213f09; }
@@ -101,7 +103,7 @@
 .pagination button { min-height: 40px; padding: 9px 13px; border: 1px solid var(--venue-border); border-radius: 8px; background: #fff; color: var(--venue-primary); font-size: 13px; }
 .pagination button { display: inline-flex; align-items: center; gap: 6px; }
 .pagination button:hover:not(:disabled) { border-color: #c6a6da; background: #faf5ff; }
-.mapColumn { position: sticky; top: 16px; min-width: 0; }
+.mapColumn { min-width: 0; }
 .mapHint { margin: 9px 4px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 310px; padding: 32px 24px; border: 1px solid var(--venue-border); border-radius: 14px; background: #fbf7f9; text-align: center; }
 .empty > svg { margin-bottom: 18px; color: #9a79ad; }
@@ -116,6 +118,26 @@
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; margin: -1px; padding: 0; border: 0; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 @keyframes venueSpin { to { transform: rotate(360deg); } }
 @keyframes venueSkeleton { to { background-position: -200% 0; } }
+
+/* Results own the desktop scrollport; the existing header keeps its natural
+   height and menus. No body or shared header scroll rules are changed. */
+@media (min-width: 768px) and (min-height: 600px) {
+  .resultsPage { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; }
+  .searchMode { display: flex; flex-direction: column; min-height: 0; padding-bottom: 0; overflow: hidden; }
+  .searchBand, .resultsToolbar { flex-shrink: 0; }
+  .root .discovery { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  .resultsLayout { flex: 1; min-height: 0; }
+  .results { height: 100%; min-height: 0; padding: 2px 12px 8px 2px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .mapColumn { display: flex; flex-direction: column; height: 100%; min-height: 0; --venue-map-height: auto; --venue-map-min-height: 0; }
+  .mapColumn > section { flex: 1; min-height: 0; }
+  .mapHint { flex-shrink: 0; }
+}
+
+/* Short landscape screens retain document scrolling so filters cannot consume
+   the only available space for the results. */
+@media (min-width: 768px) and (max-height: 599px) {
+  .mapColumn { position: sticky; top: 16px; --venue-map-height: max(240px, calc(100dvh - 100px)); --venue-map-min-height: 240px; }
+}
 
 @media (max-width: 1279px) {
   .root .hero, .root .explore { width: calc(100% - 64px); }

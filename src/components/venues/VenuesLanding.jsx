@@ -18,6 +18,7 @@ export default function VenuesLanding({ user }) {
   const [selectedId, setSelectedId] = useState(null);
   const formRef = useRef(null);
   const resultsRef = useRef(null);
+  const cardsRef = useRef(null);
   const categories = (state.catalog?.categories || []).filter((category) => category.tipo === "lugar");
   const regions = state.catalog?.regions || [];
   const region = regions.find((entry) => entry.id === state.appliedFilters.regionId);
@@ -27,6 +28,7 @@ export default function VenuesLanding({ user }) {
   function search(event) {
     event.preventDefault();
     setSearched(true); setSelectedId(null);
+    if (cardsRef.current) cardsRef.current.scrollTop = 0;
     void state.search();
     requestAnimationFrame(() => resultsRef.current?.focus());
   }
@@ -37,12 +39,13 @@ export default function VenuesLanding({ user }) {
   async function paginate(direction) {
     setSelectedId(null);
     await state.paginate(direction);
+    if (cardsRef.current) cardsRef.current.scrollTop = 0;
     resultsRef.current?.focus();
   }
   function selectOnMap(id) { setSelectedId(id); setMobileView("map"); }
   const visibleItems = state.status === "ready" ? state.items : [];
 
-  return <>
+  return <div className={searched ? styles.resultsPage : undefined}>
     <MarketplaceHeader user={user} current="venues" />
     <main className={`${styles.root} ${searched ? styles.searchMode : ""}`}>
       {!searched ? <section className={styles.hero} aria-labelledby="venues-title">
@@ -84,7 +87,7 @@ export default function VenuesLanding({ user }) {
           <div className={styles.mobileSwitch} aria-label="Vista de resultados"><button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}><LayoutGrid size={16} aria-hidden="true" />Lista</button><button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}><Map size={16} aria-hidden="true" />Mapa</button></div>
         </div>
         <div className={styles.resultsLayout}>
-          <div className={`${styles.results} ${mobileView === "map" ? styles.hiddenOnMobile : ""}`} aria-busy={state.busy}>
+          <div ref={cardsRef} className={`${styles.results} ${mobileView === "map" ? styles.hiddenOnMobile : ""}`} role="region" aria-label="Lista de lugares" tabIndex={0} aria-busy={state.busy}>
             {state.status !== "ready" ? <ProviderDirectoryStatus state={state} /> : state.busy ? <div className={styles.loadingGrid} role="status" aria-label="Buscando lugares"><div /><div /><div /><div /></div> : !state.items.length ? <div className={styles.empty}><SlidersHorizontal size={28} aria-hidden="true" /><h2>Todavía no encontramos ese lugar</h2><p>Probá otra zona o tipo de lugar. Mostramos sólo fichas aprobadas con capacidad informada para la cantidad de invitados que elegiste.</p><button type="button" onClick={() => formRef.current?.querySelector("select")?.focus()}>Revisar mi búsqueda <ArrowRight size={16} aria-hidden="true" /></button></div> : <div className={styles.venueGrid}>{state.items.map((provider) => <VenueResultCard key={provider.id} provider={provider} categories={categories} selected={selectedId === provider.id} onSelect={selectOnMap} />)}</div>}
             {state.status === "ready" && <nav className={styles.pagination} aria-label="Páginas de resultados"><span>Página {state.page}</span><div><button type="button" disabled={state.busy || state.page <= 1} onClick={() => void paginate(-1)}>Anterior</button><button type="button" disabled={state.busy || !state.nextCursor} onClick={() => void paginate(1)}>Siguiente <ArrowRight size={15} aria-hidden="true" /></button></div></nav>}
           </div>
@@ -95,5 +98,5 @@ export default function VenuesLanding({ user }) {
         </div>
       </section>}
     </main>
-  </>;
+  </div>;
 }

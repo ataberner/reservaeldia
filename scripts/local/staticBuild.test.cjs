@@ -84,7 +84,7 @@ test("static export server contains paths, uses local CSP and only permits reads
   }
 });
 
-test("evidence collection retains only approved editor PNGs and excludes arbitrary files and profiles", () => {
+test("evidence collection retains approved editor/directory PNGs and excludes arbitrary files and profiles", () => {
   const { Evidence } = require("./evidence.cjs");
   const base = path.join(ROOT, ".local-isolation");
   fs.mkdirSync(base, { recursive: true });
@@ -105,9 +105,15 @@ test("evidence collection retains only approved editor PNGs and excludes arbitra
     }
     const report = { status: "passed", screenshots: approved };
     fs.writeFileSync(path.join(session, "editor-flow-evidence.json"), JSON.stringify(report));
+    const directoryCaptures = path.join(session, "provider-directory-screenshots");
+    fs.mkdirSync(directoryCaptures);
+    const directoryApproved = ["10-venues-mobile.png", "11-venues-mobile-map.png"];
+    for (const name of [...directoryApproved, "unapproved.png", "browser.har"]) fs.writeFileSync(path.join(directoryCaptures, name), Buffer.from(`synthetic-directory:${name}`));
     const evidence = new Evidence(fixture, "synthetic-collection", []);
     evidence.collect(session);
-    assert.deepEqual(fs.readdirSync(evidence.directory).sort(), ["editor-flow-evidence.json", "editor-flow-screenshots", "result.json"]);
+    assert.deepEqual(fs.readdirSync(evidence.directory).sort(), ["editor-flow-evidence.json", "editor-flow-screenshots", "provider-directory-screenshots", "result.json"]);
+    assert.deepEqual(fs.readdirSync(path.join(evidence.directory, "provider-directory-screenshots")).sort(), directoryApproved.toSorted());
+    for (const name of directoryApproved) assert.deepEqual(fs.readFileSync(path.join(evidence.directory, "provider-directory-screenshots", name)), fs.readFileSync(path.join(directoryCaptures, name)));
     assert.deepEqual(fs.readdirSync(path.join(evidence.directory, "editor-flow-screenshots")).sort(), approved.toSorted());
     for (const name of approved) {
       assert.deepEqual(fs.readFileSync(path.join(evidence.directory, "editor-flow-screenshots", name)), fs.readFileSync(path.join(captures, name)));

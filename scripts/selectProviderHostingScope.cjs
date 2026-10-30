@@ -25,6 +25,7 @@ const venues = new Set([
   "src/components/venues/VenuesLanding.test.mjs", "src/components/venues/venueMapModel.js",
   "src/components/venues/venueMapModel.test.mjs", "src/components/marketplace/useProviderDirectory.js",
   "src/components/marketplace/providerDirectory.test.mjs", "scripts/local/providerDirectory.browser.test.mjs",
+  "scripts/local/evidence.cjs", "scripts/local/staticBuild.test.cjs",
   "src/components/appHeader/AppHeader.jsx", "src/components/marketplace/MarketplaceHeader.jsx",
   "src/components/marketplace/ProviderDirectoryDetail.jsx",
   "src/components/marketplace/MarketplaceHeaderNavigation.test.mjs",

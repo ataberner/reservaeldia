@@ -115,6 +115,49 @@ test("contact revalidates exact approval and clears paused content instead of us
   });
 });
 
+test("venue discovery reads access/catalog first and queries guests/region only after submitting", async () => {
+  const requests = [];
+  await withHook({ kind: "lugar", userUid: "super", deferInitialList: true }, async (operation, data) => {
+    requests.push({ operation, data });
+    if (operation === "access") return { enabled: true };
+    if (operation === "catalog") return catalog;
+    return { items: [{ id: "approved" }], nextCursor: data.cursor ? null : "page-two" };
+  }, async ({ state }) => {
+    assert.deepEqual(requests.map(({ operation }) => operation), ["access", "catalog"]);
+    assert.equal(state().status, "ready");
+    await act(async () => state().search({ ...model.EMPTY_DIRECTORY_FILTERS, guests: "150", regionId: "gba-norte" }));
+    assert.equal(requests.at(-1).data.guests, 150);
+    assert.equal(requests.at(-1).data.regionId, "gba-norte");
+    assert.equal(state().appliedFilters.guests, 150);
+    await act(async () => state().paginate(1));
+    assert.equal(requests.at(-1).data.cursor, "page-two");
+    assert.equal(state().page, 2);
+    await act(async () => state().search({ ...model.EMPTY_DIRECTORY_FILTERS, guests: "80", regionId: "caba" }));
+    assert.equal(requests.at(-1).data.cursor, null);
+    assert.equal(state().page, 1);
+    await act(async () => state().reload());
+    assert.equal(requests.at(-1).operation, "list");
+    assert.equal(requests.at(-1).data.regionId, "caba");
+  });
+});
+
+test("a superseded venue search cannot replace a more recent region or result", async () => {
+  let resolveOld;
+  await withHook({ kind: "lugar", userUid: "super", deferInitialList: true }, async (operation, data) => {
+    if (operation === "access") return { enabled: true };
+    if (operation === "catalog") return catalog;
+    if (data.regionId === "gba-norte") return new Promise((resolve) => { resolveOld = resolve; });
+    return { items: [{ id: "current-caba" }], nextCursor: null };
+  }, async ({ state }) => {
+    await act(async () => { void state().search({ ...model.EMPTY_DIRECTORY_FILTERS, guests: "150", regionId: "gba-norte" }); });
+    await act(async () => state().search({ ...model.EMPTY_DIRECTORY_FILTERS, guests: "80", regionId: "caba" }));
+    await act(async () => resolveOld({ items: [{ id: "stale-norte" }], nextCursor: "stale" }));
+    assert.deepEqual(state().items, [{ id: "current-caba" }]);
+    assert.equal(state().appliedFilters.regionId, "caba");
+    assert.equal(state().nextCursor, null);
+  });
+});
+
 test("an old-account response cannot populate the next account view", async () => {
   let resolveOld; let listCount = 0;
   await withHook({ kind: "profesional", userUid: "first" }, async (operation) => {

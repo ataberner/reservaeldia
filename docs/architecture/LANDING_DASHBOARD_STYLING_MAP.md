@@ -312,6 +312,19 @@ not event-date availability. Desktop cards use three/two columns and mobile one;
 detail contact controls stay in document flow. Unknown capacity/venue booleans
 remain explicit unknowns. The approved detail omits empty optional blocks.
 
+Local redesign, 2026-10-30 (not deployed): the venue composition now starts with
+an editorial hero and `VenueSearchForm` (type/guests/Argentine region), followed
+by `VenueResultCard` results and a real `VenueResultsMap` after submission.
+`VenuesLanding.module.css` owns the hero, form, cards and responsive composition;
+`VenueResultsMap.module.css` owns map geometry/controls. The old illustrative
+`VenuesMap.jsx` remains unmounted. The shared header and its styles are unchanged.
+The hero reuses a cropped panel of the existing wedding artwork, explicitly
+illustrative; provider cards continue using approved authenticated images and
+neutral missing-photo fallbacks. Desktop results have two card columns on the
+left and a sticky map on the right. Tablet reduces cards to one column; mobile
+offers an accessible List/Map switch. No global CSS or professional-page redesign.
+Functional filter/geography/map rules remain in the provider contract above.
+
 Local frontend verification: `node --test
 src/domain/providers/directoryModel.test.mjs
 src/components/marketplace/providerDirectory.test.mjs

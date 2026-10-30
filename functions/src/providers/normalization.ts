@@ -102,6 +102,18 @@ const ARGENTINA_LEVEL1_BY_NORMALIZED_NAME: Readonly<
   },
 });
 
+/** The directory reuses the importer's reviewed province names and aliases. */
+export function argentinaProvinces(): ArgentinaLevel1[] {
+  return [...new Map(Object.values(ARGENTINA_LEVEL1_BY_NORMALIZED_NAME).map(province => [province.codigo, province])).values()]
+    .map(province => ({ ...province }));
+}
+
+export function argentinaProvince(value: unknown): ArgentinaLevel1 | null {
+  const name = normalizeSearchText(value).replace(/^provincia de /, "");
+  return (Object.prototype.hasOwnProperty.call(ARGENTINA_LEVEL1_BY_NORMALIZED_NAME, name) ? ARGENTINA_LEVEL1_BY_NORMALIZED_NAME[name] : null) ||
+    Object.values(ARGENTINA_LEVEL1_BY_NORMALIZED_NAME).find(province => normalizeSearchText(province.codigo) === name) || null;
+}
+
 export function normalizeWhitespace(value: unknown): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }

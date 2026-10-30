@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import { HttpsError } from "firebase-functions/v2/https";
 import { providerRecord, sanitizeProviderPublicSnapshot, VENUE_CATEGORY_IDS } from "./betaModel";
 import { normalizeSearchText } from "./normalization";
+import { directoryRegionExists, matchesDirectoryRegion } from "./directoryRegions";
 
 type Data = Record<string, unknown>;
 export type DirectoryCategory = { id: string; nombre: string; orden: number; tipo: "lugar" | "profesional" };
-export type DirectoryFilters = { kind: "lugar" | "profesional"; search: string; location: string; categoryId: string; minCapacity: number | null; pageSize: number };
+export type DirectoryFilters = { kind: "lugar" | "profesional"; search: string; location: string; categoryId: string; minCapacity: number | null; regionId: string; guests: number | null; pageSize: number };
 export type ApprovedDirectoryProvider = { id: string; approvedRevision: number; content: Data };
 export const DIRECTORY_SCAN_LIMIT = 5000;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$/;
@@ -27,10 +28,16 @@ export function normalizeDirectoryFilters(data: Data, categories: DirectoryCateg
   if (categoryId && !categories.some(category => category.id === categoryId && category.tipo === data.kind)) throw new HttpsError("invalid-argument", "La categoría no está disponible en este directorio.");
   const minCapacity = data.minCapacity == null || data.minCapacity === "" ? null : data.minCapacity;
   if (minCapacity !== null && (data.kind !== "lugar" || !Number.isSafeInteger(minCapacity) || Number(minCapacity) < 1 || Number(minCapacity) > 100000)) throw new HttpsError("invalid-argument", "La capacidad debe ser un número entero positivo para lugares.");
-  return { kind: data.kind, search: filterText(data.search), location: filterText(data.location), categoryId, minCapacity: minCapacity === null ? null : Number(minCapacity), pageSize: Number(pageSize) };
+  const regionId = data.regionId == null || data.regionId === "" ? "" : data.regionId;
+  if (typeof regionId !== "string" || (regionId && (data.kind !== "lugar" || !directoryRegionExists(regionId)))) throw new HttpsError("invalid-argument", "Elegí una zona de Argentina disponible.");
+  const guests = data.guests == null || data.guests === "" ? null : data.guests;
+  if (guests !== null && (data.kind !== "lugar" || !Number.isSafeInteger(guests) || Number(guests) < 1 || Number(guests) > 100000)) throw new HttpsError("invalid-argument", "La cantidad de invitados debe ser un número entero positivo.");
+  return { kind: data.kind, search: filterText(data.search), location: filterText(data.location), categoryId, minCapacity: minCapacity === null ? null : Number(minCapacity), regionId, guests: guests === null ? null : Number(guests), pageSize: Number(pageSize) };
 }
 function filterHash(filters: DirectoryFilters): string {
-  return createHash("sha256").update(JSON.stringify(filters)).digest("hex");
+  const { regionId, guests, ...legacy } = filters;
+  // Existing clients keep valid cursors when neither new venue criterion applies.
+  return createHash("sha256").update(JSON.stringify(!regionId && guests === null ? legacy : filters)).digest("hex");
 }
 export function encodeDirectoryCursor(lastId: string, filters: DirectoryFilters): string {
   return Buffer.from(JSON.stringify({ version: 1, lastId: directoryProviderId(lastId), filters: filterHash(filters) })).toString("base64url");
@@ -87,6 +94,12 @@ export function matchesDirectoryFilters(provider: ApprovedDirectoryProvider, fil
   if (filters.categoryId && !(Array.isArray(content.categoriaIds) && content.categoriaIds.includes(filters.categoryId))) return false;
   const capacity = providerRecord(content.espacio).capacidadMaxima;
   if (filters.minCapacity !== null && !(typeof capacity === "number" && Number.isFinite(capacity) && capacity >= filters.minCapacity)) return false;
+  if (filters.guests !== null) {
+    const minimum = providerRecord(content.espacio).capacidadMinima;
+    if (!(typeof capacity === "number" && Number.isFinite(capacity) && capacity >= filters.guests)) return false;
+    if (typeof minimum === "number" && Number.isFinite(minimum) && minimum > filters.guests) return false;
+  }
+  if (!matchesDirectoryRegion(location, filters.regionId)) return false;
   if (filters.search && !normalizeSearchText([content.nombre, content.descripcionCorta].join(" ")).includes(filters.search)) return false;
   const serviceAreas = !venue && Array.isArray(content.cobertura) ? content.cobertura : [];
   return !filters.location || normalizeSearchText([location.ciudad, location.provincia, ...serviceAreas].join(" ")).includes(filters.location);

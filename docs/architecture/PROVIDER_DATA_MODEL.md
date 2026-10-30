@@ -1241,6 +1241,35 @@ dispositivo. Las Rules SDK restrictivas del hito 1 se conservan.
 La evidencia local y sus limitaciones se registran en
 [verificación del directorio privado](../testing/PROVIDER_PRIVATE_DIRECTORY.md).
 
+**Evolución aceptada, 2026-10-30 — búsqueda de lugares (implementada localmente,
+despliegue pendiente):** `/lugares/` primero pregunta tipo de lugar, cantidad de
+invitados y zona argentina; recién al enviar consulta fichas. El catálogo existente
+define los tipos, sin un selector de evento: este recorrido es para casamientos.
+`guests` es un entero de 1 a 100.000; exige capacidad máxima aprobada conocida que
+alcance esa cantidad y respeta el mínimo cuando está informado. No certifica agenda.
+`minCapacity` y la búsqueda libre anteriores conservan compatibilidad para sus
+consumidores; invitados y región forman parte del cursor cuando se aplican.
+
+`catalog.regions` es la autoridad de opciones de `regionId`: Argentina, CABA,
+GBA norte/oeste/sur y las 23 provincias. Buenos Aires comprende tanto GBA como el
+resto de la provincia. Las zonas son agrupaciones de búsqueda del producto sobre
+33 partidos, con localidades del catálogo oficial Georef; su fuente, conjunto y
+homónimos excluidos están en `functions/src/providers/directoryRegionLocalities.ts`.
+Se comparan nombres normalizados de localidad y provincia **aprobados**, sin
+geocodificación ni modificación de fichas. Un país extranjero explícito excluye
+la ficha; un país ausente puede reconocerse por provincia argentina. Una localidad
+desconocida o ambigua no se asigna a una zona: puede aparecer por provincia o país.
+
+Después de buscar, tarjetas a la izquierda y mapa a la derecha en escritorio;
+en móvil, selector Lista/Mapa. El mapa representa sólo esta página de resultados,
+con coordenadas verificadas presentes en la proyección aprobada, sin completar
+ubicaciones. Los lugares sin coordenadas permanecen en la lista. Los tiles de
+OpenStreetMap son una base cartográfica externa: reciben coordenadas de tiles,
+sin nombres, IDs, contactos ni credenciales de proveedores. Los marcadores se
+componen localmente; una falla cartográfica no bloquea el listado. Mantener
+atribución, caché normal del navegador y la [política de tiles](https://operations.osmfoundation.org/policies/tiles/),
+sin descarga masiva ni precarga. No cambian las autorizaciones ni los controles beta.
+
 ### 10.5 Etapas posteriores aceptadas y todavía pendientes
 
 **4. Importación.** Reutilizar el pipeline existente; preview de nuevos/posibles

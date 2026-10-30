@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 
 const require = createRequire(import.meta.url);
 const model = require("./lib/providers/directoryModel.js");
 const beta = require("./lib/providers/betaModel.js");
 const { approvedDirectoryImagePath } = require("./lib/providers/directoryMedia.js");
 const { providerDirectoryHandler } = require("./lib/providers/directoryService.js");
+const { DIRECTORY_REGIONS, matchesDirectoryRegion } = require("./lib/providers/directoryRegions.js");
 const categories = [{ id: "foto-video", nombre: "Foto y video", tipo: "profesional", orden: 1 }, { id: "quintas", nombre: "Quintas", tipo: "lugar", orden: 2 }];
 const now = new Date("2026-10-25T12:00:00Z");
 function published(id = "prov_test", overrides = {}) {
@@ -74,6 +76,97 @@ test("capacity filters require an approved confirmed venue maximum and participa
   assert.throws(() => model.decodeDirectoryCursor(cursor, { ...query, minCapacity: 121 }), { code: "invalid-argument" });
   for (const minCapacity of [0, -1, 1.5, 100001, "120"]) assert.throws(() => model.normalizeDirectoryFilters({ kind: "lugar", minCapacity }, categories), { code: "invalid-argument" });
   assert.throws(() => filters({ minCapacity: 120 }), { code: "invalid-argument" });
+});
+
+test("venue region catalog contains CABA, three GBA search zones and every Argentine province", () => {
+  assert.equal(new Set(DIRECTORY_REGIONS.map(region => region.id)).size, 28);
+  assert.equal(DIRECTORY_REGIONS.filter(region => region.group === "Provincias").length, 23);
+  for (const id of ["ar", "caba", "gba-norte", "gba-oeste", "gba-sur", "provincia:AR-B", "provincia:AR-V", "provincia:AR-X"])
+    assert.ok(DIRECTORY_REGIONS.some(region => region.id === id));
+  assert.ok(DIRECTORY_REGIONS.every(region => typeof region.nombre === "string" && region.nombre && typeof region.group === "string"));
+});
+
+test("Argentine regions match approved province aliases without assuming countries from city names", () => {
+  for (const province of ["CABA", "Capital Federal", "Ciudad Autónoma de Buenos Aires", "AR-C"])
+    assert.equal(matchesDirectoryRegion({ provincia: province }, "caba"), true);
+  assert.equal(matchesDirectoryRegion({ provincia: "  PROVINCIA DE CÓRDOBA  " }, "provincia:AR-X"), true);
+  assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires" }, "ar"), true, "Legacy approved province can evidence Argentina when country is absent");
+  assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires", paisCodigo: "UY" }, "ar"), false);
+  assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires", paisCodigo: "AR", pais: "Uruguay" }, "ar"), false);
+  assert.equal(matchesDirectoryRegion({ ciudad: "Córdoba" }, "ar"), false, "Ambiguous city alone cannot establish a country");
+  assert.equal(matchesDirectoryRegion({ paisCodigo: "AR" }, "ar"), true);
+  assert.equal(matchesDirectoryRegion({ provincia: "CABA" }, "provincia:AR-B"), false);
+  assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires" }, "gba-norte"), false, "Province alone does not establish a search zone");
+  assert.equal(matchesDirectoryRegion({ provincia: "constructor" }, "ar"), false, "Unknown names cannot borrow an inherited object property");
+});
+
+test("GBA search zones use the reviewed municipal/locality catalog and reject ambiguous or foreign homonyms", () => {
+  const examples = {
+    "gba-norte": ["Pilar", "Escobar", "Belén de Escobar", "Tigre", "Benavídez", "San Isidro", "Vicente López"],
+    "gba-oeste": ["General Rodríguez", "Moreno", "Merlo", "Morón", "Caseros", "San Justo", "Marcos Paz"],
+    "gba-sur": ["Ezeiza", "Monte Grande", "Adrogué", "Quilmes", "La Plata", "Berazategui", "San Vicente"],
+  };
+  for (const [region, cities] of Object.entries(examples)) for (const ciudad of cities) {
+    assert.equal(matchesDirectoryRegion({ provincia: "Provincia de Buenos Aires", ciudad }, region), true, ciudad);
+    assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires", ciudad: `  ${ciudad.toUpperCase()}  ` }, region), true, ciudad);
+    for (const other of Object.keys(examples).filter(id => id !== region))
+      assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires", ciudad }, other), false, `${ciudad} cannot enter ${other}`);
+    assert.equal(matchesDirectoryRegion({ provincia: "Córdoba", ciudad }, region), false);
+  }
+  for (const ciudad of ["Malvinas Argentinas", "San José", "Loma Verde", "Manuel B. Gonnet", "Calle de Pilar", "Unknown"])
+    for (const region of Object.keys(examples)) assert.equal(matchesDirectoryRegion({ provincia: "Buenos Aires", ciudad }, region), false, ciudad);
+});
+
+test("guests are compared to the confirmed approved range and never editable pending capacities", () => {
+  const query = model.normalizeDirectoryFilters({ kind: "lugar", guests: 100, regionId: "gba-norte" }, categories);
+  const document = published("prov_venue", { categoriaPrincipalId: "quintas", ubicacion: { ciudad: "Pilar", nivel1Nombre: "Buenos Aires" }, espacio: { capacidadMinima: 80, capacidadMaxima: 140 } });
+  document.espacio.capacidadMaxima = 300;
+  document.ubicacion.ciudad = "Morón";
+  const provider = model.approvedDirectoryProvider("prov_venue", document, categories);
+  assert.equal(model.matchesDirectoryFilters(provider, query), true);
+  for (const guests of [79, 141]) assert.equal(model.matchesDirectoryFilters(provider, { ...query, guests }), false);
+  for (const guests of [80, 140]) assert.equal(model.matchesDirectoryFilters(provider, { ...query, guests }), true);
+  assert.equal(model.matchesDirectoryFilters(provider, { ...query, regionId: "gba-oeste" }), false);
+  provider.content.espacio.capacidadMinima = null;
+  assert.equal(model.matchesDirectoryFilters(provider, query), true, "An unknown minimum is not an invented restriction");
+  provider.content.espacio.capacidadMaxima = null;
+  assert.equal(model.matchesDirectoryFilters(provider, query), false, "An unknown maximum cannot promise sufficient capacity");
+});
+
+test("guest and regional parameters reject invalid inputs and bind continuation to the same search", () => {
+  const query = model.normalizeDirectoryFilters({ kind: "lugar", guests: 120, regionId: "ar" }, categories);
+  const cursor = model.encodeDirectoryCursor("prov_last", query);
+  assert.equal(model.decodeDirectoryCursor(cursor, { ...query }), "prov_last");
+  for (const changed of [{ guests: 121 }, { regionId: "caba" }]) assert.throws(() => model.decodeDirectoryCursor(cursor, { ...query, ...changed }), { code: "invalid-argument" });
+  for (const guests of [0, -1, 1.5, 100001, "120", true]) assert.throws(() => model.normalizeDirectoryFilters({ kind: "lugar", guests }, categories), { code: "invalid-argument" });
+  for (const regionId of ["london", "provincia:AR-C", {}, true]) assert.throws(() => model.normalizeDirectoryFilters({ kind: "lugar", regionId }, categories), { code: "invalid-argument" });
+  assert.throws(() => filters({ guests: 120 }), { code: "invalid-argument" });
+  assert.throws(() => filters({ regionId: "ar" }), { code: "invalid-argument" });
+  const legacy = filters({ location: "Chascomús" });
+  assert.equal(legacy.regionId, ""); assert.equal(legacy.guests, null);
+});
+
+test("continuation from the previous directory implementation stays valid without new venue criteria", () => {
+  const legacy = { kind: "profesional", search: "ambar", location: "", categoryId: "", minCapacity: null, pageSize: 12 };
+  const hash = createHash("sha256").update(JSON.stringify(legacy)).digest("hex");
+  const cursor = Buffer.from(JSON.stringify({ version: 1, lastId: "prov_old", filters: hash })).toString("base64url");
+  assert.equal(model.decodeDirectoryCursor(cursor, model.normalizeDirectoryFilters(legacy, categories)), "prov_old");
+  const venue = { ...legacy, kind: "lugar", minCapacity: 100 };
+  const venueCursor = Buffer.from(JSON.stringify({ version: 1, lastId: "prov_old", filters: createHash("sha256").update(JSON.stringify(venue)).digest("hex") })).toString("base64url");
+  assert.equal(model.decodeDirectoryCursor(venueCursor, model.normalizeDirectoryFilters(venue, categories)), "prov_old");
+  assert.throws(() => model.decodeDirectoryCursor(venueCursor, model.normalizeDirectoryFilters({ ...venue, regionId: "ar" }, categories)), { code: "invalid-argument" });
+});
+
+test("regional guest search fills pages across exclusions without duplicate or skipped approved matches", async () => {
+  const approved = published("prov_venue", { categoriaPrincipalId: "quintas", ubicacion: { ciudad: "Pilar", nivel1Nombre: "Buenos Aires" }, espacio: { capacidadMinima: 80, capacidadMaxima: 150 } });
+  const wrongArea = published("prov_other", { categoriaPrincipalId: "quintas", ubicacion: { ciudad: "Córdoba", nivel1Nombre: "Córdoba" }, espacio: { capacidadMaxima: 150 } });
+  const query = model.normalizeDirectoryFilters({ kind: "lugar", regionId: "gba-norte", guests: 100, pageSize: 2 }, categories);
+  const records = Array.from({ length: 920 }, (_, index) => ({ id: `prov_${String(index).padStart(5, "0")}`, data: index % 300 === 299 ? approved : wrongArea }));
+  const loader = recordsLoader(records);
+  const first = await model.scanDirectoryPage(loader.fetch, query, categories, null);
+  const second = await model.scanDirectoryPage(loader.fetch, query, categories, first.nextCursor);
+  assert.deepEqual([...first.items, ...second.items].map(item => item.id), ["prov_00299", "prov_00599", "prov_00899"]);
+  assert.equal(first.hasMore, true); assert.equal(second.hasMore, false);
 });
 test("image selection is bound to the current approved revision and provider path", () => {
   const provider = { id: "prov_test", approvedRevision: 3, content: { imagenes: { portada: { id: "img_approved", storagePath: "proveedores/prov_test/media/img_approved.webp" }, galeria: [] } } };

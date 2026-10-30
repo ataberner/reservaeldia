@@ -1,4 +1,3 @@
-import { useRouter } from "next/router";
 import AppHeader from "@/components/appHeader/AppHeader";
 
 const NAVIGATION = [
@@ -10,7 +9,6 @@ const NAVIGATION = [
 // The route supplies its already-authorized user. This adapter only presents
 // the existing dashboard header; it owns no session, permissions or data reads.
 export default function MarketplaceHeader({ user, current }) {
-  const router = useRouter();
   const email = String(user?.email || "").trim();
   const name = String(user?.displayName || "").trim() || email.split("@")[0] || "Usuario";
 
@@ -21,6 +19,7 @@ export default function MarketplaceHeader({ user, current }) {
         placement="embedded"
         logo={{ href: "/dashboard/" }}
         isAuthenticated
+        documentNavigation
         navItems={NAVIGATION.map((item) => ({ ...item, current: item.key === current }))}
         actions={[
           {
@@ -28,7 +27,7 @@ export default function MarketplaceHeader({ user, current }) {
             label: "Mis invitaciones",
             variant: "myInvitations",
             tone: "secondary",
-            onClick: () => router.push("/dashboard/"),
+            onClick: () => window.location.assign("/dashboard/"),
           },
         ]}
         userMenu={{

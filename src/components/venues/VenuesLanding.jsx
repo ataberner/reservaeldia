@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Building2, Hotel, Trees, Utensils, MapPin, Search, Map, LayoutGrid, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Hotel, Trees, Utensils, MapPin, Map, LayoutGrid, SlidersHorizontal } from "lucide-react";
 import MarketplaceHeader from "../marketplace/MarketplaceHeader";
 import { directoryCanFilter } from "@/domain/providers/directoryModel";
 import { ProviderDirectoryStatus } from "../marketplace/ProviderDirectoryResults";
@@ -18,7 +18,7 @@ export default function VenuesLanding({ user }) {
   const [selectedId, setSelectedId] = useState(null);
   const formRef = useRef(null);
   const resultsRef = useRef(null);
-  const cardsRef = useRef(null);
+  const scrollRef = useRef(null);
   const categories = (state.catalog?.categories || []).filter((category) => category.tipo === "lugar");
   const regions = state.catalog?.regions || [];
   const region = regions.find((entry) => entry.id === state.appliedFilters.regionId);
@@ -28,7 +28,7 @@ export default function VenuesLanding({ user }) {
   function search(event) {
     event.preventDefault();
     setSearched(true); setSelectedId(null);
-    if (cardsRef.current) cardsRef.current.scrollTop = 0;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
     void state.search();
     requestAnimationFrame(() => resultsRef.current?.focus());
   }
@@ -39,7 +39,7 @@ export default function VenuesLanding({ user }) {
   async function paginate(direction) {
     setSelectedId(null);
     await state.paginate(direction);
-    if (cardsRef.current) cardsRef.current.scrollTop = 0;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
     resultsRef.current?.focus();
   }
   function selectOnMap(id) { setSelectedId(id); setMobileView("map"); }
@@ -64,10 +64,6 @@ export default function VenuesLanding({ user }) {
           <p className={styles.searchHint}>Sólo lugares con capacidad informada para tus invitados. La disponibilidad se consulta con cada lugar.</p>
         </div>
       </section> : <section className={styles.searchBand} aria-label="Tu búsqueda de lugares">
-        <div className={styles.searchBandHeading}>
-          <button type="button" className={styles.back} onClick={() => setSearched(false)}><ArrowLeft size={16} aria-hidden="true" />Volver al inicio</button>
-          <span className={styles.privateLabel}>Beta privada · Superadmin</span>
-        </div>
         {canSearch && <VenueSearchForm state={state} categories={categories} regions={regions} onSubmit={search} formRef={formRef} compact />}
       </section>}
 
@@ -80,23 +76,29 @@ export default function VenuesLanding({ user }) {
           </button>;
         })}</div>
         <p className={styles.privateFootnote}>Beta privada para superadmin. Sólo se consultan fichas aprobadas.</p>
-      </section> : <section className={styles.discovery} aria-label="Resultados de lugares">
-        <div className={styles.resultsToolbar}>
-          <div><h1 ref={resultsRef} tabIndex={-1} className={styles.resultsTitle}>Lugares {region && region.id !== "ar" ? `en ${region.nombre}` : "para tu casamiento"}</h1><p role="status" aria-live="polite">{state.busy ? "Buscando lugares para ustedes…" : ready ? `${state.items.length} ${state.items.length === 1 ? "lugar en esta página" : "lugares en esta página"}${state.appliedFilters.guests ? ` · Para ${state.appliedFilters.guests} invitados` : ""}` : "Revisá el estado de tu búsqueda"}</p></div>
-          {canSearch && <label className={styles.nameSearch}><Search size={17} aria-hidden="true" /><span className={styles.srOnly}>Nombre o descripción</span><input type="search" form="venue-search" placeholder="Buscar por nombre" maxLength={120} value={state.filters.search} onChange={(event) => state.setFilters((previous) => ({ ...previous, search: event.target.value }))} /></label>}
-          <div className={styles.mobileSwitch} aria-label="Vista de resultados"><button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}><LayoutGrid size={16} aria-hidden="true" />Lista</button><button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}><Map size={16} aria-hidden="true" />Mapa</button></div>
-        </div>
-        <div className={styles.resultsLayout}>
-          <div ref={cardsRef} className={`${styles.results} ${mobileView === "map" ? styles.hiddenOnMobile : ""}`} role="region" aria-label="Lista de lugares" tabIndex={0} aria-busy={state.busy}>
-            {state.status !== "ready" ? <ProviderDirectoryStatus state={state} /> : state.busy ? <div className={styles.loadingGrid} role="status" aria-label="Buscando lugares"><div /><div /><div /><div /></div> : !state.items.length ? <div className={styles.empty}><SlidersHorizontal size={28} aria-hidden="true" /><h2>Todavía no encontramos ese lugar</h2><p>Probá otra zona o tipo de lugar. Mostramos sólo fichas aprobadas con capacidad informada para la cantidad de invitados que elegiste.</p><button type="button" onClick={() => formRef.current?.querySelector("select")?.focus()}>Revisar mi búsqueda <ArrowRight size={16} aria-hidden="true" /></button></div> : <div className={styles.venueGrid}>{state.items.map((provider) => <VenueResultCard key={provider.id} provider={provider} categories={categories} selected={selectedId === provider.id} onSelect={selectOnMap} />)}</div>}
-            {state.status === "ready" && <nav className={styles.pagination} aria-label="Páginas de resultados"><span>Página {state.page}</span><div><button type="button" disabled={state.busy || state.page <= 1} onClick={() => void paginate(-1)}>Anterior</button><button type="button" disabled={state.busy || !state.nextCursor} onClick={() => void paginate(1)}>Siguiente <ArrowRight size={15} aria-hidden="true" /></button></div></nav>}
+      </section> : <div className={styles.discovery}>
+        <section ref={scrollRef} className={styles.resultsScroller} aria-label="Resultados de lugares" tabIndex={0}>
+          <div className={styles.resultsLayout}>
+            <div className={styles.results}>
+              <div className={styles.resultsToolbar}>
+                <div className={styles.searchBandHeading}>
+                  <button type="button" className={styles.back} onClick={() => setSearched(false)}><ArrowLeft size={16} aria-hidden="true" />Volver al inicio</button>
+                  <span className={styles.privateLabel}>Beta privada · Superadmin</span>
+                </div>
+                <div><h1 ref={resultsRef} tabIndex={-1} className={styles.resultsTitle}>Lugares {region && region.id !== "ar" ? `en ${region.nombre}` : "para tu casamiento"}</h1><p role="status" aria-live="polite">{state.busy ? "Buscando lugares para ustedes…" : ready ? `${state.items.length} ${state.items.length === 1 ? "lugar en esta página" : "lugares en esta página"}${state.appliedFilters.guests ? ` · Para ${state.appliedFilters.guests} invitados` : ""}` : "Revisá el estado de tu búsqueda"}</p></div>
+              </div>
+              <div className={styles.mobileSwitch} aria-label="Vista de resultados"><button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}><LayoutGrid size={16} aria-hidden="true" />Lista</button><button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}><Map size={16} aria-hidden="true" />Mapa</button></div>
+              <div className={mobileView === "map" ? styles.hiddenOnMobile : undefined} role="region" aria-label="Lista de lugares" aria-busy={state.busy}>
+                {state.status !== "ready" ? <ProviderDirectoryStatus state={state} /> : state.busy ? <div className={styles.loadingGrid} role="status" aria-label="Buscando lugares"><div /><div /><div /><div /></div> : !state.items.length ? <div className={styles.empty}><SlidersHorizontal size={28} aria-hidden="true" /><h2>Todavía no encontramos ese lugar</h2><p>Probá otra zona o tipo de lugar. Mostramos sólo fichas aprobadas con capacidad informada para la cantidad de invitados que elegiste.</p><button type="button" onClick={() => formRef.current?.querySelector("select")?.focus()}>Revisar mi búsqueda <ArrowRight size={16} aria-hidden="true" /></button></div> : <div className={styles.venueGrid}>{state.items.map((provider) => <VenueResultCard key={provider.id} provider={provider} categories={categories} selected={selectedId === provider.id} onSelect={selectOnMap} />)}</div>}
+                {state.status === "ready" && <nav className={styles.pagination} aria-label="Páginas de resultados"><span>Página {state.page}</span><div><button type="button" disabled={state.busy || state.page <= 1} onClick={() => void paginate(-1)}>Anterior</button><button type="button" disabled={state.busy || !state.nextCursor} onClick={() => void paginate(1)}>Siguiente <ArrowRight size={15} aria-hidden="true" /></button></div></nav>}
+              </div>
+            </div>
+            <aside className={`${styles.mapColumn} ${mobileView === "list" ? styles.hiddenOnMobile : ""}`} aria-label="Mapa de los resultados">
+              <VenueResultsMap items={visibleItems} selectedId={selectedId} onSelect={setSelectedId} locationLabel={region?.nombre || "Argentina"} />
+            </aside>
           </div>
-          <aside className={`${styles.mapColumn} ${mobileView === "list" ? styles.hiddenOnMobile : ""}`} aria-label="Mapa de los resultados">
-            <VenueResultsMap items={visibleItems} selectedId={selectedId} onSelect={setSelectedId} locationLabel={region?.nombre || "Argentina"} />
-            <p className={styles.mapHint}>El mapa muestra los lugares de esta página con coordenadas verificadas.</p>
-          </aside>
-        </div>
-      </section>}
+        </section>
+      </div>}
     </main>
   </div>;
 }

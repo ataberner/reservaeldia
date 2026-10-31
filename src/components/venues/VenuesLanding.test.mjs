@@ -61,6 +61,7 @@ test("venue welcome retains the header and waits for guests and Argentina region
     assert.equal(host.querySelector("[data-existing-header]").getAttribute("data-existing-header"), "venues");
     assert.match(host.textContent, /El lugar donde empieza su historia/);
     assert.equal(host.querySelector('[aria-label="Resultados de lugares"]'), null);
+    assert.equal(host.querySelector("input[name='search']"), null, "The welcome form only asks for the initial venue criteria");
     assert.equal(host.querySelector("input[name='guests']").required, true);
     assert.equal(host.querySelector("select[name='region']").required, true);
     assert.equal(host.querySelector("form").checkValidity(), false);
@@ -70,6 +71,18 @@ test("venue welcome retains the header and waits for guests and Argentina region
     assert.equal(requests.at(-1).data.kind, "lugar"); assert.equal(requests.at(-1).data.cursor, null);
     assert.equal(host.querySelector("#venues-title"), null);
     assert.match(host.querySelector('[aria-label="Resultados de lugares"]').textContent, /Lugar sintético aprobado/);
+    const results = host.querySelector('section[aria-label="Resultados de lugares"]');
+    const list = results.querySelector('[role="region"][aria-label="Lista de lugares"]');
+    assert.equal(results.tabIndex, 0, "The full-width results scrollport is keyboard reachable");
+    const resultColumn = list.parentElement;
+    assert.ok(resultColumn.contains(host.querySelector("h1")), "The title belongs to the results column");
+    assert.ok(resultColumn.querySelector('[role="status"]'), "The result status stays with its list");
+    assert.equal(resultColumn.contains(results.querySelector("aside")), false, "The title and status do not take space above the map column");
+    const compactForm = host.querySelector("#venue-search");
+    const nameSearch = host.querySelector("input[name='search']");
+    assert.ok(compactForm.contains(nameSearch), "Name search is inside the compact search form");
+    assert.equal(resultColumn.contains(nameSearch), false, "Name search does not occupy the results toolbar");
+    assert.deepEqual([...compactForm.querySelectorAll("input, select, button[type='submit']")].map(node => node.name || node.type), ["category", "guests", "region", "search", "submit"], "The compact form orders region, name and submit consecutively");
     assert.equal(host.querySelector("[data-map-items]").getAttribute("data-map-items"), item.id);
     assert.equal(host.querySelector("[data-existing-header]").getAttribute("data-existing-header"), "venues");
   });
@@ -90,14 +103,17 @@ test("category shortcut selects a real category and guest constraints reject emp
 test("pagination uses applied filters and a changed search restarts at page one", async () => {
   await harness({ list: async data => ({ items: [{ ...item, id: data.cursor ? "second" : item.id }], nextCursor: data.cursor ? null : "cursor-page-two" }) }, async ({ host, requests, input, select, search, click }) => {
     await input("input[name='guests']", "150"); await select("select[name='region']", "ar"); await search();
-    const cards = host.querySelector("[aria-busy]");
-    cards.scrollTop = 600;
+    const results = host.querySelector('section[aria-label="Resultados de lugares"]');
+    const cards = results.querySelector('[role="region"][aria-label="Lista de lugares"]');
+    results.scrollTop = 600;
     await click("Siguiente"); assert.equal(requests.at(-1).data.cursor, "cursor-page-two"); assert.match(host.textContent, /Página 2/);
-    assert.equal(cards.scrollTop, 0, "The next page starts at the first card");
-    cards.scrollTop = 350;
+    assert.equal(results.scrollTop, 0, "The next page resets the full-width results scrollport");
+    assert.equal(cards.scrollTop, 0, "The cards do not own a nested scroll offset");
+    results.scrollTop = 350;
     await select("select[name='region']", "gba-norte"); await input("input[type='search']", "Jardín"); await search();
     assert.equal(requests.at(-1).data.cursor, null); assert.equal(requests.at(-1).data.regionId, "gba-norte"); assert.equal(requests.at(-1).data.search, "Jardín");
-    assert.equal(cards.scrollTop, 0, "A new search resets the card scrollport");
+    assert.equal(results.scrollTop, 0, "A new search resets the full-width results scrollport");
+    assert.equal(cards.scrollTop, 0, "Searching leaves the non-scrolling cards column untouched");
     assert.match(host.textContent, /Página 1/); assert.equal(host.querySelector("input[type='search']").form.id, "venue-search");
     await click("Ubicar Lugar sintético aprobado en el mapa");
     assert.equal(host.querySelector("[data-selected]").getAttribute("data-selected"), item.id);

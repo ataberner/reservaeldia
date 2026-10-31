@@ -3,7 +3,7 @@
   --venue-ink: #262626;
   --venue-muted: #6e6775;
   --venue-border: #e8e3eb;
-  --venue-results-surface: #fbf7f9;
+  --venue-results-surface: #fff;
   width: 100%;
   min-height: calc(100dvh - 80px);
   background: #fff;
@@ -19,21 +19,21 @@
 .root button:disabled { cursor: default; opacity: .55; }
 .root a { color: inherit; }
 .root button:focus-visible, .root a:focus-visible, .root input:focus-visible, .root select:focus-visible { outline: 3px solid var(--venue-primary); outline-offset: 3px; }
-.searchMode { padding-bottom: 24px; background: var(--venue-results-surface); }
+.searchMode { background: var(--venue-results-surface); }
 .root .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); align-items: center; width: min(1360px, calc(100% - 96px)); margin: 36px auto 0; padding-bottom: 102px; }
 .heroContent { padding: 24px 48px 58px 0; }
 .eyebrow { margin: 0 0 19px; color: var(--venue-primary); font-size: 12px; font-weight: 600; line-height: 19px; letter-spacing: 1.5px; text-transform: uppercase; }
-.eyebrow > span { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: #c6a6da; vertical-align: 1px; }
+.eyebrow > span { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 0; background: #c6a6da; vertical-align: 1px; }
 .title { max-width: 630px; margin: 0; color: var(--venue-ink); font-family: "DM Sans", sans-serif; font-size: 40px; font-weight: 500; line-height: 44px; letter-spacing: -1px; }
 .title span { display: block; padding-bottom: 3px; background: linear-gradient(90deg, #692b9a 0%, #f39f5f 100%); background-clip: text; color: transparent; -webkit-background-clip: text; }
 .intro { max-width: 450px; margin: 21px 0 0; color: var(--venue-muted); font-family: "Source Sans 3", sans-serif; font-size: 18px; line-height: 28px; }
 .heroFootnote { display: flex; align-items: center; gap: 8px; margin: 24px 0 0; color: var(--venue-muted); font: 14px/21px "Source Sans 3", sans-serif; }
 .heroFootnote svg { flex-shrink: 0; color: var(--venue-primary); }
-.heroImage { position: relative; min-width: 0; height: 460px; overflow: hidden; margin: 0; border-radius: 80px 16px 16px 16px; background: #faf5ed; }
+.heroImage { position: relative; min-width: 0; height: 460px; overflow: hidden; margin: 0; border-radius: 0; background: #faf5ed; }
 .heroPhoto { position: absolute; inset: 0; background: url("/assets/profesionales/wedding-triptych.png") left center / 300% auto no-repeat; }
-.heroImage figcaption { position: absolute; z-index: 1; right: 14px; top: 14px; max-width: calc(100% - 28px); margin: 0; padding: 3px 7px; border-radius: 5px; background: rgb(255 255 255 / 85%); color: #50444a; font: 11px/16px "Source Sans 3", sans-serif; }
+.heroImage figcaption { position: absolute; z-index: 1; right: 14px; top: 14px; max-width: calc(100% - 28px); margin: 0; padding: 3px 7px; border-radius: 0; background: rgb(255 255 255 / 85%); color: #50444a; font: 11px/16px "Source Sans 3", sans-serif; }
 .heroSearch { position: absolute; z-index: 2; right: 4%; bottom: 24px; left: 0; }
-.searchForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1.3fr) auto; align-items: center; gap: 0; min-width: 0; padding: 12px; border: 1px solid var(--venue-border); border-radius: 14px; background: #fff; box-shadow: 0 12px 34px #35213f0c, 0 3px 7px #35213f08; }
+.searchForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1.3fr) auto; align-items: center; gap: 0; min-width: 0; padding: 12px; border: 1px solid var(--venue-border); border-radius: 0; background: #fff; box-shadow: 0 12px 34px #35213f0c, 0 3px 7px #35213f08; }
 .searchField { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 64px; margin: 0; padding: 8px 20px; }
 .searchField + .searchField { border-left: 1px solid var(--venue-border); }
 .searchField > svg { width: 22px; height: 22px; flex-shrink: 0; color: #96899f; }
@@ -43,7 +43,7 @@
 .searchField input::placeholder { color: #8c8294; opacity: 1; }
 .searchField select { text-overflow: ellipsis; }
 .regionField { min-width: 0; }
-.searchButton { display: flex; align-items: center; justify-content: center; gap: 9px; min-width: 148px; min-height: 58px; padding: 14px 25px; border: 1px solid var(--venue-primary); border-radius: 9px; background: var(--venue-primary); color: #fff; font-size: 16px; font-weight: 600; line-height: 23px; transition: background .15s ease, box-shadow .15s ease; }
+.searchButton { display: flex; align-items: center; justify-content: center; gap: 9px; min-width: 148px; min-height: 58px; padding: 14px 25px; border: 1px solid var(--venue-primary); border-radius: 0; background: var(--venue-primary); color: #fff; font-size: 16px; font-weight: 600; line-height: 23px; transition: background .15s ease, box-shadow .15s ease; }
 .searchButton:hover:not(:disabled) { background: #572082; box-shadow: 0 3px 12px #692b9a24; }
 .searchHint { margin: 10px 14px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
 .root .explore { width: min(1360px, calc(100% - 96px)); margin: 22px auto 0; }
@@ -52,36 +52,33 @@
 .exploreHeading .eyebrow { margin-bottom: 7px; }
 .exploreHeading > p { margin: 0 0 16px; color: var(--venue-muted); font: 15px/22px "Source Sans 3", sans-serif; }
 .categoryGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
-.categoryChoice { display: flex; align-items: center; gap: 14px; min-width: 0; min-height: 82px; padding: 19px 20px; border: 1px solid #eee7e1; border-radius: 12px; background: #faf5ed; color: var(--venue-ink); text-align: left; transition: border-color .15s ease, background .15s ease; }
+.categoryChoice { display: flex; align-items: center; gap: 14px; min-width: 0; min-height: 82px; padding: 19px 20px; border: 1px solid #eee7e1; border-radius: 0; background: #faf5ed; color: var(--venue-ink); text-align: left; transition: border-color .15s ease, background .15s ease; }
 .categoryChoice:hover { border-color: #c6a6da; background: #faf5ff; }
 .categoryChoice[aria-pressed="true"] { border-color: #b58bce; background: #faf5ff; box-shadow: 0 0 0 1px #b58bce; }
 .categoryChoice > svg:first-child { flex-shrink: 0; color: var(--venue-primary); }
 .categoryChoice span { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; line-height: 22px; }
 .categoryChoice > svg:last-child { flex-shrink: 0; color: #96899f; }
 .privateFootnote { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 29px 0 0; color: #817988; font: 13px/20px "Source Sans 3", sans-serif; }
-.root .searchBand { padding: 10px 32px 18px; background: transparent; }
-.searchBandHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(1500px, 100%); margin: 0 auto 10px; }
+.root .searchBand { padding: 0; border-top: 1px solid var(--venue-border); border-bottom: 1px solid var(--venue-border); background: #fff; }
+.searchBandHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; margin: 0 0 12px; }
 .searchBandHeading button { display: flex; align-items: center; gap: 7px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--venue-primary); font-size: 13px; line-height: 20px; }
 .back { font-weight: 500; }
 .privateLabel { display: flex; align-items: center; gap: 6px; color: var(--venue-muted); font: 12px/18px "Source Sans 3", sans-serif; }
-.compactForm { width: min(1500px, 100%); margin: auto; padding: 8px; box-shadow: 0 3px 14px #35213f05; }
+.compactForm { grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; width: 100%; margin: 0; padding: 10px 24px; border: 0; box-shadow: none; }
 .compactForm .searchField { min-height: 52px; padding-top: 3px; padding-bottom: 3px; }
 .compactForm .searchButton { min-height: 50px; }
 .searchBand .searchHint { width: min(1472px, calc(100% - 28px)); margin-right: auto; margin-left: auto; }
-.root .discovery { width: min(1564px, 100%); margin: 0 auto; padding: 12px 32px 22px; background: transparent; }
-.resultsToolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 22px; }
+.root .discovery { width: 100%; margin: 0; padding: 0; background: transparent; }
+.resultsScroller { width: 100%; min-width: 0; }
+.resultsScroller:focus-visible { outline: 2px solid var(--venue-primary); outline-offset: -2px; }
+.resultsToolbar { margin: 0 0 22px; }
 .resultsToolbar h1, .resultsToolbar h2 { margin: 0; color: var(--venue-ink); font-size: 24px; font-weight: 500; line-height: 31px; letter-spacing: -.5px; }
 .resultsTitle { scroll-margin-top: 24px; }
 .resultsToolbar p { margin: 5px 0 0; color: var(--venue-muted); font: 14px/20px "Source Sans 3", sans-serif; }
-.nameSearch { display: flex; align-items: center; gap: 9px; width: 245px; min-width: 0; min-height: 43px; margin: 0; padding: 10px 13px; border: 1px solid var(--venue-border); border-radius: 9px; background: #fff; }
-.nameSearch svg { flex-shrink: 0; color: #8d7d98; }
-.nameSearch input { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--venue-ink); font-size: 13px; line-height: 22px; }
-.nameSearch input::placeholder { color: #857b8c; }
-.resultsLayout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 28px; width: 100%; }
-.results { min-width: 0; }
-.results:focus-visible { outline: 2px solid var(--venue-primary); outline-offset: -2px; }
+.resultsLayout { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); align-items: start; gap: 0; width: 100%; min-height: 100%; }
+.results { min-width: 0; padding: 20px 24px 28px; }
 .venueGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 26px 20px; }
-.venueCard { min-width: 0; overflow: hidden; border: 1px solid var(--venue-border); border-radius: 14px; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
+.venueCard { min-width: 0; overflow: hidden; border: 1px solid var(--venue-border); border-radius: 0; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
 .venueCard:hover { border-color: #ceb7dd; box-shadow: 0 6px 20px #35213f09; }
 .selectedCard { border-color: var(--venue-primary); box-shadow: 0 0 0 1px var(--venue-primary); }
 .cardImageLink { position: relative; display: block; height: 205px; overflow: hidden; background: #faf5ed; text-decoration: none; }
@@ -100,43 +97,36 @@
 .cardFooter button { display: flex; align-items: center; gap: 5px; min-height: 32px; padding: 6px 0; border: 0; background: transparent; color: var(--venue-primary); font-size: 12px; font-weight: 500; line-height: 19px; }
 .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 19px; border-top: 1px solid var(--venue-border); color: var(--venue-muted); font-size: 13px; line-height: 20px; }
 .pagination > div { display: flex; align-items: center; gap: 8px; }
-.pagination button { min-height: 40px; padding: 9px 13px; border: 1px solid var(--venue-border); border-radius: 8px; background: #fff; color: var(--venue-primary); font-size: 13px; }
+.pagination button { min-height: 40px; padding: 9px 13px; border: 1px solid var(--venue-border); border-radius: 0; background: #fff; color: var(--venue-primary); font-size: 13px; }
 .pagination button { display: inline-flex; align-items: center; gap: 6px; }
 .pagination button:hover:not(:disabled) { border-color: #c6a6da; background: #faf5ff; }
-.mapColumn { min-width: 0; }
-.mapHint { margin: 9px 4px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
-.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 310px; padding: 32px 24px; border: 1px solid var(--venue-border); border-radius: 14px; background: #fbf7f9; text-align: center; }
+.mapColumn { position: sticky; top: 0; min-width: 0; --venue-map-height: max(240px, calc(100dvh - 100px)); --venue-map-min-height: 240px; }
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 310px; padding: 32px 24px; border: 1px solid var(--venue-border); border-radius: 0; background: #fbf7f9; text-align: center; }
 .empty > svg { margin-bottom: 18px; color: #9a79ad; }
 .empty h2 { margin: 0 0 9px; color: var(--venue-ink); font-size: 22px; font-weight: 500; line-height: 28px; }
 .empty p { max-width: 360px; margin: 0; color: var(--venue-muted); font: 16px/24px "Source Sans 3", sans-serif; }
-.empty button { min-height: 42px; margin-top: 19px; padding: 10px 16px; border: 1px solid var(--venue-primary); border-radius: 8px; background: #fff; color: var(--venue-primary); font-size: 14px; }
+.empty button { min-height: 42px; margin-top: 19px; padding: 10px 16px; border: 1px solid var(--venue-primary); border-radius: 0; background: #fff; color: var(--venue-primary); font-size: 14px; }
 .empty button { display: inline-flex; align-items: center; gap: 7px; }
 .loadingGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 20px; }
-.loadingGrid > div { min-height: 360px; border: 1px solid var(--venue-border); border-radius: 14px; background: linear-gradient(110deg, #f4eff5 20%, #fbf9fc 40%, #f4eff5 60%); background-size: 200% 100%; animation: venueSkeleton 1.4s ease-in-out infinite; }
+.loadingGrid > div { min-height: 360px; border: 1px solid var(--venue-border); border-radius: 0; background: linear-gradient(110deg, #f4eff5 20%, #fbf9fc 40%, #f4eff5 60%); background-size: 200% 100%; animation: venueSkeleton 1.4s ease-in-out infinite; }
 .spinner { animation: venueSpin .8s linear infinite; }
 .mobileSwitch { display: none; }
-.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; margin: -1px; padding: 0; border: 0; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 @keyframes venueSpin { to { transform: rotate(360deg); } }
 @keyframes venueSkeleton { to { background-position: -200% 0; } }
 
-/* Results own the desktop scrollport; the existing header keeps its natural
-   height and menus. No body or shared header scroll rules are changed. */
+/* One full-width scrollport keeps the native scrollbar at the screen edge.
+   The map remains inside it, so wheel/keyboard input use normal browser scroll.
+   The container measures remaining space without changing the shared header. */
+@supports (height: 100cqh) {
 @media (min-width: 768px) and (min-height: 600px) {
   .resultsPage { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; }
   .searchMode { display: flex; flex-direction: column; min-height: 0; padding-bottom: 0; overflow: hidden; }
-  .searchBand, .resultsToolbar { flex-shrink: 0; }
-  .root .discovery { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-  .resultsLayout { flex: 1; min-height: 0; }
-  .results { height: 100%; min-height: 0; padding: 2px 12px 8px 2px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
-  .mapColumn { display: flex; flex-direction: column; height: 100%; min-height: 0; --venue-map-height: auto; --venue-map-min-height: 0; }
+  .searchBand { flex-shrink: 0; }
+  .root .discovery { flex: 1; min-height: 0; container-type: size; }
+  .resultsScroller { height: 100%; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .mapColumn { display: flex; flex-direction: column; height: 100cqh; min-height: 0; --venue-map-height: auto; --venue-map-min-height: 0; }
   .mapColumn > section { flex: 1; min-height: 0; }
-  .mapHint { flex-shrink: 0; }
 }
-
-/* Short landscape screens retain document scrolling so filters cannot consume
-   the only available space for the results. */
-@media (min-width: 768px) and (max-height: 599px) {
-  .mapColumn { position: sticky; top: 16px; --venue-map-height: max(240px, calc(100dvh - 100px)); --venue-map-min-height: 240px; }
 }
 
 @media (max-width: 1279px) {
@@ -146,7 +136,6 @@
   .searchField { gap: 9px; padding-right: 14px; padding-left: 14px; }
   .searchButton { min-width: 130px; padding-right: 20px; padding-left: 20px; }
   .categoryChoice { gap: 10px; padding-right: 15px; padding-left: 15px; }
-  .resultsLayout { gap: 22px; }
   .venueGrid { gap: 22px 15px; }
   .cardImageLink { height: 180px; }
   .cardBody { padding: 13px; }
@@ -156,7 +145,7 @@
   .root .hero { padding-bottom: 170px; }
   .title { font-size: 34px; line-height: 39px; }
   .heroContent { padding-right: 24px; padding-bottom: 32px; }
-  .heroImage { height: 400px; border-top-left-radius: 60px; }
+  .heroImage { height: 400px; border-top-left-radius: 0; }
   .heroSearch { right: 0; bottom: 12px; }
   .searchForm { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .searchField { min-height: 59px; }
@@ -167,12 +156,15 @@
   .categoryChoice { flex-wrap: wrap; gap: 8px; padding: 16px 13px; }
   .categoryChoice > svg:last-child { display: none; }
   .categoryChoice span { font-size: 14px; }
-  .resultsLayout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .compactForm { grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px 16px; }
+  .compactForm .searchField { padding: 5px 9px; }
+  .compactForm .searchField > svg { display: none; }
+  .compactForm .regionField { border-left: 1px solid var(--venue-border); }
+  .compactForm .searchButton { grid-column: 1 / -1; min-height: 40px; padding: 7px 15px; }
+  .resultsLayout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .venueGrid, .loadingGrid { grid-template-columns: 1fr; }
   .cardImageLink { height: 220px; }
   .cardBody { padding: 17px; }
-  .resultsToolbar { gap: 16px; }
-  .nameSearch { width: 215px; }
 }
 
 @media (max-width: 767px) {
@@ -182,11 +174,11 @@
   .title { max-width: 520px; font-size: 32px; line-height: 37px; letter-spacing: -.8px; }
   .intro { margin-top: 15px; font-size: 17px; line-height: 25px; }
   .heroFootnote { margin-top: 15px; font-size: 13px; }
-  .heroImage { height: 210px; border-radius: 40px 12px 12px 12px; }
+  .heroImage { height: 210px; border-radius: 0; }
   .heroPhoto { background-position: left 48%; }
   .heroImage figcaption { top: 10px; right: 10px; bottom: auto; font-size: 10px; }
   .heroSearch { position: relative; right: auto; bottom: auto; left: auto; margin: -25px 8px 0; }
-  .searchForm { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 9px 12px 12px; border-radius: 12px; box-shadow: 0 8px 24px #35213f0c; }
+  .searchForm { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 9px 12px 12px; border-radius: 0; box-shadow: 0 8px 24px #35213f0c; }
   .searchField { min-height: 67px; gap: 12px; padding: 10px 5px; }
   .searchField + .searchField { border-top: 1px solid var(--venue-border); border-left: 0; }
   .searchField input, .searchField select { font-size: 16px; }
@@ -201,23 +193,24 @@
   .categoryChoice span { font-size: 13px; line-height: 20px; }
   .privateFootnote { align-items: flex-start; margin-top: 23px; font-size: 12px; text-align: center; }
   .privateFootnote svg { flex-shrink: 0; margin-top: 2px; }
-  .root .searchBand { padding: 8px 16px 14px; }
+  .root .searchBand { padding: 0; }
   .searchBandHeading { gap: 8px; margin-bottom: 7px; }
   .privateLabel { font-size: 11px; }
-  .compactForm { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 6px 9px 9px; }
+  .compactForm { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 7px 16px 10px; box-shadow: none; }
   .compactForm .searchField { gap: 7px; min-height: 61px; padding: 8px 5px; }
   .compactForm .searchField > svg { width: 17px; height: 17px; }
   .compactForm .searchField:nth-child(2) { border-top: 0; border-left: 1px solid var(--venue-border); padding-left: 10px; }
   .compactForm .regionField { grid-column: 1 / -1; border-top: 1px solid var(--venue-border); }
+  .compactForm .nameField { grid-column: 1 / -1; border-left: 0; }
   .compactForm .searchButton { grid-column: 1 / -1; min-height: 44px; margin-top: 3px; font-size: 14px; }
   .compactForm .fieldLabel { font-size: 10px; }
   .searchBand .searchHint { width: 100%; margin-top: 8px; }
-  .root .discovery { padding: 20px 16px; }
-  .resultsToolbar { flex-direction: column; align-items: stretch; gap: 15px; margin-bottom: 15px; }
+  .root .discovery { padding: 0; }
+  .results { padding: 16px; }
+  .resultsToolbar { margin-bottom: 15px; }
   .resultsToolbar h1, .resultsToolbar h2 { font-size: 23px; line-height: 29px; }
-  .nameSearch { width: 100%; min-height: 42px; }
-  .mobileSwitch { display: flex; gap: 4px; margin-bottom: 18px; padding: 4px; border: 1px solid var(--venue-border); border-radius: 10px; background: #fbf7f9; }
-  .mobileSwitch button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--venue-muted); font-size: 13px; }
+  .mobileSwitch { display: flex; gap: 4px; margin-bottom: 18px; padding: 4px; border: 1px solid var(--venue-border); border-radius: 0; background: #fbf7f9; }
+  .mobileSwitch button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 7px; min-height: 39px; padding: 7px 10px; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--venue-muted); font-size: 13px; }
   .mobileSwitch button[aria-pressed="true"] { border-color: #e4d8eb; background: #fff; box-shadow: 0 2px 6px #35213f08; color: var(--venue-primary); font-weight: 600; }
   .resultsLayout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .hiddenOnMobile { display: none; }
@@ -238,7 +231,7 @@
   .root .hero, .root .explore { width: calc(100% - 28px); }
   .title { font-size: 30px; line-height: 35px; }
   .heroSearch { margin-right: 3px; margin-left: 3px; }
-  .root .searchBand, .root .discovery { padding-right: 12px; padding-left: 12px; }
+  .compactForm, .results { padding-right: 12px; padding-left: 12px; }
   .categoryChoice { gap: 7px; padding-right: 9px; padding-left: 9px; }
   .categoryChoice > svg { width: 22px; height: 22px; }
   .cardImageLink { height: 195px; }

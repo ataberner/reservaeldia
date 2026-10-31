@@ -49,6 +49,7 @@ async function loadedImages(page, minimum) {
   await page.waitForFunction(minimum => [...document.querySelectorAll('img[src^="blob:"]')].filter(image => image.complete && image.naturalWidth > 0).length >= minimum, {}, minimum);
 }
 const venueList = '[role="region"][aria-label="Lista de lugares"]';
+const venueResults = 'section[aria-label="Resultados de lugares"]';
 async function documentScrollState(page, top) {
   return page.evaluate(async requestedTop => {
     const roots = [...new Set([document.scrollingElement, document.body, document.documentElement])].filter(Boolean);
@@ -75,7 +76,13 @@ async function venueLayout(page) {
     const map = document.querySelector('aside[aria-label="Mapa de los resultados"]');
     const band = document.querySelector('[aria-label="Tu búsqueda de lugares"]');
     const discovery = document.querySelector('[aria-label="Resultados de lugares"]');
-    const rect = node => { const value = node.getBoundingClientRect(); return { top: value.top, bottom: value.bottom, left: value.left, width: value.width, height: value.height }; };
+    const form = band.querySelector("#venue-search");
+    const search = form.querySelector('input[name="search"]');
+    const canvas = map.querySelector('[tabindex="0"]');
+    const firstCard = list.querySelector("article");
+    const rect = node => { const value = node.getBoundingClientRect(); return { top: value.top, bottom: value.bottom, left: value.left, right: value.right, width: value.width, height: value.height }; };
+    const scroll = node => ({ ...rect(node), scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight, display: getComputedStyle(node).display, overflowY: getComputedStyle(node).overflowY });
+    const corners = node => { const style = getComputedStyle(node); return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius]; };
     // Transparent sections inherit the surface underneath; compare what is
     // painted rather than requiring one particular CSS ownership technique.
     const surface = node => {
@@ -87,18 +94,28 @@ async function venueLayout(page) {
     };
     return {
       viewport: innerHeight,
-      list: { ...rect(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight, display: getComputedStyle(list).display },
-      firstCardTop: list.querySelector("article")?.getBoundingClientRect().top,
+      viewportWidth: innerWidth,
+      scrollport: scroll(discovery),
+      list: scroll(list),
+      firstCardTop: firstCard?.getBoundingClientRect().top,
       map: { ...rect(map), display: getComputedStyle(map).display },
-      mapCanvas: rect(map.querySelector('[tabindex="0"]')),
+      mapCanvas: rect(canvas),
+      filters: rect(band),
+      searchForm: rect(form),
+      searchFields: [...form.querySelectorAll("input, select")].map(node => ({ name: node.name, ...rect(node) })),
+      nameSearch: { ...rect(search), insideForm: form.contains(search) },
+      resultsTitle: rect(discovery.querySelector("h1")),
+      corners: { form: corners(form), card: firstCard ? corners(firstCard) : null, map: corners(canvas) },
       surfaces: { filters: surface(band), results: surface(discovery), main: surface(discovery.closest("main")) },
     };
   }, venueList);
   return { ...layout, ...await documentScrollState(page) };
 }
-async function assertListReset(page, label) {
-  await page.waitForFunction(selector => document.querySelector(selector)?.scrollTop <= 1, {}, venueList);
-  assert.ok((await venueLayout(page)).list.scrollTop <= 1, `${label}: results start at the top`);
+async function assertResultsReset(page, label) {
+  await page.waitForFunction(selector => document.querySelector(selector)?.scrollTop <= 1, {}, venueResults);
+  const layout = await venueLayout(page);
+  assert.ok(layout.scrollport.scrollTop <= 1, `${label}: the results scrollport starts at the top`);
+  assert.equal(layout.list.scrollTop, 0, `${label}: the cards column has no independent scroll offset`);
 }
 
 test("private approved directory works on desktop/mobile, withdraws stale contact and preserves normal login", { timeout: 540000 }, async () => {
@@ -170,32 +187,45 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     assert.doesNotMatch(await page.$eval('[aria-label="Resultados de lugares"]', node => node.textContent), /Capacidad desconocida sintética/, "Unknown capacity is excluded by an explicit guest count");
     const desktopBefore = await venueLayout(page);
     assert.ok(desktopBefore.documentHeight <= desktopBefore.viewport + 1, "Desktop results fit the viewport without a second document scrollbar");
-    assert.ok(desktopBefore.list.top >= 0 && desktopBefore.list.bottom <= desktopBefore.viewport + 1, "Desktop list stays within the viewport");
+    assert.ok(desktopBefore.scrollport.top >= 0 && desktopBefore.scrollport.bottom <= desktopBefore.viewport + 1, "Desktop results scrollport stays within the viewport");
+    assert.ok(Math.abs(desktopBefore.scrollport.left) <= 1 && Math.abs(desktopBefore.scrollport.right - desktopBefore.viewportWidth) <= 1, "The results scrollbar belongs to the full viewport width");
+    assert.ok(Math.abs(desktopBefore.searchForm.left) <= 1 && Math.abs(desktopBefore.searchForm.right - desktopBefore.viewportWidth) <= 1, "The compact search bar spans the viewport");
     assert.ok(desktopBefore.map.top >= 0 && desktopBefore.map.bottom <= desktopBefore.viewport + 1, "Desktop map stays within the viewport");
-    assert.ok(desktopBefore.mapCanvas.height >= 180, "Desktop map retains a usable canvas");
-    assert.ok(desktopBefore.list.scrollHeight - desktopBefore.list.clientHeight > 360, "Twelve cards genuinely overflow the independent list");
-    assert.notEqual(desktopBefore.surfaces.main, "transparent", "Results have a defined surface");
+    assert.ok(Math.abs(desktopBefore.map.top - desktopBefore.scrollport.top) <= 1, "The map starts at the top of the results scrollport");
+    assert.ok(Math.abs(desktopBefore.map.top - desktopBefore.filters.bottom) <= 1, "The map starts immediately below the search filters");
+    assert.ok(desktopBefore.mapCanvas.height >= desktopBefore.scrollport.clientHeight - 2, "The map canvas uses the results height without a separate caption row");
+    assert.ok(desktopBefore.scrollport.scrollHeight - desktopBefore.scrollport.clientHeight > 360, "Twelve cards genuinely overflow the full-width results scrollport");
+    assert.equal(desktopBefore.list.scrollTop, 0, "The cards column starts without an independent scroll offset");
+    assert.ok(desktopBefore.list.scrollHeight <= desktopBefore.list.clientHeight + 1, "Cards do not occupy a nested clipped scrollport");
+    assert.equal(desktopBefore.nameSearch.insideForm, true, "Name search is a descendant of the compact search form");
+    for (const field of desktopBefore.searchFields) assert.ok(Math.abs(field.top - desktopBefore.nameSearch.top) <= 1, `${field.name} aligns with name search in the desktop bar`);
+    assert.ok(desktopBefore.nameSearch.bottom < desktopBefore.resultsTitle.top, "Name search is above the results title, not beside it");
+    for (const [surface, radii] of Object.entries(desktopBefore.corners)) assert.deepEqual(radii, ["0px", "0px", "0px", "0px"], `${surface} uses straight corners`);
+    assert.equal(desktopBefore.surfaces.main, "rgb(255, 255, 255)", "Results use the requested white surface");
     assert.equal(desktopBefore.surfaces.filters, desktopBefore.surfaces.main, "Filters continue the main results surface");
     assert.equal(desktopBefore.surfaces.results, desktopBefore.surfaces.main, "Discovery continues the same surface");
-    await page.$eval(venueList, node => node.scrollTo({ top: 360, behavior: "instant" }));
-    await page.waitForFunction(selector => document.querySelector(selector).scrollTop >= 350, {}, venueList);
+    await page.$eval(venueResults, node => node.scrollTo({ top: 360, behavior: "instant" }));
+    await page.waitForFunction(selector => document.querySelector(selector).scrollTop >= 350, {}, venueResults);
     const desktopScrolled = await venueLayout(page);
-    assert.ok(desktopBefore.firstCardTop - desktopScrolled.firstCardTop >= 350, "Scrolling the list moves its cards");
-    assert.ok(Math.abs(desktopBefore.documentTop - desktopScrolled.documentTop) <= 1, "List scrolling does not scroll the document");
+    assert.ok(desktopBefore.firstCardTop - desktopScrolled.firstCardTop >= 350, "Scrolling results moves its cards");
+    assert.equal(desktopScrolled.list.scrollTop, 0, "The cards column remains without a nested scroll offset");
+    assert.ok(Math.abs(desktopBefore.documentTop - desktopScrolled.documentTop) <= 1, "Results scrolling does not scroll the document");
     for (const key of ["top", "bottom", "left", "width", "height"]) assert.ok(Math.abs(desktopBefore.map[key] - desktopScrolled.map[key]) <= 1, `Map ${key} remains fixed while cards scroll`);
     await click(page, "Buscar lugares"); await ready(page);
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 12);
-    await assertListReset(page, "Search");
+    await assertResultsReset(page, "Search");
     evidence.layout = { desktop: { before: desktopBefore, scrolled: desktopScrolled } };
-    evidence.checks.push("desktop independently scrolls twelve cards with a stationary map and no document overflow", "filters and results share one continuous background", "search resets list scrolling");
+    evidence.checks.push("desktop full-width results scroll twelve cards with a stationary full-height map and no nested list or document overflow", "name search belongs to the full-width desktop filter row above the results title", "filters and results share a white surface with straight form/card/map corners", "search resets results scrolling");
     await click(page, "Siguiente"); await contains(page, "Página 2"); await contains(page, venueDraft.nombre); await ready(page);
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 1);
-    await assertListReset(page, "Next page");
+    await assertResultsReset(page, "Next page");
     await click(page, "Anterior"); await contains(page, "Página 1"); await ready(page);
-    await assertListReset(page, "Previous page");
+    await assertResultsReset(page, "Previous page");
     await field(page, "Nombre o descripción", "jardin claro"); await field(page, "Tipo de lugar", "salones-fiestas", true); await field(page, "Cantidad de invitados", "150"); await field(page, "¿Dónde querés celebrar?", "provincia:AR-B", true);
     await page.keyboard.press("Tab");
-    assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar lugares", "Search is reachable by keyboard after the region field");
+    assert.equal(await page.evaluate(() => document.activeElement?.name), "search", "Name search follows the region field in keyboard order");
+    await page.keyboard.press("Tab");
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar lugares", "Submit is reachable by keyboard after the name field");
     await page.keyboard.press("Enter"); await contains(page, venueDraft.nombre); await ready(page); await loadedImages(page, 1);
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 1);
     await screenshot(page, "01-venues-desktop.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
@@ -213,6 +243,7 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     const landscapeBefore = await venueLayout(page);
     assert.ok(landscapeBefore.list.clientHeight > 0, "Short landscape viewport does not collapse the results list");
     assert.ok(landscapeBefore.list.scrollHeight <= landscapeBefore.list.clientHeight + 1, "Short landscape viewport does not clip cards in an inner list");
+    assert.ok(landscapeBefore.scrollport.scrollHeight <= landscapeBefore.scrollport.clientHeight + 1, "Short landscape results do not introduce a nested vertical scrollport");
     assert.ok(landscapeBefore.documentHeight > landscapeBefore.viewport + 480, "Short landscape viewport uses document scrolling");
     assert.ok(landscapeBefore.mapCanvas.height >= 180, "Short landscape map retains a useful canvas height");
     assert.notEqual(landscapeBefore.map.display, "none", "Landscape retains the map beside the list");
@@ -228,6 +259,7 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     const landscapeLastCard = await venueLayout(page);
     assert.ok(landscapeLastCard.documentTop - landscapeBefore.documentTop > 360, "The last landscape card is reached by scrolling the document");
     assert.ok(landscapeLastCard.list.scrollTop <= 1, "Landscape navigation does not rely on a clipped inner list");
+    assert.ok(landscapeLastCard.scrollport.scrollTop <= 1, "Landscape navigation scrolls the document instead of the desktop scrollport");
     evidence.layout.landscape = { before: landscapeBefore, lastCard: landscapeLastCard, lastCardReachable: true };
     evidence.checks.push("short landscape viewport keeps cards reachable with document scrolling and a useful map");
     await page.setViewport(mobile);
@@ -235,12 +267,14 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     const mobileBefore = await venueLayout(page);
     assert.ok(mobileBefore.documentHeight > mobileBefore.viewport + 480, "Mobile keeps normal document scrolling for the twelve cards");
     assert.ok(mobileBefore.list.scrollHeight <= mobileBefore.list.clientHeight + 1, "Mobile list is not a nested vertical scroller");
+    assert.ok(mobileBefore.scrollport.scrollHeight <= mobileBefore.scrollport.clientHeight + 1, "Mobile results use document height instead of a desktop scrollport");
     assert.equal(mobileBefore.map.display, "none", "Mobile starts with the list only");
     await documentScrollState(page, 480);
     await page.waitForFunction(() => Math.max(document.scrollingElement?.scrollTop || 0, document.body.scrollTop, document.documentElement.scrollTop) >= 470);
     const mobileScrolled = await venueLayout(page);
     assert.ok(mobileBefore.firstCardTop - mobileScrolled.firstCardTop >= 470, "Document scrolling moves the mobile cards");
     assert.ok(mobileScrolled.list.scrollTop <= 1, "Mobile document scrolling does not use an inner list offset");
+    assert.ok(mobileScrolled.scrollport.scrollTop <= 1, "Mobile document scrolling does not use an inner results offset");
     evidence.layout.mobile = { before: mobileBefore, scrolled: mobileScrolled };
     await screenshot(page, "10-venues-mobile.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
     await click(page, "Mapa");

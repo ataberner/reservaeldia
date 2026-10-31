@@ -312,7 +312,9 @@ not event-date availability. Desktop cards use three/two columns and mobile one;
 detail contact controls stay in document flow. Unknown capacity/venue booleans
 remain explicit unknowns. The approved detail omits empty optional blocks.
 
-Local redesign, 2026-10-30 (not deployed): the venue composition now starts with
+Venue redesign, integrated and privately deployed through PRs #5–#6 on
+2026-10-30; the following layout refinement is locally implemented pending its
+scoped publication: the venue composition now starts with
 an editorial hero and `VenueSearchForm` (type/guests/Argentine region), followed
 by `VenueResultCard` results and a real `VenueResultsMap` after submission.
 `VenuesLanding.module.css` owns the hero, form, cards and responsive composition;
@@ -321,15 +323,19 @@ by `VenueResultCard` results and a real `VenueResultsMap` after submission.
 The hero reuses a cropped panel of the existing wedding artwork, explicitly
 illustrative; provider cards continue using approved authenticated images and
 neutral missing-photo fallbacks. Desktop results have two card columns on the
-left and a stationary map on the right. In results mode from 768px wide and 600px high, the
-route owns a viewport-height grid with the unchanged header in its natural-height
-row. Only the card list scrolls; filters and map remain visible. The list resets
-to its first card on search or pagination and is keyboard-focusable. The filters
-and results share the same light background; cards stay white. This local layout
-does not change body/html overflow or shared header geometry. Short landscape
-screens retain document scrolling and a compact sticky map so results remain
-reachable. Tablet reduces cards to one column; mobile
-offers an accessible List/Map switch. No global CSS or professional-page redesign.
+left and a stationary map on the right. The compact search bar includes name,
+type, guests and Argentine region. White, square-edged filters, cards and map
+join the unchanged header without a floating form or a separate name-search row.
+In results mode from 768px wide and 600px high, where container-height units are
+supported, the route owns a viewport-height grid with the unchanged header in
+its natural-height row. A full-width, keyboard-focusable results scrollport puts
+the native scrollbar at the right edge of the viewport. Its left content moves;
+the right map stays sticky and fills the remaining height directly below filters.
+Search and pagination reset this scrollport. No body/html overflow or shared
+header geometry changes. Short landscape screens and browsers without container
+units retain document scrolling and a compact sticky map so results remain
+reachable. Tablet reduces cards to one column; mobile offers an accessible
+List/Map switch. No global CSS or professional-page redesign.
 Functional filter/geography/map rules remain in the provider contract above.
 
 Local frontend verification: `node --test

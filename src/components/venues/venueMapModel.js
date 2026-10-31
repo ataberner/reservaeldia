@@ -50,20 +50,6 @@ export function fitVenueMap(points, width, height) {
   return { ...mapUnproject({ x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, 0), zoom };
 }
 
-export function visibleMapTiles(view, width, height) {
-  if (width <= 0 || height <= 0) return [];
-  const center = mapProject(view, view.zoom);
-  const origin = { x: center.x - width / 2, y: center.y - height / 2 };
-  const count = 2 ** view.zoom;
-  const tiles = [];
-  for (let y = Math.max(0, Math.floor(origin.y / TILE_SIZE)); y <= Math.min(count - 1, Math.floor((origin.y + height) / TILE_SIZE)); y += 1) {
-    for (let x = Math.max(0, Math.floor(origin.x / TILE_SIZE)); x <= Math.min(count - 1, Math.floor((origin.x + width) / TILE_SIZE)); x += 1) {
-      tiles.push({ id: `${view.zoom}/${x}/${y}`, left: x * TILE_SIZE - origin.x, top: y * TILE_SIZE - origin.y });
-    }
-  }
-  return tiles;
-}
-
 export function groupVenueMapPoints(points, zoom) {
   // At most one directory page (24 records). Connected overlap groups ensure
   // two clickable markers never cover one another, including chains of points.

@@ -312,9 +312,8 @@ not event-date availability. Desktop cards use three/two columns and mobile one;
 detail contact controls stay in document flow. Unknown capacity/venue booleans
 remain explicit unknowns. The approved detail omits empty optional blocks.
 
-Venue redesign, integrated and privately deployed through PRs #5–#6 on
-2026-10-30; the following layout refinement is locally implemented pending its
-scoped publication: the venue composition now starts with
+Venue redesign and connected results layout, integrated and privately deployed
+through PRs #5–#7 on 2026-10-30 (Argentina time): the venue composition starts with
 an editorial hero and `VenueSearchForm` (type/guests/Argentine region), followed
 by `VenueResultCard` results and a real `VenueResultsMap` after submission.
 `VenuesLanding.module.css` owns the hero, form, cards and responsive composition;
@@ -336,6 +335,13 @@ header geometry changes. Short landscape screens and browsers without container
 units retain document scrolling and a compact sticky map so results remain
 reachable. Tablet reduces cards to one column; mobile offers an accessible
 List/Map switch. No global CSS or professional-page redesign.
+The subsequent card refinement compacts the information block while preserving
+photo heights at every breakpoint. Category, full name, wrapping location and
+capacity, price and map action remain; descriptions belong to the detail page.
+`VenueMapBase` renders the Spanish vector cartography inside the existing map;
+the parent still owns camera, interaction and private markers. No SDK global CSS
+is imported. These refinements are implemented locally; their PR/release evidence
+must establish publication separately.
 Functional filter/geography/map rules remain in the provider contract above.
 
 Local frontend verification: `node --test

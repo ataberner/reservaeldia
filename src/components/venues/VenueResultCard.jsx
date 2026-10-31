@@ -12,9 +12,10 @@ export default function VenueResultCard({ provider, categories, selected, onSele
     <div className={styles.cardBody}>
       <p className={styles.cardCategory}>{category?.nombre || "Lugar para casamientos"}</p>
       <h2><a href={`/proveedor/?id=${encodeURIComponent(provider.id)}`}>{provider.nombre}<ArrowUpRight size={18} aria-hidden="true" /></a></h2>
-      <p className={styles.cardMeta}><MapPin size={15} aria-hidden="true" />{location || "Ubicación sin informar"}</p>
-      <p className={styles.cardMeta}><Users size={15} aria-hidden="true" />{directoryCapacity(provider.espacio)}</p>
-      <p className={styles.cardSummary}>{provider.descripcionCorta}</p>
+      <div className={styles.cardFacts}>
+        <p className={styles.cardMeta}><MapPin size={15} aria-hidden="true" /><span>{location || "Ubicación sin informar"}</span></p>
+        <p className={styles.cardMeta}><Users size={15} aria-hidden="true" /><span>{directoryCapacity(provider.espacio)}</span></p>
+      </div>
       <div className={styles.cardFooter}><span>{directoryPrice(provider.precio)}</span>{coordinates && <button type="button" onClick={() => onSelect(provider.id)} aria-pressed={selected} aria-label={`Ubicar ${provider.nombre} en el mapa`}><MapPin size={16} aria-hidden="true" />Mapa</button>}</div>
     </div>
   </article>;

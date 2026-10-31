@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { LocateFixed, MapPin, Minus, Plus, X } from "lucide-react";
 import { ARGENTINA_MAP_VIEW, MAX_MAP_ZOOM, MIN_MAP_ZOOM, fitVenueMap, groupVenueMapPoints,
-  mapProject, panMap, venueMapPoints, visibleMapTiles } from "./venueMapModel";
+  mapProject, panMap, venueMapPoints } from "./venueMapModel";
 import styles from "./VenueResultsMap.module.css";
 
-const TILE_ORIGIN = "https://tile.openstreetmap.org";
+// Instantiate WebGL and its same-origin worker only in the browser.
+const VenueMapBase = dynamic(() => import("./VenueMapBase"), {
+  ssr: false,
+  loading: ({ error, retry }) => error ? <div className={styles.error} data-map-overlay role="status">
+    No pudimos cargar el mapa.<button type="button" onClick={retry}>Reintentar</button>
+  </div> : null,
+});
 
 export default function VenueResultsMap({ items = [], selectedId, onSelect, locationLabel = "Argentina" }) {
   const canvasRef = useRef(null);
@@ -37,7 +44,7 @@ export default function VenueResultsMap({ items = [], selectedId, onSelect, loca
 
   useEffect(() => {
     setView(fitVenueMap(pointsRef.current, size.width, size.height));
-    setOpenGroup(null); setTileError(false);
+    setOpenGroup(null);
   }, [pointsKey, size.width, size.height]);
 
   useEffect(() => {
@@ -49,7 +56,6 @@ export default function VenueResultsMap({ items = [], selectedId, onSelect, loca
   }, [selectedId, groups, size.width, size.height]);
 
   const center = mapProject(view, view.zoom);
-  const tiles = visibleMapTiles(view, size.width, size.height);
   const activeGroup = groups.find((group) => group.key === openGroup);
   const missing = items.length - points.length;
   const zoom = (amount) => setView((previous) => ({ ...previous, zoom: Math.max(MIN_MAP_ZOOM, Math.min(MAX_MAP_ZOOM, previous.zoom + amount)) }));
@@ -78,11 +84,7 @@ export default function VenueResultsMap({ items = [], selectedId, onSelect, loca
       aria-label={`Mapa de ${locationLabel}. Usá las flechas para moverlo y los botones para acercar o alejar.`}
       onKeyDown={onKeyDown} onPointerDown={startDrag} onPointerMove={moveDrag}
       onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
-      <div className={styles.tiles} aria-hidden="true">
-        {tiles.map((tile) => <img key={`${attempt}/${tile.id}`} src={`${TILE_ORIGIN}/${tile.id}.png`}
-          alt="" width="256" height="256" draggable={false} referrerPolicy="origin"
-          className={styles.tile} style={{ left: tile.left, top: tile.top }} onError={() => setTileError(true)} />)}
-      </div>
+      <VenueMapBase view={view} width={size.width} height={size.height} attempt={attempt} onError={() => setTileError(true)} />
       <button type="button" className={styles.fit} onClick={fit}><LocateFixed size={16} aria-hidden="true" />Ver esta página en el mapa</button>
       <div className={styles.markers}>
         {groups.map((group) => {
@@ -112,7 +114,7 @@ export default function VenueResultsMap({ items = [], selectedId, onSelect, loca
         <button type="button" aria-label="Acercar mapa" disabled={view.zoom >= MAX_MAP_ZOOM} onClick={() => zoom(1)}><Plus size={20} aria-hidden="true" /></button>
         <button type="button" aria-label="Alejar mapa" disabled={view.zoom <= MIN_MAP_ZOOM} onClick={() => zoom(-1)}><Minus size={20} aria-hidden="true" /></button>
       </div>
-      <div className={styles.attribution}>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors</div>
+      <div className={styles.attribution}><a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>{" · "}<a href="https://www.openmaptiles.org" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>{" · Datos de "}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a></div>
     </div>
     <p className={styles.caption}>{points.length ? `${points.length} ${points.length === 1 ? "lugar ubicado" : "lugares ubicados"} de esta página.` : "Sólo ubicaciones verificadas."}{missing > 0 && points.length > 0 ? ` ${missing} sin coordenadas.` : ""}</p>
   </section>;

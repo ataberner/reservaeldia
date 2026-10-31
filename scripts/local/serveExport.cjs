@@ -19,7 +19,7 @@ function exportFile(root, pathname) {
 }
 
 function createExportServer(root) {
-  const contentTypes = { ".html": "text/html; charset=utf-8", ".js": "application/javascript", ".css": "text/css",
+  const contentTypes = { ".html": "text/html; charset=utf-8", ".js": "application/javascript", ".mjs": "application/javascript", ".css": "text/css",
     ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp",
     ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".mp3": "audio/mpeg" };
   return http.createServer((request, response) => {

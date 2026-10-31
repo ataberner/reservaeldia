@@ -45,6 +45,8 @@ test("static export server contains paths, uses local CSP and only permits reads
   fs.mkdirSync(path.join(root, "dashboard"), { recursive: true });
   fs.mkdirSync(foreign);
   fs.writeFileSync(path.join(root, "index.html"), "synthetic-home");
+  const workerSource = 'self.postMessage("synthetic-module-worker");';
+  fs.writeFileSync(path.join(root, "map-worker.mjs"), workerSource);
   fs.writeFileSync(path.join(root, "dashboard", "index.html"), "synthetic-dashboard");
   fs.writeFileSync(path.join(foreign, "index.html"), "must-not-be-served");
   fs.symlinkSync(foreign, path.join(root, "escape"), process.platform === "win32" ? "junction" : "dir");
@@ -74,6 +76,15 @@ test("static export server contains paths, uses local CSP and only permits reads
     assert.equal((await request("GET", "/dashboard/?slug=synthetic")).body, "synthetic-dashboard");
     assert.equal((await request("HEAD", "/dashboard/")).body, "");
     assert.equal((await request("POST", "/dashboard/")).status, 405);
+    const worker = await request("GET", "/map-worker.mjs");
+    assert.equal(worker.status, 200);
+    assert.equal(worker.body, workerSource);
+    assert.equal(worker.headers["content-type"], "application/javascript");
+    assert.equal(worker.headers["x-content-type-options"], "nosniff");
+    const workerHead = await request("HEAD", "/map-worker.mjs");
+    assert.equal(workerHead.status, 200);
+    assert.equal(workerHead.headers["content-type"], "application/javascript");
+    assert.equal(workerHead.body, "");
   } finally {
     await new Promise(resolve => server.close(resolve));
     // This exact generated test directory is inside the workspace. rm does not

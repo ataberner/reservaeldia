@@ -11,16 +11,21 @@ const require = createRequire(import.meta.url);
 const functionRequire = createRequire(new URL("../../../functions/package.json", import.meta.url));
 const ts = functionRequire("typescript");
 const { JSDOM } = functionRequire("jsdom");
-function compileMap(onBaseRender = () => {}) {
+function compileMap(onBaseRender = () => {}, onDynamic = () => {}) {
   const source = readFileSync(new URL("./VenueResultsMap.jsx", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
   new Function("require", "module", "exports", code)((name) => {
     if (name.endsWith(".module.css")) return { __esModule: true, default: new Proxy({}, { get: (_object, key) => String(key) }) };
     if (name === "./venueMapModel") return model;
-    if (name === "./VenueMapBase") return { __esModule: true, default: (props) => {
-      onBaseRender(props);
-      return React.createElement("div", { "data-map-base": true, "data-view": JSON.stringify(props.view), "data-attempt": props.attempt });
+    if (name === "next/dynamic") return { __esModule: true, default: (_load, options) => {
+      assert.equal(options.ssr, false, "The WebGL runtime and its worker must stay out of SSR");
+      onDynamic(options);
+      return (props) => {
+        if (typeof window === "undefined") return null;
+        onBaseRender(props);
+        return React.createElement("div", { "data-map-base": true, "data-view": JSON.stringify(props.view), "data-attempt": props.attempt });
+      };
     } };
     return require(name);
   }, module, module.exports);
@@ -84,9 +89,23 @@ test("nearby markers cluster by current zoom without overlap, lost businesses or
 });
 
 test("no-coordinate state remains honest and server markup does not prefetch maps", () => {
-  const html = renderToStaticMarkup(React.createElement(compileMap(), { items: [{ id: "a", approvedRevision: 1, nombre: "Sin coordenadas" }] }));
+  const html = renderToStaticMarkup(React.createElement(compileMap(() => assert.fail("SSR must not render the map base")), { items: [{ id: "a", approvedRevision: 1, nombre: "Sin coordenadas" }] }));
   assert.match(html, /Ubicaciones por confirmar/); assert.match(html, /OpenStreetMap/);
   assert.doesNotMatch(html, /tile\.openstreetmap|<img|href="\/proveedor/);
+});
+
+test("map chunk loading is quiet and a failed download offers retry", () => {
+  let options;
+  compileMap(undefined, (value) => { options = value; });
+  assert.equal(options.loading({ error: null }), null);
+  let retries = 0;
+  const fallback = options.loading({ error: new Error("chunk unavailable"), retry: () => { retries += 1; } });
+  const html = renderToStaticMarkup(fallback);
+  assert.match(html, /role="status"/);
+  assert.match(html, /No pudimos cargar el mapa/);
+  assert.match(html, /Reintentar/);
+  fallback.props.children.find((child) => child?.type === "button").props.onClick();
+  assert.equal(retries, 1);
 });
 
 test("real map supports zoom, fit, keyboard, selection and grouped detail links without remote effects", async () => {

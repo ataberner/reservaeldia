@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { LocateFixed, MapPin, Minus, Plus, X } from "lucide-react";
 import { ARGENTINA_MAP_VIEW, MAX_MAP_ZOOM, MIN_MAP_ZOOM, fitVenueMap, groupVenueMapPoints,
   mapProject, panMap, venueMapPoints } from "./venueMapModel";
-import VenueMapBase from "./VenueMapBase";
 import styles from "./VenueResultsMap.module.css";
+
+// Instantiate WebGL and its same-origin worker only in the browser.
+const VenueMapBase = dynamic(() => import("./VenueMapBase"), {
+  ssr: false,
+  loading: ({ error, retry }) => error ? <div className={styles.error} data-map-overlay role="status">
+    No pudimos cargar el mapa.<button type="button" onClick={retry}>Reintentar</button>
+  </div> : null,
+});
 
 export default function VenueResultsMap({ items = [], selectedId, onSelect, locationLabel = "Argentina" }) {
   const canvasRef = useRef(null);

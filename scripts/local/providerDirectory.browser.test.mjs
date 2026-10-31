@@ -98,6 +98,7 @@ async function venueLayout(page) {
       scrollport: scroll(discovery),
       list: scroll(list),
       firstCardTop: firstCard?.getBoundingClientRect().top,
+      card: firstCard ? { id: firstCard.id, image: rect(firstCard.querySelector('a[aria-hidden="true"]')), body: rect(firstCard.querySelector("h2").parentElement) } : null,
       map: { ...rect(map), display: getComputedStyle(map).display },
       mapCanvas: rect(canvas),
       filters: rect(band),
@@ -186,6 +187,8 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 12);
     assert.doesNotMatch(await page.$eval('[aria-label="Resultados de lugares"]', node => node.textContent), /Capacidad desconocida sintética/, "Unknown capacity is excluded by an explicit guest count");
     const desktopBefore = await venueLayout(page);
+    assert.ok(desktopBefore.card.image.height >= 205, "Desktop keeps the established photo height");
+    assert.ok(desktopBefore.card.body.height > 0 && desktopBefore.card.image.height > desktopBefore.card.body.height, "The normal synthetic card gives its photo more height than its compact facts");
     assert.ok(desktopBefore.documentHeight <= desktopBefore.viewport + 1, "Desktop results fit the viewport without a second document scrollbar");
     assert.ok(desktopBefore.scrollport.top >= 0 && desktopBefore.scrollport.bottom <= desktopBefore.viewport + 1, "Desktop results scrollport stays within the viewport");
     assert.ok(Math.abs(desktopBefore.scrollport.left) <= 1 && Math.abs(desktopBefore.scrollport.right - desktopBefore.viewportWidth) <= 1, "The results scrollbar belongs to the full viewport width");
@@ -228,6 +231,14 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     assert.equal(await page.evaluate(() => document.activeElement?.textContent.trim()), "Buscar lugares", "Submit is reachable by keyboard after the name field");
     await page.keyboard.press("Enter"); await contains(page, venueDraft.nombre); await ready(page); await loadedImages(page, 1);
     assert.equal(await page.$$eval('article h2 a', nodes => nodes.length), 1);
+    const approvedCard = await venueLayout(page);
+    assert.ok(approvedCard.card.image.height >= 205, "A loaded approved photo preserves its desktop height");
+    assert.ok(approvedCard.card.body.height > 0 && approvedCard.card.image.height > approvedCard.card.body.height, "The regular approved fixture keeps its loaded photo visually dominant");
+    const cardText = await page.$eval(`${venueList} article`, node => node.innerText);
+    for (const expected of [venueDraft.nombre, "La Plata, Buenos Aires", "Hasta 200 personas", "Consultar presupuesto"]) assert.ok(cardText.includes(expected), `Compact card retains ${expected}`);
+    assert.equal(cardText.includes(venueDraft.descripcionCorta), false, "Descriptions no longer occupy the compact card body");
+    evidence.layout.approvedCard = approvedCard.card;
+    evidence.checks.push("compact cards keep essential name/location/capacity/price and give the existing desktop photo more space than facts");
     await screenshot(page, "01-venues-desktop.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
     await field(page, "Nombre o descripción", "Sin coincidencias"); await click(page, "Buscar lugares"); await contains(page, "Todavía no encontramos ese lugar");
     await screenshot(page, "05-empty.png", 'form[aria-label="Encontrar un lugar para tu casamiento"]');
@@ -265,6 +276,8 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     await page.setViewport(mobile);
     await documentScrollState(page, 0);
     const mobileBefore = await venueLayout(page);
+    assert.ok(mobileBefore.card.image.height >= 220, "390px mobile keeps the established 220px photo height");
+    assert.ok(mobileBefore.card.body.height > 0, "Compact mobile facts remain rendered below the photo");
     assert.ok(mobileBefore.documentHeight > mobileBefore.viewport + 480, "Mobile keeps normal document scrolling for the twelve cards");
     assert.ok(mobileBefore.list.scrollHeight <= mobileBefore.list.clientHeight + 1, "Mobile list is not a nested vertical scroller");
     assert.ok(mobileBefore.scrollport.scrollHeight <= mobileBefore.scrollport.clientHeight + 1, "Mobile results use document height instead of a desktop scrollport");
@@ -293,6 +306,10 @@ test("private approved directory works on desktop/mobile, withdraws stale contac
     await page.waitForSelector('[aria-label="Ficha aprobada del negocio"]'); await contains(page, venueDraft.nombre); await loadedImages(page, 2);
     const detail = await page.$eval('[aria-label="Ficha aprobada del negocio"]', node => node.textContent);
     assert.match(detail, /jardin@example\.test/); assert.doesNotMatch(detail, /DRAFT-NAME|pending@example|DIRECTORY-PRIVATE|Responsable verificado/);
+    const about = await page.$$eval('section[aria-labelledby="provider-about"] p', nodes => nodes.map(node => ({ text: node.textContent, height: node.getBoundingClientRect().height })));
+    assert.deepEqual(about.map(entry => entry.text), [venueDraft.descripcionCorta, venueDraft.descripcion], "Both approved descriptions remain available in the existing detail");
+    assert.ok(about.every(entry => entry.height > 0), "Approved descriptions remain visibly rendered");
+    evidence.checks.push("approved short and complete descriptions remain visible in the business detail");
     assert.ok(await page.$('button')); await contains(page, "Consultar por WhatsApp"); await contains(page, "Escribir por correo");
     await screenshot(page, "03-detail-desktop.png");
     await page.setViewport(mobile); await contains(page, venueDraft.nombre); await screenshot(page, "04-detail-mobile.png", '[aria-label="Contacto comercial aprobado"]');

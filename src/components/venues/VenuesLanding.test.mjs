@@ -100,6 +100,25 @@ test("category shortcut selects a real category and guest constraints reject emp
   });
 });
 
+test("compact venue cards retain essential facts and link to the full description without repeating it", async () => {
+  const priced = { ...item, id: "synthetic-priced", nombre: "Quinta con un nombre comercial deliberadamente largo para conservar íntegro", precio: { modalidad: "desde", importe: 150000, moneda: "ARS", unidad: "evento" } };
+  await harness({ list: async () => ({ items: [item, priced], nextCursor: null }) }, async ({ host, input, select, search }) => {
+    await input("input[name='guests']", "150"); await select("select[name='region']", "ar"); await search();
+    for (const provider of [item, priced]) {
+      const card = host.querySelector(`#venue-${provider.id}`);
+      const title = card.querySelector("h2 a");
+      assert.equal(title.textContent, provider.nombre, "The complete business name remains available");
+      assert.equal(title.getAttribute("href"), `/proveedor/?id=${provider.id}`, "The title opens the approved detail");
+      assert.ok(card.textContent.includes("Salones de fiestas"));
+      assert.ok(card.textContent.includes("Tigre, Buenos Aires"));
+      assert.ok(card.textContent.includes("50–200 personas"));
+      assert.ok(card.textContent.includes(provider === item ? "Consultar presupuesto" : model.directoryPrice(priced.precio)));
+      assert.equal(card.textContent.includes(provider.descripcionCorta), false, "The compact card leaves descriptive text to the detail");
+      assert.ok(card.querySelector(`button[aria-label="Ubicar ${provider.nombre} en el mapa"]`), "The existing map action remains accessible");
+    }
+  });
+});
+
 test("pagination uses applied filters and a changed search restarts at page one", async () => {
   await harness({ list: async data => ({ items: [{ ...item, id: data.cursor ? "second" : item.id }], nextCursor: data.cursor ? null : "cursor-page-two" }) }, async ({ host, requests, input, select, search, click }) => {
     await input("input[name='guests']", "150"); await select("select[name='region']", "ar"); await search();

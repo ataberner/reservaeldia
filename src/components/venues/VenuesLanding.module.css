@@ -77,22 +77,23 @@
 .resultsToolbar p { margin: 5px 0 0; color: var(--venue-muted); font: 14px/20px "Source Sans 3", sans-serif; }
 .resultsLayout { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); align-items: start; gap: 0; width: 100%; min-height: 100%; }
 .results { min-width: 0; padding: 20px 24px 28px; }
-.venueGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 26px 20px; }
+.venueGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px 20px; }
 .venueCard { min-width: 0; overflow: hidden; border: 1px solid var(--venue-border); border-radius: 0; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
 .venueCard:hover { border-color: #ceb7dd; box-shadow: 0 6px 20px #35213f09; }
 .selectedCard { border-color: var(--venue-primary); box-shadow: 0 0 0 1px var(--venue-primary); }
 .cardImageLink { position: relative; display: block; height: 205px; overflow: hidden; background: #faf5ed; text-decoration: none; }
 .cardImageLink > * { width: 100%; height: 100%; border-radius: 0; object-fit: cover; }
 .cardImage { width: 100%; height: 100%; object-fit: cover; }
-.cardBody { padding: 16px; }
-.cardCategory { margin: 0 0 7px; color: var(--venue-primary); font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: .6px; text-transform: uppercase; }
-.cardBody h2, .cardBody h3 { margin: 0 0 10px; color: var(--venue-ink); font-size: 18px; font-weight: 600; line-height: 24px; letter-spacing: -.3px; overflow-wrap: anywhere; }
+.cardBody { padding: 10px 12px; }
+.cardCategory { margin: 0 0 3px; color: var(--venue-primary); font-size: 11px; font-weight: 600; line-height: 15px; letter-spacing: .6px; text-transform: uppercase; }
+.cardBody h2, .cardBody h3 { margin: 0 0 5px; color: var(--venue-ink); font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -.3px; overflow-wrap: anywhere; }
 .cardBody h2 a, .cardBody h3 a { display: flex; align-items: start; justify-content: space-between; gap: 9px; text-decoration: none; }
 .cardBody h2 svg, .cardBody h3 svg { flex-shrink: 0; margin-top: 3px; color: var(--venue-primary); }
-.cardMeta { display: flex; align-items: start; gap: 7px; margin: 5px 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
+.cardFacts { display: flex; align-items: start; flex-wrap: wrap; gap: 3px 12px; }
+.cardMeta { display: flex; align-items: start; gap: 5px; min-width: 0; max-width: 100%; margin: 0; color: var(--venue-muted); font: 13px/19px "Source Sans 3", sans-serif; }
 .cardMeta svg { flex-shrink: 0; margin-top: 2px; color: #917e9e; }
-.cardSummary { display: -webkit-box; min-height: 40px; margin: 13px 0 14px; overflow: hidden; color: #6e6775; font: 14px/20px "Source Sans 3", sans-serif; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.cardFooter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid #f0ebf2; }
+.cardMeta span { min-width: 0; overflow-wrap: anywhere; }
+.cardFooter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-top: 6px; padding-top: 5px; border-top: 1px solid #f0ebf2; }
 .cardFooter > span, .cardFooter > p { margin: 0; color: #514757; font: 13px/19px "Source Sans 3", sans-serif; }
 .cardFooter button { display: flex; align-items: center; gap: 5px; min-height: 32px; padding: 6px 0; border: 0; background: transparent; color: var(--venue-primary); font-size: 12px; font-weight: 500; line-height: 19px; }
 .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 19px; border-top: 1px solid var(--venue-border); color: var(--venue-muted); font-size: 13px; line-height: 20px; }
@@ -107,8 +108,8 @@
 .empty p { max-width: 360px; margin: 0; color: var(--venue-muted); font: 16px/24px "Source Sans 3", sans-serif; }
 .empty button { min-height: 42px; margin-top: 19px; padding: 10px 16px; border: 1px solid var(--venue-primary); border-radius: 0; background: #fff; color: var(--venue-primary); font-size: 14px; }
 .empty button { display: inline-flex; align-items: center; gap: 7px; }
-.loadingGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 20px; }
-.loadingGrid > div { min-height: 360px; border: 1px solid var(--venue-border); border-radius: 0; background: linear-gradient(110deg, #f4eff5 20%, #fbf9fc 40%, #f4eff5 60%); background-size: 200% 100%; animation: venueSkeleton 1.4s ease-in-out infinite; }
+.loadingGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+.loadingGrid > div { min-height: 335px; border: 1px solid var(--venue-border); border-radius: 0; background: linear-gradient(110deg, #f4eff5 20%, #fbf9fc 40%, #f4eff5 60%); background-size: 200% 100%; animation: venueSkeleton 1.4s ease-in-out infinite; }
 .spinner { animation: venueSpin .8s linear infinite; }
 .mobileSwitch { display: none; }
 @keyframes venueSpin { to { transform: rotate(360deg); } }
@@ -136,9 +137,8 @@
   .searchField { gap: 9px; padding-right: 14px; padding-left: 14px; }
   .searchButton { min-width: 130px; padding-right: 20px; padding-left: 20px; }
   .categoryChoice { gap: 10px; padding-right: 15px; padding-left: 15px; }
-  .venueGrid { gap: 22px 15px; }
+  .venueGrid { gap: 16px 15px; }
   .cardImageLink { height: 180px; }
-  .cardBody { padding: 13px; }
 }
 
 @media (max-width: 1023px) {
@@ -164,7 +164,6 @@
   .resultsLayout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .venueGrid, .loadingGrid { grid-template-columns: 1fr; }
   .cardImageLink { height: 220px; }
-  .cardBody { padding: 17px; }
 }
 
 @media (max-width: 767px) {
@@ -215,12 +214,11 @@
   .resultsLayout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .hiddenOnMobile { display: none; }
   .mapColumn { position: static; }
-  .venueGrid { gap: 22px; }
+  .venueGrid { gap: 16px; }
   .cardImageLink { height: 220px; }
-  .cardBody { padding: 17px; }
-  .cardBody h2, .cardBody h3 { font-size: 19px; line-height: 25px; }
+  .cardBody h2, .cardBody h3 { font-size: 18px; line-height: 23px; }
   .cardMeta { font-size: 14px; line-height: 20px; }
-  .cardFooter button { min-height: 37px; }
+  .cardFooter button { min-height: 44px; }
   .pagination { gap: 8px; margin-top: 22px; font-size: 12px; }
   .pagination > div { gap: 6px; }
   .pagination button { padding: 8px 11px; font-size: 12px; }
@@ -235,7 +233,6 @@
   .categoryChoice { gap: 7px; padding-right: 9px; padding-left: 9px; }
   .categoryChoice > svg { width: 22px; height: 22px; }
   .cardImageLink { height: 195px; }
-  .cardBody { padding: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

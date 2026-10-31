@@ -3,8 +3,10 @@
 .canvas { position: relative; isolation: isolate; flex: 1 1 auto; height: var(--venue-map-height, min(710px, calc(100dvh - 200px))); min-height: var(--venue-map-min-height, 460px); overflow: hidden; border: 1px solid #e8e3ee; border-radius: 0; background: #e8eee7; cursor: grab; touch-action: none; }
 .canvas:active { cursor: grabbing; }
 .canvas:focus-visible, .root button:focus-visible, .root a:focus-visible { outline: 3px solid #692b9a; outline-offset: 3px; }
-.tiles, .markers { position: absolute; inset: 0; pointer-events: none; }
-.tile { position: absolute; max-width: none; width: 256px; height: 256px; user-select: none; }
+.base, .markers { position: absolute; inset: 0; pointer-events: none; }
+.base { overflow: hidden; }
+/* MapLibre creates this canvas inside the scoped base. No global SDK CSS or UI. */
+.base canvas { position: absolute; top: 0; left: 0; display: block; max-width: none; }
 .root button { font-family: inherit; cursor: pointer; }
 .root button:disabled { opacity: .45; cursor: default; }
 .fit { position: absolute; z-index: 3; top: 16px; left: 50%; display: flex; align-items: center; justify-content: center; gap: 8px; width: max-content; max-width: calc(100% - 32px); min-height: 42px; padding: 10px 16px; transform: translateX(-50%); border: 1px solid #e8e3ee; border-radius: 0; background: #fff; box-shadow: 0 3px 14px #26262614; color: #692b9a; font-size: 13px; font-weight: 600; }
@@ -16,16 +18,16 @@
 .markerCount { min-width: 8px; }
 .selected, .marker:hover, .marker:focus-visible { z-index: 2; background: #692b9a; color: #fff; }
 .selected .markerLabel, .marker:hover .markerLabel, .marker:focus-visible .markerLabel { display: block; }
-.zoom { position: absolute; z-index: 3; right: 16px; bottom: 35px; display: flex; flex-direction: column; border: 1px solid #e8e3ee; border-radius: 0; background: #fff; box-shadow: 0 3px 14px #26262614; }
+.zoom { position: absolute; z-index: 3; right: 16px; bottom: 41px; display: flex; flex-direction: column; border: 1px solid #e8e3ee; border-radius: 0; background: #fff; box-shadow: 0 3px 14px #26262614; }
 .zoom button { display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 0; background: #fff; color: #262626; }
 .zoom button + button { border-top: 1px solid #e8e3ee; }
-.attribution { position: absolute; z-index: 4; right: 0; bottom: 0; padding: 3px 7px; background: rgb(255 255 255 / 95%); color: #262626; font: 11px/16px "Source Sans 3", sans-serif; cursor: default; }
-.attribution a { color: #692b9a; text-decoration: underline; }
+.attribution { position: absolute; z-index: 4; right: 0; bottom: 0; max-width: 100%; padding: 3px 7px; background: rgb(255 255 255 / 95%); color: #262626; font: 10px/15px "Source Sans 3", sans-serif; white-space: normal; overflow-wrap: anywhere; text-align: right; cursor: default; }
+.attribution a { color: #692b9a; text-decoration: underline; white-space: nowrap; }
 .empty { position: absolute; top: 50%; left: 50%; display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(290px, calc(100% - 48px)); padding: 24px; border: 1px solid #e8e3ee; border-radius: 0; background: rgb(255 255 255 / 96%); box-shadow: 0 4px 28px #26262610; text-align: center; transform: translate(-50%, -50%); cursor: default; }
 .empty svg { color: #692b9a; }
 .empty strong { font-size: 16px; font-weight: 600; }
 .empty p { margin: 0; color: #655e6d; font: 15px/22px "Source Sans 3", sans-serif; }
-.popup { position: absolute; z-index: 4; right: 72px; bottom: 34px; left: 16px; max-height: 220px; overflow: auto; padding: 18px; border: 1px solid #e8e3ee; border-radius: 0; background: #fff; box-shadow: 0 6px 26px #26262620; cursor: default; }
+.popup { position: absolute; z-index: 4; right: 72px; bottom: 41px; left: 16px; max-height: 220px; overflow: auto; padding: 18px; border: 1px solid #e8e3ee; border-radius: 0; background: #fff; box-shadow: 0 6px 26px #26262620; cursor: default; }
 .popupItem { padding-right: 20px; }
 .popupItem + .popupItem { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8e3ee; }
 .popupItem strong { display: block; overflow-wrap: anywhere; color: #262626; font-size: 16px; line-height: 22px; }
@@ -33,7 +35,8 @@
 .popupItem a { color: #692b9a; font-size: 13px; font-weight: 600; text-decoration: none; }
 .popupItem a:hover { text-decoration: underline; }
 .close { position: absolute; top: 8px; right: 8px; display: grid; width: 40px; height: 40px; place-items: center; padding: 0; border: 0; border-radius: 0; background: #faf5ff; color: #692b9a; }
-.caption { position: absolute; z-index: 4; bottom: 5px; left: 5px; max-width: calc(100% - 164px); margin: 0; padding: 3px 6px; background: rgb(255 255 255 / 95%); color: #655e6d; font: 12px/16px "Source Sans 3", sans-serif; }
+/* Reserve two 15px attribution lines plus padding and separation within the map. */
+.caption { position: absolute; z-index: 4; bottom: 41px; left: 5px; max-width: calc(100% - 80px); margin: 0; padding: 3px 6px; background: rgb(255 255 255 / 95%); color: #655e6d; font: 12px/16px "Source Sans 3", sans-serif; }
 .error { position: absolute; z-index: 5; right: 16px; bottom: 140px; left: 16px; padding: 10px 14px; border: 1px solid #e8e3ee; border-radius: 0; background: #fff; color: #262626; font: 14px/20px "Source Sans 3", sans-serif; }
 .error button { margin-left: 10px; padding: 4px; border: 0; background: transparent; color: #692b9a; text-decoration: underline; }
 @media (max-width: 767px) { .canvas { height: 520px; min-height: 400px; border-radius: 0; } .fit { font-size: 12px; } }

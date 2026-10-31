@@ -6,6 +6,27 @@ Preparación: 2026-10-30. El usuario autorizó integrar y publicar el rediseño 
 describe el procedimiento; la integración y el despliegue sólo quedan
 acreditados por sus comprobantes remotos.
 
+## Refinamiento de tarjetas y cartografía (2026-10-30)
+
+La entrega `codex/lugares-tarjetas-mapa-ar` sólo necesita Hosting con el mismo
+scope `venues`: no requiere desplegar Functions, Rules ni escribir controles
+beta. Mantiene las fotos y compacta la información de las tarjetas; el fondo
+del mapa pasa a OpenFreeMap con rótulos en español y MapLibre 6.16.0 cargado
+después del acceso privado. El worker queda entre los assets estáticos del
+mismo origen. No se envían fichas ni credenciales al servicio cartográfico.
+
+El selector valida una excepción acotada para `package.json`/`package-lock.json`:
+únicamente la incorporación exacta de MapLibre y su árbol nuevo; las entradas
+anteriores deben permanecer iguales. No permite cambios generales de paquetes.
+Los metadatos generados en `node_modules` no forman parte del candidato.
+
+La revisión local cubre tarjetas, interacción y ciclo de vida del mapa,
+localización, privacidad de solicitudes y publicación acotada. Antes de merge,
+el PR debe completar el build real (incluido el worker), los checks obligatorios
+y el preview; después se comprueban producción y hashes preservados. La
+publicación se acredita en el PR y en los artefactos de su workflow, sin presentar
+la comprobación local como un despliegue.
+
 ## Artefacto que conserva el sitio vigente
 
 La base Git integrada no contiene todos los cambios ajenos que ya están en

@@ -11,13 +11,17 @@ const require = createRequire(import.meta.url);
 const functionRequire = createRequire(new URL("../../../functions/package.json", import.meta.url));
 const ts = functionRequire("typescript");
 const { JSDOM } = functionRequire("jsdom");
-function compileMap() {
+function compileMap(onBaseRender = () => {}) {
   const source = readFileSync(new URL("./VenueResultsMap.jsx", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
   new Function("require", "module", "exports", code)((name) => {
     if (name.endsWith(".module.css")) return { __esModule: true, default: new Proxy({}, { get: (_object, key) => String(key) }) };
     if (name === "./venueMapModel") return model;
+    if (name === "./VenueMapBase") return { __esModule: true, default: (props) => {
+      onBaseRender(props);
+      return React.createElement("div", { "data-map-base": true, "data-view": JSON.stringify(props.view), "data-attempt": props.attempt });
+    } };
     return require(name);
   }, module, module.exports);
   return module.exports.default;
@@ -51,18 +55,6 @@ test("fit includes all points without fabricating markers and zoom remains bound
   }
   assert.deepEqual(model.fitVenueMap([], 600, 600), model.ARGENTINA_MAP_VIEW);
   assert.equal(model.fitVenueMap([points[0]], 600, 600).zoom, 13);
-});
-
-test("tile requests cover only visible viewport with no adjacent-region prefetch", () => {
-  assert.deepEqual(model.visibleMapTiles(model.ARGENTINA_MAP_VIEW, 0, 0), []);
-  const tiles = model.visibleMapTiles(model.ARGENTINA_MAP_VIEW, 600, 500);
-  assert.ok(tiles.length > 0 && tiles.length <= 16);
-  assert.equal(new Set(tiles.map((tile) => tile.id)).size, tiles.length);
-  for (const tile of tiles) {
-    assert.match(tile.id, /^4\/\d+\/\d+$/);
-    assert.ok(tile.left < 600 && tile.left + 256 > 0);
-    assert.ok(tile.top < 500 && tile.top + 256 > 0);
-  }
 });
 
 test("pan moves the map and exact overlapping businesses remain accessible in one group", () => {
@@ -108,18 +100,18 @@ test("real map supports zoom, fit, keyboard, selection and grouped detail links 
     const items = [venue("a", -34.6, -58.4), venue("b", -34.6, -58.4)];
     await act(async () => root.render(React.createElement(compileMap(), { items, onSelect: (id) => { selection = id; } })));
     const button = (label) => dom.window.document.querySelector(`button[aria-label="${label}"]`);
-    const tile = () => dom.window.document.querySelector("img").getAttribute("src");
-    const initial = tile();
-    await act(async () => button("Acercar mapa").click()); assert.notEqual(tile(), initial);
-    await act(async () => button("Alejar mapa").click()); assert.equal(tile(), initial);
+    const camera = () => dom.window.document.querySelector("[data-map-base]").getAttribute("data-view");
+    const initial = camera();
+    await act(async () => button("Acercar mapa").click()); assert.notEqual(camera(), initial);
+    await act(async () => button("Alejar mapa").click()); assert.equal(camera(), initial);
     const map = dom.window.document.querySelector(".canvas");
     await act(async () => map.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    await act(async () => dom.window.document.querySelector(".fit").click()); assert.equal(tile(), initial);
+    assert.notEqual(camera(), initial);
+    await act(async () => dom.window.document.querySelector(".fit").click()); assert.equal(camera(), initial);
     await act(async () => button("Ver 2 lugares en esta ubicación").click()); assert.equal(selection, "a");
     const links = [...dom.window.document.querySelectorAll('.popup a')].map((link) => link.getAttribute("href"));
     assert.deepEqual(links, ["/proveedor/?id=a", "/proveedor/?id=b"]);
-    assert.ok([...dom.window.document.querySelectorAll("img")].every((image) => /^https:\/\/tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png$/.test(image.src)));
-    assert.ok([...dom.window.document.querySelectorAll("img")].every((image) => image.getAttribute("referrerPolicy") === "origin"));
+    assert.match(dom.window.document.querySelector(".attribution").textContent, /OpenFreeMap.*OpenMapTiles.*OpenStreetMap/);
     await act(async () => button("Cerrar lugar en el mapa").click()); assert.equal(dom.window.document.querySelector(".popup"), null);
   } finally {
     await act(async () => root.unmount()); dom.window.close();
@@ -133,17 +125,19 @@ test("external map selection, missing locations and tile retry cannot retain a p
   globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   dom.window.HTMLElement.prototype.getBoundingClientRect = () => ({ width: 600, height: 550, left: 0, top: 0, right: 600, bottom: 550 });
   const root = createRoot(dom.window.document.getElementById("root"));
-  const Map = compileMap();
+  let baseProps;
+  const Map = compileMap((props) => { baseProps = props; });
   try {
     const items = [venue("selected", -34.6, -58.4), venue("other", -34.7, -58.5)];
     await act(async () => root.render(React.createElement(Map, { items, selectedId: "selected" })));
     assert.equal(dom.window.document.querySelector(".popup a").getAttribute("href"), "/proveedor/?id=selected");
-    const firstTile = dom.window.document.querySelector("img");
-    await act(async () => firstTile.dispatchEvent(new dom.window.Event("error")));
+    assert.deepEqual(Object.keys(baseProps).sort(), ["attempt", "height", "onError", "view", "width"], "No provider record is given to the external base renderer");
+    const firstAttempt = baseProps.attempt;
+    await act(async () => baseProps.onError());
     assert.match(dom.window.document.querySelector(".error").textContent, /No pudimos cargar parte del mapa/);
     await act(async () => dom.window.document.querySelector(".error button").click());
     assert.equal(dom.window.document.querySelector(".error"), null);
-    assert.notEqual(dom.window.document.querySelector("img"), firstTile, "Retry remounts the visible tiles without embedding private data");
+    assert.equal(baseProps.attempt, firstAttempt + 1, "Retry recreates the base without embedding private data");
     await act(async () => root.render(React.createElement(Map, { items: [{ id: "unknown", approvedRevision: 1, nombre: "Sin coordenadas" }], selectedId: "selected" })));
     assert.equal(dom.window.document.querySelector(".popup"), null);
     assert.equal(dom.window.document.querySelector(".marker"), null);

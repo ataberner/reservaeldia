@@ -1265,12 +1265,20 @@ desconocida o ambigua no se asigna a una zona: puede aparecer por provincia o pa
 Después de buscar, tarjetas a la izquierda y mapa a la derecha en escritorio;
 en móvil, selector Lista/Mapa. El mapa representa sólo esta página de resultados,
 con coordenadas verificadas presentes en la proyección aprobada, sin completar
-ubicaciones. Los lugares sin coordenadas permanecen en la lista. Los tiles de
-OpenStreetMap son una base cartográfica externa: reciben coordenadas de tiles,
-sin nombres, IDs, contactos ni credenciales de proveedores. Los marcadores se
-componen localmente; una falla cartográfica no bloquea el listado. Mantener
-atribución, caché normal del navegador y la [política de tiles](https://operations.osmfoundation.org/policies/tiles/),
-sin descarga masiva ni precarga. No cambian las autorizaciones ni los controles beta.
+ubicaciones. Los lugares sin coordenadas permanecen en la lista. La base
+cartográfica implementada usa [OpenFreeMap](https://openfreemap.org/quick_start/)
+y MapLibre, cargado sólo al montar el mapa de resultados autorizado. Los rótulos
+priorizan `name:es` (por ejemplo, «Islas Malvinas»), con el nombre original como
+respaldo; las referencias viales se conservan. El servicio recibe solicitudes de
+estilo, fuentes y tiles, sin nombres, IDs, contactos ni credenciales de proveedores;
+el referente se limita al origen. Los marcadores privados se componen localmente
+y no se incorporan a las fuentes cartográficas. Una falla de red o WebGL conserva
+el listado y ofrece reintentar. Mantener atribución OpenMapTiles/OpenStreetMap,
+caché normal y los [términos del servicio](https://openfreemap.org/tos/), sin
+descarga masiva ni precarga de regiones. El servicio es gratuito, sin clave ni
+cuenta, y no ofrece SLA. No cambian autorizaciones ni controles beta. El uso de
+esta base sustituye los rótulos raster no localizables; no declara una validación
+completa del nomenclátor oficial argentino.
 
 ### 10.5 Etapas posteriores aceptadas y todavía pendientes
 
